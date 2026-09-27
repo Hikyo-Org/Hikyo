@@ -101,6 +101,7 @@ export function CertificatesTab({
           Issue certificate
         </Button>
       </p>
+      {view.isPending ? <p role="status">Loading certificates…</p> : null}
       {view.isError ? <Alert>At least one environment&apos;s certificates could not be listed; the table is incomplete.</Alert> : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
@@ -322,6 +323,7 @@ function IssueDialog({
 
   const run = async () => {
     setFailure(null);
+    if (!profiles.isSuccess || profiles.isError) return;
     const request = draft();
     if (request === null) {
       return;
@@ -377,7 +379,7 @@ function IssueDialog({
             <Button type="button" onClick={dismiss} disabled={busy || csr.isPending}>
               Cancel
             </Button>
-            <Button variant="primary" type="button" disabled={busy || csr.isPending} onClick={() => void run()}>
+            <Button variant="primary" type="button" disabled={busy || csr.isPending || !profiles.isSuccess || profiles.isError || chosenProfile === ''} onClick={() => void run()}>
               {method === 'generate' ? 'Use a passkey and issue' : 'Issue'}
             </Button>
           </>
@@ -385,6 +387,8 @@ function IssueDialog({
       }
     >
       {failure !== null ? <Alert>{failure}</Alert> : null}
+      {profiles.isPending ? <p role="status">Loading certificate profiles…</p> : null}
+      {profiles.isError ? <Alert>Certificate profiles could not be loaded. Select an environment again or reopen this dialog to retry.</Alert> : null}
       {done ? (
         <>
           {disclosed ? (

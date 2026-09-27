@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -408,7 +410,13 @@ func (r pkiQueries) DestroyIssuerKey(ctx context.Context, p authz.Proof, id, fro
 		return false, fmt.Errorf("store: %q is not a key-destroying state", to)
 	}
 	query := r.db.SQL(`UPDATE pki_issuers SET state=?, encrypted_private_key=NULL, dek_version=NULL, row_version=row_version+1, updated_at=? WHERE id=? AND state=? AND row_version=?`)
-	return affectedOne(r.db.Exec(ctx, query, to, r.db.Stamp(at), id, from, rowVersion))
+	changed, err := affectedOne(r.db.Exec(ctx, query, to, r.db.Stamp(at), id, from, rowVersion))
+	if err == nil && changed && to == "revoked" {
+		// The parent must publish the child's CA serial even though the child's
+		// compromised signing key is destroyed. This shares the terminal transaction.
+		_, err = r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=(SELECT parent_id FROM pki_issuers WHERE id=? AND certificate_der IS NOT NULL) AND state IN ('active','retiring')`), id)
+	}
+	return changed, err
 }
 
 // SetIssuerHold changes the restore hold only at the expected row version.
@@ -425,15 +433,16 @@ func (r pkiQueries) SetIssuerHold(ctx context.Context, p authz.Proof, id string,
 	return affectedOne(r.db.Exec(ctx, query, value, r.db.Stamp(at), id, rowVersion))
 }
 
-// CountLiveCertificates counts leaves of one issuer version that relying
-// parties may still accept, plus reserved issuances: issuing, issued, renewed
-// or unknown, with not_after strictly later than now.
+// CountLiveCertificates counts unexpired leaves, including revoked leaves
+// that still require fresh CRLs, plus reserved/unknown issuances and unexpired
+// child CA certificates in every state. Retirement must retain the signing
+// key until no certificate depends on this issuer's revocation coverage.
 func (r pkiQueries) CountLiveCertificates(ctx context.Context, p authz.Proof, issuerID string, now time.Time) (int64, error) {
 	if _, err := authz.Verify(p, authz.StorePKICertificatesCountLive, r.tok); err != nil {
 		return 0, err
 	}
 	var n int64
-	err := r.db.QueryRow(ctx, r.db.SQL(`SELECT COUNT(*) FROM pki_certificates WHERE issuer_id=? AND state IN ('issuing','issued','renewed','unknown') AND not_after>?`), issuerID, r.db.Stamp(now)).Scan(&n)
+	err := r.db.QueryRow(ctx, r.db.SQL(`SELECT (SELECT COUNT(*) FROM pki_certificates WHERE issuer_id=? AND state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>?) + (SELECT COUNT(*) FROM pki_issuers WHERE parent_id=? AND certificate_der IS NOT NULL AND not_after>?)`), issuerID, r.db.Stamp(now), issuerID, r.db.Stamp(now)).Scan(&n)
 	return n, err
 }
 
@@ -467,7 +476,7 @@ func (r pkiQueries) RevokedEntries(ctx context.Context, p authz.Proof, issuerID 
 
 func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time.Time) ([]PKIRevokedEntry, error) {
 	rows, err := db.Query(ctx, db.SQL(`SELECT serial, COALESCE(revoked_at, updated_at), COALESCE(revocation_reason, 'unspecified') FROM pki_certificates WHERE issuer_id=? AND state IN ('revoked','unknown') AND not_after>? ORDER BY serial`), issuerID, db.Stamp(now))
-	return collectPKI(rows, err, func(row rowScanner) (PKIRevokedEntry, error) {
+	entries, err := collectPKI(rows, err, func(row rowScanner) (PKIRevokedEntry, error) {
 		var out PKIRevokedEntry
 		var at adapterStoredTime
 		if err := row.Scan(&out.Serial, &at, &out.Reason); err != nil {
@@ -477,6 +486,32 @@ func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time
 		out.RevokedAt, parseErr = pkiTime(at)
 		return out, parseErr
 	})
+	if err != nil {
+		return nil, err
+	}
+	rows, err = db.Query(ctx, db.SQL(`SELECT certificate_der, updated_at FROM pki_issuers WHERE parent_id=? AND state='revoked' AND certificate_der IS NOT NULL AND not_after>? ORDER BY id`), issuerID, db.Stamp(now))
+	children, err := collectPKI(rows, err, func(row rowScanner) (PKIRevokedEntry, error) {
+		var der []byte
+		var at adapterStoredTime
+		if err := row.Scan(&der, &at); err != nil {
+			return PKIRevokedEntry{}, err
+		}
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			return PKIRevokedEntry{}, fmt.Errorf("store: revoked child issuer certificate: %w", err)
+		}
+		if !cert.IsCA || cert.SerialNumber.Sign() <= 0 {
+			return PKIRevokedEntry{}, fmt.Errorf("store: revoked child issuer certificate has invalid CA serial")
+		}
+		revokedAt, err := pkiTime(at)
+		return PKIRevokedEntry{Serial: cert.SerialNumber.Text(16), RevokedAt: revokedAt, Reason: "ca-compromise"}, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	entries = append(entries, children...)
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Serial < entries[j].Serial })
+	return entries, nil
 }
 
 // PublishCRL stores DER and update times only for an active or retiring issuer

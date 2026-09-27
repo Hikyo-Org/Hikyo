@@ -135,11 +135,13 @@ hikyo cert issue --env prod --profile web --csr-file api.csr \
 
 Only the CSR's public key is used; the names come from the flags. With a
 server-generated key, the key is shown **exactly once** through the print
-triad (a controlling terminal, `--output-file`, or `--dangerously-print`), and
-a human confirms a reauthentication ceremony first:
+triad (a controlling terminal, `--output-file`, or `--dangerously-print`).
+Human CLI sessions use `--csr-file` or issue generated keys in the web UI,
+where the mint ceremony is supported. CLI `--generate-key` is available only
+to a machine credential authorized by the profile and environment policy:
 
 ```sh
-hikyo cert issue --env prod --profile web --generate-key \
+hikyo cert issue --token-file /run/secrets/hikyo-token --env prod --profile web --generate-key \
     --uri spiffe://example.com/ns/prod/sa/worker --output-file worker.key --cert-out worker.pem
 ```
 

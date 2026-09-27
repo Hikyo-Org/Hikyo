@@ -421,6 +421,9 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 // Prefixing is provider wiring; applications continue to receive canonical
 // names in every environment. Manifest validation errors propagate.
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
+	if provider == string(VaultKVProvider) {
+		return "", fmt.Errorf("vault-kv: workflow mapping requires mount and path; use VaultKVMapping")
+	}
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
 	}
