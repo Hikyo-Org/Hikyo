@@ -206,6 +206,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"file-target":         runFileTarget,
 	"file-sync":           runFileSync,
 	"update":              runUpdate,
+	"scan":                runScan,
 }
 
 // Usage is the frozen help text. Its exact bytes are a committed golden
@@ -348,6 +349,19 @@ definitions:                                       reviewable Git-managed catalo
   hikyo definitions plan --file PATH [-o table|json]
   hikyo definitions apply --plan ID [--file PATH] [--allow-delete]
       [--commit C] [--ref R] [--actor A] [-o table|json]
+
+secret scanning:                                   local only: nothing is sent to any server
+  hikyo scan [PATH...] [-o table|json|sarif]        files and directories (default: .)
+  hikyo scan --staged|--unstaged|--history          the index, the working tree, every commit
+  hikyo scan --range A..B                           the commits of an explicit range
+      [--config FILE] [--suppressions FILE] [--exclude-path GLOB]... [--exclude-rule ID]...
+      [--timeout 10m]
+      exits 0 clean, 1 findings, 2 usage or config, 4 refused or failed, 6 no git
+
+  the ruleset is the server's value-entry ruleset. Output never carries the
+  matched text; a finding is path:line, rule and fingerprint. Suppress one
+  reviewed finding by fingerprint in .hikyo-scan.toml, or inline with
+  "hikyo-scan:ignore <rule-id>" on that line. A budget exceeded refuses (4).
 
 revisions:                                         --env selects the environment
   hikyo revision list [--limit N] [--before N]      lineage only, never values; one page per call

@@ -231,6 +231,39 @@ func (r *Ruleset) SemanticDigest(ruleID string) (string, bool) {
 	return d, ok
 }
 
+// Subset returns a ruleset carrying only the named rules, with their compiled
+// form, semantic digests and snapshot version unchanged, so a verdict from the
+// subset is the verdict the full ruleset gives for those rules. It narrows and
+// never widens: an unknown id, a duplicate or an empty selection is an error.
+func (r *Ruleset) Subset(ids []string) (*Ruleset, error) {
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("scanning: empty rule subset")
+	}
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if _, ok := r.digests[id]; !ok {
+			return nil, fmt.Errorf("scanning: unknown rule id %q", id)
+		}
+		if want[id] {
+			return nil, fmt.Errorf("scanning: duplicate rule id %q", id)
+		}
+		want[id] = true
+	}
+	out := &Ruleset{digests: make(map[string]string, len(ids)), snapshot: r.snapshot}
+	for _, cr := range r.rules {
+		if want[cr.id] {
+			out.rules = append(out.rules, cr)
+			out.digests[cr.id] = r.digests[cr.id]
+		}
+	}
+	for _, id := range r.manifest {
+		if want[id] {
+			out.manifest = append(out.manifest, id)
+		}
+	}
+	return out, nil
+}
+
 // RuleIDs returns the compiled rule ids in table order.
 func (r *Ruleset) RuleIDs() []string {
 	ids := make([]string, len(r.rules))
