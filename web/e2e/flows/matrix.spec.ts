@@ -1617,9 +1617,7 @@ test.describe('change approvals', () => {
           return {
             name: pair.slice(0, equals),
             value: pair.slice(equals + 1),
-            domain: 'localhost',
-            path: '/',
-            secure: true,
+            url: BASE_URL,
             httpOnly: /;\s*httponly/i.test(header),
             sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
           };
@@ -1843,9 +1841,7 @@ test.describe('temporary access', () => {
           return {
             name: pair.slice(0, equals),
             value: pair.slice(equals + 1),
-            domain: 'localhost',
-            path: '/',
-            secure: true,
+            url: BASE_URL,
             httpOnly: /;\s*httponly/i.test(header),
             sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
           };
@@ -1887,7 +1883,13 @@ test.describe('temporary access', () => {
       expect(mine.map((item) => item.state).sort()).toEqual(['granted', 'revoked']);
     } finally {
       await requesterContext.close();
-      await browserApi(adminPage, 'DELETE', `${projectBase}/access-policies/${policy.id}`, z.null());
+      await browserApi(adminPage, 'DELETE', `${projectBase}/access-policies/${policy.id}`, z.null()).catch(
+        (error: unknown) => {
+          if (!(error instanceof BrowserApiError) || error.status !== 404) {
+            testInfo.annotations.push({ type: 'cleanup', description: String(error) });
+          }
+        },
+      );
       // A missing grant (404) is already clean; any other cleanup failure is
       // recorded rather than thrown from finally, where it would mask the body.
       await browserApi(adminPage, 'DELETE', `${projectBase}/grants?${grantQuery}`, z.null()).catch(

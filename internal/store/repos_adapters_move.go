@@ -228,6 +228,9 @@ func replaceAdapterMoveTarget(ctx context.Context, db adapterDB, chain domain.Sc
 	if move.Targets[0].DestinationScope != target.DestinationScope {
 		return AdapterMove{}, fmt.Errorf("%w: a GitLab environment scope is immutable; remove the target and add a new one", domain.ErrConflict)
 	}
+	if err := requireUnchangedMoveFlags(ctx, db, chain, target); err != nil {
+		return AdapterMove{}, err
+	}
 	previousAuthority := move.AuthorityPrincipalID
 	deleteClaims := db.SQL(`DELETE FROM adapter_route_move_claims WHERE move_id=? AND org_id=? AND project_id=?`)
 	if _, err := db.Exec(ctx, deleteClaims, moveID, chain.Org, chain.Project); err != nil {
@@ -668,6 +671,9 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 	if current.environmentID != mutation.Target.EnvironmentID {
 		return AdapterRouteMoveResult{}, fmt.Errorf("%w: moving a target between environments requires a replacement target identity", domain.ErrConflict)
 	}
+	if err := requireUnchangedMoveFlags(ctx, db, chain, mutation.Target); err != nil {
+		return AdapterRouteMoveResult{}, err
+	}
 	if current.destinationScope != mutation.Target.DestinationScope {
 		return AdapterRouteMoveResult{}, fmt.Errorf("%w: a GitLab environment scope is immutable; remove the target and add a new one", domain.ErrConflict)
 	}
@@ -924,6 +930,22 @@ func reserveAWSMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope,
 			}
 			return err
 		}
+	}
+	return nil
+}
+
+// Move storage preserves flags at activation, so accepting changed flags here
+// would promise state that cannot be committed. Check both creation and resume.
+func requireUnchangedMoveFlags(ctx context.Context, db adapterDB, chain domain.Scope, target AdapterTargetMutation) error {
+	var protected, hidden, expand bool
+	var provider string
+	query := db.SQL(`SELECT a.provider,t.variable_protected,t.variable_hidden,t.variable_expand FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.org_id=? AND t.project_id=? AND t.adapter_id=? AND t.id=?`)
+	err := db.QueryRow(ctx, query, chain.Org, chain.Project, target.AdapterID, target.ID).Scan(&provider, &protected, &hidden, &expand)
+	if err != nil {
+		return err
+	}
+	if provider == string(adapter.GitLabProvider) && (protected != target.VariableProtected || hidden != target.VariableHidden || expand != target.VariableExpand) {
+		return fmt.Errorf("%w: update variable flags separately before or after moving the destination", domain.ErrInvalid)
 	}
 	return nil
 }

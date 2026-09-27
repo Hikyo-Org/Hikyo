@@ -713,27 +713,46 @@ func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope
 		if request.Target.EnvironmentID != current.EnvironmentID {
 			return fmt.Errorf("%w: target environment is immutable; remove and add the target", domain.ErrConflict)
 		}
-		if request.Flags != nil {
-			request.Target.VariableProtected = current.VariableProtected
-			request.Target.VariableHidden = current.VariableHidden
-			request.Target.VariableExpand = current.VariableExpand
-			if request.Flags.VariableProtected != nil {
-				request.Target.VariableProtected = *request.Flags.VariableProtected
-			}
-			if request.Flags.VariableHidden != nil {
-				request.Target.VariableHidden = *request.Flags.VariableHidden
-			}
-			if request.Flags.VariableExpand != nil {
-				request.Target.VariableExpand = *request.Flags.VariableExpand
-			}
-		}
+		resolveTargetFlags(current, request)
 		if current.Provider == string(adapter.GitLabProvider) && request.Target.DestinationScope == "" {
 			request.Target.DestinationScope = current.DestinationScope
 		}
 		move = targetDestinationChanged(current, request.Target)
+		if move {
+			return rejectMoveFlagChanges(current, request.Target)
+		}
 		return nil
 	})
 	return move, err
+}
+
+func resolveTargetFlags(current store.AdapterTarget, request *UpdateAdapterTargetRequest) {
+	if request.Flags != nil {
+		request.Target.VariableProtected = current.VariableProtected
+		request.Target.VariableHidden = current.VariableHidden
+		request.Target.VariableExpand = current.VariableExpand
+		if request.Flags.VariableProtected != nil {
+			request.Target.VariableProtected = *request.Flags.VariableProtected
+		}
+		if request.Flags.VariableHidden != nil {
+			request.Target.VariableHidden = *request.Flags.VariableHidden
+		}
+		if request.Flags.VariableExpand != nil {
+			request.Target.VariableExpand = *request.Flags.VariableExpand
+		}
+	}
+}
+
+// Destination moves retain variable flags through activation. Reject changed
+// flags before starting the move instead of silently discarding requested state.
+func rejectMoveFlagChanges(current store.AdapterTarget, target AdapterTargetInput) error {
+	if current.Provider != string(adapter.GitLabProvider) {
+		return nil
+	}
+	if current.VariableProtected != target.VariableProtected || current.VariableHidden != target.VariableHidden || current.VariableExpand != target.VariableExpand {
+		return fmt.Errorf("%w: update variable flags separately before or after moving the destination", domain.ErrInvalid)
+	}
+	return nil
 }
 
 // ApplyTargetMutation accepts requested target state and owns the update-versus-
@@ -949,6 +968,9 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 // environment move. The current route stays stored for the scrub job; the new
 // route is pending and cannot receive a push until activation tests it.
 func (s *Adapters) applyTargetMove(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, proof authz.Proof, scope domain.Scope, request UpdateAdapterTargetRequest, current store.AdapterTarget, keepRemote bool, now time.Time) (store.AdapterRouteMoveResult, error) {
+	if err := rejectMoveFlagChanges(current, request.Target); err != nil {
+		return store.AdapterRouteMoveResult{}, err
+	}
 	environments, err := r.Adapters().Environments(ctx, proof, current.AdapterID)
 	if err != nil {
 		return store.AdapterRouteMoveResult{}, err
@@ -963,7 +985,8 @@ func (s *Adapters) applyTargetMove(ctx context.Context, r store.Repos, az *authz
 			DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner,
 			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment, DestinationScope: request.Target.DestinationScope,
 			Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...), NamePrefix: request.Target.NamePrefix,
-			KeyIDs: append([]string(nil), request.Target.KeyIDs...),
+			KeyIDs:            append([]string(nil), request.Target.KeyIDs...),
+			VariableProtected: request.Target.VariableProtected, VariableHidden: request.Target.VariableHidden, VariableExpand: request.Target.VariableExpand,
 		},
 		ExpectedGeneration: request.ExpectedGeneration, AuthorityPrincipalID: string(caller.Principal),
 		KeepRemote: keepRemote, At: now,
@@ -1179,6 +1202,14 @@ func (s *Adapters) ResumeTargetMove(ctx context.Context, actor Actor, scope doma
 		if err := s.requireAdapterCeremony(ctx, az, caller, scope, adapterEnvironmentSet(environments), authz.OpAdapterConfigure, now); err != nil {
 			return err
 		}
+		current, err := r.Adapters().Target(ctx, proof, request.TargetID)
+		if err != nil {
+			return err
+		}
+		resolveTargetFlags(current, &request)
+		if err := rejectMoveFlagChanges(current, request.Target); err != nil {
+			return err
+		}
 		if request.Target.DestinationScope == "" {
 			request.Target.DestinationScope = move.Targets[0].DestinationScope
 		}
@@ -1188,8 +1219,9 @@ func (s *Adapters) ResumeTargetMove(ctx context.Context, actor Actor, scope doma
 			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment,
 			DestinationScope: request.Target.DestinationScope, RepositoryID: move.Targets[0].RepositoryID,
 			Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...),
-			NamePrefix: request.Target.NamePrefix,
-			KeyIDs:     append([]string(nil), request.Target.KeyIDs...),
+			NamePrefix:        request.Target.NamePrefix,
+			VariableProtected: request.Target.VariableProtected, VariableHidden: request.Target.VariableHidden, VariableExpand: request.Target.VariableExpand,
+			KeyIDs: append([]string(nil), request.Target.KeyIDs...),
 		}, string(caller.Principal), now)
 		if err != nil {
 			return err
