@@ -193,6 +193,17 @@
       "evidence": [{ "label": "#74 handoff", "path": "docs/handoff/74-secret-scanning.md" }]
     },
     {
+      "id": "CAP-REPOSITORY-SCANNING",
+      "kind": "capability",
+      "title": "Repository and CI secret scanning",
+      "status": "implemented",
+      "implemented": "Local `hikyo scan` over files, staged and unstaged changes, Git history and commit ranges with the value-entry ruleset, redacted table/JSON/SARIF output, reviewed suppressions, bounded budgets, and stable CI exit codes",
+      "evidence": [
+        { "label": "#153 handoff", "path": "docs/handoff/153-repo-scanning.md" },
+        { "label": "user guide", "path": "docs/site/src/content/docs/docs/repository-scanning.mdx" }
+      ]
+    },
+    {
       "id": "CAP-PRODUCTION-OPS",
       "kind": "capability",
       "title": "Production operations",

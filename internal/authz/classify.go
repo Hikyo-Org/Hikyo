@@ -883,6 +883,9 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"cli:context": {Class: ClassUnauthenticated},
 	// `update` reads and writes only client-local public release metadata.
 	"cli:update": {Class: ClassUnauthenticated},
+	// `scan` (#153) is entirely client-local: it reads local files and the
+	// local Git repository and reaches no server, like `definitions scaffold`.
+	"cli:scan": {Class: ClassUnauthenticated},
 	// `org` still reaches the instance-scoped create/list as well as the
 	// tenant-scoped by-id routes, so it carries the wider of the two classes:
 	// a verb whose class understated its reach would let an instance-scoped

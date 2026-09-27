@@ -181,7 +181,7 @@ func operationDoesNotParseCommon(operation AuthOperation) bool {
 	case "login",
 		"context create", "context list", "context show", "context delete",
 		"account passkey enrol", "account passkey list", "account passkey remove",
-		"definitions scaffold",
+		"definitions scaffold", "scan",
 		"update channel stable", "update channel nightly", "update channel off", "update check":
 		return true
 	default:

@@ -278,6 +278,17 @@ func TestExitCodeMatrix(t *testing.T) {
 		// before any session lookup, and a stray positional is rejected too.
 		{"definitions scaffold without a source", []string{"definitions", "scaffold"}, cli.ExitUsage},
 		{"stray positional on definitions scaffold", []string{"definitions", "scaffold", "--from", "x.env", "stray"}, cli.ExitUsage},
+		// scan (#153) is local: an empty working directory is clean (0), and
+		// every malformed invocation is usage (2) before anything is read.
+		{"scan of a clean directory", []string{"scan"}, cli.ExitOK},
+		{"scan with two modes", []string{"scan", "--staged", "--history"}, cli.ExitUsage},
+		{"scan with paths in a git mode", []string{"scan", "--staged", "."}, cli.ExitUsage},
+		{"scan with an unknown output format", []string{"scan", "-o", "yaml"}, cli.ExitUsage},
+		{"scan of a missing path", []string{"scan", "nope"}, cli.ExitUsage},
+		{"scan with an option-shaped range", []string{"scan", "--range", "--all"}, cli.ExitUsage},
+		{"scan excluding an unknown rule", []string{"scan", "--exclude-rule", "no-such-rule"}, cli.ExitUsage},
+		{"scan with a missing config", []string{"scan", "--config", "nope.toml"}, cli.ExitUsage},
+		{"scan with a non-positive timeout", []string{"scan", "--timeout", "0s"}, cli.ExitUsage},
 		// The dotenv leg of values import is mutually exclusive with the artifact file.
 		{"values import file and from-dotenv", []string{"values", "import", "--from-dotenv", "a.env", "--file", "v.json", "--instance", "unknown-ref"}, cli.ExitUsage},
 		// run --use-human-session with no terminal is refused (testIO injects none).

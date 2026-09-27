@@ -37,6 +37,7 @@
     "ssh-certificates",
     "mcp",
     "local-development",
+    "repository-scanning",
     "compose",
     "kubernetes-operator",
     "configuration-rollouts",
