@@ -180,3 +180,12 @@ ORDER BY id;
 INSERT INTO principals (id, kind, class, session_generation, created_at, reconciled_epoch)
 VALUES (sqlc.arg(id), 'machine', sqlc.arg(class), 1, sqlc.arg(created_at),
         (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1));
+
+-- Issuance history retains the principal even after the certificate expires.
+-- hikyo:authn-resolution
+-- name: CountServiceAccountPKICertificates :one
+SELECT COUNT(*) FROM pki_certificates AS c
+WHERE c.principal_id = sqlc.arg(principal_id)
+  AND EXISTS (SELECT 1 FROM service_accounts AS sa
+    WHERE sa.org_id = sqlc.arg(org_id) AND sa.project_id = sqlc.arg(project_id)
+      AND sa.principal_id = sqlc.arg(principal_id));
