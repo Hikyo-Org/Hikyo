@@ -82,12 +82,12 @@ governance tickets is the human's.
   seed kept in `testdata/fuzz`) and `FuzzTransitDecrypt`.
 - `internal/transit`: custody seam, software provider, conformance suite for
   both providers.
-- Migration `00062_transit_keys` (both engines), `store.TransitRepo`
+- Migration `00065_transit_keys` (both engines), `store.TransitRepo`
   (proof-bound, env chain from the proof), `store.TransitRuntime` (gauges),
   `buildcompat/development.json` regenerated against the pinned PostgreSQL 18
   image, upgrade-drill reversal extended.
   Rebased after #821 (`00060`, sealed webhook) and #824 (`00061`, SSH
-  certificates) landed: transit is `00062` and API revision 7.
+  certificates) landed: transit is `00065` and API revision 7.
 - `authz`: seven operations, 19 store ops, scheduler doors; `audit`: seven
   closed event types with a forbidden-content test; `domain`: the two atoms.
 - `service.Transit`: management, the data-plane core `useKey`, `RotateDue`,
@@ -122,3 +122,13 @@ governance tickets is the human's.
 - No WebUI (#820).
 - `service` package: `TestSAMLMetadata*` fail in this sandbox on a clean tree
   too (the HTTPS egress proxy intercepts the test's TLS server); unrelated.
+
+
+## PR 826 review repair (2026-09-27)
+
+- Transit caller IDs use the shared OpenAPI ID schema and matching service validation. Rotation periods are checked in seconds before duration conversion.
+- External trim persists a monotonic minimum available version before calling custody. Configuration cannot restore versions beneath that fence. Each attempt deletes only the versions it actually processed, preserving external references when a concurrent higher trim partially fails. Trim enumerates retained versions rather than looping through the entire historical version range.
+- Rotation counts retained version rows while holding the key write lock; advancing the decrypt window alone no longer bypasses the 1024-version quota. Key creation serializes its environment count to protect the 256-key quota under concurrent PostgreSQL admission. Purge persists a destruction fence before external calls, so even delayed cancellation requests cannot revive material being destroyed. Purge audit reports actual erased rows even when older versions were removed from the decrypt window without trimming.
+- Transit migration is reserved as 00065 for the concurrent feature merge batch. Generated schema claims come from actual SQLite and PostgreSQL catalogs.
+- Regression entry point: `go test ./internal/isolation -run 'TestTransit'` with `HIKYO_TEST_POSTGRES_DSN` set to an isolated scratch PostgreSQL database. Covers both custody providers, interleaved trim failure/retry, retained-version quota and concurrent key admission. Unit validation: `go test ./internal/service -run 'TestTransit'`. Generated client: `pnpm --dir clients/ts verify`.
+- Cross-provider review remains skipped under the central quota gate; ordinary adversarial inspection and regression testing are separate evidence.

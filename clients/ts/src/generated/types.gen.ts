@@ -561,7 +561,7 @@ export type TransitOperation = 'encrypt' | 'decrypt' | 'rewrap' | 'datakey' | 'd
 export type TransitKeyState = 'active' | 'retired' | 'disabled' | 'pending-deletion';
 
 export type TransitCaller = {
-    principal_id: string;
+    principal_id: Id;
     operations: Array<TransitOperation>;
 };
 

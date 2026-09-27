@@ -18,20 +18,25 @@ import (
 // maintenance doors (automatic rotation and the deletion purge) under scoped
 // system authority, whose chain is resolved inside the transaction.
 
+// ErrTransitVersionLimit means rotation requires trimming retained versions first.
+var ErrTransitVersionLimit = errors.New("store: transit retained version limit exceeded")
+
 // TransitKeyRecord is a key's metadata surface. There is no material here and
 // no method on this surface ever returns material: version material is read
 // only through TransitVersion for the operation that needs it.
 type TransitKeyRecord struct {
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         []string
-	State                     string
-	LatestVersion             uint32
-	MinEncryptVersion         uint32
-	MinDecryptVersion         uint32
+	ID                string
+	EnvironmentID     string
+	Name              string
+	Algorithm         string
+	Custody           string
+	AllowedOperations []string
+	State             string
+	LatestVersion     uint32
+	MinEncryptVersion uint32
+	MinDecryptVersion uint32
+	// MinAvailableVersion is the trim floor (see TransitRepo.FenceTrim).
+	MinAvailableVersion       uint32
 	CompromisedThroughVersion uint32
 	RotationPeriodSeconds     int64
 	DeletionAfter             string
@@ -142,13 +147,18 @@ type TransitRepo interface {
 	CreateKey(ctx context.Context, p authz.Proof, m TransitKeyCreate) (TransitKeyRecord, error)
 	// AppendVersion adds version expectLatest+1 under a compare-and-swap on the
 	// key row: a concurrent rotation that won first makes this ErrConflict.
-	AppendVersion(ctx context.Context, p authz.Proof, keyID string, expectLatest uint32, v TransitVersionCreate) error
+	AppendVersion(ctx context.Context, p authz.Proof, keyID string, expectLatest uint32, maxVersions int, v TransitVersionCreate) error
 	Configure(ctx context.Context, p authz.Proof, m TransitKeyConfig) error
 	ChangeState(ctx context.Context, p authz.Proof, m TransitStateChange) error
 	// Compromise marks every version up to the current latest compromised.
 	Compromise(ctx context.Context, p authz.Proof, keyID string, at time.Time) (uint32, error)
-	// Trim deletes the versions below min_decrypt_version and returns how many.
-	Trim(ctx context.Context, p authz.Proof, keyID string) (int64, error)
+	// FenceTrim raises the trim floor (min_available_version) to the current
+	// min_decrypt_version and returns it. From then on Configure refuses a
+	// min_decrypt_version below the floor, so the versions under it can be
+	// destroyed at an external provider outside any transaction.
+	FenceTrim(ctx context.Context, p authz.Proof, keyID string, at time.Time) (uint32, error)
+	// Trim deletes versions below through, bounded by the durable trim floor.
+	Trim(ctx context.Context, p authz.Proof, keyID string, through uint32) (int64, error)
 	ListVersionsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 	ReencryptVersion(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
 	// SelectDeletionDue and SelectRotationDue are the scheduler's
@@ -156,11 +166,11 @@ type TransitRepo interface {
 	// is the last id of the previous page ("" for the first).
 	SelectDeletionDue(ctx context.Context, p authz.Proof, now time.Time, after string, limit int) ([]TransitDueKey, error)
 	SelectRotationDue(ctx context.Context, p authz.Proof, after string, limit int) ([]TransitDueKey, error)
-	// DestroyVersions lists the material the purge must destroy at an external
-	// provider, then Destroy erases every version's material and tombstones the
+	// DestroyVersions fences the due purge and lists material to destroy at an external
+	// provider; Destroy then erases every version's material and tombstones the
 	// key, guarded by pending-deletion and the elapsed delay.
-	DestroyVersions(ctx context.Context, p authz.Proof, keyID string) ([]TransitVersionMaterial, error)
-	Destroy(ctx context.Context, p authz.Proof, keyID string, now time.Time) error
+	DestroyVersions(ctx context.Context, p authz.Proof, keyID string, now time.Time) ([]TransitVersionMaterial, error)
+	Destroy(ctx context.Context, p authz.Proof, keyID string, now time.Time) (int64, error)
 }
 
 type transitQueries struct {
@@ -194,15 +204,15 @@ func decodeTransitOps(s string) []string {
 	return strings.Split(s, ",")
 }
 
-const transitKeyColumns = `id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at`
+const transitKeyColumns = `id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at`
 
 func scanTransitKey(row interface{ Scan(...any) error }, extra ...any) (TransitKeyRecord, error) {
 	var out TransitKeyRecord
 	var ops string
-	var latest, minEnc, minDec, compromised int64
+	var latest, minEnc, minDec, minAvail, compromised int64
 	var deletionAfter, createdAt, updatedAt adapterStoredTime
 	dest := []any{&out.ID, &out.EnvironmentID, &out.Name, &out.Algorithm, &out.Custody, &ops, &out.State,
-		&latest, &minEnc, &minDec, &compromised, &out.RotationPeriodSeconds, &deletionAfter, &out.CreatedBy, &createdAt, &updatedAt}
+		&latest, &minEnc, &minDec, &minAvail, &compromised, &out.RotationPeriodSeconds, &deletionAfter, &out.CreatedBy, &createdAt, &updatedAt}
 	if err := row.Scan(append(dest, extra...)...); err != nil {
 		if isNoRows(err) {
 			return TransitKeyRecord{}, ErrNotFound
@@ -212,6 +222,7 @@ func scanTransitKey(row interface{ Scan(...any) error }, extra ...any) (TransitK
 	out.AllowedOperations = decodeTransitOps(ops)
 	out.LatestVersion, out.MinEncryptVersion = uint32(latest), uint32(minEnc)
 	out.MinDecryptVersion, out.CompromisedThroughVersion = uint32(minDec), uint32(compromised)
+	out.MinAvailableVersion = uint32(minAvail)
 	out.DeletionAfter, out.CreatedAt, out.UpdatedAt = deletionAfter.value, createdAt.value, updatedAt.value
 	return out, nil
 }
@@ -274,6 +285,13 @@ func (r transitQueries) GetKeyForUse(ctx context.Context, p authz.Proof, name st
 func (r transitQueries) CountKeys(ctx context.Context, p authz.Proof) (int, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysCount)
 	if err != nil {
+		return 0, err
+	}
+	// Serialize environment key admission before counting. PostgreSQL's
+	// READ COMMITTED writers otherwise all observe the last free slot.
+	base := `SELECT id FROM environments WHERE org_id=? AND project_id=? AND id=?`
+	var environmentID string
+	if err := r.db.QueryRow(ctx, r.db.SQLPerEngine(base, rewriteAdapterPlaceholders(base)+` FOR UPDATE`), org, project, env).Scan(&environmentID); err != nil {
 		return 0, err
 	}
 	var n int
@@ -418,7 +436,7 @@ func (r transitQueries) missingOrConflict(ctx context.Context, org, project, env
 	return ErrConflict
 }
 
-func (r transitQueries) AppendVersion(ctx context.Context, p authz.Proof, keyID string, expectLatest uint32, v TransitVersionCreate) error {
+func (r transitQueries) AppendVersion(ctx context.Context, p authz.Proof, keyID string, expectLatest uint32, maxVersions int, v TransitVersionCreate) error {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsAppend)
 	if err != nil {
 		return err
@@ -437,6 +455,15 @@ func (r transitQueries) AppendVersion(ctx context.Context, p authz.Proof, keyID 
 	if rows != 1 {
 		return r.missingOrConflict(ctx, org, project, env, keyID)
 	}
+	// The successful update owns the key write lock. Count retained rows,
+	// not the configured decrypt window, which can advance without trimming.
+	var retained int
+	if err := r.db.QueryRow(ctx, r.db.SQL(`SELECT COUNT(*) FROM transit_key_versions WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=?`), org, project, env, keyID).Scan(&retained); err != nil {
+		return err
+	}
+	if retained >= maxVersions {
+		return ErrTransitVersionLimit
+	}
 	return r.insertVersion(ctx, org, project, env, keyID, v)
 }
 
@@ -445,8 +472,8 @@ func (r transitQueries) Configure(ctx context.Context, p authz.Proof, m TransitK
 	if err != nil {
 		return err
 	}
-	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET min_encrypt_version=?,min_decrypt_version=?,rotation_period_seconds=?,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state NOT IN ('destroyed','pending-deletion') AND ? <= latest_version`),
-		int64(m.MinEncryptVersion), int64(m.MinDecryptVersion), m.RotationPeriodSeconds, r.db.Stamp(m.At), m.KeyID, org, project, env, int64(m.MinEncryptVersion))
+	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET min_encrypt_version=?,min_decrypt_version=?,rotation_period_seconds=?,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state NOT IN ('destroyed','pending-deletion') AND ? <= latest_version AND ? >= min_available_version`),
+		int64(m.MinEncryptVersion), int64(m.MinDecryptVersion), m.RotationPeriodSeconds, r.db.Stamp(m.At), m.KeyID, org, project, env, int64(m.MinEncryptVersion), int64(m.MinDecryptVersion))
 	if err != nil {
 		return err
 	}
@@ -478,7 +505,7 @@ func (r transitQueries) ChangeState(ctx context.Context, p authz.Proof, m Transi
 	for _, s := range m.From {
 		args = append(args, s)
 	}
-	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET state=?,deletion_after=?,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND (state<>'pending-deletion' OR deletion_after>?) AND state IN (`+strings.TrimSuffix(strings.Repeat("?,", len(m.From)), ",")+`)`), args...)
+	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET state=?,deletion_after=?,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND (state<>'pending-deletion' OR (deletion_after>? AND purge_started=0)) AND state IN (`+strings.TrimSuffix(strings.Repeat("?,", len(m.From)), ",")+`)`), args...)
 	if err != nil {
 		return err
 	}
@@ -506,19 +533,42 @@ func (r transitQueries) Compromise(ctx context.Context, p authz.Proof, keyID str
 	return uint32(through), err
 }
 
-func (r transitQueries) Trim(ctx context.Context, p authz.Proof, keyID string) (int64, error) {
+func (r transitQueries) FenceTrim(ctx context.Context, p authz.Proof, keyID string, at time.Time) (uint32, error) {
+	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsFenceTrim)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET min_available_version=min_decrypt_version,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state NOT IN ('destroyed','pending-deletion')`),
+		r.db.Stamp(at), keyID, org, project, env)
+	if err != nil {
+		return 0, err
+	}
+	if rows != 1 {
+		return 0, r.missingOrConflict(ctx, org, project, env, keyID)
+	}
+	var floor int64
+	err = r.db.QueryRow(ctx, r.db.SQL(`SELECT min_available_version FROM transit_keys WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`), keyID, org, project, env).Scan(&floor)
+	return uint32(floor), err
+}
+
+func (r transitQueries) Trim(ctx context.Context, p authz.Proof, keyID string, through uint32) (int64, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsTrim)
 	if err != nil {
 		return 0, err
 	}
-	var minDecrypt int64
-	if err := r.db.QueryRow(ctx, r.db.SQL(`SELECT min_decrypt_version FROM transit_keys WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state NOT IN ('destroyed','pending-deletion')`), keyID, org, project, env).Scan(&minDecrypt); err != nil {
+	var floor int64
+	if err := r.db.QueryRow(ctx, r.db.SQL(`SELECT min_available_version FROM transit_keys WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state NOT IN ('destroyed','pending-deletion')`), keyID, org, project, env).Scan(&floor); err != nil {
 		if isNoRows(err) {
 			return 0, r.missingOrConflict(ctx, org, project, env, keyID)
 		}
 		return 0, err
 	}
-	return r.db.Exec(ctx, r.db.SQL(`DELETE FROM transit_key_versions WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=? AND version<?`), org, project, env, keyID, minDecrypt)
+	// A concurrent trim may have fenced a higher floor but not destroyed its
+	// external material yet. Delete only versions this attempt processed.
+	if through < 1 || int64(through) > floor {
+		return 0, ErrConflict
+	}
+	return r.db.Exec(ctx, r.db.SQL(`DELETE FROM transit_key_versions WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=? AND version<?`), org, project, env, keyID, int64(through))
 }
 
 // ListVersionsForReencrypt pages a project's sealed transit material for the
@@ -558,7 +608,7 @@ func (r transitQueries) ReencryptVersion(ctx context.Context, p authz.Proof, id 
 	return rows == 1, nil
 }
 
-const transitDueColumns = `k.org_id,k.project_id,k.environment_id,k.id,k.environment_id,k.name,k.algorithm,k.custody,k.allowed_operations,k.state,k.latest_version,k.min_encrypt_version,k.min_decrypt_version,k.compromised_through_version,k.rotation_period_seconds,k.deletion_after,k.created_by,k.created_at,k.updated_at`
+const transitDueColumns = `k.org_id,k.project_id,k.environment_id,k.id,k.environment_id,k.name,k.algorithm,k.custody,k.allowed_operations,k.state,k.latest_version,k.min_encrypt_version,k.min_decrypt_version,k.min_available_version,k.compromised_through_version,k.rotation_period_seconds,k.deletion_after,k.created_by,k.created_at,k.updated_at`
 
 func (r transitQueries) scanDue(rows adapterTargetRows, withLatest bool) ([]TransitDueKey, error) {
 	defer closeAdapterRows(rows)
@@ -627,10 +677,20 @@ func (r transitQueries) SelectRotationDue(ctx context.Context, p authz.Proof, af
 	return r.scanDue(rows, true)
 }
 
-func (r transitQueries) DestroyVersions(ctx context.Context, p authz.Proof, keyID string) ([]TransitVersionMaterial, error) {
+func (r transitQueries) DestroyVersions(ctx context.Context, p authz.Proof, keyID string, now time.Time) ([]TransitVersionMaterial, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitDestroyVersions)
 	if err != nil {
 		return nil, err
+	}
+	// Persist the destructive boundary before calling the external provider.
+	// Even a cancellation carrying an earlier request timestamp cannot revive
+	// this key after the fence commits.
+	changed, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET purge_started=1 WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='pending-deletion' AND deletion_after<=?`), keyID, org, project, env, r.db.Stamp(now))
+	if err != nil {
+		return nil, err
+	}
+	if changed != 1 {
+		return nil, ErrConflict
 	}
 	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT id,version,external_ref FROM transit_key_versions WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=? AND external_ref IS NOT NULL ORDER BY version`), org, project, env, keyID)
 	if err != nil {
@@ -650,24 +710,25 @@ func (r transitQueries) DestroyVersions(ctx context.Context, p authz.Proof, keyI
 	return out, rows.Err()
 }
 
-func (r transitQueries) Destroy(ctx context.Context, p authz.Proof, keyID string, now time.Time) error {
+func (r transitQueries) Destroy(ctx context.Context, p authz.Proof, keyID string, now time.Time) (int64, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitDestroy)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET state='destroyed',deletion_after=NULL,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='pending-deletion' AND deletion_after<=?`),
 		r.db.Stamp(now), keyID, org, project, env, r.db.Stamp(now))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if rows != 1 {
-		return ErrConflict
+		return 0, ErrConflict
 	}
-	if _, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_key_versions SET material_ciphertext=NULL,external_ref=NULL WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=?`), org, project, env, keyID); err != nil {
-		return err
+	erased, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_key_versions SET material_ciphertext=NULL,external_ref=NULL WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=?`), org, project, env, keyID)
+	if err != nil {
+		return 0, err
 	}
 	_, err = r.db.Exec(ctx, r.db.SQL(`DELETE FROM transit_key_callers WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=?`), org, project, env, keyID)
-	return err
+	return erased, err
 }
 
 // TransitRuntime serves the label-free transit gauges at scrape time. It reads

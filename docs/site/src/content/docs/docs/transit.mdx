@@ -136,7 +136,9 @@ hikyo transit key trim payments --env prod                      # delete version
 
 - `min_encrypt_version` is the lowest version new output may use.
 - `min_decrypt_version` is the lowest version presented input may use. Raising
-  it is reversible; `trim` then deletes the versions below it for good.
+  it is reversible until `trim` starts. Trimming permanently fences out versions
+  below that minimum before erasing their material. If external custody fails
+  during trimming, retry the trim; its minimum cannot be lowered again.
 - A **rotation period** (at least one hour) makes the hourly scheduler rotate the
   key when its latest version is older than the period. Keys past their period
   are counted by the `hikyo_transit_keys_rotation_due` gauge.

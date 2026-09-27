@@ -867,6 +867,7 @@ const (
 	StoreTransitVersionMaterial          StoreOp = "transit.VersionMaterial"
 	StoreTransitVersionsAppend           StoreOp = "transit.AppendVersion"
 	StoreTransitVersionsTrim             StoreOp = "transit.Trim"
+	StoreTransitVersionsFenceTrim        StoreOp = "transit.FenceTrim"
 	StoreTransitVersionsListForReencrypt StoreOp = "transit.ListVersionsForReencrypt"
 	StoreTransitVersionsReencrypt        StoreOp = "transit.ReencryptVersion"
 	StoreTransitCallersList              StoreOp = "transit.ListCallers"
@@ -4539,7 +4540,7 @@ var operationTable = map[Operation]opSpec{
 	OpTransitKeyTrim: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysGet: true, StoreTransitVersionMaterial: true, StoreTransitVersionsList: true, StoreTransitVersionsTrim: true},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysGet: true, StoreTransitVersionMaterial: true, StoreTransitVersionsFenceTrim: true, StoreTransitVersionsList: true, StoreTransitVersionsTrim: true},
 		events:   []audit.EventType{audit.EventTransitKeyTrimmed},
 	},
 	OpTransitUse: {

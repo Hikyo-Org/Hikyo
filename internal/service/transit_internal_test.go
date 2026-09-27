@@ -74,3 +74,25 @@ func TestTransitBudgetRateLimit(t *testing.T) {
 		t.Fatalf("charge past the bound = %v, want overload", err)
 	}
 }
+
+func TestTransitRotationPeriodRejectsOverflow(t *testing.T) {
+	for _, seconds := range []int64{-1, 3599, 18446744074 + 3600, 1<<63 - 1} {
+		if err := checkRotationPeriod(seconds); err == nil {
+			t.Fatalf("accepted invalid seconds %d", seconds)
+		}
+	}
+	for _, seconds := range []int64{0, int64(MinTransitRotationPeriod / time.Second), int64(MaxTransitRotationPeriod / time.Second)} {
+		if err := checkRotationPeriod(seconds); err != nil {
+			t.Fatalf("rejected seconds %d: %v", seconds, err)
+		}
+	}
+}
+
+func TestTransitCallerIDGrammar(t *testing.T) {
+	for _, id := range []string{"", "usr_alice", "user@example.com", "usr_01993e53-0000-7000-8000-000000000001"} {
+		_, err := checkTransitCallers([]TransitCallerEntry{{PrincipalID: id, Operations: []string{"encrypt"}}}, []string{"encrypt"})
+		if wantValid := id == "usr_01993e53-0000-7000-8000-000000000001"; (err == nil) != wantValid {
+			t.Fatalf("id %q: %v", id, err)
+		}
+	}
+}

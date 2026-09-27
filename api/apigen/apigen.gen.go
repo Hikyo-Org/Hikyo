@@ -9038,8 +9038,10 @@ type TransitAlgorithm string
 
 // TransitCaller defines model for TransitCaller.
 type TransitCaller struct {
-	Operations  []TransitOperation `json:"operations"`
-	PrincipalId string             `json:"principal_id"`
+	Operations []TransitOperation `json:"operations"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
 }
 
 // TransitCiphertextResult defines model for TransitCiphertextResult.

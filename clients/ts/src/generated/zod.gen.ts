@@ -448,7 +448,7 @@ export const zTransitKeyState = z.enum([
 ]);
 
 export const zTransitCaller = z.object({
-    principal_id: z.string().min(1).max(128),
+    principal_id: zId,
     operations: z.array(zTransitOperation).min(1).max(9)
 });
 

@@ -1464,8 +1464,10 @@ type TransitKey struct {
 	LatestVersion             int64
 	MinEncryptVersion         int64
 	MinDecryptVersion         int64
+	MinAvailableVersion       int64
 	CompromisedThroughVersion int64
 	RotationPeriodSeconds     int64
+	PurgeStarted              int64
 	DeletionAfter             sql.NullString
 	CreatedBy                 string
 	CreatedAt                 string

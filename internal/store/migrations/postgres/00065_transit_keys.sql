@@ -34,14 +34,20 @@ CREATE TABLE transit_keys (
     latest_version INTEGER NOT NULL CHECK (latest_version >= 1),
     min_encrypt_version INTEGER NOT NULL,
     min_decrypt_version INTEGER NOT NULL,
+    -- min_available_version is the trim floor: every version below it is
+    -- trimmed or being trimmed (its external material may already be gone),
+    -- so min_decrypt_version can never be lowered past it.
+    min_available_version INTEGER NOT NULL DEFAULT 1,
     compromised_through_version INTEGER NOT NULL DEFAULT 0,
     rotation_period_seconds BIGINT NOT NULL DEFAULT 0
         CHECK (rotation_period_seconds = 0 OR rotation_period_seconds >= 3600),
+    purge_started INTEGER NOT NULL DEFAULT 0 CHECK (purge_started IN (0, 1)),
     deletion_after TIMESTAMPTZ,
     created_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     CHECK (min_decrypt_version >= 1 AND min_decrypt_version <= min_encrypt_version AND min_encrypt_version <= latest_version),
+    CHECK (min_available_version >= 1 AND min_available_version <= min_decrypt_version),
     CHECK (compromised_through_version >= 0 AND compromised_through_version <= latest_version),
     CHECK ((state = 'pending-deletion') = (deletion_after IS NOT NULL)),
     UNIQUE (org_id, project_id, environment_id, id),

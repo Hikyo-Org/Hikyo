@@ -212,12 +212,17 @@ func checkRotationPeriod(seconds int64) error {
 	if seconds == 0 {
 		return nil
 	}
-	d := time.Duration(seconds) * time.Second
-	if seconds < 0 || d < MinTransitRotationPeriod || d > MaxTransitRotationPeriod {
+	// Compare in seconds: converting first would overflow time.Duration for
+	// huge inputs and could wrap into the permitted range.
+	if seconds < int64(MinTransitRotationPeriod/time.Second) || seconds > int64(MaxTransitRotationPeriod/time.Second) {
 		return invalidTransit("rotation_period_seconds must be 0 or between %d and %d", int64(MinTransitRotationPeriod/time.Second), int64(MaxTransitRotationPeriod/time.Second))
 	}
 	return nil
 }
+
+// transitPrincipalIDGrammar is the API's ID grammar (api/openapi.yaml ID).
+// A caller entry naming anything else could never match a principal.
+var transitPrincipalIDGrammar = regexp.MustCompile(`^[a-z]{2,8}_[0-9a-fA-F-]{36}$`)
 
 func checkTransitCallers(callers []TransitCallerEntry, allowed []string) ([]store.TransitCaller, error) {
 	if len(callers) > MaxTransitCallersPerKey {
@@ -226,8 +231,8 @@ func checkTransitCallers(callers []TransitCallerEntry, allowed []string) ([]stor
 	seen := map[string]bool{}
 	out := make([]store.TransitCaller, 0, len(callers))
 	for _, c := range callers {
-		if c.PrincipalID == "" || len(c.PrincipalID) > maxNameBytes {
-			return nil, invalidTransit("a caller entry needs a principal id")
+		if !transitPrincipalIDGrammar.MatchString(c.PrincipalID) {
+			return nil, invalidTransit("a caller entry needs a principal id (a prefixed UUIDv7)")
 		}
 		if seen[c.PrincipalID] {
 			return nil, invalidTransit("principal %s has two caller entries", c.PrincipalID)
@@ -602,16 +607,15 @@ func (s *Transit) appendVersion(ctx context.Context, scope domain.Scope, k store
 		if err != nil {
 			return err
 		}
-		live := int64(k.LatestVersion) - int64(k.MinDecryptVersion) + 1
-		if live >= MaxTransitVersionsPerKey {
-			return fmt.Errorf("%w: at most %d versions per key; raise min_decrypt_version and trim first", domain.ErrLimitExceeded, MaxTransitVersionsPerKey)
-		}
 		if err := s.fenceSealed(ctx, r, proof, scope, v); err != nil {
 			return err
 		}
-		err = r.Transit().AppendVersion(ctx, proof, k.ID, k.LatestVersion, store.TransitVersionCreate{
+		err = r.Transit().AppendVersion(ctx, proof, k.ID, k.LatestVersion, MaxTransitVersionsPerKey, store.TransitVersionCreate{
 			ID: versionID, Version: next, Sealed: v.Sealed, ExternalRef: v.ExternalRef, PublicKey: v.PublicKey, At: now,
 		})
+		if errors.Is(err, store.ErrTransitVersionLimit) {
+			return fmt.Errorf("%w: at most %d versions per key; raise min_decrypt_version and trim first", domain.ErrLimitExceeded, MaxTransitVersionsPerKey)
+		}
 		if errors.Is(err, store.ErrConflict) {
 			return fmt.Errorf("%w: the key was rotated or changed concurrently; retry", domain.ErrConflict)
 		}
@@ -673,6 +677,9 @@ func (s *Transit) ConfigureKey(ctx context.Context, actor Actor, scope domain.Sc
 		}
 		if m.MinDecryptVersion < 1 || m.MinDecryptVersion > m.MinEncryptVersion || m.MinEncryptVersion > k.LatestVersion {
 			return invalidTransit("versions must satisfy 1 <= min_decrypt_version <= min_encrypt_version <= latest_version (%d)", k.LatestVersion)
+		}
+		if m.MinDecryptVersion < k.MinAvailableVersion {
+			return invalidTransit("versions below %d are trimmed; min_decrypt_version cannot go below it", k.MinAvailableVersion)
 		}
 		var callers []store.TransitCaller
 		if req.Callers != nil {
@@ -797,49 +804,64 @@ func (s *Transit) ChangeKeyState(ctx context.Context, actor Actor, scope domain.
 }
 
 // TrimKey permanently deletes versions below min_decrypt_version (ADR D5).
-// External custody destroys the material at the provider first; an
-// unavailable provider refuses the trim rather than leaving material orphaned.
+// It first fences the trim: the key's trim floor (min_available_version) is
+// raised to min_decrypt_version, after which ConfigureKey can no longer lower
+// min_decrypt_version past it. External custody then destroys the material
+// below the floor at the provider; an unavailable provider refuses the trim
+// rather than leaving material orphaned, and a retry re-destroys under the
+// same floor. Finally the version rows below the floor are deleted.
 func (s *Transit) TrimKey(ctx context.Context, actor Actor, scope domain.Scope, name string) (TransitKeyView, int64, error) {
 	if err := requireKeyAddress(scope, name); err != nil {
 		return TransitKeyView{}, 0, err
 	}
 	var external []store.TransitVersionMaterial
 	var key store.TransitKeyRecord
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+	var floor uint32
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		_, proof, err := authorize(ctx, az, actor, authz.OpTransitKeyTrim, scope, s.now())
 		if err != nil {
 			return err
 		}
 		key, err = r.Transit().GetKey(ctx, proof, name)
-		return err
+		if err != nil {
+			return err
+		}
+		floor, err = r.Transit().FenceTrim(ctx, proof, key.ID, store.CanonTime(s.now()))
+		if errors.Is(err, store.ErrConflict) {
+			return &transitRefusal{cause: "state"}
+		}
+		if err != nil {
+			return err
+		}
+		external = external[:0]
+		if key.Custody != string(transit.CustodyExternal) {
+			return nil
+		}
+		versions, err := r.Transit().ListVersions(ctx, proof, key.ID)
+		if err != nil {
+			return err
+		}
+		for _, version := range versions {
+			if version.Version >= floor {
+				continue
+			}
+			m, err := r.Transit().VersionMaterial(ctx, proof, key.ID, version.Version)
+			if errors.Is(err, store.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if m.ExternalRef != "" {
+				external = append(external, m)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return TransitKeyView{}, 0, err
 	}
-	if key.Custody == string(transit.CustodyExternal) && key.MinDecryptVersion > 1 {
-		err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			_, proof, err := authorize(ctx, az, actor, authz.OpTransitKeyTrim, scope, s.now())
-			if err != nil {
-				return err
-			}
-			external = external[:0]
-			for v := uint32(1); v < key.MinDecryptVersion; v++ {
-				m, err := r.Transit().VersionMaterial(ctx, proof, key.ID, v)
-				if errors.Is(err, store.ErrNotFound) {
-					continue
-				}
-				if err != nil {
-					return err
-				}
-				if m.ExternalRef != "" {
-					external = append(external, m)
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return TransitKeyView{}, 0, err
-		}
+	if len(external) > 0 {
 		p, err := s.Custody.Resolve(transit.CustodyExternal)
 		if err != nil {
 			return TransitKeyView{}, 0, ErrTransitCustodyUnavailable
@@ -868,7 +890,7 @@ func (s *Transit) TrimKey(ctx context.Context, actor Actor, scope domain.Scope, 
 		if err != nil {
 			return err
 		}
-		deleted, err = r.Transit().Trim(ctx, proof, k.ID)
+		deleted, err = r.Transit().Trim(ctx, proof, k.ID, floor)
 		if errors.Is(err, store.ErrConflict) {
 			return &transitRefusal{cause: "state"}
 		}
@@ -877,7 +899,7 @@ func (s *Transit) TrimKey(ctx context.Context, actor Actor, scope domain.Scope, 
 		}
 		ev, err := domainEvent(ctx, audit.EventTransitKeyTrimmed, caller.Principal,
 			audit.Object{Type: "transit-key", ID: k.ID}, audit.Payload{
-				"min_decrypt_version": int64(k.MinDecryptVersion), "versions_deleted": deleted,
+				"min_decrypt_version": int64(floor), "versions_deleted": deleted,
 			})
 		if err != nil {
 			return err

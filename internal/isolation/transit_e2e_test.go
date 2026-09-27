@@ -176,6 +176,10 @@ func runTransitCustodySuite(t *testing.T, db *store.DB, svc *service.Transit, ex
 	if _, deleted, err := svc.TrimKey(ctx, me, transitScope, enc.Name); err != nil || deleted != 1 {
 		t.Fatalf("trim = %d, %v", deleted, err)
 	}
+	one := uint32(1)
+	if _, err := svc.ConfigureKey(ctx, me, transitScope, enc.Name, service.ConfigureTransitKeyRequest{MinDecryptVersion: &one}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("lowering decrypt floor after trim = %v", err)
+	}
 	view, err := svc.GetKey(ctx, me, transitScope, enc.Name)
 	if err != nil || len(view.Versions) != 1 || view.Versions[0].Version != 2 {
 		t.Fatalf("after trim: %+v, %v", view.Versions, err)
@@ -533,6 +537,13 @@ func runTransitScheduler(t *testing.T, db *store.DB, svc *service.Transit, ext *
 				t.Fatal("provider does not hold the new key's material")
 			}
 		}
+		if _, err := svc.RotateKey(ctx, me, transitScope, k.Name); err != nil {
+			t.Fatal(err)
+		}
+		two := uint32(2)
+		if _, err := svc.ConfigureKey(ctx, me, transitScope, k.Name, service.ConfigureTransitKeyRequest{MinEncryptVersion: &two, MinDecryptVersion: &two}); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := svc.ChangeKeyState(ctx, me, transitScope, k.Name, "schedule-deletion", 24*time.Hour); err != nil {
 			t.Fatal(err)
 		}
@@ -552,6 +563,10 @@ func runTransitScheduler(t *testing.T, db *store.DB, svc *service.Transit, ext *
 		}
 		if got := queryInt(t, db, `SELECT COUNT(*) FROM transit_key_versions WHERE key_id='`+k.ID+`' AND (material_ciphertext IS NOT NULL OR external_ref IS NOT NULL)`); got != 0 {
 			t.Fatalf("destroyed key kept %d material rows", got)
+		}
+		payload := queryString(t, db, `SELECT payload FROM audit_tenant_events WHERE type='transit.key_destroyed' AND object_id='`+k.ID+`'`)
+		if !strings.Contains(payload, `"versions_erased":2`) {
+			t.Fatalf("purge audit did not count retained versions: %s", payload)
 		}
 		if ref != "" && ext.Holds(ref) {
 			t.Fatal("external material survived the purge")

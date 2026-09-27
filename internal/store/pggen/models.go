@@ -1466,8 +1466,10 @@ type TransitKey struct {
 	LatestVersion             int32
 	MinEncryptVersion         int32
 	MinDecryptVersion         int32
+	MinAvailableVersion       int32
 	CompromisedThroughVersion int32
 	RotationPeriodSeconds     int64
+	PurgeStarted              int32
 	DeletionAfter             pgtype.Timestamptz
 	CreatedBy                 string
 	CreatedAt                 pgtype.Timestamptz

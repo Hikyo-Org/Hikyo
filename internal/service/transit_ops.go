@@ -605,7 +605,7 @@ func (s *Transit) purgeOne(ctx context.Context, scope domain.Scope, k store.Tran
 		if err != nil {
 			return err
 		}
-		external, err = r.Transit().DestroyVersions(ctx, p, k.ID)
+		external, err = r.Transit().DestroyVersions(ctx, p, k.ID, now)
 		return err
 	})
 	if err != nil {
@@ -631,12 +631,13 @@ func (s *Transit) purgeOne(ctx context.Context, scope domain.Scope, k store.Tran
 		if err != nil {
 			return err
 		}
-		if err := r.Transit().Destroy(ctx, p, k.ID, now); err != nil {
+		erased, err := r.Transit().Destroy(ctx, p, k.ID, now)
+		if err != nil {
 			return err
 		}
 		ev, err := domainEvent(ctx, audit.EventTransitKeyDestroyed, "",
 			audit.Object{Type: "transit-key", ID: k.ID}, audit.Payload{
-				"custody": k.Custody, "versions_erased": int64(k.LatestVersion - k.MinDecryptVersion + 1),
+				"custody": k.Custody, "versions_erased": erased,
 			})
 		if err != nil {
 			return err
