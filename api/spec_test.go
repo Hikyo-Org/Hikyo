@@ -478,3 +478,16 @@ func TestEmbeddedSpecMatchesTheFileOnDisk(t *testing.T) {
 		t.Fatal("the embedded contract differs from api/openapi.yaml")
 	}
 }
+
+func TestPKICreatesDeclareCreated(t *testing.T) {
+	doc, err := api.Doc()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/v1/instance/pki/issuers", "/api/v1/instance/pki/profiles"} {
+		op := doc.Paths.Find(path).Post
+		if op.Responses.Status(http.StatusCreated) == nil || op.Responses.Status(http.StatusOK) != nil {
+			t.Fatalf("%s must declare201 without200", path)
+		}
+	}
+}

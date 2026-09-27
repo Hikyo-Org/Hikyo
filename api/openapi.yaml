@@ -12054,7 +12054,7 @@ paths:
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-        "200": {description: The created version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "201": {description: The created version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -12288,7 +12288,7 @@ paths:
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "201": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}

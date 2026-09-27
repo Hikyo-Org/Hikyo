@@ -16,14 +16,16 @@ import (
 // row-level compare-and-swap, so it composes with #146 multi-node HA without
 // the singleton scheduler lease.
 type pkiWorker struct {
-	svc        *service.PKI
+	svc interface {
+		RunPKISweep(context.Context) (bool, error)
+	}
 	poll       time.Duration
 	log        *slog.Logger
 	selfConfig *service.SelfConfig
 }
 
 // Run sweeps PKI state until ctx is canceled, retrying errors on subsequent
-// iterations. It repeats immediately after reported work, otherwise waiting
+// iterations. It repeats immediately after successful reported work, otherwise waiting
 // for poll (five seconds when nonpositive). A self-config capture failure
 // skips that iteration's sweep.
 func (w *pkiWorker) Run(ctx context.Context) {
@@ -43,7 +45,7 @@ func (w *pkiWorker) Run(ctx context.Context) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			w.log.Error("pki worker failed", "err", err)
 		}
-		if worked && ctx.Err() == nil {
+		if worked && err == nil && ctx.Err() == nil {
 			continue
 		}
 		timer := time.NewTimer(poll)

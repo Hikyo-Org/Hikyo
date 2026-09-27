@@ -202,7 +202,7 @@ func (a *API) CreatePkiIssuer(ctx context.Context, req apigen.CreatePkiIssuerReq
 	if err != nil {
 		return nil, err
 	}
-	return apigen.CreatePkiIssuer200JSONResponse(pkiIssuerResponse(result.Issuer)), nil
+	return apigen.CreatePkiIssuer201JSONResponse(pkiIssuerResponse(result.Issuer)), nil
 }
 
 func (a *API) ShowPkiIssuer(ctx context.Context, req apigen.ShowPkiIssuerRequestObject) (apigen.ShowPkiIssuerResponseObject, error) {
@@ -346,7 +346,7 @@ func (a *API) CreatePkiProfile(ctx context.Context, req apigen.CreatePkiProfileR
 	if err != nil {
 		return nil, err
 	}
-	return apigen.CreatePkiProfile200JSONResponse(pkiProfileResponse(view)), nil
+	return apigen.CreatePkiProfile201JSONResponse(pkiProfileResponse(view)), nil
 }
 
 func (a *API) ShowPkiProfile(ctx context.Context, req apigen.ShowPkiProfileRequestObject) (apigen.ShowPkiProfileResponseObject, error) {
