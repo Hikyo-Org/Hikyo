@@ -147,13 +147,13 @@ type DueAccessRequest struct {
 	State                AccessRequestState
 }
 
-// AccessRepo is the proof-bound surface of the temporary-access engine. The
-// approver and bypasser rows reuse the #151 row shapes.
 // AccessReader exposes only label-free operational counts to read transactions.
 type AccessReader interface {
 	OperationalCounts(ctx context.Context, p authz.Proof, now time.Time) (open, active int64, err error)
 }
 
+// AccessRepo is the proof-bound surface of the temporary-access engine. The
+// approver and bypasser rows reuse the #151 row shapes.
 type AccessRepo interface {
 	AccessReader
 	InsertPolicy(ctx context.Context, p authz.Proof, policy NewAccessPolicy) error
