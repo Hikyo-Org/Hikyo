@@ -299,9 +299,13 @@ func runTransitCustodySuite(t *testing.T, db *store.DB, svc *service.Transit, ex
 	}
 
 	// --- restart: a fresh service over the same datastore decrypts ---------------
-	restarted := &service.Transit{DB: db, Keyring: probeKeyring(t, db), Custody: transit.NewRegistry(&transit.Software{Keyring: probeKeyring(t, db)}, ext)}
-	if _, err := svc.ChangeKeyState(ctx, me, transitScope, other.Name, "retire", 0); err != nil {
+	beforeRestart, err := svc.Encrypt(ctx, me, transitScope, other.Name, []byte("survives restart"), []byte("restart-context"), 0)
+	if err != nil {
 		t.Fatal(err)
+	}
+	restarted := &service.Transit{DB: db, Keyring: probeKeyring(t, db), Custody: transit.NewRegistry(&transit.Software{Keyring: probeKeyring(t, db)}, ext)}
+	if got, err := restarted.Decrypt(ctx, me, transitScope, other.Name, beforeRestart.Value, []byte("restart-context")); err != nil || string(got.Plaintext) != "survives restart" {
+		t.Fatalf("restarted service cannot decrypt stored ciphertext: %q, %v", got.Plaintext, err)
 	}
 	otherCT, err := restarted.Encrypt(ctx, me, transitScope, mac.Name, nil, nil, 0)
 	if err == nil || otherCT.Value != "" {

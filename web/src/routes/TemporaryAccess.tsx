@@ -668,7 +668,7 @@ function AccessRequestRow({
               Approve
             </Button>
           ) : null}
-          {request.state === 'open' && !mine ? (
+          {request.state === 'open' && request.can_approve === true ? (
             <Button type="button" disabled={busy} onClick={() => onAct('reject')}>
               Reject
             </Button>

@@ -59,8 +59,10 @@ production package refusing any identifier or string literal naming
 
 Error mapping: AccessDenied/KMS Encryption/DecryptionFailure/expired or invalid
 tokens -> `ErrProviderAuth` (class `auth`); Throttling/TooManyRequests/
-LimitExceeded -> `ErrRateLimited` with a `RetryAt` from `Retry-After` (default
-5 s), class `provider_limit`; 4xx otherwise definite failure; 5xx and transport
+RequestLimitExceeded -> `ErrRateLimited` with a `RetryAt` from `Retry-After`
+(default 5 s), class `provider_limit`. `LimitExceededException` is service-quota
+exhaustion: a definite refusal with no throttle retry deadline. Other 4xx are
+definite failures; 5xx and transport
 errors ambiguous. Provider messages are dropped; only the closed error code is
 kept.
 
