@@ -55,7 +55,7 @@ func TestWorkerProviderAuthIsTerminalButTransportRemainsRetryable(t *testing.T) 
 	}
 }
 
-func TestWorkerActivationRequiresAttentionOnlyForCredentialOrCollision(t *testing.T) {
+func TestWorkerActivationRequiresAttentionOnlyForCredentialCollisionOrForgedAck(t *testing.T) {
 	tests := []struct {
 		name          string
 		connectionErr error
@@ -64,6 +64,7 @@ func TestWorkerActivationRequiresAttentionOnlyForCredentialOrCollision(t *testin
 	}{
 		{name: "pending credential rejected", connectionErr: ErrProviderAuth, wantFail: true},
 		{name: "pending namespace collision", activationErr: ErrConflict, wantFail: true},
+		{name: "pending probe acknowledgement forged", connectionErr: ErrAckForged, wantFail: true},
 		{name: "pending route transport retries", connectionErr: errors.New("connection reset")},
 		{name: "pending route indeterminate retries", connectionErr: ErrIndeterminate},
 	}

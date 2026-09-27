@@ -428,6 +428,24 @@ operations:
   renewLease:                  {webui: machine-access}
   revokeLease:                 {webui: machine-access}
   settleLease:                 {webui: machine-access}
+  # SSH user certificates (#155): the machine-access page SSH tab
+  listSshCas:                  {webui: machine-access}
+  createSshCa:                 {webui: machine-access}
+  showSshCa:                   {webui: machine-access, via: [listSshCas]}
+  deleteSshCa:                 {webui: machine-access}
+  rotateSshCa:                 {webui: machine-access}
+  retireSshCaKey:              {webui: machine-access}
+  getSshTrustedKeys:           {webui: machine-access}
+  getSshKrl:                   {webui: machine-access, reach: path}
+  listSshProfiles:             {webui: machine-access}
+  createSshProfile:            {webui: machine-access}
+  showSshProfile:              {webui: machine-access, via: [listSshProfiles]}
+  updateSshProfile:            {webui: machine-access}
+  deleteSshProfile:            {webui: machine-access}
+  listSshCertificates:         {webui: machine-access}
+  issueSshCertificate:         {webui: machine-access}
+  showSshCertificate:          {webui: machine-access, via: [listSshCertificates]}
+  revokeSshCertificate:        {webui: machine-access}
 
   diffRevisions: {webui: history}
   revealRevisionDiff: {webui: history}

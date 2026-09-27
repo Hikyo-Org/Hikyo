@@ -184,16 +184,41 @@ func TestAdapterCancelMoveRequiresOnlyExplicitMove(t *testing.T) {
 	}
 }
 
+func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
+	const env = "env_019c1234-1234-7123-8123-123456789abc"
+	const key = "key_019c1234-1234-7123-8123-123456789abc"
+	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{})
+	if err != nil {
+		t.Fatalf("sealed-webhook namespace target refused: %v", err)
+	}
+	if got.DestinationKind != "organization" || got.DestinationOwner != "prod" || got.Visibility != "" {
+		t.Fatalf("sealed-webhook target=%+v", got)
+	}
+	for name, args := range map[string][5]string{
+		"repository kind": {"repository", "prod", "repo", "", ""},
+		"repo":            {"organization", "prod", "repo", "", ""},
+		"environment":     {"organization", "prod", "", "staging", ""},
+		"visibility":      {"organization", "prod", "", "", "all"},
+	} {
+		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}); err == nil {
+			t.Fatalf("sealed-webhook accepted %s routing", name)
+		}
+	}
+	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}); err == nil {
+		t.Fatal("github-actions organization target accepted without visibility")
+	}
+}
+
 func TestAdapterCloudflareTargetInput(t *testing.T) {
 	const account = "0123456789abcdef0123456789abcdef"
-	got, err := adapterTargetInput("env_1", "pages-project", account, "site", "preview", "", "", "", "key_1", adapterKeySelection{})
+	got, err := adapterTargetInput("cloudflare", "env_1", "pages-project", account, "site", "preview", "", "", "", "key_1", adapterKeySelection{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.DestinationKind != "pages-project" || got.DestinationOwner != account || got.DestinationName != "site" || got.DestinationEnvironment != "preview" {
 		t.Fatalf("input = %+v", got)
 	}
-	if _, err := adapterTargetInput("env_1", "workers-script", account, "api", "", "", "", "", "key_1", adapterKeySelection{}); err != nil {
+	if _, err := adapterTargetInput("cloudflare", "env_1", "workers-script", account, "api", "", "", "", "", "key_1", adapterKeySelection{}); err != nil {
 		t.Fatalf("workers-script refused: %v", err)
 	}
 	for name, args := range map[string][3]string{
@@ -202,7 +227,7 @@ func TestAdapterCloudflareTargetInput(t *testing.T) {
 		"workers with env": {"workers-script", "api", "production"},
 		"workers no name":  {"workers-script", "", ""},
 	} {
-		if _, err := adapterTargetInput("env_1", args[0], account, args[1], args[2], "", "", "", "key_1", adapterKeySelection{}); err == nil {
+		if _, err := adapterTargetInput("cloudflare", "env_1", args[0], account, args[1], args[2], "", "", "", "key_1", adapterKeySelection{}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}

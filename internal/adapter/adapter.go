@@ -174,6 +174,17 @@ type SyncRequest struct {
 	// Completed names were durably finished earlier in this leased job before
 	// an in-job provider-rate wait. Modules skip them when plaintext is reloaded.
 	Completed []Change
+	// Source pins the exact source scope and revision this job converges.
+	// Providers that carry provenance on the wire (sealed-webhook) require it.
+	Source Source
+}
+
+// Source identifies the published revision a sync job delivers.
+type Source struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	Revision      int64
 }
 
 type SyncResult struct {
@@ -306,6 +317,40 @@ func ValidateGitHubActionsManifest(prefix string, entries []ManifestEntry, value
 	return nil
 }
 
+// SealedWebhookValueLimit bounds one plaintext value. Each value is sealed
+// into its own envelope, far under the protocol's ciphertext bound.
+const SealedWebhookValueLimit = 256 << 10
+
+// ValidateSealedWebhookManifest applies the sealed receiver protocol's name
+// and value contract. Values travel as JSON strings inside the ciphertext,
+// so they must be valid UTF-8 to be delivered byte-exactly.
+func ValidateSealedWebhookManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("sealed-webhook: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case name == prefix+SentinelName:
+			return fmt.Errorf("sealed-webhook: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 256:
+			return fmt.Errorf("sealed-webhook: %s: effective name exceeds the protocol's 256-byte limit", entry.CanonicalName)
+		case !effectiveName.MatchString(name):
+			return fmt.Errorf("sealed-webhook: %s: effective name %q is not uppercase identifier syntax", entry.CanonicalName, name)
+		case values && len(entry.Value) > SealedWebhookValueLimit:
+			return fmt.Errorf("sealed-webhook: %s: value exceeds the %d-byte limit", entry.CanonicalName, SealedWebhookValueLimit)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("sealed-webhook: %s: non-UTF-8 values cannot be delivered byte-exactly", entry.CanonicalName)
+		}
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("sealed-webhook: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
 // CloudflareValueLimit is the documented per-variable size limit shared by
 // Workers secrets and Pages environment variables.
 const CloudflareValueLimit = 5 * 1024
@@ -354,6 +399,8 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 		return ValidateGitHubActionsManifest(prefix, entries, values)
 	case ForgejoProvider:
 		return ValidateManifest(prefix, entries)
+	case SealedWebhookProvider:
+		return ValidateSealedWebhookManifest(prefix, entries, values)
 	case CloudflareProvider:
 		return ValidateCloudflareManifest(prefix, entries, values)
 	default:
@@ -366,6 +413,10 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
+	}
+	if provider == string(SealedWebhookProvider) {
+		// A receiver consumes names directly; there is no CI workflow to wire.
+		return "", nil
 	}
 	if provider == string(CloudflareProvider) {
 		return renderCloudflareBindings(prefix, entries), nil
@@ -433,6 +484,10 @@ var (
 	ErrQueueFull     = errors.New("adapter: target outbox queue limit reached")
 	ErrLedgerFull    = errors.New("adapter: target ownership ledger limit reached")
 	ErrRateLimited   = errors.New("adapter: provider rate limited")
+	// ErrAckForged means a provider answered with an acknowledgement that
+	// failed signature or binding verification. It is terminal: the attempt
+	// is not retried and the target needs operator attention.
+	ErrAckForged = errors.New("adapter: provider acknowledgement failed verification")
 )
 
 // RetryAtError lets a provider preserve an authoritative rate-limit deadline

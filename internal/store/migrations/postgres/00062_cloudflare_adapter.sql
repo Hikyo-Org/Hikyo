@@ -1,10 +1,10 @@
 -- +goose Up
--- Cloudflare Workers and Pages is the third compiled-in deployment adapter
+-- Cloudflare Workers and Pages is a compiled-in deployment adapter
 -- (#161). It adds the cloudflare provider and the workers-script and
 -- pages-project destination kinds.
 ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check;
 ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check
-    CHECK (provider IN ('forgejo', 'github-actions', 'cloudflare'));
+    CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'cloudflare'));
 
 ALTER TABLE adapter_targets DROP CONSTRAINT adapter_targets_destination_kind_check;
 ALTER TABLE adapter_targets ADD CONSTRAINT adapter_targets_destination_kind_check

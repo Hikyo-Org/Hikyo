@@ -27,7 +27,7 @@ This is the build-ready specification set for Hikyo 1.0: a fully open-source, se
 | UI & interaction spec | [ui-spec.md](./ui-spec.md) (+ [DESIGN.md](../../DESIGN.md), frozen `prototype/`) |
 | Docker Compose integration | [adr/compose-integration.md](../adr/compose-integration.md) |
 | Kubernetes integration | [adr/k8s-integration.md](../adr/k8s-integration.md) |
-| Deployment modules | [adr/deployment-adapter.md](../adr/deployment-adapter.md) (seam + Forgejo) · [adr/github-adapter.md](../adr/github-adapter.md) |
+| Deployment modules | [adr/deployment-adapter.md](../adr/deployment-adapter.md) (seam + Forgejo) · [adr/github-adapter.md](../adr/github-adapter.md) · [sealed-webhook.md](./sealed-webhook.md) (sealed receiver protocol) |
 | Import & migration | [adr/import-paths.md](../adr/import-paths.md) |
 | API & CLI spec | [adr/api-cli-surface.md](../adr/api-cli-surface.md) (skeleton) + [api-cli-spellings.md](./api-cli-spellings.md) (deferred spellings, discharged) |
 | WebUI parity registry | [api/parity.yaml](../../api/parity.yaml): one disposition per operation (surface, closed exception, or open issue), executable via `go test ./api` and `scripts/ci/check-parity-issues.sh`; browser-only lifecycle acceptance in `web/e2e/flows/machine-access.spec.ts` (`browser-only lifecycle`), user-facing in [browser-operations.mdx](../site/src/content/docs/docs/browser-operations.mdx) |

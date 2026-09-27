@@ -1,6 +1,6 @@
 -- +goose NO TRANSACTION
 -- +goose Up
--- Cloudflare Workers and Pages is the third compiled-in deployment adapter
+-- Cloudflare Workers and Pages is a compiled-in deployment adapter
 -- (#161). It adds the cloudflare provider and the workers-script and
 -- pages-project destination kinds. SQLite cannot replace a CHECK constraint in
 -- place, so each affected table is rebuilt with its columns in the existing
@@ -15,7 +15,7 @@ CREATE TABLE adapters (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
-    provider TEXT NOT NULL CHECK (provider IN ('forgejo', 'github-actions', 'cloudflare')),
+    provider TEXT NOT NULL CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'cloudflare')),
     origin TEXT NOT NULL,
     credential_ciphertext BLOB,
     credential_set_at TEXT,

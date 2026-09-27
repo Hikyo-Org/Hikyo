@@ -65,13 +65,14 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 // Keep this in lockstep with that walk: a column here that the walk does not
 // cover, or vice versa, is the exact gap this gate exists to prevent.
 var reencryptCovered = map[string]string{
-	// project scope (6)
+	// project scope (7)
 	"value_entries.ciphertext":                          "value",
 	"snapshot_entries.ciphertext":                       "snapshot",
 	"pending_changes.ciphertext":                        "pending",
 	"adapters.credential_ciphertext":                    "adapter",
 	"adapter_route_moves.pending_credential_ciphertext": "adapter_route_move",
 	"dynamic_providers.admin_credential_ciphertext":     "dynamic_provider",
+	"ssh_ca_keys.private_key_ciphertext":                "ssh_ca_key",
 	// instance scope (8)
 	"self_config_seed_inputs.ciphertext": "self_config_seed_inputs",
 	"password_credentials.verifier":      "password",

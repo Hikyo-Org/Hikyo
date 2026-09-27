@@ -1092,6 +1092,9 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		if err := r.Snapshots().DeleteEnvironment(ctx, p); err != nil {
 			return err
 		}
+		if err := r.SSH().PurgeEnvironment(ctx, p); err != nil {
+			return err
+		}
 		if err := releaseEnvironmentGrants(ctx, r, az, p, caller.Principal, scope); err != nil {
 			return err
 		}

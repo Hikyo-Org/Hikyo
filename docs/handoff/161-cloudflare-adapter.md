@@ -17,14 +17,14 @@ over the #65/#157 deployment seam.
   `adapter.LeaseTime`. `Module` implements the four seam operations.
 - Registration: app provider registry, store `Create` provider check,
   `validateTargetMutation`/`validatePendingTarget`, a provider/kind pairing
-  guard in `targetManifest`, migration `00060_cloudflare_adapter.sql` on both
+  guard in `targetManifest`, migration `00062_cloudflare_adapter.sql` on both
   engines widening every provider and destination-kind `CHECK`, the OpenAPI
   `AdapterProvider` and `AdapterDestinationKind` enums (apigen and
   `clients/ts` regenerated), CLI flags and help, the web create/add-target form.
 - `internal/buildcompat/development.json` regenerated on PostgreSQL 18; the
-  diff is exactly the new version-60 entry and `schema_sha256` per engine.
+  diff is exactly the new version-62 entry and `schema_sha256` per engine.
 - `internal/app/backup_upgrade_drill_test.go`: the legacy upgrade drill fixture
-  reverses 00060 (PostgreSQL restores the 00025 CHECKs by name; SQLite
+  reverses 00062 (PostgreSQL restores the 00025 CHECKs by name; SQLite
   recreates each rebuilt table from its stored declaration minus the added
   kinds, and the catalog inspection proves the legacy text byte-for-byte).
 - `web/src/api/sensitiveInventory.json` re-pinned for `api/adapters.ts` and
@@ -116,3 +116,22 @@ no sandbox credentials were available.
 
 Wrangler or `wrangler.toml` generation, KV/D1/R2 bindings, zone settings,
 reading Cloudflare values, creating scripts or projects.
+
+
+## PR #822 integration review, 2026-09-27
+
+Merged main after sealed-webhook and SSH certificates. The Cloudflare migration
+is now 00062 on both engines and retains the sealed-webhook provider CHECK.
+A both-engine regression creates a sealed-webhook target after the Cloudflare
+migration. The CLI, provider registry, API and WebUI retain both provider sets.
+Generated Go/TypeScript clients and the empirically generated development
+compatibility declaration were refreshed. Web credential state and uncached
+mutation handling were reviewed before updating sensitivity pins.
+
+Local evidence: Cloudflare/adapter/CLI tests, SQLite and PostgreSQL Cloudflare
+store tests, Web typecheck/lint and all 1170 unit tests (1169 in the broad run,
+then the refreshed sensitivity-inventory regression). Broader Go checks and
+remote CI must be verified on the final pushed head before merge.
+Native cross-provider review was skipped because session quota remained
+unknown after the policy's three-minute response window; ordinary adversarial
+inspection found and fixed the provider-preservation migration defect above.

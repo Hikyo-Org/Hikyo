@@ -101,6 +101,10 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_dynamic_leases_active", MaxSeries: 1},
 		{Name: "hikyo_dynamic_effects_unknown", MaxSeries: 1},
 		{Name: "hikyo_dynamic_gauges_known", MaxSeries: 1},
+		// SSH certificate gauges (#155): label-free, one series each.
+		{Name: "hikyo_ssh_certificates_active", MaxSeries: 1},
+		{Name: "hikyo_ssh_krl_entries", MaxSeries: 1},
+		{Name: "hikyo_ssh_gauges_known", MaxSeries: 1},
 	}
 }
 
@@ -115,6 +119,8 @@ func (stubMeasuredSources) ApprovalSnapshot() (server.ApprovalStats, error) {
 
 func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0, nil }
 
+func (stubMeasuredSources) SSHSnapshot() (int64, int64, error) { return 0, 0, nil }
+
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
 // scrape emits the complete series set (at zero) without driving any traffic.
@@ -123,6 +129,7 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics := server.NewMetrics(stubAdmissionSnapshot{})
 	metrics.SetApprovalSource(stubMeasuredSources{})
 	metrics.SetDynamicSource(stubMeasuredSources{})
+	metrics.SetSSHSource(stubMeasuredSources{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

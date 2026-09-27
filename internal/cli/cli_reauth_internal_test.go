@@ -123,6 +123,8 @@ func TestAdapterTargetNarrowingSkipsCeremonyAndUsesSynchronousTargetResponse(t *
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapters/adp_one":
+			_, _ = io.WriteString(w, `{"id":"adp_one","provider":"github-actions","origin":"https://api.github.com","state":"active","credential_present":true,"targets":[]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
 			getCount++
 			_, _ = io.WriteString(w, `{"target":{"id":"tgt_one","adapter_id":"adp_one","environment_id":"env_one","destination_kind":"repository","destination_owner":"team","destination_name":"app","destination_id":42,"name_prefix":"PROD_","generation":1,"state":"active","sync_status":"converged","converged_revision":7,"failure_names":[]},"mapping":[{"key_id":"key_one","canonical_name":"ONE","surface":"secret","effective_name":"PROD_ONE"},{"key_id":"key_two","canonical_name":"TWO","surface":"secret","effective_name":"PROD_TWO"}],"conflicts":[]}`)
@@ -199,6 +201,8 @@ func TestAdapterTargetMutationCLIAPIParity(t *testing.T) {
 			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapters/adp_one":
+					_, _ = io.WriteString(w, `{"id":"adp_one","provider":"github-actions","origin":"https://api.github.com","state":"active","credential_present":true,"targets":[]}`)
 				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
 					_, _ = io.WriteString(w, `{"target":{"id":"tgt_one","adapter_id":"adp_one","environment_id":"env_one","destination_kind":"repository","destination_owner":"team","destination_name":"app","destination_id":42,"name_prefix":"PROD_","generation":1,"state":"active","sync_status":"converged","failure_names":[]},"mapping":[{"key_id":"key_one","canonical_name":"ONE","surface":"secret","effective_name":"PROD_ONE"}],"conflicts":[]}`)
 				case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/orgs/org_one/projects/prj_one/adapter-targets/tgt_one":
