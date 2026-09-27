@@ -41,6 +41,7 @@ type PKIIssuer struct {
 	IssuedCount        int64
 	CRLDER             []byte
 	CRLNumber          int64
+	RevocationSeq      int64
 	CRLThisUpdate      time.Time
 	CRLNextUpdate      time.Time
 	RowVersion         int64
@@ -187,7 +188,7 @@ type PKIRepo interface {
 	CountLiveCertificates(ctx context.Context, p authz.Proof, issuerID string, now time.Time) (int64, error)
 	RevokeLiveCertificates(ctx context.Context, p authz.Proof, issuerID, reason string, at time.Time) (int64, error)
 	RevokedEntries(ctx context.Context, p authz.Proof, issuerID string, now time.Time) ([]PKIRevokedEntry, error)
-	PublishCRL(ctx context.Context, p authz.Proof, issuerID string, der []byte, previousNumber, number int64, thisUpdate, nextUpdate time.Time) (bool, error)
+	PublishCRL(ctx context.Context, p authz.Proof, issuerID string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (bool, error)
 	// Profiles and bindings (instance operations).
 	ListProfiles(ctx context.Context, p authz.Proof) ([]PKIProfile, error)
 	GetProfile(ctx context.Context, p authz.Proof, name string) (PKIProfile, error)
@@ -227,7 +228,7 @@ func (r pgRepos) PKI() PKIRepo           { return pkiQueries{db: pgAdoptDB{db: r
 func (r sqliteReadRepos) PKI() PKIReader { return r.r.PKI() }
 func (r pgReadRepos) PKI() PKIReader     { return r.r.PKI() }
 
-const pkiIssuerColumns = `id,name,version,kind,origin,COALESCE(parent_id,''),state,key_algorithm,key_fingerprint,CASE WHEN encrypted_private_key IS NULL THEN 0 ELSE 1 END,certificate_der,csr_der,chain_pem,subject_cn,subject_org,not_before,not_after,crl_distribution_url,restore_hold,issued_count,crl_der,crl_number,crl_this_update,crl_next_update,row_version,created_by,created_at,updated_at`
+const pkiIssuerColumns = `id,name,version,kind,origin,COALESCE(parent_id,''),state,key_algorithm,key_fingerprint,CASE WHEN encrypted_private_key IS NULL THEN 0 ELSE 1 END,certificate_der,csr_der,chain_pem,subject_cn,subject_org,not_before,not_after,crl_distribution_url,restore_hold,issued_count,crl_der,crl_number,revocation_seq,crl_this_update,crl_next_update,row_version,created_by,created_at,updated_at`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -257,7 +258,7 @@ func scanPKIIssuer(row rowScanner) (PKIIssuer, error) {
 	err := row.Scan(&out.ID, &out.Name, &out.Version, &out.Kind, &out.Origin, &out.ParentID, &out.State,
 		&out.KeyAlgorithm, &out.KeyFingerprint, &keyPresent, &out.CertificateDER, &out.CSRDER, &out.ChainPEM,
 		&out.SubjectCN, &out.SubjectOrg, &stamps[0], &stamps[1], &out.CRLDistributionURL, &hold,
-		&out.IssuedCount, &out.CRLDER, &out.CRLNumber, &stamps[2], &stamps[3], &out.RowVersion,
+		&out.IssuedCount, &out.CRLDER, &out.CRLNumber, &out.RevocationSeq, &stamps[2], &stamps[3], &out.RowVersion,
 		&out.CreatedBy, &stamps[4], &stamps[5])
 	if isNoRows(err) {
 		return PKIIssuer{}, ErrNotFound
@@ -446,7 +447,11 @@ func (r pkiQueries) RevokeLiveCertificates(ctx context.Context, p authz.Proof, i
 	}
 	stamp := r.db.Stamp(at)
 	query := r.db.SQL(`UPDATE pki_certificates SET state='revoked', revoked_at=?, revocation_reason=?, row_version=row_version+1, updated_at=? WHERE issuer_id=? AND state IN ('issuing','issued','renewed','unknown')`)
-	return r.db.Exec(ctx, query, stamp, reason, stamp, issuerID)
+	changed, err := r.db.Exec(ctx, query, stamp, reason, stamp, issuerID)
+	if err == nil && changed > 0 {
+		_, err = r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=?`), issuerID)
+	}
+	return changed, err
 }
 
 // RevokedEntries returns unexpired revoked and unknown serials, ordered by
@@ -477,20 +482,21 @@ func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time
 // PublishCRL stores DER and update times only for an active or retiring issuer
 // whose CRL number equals previousNumber. It returns false without error when
 // no row matches; proof and database errors are propagated. The caller must
-// choose a number greater than previousNumber.
-func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID string, der []byte, previousNumber, number int64, thisUpdate, nextUpdate time.Time) (bool, error) {
+// choose a number greater than previousNumber and capture revocationSeq before
+// reading the entries included in this CRL.
+func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersPublishCRL, r.tok); err != nil {
 		return false, err
 	}
-	return publishCRL(ctx, r.db, issuerID, der, previousNumber, number, thisUpdate, nextUpdate)
+	return publishCRL(ctx, r.db, issuerID, der, previousNumber, number, revocationSeq, thisUpdate, nextUpdate)
 }
 
 // publishCRL stores a CRL for an active or retiring issuer under a CAS on the
 // prior CRL number. It returns false without error when no row matches. The
 // caller must supply an increasing number; this helper does not enforce it.
-func publishCRL(ctx context.Context, db adapterDB, issuerID string, der []byte, previousNumber, number int64, thisUpdate, nextUpdate time.Time) (bool, error) {
-	query := db.SQL(`UPDATE pki_issuers SET crl_der=?, crl_number=?, crl_this_update=?, crl_next_update=? WHERE id=? AND crl_number=? AND state IN ('active','retiring')`)
-	return affectedOne(db.Exec(ctx, query, der, number, db.Stamp(thisUpdate), db.Stamp(nextUpdate), issuerID, previousNumber))
+func publishCRL(ctx context.Context, db adapterDB, issuerID string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (bool, error) {
+	query := db.SQL(`UPDATE pki_issuers SET crl_der=?, crl_number=?, crl_revocation_seq=?, crl_this_update=?, crl_next_update=? WHERE id=? AND crl_number=? AND state IN ('active','retiring')`)
+	return affectedOne(db.Exec(ctx, query, der, number, revocationSeq, db.Stamp(thisUpdate), db.Stamp(nextUpdate), issuerID, previousNumber))
 }
 
 // --- Profiles and bindings ----------------------------------------------------
@@ -790,6 +796,10 @@ func (r pkiQueries) ReleaseRenewal(ctx context.Context, p authz.Proof, id, succe
 // other states return false without error; proof and database errors propagate.
 func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, reason string, at time.Time) (bool, error) {
 	stamp := r.db.Stamp(at)
-	return r.certificateCAS(ctx, p, authz.StorePKICertificatesRevoke, `state='revoked', revoked_at=?, revocation_reason=?, updated_at=?`,
+	changed, err := r.certificateCAS(ctx, p, authz.StorePKICertificatesRevoke, `state='revoked', revoked_at=?, revocation_reason=?, updated_at=?`,
 		`id=? AND state IN ('issued','renewed','unknown')`, stamp, reason, stamp, id)
+	if err == nil && changed {
+		_, err = r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=(SELECT issuer_id FROM pki_certificates WHERE id=?)`), id)
+	}
+	return changed, err
 }

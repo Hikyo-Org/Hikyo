@@ -76,7 +76,7 @@ export function PkiIssuersPanel() {
         <IssuerRow
           key={issuer.id}
           issuer={issuer}
-          newest={rows.filter((row) => row.name === issuer.name).every((row) => row.version <= issuer.version)}
+          newest={rows.filter((row) => row.name === issuer.name).every((row) => Number(row.version) <= Number(issuer.version))}
           onDone={ok}
           onFailure={report}
           onBusy={clear}
