@@ -61,7 +61,8 @@ export function awsAccessComplete(access: AwsAccess): boolean {
       return true;
     case 'assume-role':
     case 'web-identity':
-      return access.roleArn.trim() !== '';
+      // A non-integer duration would serialize as null and be sent silently.
+      return access.roleArn.trim() !== '' && /^\d*$/.test(access.sessionSeconds.trim());
     case 'static':
       return access.accessKeyId.trim() !== '' && access.secretAccessKey !== '';
   }

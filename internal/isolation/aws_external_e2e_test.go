@@ -34,8 +34,10 @@ import (
 //
 //   - TestAWSSecretsManagerEmulatorLifecycle runs against an AWS-compatible
 //     emulator (LocalStack or Floci) on an HTTPS endpoint:
-//     HIKYO_TEST_AWS_ENDPOINT, optional HIKYO_TEST_AWS_ACCOUNT (default
-//     000000000000), HIKYO_TEST_AWS_REGION (default us-east-1),
+//     HIKYO_TEST_AWS_ENDPOINT, HIKYO_TEST_AWS_ACCOUNT (required with the
+//     endpoint; a non-zero 12-digit account, because LocalStack's default
+//     000000000000 parses to 0 and is refused as a destination id),
+//     HIKYO_TEST_AWS_REGION (default us-east-1),
 //     HIKYO_TEST_AWS_ALLOWED_CIDR for a private address, and
 //     HIKYO_TEST_AWS_CA_FILE for a private certificate.
 //   - TestAWSSecretsManagerRealSmoke runs against a sandbox AWS account:
@@ -68,8 +70,12 @@ func TestAWSSecretsManagerEmulatorLifecycle(t *testing.T) {
 	if endpoint == "" {
 		requireExternalAWS(t, "HIKYO_TEST_AWS_EMULATOR_REQUIRED", "HIKYO_TEST_AWS_ENDPOINT")
 	}
+	account := os.Getenv("HIKYO_TEST_AWS_ACCOUNT")
+	if account == "" {
+		t.Fatal("HIKYO_TEST_AWS_ENDPOINT is set but HIKYO_TEST_AWS_ACCOUNT is not; configure the emulator with a non-zero 12-digit account (000000000000 is refused as a destination id)")
+	}
 	env := externalAWS{
-		origin: endpoint, account: envOr("HIKYO_TEST_AWS_ACCOUNT", "000000000000"), region: envOr("HIKYO_TEST_AWS_REGION", "us-east-1"),
+		origin: endpoint, account: account, region: envOr("HIKYO_TEST_AWS_REGION", "us-east-1"),
 		creds: aws.Credentials{AccessKeyID: "AKIAHIKYOEMULATOR001", SecretAccessKey: "emulator-secret"},
 	}
 	if raw := os.Getenv("HIKYO_TEST_AWS_ALLOWED_CIDR"); raw != "" {

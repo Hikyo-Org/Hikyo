@@ -163,7 +163,7 @@ adapters:
       --env E --kind json-object|per-key --owner <account-id> [--secret <name-or-path/>] [--kms-key <key>]
       --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn <arn>] [--aws-external-id <id>]
       [--aws-session-seconds 900-3600] [--aws-access-key-id <id>] [--aws-region <region>]
-      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
+      [--aws-sts-origin <https-origin>] [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
   hikyo adapter update <adapter> --origin <https-origin>
@@ -172,14 +172,19 @@ adapters:
   hikyo adapter update <adapter> --target <target> --env E --kind <kind>
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
+      [--secret <name-or-path/>] [--kms-key <key>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
   hikyo adapter delete <adapter> [--keep-remote]
   hikyo adapter credential set --adapter <adapter> [--stdin | --value-file PATH] [--move <move-id>]
+      [--aws-auth ambient|assume-role|web-identity|static] [--aws-role-arn <arn>]
+      [--aws-external-id <id>] [--aws-session-seconds 900-3600] [--aws-access-key-id <id>]
+      [--aws-region <region>] [--aws-sts-origin <https-origin>]
   hikyo adapter credential revoke --adapter <adapter>
   hikyo adapter target add --adapter <adapter> --env E --kind <kind> --owner <owner>
       [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
+      [--secret <name-or-path/>] [--kms-key <key>]
       [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--create-environment]
