@@ -31,7 +31,7 @@ func TestNoValueReadPathExists(t *testing.T) {
 	for i := range typeOf.NumMethod() {
 		got = append(got, typeOf.Method(i).Name)
 	}
-	want := []string{"CreateMetadata", "DeleteLatest", "Health", "LookupSelf", "MountInfo", "PatchCustomMetadata", "ReadMetadata", "WriteCAS"}
+	want := []string{"DeleteLatest", "Health", "LookupSelf", "MountInfo", "PatchCustomMetadata", "ReadMetadata", "WriteCAS"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("linked Vault API operations = %v, want closed value-blind set %v", got, want)
 	}
@@ -217,7 +217,7 @@ func TestClientSendsNamespaceTokenAndCASWithoutReadingData(t *testing.T) {
 	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, r recordedRequest) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.Path, "/v1/secret/metadata/"):
-			_, _ = io.WriteString(w, `{"data":{"current_version":3,"custom_metadata":{"managed_by_hikyo":"tgt"},"versions":{"3":{"deletion_time":"","destroyed":false},"2":{"deletion_time":"2026-01-01T00:00:00Z","destroyed":false}}}}`)
+			_, _ = io.WriteString(w, `{"data":{"current_version":3,"custom_metadata":{"managed_by_hikyo":"tgt"},"versions":{"3":{"deletion_time":"2026-07-01T00:00:00.5Z","destroyed":false},"2":{"deletion_time":"2026-01-01T00:00:00Z","destroyed":false},"1":{"deletion_time":"2026-06-01T00:00:00Z","destroyed":false}}}}`)
 		case r.Method == http.MethodPost && strings.HasPrefix(r.Path, "/v1/secret/data/"):
 			_, _ = io.WriteString(w, `{"data":{"version":4}}`)
 		default:
@@ -227,11 +227,14 @@ func TestClientSendsNamespaceTokenAndCASWithoutReadingData(t *testing.T) {
 	server := httptest.NewTLSServer(stub)
 	defer server.Close()
 	client := pinnedClient(t, server, "team-a", "hvs.static")
+	// delete_version_after stamps a future deletion_time on a live version;
+	// only a time at or before now is a soft delete.
+	client.now = func() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }
 	meta, err := client.ReadMetadata(t.Context(), "secret", "apps/pay svc/TOKEN")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.CurrentVersion != 3 || meta.CustomMetadata[MarkerKey] != "tgt" || !meta.Versions[2].Deleted || meta.Versions[3].Deleted {
+	if meta.CurrentVersion != 3 || meta.CustomMetadata[MarkerKey] != "tgt" || !meta.Versions[1].Deleted || !meta.Versions[2].Deleted || meta.Versions[3].Deleted {
 		t.Fatalf("metadata = %+v", meta)
 	}
 	version, err := client.WriteCAS(t.Context(), "secret", "apps/pay svc/TOKEN", "plaintext", 3)
@@ -447,5 +450,16 @@ func TestStaticTokenIsNeverRevoked(t *testing.T) {
 		if strings.Contains(r.Path, "revoke") {
 			t.Fatal("operator static token was revoked")
 		}
+	}
+}
+
+func TestReadMetadataRefusesMalformedDeletionTime(t *testing.T) {
+	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, _ recordedRequest) {
+		_, _ = io.WriteString(w, `{"data":{"current_version":1,"custom_metadata":{},"versions":{"1":{"deletion_time":"yesterday","destroyed":false}}}}`)
+	}}
+	server := httptest.NewTLSServer(stub)
+	defer server.Close()
+	if _, err := pinnedClient(t, server, "", "hvs.static").ReadMetadata(t.Context(), "secret", "apps/pay/TOKEN"); err == nil || !strings.Contains(err.Error(), "malformed deletion time") {
+		t.Fatalf("ReadMetadata() = %v, want malformed deletion time refusal", err)
 	}
 }

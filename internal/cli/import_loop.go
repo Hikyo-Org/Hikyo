@@ -45,7 +45,7 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 			continue
 		}
 		origin, err := url.Parse(a.Origin)
-		if err != nil || !strings.EqualFold(origin.Host, source.Host) || strings.Trim(origin.Path, "/") != strings.Trim(result.Namespace, "/") {
+		if err != nil || !sameEndpoint(origin, source) || strings.Trim(origin.Path, "/") != strings.Trim(result.Namespace, "/") {
 			continue
 		}
 		for _, target := range a.Targets {
@@ -62,4 +62,24 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 
 func pathsOverlap(a, b string) bool {
 	return a == "" || b == "" || a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
+}
+
+// sameEndpoint compares hosts case-insensitively with the scheme's default
+// port made explicit, so https://vault.example and https://vault.example:443
+// name the same server.
+func sameEndpoint(a, b *url.URL) bool {
+	return strings.EqualFold(a.Hostname(), b.Hostname()) && effectivePort(a) == effectivePort(b)
+}
+
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
 }

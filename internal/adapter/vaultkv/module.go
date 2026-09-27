@@ -496,7 +496,8 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		}
 		if casMoved {
 			result.Conflicts = append(result.Conflicts, conflict)
-			return fmt.Errorf("%w: KV path %s moved during the write", adapter.ErrConflict, row.EffectiveName)
+			// writeErr also carries any failed pending-marker withdrawal.
+			return errors.Join(fmt.Errorf("%w: KV path %s moved during the write", adapter.ErrConflict, row.EffectiveName), writeErr)
 		}
 		result.Failed = append(result.Failed, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: effect.Disposition})
 		if completion.Outcome == adapter.OutcomeUnknown {
@@ -519,28 +520,29 @@ func versionString(version int64) *string {
 
 // write delivers one value with the crash-safe marker protocol:
 //
-//  1. mark the path with this target and the version the write will produce
-//     (create the metadata for an absent path);
-//  2. write the value with check-and-set on the observed version, so any
+//  1. an absent path is created with check-and-set 0 before any metadata is
+//     touched, so a concurrent creator's metadata is never replaced or
+//     stripped; any other path is marked with this target and the version the
+//     write will produce;
+//  2. the value is written with check-and-set on the observed version, so any
 //     external movement since the metadata read is a conflict, never a blind
 //     overwrite;
-//  3. record the produced version and clear the pending marker.
+//  3. the marker, the produced version, and a cleared pending marker are
+//     recorded in one metadata patch.
 //
 // A crash or ambiguous response between steps leaves a pending version that
 // the next attempt resolves from metadata alone: current == pending means the
 // write landed, current == pending-1 means it did not, anything else is
-// external movement.
+// external movement. A create that landed before its marker leaves an
+// unmarked path that the durable dispatched claim still covers.
 func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.DesiredRow, live pathState) error {
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	cas := live.version
 	switch live.kind {
 	case pathAbsent:
-		if err := m.API.CreateMetadata(ctx, mount, path, map[string]string{MarkerKey: target.ID, PendingKey: "1"}); err != nil {
-			return err
-		}
 		cas = 0
 	case pathLanded:
-		if err := m.finalize(ctx, mount, path, live.version); err != nil {
+		if err := m.finalize(ctx, target, path, live.version); err != nil {
 			return err
 		}
 		fallthrough
@@ -552,21 +554,27 @@ func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.D
 	}
 	version, err := m.API.WriteCAS(ctx, mount, path, row.Value, cas)
 	if err != nil {
-		if IsCASMismatch(err) && live.kind == pathAbsent {
-			// Lost a create race after marking a path someone else created in
-			// between. Withdraw the marker so it cannot read as ownership.
-			_ = m.API.PatchCustomMetadata(ctx, mount, path, map[string]*string{MarkerKey: nil, PendingKey: nil})
+		if IsCASMismatch(err) && live.kind != pathAbsent {
+			// The external write that beat this one holds version cas+1, so a
+			// pending marker of cas+1 would replay as "our write landed" and
+			// take the path over. Withdraw it; a failed withdrawal is reported
+			// because the hazard would outlive this attempt.
+			if cleanupErr := m.API.PatchCustomMetadata(ctx, mount, path, map[string]*string{PendingKey: nil}); cleanupErr != nil {
+				return errors.Join(err, fmt.Errorf("vault-kv: withdrawing the pending marker after a lost check-and-set: %w", cleanupErr))
+			}
 		}
 		return err
 	}
-	// The value is delivered. A failed finalize leaves a pending version equal
-	// to current_version, which the next attempt finalizes as landed.
-	_ = m.finalize(ctx, mount, path, version)
+	// The value is delivered. A failed finalize leaves either a pending
+	// version equal to current_version, which the next attempt finalizes as
+	// landed, or an unmarked create held by the dispatched claim.
+	_ = m.finalize(ctx, target, path, version)
 	return nil
 }
 
-func (m *Module) finalize(ctx context.Context, mount, path string, version int64) error {
-	return m.API.PatchCustomMetadata(ctx, mount, path, map[string]*string{VersionKey: versionString(version), PendingKey: nil})
+func (m *Module) finalize(ctx context.Context, target adapter.Target, path string, version int64) error {
+	marker := target.ID
+	return m.API.PatchCustomMetadata(ctx, target.Destination.Owner, path, map[string]*string{MarkerKey: &marker, VersionKey: versionString(version), PendingKey: nil})
 }
 
 // pruneRow soft-deletes the current version of a ledger-owned path. It never
@@ -620,7 +628,7 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	var deleteErr error
 	if live.kind == pathLanded {
-		deleteErr = m.finalize(ctx, mount, path, live.version)
+		deleteErr = m.finalize(ctx, target, path, live.version)
 	}
 	if deleteErr == nil && !live.released {
 		deleteErr = m.API.DeleteLatest(ctx, mount, path)

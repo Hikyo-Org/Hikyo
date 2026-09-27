@@ -25,7 +25,7 @@ review, see "Open").
   digests); the legacy upgrade drill reverses 00060 (Postgres: narrow the
   CHECK; SQLite: the existing 00025 `adapters` restore already covers it).
 - **`internal/adapter/vaultkv`**: hand-rolled client behind a closed `API`
-  (Health, MountInfo, LookupSelf, ReadMetadata, CreateMetadata,
+  (Health, MountInfo, LookupSelf, ReadMetadata,
   PatchCustomMetadata, WriteCAS, DeleteLatest) and one operation registry.
   No data GET/LIST, no destroy, no metadata delete, no sys/raw: pinned by a
   reflection test plus a source scan. Credential is a bare token or JSON
@@ -35,7 +35,8 @@ review, see "Open").
   `sys/health` is sent without the namespace header (root-only on OpenBao).
 - **Module**: value-blind Plan from metadata; Sync with the CAS + marker
   protocol (`managed_by_hikyo`, `hikyo_version`, `hikyo_pending_version`):
-  mark, write with `cas`, finalize; replay decides landed/not-landed from
+  mark (existing paths only; creates write with `cas = 0` first), write with
+  `cas`, finalize; replay decides landed/not-landed from
   metadata alone. Unowned paths refuse before any mutation; adopted (claimed,
   unmarked) paths are taken over with CAS on the observed version; a claimed
   desired path that moved is a conflict that keeps its claim; an undesired
@@ -60,7 +61,9 @@ review, see "Open").
 
 - Unit: fake in-memory KV v2 (`module_test.go`) covering create, update,
   unowned refusal, adoption, external movement, CAS race, both ambiguous-write
-  crash windows, create-metadata crash, definitive failure, prune + reclaim,
+  crash windows, ambiguous create (landed and not), unmarked-create replay,
+  create and update CAS races (no metadata clobber, pending marker
+  withdrawn), definitive failure, prune + reclaim,
   teardown ordering, remount, KV v1 refusal, value-blind Plan, sealed server,
   lookup-self refused by policy. Client tests over TLS with a SPKI pin
   (namespace/token headers, CAS body, merge-patch null, classification of

@@ -81,7 +81,6 @@ type API interface {
 	MountInfo(ctx context.Context, mount string) (Mount, error)
 	LookupSelf(context.Context) (TokenInfo, error)
 	ReadMetadata(ctx context.Context, mount, path string) (Metadata, error)
-	CreateMetadata(ctx context.Context, mount, path string, custom map[string]string) error
 	PatchCustomMetadata(ctx context.Context, mount, path string, custom map[string]*string) error
 	WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error)
 	DeleteLatest(ctx context.Context, mount, path string) error
@@ -108,7 +107,6 @@ var operationRegistry = map[string]operation{
 	"token-renew":      {Method: http.MethodPost, Path: "/v1/auth/token/renew-self", Authenticated: true},
 	"token-revoke":     {Method: http.MethodPost, Path: "/v1/auth/token/revoke-self", Authenticated: true},
 	"read-metadata":    {Method: http.MethodGet, Path: "/v1/{mount}/metadata/{path}", Authenticated: true},
-	"create-metadata":  {Method: http.MethodPost, Path: "/v1/{mount}/metadata/{path}", Authenticated: true},
 	"patch-metadata":   {Method: http.MethodPatch, Path: "/v1/{mount}/metadata/{path}", Authenticated: true},
 	"write-cas":        {Method: http.MethodPost, Path: "/v1/{mount}/data/{path}", Authenticated: true},
 	"soft-delete-data": {Method: http.MethodDelete, Path: "/v1/{mount}/data/{path}", Authenticated: true},
@@ -557,21 +555,28 @@ func (c *Client) ReadMetadata(ctx context.Context, mount, path string) (Metadata
 		return Metadata{}, err
 	}
 	meta := Metadata{CurrentVersion: out.Data.CurrentVersion, CustomMetadata: out.Data.CustomMetadata, Versions: map[int64]VersionMetadata{}}
+	now := c.now()
 	for raw, version := range out.Data.Versions {
 		number, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || number <= 0 {
 			return Metadata{}, errors.New("vault-kv: metadata names a malformed version")
 		}
-		meta.Versions[number] = VersionMetadata{Deleted: version.DeletionTime != "", Destroyed: version.Destroyed}
+		// A mount or path with delete_version_after stamps every write with a
+		// future deletion_time; that version stays readable until then.
+		deleted := false
+		if version.DeletionTime != "" {
+			at, err := time.Parse(time.RFC3339Nano, version.DeletionTime)
+			if err != nil {
+				return Metadata{}, errors.New("vault-kv: metadata names a malformed deletion time")
+			}
+			deleted = !at.After(now)
+		}
+		meta.Versions[number] = VersionMetadata{Deleted: deleted, Destroyed: version.Destroyed}
 	}
 	if meta.CustomMetadata == nil {
 		meta.CustomMetadata = map[string]string{}
 	}
 	return meta, nil
-}
-
-func (c *Client) CreateMetadata(ctx context.Context, mount, path string, custom map[string]string) error {
-	return c.do(ctx, "create-metadata", kvPath("metadata", mount, path), map[string]any{"custom_metadata": custom}, nil)
 }
 
 func (c *Client) PatchCustomMetadata(ctx context.Context, mount, path string, custom map[string]*string) error {

@@ -85,6 +85,17 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 			t.Errorf("%s: refusal names %q, want the target", tc.name, name)
 		}
 	}
+	// The scheme's default port is the same endpoint however it is spelled.
+	defaultPort := apigen.AdapterList{Items: []apigen.Adapter{{
+		Id: "adp_kv", Provider: "vault-kv", Origin: "https://vault.example/team-a", State: apigen.AdapterStateActive,
+		Targets: []apigen.AdapterTarget{{Id: "tgt_kv", State: apigen.AdapterTargetStateActive, DestinationOwner: "secret", DestinationName: "apps/pay"}},
+	}}}
+	for identity, loop := range map[string]bool{"https://vault.example:443": true, "https://Vault.Example": true, "https://vault.example:8443": false} {
+		result := importer.Result{Identity: identity, Namespace: "team-a", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps/pay"}}
+		if _, got := vaultImportLoop(result, defaultPort); got != loop {
+			t.Errorf("%s: loop = %v, want %v", identity, got, loop)
+		}
+	}
 	adapters.Items[0].Targets[0].State = apigen.AdapterTargetStateTombstoned
 	if _, loop := vaultImportLoop(source("team-a", "secret", "apps/pay"), adapters); loop {
 		t.Fatal("tombstoned target still refuses imports")

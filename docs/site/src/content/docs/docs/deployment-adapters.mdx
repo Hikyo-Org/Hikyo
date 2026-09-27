@@ -295,7 +295,7 @@ hikyo adapter create --provider vault-kv \
 
   ```hcl
   path "secret/data/apps/payments/*"     { capabilities = ["create", "update", "delete"] }
-  path "secret/metadata/apps/payments/*" { capabilities = ["create", "update", "patch", "read"] }
+  path "secret/metadata/apps/payments/*" { capabilities = ["patch", "read"] }
   path "sys/internal/ui/mounts/secret"   { capabilities = ["read"] }
   ```
 

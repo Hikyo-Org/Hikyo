@@ -138,7 +138,7 @@ func (h *kvHarness) fixture(mount string) string {
 	h.t.Cleanup(func() { h.do(http.MethodDelete, "/v1/sys/mounts/"+mount, nil) })
 	policy := fmt.Sprintf(`
 path "%[1]s/data/*"     { capabilities = ["create", "update", "delete"] }
-path "%[1]s/metadata/*" { capabilities = ["create", "update", "patch", "read"] }
+path "%[1]s/metadata/*" { capabilities = ["patch", "read"] }
 path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }
 `, mount)
 	policyName := "hikyo-" + mount

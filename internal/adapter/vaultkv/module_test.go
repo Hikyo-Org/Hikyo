@@ -24,11 +24,10 @@ type fakeKV struct {
 }
 
 type fakePath struct {
-	current  int64
-	custom   map[string]string
-	values   map[int64]string
-	deleted  map[int64]bool
-	metaOnly bool
+	current int64
+	custom  map[string]string
+	values  map[int64]string
+	deleted map[int64]bool
 }
 
 func newFakeKV() *fakeKV {
@@ -88,22 +87,6 @@ func (f *fakeKV) ReadMetadata(_ context.Context, _, path string) (Metadata, erro
 		meta.Versions[version] = VersionMetadata{Deleted: p.deleted[version]}
 	}
 	return meta, nil
-}
-
-func (f *fakeKV) CreateMetadata(_ context.Context, _, path string, custom map[string]string) error {
-	if err := f.record("create-metadata:" + path); err != nil {
-		return err
-	}
-	p := f.paths[path]
-	if p == nil {
-		p = &fakePath{values: map[int64]string{}, deleted: map[int64]bool{}}
-		f.paths[path] = p
-	}
-	p.custom = map[string]string{}
-	for k, v := range custom {
-		p.custom[k] = v
-	}
-	return f.applied("create-metadata:" + path)
 }
 
 func (f *fakeKV) PatchCustomMetadata(_ context.Context, _, path string, custom map[string]*string) error {
@@ -178,7 +161,7 @@ func (f *fakeKV) value(path string) (string, bool) {
 func (f *fakeKV) mutations() []string {
 	var out []string
 	for _, call := range f.calls {
-		if strings.HasPrefix(call, "write:") || strings.HasPrefix(call, "create-metadata:") || strings.HasPrefix(call, "patch-metadata:") || strings.HasPrefix(call, "soft-delete:") {
+		if strings.HasPrefix(call, "write:") || strings.HasPrefix(call, "patch-metadata:") || strings.HasPrefix(call, "soft-delete:") {
 			out = append(out, call)
 		}
 	}
@@ -283,9 +266,9 @@ func TestSyncCreatesWithCASAndMarksOwnershipSentinelFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"create-metadata:apps/pay/MANAGED_BY_HIKYO", "write:apps/pay/MANAGED_BY_HIKYO", "patch-metadata:apps/pay/MANAGED_BY_HIKYO",
-		"create-metadata:apps/pay/DATABASE_URL", "write:apps/pay/DATABASE_URL", "patch-metadata:apps/pay/DATABASE_URL",
-		"create-metadata:apps/pay/LOG_LEVEL", "write:apps/pay/LOG_LEVEL", "patch-metadata:apps/pay/LOG_LEVEL",
+		"write:apps/pay/MANAGED_BY_HIKYO", "patch-metadata:apps/pay/MANAGED_BY_HIKYO",
+		"write:apps/pay/DATABASE_URL", "patch-metadata:apps/pay/DATABASE_URL",
+		"write:apps/pay/LOG_LEVEL", "patch-metadata:apps/pay/LOG_LEVEL",
 	}
 	if got := kv.mutations(); !slices.Equal(got, want) {
 		t.Fatalf("mutations = %v, want %v", got, want)
@@ -432,16 +415,72 @@ func TestCASRaceDuringWriteIsConflict(t *testing.T) {
 	if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "racer" {
 		t.Fatalf("racing write overwritten with %q", got)
 	}
+	if pending := kv.paths["apps/pay/DATABASE_URL"].custom[PendingKey]; pending != "" {
+		t.Fatalf("lost check-and-set left pending marker %q", pending)
+	}
+	// The racer holds the version the withdrawn marker named; the next sync
+	// must still see external movement, never "our write landed".
+	for range 2 {
+		if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrConflict) {
+			t.Fatalf("replay after lost race = %v, want conflict", err)
+		}
+		if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "racer" {
+			t.Fatalf("replay overwrote the racing write with %q", got)
+		}
+	}
+}
+
+func TestLostCASWithdrawalFailureIsReported(t *testing.T) {
+	kv := newFakeKV()
+	journal := newFakeJournal()
+	target := testTarget(t, kv)
+	if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); err != nil {
+		t.Fatal(err)
+	}
+	withdraw := errors.New("withdraw refused")
+	racer := &racingKV{fakeKV: kv, path: "apps/pay/DATABASE_URL", afterRace: func() { kv.failOn["patch-metadata:apps/pay/DATABASE_URL"] = withdraw }}
+	_, err := (&Module{API: racer}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal)
+	if !errors.Is(err, adapter.ErrConflict) || !errors.Is(err, withdraw) {
+		t.Fatalf("Sync() = %v, want conflict carrying the failed withdrawal", err)
+	}
+}
+
+func TestCreateRaceLeavesConcurrentMetadataUntouched(t *testing.T) {
+	kv := newFakeKV()
+	journal := newFakeJournal()
+	journal.states["secret:MANAGED_BY_HIKYO"] = adapter.Owned
+	kv.paths["apps/pay/MANAGED_BY_HIKYO"] = &fakePath{current: 1, values: map[int64]string{1: adapter.SentinelName}, deleted: map[int64]bool{}, custom: map[string]string{MarkerKey: "tgt_1", VersionKey: "1"}}
+	// Another Hikyo target creates and marks the path after the absent read.
+	racer := &racingKV{fakeKV: kv, path: "apps/pay/DATABASE_URL", afterRace: func() {
+		kv.paths["apps/pay/DATABASE_URL"].custom = map[string]string{MarkerKey: "tgt_other", VersionKey: "1"}
+	}}
+	_, err := (&Module{API: racer}).Sync(t.Context(), adapter.SyncRequest{Target: testTarget(t, kv), Manifest: manifest[:1], Ledger: journal.ledger()}, journal)
+	if !errors.Is(err, adapter.ErrConflict) {
+		t.Fatalf("Sync() = %v, want CAS conflict", err)
+	}
+	p := kv.paths["apps/pay/DATABASE_URL"]
+	if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "racer" || p.custom[MarkerKey] != "tgt_other" || p.custom[VersionKey] != "1" || len(p.custom) != 2 {
+		t.Fatalf("concurrent creator's path = %q, %v; want untouched", got, p.custom)
+	}
+	for _, call := range kv.mutations() {
+		if call == "patch-metadata:apps/pay/DATABASE_URL" {
+			t.Fatalf("lost create touched metadata: %v", kv.mutations())
+		}
+	}
 }
 
 type racingKV struct {
 	*fakeKV
-	path string
+	path      string
+	afterRace func()
 }
 
 func (r *racingKV) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
 	if path == r.path {
 		r.externalWrite(path, "racer")
+		if r.afterRace != nil {
+			r.afterRace()
+		}
 	}
 	return r.fakeKV.WriteCAS(ctx, mount, path, value, cas)
 }
@@ -489,20 +528,57 @@ func TestAmbiguousWriteReplaysFromMetadataAlone(t *testing.T) {
 	}
 }
 
-func TestCrashBetweenCreateMetadataAndWriteReplays(t *testing.T) {
+func TestAmbiguousCreateReplays(t *testing.T) {
+	for _, landed := range []bool{true, false} {
+		t.Run(fmt.Sprintf("landed=%v", landed), func(t *testing.T) {
+			kv := newFakeKV()
+			journal := newFakeJournal()
+			target := testTarget(t, kv)
+			timeout := errors.New("timeout")
+			if landed {
+				kv.applyOn["write:apps/pay/DATABASE_URL"] = timeout
+			} else {
+				kv.failOn["write:apps/pay/DATABASE_URL"] = timeout
+			}
+			module := &Module{API: kv}
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+				t.Fatalf("Sync() = %v, want indeterminate", err)
+			}
+			if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+				t.Fatalf("ambiguous create state = %q, want dispatched", journal.states["secret:DATABASE_URL"])
+			}
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
+				t.Fatalf("replay = %v", err)
+			}
+			p := kv.paths["apps/pay/DATABASE_URL"]
+			if got, ok := kv.value("apps/pay/DATABASE_URL"); !ok || got != "postgres://one" || p.custom[MarkerKey] != "tgt_1" || p.custom[VersionKey] != fmt.Sprint(p.current) || p.custom[PendingKey] != "" {
+				t.Fatalf("replayed create = %q, %v, %+v", got, ok, p)
+			}
+			if journal.states["secret:DATABASE_URL"] != adapter.Owned || len(journal.conflicts) != 0 {
+				t.Fatalf("replay state=%q conflicts=%v", journal.states["secret:DATABASE_URL"], journal.conflicts)
+			}
+		})
+	}
+}
+
+func TestFailedMarkAfterCreateReplays(t *testing.T) {
 	kv := newFakeKV()
 	journal := newFakeJournal()
 	target := testTarget(t, kv)
-	kv.failOn["write:apps/pay/DATABASE_URL"] = errors.New("timeout")
+	kv.failOn["patch-metadata:apps/pay/DATABASE_URL"] = errors.New("timeout")
 	module := &Module{API: kv}
-	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
-		t.Fatalf("Sync() = %v, want indeterminate", err)
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); err != nil {
+		t.Fatalf("Sync() = %v", err)
+	}
+	if custom := kv.paths["apps/pay/DATABASE_URL"].custom; custom[MarkerKey] != "" {
+		t.Fatalf("custom metadata = %v, want the unmarked create", custom)
 	}
 	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
 		t.Fatalf("replay = %v", err)
 	}
-	if got, ok := kv.value("apps/pay/DATABASE_URL"); !ok || got != "postgres://one" {
-		t.Fatalf("replayed create = %q, %v", got, ok)
+	p := kv.paths["apps/pay/DATABASE_URL"]
+	if p.current != 2 || p.custom[MarkerKey] != "tgt_1" || p.custom[VersionKey] != "2" || p.custom[PendingKey] != "" {
+		t.Fatalf("replayed path = %+v", p)
 	}
 }
 
@@ -511,7 +587,7 @@ func TestDefinitiveCreateFailureReleasesReservation(t *testing.T) {
 	journal := newFakeJournal()
 	journal.states["secret:MANAGED_BY_HIKYO"] = adapter.Owned
 	kv.paths["apps/pay/MANAGED_BY_HIKYO"] = &fakePath{current: 1, values: map[int64]string{1: adapter.SentinelName}, deleted: map[int64]bool{}, custom: map[string]string{MarkerKey: "tgt_1", VersionKey: "1"}}
-	kv.failOn["create-metadata:apps/pay/DATABASE_URL"] = &ResponseError{Status: 400}
+	kv.failOn["write:apps/pay/DATABASE_URL"] = &ResponseError{Status: 400}
 	_, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: testTarget(t, kv), Manifest: manifest[:1], Ledger: journal.ledger()}, journal)
 	if err == nil || errors.Is(err, adapter.ErrIndeterminate) {
 		t.Fatalf("Sync() = %v, want definitive failure", err)

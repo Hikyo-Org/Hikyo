@@ -28,7 +28,7 @@ The client is hand-rolled `net/http` behind a closed `API` interface whose metho
 | MountInfo | `GET sys/internal/ui/mounts/{mount}` | type, KV version, uuid, accessor |
 | LookupSelf | `GET auth/token/lookup-self` | token expiry only (decoded) |
 | ReadMetadata | `GET {mount}/metadata/{path}` | versions and custom metadata, **never data** |
-| CreateMetadata / PatchCustomMetadata | `POST` / `PATCH {mount}/metadata/{path}` | nothing |
+| PatchCustomMetadata | `PATCH {mount}/metadata/{path}` (merge; keys set to null are removed) | nothing |
 | WriteCAS | `POST {mount}/data/{path}` with `options.cas` | the new version |
 | DeleteLatest | `DELETE {mount}/data/{path}` | nothing (soft delete) |
 
@@ -39,11 +39,11 @@ Excluded, and refused by the tests: any `GET` or `LIST` of `{mount}/data/…`, `
 Ownership is the ledger (deployment-adapter ADR). The destination additionally carries three custom-metadata keys per managed path: `managed_by_hikyo = <target id>`, `hikyo_version` (the version Hikyo last wrote), and `hikyo_pending_version` (the version an in-flight write will produce). A write is:
 
 1. **Inspect** (value-blind): read metadata. An absent path is creatable. A path marked by this target whose `current_version` equals `hikyo_version` is clean. A path marked by another target, or marked by this target with a `current_version` Hikyo did not produce, is **external movement**.
-2. **Mark**: create metadata for an absent path, or patch the marker and `hikyo_pending_version = current + 1`.
-3. **Write with check-and-set** on the observed version (`cas = 0` for create). Anything that moved since step 1 fails the CAS and becomes a conflict, never a blind overwrite.
-4. **Finalize**: record `hikyo_version` and clear the pending marker.
+2. **Mark** an existing path: patch the marker and `hikyo_pending_version = current + 1`. An absent path is not marked yet: metadata is only ever merge-patched, never created or replaced, so a writer who creates the path concurrently keeps its custom metadata.
+3. **Write with check-and-set** on the observed version (`cas = 0` for create). Anything that moved since step 1 fails the CAS and becomes a conflict, never a blind overwrite. A lost CAS on an existing path withdraws the pending marker, because the winning external write now holds the version it names; a failed withdrawal is reported with the conflict.
+4. **Finalize**: patch the marker, record `hikyo_version`, and clear the pending marker. For a create this pins version 1, so an external write landing between the create and the finalize reads as movement on the next sync.
 
-A crash or ambiguous response anywhere replays from metadata alone: `current == pending` means the write landed (finalize, then continue), `current == pending - 1` means it did not (write again), anything else is external movement. The OUTCOME for an ambiguous write is `unknown` and the ledger row stays `dispatched` until the replay proves it either way.
+A crash or ambiguous response anywhere replays from metadata alone: `current == pending` means the write landed (finalize, then continue), `current == pending - 1` means it did not (write again), anything else is external movement. A create that landed before its finalize leaves an unmarked path; the ledger row is already `dispatched` (or `owned`), and a claimed unmarked path is writable, so the replay marks it and writes on the observed version. The OUTCOME for an ambiguous write is `unknown` and the ledger row stays `dispatched` until the replay proves it either way.
 
 Unclaimed paths are writable only when absent, or when this target's own marker shows its earlier delivery was soft-deleted (re-adding a pruned key). Every other existing path is `exists, unowned` and refuses **before any mutation**. Explicit adoption (bound to the plan artifact, generation, and destination, as the seam fixes it) confirms named paths without reading their values; the next write takes the path over with CAS on the observed version. A claimed path that is still desired and moved externally records a conflict for operator attention and keeps its claim; nothing is written.
 

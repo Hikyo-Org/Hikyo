@@ -180,7 +180,7 @@ func runVaultKVEndToEnd(t *testing.T, db *store.DB) {
 	server.must(t, http.MethodPost, "/v1/sys/mounts/"+mount, map[string]any{"type": "kv", "options": map[string]string{"version": "2"}})
 	t.Cleanup(func() { server.do(t, http.MethodDelete, "/v1/sys/mounts/"+mount, nil) })
 	policy := fmt.Sprintf(`path "%[1]s/data/*" { capabilities = ["create", "update", "delete"] }
-path "%[1]s/metadata/*" { capabilities = ["create", "update", "patch", "read"] }
+path "%[1]s/metadata/*" { capabilities = ["patch", "read"] }
 path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	server.must(t, http.MethodPut, "/v1/sys/policies/acl/"+mount, map[string]string{"policy": policy})
 	t.Cleanup(func() { server.do(t, http.MethodDelete, "/v1/sys/policies/acl/"+mount, nil) })
