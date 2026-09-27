@@ -298,10 +298,15 @@ export const zCertificateIssueResult = z.object({
  */
 export const zTimestamp = z.iso.datetime();
 
+/**
+ * repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+ */
 export const zAdapterDestinationKind = z.enum([
     'repository',
     'organization',
-    'environment'
+    'environment',
+    'workers-script',
+    'pages-project'
 ]);
 
 export const zAdapterVisibility = z.enum([

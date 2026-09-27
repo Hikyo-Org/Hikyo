@@ -375,12 +375,20 @@ revisions:                                         --env selects the environment
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance for instance
 
 adapters:
-  hikyo adapter create --provider forgejo|github-actions --origin <https-origin> --env E --kind repository|organization|environment
+  hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
+      (vault-kv: --origin https://vault:8200[/<namespace>] --mount <kv-v2-mount> --path <prefix>)
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH] [--create-environment]
+  hikyo adapter create --provider cloudflare --env E --kind workers-script --account <id> --script <name>
+  hikyo adapter create --provider cloudflare --env E --kind pages-project --account <id> --pages-project <name>
+      --destination-environment preview|production
+      (both forms: every write is secret_text; one scoped API token)
+      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
+      [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
+      [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
   hikyo adapter update <adapter> --origin <https-origin>

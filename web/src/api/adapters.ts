@@ -50,6 +50,24 @@ export type AdapterTargetDetail = z.infer<typeof zAdapterTargetDetail>;
 // Request shapes come from the generated client, not the response zod: the
 // two disagree on int64 (bigint in a parsed response, number on the wire).
 export type { AdapterTargetInput };
+
+/** providerLabel names a provider for display; unknown values pass through. */
+export function providerLabel(provider: string): string {
+  switch (provider) {
+    case 'forgejo':
+      return 'Forgejo';
+    case 'github-actions':
+      return 'GitHub Actions';
+    case 'sealed-webhook':
+      return 'Sealed webhook';
+    case 'vault-kv':
+      return 'Vault / OpenBao KV';
+    case 'cloudflare':
+      return 'Cloudflare Workers & Pages';
+    default:
+      return provider;
+  }
+}
 export type AdapterConflictArtifact = z.infer<typeof zAdapterConflictArtifact>;
 export type AdapterMove = z.infer<typeof zAdapterMove>;
 export type AdapterPlan = z.infer<typeof zAdapterPlan>;
@@ -184,8 +202,11 @@ function useInvalidateAdapters(ref: ProjectRef) {
   };
 }
 
+/** The providers this build can create; responses may name others. */
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv';
+
 export type CreateAdapterInput = {
-  readonly provider: 'forgejo' | 'github-actions' | 'sealed-webhook';
+  readonly provider: AdapterProviderKind;
   readonly origin: string;
   /** Write-only. Held in component state only for the request. */
   readonly credential: string;

@@ -38,6 +38,12 @@ const (
 	Repository   DestinationKind = "repository"
 	Organization DestinationKind = "organization"
 	Environment  DestinationKind = "environment"
+	// WorkersScript is one Cloudflare Workers script: Owner is the account id,
+	// Name the script name.
+	WorkersScript DestinationKind = "workers-script"
+	// PagesProject is one Cloudflare Pages project environment: Owner is the
+	// account id, Name the project, Environment preview or production.
+	PagesProject DestinationKind = "pages-project"
 )
 
 type LedgerState string
@@ -345,6 +351,44 @@ func ValidateSealedWebhookManifest(prefix string, entries []ManifestEntry, value
 	return nil
 }
 
+// CloudflareValueLimit is the documented per-variable size limit shared by
+// Workers secrets and Pages environment variables.
+const CloudflareValueLimit = 5 * 1024
+
+var cloudflareName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ValidateCloudflareManifest applies the Workers binding-name rule shared by
+// Workers secrets and Pages variables. Every entry, including config, is
+// delivered as secret_text, so classification never selects a plaintext type.
+func ValidateCloudflareManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("cloudflare: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case strings.EqualFold(name, prefix+SentinelName):
+			return fmt.Errorf("cloudflare: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 64:
+			return fmt.Errorf("cloudflare: %s: effective name exceeds the 64-byte binding-name limit", entry.CanonicalName)
+		case !cloudflareName.MatchString(name):
+			return fmt.Errorf("cloudflare: %s: effective name %q is not a Cloudflare binding identifier", entry.CanonicalName, name)
+		case values && len(entry.Value) > CloudflareValueLimit:
+			return fmt.Errorf("cloudflare: %s: value exceeds Cloudflare's %d-byte variable limit", entry.CanonicalName, CloudflareValueLimit)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("cloudflare: %s: non-UTF-8 values cannot be represented byte-exactly by Cloudflare's JSON API", entry.CanonicalName)
+		}
+		// The ledger normalizes names to upper case, so names that differ only
+		// by case would share one ownership row.
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("cloudflare: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
 func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, values bool) error {
 	kind, err := ParseProvider(provider)
 	if err != nil {
@@ -357,6 +401,10 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 		return ValidateManifest(prefix, entries)
 	case SealedWebhookProvider:
 		return ValidateSealedWebhookManifest(prefix, entries, values)
+	case VaultKVProvider:
+		return ValidateVaultKVManifest(prefix, entries, values)
+	case CloudflareProvider:
+		return ValidateCloudflareManifest(prefix, entries, values)
 	default:
 		return fmt.Errorf("adapter: unknown provider %q", provider)
 	}
@@ -372,7 +420,64 @@ func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (stri
 		// A receiver consumes names directly; there is no CI workflow to wire.
 		return "", nil
 	}
+	if provider == string(CloudflareProvider) {
+		return renderCloudflareBindings(prefix, entries), nil
+	}
 	return renderWorkflow(prefix, entries), nil
+}
+
+// VaultKVValueLimit keeps one KV v2 write inside the default 1 MiB integrated
+// storage entry after JSON escaping and version metadata.
+const VaultKVValueLimit = 512 << 10
+
+var vaultKVName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// ValidateVaultKVManifest applies the Vault/OpenBao KV v2 path contract. Every
+// effective name becomes exactly one path segment under the target's path
+// prefix, holding a single "value" field. Secret and config classifications
+// share that one tree, so names must be unique across both surfaces.
+func ValidateVaultKVManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("vault-kv: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case strings.EqualFold(name, prefix+SentinelName):
+			return fmt.Errorf("vault-kv: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 255:
+			return fmt.Errorf("vault-kv: %s: effective name exceeds the 255-byte path segment limit", entry.CanonicalName)
+		case !vaultKVName.MatchString(name) || name == "." || name == "..":
+			return fmt.Errorf("vault-kv: %s: effective name %q is not a single safe KV path segment", entry.CanonicalName, name)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("vault-kv: %s: non-UTF-8 values cannot be represented byte-exactly by the KV v2 JSON API", entry.CanonicalName)
+		case values && len(entry.Value) > VaultKVValueLimit:
+			return fmt.Errorf("vault-kv: %s: value exceeds the %d-byte KV v2 delivery limit", entry.CanonicalName, VaultKVValueLimit)
+		}
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("vault-kv: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
+// VaultKVMapping renders names only: the KV v2 path each canonical name is
+// delivered to, for Vault Agent, External Secrets, or application wiring.
+func VaultKVMapping(mount, pathPrefix, prefix string, entries []ManifestEntry) (string, error) {
+	if err := ValidateVaultKVManifest(prefix, entries, false); err != nil {
+		return "", err
+	}
+	rows := slices.Clone(entries)
+	slices.SortFunc(rows, func(a, b ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+	var out strings.Builder
+	out.WriteString("# Vault/OpenBao KV v2: one secret per key, field \"value\".\n")
+	out.WriteString("env:\n")
+	for _, entry := range rows {
+		_, _ = fmt.Fprintf(&out, "  %s: %s/%s/%s%s#value\n", entry.CanonicalName, mount, pathPrefix, prefix, entry.CanonicalName)
+	}
+	return out.String(), nil
 }
 
 // RecipientSetNeedsCeremony classifies the exact locked narrowing cases.
@@ -393,6 +498,19 @@ func RecipientSetNeedsCeremony(oldVisibility string, oldIDs []int64, newVisibili
 		return false
 	}
 	return !(oldVisibility == "all" && (newVisibility == "private" || newVisibility == "selected"))
+}
+
+// renderCloudflareBindings shows where each key lands in the Worker or Pages
+// Function environment. Every binding is secret_text regardless of class.
+func renderCloudflareBindings(prefix string, entries []ManifestEntry) string {
+	rows := slices.Clone(entries)
+	slices.SortFunc(rows, func(a, b ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+	var out strings.Builder
+	out.WriteString("# Cloudflare secret_text bindings, read as env.<binding>\n")
+	for _, entry := range rows {
+		_, _ = fmt.Fprintf(&out, "%s: env.%s%s\n", entry.CanonicalName, prefix, entry.CanonicalName)
+	}
+	return out.String()
 }
 
 func renderWorkflow(prefix string, entries []ManifestEntry) string {

@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}
@@ -176,5 +176,54 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 		if _, err := ParseProvider(raw); err == nil {
 			t.Fatalf("ParseProvider(%q) accepted unknown provider", raw)
 		}
+	}
+}
+
+func TestVaultKVManifestIsOnePathSegmentPerNameAcrossSurfaces(t *testing.T) {
+	ok := []ManifestEntry{
+		{CanonicalName: "DATABASE_URL", Classification: SecretClassification, Value: "postgres://x"},
+		{CanonicalName: "log.level", Classification: ConfigClassification, Value: ""},
+		{CanonicalName: "GITHUB_TOKEN", Classification: SecretClassification, Value: "v"},
+	}
+	if err := ValidateVaultKVManifest("APP_", ok, true); err != nil {
+		t.Fatalf("valid manifest refused: %v", err)
+	}
+	cases := map[string][]ManifestEntry{
+		"reserved for the management sentinel": {{CanonicalName: "managed_by_hikyo", Classification: SecretClassification}},
+		"single safe KV path segment":          {{CanonicalName: "a/b", Classification: SecretClassification}},
+		"collides case-insensitively": {
+			{CanonicalName: "TOKEN", Classification: SecretClassification},
+			{CanonicalName: "token", Classification: ConfigClassification},
+		},
+		"non-UTF-8":            {{CanonicalName: "BIN", Classification: SecretClassification, Value: "\xff"}},
+		"KV v2 delivery limit": {{CanonicalName: "BIG", Classification: SecretClassification, Value: strings.Repeat("x", VaultKVValueLimit+1)}},
+	}
+	for want, entries := range cases {
+		err := ValidateVaultKVManifest("", entries, true)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ValidateVaultKVManifest(%v) = %v, want %q", entries[0].CanonicalName, err, want)
+		}
+	}
+	// Names-only validation ignores values so Plan and configuration never
+	// need plaintext.
+	if err := ValidateVaultKVManifest("", []ManifestEntry{{CanonicalName: "BIN", Classification: SecretClassification, Value: "\xff"}}, false); err != nil {
+		t.Fatalf("names-only validation inspected a value: %v", err)
+	}
+	if err := ValidateProviderManifest(string(VaultKVProvider), "", ok, true); err != nil {
+		t.Fatalf("provider dispatch refused vault-kv manifest: %v", err)
+	}
+}
+
+func TestVaultKVMappingNamesPathsOnly(t *testing.T) {
+	got, err := VaultKVMapping("secret", "apps/pay", "P_", []ManifestEntry{
+		{CanonicalName: "B", Classification: ConfigClassification, Value: "plaintext-b"},
+		{CanonicalName: "A", Classification: SecretClassification, Value: "plaintext-a"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# Vault/OpenBao KV v2: one secret per key, field \"value\".\nenv:\n  A: secret/apps/pay/P_A#value\n  B: secret/apps/pay/P_B#value\n"
+	if got != want || strings.Contains(got, "plaintext") {
+		t.Fatalf("VaultKVMapping() = %q, want %q", got, want)
 	}
 }
