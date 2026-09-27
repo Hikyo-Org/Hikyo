@@ -37,12 +37,17 @@ its CI verdict with local test results.
   Certificate lists and profile selection expose loading and failure states.
 - Transit serializes admission and trimming, fences purges, retains accurate
   deletion counts and rejects overflowing or negative delays before conversion.
+  Unconfigured services fail safely; AAD flags are limited to supported verbs.
 - Temporary access preserves the permanent-grant bound, locks policy/quorum
   decisions, bounds repeated queue reads and confirms policy deletion. CLI
   updates preserve omitted settings; queue responses expose effective approval
   eligibility, including permitted self-approval. Historical recovery dispatch
-  uses the pre-access resolver for schemas below 66.
-- AWS descriptors reject trailing JSON. Node identity remains opt-in. Resuming
+  uses the pre-access resolver for schemas below 66. Operational metrics use
+  read transactions; missing policy IDs return the CLI not-found status.
+- AWS descriptors reject trailing JSON. Workload identity rejects unrecognized
+  AWS endpoints before credential discovery. Uncertain adoption tagging retains
+  prior ownership state and supports replay when the tag already landed.
+  Node identity remains opt-in. Resuming
   an AWS origin move waits for its provider to load and uses the AWS descriptor
   form. Live Vault imports apply the
   loop guard in both flag and wizard flows. Malformed source or active Vault
@@ -50,7 +55,10 @@ its CI verdict with local test results.
   mappings cannot fall through to another provider's workflow syntax.
 - GitLab updates preserve omitted boolean flags and scope, require ceremonies
   when weakening hidden protection, reject alias collisions, and retain explicit
-  input presence in generated clients. AWS and GitLab clamp retry seconds before
+  input presence in generated clients. Pending move claims distinguish GitLab
+  environment scopes, preserve scope on resume and expose it in API responses.
+  Origin moves close PostgreSQL result cursors before writing pending keys.
+  AWS and GitLab clamp retry seconds before
   duration conversion. CLI help and bootstrap validation cover GitLab options.
 - File sync uses atomic no-replace installation and validates destination stamps
   instead of trusting a replaceable cursor. Scanner refuses unsupported Git
