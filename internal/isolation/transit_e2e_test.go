@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -74,6 +75,7 @@ func TestTransitEndToEnd(t *testing.T) {
 		t.Run("external_unavailable_fails_closed", func(t *testing.T) { runTransitExternalDown(t, svc, ext) })
 		t.Run("concurrent_rotation", func(t *testing.T) { runTransitConcurrentRotation(t, svc) })
 		t.Run("scheduler", func(t *testing.T) { runTransitScheduler(t, db, svc, ext) })
+		t.Run("scheduler_pages_past_batch", func(t *testing.T) { runTransitSchedulerPaging(t, db, svc) })
 		t.Run("dek_rotation_and_reencrypt", func(t *testing.T) { runTransitReencrypt(t, db, svc) })
 		t.Run("audit_never_carries_material", func(t *testing.T) { assertTransitAuditClean(t, db) })
 	})
@@ -553,6 +555,36 @@ func runTransitScheduler(t *testing.T, db *store.DB, svc *service.Transit, ext *
 		// The name is free again; the tombstone keeps the old id.
 		mustTransitKey(t, svc, service.CreateTransitKeyRequest{Name: k.Name, Algorithm: "ed25519"})
 		svc.Now = func() time.Time { return start.Add(3 * time.Hour) }
+	}
+}
+
+// runTransitSchedulerPaging pins that the rotation sweep reads past a full page
+// of candidates that are not due: more than one sweep batch (100) of rotating
+// keys sit before a due key in id order, and the due key still rotates.
+func runTransitSchedulerPaging(t *testing.T, db *store.DB, svc *service.Transit) {
+	ctx := tctx(t)
+	me := service.LocalPrincipal(alice)
+	start := time.Now().UTC()
+	defer func() { svc.Now = nil }()
+	svc.Now = func() time.Time { return start.Add(2 * time.Hour) }
+	for i := range 101 {
+		mustTransitKey(t, svc, service.CreateTransitKeyRequest{Name: fmt.Sprintf("paging-fresh-%03d", i), Algorithm: "ed25519", RotationPeriodSeconds: 3600})
+	}
+	// Created last (highest UUIDv7 id) but stamped earliest: the only due key.
+	svc.Now = func() time.Time { return start }
+	due := mustTransitKey(t, svc, service.CreateTransitKeyRequest{Name: "paging-due", Algorithm: "ed25519", RotationPeriodSeconds: 3600})
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM transit_keys WHERE state='active' AND rotation_period_seconds>0 AND id<'`+due.ID+`'`); got <= 100 {
+		t.Fatalf("only %d rotating keys precede the due key; the test needs more than one batch", got)
+	}
+	svc.Now = func() time.Time { return start.Add(90 * time.Minute) }
+	if n, err := svc.RotateDue(ctx); err != nil || n < 1 {
+		t.Fatalf("scheduled rotation = %d, %v", n, err)
+	}
+	if got, err := svc.GetKey(ctx, me, transitScope, due.Name); err != nil || got.LatestVersion != 2 {
+		t.Fatalf("due key past the first page was not rotated: v%d, %v", got.LatestVersion, err)
+	}
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM transit_keys WHERE name LIKE 'paging-fresh-%' AND latest_version<>1`); got != 0 {
+		t.Fatalf("%d keys rotated before their period elapsed", got)
 	}
 }
 

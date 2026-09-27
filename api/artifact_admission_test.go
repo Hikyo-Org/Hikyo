@@ -117,12 +117,14 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		"showSshProfile":       "non-value-bearing profile metadata",
 		// Transit (#156): the data plane computes over caller-supplied inputs
 		// and the key the caller may use; it never returns a stored Hikyo value.
-		// Decrypt returns only what the caller once encrypted, and a plaintext
-		// data key is freshly generated and display-once.
+		// Decrypt authorizes by key, not by who encrypted: it returns plaintext
+		// that any crypto-use holder on the same key encrypted (per-key caller
+		// entries narrow this), and a plaintext data key is freshly generated
+		// and display-once.
 		"listTransitKeys":   "non-value-bearing key metadata",
 		"showTransitKey":    "non-value-bearing key metadata",
 		"transitEncrypt":    "caller-supplied input, crypto-use required",
-		"transitDecrypt":    "caller-held ciphertext only, crypto-use required",
+		"transitDecrypt":    "plaintext sealed under this key by any permitted caller, crypto-use required",
 		"transitRewrap":     "no plaintext returned, crypto-use required",
 		"transitDataKey":    "fresh display-once data key, crypto-use required",
 		"transitSign":       "caller-supplied input, crypto-use required",

@@ -12285,8 +12285,10 @@ paths:
       tags: [transit]
       summary: Generate a data key, wrapped under the key and optionally in plaintext.
       description: |
-        The plaintext data key is returned only when requested and only when the
-        key allows datakey-plaintext. It is display-once.
+        The plaintext data key is returned only when requested. With plaintext
+        true the key's policy must allow datakey-plaintext (datakey alone is not
+        consulted); a refusal by the key's allowed operations or caller entries
+        returns 403. The plaintext data key is display-once.
       x-hikyo-class: tenant
       x-hikyo-operation: transit.use
       x-hikyo-formula: [crypto-use@environment]

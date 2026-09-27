@@ -152,9 +152,10 @@ type TransitRepo interface {
 	ListVersionsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error)
 	ReencryptVersion(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
 	// SelectDeletionDue and SelectRotationDue are the scheduler's
-	// installation-wide reads (system authority).
-	SelectDeletionDue(ctx context.Context, p authz.Proof, now time.Time, limit int) ([]TransitDueKey, error)
-	SelectRotationDue(ctx context.Context, p authz.Proof, limit int) ([]TransitDueKey, error)
+	// installation-wide reads (system authority), keyset-paged by key id: after
+	// is the last id of the previous page ("" for the first).
+	SelectDeletionDue(ctx context.Context, p authz.Proof, now time.Time, after string, limit int) ([]TransitDueKey, error)
+	SelectRotationDue(ctx context.Context, p authz.Proof, after string, limit int) ([]TransitDueKey, error)
 	// DestroyVersions lists the material the purge must destroy at an external
 	// provider, then Destroy erases every version's material and tombstones the
 	// key, guarded by pending-deletion and the elapsed delay.
@@ -598,25 +599,25 @@ func (s prefixScanner) Scan(dest ...any) error {
 	return s.rows.Scan(append(slices.Clone(s.prefix), dest...)...)
 }
 
-func (r transitQueries) SelectDeletionDue(ctx context.Context, p authz.Proof, now time.Time, limit int) ([]TransitDueKey, error) {
+func (r transitQueries) SelectDeletionDue(ctx context.Context, p authz.Proof, now time.Time, after string, limit int) ([]TransitDueKey, error) {
 	if _, err := authz.Verify(p, authz.StoreTransitSelectDeletionDue, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT `+transitDueColumns+` FROM transit_keys k WHERE k.state='pending-deletion' AND k.deletion_after<=? ORDER BY k.deletion_after,k.id LIMIT ?`), r.db.Stamp(now), limit)
+	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT `+transitDueColumns+` FROM transit_keys k WHERE k.state='pending-deletion' AND k.deletion_after<=? AND k.id>? ORDER BY k.id LIMIT ?`), r.db.Stamp(now), after, limit)
 	if err != nil {
 		return nil, err
 	}
 	return r.scanDue(rows, false)
 }
 
-func (r transitQueries) SelectRotationDue(ctx context.Context, p authz.Proof, limit int) ([]TransitDueKey, error) {
+func (r transitQueries) SelectRotationDue(ctx context.Context, p authz.Proof, after string, limit int) ([]TransitDueKey, error) {
 	if _, err := authz.Verify(p, authz.StoreTransitSelectRotationDue, r.tok); err != nil {
 		return nil, err
 	}
 	// Candidates only: whether the period has elapsed is decided by the caller
 	// against the latest version's creation time, because interval arithmetic
 	// differs between the engines.
-	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT `+transitDueColumns+`,v.created_at FROM transit_keys k JOIN transit_key_versions v ON v.key_id=k.id AND v.org_id=k.org_id AND v.version=k.latest_version WHERE k.state='active' AND k.rotation_period_seconds>0 ORDER BY k.id LIMIT ?`), limit)
+	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT `+transitDueColumns+`,v.created_at FROM transit_keys k JOIN transit_key_versions v ON v.key_id=k.id AND v.org_id=k.org_id AND v.version=k.latest_version WHERE k.state='active' AND k.rotation_period_seconds>0 AND k.id>? ORDER BY k.id LIMIT ?`), after, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -526,36 +526,60 @@ func (s *Transit) VerifyHMAC(ctx context.Context, actor Actor, scope domain.Scop
 // under its current version, which is the documented fail-closed direction
 // (no version is invented, no custody substituted).
 func (s *Transit) RotateDue(ctx context.Context) (rotated int, err error) {
-	var due []store.TransitDueKey
 	now := s.now()
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		p, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
-		if err != nil {
-			return err
-		}
-		due, err = r.Transit().SelectRotationDue(ctx, p, transitSweepBatch)
-		return err
-	})
-	if err != nil {
-		return 0, err
-	}
-	var errs []error
-	for _, d := range due {
+	return s.sweepDue(ctx, func(ctx context.Context, r store.Repos, p authz.Proof, after string) ([]store.TransitDueKey, error) {
+		return r.Transit().SelectRotationDue(ctx, p, after, transitSweepBatch)
+	}, func(d store.TransitDueKey) (bool, error) {
 		if !transitRotationDue(d.TransitKeyRecord, d.LatestCreatedAt, now) {
-			continue
+			return false, nil
 		}
 		scope := domain.Scope{Org: domain.OrgID(d.OrgID), Project: domain.ProjectID(d.ProjectID), Env: domain.EnvID(d.EnvironmentID)}
 		_, err := s.appendVersion(ctx, scope, d.TransitKeyRecord, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, _ time.Time) (authz.Proof, domain.PrincipalID, error) {
 			p, err := az.ScopedSystemAuthority(ctx, authz.SiteScheduler, scope)
 			return p, "", err
 		}, "schedule")
+		return err == nil, err
+	})
+}
+
+// sweepDue walks every page of a scheduler read, keyset-paged by key id, so a
+// page of keys that are not due or keep failing never hides the keys after it.
+// act reports whether it changed the key; its errors are collected per key and
+// the sweep continues.
+func (s *Transit) sweepDue(ctx context.Context, read func(context.Context, store.Repos, authz.Proof, string) ([]store.TransitDueKey, error), act func(store.TransitDueKey) (bool, error)) (int, error) {
+	var (
+		done  int
+		errs  []error
+		after string
+	)
+	for {
+		var page []store.TransitDueKey
+		err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			p, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
+			if err != nil {
+				return err
+			}
+			page, err = read(ctx, r, p, after)
+			return err
+		})
 		if err != nil {
-			errs = append(errs, fmt.Errorf("transit key %s: %w", d.ID, err))
-			continue
+			return done, errors.Join(append(errs, err)...)
 		}
-		rotated++
+		for _, d := range page {
+			changed, err := act(d)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("transit key %s: %w", d.ID, err))
+				continue
+			}
+			if changed {
+				done++
+			}
+		}
+		if len(page) < transitSweepBatch {
+			return done, errors.Join(errs...)
+		}
+		after = page[len(page)-1].ID
 	}
-	return rotated, errors.Join(errs...)
 }
 
 // PurgeDue destroys every key whose deletion delay has elapsed (ADR D6):
@@ -565,28 +589,13 @@ func (s *Transit) RotateDue(ctx context.Context) (rotated int, err error) {
 // the next run.
 func (s *Transit) PurgeDue(ctx context.Context) (destroyed int, err error) {
 	now := store.CanonTime(s.now())
-	var due []store.TransitDueKey
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		p, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
-		if err != nil {
-			return err
-		}
-		due, err = r.Transit().SelectDeletionDue(ctx, p, now, transitSweepBatch)
-		return err
-	})
-	if err != nil {
-		return 0, err
-	}
-	var errs []error
-	for _, d := range due {
+	return s.sweepDue(ctx, func(ctx context.Context, r store.Repos, p authz.Proof, after string) ([]store.TransitDueKey, error) {
+		return r.Transit().SelectDeletionDue(ctx, p, now, after, transitSweepBatch)
+	}, func(d store.TransitDueKey) (bool, error) {
 		scope := domain.Scope{Org: domain.OrgID(d.OrgID), Project: domain.ProjectID(d.ProjectID), Env: domain.EnvID(d.EnvironmentID)}
-		if err := s.purgeOne(ctx, scope, d.TransitKeyRecord, now); err != nil {
-			errs = append(errs, fmt.Errorf("transit key %s: %w", d.ID, err))
-			continue
-		}
-		destroyed++
-	}
-	return destroyed, errors.Join(errs...)
+		err := s.purgeOne(ctx, scope, d.TransitKeyRecord, now)
+		return err == nil, err
+	})
 }
 
 func (s *Transit) purgeOne(ctx context.Context, scope domain.Scope, k store.TransitKeyRecord, now time.Time) error {

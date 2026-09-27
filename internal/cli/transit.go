@@ -190,13 +190,12 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	name := flags.positional()
-	if sub != "list" && name == "" {
-		return failf(ExitUsage, "transit key %s requires a key name", sub)
-	}
 	if sub == "list" {
 		if err := flags.checkNoPositionals("transit key list"); err != nil {
 			return err
 		}
+	} else if len(flags.positionals) != 1 || name == "" {
+		return failf(ExitUsage, "usage: hikyo transit key %s takes exactly one key name, got %d", sub, len(flags.positionals))
 	}
 	client, base, err := transitBase(ios, st, flags)
 	if err != nil {
@@ -353,8 +352,8 @@ func runTransitData(ctx context.Context, ios IO, sub string, args []string) (ret
 		return err
 	}
 	name := flags.positional()
-	if name == "" {
-		return failf(ExitUsage, "transit %s requires a key name", sub)
+	if len(flags.positionals) != 1 || name == "" {
+		return failf(ExitUsage, "usage: hikyo transit %s takes exactly one key name, got %d", sub, len(flags.positionals))
 	}
 	var sink *disclose.PreparedSink
 	if sub == "decrypt" || (sub == "datakey" && reveal) {
