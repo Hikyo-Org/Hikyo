@@ -154,6 +154,7 @@ type AccessVoteView struct {
 
 // AccessRequestView is a request as the review surface reads it.
 type AccessRequestView struct {
+	CanApprove       bool
 	RequesterName    string
 	ID               string
 	EnvironmentID    string
@@ -421,6 +422,19 @@ func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (Ac
 			view, err := views.view(ctx, r, az, p, scope, req)
 			if err != nil {
 				return err
+			}
+			if req.State == store.AccessStateOpen && interactiveHuman(caller) && now.Before(req.ReviewExpiresAt) {
+				policy, err := views.policy(ctx, r, p, req.PolicyID)
+				if err != nil {
+					return err
+				}
+				if policy != nil && policy.policy.Enabled && policy.policy.Version == req.PolicyVersion &&
+					(req.RequesterPrincipalID != string(caller.Principal) || policy.policy.AllowSelfApproval) {
+					view.CanApprove, err = views.canApprove(ctx, r, az, p, scope, policy, caller.Principal, req.Capabilities)
+					if err != nil {
+						return err
+					}
+				}
 			}
 			out.Requests = append(out.Requests, view)
 		}

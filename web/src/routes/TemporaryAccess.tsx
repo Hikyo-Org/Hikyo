@@ -663,15 +663,15 @@ function AccessRequestRow({
       ) : null}
       {request.state === 'open' || request.state === 'granted' ? (
         <div className="temporary-access__request-actions">
+          {request.state === 'open' && request.can_approve === true ? (
+            <Button type="button" disabled={busy} onClick={() => onAct('approve')}>
+              Approve
+            </Button>
+          ) : null}
           {request.state === 'open' && !mine ? (
-            <>
-              <Button type="button" disabled={busy} onClick={() => onAct('approve')}>
-                Approve
-              </Button>
-              <Button type="button" disabled={busy} onClick={() => onAct('reject')}>
-                Reject
-              </Button>
-            </>
+            <Button type="button" disabled={busy} onClick={() => onAct('reject')}>
+              Reject
+            </Button>
           ) : null}
           {request.state === 'open' && mine ? (
             <Button type="button" disabled={busy} onClick={() => onAct('cancel')}>

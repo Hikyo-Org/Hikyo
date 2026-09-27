@@ -2099,6 +2099,10 @@ export type AccessVoteRequest = {
 
 export type AccessRequest = {
     /**
+     * Whether this queue caller can currently approve this request; the vote endpoint reauthorizes every decision.
+     */
+    readonly can_approve?: boolean;
+    /**
      * Current display name of the referenced principal, when available.
      */
     requester_name?: string;
@@ -5730,6 +5734,50 @@ export type RotateSshcaRequestWritable = {
      * How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
      */
     overlap_seconds?: number | null;
+};
+
+export type AccessRequestWritable = {
+    /**
+     * Current display name of the referenced principal, when available.
+     */
+    requester_name?: string;
+    id: Id;
+    environment_id: Id;
+    policy_id: Id;
+    policy_version: number;
+    requester: Id;
+    capabilities: Array<AccessCapability>;
+    duration_seconds: number;
+    reason: string;
+    /**
+     * Whether this is emergency access taken without the quorum.
+     */
+    bypassed: boolean;
+    state: 'open' | 'granted' | 'rejected' | 'cancelled' | 'expired' | 'invalidated' | 'revoked';
+    invalidated_cause: '' | 'policy_changed' | 'policy_disabled' | 'approver_removed';
+    /**
+     * Who resolved the request, when a person did.
+     */
+    resolved_by?: Id;
+    min_approvals: number;
+    /**
+     * Approvals from currently-eligible approvers, for an open request.
+     */
+    approvals: number;
+    votes: Array<ApprovalVote>;
+    created_at: Timestamp;
+    review_expires_at: Timestamp;
+    granted_at?: Timestamp;
+    /**
+     * The absolute instant granted access stops.
+     */
+    expires_at?: Timestamp;
+    resolved_at?: Timestamp;
+};
+
+export type AccessQueueWritable = {
+    offer?: AccessOffer;
+    items: Array<AccessRequestWritable>;
 };
 
 export type PkiIssuerName = PkiName;
