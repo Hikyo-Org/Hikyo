@@ -29,7 +29,9 @@ type AccessGrant struct {
 
 // CreateAccessGrant writes one time-bound grant row for an approved or
 // emergency request. The scope must be a concrete environment: temporary
-// access never reaches above the environment it was requested for.
+// access never reaches above the environment it was requested for. expiresAt
+// must be strictly after at. Invalid scope or expiry returns an error before
+// writing; principal-lock and database errors are propagated.
 func (r *Resolver) CreateAccessGrant(ctx context.Context, id string, p domain.PrincipalID, g domain.Grant,
 	requestID string, at, expiresAt time.Time) error {
 	if g.Scope.Org == "" || g.Scope.Project == "" || g.Scope.Env == "" {
@@ -72,7 +74,9 @@ func (r *Resolver) DeleteAccessGrantsForRequest(ctx context.Context, p domain.Pr
 	})
 }
 
-// LiveAccessGrants lists a principal's unexpired temporary grants at now.
+// LiveAccessGrants lists temporary grants with expiry strictly after now,
+// ordered by expiry then ID. It does not apply the privacy or restore gates
+// used by Grants. Query and stored-grant conversion errors are propagated.
 func (r *Resolver) LiveAccessGrants(ctx context.Context, p domain.PrincipalID, now time.Time) ([]AccessGrant, error) {
 	var out []AccessGrant
 	if r.sq != nil {

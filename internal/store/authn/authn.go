@@ -53,9 +53,11 @@ type Resolver struct {
 // SetClock fixes the instant time-bound grants are evaluated against for the
 // rest of this transaction. The service layer sets it from its own clock at
 // the top of every authorized operation, so an injected test clock and the
-// production wall clock take the same path.
+// production wall clock take the same path. Zero restores wall-clock evaluation
+// at each lookup.
 func (r *Resolver) SetClock(now time.Time) { r.clock = now.UTC() }
 
+// evaluationTime returns the fixed UTC clock, or the current UTC time if unset.
 func (r *Resolver) evaluationTime() time.Time {
 	if r.clock.IsZero() {
 		return time.Now().UTC()
@@ -284,6 +286,8 @@ func (r *Resolver) resolveEnv(ctx context.Context, s domain.Scope) (domain.Scope
 // unknown principal simply has no grants — indistinguishable from a revoked
 // one, which is the contract. Current policy is read inside the operation's
 // own transaction; there is no authorization cache (permission-model ADR).
+// On schemas with temporary access, grants expiring at or before the evaluation
+// clock are excluded. Query and stored-grant conversion errors are propagated.
 func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
 	r.selfConfigOrgID = ""
 	if r.historicalRecoveryBeforePrivacy {

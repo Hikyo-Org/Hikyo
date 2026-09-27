@@ -657,6 +657,8 @@ type accessMetricsSource struct {
 	log *slog.Logger
 }
 
+// AccessSnapshot reads installation-wide open-request and active-grant counts
+// with a five-second timeout, returning service errors to the metrics collector.
 func (s accessMetricsSource) AccessSnapshot() (int64, int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

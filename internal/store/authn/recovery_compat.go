@@ -20,6 +20,10 @@ func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r.historicalRecoveryBeforeAccess = version < 66
 	return r
 }
+
+// NewHistoricalRecoveryPG binds a resolver to a verified source schema version
+// for guarded recovery. Versions before 47, 50, and 60 use the corresponding
+// privacy, profile, and temporary-access compatibility projections.
 func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r := NewPG(db)
 	r.historicalRecoveryBeforePrivacy = version < 47

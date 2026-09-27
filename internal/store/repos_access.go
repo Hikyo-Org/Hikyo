@@ -22,6 +22,7 @@ import (
 // Timestamps are written in the fixed-width form because the sweep
 // range-filters review_expires_at and expires_at lexically on sqlite.
 
+// marshalCapabilities encodes capabilities as a JSON array, treating nil as empty.
 func marshalCapabilities(caps []string) (string, error) {
 	if caps == nil {
 		caps = []string{}
@@ -33,6 +34,8 @@ func marshalCapabilities(caps []string) (string, error) {
 	return string(b), nil
 }
 
+// unmarshalCapabilities decodes a stored capability list; JSON errors include
+// the row kind and ID. Capability names are not validated here.
 func unmarshalCapabilities(kind, id, raw string) ([]string, error) {
 	var out []string
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
@@ -41,6 +44,7 @@ func unmarshalCapabilities(kind, id, raw string) ([]string, error) {
 	return out, nil
 }
 
+// sqliteStampPtr encodes a canonical timestamp, or SQL NULL for a nil pointer.
 func sqliteStampPtr(t *time.Time) sql.NullString {
 	if t == nil {
 		return sql.NullString{}
@@ -48,10 +52,12 @@ func sqliteStampPtr(t *time.Time) sql.NullString {
 	return sql.NullString{String: fixedStamp(*t), Valid: true}
 }
 
+// pgStamp returns a valid PostgreSQL timestamp in UTC at microsecond precision.
 func pgStamp(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: CanonTime(t), Valid: true}
 }
 
+// pgStampPtr encodes a canonical timestamp, or SQL NULL for a nil pointer.
 func pgStampPtr(t *time.Time) pgtype.Timestamptz {
 	if t == nil {
 		return pgtype.Timestamptz{}
@@ -59,6 +65,8 @@ func pgStampPtr(t *time.Time) pgtype.Timestamptz {
 	return pgStamp(*t)
 }
 
+// parseStampField parses a stored timestamp into UTC, wrapping parse errors
+// with the row kind, ID, and field name.
 func parseStampField(kind, id, field, raw string) (time.Time, error) {
 	t, err := parseStamp(raw)
 	if err != nil {
@@ -67,6 +75,8 @@ func parseStampField(kind, id, field, raw string) (time.Time, error) {
 	return t.UTC(), nil
 }
 
+// parseStampPtr returns nil for SQL NULL, otherwise parsing a UTC timestamp
+// and propagating errors with row and field context.
 func parseStampPtr(kind, id, field string, raw sql.NullString) (*time.Time, error) {
 	if !raw.Valid {
 		return nil, nil
@@ -130,6 +140,8 @@ func (r sqliteAccess) InsertPolicy(ctx context.Context, p authz.Proof, policy Ne
 	}))
 }
 
+// GetPolicy returns a policy in the proof's project, or ErrNotFound if absent.
+// Proof verification, query, and decoding errors propagate.
 func (r sqliteAccess) GetPolicy(ctx context.Context, p authz.Proof, id string) (AccessPolicy, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyGet, r.tok)
 	if err != nil {
@@ -147,6 +159,9 @@ func (r sqliteAccess) GetPolicy(ctx context.Context, p authz.Proof, id string) (
 	return accessPolicyFromSqlite(row)
 }
 
+// CoveringPolicy prefers the exact environment policy, including a disabled
+// one, over the project-wide policy. No match returns false without an error;
+// proof verification, query, and decoding errors propagate.
 func (r sqliteAccess) CoveringPolicy(ctx context.Context, p authz.Proof, envID string) (AccessPolicy, bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyCovering, r.tok)
 	if err != nil {
@@ -190,6 +205,9 @@ func (r sqliteAccess) ListPolicies(ctx context.Context, p authz.Proof) ([]Access
 	return out, nil
 }
 
+// UpdatePolicy replaces mutable fields and increments the version in the
+// proof's project. It reports whether a row matched; recognized constraint
+// violations wrap ErrConflict, and other errors propagate.
 func (r sqliteAccess) UpdatePolicy(ctx context.Context, p authz.Proof, update AccessPolicyUpdate) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyUpdate, r.tok)
 	if err != nil {
@@ -298,6 +316,8 @@ func (r sqliteAccess) ClearBypassers(ctx context.Context, p authz.Proof, policyI
 	})
 }
 
+// IsBypasser reports membership in the policy's emergency-access roster.
+// A missing entry returns false without an error; proof and query errors propagate.
 func (r sqliteAccess) IsBypasser(ctx context.Context, p authz.Proof, policyID, principalID string) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserGet, r.tok)
 	if err != nil {
@@ -346,6 +366,9 @@ func accessRequestFromSqlite(row sqlitegen.AccessRequest) (AccessRequest, error)
 	}, nil
 }
 
+// InsertRequest writes the request in the proof's environment, ignoring
+// req.EnvironmentID. Recognized constraint violations wrap ErrConflict;
+// proof verification, encoding, and other database errors propagate.
 func (r sqliteAccess) InsertRequest(ctx context.Context, p authz.Proof, req NewAccessRequest) error {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestInsert, r.tok)
 	if err != nil {
@@ -365,6 +388,8 @@ func (r sqliteAccess) InsertRequest(ctx context.Context, p authz.Proof, req NewA
 	}))
 }
 
+// GetRequest returns a request in the proof's environment, or ErrNotFound
+// if absent. Proof verification, query, and decoding errors propagate.
 func (r sqliteAccess) GetRequest(ctx context.Context, p authz.Proof, id string) (AccessRequest, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestGet, r.tok)
 	if err != nil {
@@ -382,6 +407,9 @@ func (r sqliteAccess) GetRequest(ctx context.Context, p authz.Proof, id string) 
 	return accessRequestFromSqlite(row)
 }
 
+// ListRequests returns at most 200 requests in the proof's environment,
+// ordered by creation time descending then ID. Proof verification, query,
+// and decoding errors propagate.
 func (r sqliteAccess) ListRequests(ctx context.Context, p authz.Proof) ([]AccessRequest, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestList, r.tok)
 	if err != nil {
@@ -404,6 +432,9 @@ func (r sqliteAccess) ListRequests(ctx context.Context, p authz.Proof) ([]Access
 	return out, nil
 }
 
+// GrantRequest sets grant and expiry times only for an open request in the
+// proof's environment. A missing or non-open request returns false without an
+// error; proof and database errors propagate. It does not write grant rows.
 func (r sqliteAccess) GrantRequest(ctx context.Context, p authz.Proof, id string, grantedAt, expiresAt time.Time) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestGrant, r.tok)
 	if err != nil {
@@ -417,6 +448,9 @@ func (r sqliteAccess) GrantRequest(ctx context.Context, p authz.Proof, id string
 	return n > 0, err
 }
 
+// ResolveRequest applies res only when the scoped request still has state
+// res.From. A missing or changed request returns false without an error;
+// proof and database errors propagate.
 func (r sqliteAccess) ResolveRequest(ctx context.Context, p authz.Proof, res AccessResolution) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestResolve, r.tok)
 	if err != nil {
@@ -452,6 +486,8 @@ func (r sqliteAccess) InsertVote(ctx context.Context, p authz.Proof, vote Access
 	}))
 }
 
+// GetVote returns the principal's vote on the scoped request, or ErrNotFound
+// if absent. Proof verification, query, and decoding errors propagate.
 func (r sqliteAccess) GetVote(ctx context.Context, p authz.Proof, requestID, principalID string) (AccessVote, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessVoteGet, r.tok)
 	if err != nil {
@@ -492,6 +528,9 @@ func (r sqliteAccess) ListVotes(ctx context.Context, p authz.Proof, requestID st
 	return out, nil
 }
 
+// SelectDue returns at most 100 open or granted requests across the installation,
+// ordered by ID, whose review or grant expiry is at or before now. It requires the
+// scheduler proof; proof verification and query errors propagate.
 func (r sqliteAccess) SelectDue(ctx context.Context, p authz.Proof, now time.Time) ([]DueAccessRequest, error) {
 	if _, err := authz.Verify(p, authz.StoreAccessRequestSelectDue, r.tok); err != nil {
 		return nil, err
@@ -509,6 +548,9 @@ func (r sqliteAccess) SelectDue(ctx context.Context, p authz.Proof, now time.Tim
 	return out, nil
 }
 
+// MarkExpired records expiry only if the request still has state from. It
+// requires the scheduler proof and does not recheck the deadline. A missing
+// or changed request returns false; proof and database errors propagate.
 func (r sqliteAccess) MarkExpired(ctx context.Context, p authz.Proof, id string, from AccessRequestState, now time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StoreAccessRequestMarkExpired, r.tok); err != nil {
 		return false, err
@@ -519,6 +561,9 @@ func (r sqliteAccess) MarkExpired(ctx context.Context, p authz.Proof, id string,
 	return n > 0, err
 }
 
+// OperationalCounts returns installation-wide open requests and granted
+// requests expiring strictly after now. Open requests awaiting a sweep still
+// count. It requires the scheduler proof; proof and query errors propagate.
 func (r sqliteAccess) OperationalCounts(ctx context.Context, p authz.Proof, now time.Time) (int64, int64, error) {
 	if _, err := authz.Verify(p, authz.StoreAccessRequestCounts, r.tok); err != nil {
 		return 0, 0, err
@@ -579,6 +624,8 @@ func (r pgAccess) InsertPolicy(ctx context.Context, p authz.Proof, policy NewAcc
 	}))
 }
 
+// GetPolicy returns a policy in the proof's project, or ErrNotFound if absent.
+// Proof verification, query, and decoding errors propagate.
 func (r pgAccess) GetPolicy(ctx context.Context, p authz.Proof, id string) (AccessPolicy, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyGet, r.tok)
 	if err != nil {
@@ -596,6 +643,9 @@ func (r pgAccess) GetPolicy(ctx context.Context, p authz.Proof, id string) (Acce
 	return accessPolicyFromPg(row)
 }
 
+// CoveringPolicy prefers the exact environment policy, including a disabled
+// one, over the project-wide policy. No match returns false without an error;
+// proof verification, query, and decoding errors propagate.
 func (r pgAccess) CoveringPolicy(ctx context.Context, p authz.Proof, envID string) (AccessPolicy, bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyCovering, r.tok)
 	if err != nil {
@@ -639,6 +689,9 @@ func (r pgAccess) ListPolicies(ctx context.Context, p authz.Proof) ([]AccessPoli
 	return out, nil
 }
 
+// UpdatePolicy replaces mutable fields and increments the version in the
+// proof's project. It reports whether a row matched; recognized constraint
+// violations wrap ErrConflict, and other errors propagate.
 func (r pgAccess) UpdatePolicy(ctx context.Context, p authz.Proof, update AccessPolicyUpdate) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyUpdate, r.tok)
 	if err != nil {
@@ -747,6 +800,8 @@ func (r pgAccess) ClearBypassers(ctx context.Context, p authz.Proof, policyID st
 	})
 }
 
+// IsBypasser reports membership in the policy's emergency-access roster.
+// A missing entry returns false without an error; proof and query errors propagate.
 func (r pgAccess) IsBypasser(ctx context.Context, p authz.Proof, policyID, principalID string) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserGet, r.tok)
 	if err != nil {
@@ -777,6 +832,9 @@ func accessRequestFromPg(row pggen.AccessRequest) (AccessRequest, error) {
 	}, nil
 }
 
+// InsertRequest writes the request in the proof's environment, ignoring
+// req.EnvironmentID. Recognized constraint violations wrap ErrConflict;
+// proof verification, encoding, and other database errors propagate.
 func (r pgAccess) InsertRequest(ctx context.Context, p authz.Proof, req NewAccessRequest) error {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestInsert, r.tok)
 	if err != nil {
@@ -796,6 +854,8 @@ func (r pgAccess) InsertRequest(ctx context.Context, p authz.Proof, req NewAcces
 	}))
 }
 
+// GetRequest returns a request in the proof's environment, or ErrNotFound
+// if absent. Proof verification, query, and decoding errors propagate.
 func (r pgAccess) GetRequest(ctx context.Context, p authz.Proof, id string) (AccessRequest, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestGet, r.tok)
 	if err != nil {
@@ -813,6 +873,9 @@ func (r pgAccess) GetRequest(ctx context.Context, p authz.Proof, id string) (Acc
 	return accessRequestFromPg(row)
 }
 
+// ListRequests returns at most 200 requests in the proof's environment,
+// ordered by creation time descending then ID. Proof verification, query,
+// and decoding errors propagate.
 func (r pgAccess) ListRequests(ctx context.Context, p authz.Proof) ([]AccessRequest, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestList, r.tok)
 	if err != nil {
@@ -835,6 +898,9 @@ func (r pgAccess) ListRequests(ctx context.Context, p authz.Proof) ([]AccessRequ
 	return out, nil
 }
 
+// GrantRequest sets grant and expiry times only for an open request in the
+// proof's environment. A missing or non-open request returns false without an
+// error; proof and database errors propagate. It does not write grant rows.
 func (r pgAccess) GrantRequest(ctx context.Context, p authz.Proof, id string, grantedAt, expiresAt time.Time) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestGrant, r.tok)
 	if err != nil {
@@ -848,6 +914,9 @@ func (r pgAccess) GrantRequest(ctx context.Context, p authz.Proof, id string, gr
 	return n > 0, err
 }
 
+// ResolveRequest applies res only when the scoped request still has state
+// res.From. A missing or changed request returns false without an error;
+// proof and database errors propagate.
 func (r pgAccess) ResolveRequest(ctx context.Context, p authz.Proof, res AccessResolution) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessRequestResolve, r.tok)
 	if err != nil {
@@ -880,6 +949,8 @@ func (r pgAccess) InsertVote(ctx context.Context, p authz.Proof, vote AccessVote
 	}))
 }
 
+// GetVote returns the principal's vote on the scoped request, or ErrNotFound
+// if absent. Proof verification, query, and decoding errors propagate.
 func (r pgAccess) GetVote(ctx context.Context, p authz.Proof, requestID, principalID string) (AccessVote, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessVoteGet, r.tok)
 	if err != nil {
@@ -920,6 +991,9 @@ func (r pgAccess) ListVotes(ctx context.Context, p authz.Proof, requestID string
 	return out, nil
 }
 
+// SelectDue returns at most 100 open or granted requests across the installation,
+// ordered by ID, whose review or grant expiry is at or before now. It requires the
+// scheduler proof; proof verification and query errors propagate.
 func (r pgAccess) SelectDue(ctx context.Context, p authz.Proof, now time.Time) ([]DueAccessRequest, error) {
 	if _, err := authz.Verify(p, authz.StoreAccessRequestSelectDue, r.tok); err != nil {
 		return nil, err
@@ -937,6 +1011,9 @@ func (r pgAccess) SelectDue(ctx context.Context, p authz.Proof, now time.Time) (
 	return out, nil
 }
 
+// MarkExpired records expiry only if the request still has state from. It
+// requires the scheduler proof and does not recheck the deadline. A missing
+// or changed request returns false; proof and database errors propagate.
 func (r pgAccess) MarkExpired(ctx context.Context, p authz.Proof, id string, from AccessRequestState, now time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StoreAccessRequestMarkExpired, r.tok); err != nil {
 		return false, err
@@ -947,6 +1024,9 @@ func (r pgAccess) MarkExpired(ctx context.Context, p authz.Proof, id string, fro
 	return n > 0, err
 }
 
+// OperationalCounts returns installation-wide open requests and granted
+// requests expiring strictly after now. Open requests awaiting a sweep still
+// count. It requires the scheduler proof; proof and query errors propagate.
 func (r pgAccess) OperationalCounts(ctx context.Context, p authz.Proof, now time.Time) (int64, int64, error) {
 	if _, err := authz.Verify(p, authz.StoreAccessRequestCounts, r.tok); err != nil {
 		return 0, 0, err

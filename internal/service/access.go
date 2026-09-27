@@ -94,6 +94,7 @@ type Access struct {
 	Now  func() time.Time
 }
 
+// now returns the injected or wall clock in UTC, truncated to microseconds.
 func (s *Access) now() time.Time {
 	return store.CanonTime(nowOr(s.Now))
 }
@@ -237,7 +238,7 @@ func (s *Access) CreatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 }
 
 // UpdatePolicy replaces a policy's fields and member sets and bumps its
-// version, which fails every open request pinned to the old version closed.
+// version, making open requests pinned to the old version stale for new votes.
 // Granted access keeps its absolute expiry: a policy change never extends it.
 func (s *Access) UpdatePolicy(ctx context.Context, actor Actor, scope domain.Scope, id string, input AccessPolicyInput) (AccessPolicyView, error) {
 	caps, err := validateAccessPolicyInput(input)
@@ -378,7 +379,11 @@ func (s *Access) ListPolicies(ctx context.Context, actor Actor, scope domain.Sco
 
 // --- requests ---
 
-// Queue returns an environment's access requests and the offer governing it.
+// Queue returns up to 200 of an environment's requests, newest first, and its
+// covering offer. Offer is nil when no policy covers the environment; a disabled
+// environment policy still takes precedence over a project-wide policy.
+// Approval counts are recomputed for open requests without resolving stale ones.
+// Authorization, storage, and view-loading errors are returned to the caller.
 func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (AccessQueue, error) {
 	now := s.now()
 	var out AccessQueue
@@ -423,6 +428,13 @@ func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (Ac
 // Request files a request for temporary access in the addressed environment.
 // The request is immutable: capabilities, duration, reason and the policy
 // version it was filed under are written once and never updated.
+// The caller must be a human in a session with read access to the environment.
+// DurationSeconds must be positive and within the covering policy's maximum;
+// capabilities must be a nonempty subset of its offer. The sanitized reason
+// must contain 1 to 512 bytes. A successful request records an access.requested event.
+// Missing or disabled policies return ErrAccessNotRequestable; invalid capability
+// or duration choices wrap ErrAccessExceedsPolicy, and invalid reasons wrap
+// domain.ErrInvalid. Authorization, storage, and audit errors are propagated.
 func (s *Access) Request(ctx context.Context, actor Actor, scope domain.Scope, input AccessRequestInput) (AccessRequestView, error) {
 	now := s.now()
 	var view AccessRequestView
@@ -487,10 +499,16 @@ func (s *Access) Request(ctx context.Context, actor Actor, scope domain.Scope, i
 }
 
 // Vote records one approver's decision. The approver must be a
-// currently-eligible member of the policy's approver set and able to grant
-// every requested capability themselves. The approve that reaches the quorum
+// currently eligible member of the policy's approver set. An approval also
+// requires authority to grant every requested capability and permission for
+// self-approval when the caller is the requester. The approve that reaches the quorum
 // writes the time-bound grant rows in the same transaction. A repeated
-// identical decision is idempotent; a conflicting one is a 409.
+// identical decision returns the current view without requiring renewed approver
+// eligibility; a conflicting one wraps domain.ErrConflict. A rejection resolves
+// the request immediately. New votes require an open, unexpired review window.
+// A missing, disabled, or changed policy commits invalidation before returning
+// domain.ErrConflict. Invalid decisions wrap domain.ErrInvalid; human-session,
+// eligibility, authorization, storage, and audit errors are propagated.
 func (s *Access) Vote(ctx context.Context, actor Actor, scope domain.Scope, requestID, decisionRaw string) (AccessRequestView, error) {
 	decision := store.ApprovalVoteDecision(decisionRaw)
 	if decision != store.ApprovalDecisionApprove && decision != store.ApprovalDecisionReject {
@@ -758,8 +776,16 @@ func (s *Access) Revoke(ctx context.Context, actor Actor, scope domain.Scope, re
 // EmergencyAccess takes the policy's capabilities without the quorum. Only a
 // named emergency-access principal of the covering, enabled policy may; it
 // takes a current reauthentication ceremony bound to the environment and a
-// reason, and it is time-bound like every temporary grant (default one hour,
-// never beyond the policy's maximum). It never touches the policy.
+// reason, and it is time-bound like every temporary grant. Capabilities must be
+// a nonempty subset of the offer. A zero DurationSeconds defaults to one hour
+// capped by the policy; an explicit duration outside the policy bounds wraps
+// ErrAccessExceedsPolicy. It never touches the policy.
+// Human-session, policy, capability, reason, and authorization checks return
+// the same errors as Request; an unlisted principal gets ErrAccessNotBypasser.
+// Missing Auth returns ErrNoCeremonySeam. Reauthentication, storage, and audit
+// errors are propagated; success consumes a single-decision window or refreshes
+// a sliding window, and records a granted request, temporary grants, and an
+// access.bypassed event.
 func (s *Access) EmergencyAccess(ctx context.Context, actor Actor, scope domain.Scope, input AccessRequestInput) (AccessRequestView, error) {
 	now := s.now()
 	var view AccessRequestView
@@ -859,10 +885,12 @@ func (s *Access) EmergencyAccess(ctx context.Context, actor Actor, scope domain.
 	return view, err
 }
 
-// ExpireDue is one bounded scheduler batch: open requests whose review window
-// lapsed resolve expired; granted requests past their absolute expiry release
+// ExpireDue processes at most 100 due requests and returns the number expired
+// in the committed batch, or zero and the transaction error. Requests are due
+// at or after their deadline. Open requests whose review window lapsed resolve
+// expired; granted requests past their absolute expiry release
 // their rows, rotate the holder's sessions and resolve expired. The chokepoint
-// already stopped honouring the rows at expires_at; this is the bookkeeping and
+// already stopped honoring the rows at expires_at; this is the bookkeeping and
 // the evidence. Under HA the scheduler context's lease fences the batch.
 func (s *Access) ExpireDue(ctx context.Context) (int, error) {
 	now := s.now()
@@ -924,8 +952,9 @@ func (s *Access) ExpireDue(ctx context.Context) (int, error) {
 	})
 }
 
-// DrainExpired runs ExpireDue until a batch comes back short, so a backlog
-// drains within one scheduler tick.
+// DrainExpired runs at most 100 expiry batches, stopping when fewer than 100
+// requests expire in a batch. It returns the first batch error; reaching the
+// batch limit returns nil even if a backlog remains.
 func (s *Access) DrainExpired(ctx context.Context) error {
 	for range 100 {
 		n, err := s.ExpireDue(ctx)
@@ -940,7 +969,10 @@ func (s *Access) DrainExpired(ctx context.Context) error {
 }
 
 // OperationalCounts returns the installation-wide open-request and
-// active-grant counts for the label-free /metrics gauges.
+// active-grant counts for the label-free /metrics gauges. Open includes requests
+// awaiting the expiry sweep. Active counts granted requests whose expiry is
+// strictly after now, rather than individual capability rows. Transaction and
+// query errors are returned; counts should be used only when err is nil.
 func (s *Access) OperationalCounts(ctx context.Context) (open, active int64, err error) {
 	now := s.now()
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -963,6 +995,9 @@ func interactiveHuman(caller authz.Identity) bool {
 	return caller.SessionID != "" && caller.Class == domain.ClassHuman
 }
 
+// validateAccessPolicyInput checks duration, review, and membership bounds and
+// returns sorted, unique requestable capabilities. Invalid policy fields wrap
+// domain.ErrInvalid; invalid capabilities wrap ErrAccessExceedsPolicy.
 func validateAccessPolicyInput(input AccessPolicyInput) ([]string, error) {
 	if input.MaxDurationSeconds <= 0 || input.MaxDurationSeconds > math.MaxInt32 {
 		return nil, fmt.Errorf("%w: max_duration_seconds must be between 1 and %d", domain.ErrInvalid, math.MaxInt32)
@@ -997,6 +1032,8 @@ func accessCapabilitiesWithin(requested, allowed []string) ([]string, error) {
 	return out, nil
 }
 
+// accessReason sanitizes free text for audit storage and returns it if it has
+// 1 to 512 bytes. An empty or longer sanitized result wraps domain.ErrInvalid.
 func accessReason(raw string) (string, error) {
 	reason := audit.SanitizeFreeText(raw)
 	if reason == "" {
@@ -1008,6 +1045,9 @@ func accessReason(raw string) (string, error) {
 	return reason, nil
 }
 
+// writeAccessPolicyMembers inserts the supplied approvers and emergency-access
+// principals without clearing existing members. ID-generation and store errors
+// are returned for the caller to roll back the transaction.
 func writeAccessPolicyMembers(ctx context.Context, r store.Repos, p authz.Proof, policyID string, input AccessPolicyInput) error {
 	for _, a := range input.Approvers {
 		id, err := newID("xapr")
@@ -1035,6 +1075,8 @@ func writeAccessPolicyMembers(ctx context.Context, r store.Repos, p authz.Proof,
 	return nil
 }
 
+// recordAccessPolicyChange records the policy settings and member counts in a
+// tenant audit event, propagating event-construction and audit-storage errors.
 func recordAccessPolicyChange(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID,
 	policyID, action, envID string, caps []string, input AccessPolicyInput, approvers, bypassers int) error {
 	ev, err := domainEvent(ctx, audit.EventAccessPolicyChanged, principal,
@@ -1050,6 +1092,9 @@ func recordAccessPolicyChange(ctx context.Context, r store.Repos, p authz.Proof,
 	return r.Audit().InsertTenant(ctx, p, ev)
 }
 
+// commitAccessInvalidation attempts to resolve an open request as invalidated
+// and records the cause in its audit event. It returns write errors; the caller
+// must commit the transaction before returning the stale-request refusal.
 func commitAccessInvalidation(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID,
 	req store.AccessRequest, cause string, now time.Time) error {
 	if _, err := r.Access().ResolveRequest(ctx, p, store.AccessResolution{
@@ -1066,6 +1111,7 @@ func commitAccessInvalidation(ctx context.Context, r store.Repos, p authz.Proof,
 	return r.Audit().InsertTenant(ctx, p, ev)
 }
 
+// accessStaleRefusal wraps domain.ErrConflict with the committed invalidation cause.
 func accessStaleRefusal(cause string) error {
 	return fmt.Errorf("%w: the access request was invalidated (%s)", domain.ErrConflict, cause)
 }
@@ -1179,6 +1225,9 @@ func grantAccess(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p a
 	return r.Audit().InsertTenant(ctx, p, ev)
 }
 
+// writeAccessGrantRows adds one environment grant per capability, all sharing
+// the request and absolute expiry. It returns the first ID-generation or grant
+// write error; the caller owns rollback of any rows already written.
 func writeAccessGrantRows(ctx context.Context, az *authz.TxAuthorizer, holder domain.PrincipalID, scope domain.Scope,
 	requestID string, caps []string, now, expires time.Time) error {
 	for _, c := range caps {
@@ -1218,6 +1267,9 @@ func mayRevokeAccess(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 
 // --- views ---
 
+// accessPolicyViewWithMembers adds approver and emergency-access rosters and
+// available principal names to a policy view. Member and name lookup errors
+// are propagated; principals without a name are omitted from PrincipalNames.
 func accessPolicyViewWithMembers(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, policy store.AccessPolicy) (AccessPolicyView, error) {
 	approvers, err := r.Access().ListApprovers(ctx, p, policy.ID)
 	if err != nil {
@@ -1258,6 +1310,8 @@ func accessPolicyViewWithMembers(ctx context.Context, r store.Repos, az *authz.T
 	return view, nil
 }
 
+// loadAccessPolicyView loads a policy and its member view, propagating missing
+// policy, member, and principal-name lookup errors.
 func loadAccessPolicyView(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, id string) (AccessPolicyView, error) {
 	policy, err := r.Access().GetPolicy(ctx, p, id)
 	if err != nil {
@@ -1266,6 +1320,8 @@ func loadAccessPolicyView(ctx context.Context, r store.Repos, az *authz.TxAuthor
 	return accessPolicyViewWithMembers(ctx, r, az, p, policy)
 }
 
+// accessRequestView copies stored request fields and capabilities into a view
+// without loading names, votes, or approval counts.
 func accessRequestView(req store.AccessRequest) AccessRequestView {
 	return AccessRequestView{
 		ID: req.ID, EnvironmentID: req.EnvironmentID, PolicyID: req.PolicyID, PolicyVersion: req.PolicyVersion,
@@ -1277,6 +1333,10 @@ func accessRequestView(req store.AccessRequest) AccessRequestView {
 	}
 }
 
+// accessRequestViewWithVotes adds names and recorded votes, and recomputes
+// eligible approvals for open requests against the current policy. A missing
+// policy leaves approval counts at zero; other lookup errors propagate. It does
+// not invalidate requests whose policy version or review deadline has changed.
 func accessRequestViewWithVotes(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
 	scope domain.Scope, req store.AccessRequest) (AccessRequestView, error) {
 	view := accessRequestView(req)

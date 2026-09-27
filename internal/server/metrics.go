@@ -599,6 +599,8 @@ func (c *accessCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.known
 }
 
+// Collect emits the access gauges and marks them known when the source succeeds.
+// A missing source or snapshot error omits both counts and emits known = 0.
 func (c *accessCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false

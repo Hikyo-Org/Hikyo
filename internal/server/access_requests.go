@@ -26,6 +26,8 @@ type AccessService interface {
 	EmergencyAccess(ctx context.Context, actor service.Actor, scope domain.Scope, input service.AccessRequestInput) (service.AccessRequestView, error)
 }
 
+// accessPolicyInput maps the wire policy, defaulting an omitted environment
+// to project-wide coverage and omitted self-approval to false.
 func accessPolicyInput(body apigen.AccessPolicyInput) service.AccessPolicyInput {
 	in := service.AccessPolicyInput{
 		MaxDurationSeconds: int(body.MaxDurationSeconds),
@@ -90,6 +92,8 @@ func wireAccessCapabilities(caps []string) []apigen.AccessCapability {
 	return out
 }
 
+// wireAccessPolicy maps a policy view to the response, using empty arrays for
+// member lists and omitting absent principal names and group bindings.
 func wireAccessPolicy(p service.AccessPolicyView) apigen.AccessPolicy {
 	var principalNames *map[string]string
 	if len(p.PrincipalNames) > 0 {
@@ -115,6 +119,8 @@ func wireAccessPolicy(p service.AccessPolicyView) apigen.AccessPolicy {
 	}
 }
 
+// wireAccessRequest maps a request view to the response, using an empty vote
+// array and omitting absent principal names and the resolving principal.
 func wireAccessRequest(r service.AccessRequestView) apigen.AccessRequest {
 	votes := make([]apigen.ApprovalVote, 0, len(r.Votes))
 	for _, v := range r.Votes {

@@ -33,7 +33,7 @@ import { JumpIndex, Panel } from './Sections.tsx';
  * the same page for member managers. Every state is text-labelled.
  */
 
-/** A stored UTC timestamp rendered in the operator's locale. */
+/** Formats a timestamp in the operator's locale; missing values use '-', invalid ones pass through. */
 function when(value: string | undefined): string {
   if (value === undefined) return '-';
   const at = new Date(value);
@@ -47,6 +47,7 @@ export function duration(seconds: number): string {
   return `${seconds}s`;
 }
 
+/** Returns a caller-safe refusal message for known API statuses, or a generic failure message. */
 function refusal(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.status) {
@@ -76,12 +77,17 @@ const emptyPolicy: AccessPolicyDraft = {
   bypassers: [],
 };
 
+/** Formats one approver per line, using group:groupId:bindingId for SCIM groups. */
 function approversToText(approvers: readonly AccessApprover[]): string {
   return approvers
     .map((a) => (a.kind === 'scim_group' ? `group:${a.subject_id}:${a.binding_id ?? ''}` : a.subject_id))
     .join('\n');
 }
 
+/**
+ * Parses nonblank lines as principal IDs or group:groupId:bindingId entries.
+ * Missing group fields become empty strings; validation is left to the server.
+ */
 function parseApprovers(text: string): AccessApprover[] {
   const out: AccessApprover[] = [];
   for (const raw of text.split('\n')) {
@@ -97,6 +103,7 @@ function parseApprovers(text: string): AccessApprover[] {
   return out;
 }
 
+/** Trims newline-separated values and removes empty lines, preserving duplicates. */
 function parseList(text: string): string[] {
   return text
     .split('\n')
@@ -104,12 +111,18 @@ function parseList(text: string): string[] {
     .filter((line) => line !== '');
 }
 
+/** Adds or removes a capability, returning unique supported entries in canonical order. */
 function toggle(list: readonly AccessCapability[], capability: AccessCapability, on: boolean): AccessCapability[] {
   const next = list.filter((c) => c !== capability);
   if (on) next.push(capability);
   return ACCESS_CAPABILITIES.filter((c) => next.includes(c));
 }
 
+/**
+ * Displays the selected environment's request queue and emergency-access flow.
+ * Policy editing is offered when the project policy query succeeds; action
+ * failures are shown in the page, and emergency access may open a ceremony.
+ */
 export function TemporaryAccess() {
   const params = useParams();
   const org = params.org ?? '';
@@ -549,6 +562,11 @@ export function TemporaryAccess() {
   );
 }
 
+/**
+ * Displays request history and actions based on state and ownership. mine means
+ * the current principal is the requester; busy disables actions. onAct receives
+ * the chosen action, whose authorization is checked by the server.
+ */
 function AccessRequestRow({
   request,
   mine,

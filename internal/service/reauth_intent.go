@@ -149,7 +149,8 @@ func NewBypassReauthIntent(environmentID string, keyIDs []string) (ReauthIntent,
 
 // NewAccessBypassReauthIntent binds an emergency temporary-access decision to
 // the environment (#152). Its unit is the environment alone: the decision is
-// about standing authority there, not about any key's material.
+// about standing authority there, not about any key's material. An empty
+// environmentID returns an error wrapping domain.ErrInvalid.
 func NewAccessBypassReauthIntent(environmentID string) (ReauthIntent, error) {
 	return NewDisclosureReauthIntent(PurposeAccess, []string{environmentID}, nil)
 }

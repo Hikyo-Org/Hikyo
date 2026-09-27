@@ -96,9 +96,12 @@ func withRevealCeremony(ctx context.Context, client *Client, st *State, ios IO, 
 
 // ensureRevealWindow opens a live reauthentication window over env for the
 // acting session, or returns an error naming why it cannot. `refusal` is the
-// disclosure's own error, returned unchanged when the principal does not hold
-// `read ∧ reveal` here - the chokepoint's answer is not second-guessed, and a
-// ceremony is never offered to someone the server would refuse anyway.
+// action's own error, returned unchanged when no window is live and CanReveal
+// is false, except for approve, reject, bypass, and emergency-access decisions.
+// Those decisions use their own authorization checks. Inline TOTP persists
+// the rotated session and updates the client's bearer. Window lookup, ceremony,
+// and session-persistence errors propagate. Emergency access has no browser
+// handoff here; without inline TOTP it returns a CLI authentication error.
 func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, artifact *SessionArtifact,
 	projectBase, env string, d disclosure, refusal error) error {
 	var window apigen.RevealWindow

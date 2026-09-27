@@ -629,6 +629,10 @@ func (s *Approvals) OperationalCounts(ctx context.Context) (active, expired int6
 
 // --- shared helpers, also used by the publish gate ---
 
+// validatePolicyInput requires positive int32 approval and review-duration
+// values, bounded member lists, and subjects for each approver (plus a binding
+// for SCIM groups). Invalid fields wrap domain.ErrInvalid; subject existence
+// and quorum reachability are not checked here.
 func validatePolicyInput(input ApprovalPolicyInput) error {
 	// Both engines must store the same policy: postgres columns are int32, so
 	// a larger value would wrap there and not in SQLite.
