@@ -584,3 +584,16 @@ func TestOperationParametersStayInPath(t *testing.T) {
 		t.Fatalf("requests=%d, want 1", requests)
 	}
 }
+
+func TestRetryAtClampsBeforeDurationMultiplication(t *testing.T) {
+	now := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	c := Client{now: func() time.Time { return now }}
+	for _, seconds := range []string{"9223372036854775807", "9223372037", "36000000000"} {
+		if got := c.retryAt(http.Header{"Retry-After": []string{seconds}}); !got.Equal(now.Add(adapter.RetryCap)) {
+			t.Errorf("seconds=%s retry=%v", seconds, got)
+		}
+	}
+	if got := c.retryAt(http.Header{"Retry-After": []string{"7"}}); !got.Equal(now.Add(7 * time.Second)) {
+		t.Errorf("normal delay=%v", got)
+	}
+}

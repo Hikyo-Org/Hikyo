@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import type { AdapterTargetInput } from '../api/adapters.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { Adapters, TargetForm } from './Adapters.tsx';
+import { Adapters, TargetForm, targetMappingText } from './Adapters.tsx';
 import { awsAccessComplete, awsAccessDescriptor, emptyAwsAccess } from './AwsAccessFields.tsx';
 
 function selectValue(select: HTMLSelectElement, value: string): void {
@@ -356,17 +356,17 @@ it('TargetForm for GitLab sends a project with scope and variable flags and no G
   }
 });
 
-it('resuming an AWS origin move retains the AWS access descriptor form', async () => {
+it.each([true, false])('resuming an AWS origin move requires its loaded provider (%s)', async (providerLoaded) => {
   const id = (prefix: string) => `${prefix}_00000000-0000-0000-0000-000000000001`;
   vi.stubGlobal('fetch', vi.fn((...args: Parameters<typeof fetch>) => {
     const request = args[0] instanceof Request ? args[0] : new Request(args[0]);
     const path = new URL(request.url).pathname;
     const base = '/api/v1/orgs/acme/projects/app';
-    if (path === `${base}/adapters`) return Promise.resolve(Response.json({ items: [{
+    if (path === `${base}/adapters`) return Promise.resolve(Response.json({ items: providerLoaded ? [{
       id: id('adp'), provider: 'aws-secrets-manager', origin: 'https://secretsmanager.eu-west-1.amazonaws.com',
       credential_present: true, authority_principal_id: id('usr'), state: 'moving',
       created_at: '2026-09-01T00:00:00Z', targets: [],
-    }] }));
+    }] : [] }));
     if (path === `${base}/adapter-moves/${id('arm')}`) return Promise.resolve(Response.json({
       id: id('arm'), adapter_id: id('adp'), kind: 'origin', state: 'attention_required', keep_remote: false,
       pending_origin: 'https://secretsmanager.eu-west-2.amazonaws.com', created_at: '2026-09-01T00:00:00Z',
@@ -387,10 +387,29 @@ it('resuming an AWS origin move retains the AWS access descriptor form', async (
     await settleTask();
     const resume = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Resume with a new credential');
     if (resume === undefined) throw new Error('resume action missing');
+    expect(resume.disabled).toBe(!providerLoaded);
     await act(async () => resume.click());
+    if (!providerLoaded) {
+      expect(container.querySelector('form[aria-label="Resume move"]')).toBeNull();
+      return;
+    }
     const form = container.querySelector('form[aria-label="Resume move"]');
     expect(form?.textContent).toContain('AWS access');
     expect(form?.textContent).toContain('Role ARN');
     expect(form?.textContent).not.toContain('New credential');
   } finally { await unmount(); }
+});
+
+it.each([
+  ['forgejo', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
+  ['github-actions', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
+  ['cloudflare', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['vault-kv', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['sealed-webhook', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['future-provider', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+])('renders %s destination mapping without another provider syntax', (provider, expected) => {
+  expect(targetMappingText(provider, [
+    { key_id: 'key_token', canonical_name: 'TOKEN', surface: 'secret', effective_name: 'P_TOKEN' },
+    { key_id: 'key_mode', canonical_name: 'MODE', surface: 'variable', effective_name: 'P_MODE' },
+  ])).toBe(expected);
 });

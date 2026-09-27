@@ -172,6 +172,7 @@
         { "label": "#65 handoff", "path": "docs/handoff/65-adapter-outbox-forgejo.md" },
         { "label": "#66 handoff", "path": "docs/handoff/66-github-actions-adapter.md" },
         { "label": "#157 handoff", "path": "docs/handoff/157-multi-target-sync.md" },
+        { "label": "#158 handoff", "path": "docs/handoff/158-aws-secrets-manager.md" },
         { "label": "#159 handoff", "path": "docs/handoff/159-gitlab-adapter.md" },
         { "label": "#162 handoff", "path": "docs/handoff/162-vault-kv-adapter.md" },
         { "label": "#504 handoff", "path": "docs/handoff/504-webui-parity-acceptance.md" },
