@@ -68,7 +68,24 @@ hikyo approval policy create --approver nobody --instance unknown-ref -> 2 usage
 hikyo approval request approve --instance unknown-ref -> 2 usage
 hikyo approval request bypass req_x --instance unknown-ref -> 2 usage
 hikyo approval policy list stray --instance unknown-ref -> 2 usage
+hikyo access policy -> 2 usage
+hikyo access policy warp -> 2 usage
+hikyo access request -> 2 usage
+hikyo access request warp -> 2 usage
+hikyo access policy create --approver principal:usr_x --instance unknown-ref -> 2 usage
+hikyo access policy delete --instance unknown-ref -> 2 usage
+hikyo access request create --capability reveal --duration 1h --instance unknown-ref -> 2 usage
+hikyo access request create --capability reveal --reason r --instance unknown-ref -> 2 usage
+hikyo access request approve --instance unknown-ref -> 2 usage
+hikyo access policy create --capability reveal --approver principal:usr_x --max-duration 1193047h --instance unknown-ref -> 2 usage
+hikyo access policy create --capability reveal --approver principal:usr_x --ttl -1 --instance unknown-ref -> 2 usage
+hikyo access request create --capability reveal --reason r --duration 1193047h --instance unknown-ref -> 2 usage
+hikyo access request emergency --capability reveal --reason r --duration -1h --instance unknown-ref -> 2 usage
+hikyo access request emergency --reason r --instance unknown-ref -> 2 usage
 hikyo key group list stray --instance unknown-ref -> 2 usage
+hikyo transit key trim payments typo --instance unknown-ref -> 2 usage
+hikyo transit encrypt payments typo --instance unknown-ref -> 2 usage
+hikyo transit key show --instance unknown-ref -> 2 usage
 hikyo key list --instance unknown-ref --org org_x --project prj_x -> 4 refused
 hikyo import -> 2 usage
 hikyo import --from k8s --mapping m.json -> 2 usage

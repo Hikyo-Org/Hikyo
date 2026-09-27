@@ -117,6 +117,33 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		"getSshKrl":            "public revocation list",
 		"listSshProfiles":      "non-value-bearing profile metadata",
 		"showSshProfile":       "non-value-bearing profile metadata",
+		// Transit (#156): the data plane computes over caller-supplied inputs
+		// and the key the caller may use; it never returns a stored Hikyo value.
+		// Decrypt authorizes by key, not by who encrypted: it returns plaintext
+		// that any crypto-use holder on the same key encrypted (per-key caller
+		// entries narrow this), and a plaintext data key is freshly generated
+		// and display-once.
+		"listTransitKeys":   "non-value-bearing key metadata",
+		"showTransitKey":    "non-value-bearing key metadata",
+		"transitEncrypt":    "caller-supplied input, crypto-use required",
+		"transitDecrypt":    "plaintext sealed under this key by any permitted caller, crypto-use required",
+		"transitRewrap":     "no plaintext returned, crypto-use required",
+		"transitDataKey":    "fresh display-once data key, crypto-use required",
+		"transitSign":       "caller-supplied input, crypto-use required",
+		"transitVerify":     "verification verdict only, crypto-use required",
+		"transitHMAC":       "caller-supplied input, crypto-use required",
+		"transitVerifyHMAC": "verification verdict only, crypto-use required",
+		// Private PKI (#154): a workload requests and manages its OWN service
+		// certificate. A generated key is created for the caller and disclosed
+		// once (never a stored Hikyo value); the rest is public certificate
+		// material and metadata.
+		"issueCertificate":        "display-once generated key or CSR certificate issuance",
+		"renewCertificate":        "certificate lifecycle, no stored value",
+		"revokeCertificate":       "certificate lifecycle, no stored value",
+		"listCertificates":        "public certificates and metadata",
+		"showCertificate":         "public certificate and metadata",
+		"getCertificateCrl":       "public CRL",
+		"listCertificateProfiles": "bound profile policy, no stored value",
 	}
 	seen := make(map[string]bool, len(wantMachine))
 	for _, operation := range operations {

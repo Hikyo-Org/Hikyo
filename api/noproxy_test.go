@@ -279,6 +279,53 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                         true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": true,
+	// Transit (#156): every route computes over this instance's own managed
+	// keys; none fetches, relays or forwards. External custody, when a real
+	// provider exists, is a local key-custody call, not a caller-directed fetch.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                           true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":              true,
+	"PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle":   true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify": true,
+	// Private PKI (#154): issuers, profiles, bindings, certificates and CRLs
+	// are this instance's own durable state, and signing happens in-process.
+	// No route contacts any upstream: a CRL distribution URL is only embedded
+	// into issued certificates, never fetched, and an offline-signed issuer
+	// certificate arrives in the request body.
+	"GET /api/v1/instance/pki/issuers":                                                                        true,
+	"POST /api/v1/instance/pki/issuers":                                                                       true,
+	"GET /api/v1/instance/pki/issuers/{issuer}":                                                               true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/rotate":                                                       true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/install":                                                      true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/release-hold":                                                 true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire":                                    true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke":                                    true,
+	"GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                        true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                       true,
+	"GET /api/v1/instance/pki/profiles":                                                                       true,
+	"POST /api/v1/instance/pki/profiles":                                                                      true,
+	"GET /api/v1/instance/pki/profiles/{profile}":                                                             true,
+	"PUT /api/v1/instance/pki/profiles/{profile}":                                                             true,
+	"DELETE /api/v1/instance/pki/profiles/{profile}":                                                          true,
+	"POST /api/v1/instance/pki/profiles/{profile}/bindings":                                                   true,
+	"DELETE /api/v1/instance/pki/profiles/{profile}/bindings/{binding}":                                       true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles":               true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates":                       true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates":                      true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}":         true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew":  true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke": true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl":     true,
 	"POST /api/v1/auth/cli-reauth/start":                                                                      true,
 	"GET /api/v1/auth/cli-reauth/transactions/{state}":                                                        true,
 	"POST /api/v1/auth/cli-reauth/approve":                                                                    true,
@@ -541,7 +588,20 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                            true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony": true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote":    true,
-	"POST /api/v1/instance/rotate-token-key":                                                                            true,
+	// Temporary access (#152): policy administration, the request queue and
+	// its decisions read/write only THIS instance's own access rows; nothing is
+	// proxied or forwarded.
+	"GET /api/v1/orgs/{org}/projects/{project}/access-policies":                                                    true,
+	"POST /api/v1/orgs/{org}/projects/{project}/access-policies":                                                   true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                           true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                        true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                         true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency":              true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote":   true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel": true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke": true,
+	"POST /api/v1/instance/rotate-token-key":                                                                       true,
 	// rotate-scanning-key (#74): replaces this instance's own scanning key and
 	// drops this instance's own dismissal rows. It returns this instance's own
 	// data and never fetches, relays or forwards on the caller's behalf.

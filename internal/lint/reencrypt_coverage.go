@@ -65,7 +65,7 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 // Keep this in lockstep with that walk: a column here that the walk does not
 // cover, or vice versa, is the exact gap this gate exists to prevent.
 var reencryptCovered = map[string]string{
-	// project scope (7)
+	// project scope (8)
 	"value_entries.ciphertext":                          "value",
 	"snapshot_entries.ciphertext":                       "snapshot",
 	"pending_changes.ciphertext":                        "pending",
@@ -73,7 +73,9 @@ var reencryptCovered = map[string]string{
 	"adapter_route_moves.pending_credential_ciphertext": "adapter_route_move",
 	"dynamic_providers.admin_credential_ciphertext":     "dynamic_provider",
 	"ssh_ca_keys.private_key_ciphertext":                "ssh_ca_key",
-	// instance scope (8)
+	"transit_key_versions.material_ciphertext":          "transit_key_version",
+
+	// instance scope (9)
 	"self_config_seed_inputs.ciphertext": "self_config_seed_inputs",
 	"password_credentials.verifier":      "password",
 	"totp_credentials.seed":              "totp",
@@ -82,10 +84,13 @@ var reencryptCovered = map[string]string{
 	"oauth2_providers.client_secret":     "oauth2",
 	"saml_sp_keys.encrypted_private_key": "saml",
 	"remotes.credential_sealed":          "remotes",
+	"pki_issuers.encrypted_private_key":  "pki_issuer",
 }
 
 // reencryptExemptBlobs is every other BLOB column, each a reviewed non-target.
 var reencryptExemptBlobs = map[string]string{
+	// Transit (#156): an Ed25519 public key is public metadata, never sealed.
+	"transit_key_versions.public_key": "transit signing public key (public metadata, not enveloped)",
 	// Wrapped KEYS — a different tier, rotated by rotate-master-key / rotate-dek,
 	// never by reencrypt (which moves ciphertext, not keys).
 	"master_keys.blob": "master key wrapped by the root; rotate-root/master-key territory",
@@ -129,6 +134,10 @@ var reencryptExemptBlobs = map[string]string{
 	// PUBLIC material — certificates, public keys, opaque handles.
 	"saml_providers.signing_certificates":   "IdP signing certificates (public)",
 	"saml_sp_keys.certificate_der":          "SP certificate (public)",
+	"pki_issuers.certificate_der":           "CA certificate (public, #154)",
+	"pki_issuers.csr_der":                   "pending intermediate CSR (public, #154)",
+	"pki_issuers.crl_der":                   "published CRL (public, #154)",
+	"pki_certificates.certificate_der":      "issued leaf certificate (public, #154)",
 	"webauthn_credentials.aaguid":           "authenticator AAGUID (opaque, public)",
 	"webauthn_credentials.credential_id":    "WebAuthn credential id (public handle)",
 	"webauthn_credentials.public_key":       "WebAuthn public key (public)",

@@ -445,6 +445,8 @@ type Repos interface {
 	Dynamic() DynamicRepo
 	// SSH is the SSH user-certificate surface (#155).
 	SSH() SSHRepo
+	// PKI is the private-PKI issuer, profile and certificate surface (#154).
+	PKI() PKIRepo
 	// Definitions is the plan ledger behind definitions plan/apply (#70).
 	Definitions() DefinitionsRepo
 	// ScanningDismissals is the secret-scanning "keep as config" dismissal
@@ -460,8 +462,14 @@ type Repos interface {
 	// inside the publish transaction, and every read runs beside its own
 	// lifecycle event, so a read-only twin would have no caller.
 	Approvals() ApprovalRepo
+	// Access is the approval-mediated temporary access engine (#152): policies,
+	// requests and votes. The time-bound grant rows it writes live on the
+	// resolution surface, not here. WRITE bundle only, like Approvals.
+	Access() AccessRepo
 	// DeliveryTargets is the delivery-target condition-report surface (#788).
 	DeliveryTargets() DeliveryTargetRepo
+	// Transit is the managed-key surface (#156, transit ADR).
+	Transit() TransitRepo
 	// FileTargets is the generic file-destination surface (#164).
 	FileTargets() FileTargetRepo
 }
@@ -512,6 +520,9 @@ type ReadRepos interface {
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
 	SSH() SSHReader
+	// Transit is the managed-key metadata read side (#156).
+	Transit() TransitReader
+	PKI() PKIReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
 	FileTargets() FileTargetReader

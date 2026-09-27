@@ -1045,6 +1045,14 @@ jobs:
         run: ./scripts/ci/start-dynamic-pg.sh
       - name: Prove dynamic-secret PostgreSQL lifecycle over verified TLS
         run: go test -count=1 -v ./internal/dynamic/postgres
+      - name: Start Vault and OpenBao KV v2 contract targets
+        run: ./scripts/ci/start-kv-targets.sh
+      - name: Prove the vault-kv adapter contract against Vault and OpenBao
+        env:
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
+        run: |
+          go test -count=1 -v -run 'Contract$' ./internal/adapter/vaultkv
+          go test -count=1 -v -run '^TestAdapterVaultKVEndToEnd$' ./internal/isolation
       - name: Verify analysis shard planner fixtures
         run: ./scripts/ci/analysis-shards_test.sh
       - name: Verify operations floor preflight refusals
@@ -1282,6 +1290,17 @@ jobs:
             echo "isolation: shard $ISOLATION_SHARD has no tests" >&2
             exit 1
           fi
+          # The shard that owns the AWS Secrets Manager emulator leg starts the
+          # pinned moto harness; the test then refuses to skip (#158).
+          case "|$tests|" in
+            *'|TestAWSSecretsManagerEmulatorLifecycle|'*)
+              export HIKYO_TEST_AWS_EMULATOR_REQUIRED=1
+              aws_env=$(./scripts/ci/start-aws-emulator.sh "$RUNNER_TEMP/aws-emulator")
+              for assignment in $aws_env; do
+                export "${assignment?}"
+              done
+              ;;
+          esac
           # Explicit package timeout inside the 20-minute job budget. The default
           # 10 minutes gave a 5-minute shard only 2x headroom and a loaded runner
           # hit it mid-test without any hang (#694). Race shards already run 20m.

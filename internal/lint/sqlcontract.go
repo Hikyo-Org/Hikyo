@@ -74,6 +74,7 @@ var approvedParameterNames = map[string]map[string]string{
 	"ListOidcProvidersForReencrypt":        aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListPasswordCredsForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListPendingForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),
+	"ListPkiIssuersForReencrypt":           aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListRecoveryCodesForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListRemotesForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListSamlKeysForReencrypt":             aliases("ID", "Cursor", "Limit", "PageLimit"),
@@ -677,6 +678,7 @@ var booleanContractFields = map[string]bool{
 	"Prepared":          true, "Suspended": true, "ConfirmRestoredCredentials": true, // runtime configuration booleans map INTEGER to BOOLEAN
 	"PayloadPresent": true, "Protected": true, "SchemaOverride": true, "Secret": true,
 	"LocalEnabled": true, // registration_policies.local_enabled (#606): sqlite INTEGER, postgres BOOLEAN
+	"Bypassed":     true, // access_requests.bypassed (#152): sqlite INTEGER, postgres BOOLEAN
 }
 
 func isTimestampContractField(name string) bool {

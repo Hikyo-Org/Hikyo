@@ -34,7 +34,7 @@ func TestSealedWebhookFactoryBuildsOnlyInstanceAdminOrigins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	factory := newAdapterModuleFactory(nil, endpoints)
+	factory := newAdapterModuleFactory(nil, endpoints, adapterProviderPolicy{})
 	lease, err := factory.Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding")
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestSealedWebhookFactoryBuildsOnlyInstanceAdminOrigins(t *testing.T) {
 	if _, err := factory.Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://tenant-chosen.example"}, "binding"); err == nil || !strings.Contains(err.Error(), "instance-admin") {
 		t.Fatalf("tenant-chosen origin accepted: %v", err)
 	}
-	if _, err := newAdapterModuleFactory(nil, nil).Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding"); err == nil {
+	if _, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.SealedWebhookProvider, adapter.Config{Origin: "https://recv.example"}, "binding"); err == nil {
 		t.Fatal("no registry must mean no sealed-webhook endpoint")
 	}
 }

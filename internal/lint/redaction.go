@@ -35,6 +35,7 @@ var SensitiveTypes = map[string]bool{
 	Module + "/internal/crypto.ProjectSealer":  true,
 	Module + "/internal/crypto.InstanceSealer": true,
 	Module + "/internal/crypto.swapHandle":     true,
+	Module + "/internal/crypto.TransitKey":     true,
 }
 
 // sensitiveOwner may format its own types (deliberate extraction inside the

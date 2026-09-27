@@ -33,6 +33,8 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
+import { PkiIssuersPanel } from './PkiIssuersPanel.tsx';
+import { PkiProfilesPanel } from './PkiProfilesPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
 import { ConsequencesDialog, JumpIndex, Panel } from './Sections.tsx';
@@ -139,6 +141,8 @@ export function InstanceAdmin() {
       { id: 'instance-keys', label: 'Keys & crypto' },
       { id: 'instance-saml-providers', label: 'SAML providers' },
       { id: 'instance-saml-sp-keys', label: 'SP signing keys' },
+      { id: 'instance-pki-issuers', label: 'Certificate authorities' },
+      { id: 'instance-pki-profiles', label: 'Certificate profiles' },
     ]} />
     {failure !== null ? <Alert>{failure}</Alert> : null}
     {done !== null ? <Alert tone="done">{done}</Alert> : null}
@@ -227,6 +231,8 @@ export function InstanceAdmin() {
     </Panel>
     <SamlProvidersPanel />
     <SamlSpKeysPanel />
+    <PkiIssuersPanel />
+    <PkiProfilesPanel />
   </div>;
 }
 

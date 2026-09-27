@@ -154,7 +154,7 @@ export type PasskeyCeremonyInput = {
    * grant-widening gate both consume a window opened under this purpose, over
    * each environment the service account reaches in the resulting post-state.
    */
-  operation: 'reveal' | 'copy' | 'publish' | 'mint' | 'approve' | 'reject' | 'bypass';
+  operation: 'reveal' | 'copy' | 'publish' | 'mint' | 'approve' | 'reject' | 'bypass' | 'access';
   environmentId: string;
   /** The enumerated unit: exactly the keys this one decision covers. */
   keyIds: readonly string[];

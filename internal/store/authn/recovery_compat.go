@@ -10,18 +10,25 @@ import (
 
 // Historical constructors are confined to tx/recovery.go. They may be selected
 // only from the verified source manifest under guarded RecoveryDB authority.
-// Their compatibility differences are the pre-47 privacy and pre-50 profile projections; they do
+// Their compatibility differences are the pre-47 privacy, pre-50 profile and
+// pre-66 temporary-access projections; they do
 // not add a session/login path or remove the restore reconciliation gate.
 func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r := NewSQLite(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
 	r.historicalRecoveryBeforeSelfConfig = version < 50
+	r.historicalRecoveryBeforeAccess = version < 66
 	return r
 }
+
+// NewHistoricalRecoveryPG binds a resolver to a verified source schema version
+// for guarded recovery. Versions before 47, 50, and 60 use the corresponding
+// privacy, profile, and temporary-access compatibility projections.
 func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r := NewPG(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
 	r.historicalRecoveryBeforeSelfConfig = version < 50
+	r.historicalRecoveryBeforeAccess = version < 66
 	return r
 }
 func (r *Resolver) recoveryGrantsBeforePrivacy(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
@@ -46,6 +53,27 @@ func (r *Resolver) recoveryGrantsBeforeSelfConfig(ctx context.Context, p domain.
 	}
 	rows, err := r.pg.RecoveryListGrantsBeforeSelfConfig(ctx, string(p))
 	return grantsFromRows(rows, err, func(row pggen.RecoveryListGrantsBeforeSelfConfigRow) (string, string, string, string) {
+		return row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String
+	})
+}
+
+// recoveryGrantsBeforeAccess is the chokepoint projection for verified source
+// schemas 50 through 65, which have no access_grants table (#152).
+func (r *Resolver) recoveryGrantsBeforeAccess(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
+	if r.sq != nil {
+		rows, err := r.sq.RecoveryListGrantsBeforeAccess(ctx, string(p))
+		for _, row := range rows {
+			r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
+		}
+		return grantsFromRows(rows, err, func(row sqlitegen.RecoveryListGrantsBeforeAccessRow) (string, string, string, string) {
+			return row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String
+		})
+	}
+	rows, err := r.pg.RecoveryListGrantsBeforeAccess(ctx, string(p))
+	for _, row := range rows {
+		r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
+	}
+	return grantsFromRows(rows, err, func(row pggen.RecoveryListGrantsBeforeAccessRow) (string, string, string, string) {
 		return row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String
 	})
 }

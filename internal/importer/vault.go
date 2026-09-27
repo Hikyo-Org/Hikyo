@@ -258,6 +258,7 @@ func (vaultConnector) ReadLive(ctx context.Context, in LiveInput, b *Budget) (Re
 		Records: reader.records, Skipped: reader.skipped,
 		Scope:      Scope{Mount: mount, PathPrefix: prefix, KVVersion: kvVersion},
 		Identity:   origin,
+		Namespace:  strings.Trim(client.Namespace(), "/"),
 		Resolution: resolution,
 	}, nil
 }

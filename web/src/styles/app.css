@@ -6147,6 +6147,100 @@ label.chk:has(input:disabled) {
   min-height: var(--control);
 }
 
+/* Temporary access (#152). Same layout vocabulary as change approvals; the
+   request state is always spelled out in text, never colour alone. */
+.temporary-access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--page-pad, 16px);
+}
+
+.temporary-access__section-head,
+.temporary-access__form-actions,
+.temporary-access__request-actions,
+.temporary-access__emergency {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.temporary-access__policies {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.temporary-access__policies th,
+.temporary-access__policies td {
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--panel-line);
+  vertical-align: top;
+}
+
+.temporary-access__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+}
+
+.temporary-access__requests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.temporary-access__request {
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.temporary-access__request-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.temporary-access__request-state {
+  font-weight: 500;
+}
+
+.temporary-access__request-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.temporary-access__request-meta dt {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.temporary-access__request-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.temporary-access label:not(.chk label) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+}
+
 /* ---------------------------------------------------------------------------
    Deployment adapters (#157): one sidebar surface listing every adapter and
    its targets with a text-and-glyph health chip, a detail aside with the

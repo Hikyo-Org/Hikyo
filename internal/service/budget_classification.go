@@ -51,6 +51,8 @@ func BudgetClassOf(op authz.Operation) (reason string, known bool) {
 	return c.reason, ok
 }
 
+// buildBudgetClassification assigns budget categories and reasons to operations.
+// It panics if an operation is assigned more than once.
 func buildBudgetClassification() map[authz.Operation]budgetClassification {
 	m := map[authz.Operation]budgetClassification{}
 	add := func(class budgetClass, reason string, ops ...authz.Operation) {
@@ -75,6 +77,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDeliveryFetch)
 	add(budgetClassNamed, "delivery-target and file-target reports: separate bucket, 60/min·principal + 300/min·org, charged after authorization (k8s-condition-reporting ADR D8)",
 		authz.OpDeliveryTargetReport, authz.OpDeliveryTargetTombstone, authz.OpFileTargetReport)
+	add(budgetClassNamed, "transit §179 (transit ADR D9): Transit.use (600/min·principal + 6000/min·org), installation-wide under HA",
+		authz.OpTransitUse)
 	add(budgetClassNamed, "schema-revision §151: chargeOnce before BumpSchemaRevision (60/h·project)",
 		authz.OpKeyCreate, authz.OpKeyRename, authz.OpKeyUpdateDeclaration, authz.OpKeyUpdateMetadata,
 		authz.OpKeySetGroup, authz.OpKeyDelete, authz.OpKeyReclassify,
@@ -95,6 +99,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
 	add(budgetClassDefaultExpensive, "ssh certificates: in-request key generation (RSA-3072 is the costly case) and signing",
 		authz.OpSSHCAConfigure, authz.OpSSHCARotate, authz.OpSSHCertIssue)
+	add(budgetClassDefaultExpensive, "private PKI: in-request signing, and key generation for a generated-key issuance (#154)",
+		authz.OpCertificateIssue, authz.OpCertificateRenew)
 
 	// ---- EXEMPT ----
 	add(budgetClassExempt, "self-configuration: one unresolved durable apply, 10 intents/minute/instance and 30-second preparation deadline",
@@ -154,6 +160,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// own §179 budget, so no approval op takes a separate expensive slot.
 		authz.OpApprovalPolicyWrite, authz.OpApprovalPolicyRead, authz.OpApprovalRequestRead,
 		authz.OpApprovalVote, authz.OpApprovalBypass,
+		// temporary access (#152): policy admin, request, vote, cancel, revoke and
+		// emergency access are bounded single-request acts (a grant writes at
+		// most one row per requestable capability).
+		authz.OpAccessPolicyWrite, authz.OpAccessPolicyRead, authz.OpAccessRequestCreate,
+		authz.OpAccessRequestRead, authz.OpAccessVote, authz.OpAccessCancel,
+		authz.OpAccessRevoke, authz.OpAccessBypass,
 		// grants
 		authz.OpGrantCreateEnv, authz.OpGrantCreateProject, authz.OpGrantCreateOrg, authz.OpGrantCreateInstance,
 		authz.OpGrantListProject, authz.OpGrantListOrg, authz.OpGrantListInstance,
@@ -173,6 +185,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSAMLProviderGet, authz.OpSAMLProviderList, authz.OpSAMLProviderPut,
 		authz.OpSAMLProviderPatch, authz.OpSAMLProviderDelete, authz.OpSAMLProviderRefreshMetadata,
 		authz.OpSAMLSPKeyList, authz.OpSAMLSPKeyRotate, authz.OpSAMLSPKeyRetire, authz.OpSAMLSPKeyCompromiseRetire,
+		// private PKI issuers and profiles (#154): instance-config, human
+		// session, the SAML SP key custody shape
+		authz.OpPKIIssuerInspect, authz.OpPKIIssuerCreate, authz.OpPKIIssuerInstall, authz.OpPKIIssuerRotate,
+		authz.OpPKIIssuerRetire, authz.OpPKIIssuerRevoke, authz.OpPKIIssuerReleaseHold, authz.OpPKIIssuerPublishCRL,
+		authz.OpPKIProfileInspect, authz.OpPKIProfileCreate, authz.OpPKIProfileUpdate, authz.OpPKIProfileDelete,
+		authz.OpPKIProfileBind, authz.OpPKIProfileUnbind,
 		// SCIM (provisioning bindings, credentials, mappings, and the provisioning verbs)
 		authz.OpSCIMBindingCreate, authz.OpSCIMBindingGet, authz.OpSCIMBindingList, authz.OpSCIMBindingDelete,
 		authz.OpSCIMCredentialMint, authz.OpSCIMCredentialGet, authz.OpSCIMCredentialList, authz.OpSCIMCredentialRevoke,
@@ -215,6 +233,14 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSSHCAInspect, authz.OpSSHCARetireKey, authz.OpSSHCADelete,
 		authz.OpSSHProfileConfigure, authz.OpSSHProfileInspect, authz.OpSSHProfileDelete,
 		authz.OpSSHCertInspect, authz.OpSSHCertRevoke,
+		// transit key management (#156): one key row and its version, state
+		// or caller rows per call; the data plane is the named `transit`
+		// category above
+		authz.OpTransitKeyCreate, authz.OpTransitKeyInspect, authz.OpTransitKeyConfigure,
+		authz.OpTransitKeyRotate, authz.OpTransitKeyLifecycle, authz.OpTransitKeyTrim,
+		// private PKI (#154): certificate reads and revocation write one row
+		// and sign nothing; the CRL is re-signed by the worker, not the request
+		authz.OpCertificateInspect, authz.OpCertificateRevoke,
 	)
 
 	return m

@@ -135,7 +135,9 @@ func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreF
 
 // CompleteRestore is the closure the restore transaction runs against the
 // restored state, before it is committed or published. It advances the
-// credential epoch and writes the reconstruction record in that same act.
+// credential epoch, invalidates restored adapter and dynamic-provider
+// credentials, holds restored CA issuers, and writes the reconstruction record
+// in that same act. Any failure is returned to abort the restore transaction.
 //
 // It is a package-level function rather than a method because it has no
 // datastore of its own to hold: the whole point is that it runs on somebody
@@ -149,6 +151,10 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 			return err
 		}
 		if err := az.InvalidateRestoredDynamicProviderCredentials(ctx); err != nil {
+			return err
+		}
+		// #154: restored CA issuers mint nothing until `pki issuer release-hold`.
+		if err := az.HoldRestoredPKIIssuers(ctx); err != nil {
 			return err
 		}
 		state, err := az.RestoreState(ctx)
