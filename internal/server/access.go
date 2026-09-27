@@ -445,7 +445,14 @@ func (a *API) GetRetentionHealth(ctx context.Context, _ apigen.GetRetentionHealt
 		at := health.LastSuccess
 		last = &at
 	}
+	var pkiUnknown, pkiHeld *int
+	if health.PKIKnown {
+		unknown, held := int(health.PKI.UnknownCertificates), int(health.PKI.HeldIssuers)
+		pkiUnknown, pkiHeld = &unknown, &held
+	}
 	return apigen.GetRetentionHealth200JSONResponse{
+		PkiCertificatesUnknown:  pkiUnknown,
+		PkiIssuersOnHold:        pkiHeld,
 		Diagnostics:             wireDiagnostics(health.Diagnostics.Findings),
 		LastPruneSuccess:        last,
 		Stale:                   health.Stale,

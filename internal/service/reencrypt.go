@@ -383,6 +383,11 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 			reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, _ uint32) (bool, error) {
 				return r.ReencryptRemote(ctx, p, row.ID, ciphertext, row.Ciphertext)
 			}},
+		{table: "pki_issuers",
+			list:      store.ReencryptRepo.ListPkiIssuersForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad:       pkiIssuerKeyAAD,
+			reseal:    versionedInstanceReseal(store.ReencryptRepo.ReencryptPkiIssuer)},
 	}
 	for _, table := range tables {
 		if err := s.walkInstance(ctx, actor, table, &moved, sealer, active); err != nil {

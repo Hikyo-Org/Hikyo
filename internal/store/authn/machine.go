@@ -352,6 +352,30 @@ func (r *Resolver) DeleteServiceAccountAggregate(ctx context.Context, in DeleteS
 		return ServiceAccountDeletion{}, err
 	}
 
+	// Only authenticated historical recovery before schema64 lacks PKI storage.
+	// Ordinary resolvers and recovery at schema64 or newer always enforce retention.
+	if !r.historicalRecoveryBeforePKI {
+		// The locked principal serializes issuance's foreign-key reference with
+		// deletion. Keep historical and revoked certificates, never cascade them.
+		var certificates int64
+		if r.sq != nil {
+			certificates, err = r.sq.CountServiceAccountPKICertificates(ctx, sqlitegen.CountServiceAccountPKICertificatesParams{
+				OrgID: string(in.Scope.Org), ProjectID: string(in.Scope.Project), PrincipalID: string(sa.PrincipalID),
+			})
+		} else {
+			certificates, err = r.pg.CountServiceAccountPKICertificates(ctx, pggen.CountServiceAccountPKICertificatesParams{
+				OrgID: string(in.Scope.Org), ProjectID: string(in.Scope.Project), PrincipalID: string(sa.PrincipalID),
+			})
+		}
+		if err != nil {
+			return ServiceAccountDeletion{}, err
+		}
+		if certificates != 0 {
+			return ServiceAccountDeletion{}, domain.ErrPKICertificateRetention
+		}
+
+	}
+
 	result := ServiceAccountDeletion{Account: sa}
 	if r.sq != nil {
 		result.CredentialsRevoked, err = r.sq.RevokeAllMachineCredentials(ctx, sqlitegen.RevokeAllMachineCredentialsParams{
@@ -404,6 +428,13 @@ func (r *Resolver) DeleteServiceAccountAggregate(ctx context.Context, in DeleteS
 		})
 		if err == nil {
 			result.PrincipalsDeleted, err = r.pg.DeletePrincipal(ctx, string(sa.PrincipalID))
+			// Keep the FK as a backstop for a concurrent historical-reference
+			// writer. Only this named PKI constraint has the retention meaning;
+			// unrelated integrity failures must retain their original error.
+			var fk *pgconn.PgError
+			if errors.As(err, &fk) && fk.Code == "23503" && fk.TableName == "pki_certificates" && fk.ConstraintName == "pki_certificates_principal_id_fkey" {
+				err = domain.ErrPKICertificateRetention
+			}
 		}
 	}
 	if err != nil {

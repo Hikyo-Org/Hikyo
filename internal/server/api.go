@@ -179,6 +179,8 @@ type API struct {
 	Dynamic *service.Dynamic
 	// SSH is the SSH user-certificate surface (#155).
 	SSH *service.SSH
+	// PKI is the private-PKI surface (#154).
+	PKI *service.PKI
 	// Audits is the trail read/export surface. Concrete like Adapters: it is
 	// principal-keyed and the handler resolves the session before calling it.
 	Audits *service.Audits

@@ -35,6 +35,7 @@
     "deployment-adapters",
     "dynamic-secrets",
     "ssh-certificates",
+    "private-pki",
     "mcp",
     "local-development",
     "repository-scanning",

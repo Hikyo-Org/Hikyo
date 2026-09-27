@@ -111,6 +111,12 @@ func doctorResults(providers apigen.SamlProviderList, health apigen.RetentionHea
 	if adapters.Severity == "warn" && result.Status == "ok" {
 		result.Status = "warning"
 	}
+	pkiFinding := doctorPKIFinding(health)
+	result.Findings = append(result.Findings, pkiFinding)
+	rows = append(rows, []string{pkiFinding.Severity, pkiFinding.Provider, pkiFinding.Code, pkiFinding.EffectiveAt, pkiFinding.Message})
+	if (pkiFinding.Severity == "warn" || pkiFinding.Severity == "unknown") && result.Status == "ok" {
+		result.Status = "warning"
+	}
 	for _, finding := range doctorDiagnosticFindings(health) {
 		result.Findings = append(result.Findings, finding)
 		rows = append(rows, []string{finding.Severity, finding.Provider, finding.Code, finding.EffectiveAt, finding.Message})
@@ -209,6 +215,29 @@ func doctorAdapterFinding(health apigen.RetentionHealth) doctorFinding {
 	if health.AdapterTargetsAttention > 0 || health.AdapterTargetsFailed > 0 {
 		finding.Severity = "warn"
 		finding.Message = summary + "; inspect them with `hikyo adapter list`"
+		return finding
+	}
+	finding.Message = summary
+	return finding
+}
+
+// doctorPKIFinding surfaces private-PKI state that needs an operator (#154):
+// certificates whose issuance outcome is unknown (the CRL already lists them
+// as revoked, and they should be re-issued) and issuers held after a restore
+// (no issuance until `hikyo pki issuer release-hold`). A server that did not
+// measure them reports unknown, never ok.
+func doctorPKIFinding(health apigen.RetentionHealth) doctorFinding {
+	finding := doctorFinding{Provider: "-", Code: "pki", Severity: "ok", EffectiveAt: "-"}
+	if health.PkiCertificatesUnknown == nil || health.PkiIssuersOnHold == nil {
+		finding.Severity = "unknown"
+		finding.Message = "private-PKI health was not measured"
+		return finding
+	}
+	unknown, held := *health.PkiCertificatesUnknown, *health.PkiIssuersOnHold
+	summary := fmt.Sprintf("%d certificate(s) with an unknown issuance outcome, %d issuer version(s) held after a restore", unknown, held)
+	if unknown > 0 || held > 0 {
+		finding.Severity = "warn"
+		finding.Message = summary + "; see `hikyo pki issuer list` and `hikyo cert list`"
 		return finding
 	}
 	finding.Message = summary

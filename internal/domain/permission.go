@@ -234,9 +234,14 @@ var machineAllowlists = map[PrincipalClass]map[Capability]bool{
 	// `report-delivery-status` is the condition-reporting ADR's declared
 	// amendment: the one machine write a workload may hold, and it writes no
 	// value, definition or grant.
-	ClassWorkload: {CapRead: true, CapReportDeliveryStatus: true},
+	//
+	// `issue-certificate` is the private-PKI amendment (#154): a workload or
+	// automation credential may request its own service certificate. The
+	// profile's machine_issuance opt-in is the second, live condition.
+	ClassWorkload: {CapRead: true, CapReportDeliveryStatus: true, CapIssueCertificate: true},
 	ClassAutomation: {
 		CapRead: true, CapEdit: true, CapPublish: true, CapDefinitionsEdit: true,
+		CapIssueCertificate: true,
 	},
 	// The scim-provisioning amendment's single row: system-created with the
 	// binding, and refused through the grant API — so the allowlist admits

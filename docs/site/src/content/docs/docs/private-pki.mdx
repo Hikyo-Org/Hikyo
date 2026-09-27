@@ -1,0 +1,226 @@
+---
+title: Private PKI
+description: Issue short-lived X.509 service certificates from a self-hosted CA whose private keys never leave Hikyo, under closed profiles that can only narrow.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/private-pki.mdx
+---
+
+Hikyo's private PKI issues **short-lived X.509 certificates for service
+identity**: mTLS between workloads, internal TLS endpoints, SPIFFE-style URI
+identities. An operator sets up the certificate authorities and the policy;
+people and workloads request certificates for the environments they are
+granted.
+
+It is deliberately narrow. There is no ACME server, no OCSP responder, no SSH
+certificates, no public trust and no hardware key custody. The design record
+is [the private-PKI ADR](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/pki.md).
+
+## The model
+
+| Object | Scope | Who manages it |
+|---|---|---|
+| **Issuer**: one key version of a named CA | instance | `instance-config` |
+| **Profile**: the closed issuance policy, plus its bindings | instance | `instance-config` |
+| **Certificate**: one issued leaf | environment | `issue-certificate` on that environment |
+
+- **CA private keys are non-exportable.** They are generated inside Hikyo (or
+  supplied once as protected input), sealed under the instance key, and never
+  returned by any API, CLI command, audit event, log line or metric. There is
+  no export operation. Backups carry only the ciphertext.
+- **Profiles are policy, not regular expressions.** A profile names its
+  allowed issuers, DNS names (`exact.name` or `*.suffix` for exactly one
+  leftmost label), IP ranges (CIDRs), URIs (exact, or `prefix/*` for SPIFFE
+  IDs), key algorithms, key usages, and TTL bounds (at most 90 days).
+- **Profile updates may only narrow.** Hikyo proves the new policy is a subset
+  of the old one. Any widening, and any change it cannot prove is a narrowing
+  (such as a different fixed organization), is refused. To widen, create a new
+  profile.
+- **A profile reaches a tenant only through a binding** to a project, or to one
+  environment of it. Binding is its own audited act.
+
+## Set up a CA
+
+### Evaluation: a root in Hikyo
+
+```sh
+hikyo pki issuer create-root eval-root --common-name "Example Eval Root" --ttl 87600h
+hikyo pki issuer create-intermediate issuing --parent eval-root \
+    --common-name "Example Issuing CA" --ttl 8760h \
+    --crl-url https://pki.example.com/issuing.crl
+```
+
+A root whose key lives on an online server is a single point of compromise.
+Use this for evaluation, then move to an offline root.
+
+### Production: an offline root
+
+Keep the root on an air-gapped machine. Hikyo generates the intermediate key and
+hands you only its CSR:
+
+```sh
+hikyo pki issuer create-intermediate issuing --common-name "Example Issuing CA" \
+    --csr-out issuing.csr
+```
+
+On the offline machine, sign the CSR as a CA certificate that may sign only
+leaves (`basicConstraints=critical,CA:TRUE,pathlen:0` and
+`keyUsage=critical,keyCertSign,cRLSign,digitalSignature` and
+`subjectKeyIdentifier=hash`), for example with
+OpenSSL:
+
+```sh
+openssl x509 -req -in issuing.csr -CA root.pem -CAkey root.key \
+    -days 365 -extfile intermediate.ext -out issuing.pem
+```
+
+Bring back `issuing.pem` and the root certificate (never the root key), and
+install it. Hikyo checks that the certificate carries the pending key, is a CA
+with certificate and CRL signing, and chains to the root you supply:
+
+```sh
+hikyo pki issuer install issuing --cert-file issuing.pem --chain-file root.pem
+```
+
+### Importing an existing intermediate
+
+```sh
+hikyo pki issuer import issuing --key-file issuing.key \
+    --cert-file issuing.pem --chain-file root.pem
+```
+
+The key is read from a file or `--key-stdin`, never from the command line.
+
+## Define and bind a profile
+
+A profile is a JSON document in the `PkiPolicy` shape:
+
+```json
+{
+  "allowed_issuers": ["issuing"],
+  "dns_patterns": ["*.svc.example.com"],
+  "ip_ranges": [],
+  "uri_patterns": ["spiffe://example.com/ns/*"],
+  "allow_wildcard_names": false,
+  "key_algorithms": ["ecdsa-p256", "ed25519"],
+  "key_usages": ["digital-signature"],
+  "ext_key_usages": ["server-auth", "client-auth"],
+  "max_ttl_seconds": 259200,
+  "default_ttl_seconds": 86400,
+  "renew_window_seconds": 28800,
+  "allow_csr": true,
+  "allow_generated_key": true,
+  "machine_issuance": true,
+  "organization": ""
+}
+```
+
+```sh
+hikyo pki profile create web --policy-file web.json
+hikyo pki profile bind web --org acme --project payments           # every environment
+hikyo pki profile bind web --org acme --project payments --env prod # one environment
+```
+
+Grant `issue-certificate` on the environment to the people and service
+accounts that may request certificates. A machine also needs the profile's
+`machine_issuance`.
+
+## Issue, renew, revoke
+
+With your own key (recommended: the private key never touches Hikyo):
+
+```sh
+openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+    -keyout api.key -subj "/CN=api" -out api.csr
+hikyo cert issue --env prod --profile web --csr-file api.csr \
+    --dns api.svc.example.com --cert-out api.pem
+```
+
+Only the CSR's public key is used; the names come from the flags. With a
+server-generated key, the key is shown **exactly once** through the print
+triad (a controlling terminal, `--output-file`, or `--dangerously-print`).
+Human CLI sessions use `--csr-file` or issue generated keys in the web UI,
+where the mint ceremony is supported. CLI `--generate-key` is available only
+to a machine credential authorized by the profile and environment policy:
+
+```sh
+hikyo cert issue --token-file /run/secrets/hikyo-token --env prod --profile web --generate-key \
+    --uri spiffe://example.com/ns/prod/sa/worker --output-file worker.key --cert-out worker.pem
+```
+
+- `hikyo cert renew <id>` works inside the profile's renewal window. It keeps
+  the key, re-checks the names against the **current** profile, and signs with
+  the issuer's **current** version. Renewing twice returns the same successor.
+- `hikyo cert revoke <id> --reason key-compromise` is immediate and
+  idempotent. The next CRL lists the serial.
+
+## Retained issuance history
+
+Hikyo retains certificate issuance history, including expired certificates and
+failed issuance attempts. Deleting an environment or service account with this
+history returns an explicit conflict; certificate expiry does not make the
+history eligible for automatic deletion.
+
+To deprovision access, revoke the affected certificates and service-account
+credentials. These revocations preserve the issuance history and do not remove
+the deletion guard. There is no automatic purge of this history.
+
+## Rotation and retirement
+
+```sh
+hikyo pki issuer rotate issuing           # version 2 becomes active; version 1 is retiring
+hikyo pki issuer retire issuing --version 1
+```
+
+During the overlap, version 1's certificates stay valid and version 1 keeps
+signing its CRL; new issuances and renewals use version 2. `retire` refuses
+while version 1 still has live certificates, then destroys its key. For an
+offline-signed issuer, `rotate` creates a pending version with a CSR, and the
+current version stays active until you install the new certificate.
+
+If a CA key is compromised, `hikyo pki issuer revoke issuing --version 2`
+destroys the key and revokes every live certificate it signed
+(`cACompromise`).
+
+## CRLs
+
+A background worker on every node publishes a CRL for each active and retiring
+issuer version: after any revocation, and at least every 12 hours (each CRL is
+valid for 24). Certificates in the `unknown` state are listed as revoked.
+
+Reading a CRL requires authentication: `hikyo pki issuer crl <issuer> --version N`
+for operators, and `hikyo cert crl <id>` for anyone with `read` on the
+certificate's environment. To serve relying parties, copy the CRL to a
+public location on a schedule and set that URL as the issuer's
+`--crl-url`. Hikyo embeds the URL in every certificate it issues and never
+fetches it.
+
+## Failure, restore and high availability
+
+- **Uncertain signing is never success.** A certificate whose serial was
+  reserved but whose outcome was not recorded (for example, the process died
+  mid-issue) becomes `unknown` after two minutes. It is published on the CRL
+  as revoked, counted in `hikyo_pki_certificates_unknown`, and flagged by
+  `hikyo doctor`. Issue a new certificate.
+- **Restore holds every issuer.** A restore can bring back certificates that
+  were revoked after the backup was taken. Every restored issuer is therefore
+  held, and issues nothing until you re-apply the revocations you know of and
+  run `hikyo pki issuer release-hold <issuer>`. CRLs keep publishing while held.
+  Restored people and machine credentials are inert until reconciled, as
+  always.
+- **Multi-node.** Every transition is a compare-and-swap, and issuance fences
+  on the issuer row at commit. A certificate cannot be issued by a version
+  that another node retired, revoked, rotated or held a moment earlier, and
+  concurrent renewals produce one successor.
+
+## Monitoring
+
+| Metric | Meaning |
+|---|---|
+| `hikyo_pki_certificates_live` | issued, unexpired leaves |
+| `hikyo_pki_certificates_unknown` | leaves with an uncertain outcome (alert on > 0) |
+| `hikyo_pki_issuers_on_hold` | issuer versions held after a restore (alert on > 0) |
+| `hikyo_pki_gauges_known` | 1 when the three above were measured; they are omitted when the snapshot is not measured, not when their values are zero |
+
+Every lifecycle step is audited: `pki.issuer`, `pki.profile`,
+`pki.certificate_transition_intent` and `_outcome`,
+`pki.certificate_key_disclosed`, `pki.crl_published`, and
+`pki.inventory_read`. No event carries key material.

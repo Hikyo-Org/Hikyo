@@ -4,6 +4,242 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+/**
+ * An issuer or profile name.
+ */
+export type PkiName = string;
+
+/**
+ * One CA key version's public surface. There is no private-key field:
+ * the key is sealed, non-exportable, and never leaves the server.
+ *
+ */
+export type PkiIssuer = {
+    id: Id;
+    name: PkiName;
+    version: number;
+    kind: 'root' | 'intermediate';
+    origin: 'generated' | 'imported';
+    parent_id?: string | null;
+    state: 'pending' | 'active' | 'retiring' | 'retired' | 'revoked';
+    key_algorithm: string;
+    /**
+     * sha256:<base64url> of the SubjectPublicKeyInfo.
+     */
+    key_fingerprint: string;
+    certificate_pem?: string | null;
+    /**
+     * The CSR of a pending version, for an offline root to sign.
+     */
+    csr_pem?: string | null;
+    chain_pem?: string | null;
+    subject_cn: string;
+    subject_org?: string | null;
+    not_before?: string | null;
+    not_after?: string | null;
+    crl_distribution_url?: string | null;
+    /**
+     * True after a restore until the issuer is reconciled; no issuance while held.
+     */
+    restore_hold: boolean;
+    issued_count: number;
+    crl_number: number;
+    crl_this_update?: string | null;
+    crl_next_update?: string | null;
+    created_at: string;
+    updated_at: string;
+};
+
+export type PkiIssuerList = {
+    issuers: Array<PkiIssuer>;
+};
+
+export type PkiIssuerCreateRequest = {
+    mode: 'root' | 'intermediate' | 'import';
+    name: PkiName;
+    common_name?: string;
+    organization?: string;
+    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'rsa-3072' | 'rsa-4096';
+    ttl_seconds?: number;
+    parent?: PkiName;
+    crl_distribution_url?: string;
+    /**
+     * Import only. Protected input, sealed on arrival and never returned.
+     */
+    private_key_pem?: string;
+    certificate_pem?: string;
+    chain_pem?: string;
+};
+
+export type PkiIssuerRotateRequest = {
+    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'rsa-3072' | 'rsa-4096';
+    ttl_seconds?: number;
+    crl_distribution_url?: string;
+    /**
+     * Imported issuers only. Protected input, sealed on arrival and never returned.
+     */
+    private_key_pem?: string;
+    certificate_pem?: string;
+    chain_pem?: string;
+};
+
+export type PkiIssuerInstallRequest = {
+    certificate_pem: string;
+    /**
+     * The signing chain, ending with the offline root.
+     */
+    chain_pem: string;
+};
+
+export type PkiCrl = {
+    crl_pem: string;
+};
+
+/**
+ * A closed issuance policy. Name patterns are exact names, `*.suffix`
+ * (one leftmost label), CIDRs, or exact URIs and `prefix*`; never
+ * regular expressions, so narrowing is decidable.
+ *
+ */
+export type PkiPolicy = {
+    allowed_issuers: Array<PkiName>;
+    dns_patterns: Array<string>;
+    ip_ranges: Array<string>;
+    uri_patterns: Array<string>;
+    allow_wildcard_names: boolean;
+    key_algorithms: Array<'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096'>;
+    key_usages: Array<'digital-signature' | 'key-encipherment' | 'key-agreement'>;
+    ext_key_usages: Array<'server-auth' | 'client-auth'>;
+    max_ttl_seconds: number;
+    default_ttl_seconds: number;
+    renew_window_seconds: number;
+    allow_csr: boolean;
+    allow_generated_key: boolean;
+    machine_issuance: boolean;
+    organization: string;
+};
+
+export type PkiProfileBinding = {
+    id: Id;
+    org_id: string;
+    project_id: string;
+    environment_id?: string | null;
+    created_at: string;
+};
+
+export type PkiProfile = {
+    id: Id;
+    name: PkiName;
+    policy: PkiPolicy;
+    bindings: Array<PkiProfileBinding>;
+    row_version: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type PkiProfileList = {
+    profiles: Array<PkiProfile>;
+};
+
+export type PkiProfileCreateRequest = {
+    name: PkiName;
+    policy: PkiPolicy;
+};
+
+export type PkiProfileUpdateRequest = {
+    policy: PkiPolicy;
+    /**
+     * The version the operator reviewed; a concurrent edit is refused.
+     */
+    row_version?: number;
+};
+
+export type PkiProfileBindRequest = {
+    org_id: string;
+    project_id: string;
+    environment_id?: string;
+};
+
+export type CertificateProfile = {
+    name: PkiName;
+    policy: PkiPolicy;
+};
+
+export type CertificateProfileList = {
+    profiles: Array<CertificateProfile>;
+};
+
+/**
+ * An issuance record. There is no private-key field, ever.
+ */
+export type Certificate = {
+    id: Id;
+    environment_id: string;
+    profile: string;
+    issuer_id: Id;
+    issuer_name: string;
+    issuer_version: number;
+    /**
+     * Lowercase hexadecimal serial number.
+     */
+    serial: string;
+    state: 'issuing' | 'issued' | 'renewed' | 'revoked' | 'expired' | 'unknown' | 'failed';
+    key_source: 'csr' | 'generated';
+    key_algorithm: string;
+    key_fingerprint: string;
+    common_name?: string | null;
+    dns_names: Array<string>;
+    ip_addresses: Array<string>;
+    uris: Array<string>;
+    not_before: string;
+    not_after: string;
+    certificate_pem?: string | null;
+    /**
+     * The issuing CA certificate followed by its chain.
+     */
+    chain_pem?: string | null;
+    principal_id: string;
+    principal_class: string;
+    renewed_from?: string | null;
+    renewed_by?: string | null;
+    revoked_at?: string | null;
+    revocation_reason?: string | null;
+    created_at: string;
+    updated_at: string;
+};
+
+export type CertificateList = {
+    certificates: Array<Certificate>;
+};
+
+export type CertificateIssueRequest = {
+    profile: PkiName;
+    issuer?: PkiName;
+    csr_pem?: string;
+    generate_key?: boolean;
+    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096';
+    common_name?: string;
+    dns_names?: Array<string>;
+    ip_addresses?: Array<string>;
+    uris?: Array<string>;
+    ttl_seconds?: number;
+};
+
+export type CertificateIssueResult = {
+    certificate: Certificate;
+    /**
+     * A server-generated PKCS#8 private key, returned EXACTLY ONCE to
+     * exactly one caller and never stored. Absent for a CSR issuance.
+     * No other route in this contract returns it.
+     *
+     */
+    private_key_pem?: string;
+};
+
+export type CertificateRevokeRequest = {
+    reason?: 'unspecified' | 'key-compromise' | 'affiliation-changed' | 'superseded' | 'cessation-of-operation' | 'privilege-withdrawn';
+};
+
 export type RuntimeStatus = {
     state: 'ready' | 'maintenance' | 'recovery-required';
     phase: 'preparing' | 'backup' | 'restore-check' | 'migration' | 'health-check' | null;
@@ -3408,6 +3644,14 @@ export type RetentionHealth = {
      * Deployment-adapter outbox jobs waiting to be claimed, instance-wide.
      */
     adapter_jobs_queued: number;
+    /**
+     * Private-PKI certificates in the uncertain unknown state, published on the CRL as revoked (#154). Absent when not measured.
+     */
+    pki_certificates_unknown?: number;
+    /**
+     * Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
+     */
+    pki_issuers_on_hold?: number;
 };
 
 /**
@@ -5086,6 +5330,16 @@ export type RotateSshcaRequestWritable = {
      */
     overlap_seconds?: number | null;
 };
+
+export type PkiIssuerName = PkiName;
+
+export type PkiIssuerVersion = number;
+
+export type PkiProfileName = PkiName;
+
+export type PkiBindingId = Id;
+
+export type CertificateId = Id;
 
 /**
  * Login-challenge identifier returned by `localLogin` (202).
@@ -27030,3 +27284,1814 @@ export type RevokeSshCertificateResponses = {
 };
 
 export type RevokeSshCertificateResponse = RevokeSshCertificateResponses[keyof RevokeSshCertificateResponses];
+
+export type ListPkiIssuersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pki/issuers';
+};
+
+export type ListPkiIssuersErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListPkiIssuersError = ListPkiIssuersErrors[keyof ListPkiIssuersErrors];
+
+export type ListPkiIssuersResponses = {
+    /**
+     * Issuer versions.
+     */
+    200: PkiIssuerList;
+};
+
+export type ListPkiIssuersResponse = ListPkiIssuersResponses[keyof ListPkiIssuersResponses];
+
+export type CreatePkiIssuerData = {
+    body: PkiIssuerCreateRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pki/issuers';
+};
+
+export type CreatePkiIssuerErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreatePkiIssuerError = CreatePkiIssuerErrors[keyof CreatePkiIssuerErrors];
+
+export type CreatePkiIssuerResponses = {
+    /**
+     * The created version.
+     */
+    201: PkiIssuer;
+};
+
+export type CreatePkiIssuerResponse = CreatePkiIssuerResponses[keyof CreatePkiIssuerResponses];
+
+export type ShowPkiIssuerData = {
+    body?: never;
+    path: {
+        issuer: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}';
+};
+
+export type ShowPkiIssuerErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowPkiIssuerError = ShowPkiIssuerErrors[keyof ShowPkiIssuerErrors];
+
+export type ShowPkiIssuerResponses = {
+    /**
+     * Issuer versions.
+     */
+    200: PkiIssuerList;
+};
+
+export type ShowPkiIssuerResponse = ShowPkiIssuerResponses[keyof ShowPkiIssuerResponses];
+
+export type RotatePkiIssuerData = {
+    body: PkiIssuerRotateRequest;
+    path: {
+        issuer: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/rotate';
+};
+
+export type RotatePkiIssuerErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RotatePkiIssuerError = RotatePkiIssuerErrors[keyof RotatePkiIssuerErrors];
+
+export type RotatePkiIssuerResponses = {
+    /**
+     * The new version.
+     */
+    200: PkiIssuer;
+};
+
+export type RotatePkiIssuerResponse = RotatePkiIssuerResponses[keyof RotatePkiIssuerResponses];
+
+export type InstallPkiIssuerCertificateData = {
+    body: PkiIssuerInstallRequest;
+    path: {
+        issuer: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/install';
+};
+
+export type InstallPkiIssuerCertificateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type InstallPkiIssuerCertificateError = InstallPkiIssuerCertificateErrors[keyof InstallPkiIssuerCertificateErrors];
+
+export type InstallPkiIssuerCertificateResponses = {
+    /**
+     * The activated version.
+     */
+    200: PkiIssuer;
+};
+
+export type InstallPkiIssuerCertificateResponse = InstallPkiIssuerCertificateResponses[keyof InstallPkiIssuerCertificateResponses];
+
+export type ReleasePkiIssuerHoldData = {
+    body?: never;
+    path: {
+        issuer: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/release-hold';
+};
+
+export type ReleasePkiIssuerHoldErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReleasePkiIssuerHoldError = ReleasePkiIssuerHoldErrors[keyof ReleasePkiIssuerHoldErrors];
+
+export type ReleasePkiIssuerHoldResponses = {
+    /**
+     * Issuer versions.
+     */
+    200: PkiIssuerList;
+};
+
+export type ReleasePkiIssuerHoldResponse = ReleasePkiIssuerHoldResponses[keyof ReleasePkiIssuerHoldResponses];
+
+export type RetirePkiIssuerData = {
+    body?: never;
+    path: {
+        issuer: PkiName;
+        version: number;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire';
+};
+
+export type RetirePkiIssuerErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RetirePkiIssuerError = RetirePkiIssuerErrors[keyof RetirePkiIssuerErrors];
+
+export type RetirePkiIssuerResponses = {
+    /**
+     * The retired version.
+     */
+    200: PkiIssuer;
+};
+
+export type RetirePkiIssuerResponse = RetirePkiIssuerResponses[keyof RetirePkiIssuerResponses];
+
+export type RevokePkiIssuerData = {
+    body?: never;
+    path: {
+        issuer: PkiName;
+        version: number;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke';
+};
+
+export type RevokePkiIssuerErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokePkiIssuerError = RevokePkiIssuerErrors[keyof RevokePkiIssuerErrors];
+
+export type RevokePkiIssuerResponses = {
+    /**
+     * The revoked version.
+     */
+    200: PkiIssuer;
+};
+
+export type RevokePkiIssuerResponse = RevokePkiIssuerResponses[keyof RevokePkiIssuerResponses];
+
+export type GetPkiIssuerCrlData = {
+    body?: never;
+    path: {
+        issuer: PkiName;
+        version: number;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl';
+};
+
+export type GetPkiIssuerCrlErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetPkiIssuerCrlError = GetPkiIssuerCrlErrors[keyof GetPkiIssuerCrlErrors];
+
+export type GetPkiIssuerCrlResponses = {
+    /**
+     * The CRL.
+     */
+    200: PkiCrl;
+};
+
+export type GetPkiIssuerCrlResponse = GetPkiIssuerCrlResponses[keyof GetPkiIssuerCrlResponses];
+
+export type PublishPkiIssuerCrlData = {
+    body?: never;
+    path: {
+        issuer: PkiName;
+        version: number;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl';
+};
+
+export type PublishPkiIssuerCrlErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PublishPkiIssuerCrlError = PublishPkiIssuerCrlErrors[keyof PublishPkiIssuerCrlErrors];
+
+export type PublishPkiIssuerCrlResponses = {
+    /**
+     * The version with its new CRL.
+     */
+    200: PkiIssuer;
+};
+
+export type PublishPkiIssuerCrlResponse = PublishPkiIssuerCrlResponses[keyof PublishPkiIssuerCrlResponses];
+
+export type ListPkiProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pki/profiles';
+};
+
+export type ListPkiProfilesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListPkiProfilesError = ListPkiProfilesErrors[keyof ListPkiProfilesErrors];
+
+export type ListPkiProfilesResponses = {
+    /**
+     * Profiles.
+     */
+    200: PkiProfileList;
+};
+
+export type ListPkiProfilesResponse = ListPkiProfilesResponses[keyof ListPkiProfilesResponses];
+
+export type CreatePkiProfileData = {
+    body: PkiProfileCreateRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pki/profiles';
+};
+
+export type CreatePkiProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreatePkiProfileError = CreatePkiProfileErrors[keyof CreatePkiProfileErrors];
+
+export type CreatePkiProfileResponses = {
+    /**
+     * The profile.
+     */
+    201: PkiProfile;
+};
+
+export type CreatePkiProfileResponse = CreatePkiProfileResponses[keyof CreatePkiProfileResponses];
+
+export type DeletePkiProfileData = {
+    body?: never;
+    path: {
+        profile: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/profiles/{profile}';
+};
+
+export type DeletePkiProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeletePkiProfileError = DeletePkiProfileErrors[keyof DeletePkiProfileErrors];
+
+export type DeletePkiProfileResponses = {
+    /**
+     * Deleted.
+     */
+    204: void;
+};
+
+export type DeletePkiProfileResponse = DeletePkiProfileResponses[keyof DeletePkiProfileResponses];
+
+export type ShowPkiProfileData = {
+    body?: never;
+    path: {
+        profile: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/profiles/{profile}';
+};
+
+export type ShowPkiProfileErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowPkiProfileError = ShowPkiProfileErrors[keyof ShowPkiProfileErrors];
+
+export type ShowPkiProfileResponses = {
+    /**
+     * The profile.
+     */
+    200: PkiProfile;
+};
+
+export type ShowPkiProfileResponse = ShowPkiProfileResponses[keyof ShowPkiProfileResponses];
+
+export type UpdatePkiProfileData = {
+    body: PkiProfileUpdateRequest;
+    path: {
+        profile: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/profiles/{profile}';
+};
+
+export type UpdatePkiProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type UpdatePkiProfileError = UpdatePkiProfileErrors[keyof UpdatePkiProfileErrors];
+
+export type UpdatePkiProfileResponses = {
+    /**
+     * The profile.
+     */
+    200: PkiProfile;
+};
+
+export type UpdatePkiProfileResponse = UpdatePkiProfileResponses[keyof UpdatePkiProfileResponses];
+
+export type BindPkiProfileData = {
+    body: PkiProfileBindRequest;
+    path: {
+        profile: PkiName;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/profiles/{profile}/bindings';
+};
+
+export type BindPkiProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type BindPkiProfileError = BindPkiProfileErrors[keyof BindPkiProfileErrors];
+
+export type BindPkiProfileResponses = {
+    /**
+     * The profile.
+     */
+    200: PkiProfile;
+};
+
+export type BindPkiProfileResponse = BindPkiProfileResponses[keyof BindPkiProfileResponses];
+
+export type UnbindPkiProfileData = {
+    body?: never;
+    path: {
+        profile: PkiName;
+        binding: Id;
+    };
+    query?: never;
+    url: '/api/v1/instance/pki/profiles/{profile}/bindings/{binding}';
+};
+
+export type UnbindPkiProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type UnbindPkiProfileError = UnbindPkiProfileErrors[keyof UnbindPkiProfileErrors];
+
+export type UnbindPkiProfileResponses = {
+    /**
+     * The profile.
+     */
+    200: PkiProfile;
+};
+
+export type UnbindPkiProfileResponse = UnbindPkiProfileResponses[keyof UnbindPkiProfileResponses];
+
+export type ListCertificateProfilesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles';
+};
+
+export type ListCertificateProfilesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListCertificateProfilesError = ListCertificateProfilesErrors[keyof ListCertificateProfilesErrors];
+
+export type ListCertificateProfilesResponses = {
+    /**
+     * Bound profiles.
+     */
+    200: CertificateProfileList;
+};
+
+export type ListCertificateProfilesResponse = ListCertificateProfilesResponses[keyof ListCertificateProfilesResponses];
+
+export type ListCertificatesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates';
+};
+
+export type ListCertificatesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListCertificatesError = ListCertificatesErrors[keyof ListCertificatesErrors];
+
+export type ListCertificatesResponses = {
+    /**
+     * Certificates.
+     */
+    200: CertificateList;
+};
+
+export type ListCertificatesResponse = ListCertificatesResponses[keyof ListCertificatesResponses];
+
+export type IssueCertificateData = {
+    body: CertificateIssueRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates';
+};
+
+export type IssueCertificateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type IssueCertificateError = IssueCertificateErrors[keyof IssueCertificateErrors];
+
+export type IssueCertificateResponses = {
+    /**
+     * The certificate, and a generated private key once.
+     */
+    200: CertificateIssueResult;
+};
+
+export type IssueCertificateResponse = IssueCertificateResponses[keyof IssueCertificateResponses];
+
+export type ShowCertificateData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        certificate: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}';
+};
+
+export type ShowCertificateErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowCertificateError = ShowCertificateErrors[keyof ShowCertificateErrors];
+
+export type ShowCertificateResponses = {
+    /**
+     * Certificate.
+     */
+    200: Certificate;
+};
+
+export type ShowCertificateResponse = ShowCertificateResponses[keyof ShowCertificateResponses];
+
+export type RenewCertificateData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        certificate: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew';
+};
+
+export type RenewCertificateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RenewCertificateError = RenewCertificateErrors[keyof RenewCertificateErrors];
+
+export type RenewCertificateResponses = {
+    /**
+     * The successor certificate.
+     */
+    200: Certificate;
+};
+
+export type RenewCertificateResponse = RenewCertificateResponses[keyof RenewCertificateResponses];
+
+export type RevokeCertificateData = {
+    body: CertificateRevokeRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        certificate: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke';
+};
+
+export type RevokeCertificateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeCertificateError = RevokeCertificateErrors[keyof RevokeCertificateErrors];
+
+export type RevokeCertificateResponses = {
+    /**
+     * The revoked certificate.
+     */
+    200: Certificate;
+};
+
+export type RevokeCertificateResponse = RevokeCertificateResponses[keyof RevokeCertificateResponses];
+
+export type GetCertificateCrlData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        certificate: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl';
+};
+
+export type GetCertificateCrlErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetCertificateCrlError = GetCertificateCrlErrors[keyof GetCertificateCrlErrors];
+
+export type GetCertificateCrlResponses = {
+    /**
+     * The CRL.
+     */
+    200: PkiCrl;
+};
+
+export type GetCertificateCrlResponse = GetCertificateCrlResponses[keyof GetCertificateCrlResponses];

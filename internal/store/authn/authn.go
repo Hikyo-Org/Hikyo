@@ -36,6 +36,7 @@ import (
 type Resolver struct {
 	historicalRecoveryBeforePrivacy    bool
 	historicalRecoveryBeforeSelfConfig bool
+	historicalRecoveryBeforePKI        bool
 	selfConfigOrgID                    domain.OrgID
 	sq                                 *sqlitegen.Queries
 	pg                                 *pggen.Queries

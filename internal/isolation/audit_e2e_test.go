@@ -506,6 +506,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// profile configure/delete, issuance and revocation all traverse the
 		// real service and store.
 		runSSHLifecycle(t, db, false)
+		// Private PKI (#154): issuer, profile, issuance with a display-once
+		// generated key, revocation and the worker's CRL all traverse the
+		// real service, runtime and store.
+		runPKILifecycle(t, db)
 		// The multi-instance surface (#71): both tiers, against a real pinned
 		// TLS peer, so every remote.* type has a real emitter behind it too.
 		// Before the backup lifecycle, because that one advances the restore

@@ -445,6 +445,8 @@ type Repos interface {
 	Dynamic() DynamicRepo
 	// SSH is the SSH user-certificate surface (#155).
 	SSH() SSHRepo
+	// PKI is the private-PKI issuer, profile and certificate surface (#154).
+	PKI() PKIRepo
 	// Definitions is the plan ledger behind definitions plan/apply (#70).
 	Definitions() DefinitionsRepo
 	// ScanningDismissals is the secret-scanning "keep as config" dismissal
@@ -510,6 +512,7 @@ type ReadRepos interface {
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
 	SSH() SSHReader
+	PKI() PKIReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
 }

@@ -104,6 +104,8 @@ stored locally and are never printed as a login receipt.
 | `adapter` | Configure Forgejo and GitHub Actions deployment adapters, targets, plans, adoption, and converge jobs. |
 | `dynamic-provider`, `lease` | Register dynamic-secret providers and mint, renew, revoke, and settle short-lived leases. |
 | `ssh-ca`, `ssh-profile`, `ssh-cert` | Run SSH user CAs, define signing profiles, and issue and revoke short-lived SSH certificates. See [SSH certificates](/docs/ssh-certificates/). |
+| `pki` | Operate the private PKI: create, import, install, rotate, retire and revoke CA issuers, release restore holds, read CRLs, and manage narrowing-only certificate profiles and their bindings. |
+| `cert` | Issue by CSR, list, show, renew and revoke environment certificates, and read a certificate's CRL. CLI generated keys require an authorized machine credential; human sessions use a local CSR or the web UI mint ceremony. |
 | `revision`, `pin`, `approval` | Inspect lineage, pin workloads to a revision, and run change-approval policies and requests. |
 | `definitions`, `import` | Author and apply the reviewable catalogue, and stage values from other systems. |
 | `scan` | Scan files, staged changes, and Git history for credentials, locally, with the server's ruleset. See [Scan repositories and CI](/docs/repository-scanning/). |

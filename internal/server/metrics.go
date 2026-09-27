@@ -111,6 +111,15 @@ const (
 	// scrape; 0 means they are omitted rather than rendered as zeros.
 	MetricSSHGaugesKnown = "hikyo_ssh_gauges_known"
 
+	// Private-PKI gauges (#154). Label-free, cardinality one each: live leaf
+	// certificates, certificates in the uncertain `unknown` state (published on
+	// the CRL as revoked), and issuers held after a restore. The known flag has
+	// the dynamic-gauge semantics: 0 means unmeasured, and the values are omitted.
+	MetricPKICertificatesLive    = "hikyo_pki_certificates_live"
+	MetricPKICertificatesUnknown = "hikyo_pki_certificates_unknown"
+	MetricPKIIssuersOnHold       = "hikyo_pki_issuers_on_hold"
+	MetricPKIGaugesKnown         = "hikyo_pki_gauges_known"
+
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
 )
@@ -268,6 +277,7 @@ type Metrics struct {
 	approvals    *approvalCollector
 	dyn          *dynamicCollector
 	ssh          *sshCollector
+	pki          *pkiCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -314,12 +324,13 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	approvals := newApprovalCollector()
 	dyn := newDynamicCollector()
 	sshc := newSSHCollector()
-	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, dyn, sshc)
+	pkiGauges := newPKICollector()
+	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, dyn, sshc, pkiGauges)
 
 	m := &Metrics{
 		registry: registry, inFlight: inFlight,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
-		ha: ha, approvals: approvals, dyn: dyn, ssh: sshc,
+		ha: ha, approvals: approvals, dyn: dyn, ssh: sshc, pki: pkiGauges,
 	}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
@@ -636,6 +647,36 @@ func (c *sshCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.known
 }
 
+// PKISnapshotter is the private-PKI gauge source, read at scrape time, with
+// the DynamicSnapshotter failure semantics.
+type PKISnapshotter interface {
+	PKISnapshot() (live, unknown, held int64, err error)
+}
+
+// SetPKISource attaches the private-PKI gauge source once at boot.
+func (m *Metrics) SetPKISource(source PKISnapshotter) { m.pki.source.Store(&source) }
+
+type pkiCollector struct {
+	source atomic.Pointer[PKISnapshotter]
+	descs  [3]*prometheus.Desc
+	known  *prometheus.Desc
+}
+
+func newPKICollector() *pkiCollector {
+	return &pkiCollector{descs: [3]*prometheus.Desc{
+		prometheus.NewDesc(MetricPKICertificatesLive, "Number of issued, unexpired private-PKI leaf certificates.", nil, nil),
+		prometheus.NewDesc(MetricPKICertificatesUnknown, "Number of private-PKI certificates in the uncertain unknown state, published on the CRL as revoked.", nil, nil),
+		prometheus.NewDesc(MetricPKIIssuersOnHold, "Number of private-PKI issuer versions held after a restore until reconciled.", nil, nil),
+	}, known: prometheus.NewDesc(MetricPKIGaugesKnown, "Whether the private-PKI gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
+}
+
+func (c *pkiCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+	ch <- c.known
+}
+
 func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false
@@ -645,6 +686,19 @@ func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 	collectMeasured(ch, c.descs, c.known, values, measured)
+}
+
+func (c *pkiCollector) Collect(ch chan<- prometheus.Metric) {
+	known := 0.0
+	if p := c.source.Load(); p != nil && *p != nil {
+		if live, unknown, held, err := (*p).PKISnapshot(); err == nil {
+			for i, value := range []int64{live, unknown, held} {
+				ch <- prometheus.MustNewConstMetric(c.descs[i], prometheus.GaugeValue, float64(value))
+			}
+			known = 1
+		}
+	}
+	ch <- prometheus.MustNewConstMetric(c.known, prometheus.GaugeValue, known)
 }
 
 // observe is the outer public-router leg for /api/v1 traffic. Its placement

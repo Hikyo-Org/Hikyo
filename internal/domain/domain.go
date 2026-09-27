@@ -77,6 +77,12 @@ const (
 	// value-free, closed-vocabulary delivery-target status report for an
 	// environment. Workload-only, never implied by `read`.
 	CapReportDeliveryStatus Capability = "report-delivery-status"
+
+	// CapIssueCertificate is the private-PKI amendment's atom (#154, pki ADR
+	// D4): request, renew and revoke X.509 leaf certificates through an
+	// instance certificate profile bound to the environment. It reads and
+	// writes no value, definition or grant, and is never implied by `read`.
+	CapIssueCertificate Capability = "issue-certificate"
 )
 
 // capabilityLevels is the closed atom table: each atom mapped to the DEEPEST
@@ -93,6 +99,7 @@ var capabilityLevels = map[Capability]Level{
 	CapPin:           LevelEnv,
 
 	CapReportDeliveryStatus: LevelEnv,
+	CapIssueCertificate:     LevelEnv,
 
 	CapDefinitionsEdit:  LevelProject,
 	CapProjectSettings:  LevelProject,

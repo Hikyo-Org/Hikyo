@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -18,15 +19,18 @@ func TestDoctorResultsUseServerWarningsWithoutRecalculation(t *testing.T) {
 		}},
 	}}}, apigen.RetentionHealth{LastPruneSuccess: &lastPrune, Stale: false, StaleAfterSeconds: 86400, Backup: healthyBackup(effectiveAt)}, effectiveAt)
 	// Findings: [0] retention-prune, [1] project-storage, [2] backup-rpo,
-	// [3] restore-drill, [4] adapter-targets, [5] unavailable diagnostics,
-	// [6] the provider error.
-	if result.Status != "error" || len(result.Findings) != 7 {
+	// [3] restore-drill, [4] adapter-targets, [5] pki (unmeasured),
+	// [6] unavailable diagnostics, [7] the provider error.
+	if result.Status != "error" || len(result.Findings) != 8 {
 		t.Fatalf("doctor result = %#v", result)
 	}
-	if got := result.Findings[6]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
+	if got := result.Findings[7]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
 		t.Fatalf("doctor finding = %#v", got)
 	}
-	if len(rows) != 7 || rows[6][4] != "server message" {
+	if got := result.Findings[5]; got.Code != "pki" || got.Severity != "unknown" {
+		t.Fatalf("an unmeasured PKI health must read unknown, never ok: %#v", got)
+	}
+	if len(rows) != 8 || rows[7][4] != "server message" {
 		t.Fatalf("doctor rows = %#v", rows)
 	}
 }
@@ -183,6 +187,28 @@ func TestDoctorUnknownWarningUsesServerSeverity(t *testing.T) {
 			}
 			if codes := warningCodes([]apigen.SamlProviderWarning{warning}); len(codes) != 1 || codes[0] != warning.Code {
 				t.Fatalf("provider inventory lost unknown code: %v", codes)
+			}
+		})
+	}
+}
+
+func TestDoctorPKIFinding(t *testing.T) {
+	zero, two := 0, 2
+	cases := []struct {
+		name              string
+		unknown, held     *int
+		severity, message string
+	}{
+		{"healthy", &zero, &zero, "ok", "0 certificate(s) with an unknown issuance outcome, 0 issuer version(s) held after a restore"},
+		{"unknown certificates", &two, &zero, "warn", "2 certificate(s)"},
+		{"held issuer", &zero, &two, "warn", "2 issuer version(s) held"},
+		{"unmeasured", nil, nil, "unknown", "not measured"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctorPKIFinding(apigen.RetentionHealth{PkiCertificatesUnknown: tc.unknown, PkiIssuersOnHold: tc.held})
+			if got.Code != "pki" || got.Severity != tc.severity || !strings.Contains(got.Message, tc.message) {
+				t.Fatalf("finding = %#v", got)
 			}
 		})
 	}

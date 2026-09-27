@@ -811,6 +811,31 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                         {Class: ClassTenant, Ops: []Operation{OpSSHCertIssue}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         {Class: ClassTenant, Ops: []Operation{OpSSHCertInspect}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": {Class: ClassTenant, Ops: []Operation{OpSSHCertRevoke}},
+	// Private PKI (#154).
+	"http:GET /api/v1/instance/pki/issuers":                                                                        {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
+	"http:POST /api/v1/instance/pki/issuers":                                                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerCreate}},
+	"http:GET /api/v1/instance/pki/issuers/{issuer}":                                                               {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/rotate":                                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRotate}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/install":                                                      {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInstall}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/release-hold":                                                 {Class: ClassInstance, Ops: []Operation{OpPKIIssuerReleaseHold}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire":                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRetire}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke":                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRevoke}},
+	"http:GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                        {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerPublishCRL}},
+	"http:GET /api/v1/instance/pki/profiles":                                                                       {Class: ClassInstance, Ops: []Operation{OpPKIProfileInspect}},
+	"http:POST /api/v1/instance/pki/profiles":                                                                      {Class: ClassInstance, Ops: []Operation{OpPKIProfileCreate}},
+	"http:GET /api/v1/instance/pki/profiles/{profile}":                                                             {Class: ClassInstance, Ops: []Operation{OpPKIProfileInspect}},
+	"http:PUT /api/v1/instance/pki/profiles/{profile}":                                                             {Class: ClassInstance, Ops: []Operation{OpPKIProfileUpdate}},
+	"http:DELETE /api/v1/instance/pki/profiles/{profile}":                                                          {Class: ClassInstance, Ops: []Operation{OpPKIProfileDelete}},
+	"http:POST /api/v1/instance/pki/profiles/{profile}/bindings":                                                   {Class: ClassInstance, Ops: []Operation{OpPKIProfileBind}},
+	"http:DELETE /api/v1/instance/pki/profiles/{profile}/bindings/{binding}":                                       {Class: ClassInstance, Ops: []Operation{OpPKIProfileUnbind}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles":               {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates":                       {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates":                      {Class: ClassTenant, Ops: []Operation{OpCertificateIssue}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}":         {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew":  {Class: ClassTenant, Ops: []Operation{OpCertificateRenew}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke": {Class: ClassTenant, Ops: []Operation{OpCertificateRevoke}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl":     {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
 
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups":            {Class: ClassTenant, Ops: []Operation{OpKeyGroupList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/key-groups":           {Class: ClassTenant, Ops: []Operation{OpKeyGroupCreate}},
@@ -959,6 +984,10 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"cli:ssh-ca":      {Class: ClassTenant},
 	"cli:ssh-profile": {Class: ClassTenant},
 	"cli:ssh-cert":    {Class: ClassTenant},
+	// Private PKI (#154): `pki` drives the instance issuer and profile
+	// routes, `cert` the environment certificate routes.
+	"cli:pki":  {Class: ClassInstance},
+	"cli:cert": {Class: ClassTenant},
 
 	// The Compose delivery verbs (#63). `run` and `compose` both reach the
 	// tenant-scoped delivery routes (GET .../delivery and its offline-records
