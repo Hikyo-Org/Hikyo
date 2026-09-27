@@ -58,7 +58,15 @@ export type AccessPolicyDraft = {
 };
 
 /** What a requester asks for. */
+/** An ordinary request names its duration; the server never picks one. */
 export type AccessRequestDraft = {
+  readonly capabilities: readonly AccessCapability[];
+  readonly durationSeconds: number;
+  readonly reason: string;
+};
+
+/** Emergency access may omit the duration: the server defaults it to one hour, capped by the policy. */
+export type EmergencyAccessDraft = {
   readonly capabilities: readonly AccessCapability[];
   readonly durationSeconds?: number;
   readonly reason: string;
@@ -106,6 +114,10 @@ function policyBody(draft: AccessPolicyDraft) {
 }
 
 function requestBody(draft: AccessRequestDraft) {
+  return { capabilities: [...draft.capabilities], reason: draft.reason, duration_seconds: draft.durationSeconds };
+}
+
+function emergencyBody(draft: EmergencyAccessDraft) {
   return {
     capabilities: [...draft.capabilities],
     reason: draft.reason,
@@ -156,14 +168,15 @@ export function useAccessAction(ref: MatrixRef, environment: string) {
   return useMutation({
     mutationFn: (
       input:
-        | { readonly kind: 'request' | 'emergency'; readonly draft: AccessRequestDraft }
+        | { readonly kind: 'request'; readonly draft: AccessRequestDraft }
+        | { readonly kind: 'emergency'; readonly draft: EmergencyAccessDraft }
         | { readonly kind: 'approve' | 'reject' | 'cancel' | 'revoke'; readonly request: string },
     ): Promise<AccessRequest> => {
       switch (input.kind) {
         case 'request':
           return parsed(createAccessRequestOp, { path, body: requestBody(input.draft), ...transport });
         case 'emergency':
-          return parsed(emergencyAccessOp, { path, body: requestBody(input.draft), ...transport });
+          return parsed(emergencyAccessOp, { path, body: emergencyBody(input.draft), ...transport });
         case 'approve':
         case 'reject':
           return parsed(voteAccessRequestOp, {

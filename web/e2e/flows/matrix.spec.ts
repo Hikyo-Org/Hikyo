@@ -1719,7 +1719,7 @@ test.describe('change approvals', () => {
  * approvals does. A freshly invited, read-only requester asks for `edit` in the
  * browser, the administrator approves in the browser, the requester really
  * stages a value, the administrator revokes (the requester's sessions die with
- * it), and a two-second grant proves the absolute expiry is enforced by the
+ * it), and a five-second grant proves the absolute expiry is enforced by the
  * server without any sweep.
  */
 test.describe('temporary access', () => {
@@ -1816,8 +1816,9 @@ test.describe('temporary access', () => {
       );
       expect(shortGrant.state).toBe('granted');
       expect(await stageStatus(requesterToken, `during-short-${suffix}`)).toBe(200);
-      await new Promise((resolve) => setTimeout(resolve, 6_000));
-      expect(await stageStatus(requesterToken, `after-expiry-${suffix}`)).toBe(404);
+      await expect
+        .poll(() => stageStatus(requesterToken, `after-expiry-${suffix}`), { timeout: 15_000 })
+        .toBe(404);
 
       // The browser sign-in answers a login challenge; land in a fresh TOTP
       // step first, since the enrolment confirmation spent the current one.

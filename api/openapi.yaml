@@ -10049,7 +10049,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AccessRequestInput"
+              $ref: "#/components/schemas/EmergencyAccessInput"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -14839,6 +14839,26 @@ components:
           description: Whether the caller is a named emergency-access principal of this policy.
     AccessRequestInput:
       type: object
+      required: [capabilities, duration_seconds, reason]
+      additionalProperties: false
+      properties:
+        capabilities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/AccessCapability"}
+        duration_seconds:
+          type: integer
+          format: int32
+          minimum: 1
+          description: How long the access should last, at most the policy maximum.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: Why the access is needed. Recorded in the audit trail.
+    EmergencyAccessInput:
+      type: object
       required: [capabilities, reason]
       additionalProperties: false
       properties:
@@ -14851,12 +14871,12 @@ components:
           type: integer
           format: int32
           minimum: 1
-          description: Required for a request; optional for emergency access, which defaults to one hour capped by the policy maximum.
+          description: Optional; defaults to one hour, capped by the policy maximum.
         reason:
           type: string
           minLength: 1
           maxLength: 512
-          description: Why the access is needed. Recorded in the audit trail.
+          description: Why emergency access is needed. Recorded in the audit trail.
     AccessVoteRequest:
       type: object
       required: [decision]

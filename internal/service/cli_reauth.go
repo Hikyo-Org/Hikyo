@@ -70,7 +70,10 @@ type cliApprovedWindow struct {
 
 // cliReauthPurposeOperation is the closed (purpose, operation) table the
 // handoff admits. The intent constructors derive each disclosure operation;
-// the adapter purpose admits the four adapter operations.
+// the adapter purpose admits the four adapter operations. Emergency temporary
+// access (PurposeAccess, #152) is deliberately absent: its intent binds no key
+// set, cli_reauth_handoffs admits no 'access' purpose, and the CLI refuses a
+// passkey-only emergency with a pointer to the browser instead.
 func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation) bool {
 	switch purpose {
 	case PurposeSelfConfig:
@@ -87,8 +90,6 @@ func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation)
 		return operation == authz.OpApprovalVote
 	case PurposeBypass:
 		return operation == authz.OpApprovalBypass
-	case PurposeAccess:
-		return operation == authz.OpAccessBypass
 	}
 	return false
 }

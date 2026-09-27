@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -924,8 +925,8 @@ func interactiveHuman(caller authz.Identity) bool {
 }
 
 func validateAccessPolicyInput(input AccessPolicyInput) ([]string, error) {
-	if input.MaxDurationSeconds <= 0 {
-		return nil, fmt.Errorf("%w: max_duration_seconds must be positive", domain.ErrInvalid)
+	if input.MaxDurationSeconds <= 0 || input.MaxDurationSeconds > math.MaxInt32 {
+		return nil, fmt.Errorf("%w: max_duration_seconds must be between 1 and %d", domain.ErrInvalid, math.MaxInt32)
 	}
 	if err := validatePolicyInput(ApprovalPolicyInput{
 		MinApprovals: input.MinApprovals, RequestTTLSeconds: input.RequestTTLSeconds,

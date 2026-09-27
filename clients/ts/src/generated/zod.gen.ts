@@ -1113,6 +1113,12 @@ export const zAccessOffer = z.object({
 
 export const zAccessRequestInput = z.object({
     capabilities: z.array(zAccessCapability).min(1),
+    duration_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    reason: z.string().min(1).max(512)
+});
+
+export const zEmergencyAccessInput = z.object({
+    capabilities: z.array(zAccessCapability).min(1),
     duration_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).optional(),
     reason: z.string().min(1).max(512)
 });
@@ -6442,7 +6448,7 @@ export const zCreateAccessRequestPath = z.object({
  */
 export const zCreateAccessRequestResponse = zAccessRequest;
 
-export const zEmergencyAccessBody = zAccessRequestInput;
+export const zEmergencyAccessBody = zEmergencyAccessInput;
 
 export const zEmergencyAccessPath = z.object({
     org: zId,

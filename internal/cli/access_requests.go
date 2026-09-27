@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -84,8 +85,11 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	if (sub == "create" || sub == "update") && (len(caps) == 0 || len(approvers) == 0) {
 		return failf(ExitUsage, "hikyo access policy %s requires at least one --capability and one --approver", sub)
 	}
-	if (sub == "create" || sub == "update") && maxDuration < time.Second {
-		return failf(ExitUsage, "hikyo access policy %s: --max-duration must be at least 1s", sub)
+	if (sub == "create" || sub == "update") && (maxDuration < time.Second || maxDuration/time.Second > math.MaxInt32) {
+		return failf(ExitUsage, "hikyo access policy %s: --max-duration must be between 1s and %d seconds", sub, math.MaxInt32)
+	}
+	if (sub == "create" || sub == "update") && (minApprovals < 1 || minApprovals > math.MaxInt32 || ttl < 1 || ttl > math.MaxInt32) {
+		return failf(ExitUsage, "hikyo access policy %s: --min-approvals and --ttl must be between 1 and %d", sub, math.MaxInt32)
 	}
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
@@ -194,6 +198,9 @@ func runAccessRequest(ctx context.Context, ios IO, args []string) error {
 		if sub == "create" && duration < time.Second {
 			return failf(ExitUsage, "hikyo access request create requires --duration of at least 1s")
 		}
+		if duration < 0 || duration/time.Second > math.MaxInt32 {
+			return failf(ExitUsage, "hikyo access request %s: --duration must be at most %d seconds", sub, math.MaxInt32)
+		}
 	default:
 		if len(flags.positionals) != 1 {
 			return failf(ExitUsage, "usage: hikyo access request %s <request>", sub)
@@ -225,7 +232,7 @@ func runAccessRequest(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 	case "emergency":
-		body := accessRequestBody(caps, reason, duration)
+		body := emergencyAccessBody(caps, reason, duration)
 		act := func() error { return client.Do(ctx, http.MethodPost, base+"/access-requests/emergency", body, &out) }
 		// The emergency decision is bound to the environment alone. Where the
 		// environment's window slides, the inline TOTP ceremony opens it; a
@@ -252,8 +259,15 @@ func runAccessRequest(ctx context.Context, ios IO, args []string) error {
 	return Render(ios.Stdout, f, accessRequestTable([]apigen.AccessRequest{out}, nil))
 }
 
+// Both bodies take a duration the syntax check bounded to [0, MaxInt32] seconds.
 func accessRequestBody(caps capabilityList, reason string, duration time.Duration) apigen.AccessRequestInput {
-	body := apigen.AccessRequestInput{Capabilities: []apigen.AccessCapability(caps), Reason: reason}
+	return apigen.AccessRequestInput{Capabilities: []apigen.AccessCapability(caps), Reason: reason, DurationSeconds: int32(duration / time.Second)}
+}
+
+// emergencyAccessBody leaves the duration absent when unset so the server
+// applies its one-hour default.
+func emergencyAccessBody(caps capabilityList, reason string, duration time.Duration) apigen.EmergencyAccessInput {
+	body := apigen.EmergencyAccessInput{Capabilities: []apigen.AccessCapability(caps), Reason: reason}
 	if duration > 0 {
 		seconds := int32(duration / time.Second)
 		body.DurationSeconds = &seconds

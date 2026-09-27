@@ -23,8 +23,8 @@ Full vertical, both engines (sqlite + postgres):
 - **authz**: `access.policy-write` / `access.policy-read`
   (`manage-members@project`), `access.request-create`, `access.request-read`
   (audited-none), `access.vote`, `access.cancel`, `access.revoke`,
-  `access.bypass` (all `read@env`, the last four with a reachable post-grant
-  403). Scheduler site gains the sweep and metric doors.
+  `access.bypass` (all `read@env`; every one except `access.request-read` has a
+  reachable post-grant 403). Scheduler site gains the sweep and metric doors.
 - **audit**: ten `access.*` events (policy_changed, policy_read, requested,
   voted, granted, cancelled, invalidated, revoked, expired, bypassed), tenant
   trail, SECURITY retention, no value material.

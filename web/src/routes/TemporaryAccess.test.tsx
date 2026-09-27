@@ -149,7 +149,7 @@ it('lets an approver decide another person\'s request and revoke granted access'
     if (req.method === 'POST') {
       posts.push(path.slice(path.lastIndexOf('/') + 1));
       const granted = request({ state: 'granted', granted_at: '2026-09-01T01:00:00Z', expires_at: '2026-09-01T02:00:00Z' });
-      items = [path.endsWith('/revoke') ? request({ state: 'revoked', resolved_at: '2026-09-01T01:30:00Z' }) : granted];
+      items = [path.endsWith('/revoke') ? request({ state: 'revoked', granted_at: '2026-09-01T01:00:00Z', expires_at: '2026-09-01T02:00:00Z', resolved_at: '2026-09-01T01:30:00Z' }) : granted];
       return Response.json(items[0]);
     }
     throw new Error(`unexpected ${req.method} ${path}`);
@@ -171,6 +171,9 @@ it('lets an approver decide another person\'s request and revoke granted access'
     expect(posts).toEqual(['vote', 'revoke']);
     expect(container.textContent).toContain('Access revoked. It ended immediately.');
     expect(container.querySelector('.temporary-access__request-state')?.textContent).toBe('revoked');
+    // A revoked grant ended when it was revoked, not at its scheduled expiry.
+    expect(container.textContent).toContain(new Date('2026-09-01T01:30:00Z').toLocaleString());
+    expect(container.textContent).not.toContain(new Date('2026-09-01T02:00:00Z').toLocaleString());
   } finally {
     await unmount();
   }

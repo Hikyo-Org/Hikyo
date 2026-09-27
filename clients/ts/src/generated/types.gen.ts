@@ -1591,11 +1591,23 @@ export type AccessOffer = {
 export type AccessRequestInput = {
     capabilities: Array<AccessCapability>;
     /**
-     * Required for a request; optional for emergency access, which defaults to one hour capped by the policy maximum.
+     * How long the access should last, at most the policy maximum.
+     */
+    duration_seconds: number;
+    /**
+     * Why the access is needed. Recorded in the audit trail.
+     */
+    reason: string;
+};
+
+export type EmergencyAccessInput = {
+    capabilities: Array<AccessCapability>;
+    /**
+     * Optional; defaults to one hour, capped by the policy maximum.
      */
     duration_seconds?: number;
     /**
-     * Why the access is needed. Recorded in the audit trail.
+     * Why emergency access is needed. Recorded in the audit trail.
      */
     reason: string;
 };
@@ -22083,7 +22095,7 @@ export type CreateAccessRequestResponses = {
 export type CreateAccessRequestResponse = CreateAccessRequestResponses[keyof CreateAccessRequestResponses];
 
 export type EmergencyAccessData = {
-    body: AccessRequestInput;
+    body: EmergencyAccessInput;
     path: {
         /**
          * Organisation identifier.

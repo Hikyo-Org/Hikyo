@@ -296,6 +296,14 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// notice may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM delivery_target_reports",
 		"SELECT COUNT(*) FROM delivery_target_quota_notices",
+		// 00060 (temporary access, #152): no policy, request, vote or
+		// time-bound grant may be discarded by the reversal below.
+		"SELECT COUNT(*) FROM access_policies",
+		"SELECT COUNT(*) FROM access_policy_approvers",
+		"SELECT COUNT(*) FROM access_policy_bypassers",
+		"SELECT COUNT(*) FROM access_requests",
+		"SELECT COUNT(*) FROM access_votes",
+		"SELECT COUNT(*) FROM access_grants",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -304,7 +312,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration or delivery-target evidence", query, err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target or temporary-access evidence", query, err)
 		}
 	}
 	// Reverse 00059 (delivery-target condition reporting) first: newest

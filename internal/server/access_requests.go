@@ -58,14 +58,28 @@ func accessPolicyInput(body apigen.AccessPolicyInput) service.AccessPolicyInput 
 }
 
 func accessRequestInput(body apigen.AccessRequestInput) service.AccessRequestInput {
-	in := service.AccessRequestInput{Reason: body.Reason}
-	for _, c := range body.Capabilities {
-		in.Capabilities = append(in.Capabilities, string(c))
+	return service.AccessRequestInput{
+		Capabilities: accessCapabilityStrings(body.Capabilities), Reason: body.Reason,
+		DurationSeconds: int(body.DurationSeconds),
 	}
+}
+
+// emergencyAccessInput maps the emergency body; an absent duration stays 0,
+// which the service reads as its one-hour default capped by the policy.
+func emergencyAccessInput(body apigen.EmergencyAccessInput) service.AccessRequestInput {
+	in := service.AccessRequestInput{Capabilities: accessCapabilityStrings(body.Capabilities), Reason: body.Reason}
 	if body.DurationSeconds != nil {
 		in.DurationSeconds = int(*body.DurationSeconds)
 	}
 	return in
+}
+
+func accessCapabilityStrings(caps []apigen.AccessCapability) []string {
+	out := make([]string, 0, len(caps))
+	for _, c := range caps {
+		out = append(out, string(c))
+	}
+	return out
 }
 
 func wireAccessCapabilities(caps []string) []apigen.AccessCapability {
@@ -190,7 +204,7 @@ func (a *API) CreateAccessRequest(ctx context.Context, req apigen.CreateAccessRe
 }
 
 func (a *API) EmergencyAccess(ctx context.Context, req apigen.EmergencyAccessRequestObject) (apigen.EmergencyAccessResponseObject, error) {
-	view, err := a.Access.EmergencyAccess(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), accessRequestInput(*req.Body))
+	view, err := a.Access.EmergencyAccess(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), emergencyAccessInput(*req.Body))
 	if err != nil {
 		return nil, err
 	}

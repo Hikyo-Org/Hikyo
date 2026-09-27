@@ -64,6 +64,13 @@ func newAccessHarness(t *testing.T, db *store.DB) *accessHarness {
 // its bearer actor.
 func (h *accessHarness) session(principal domain.PrincipalID, reauth bool) service.Actor {
 	h.t.Helper()
+	return service.Bearer(h.sessionArtifact(principal, reauth))
+}
+
+// sessionArtifact is session, returning the presented bearer itself so a test
+// can resolve the same session again under a different clock.
+func (h *accessHarness) sessionArtifact(principal domain.PrincipalID, reauth bool) string {
+	h.t.Helper()
 	h.seq++
 	artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
 	if err != nil {
@@ -98,7 +105,7 @@ func (h *accessHarness) session(principal domain.PrincipalID, reauth bool) servi
 	}); err != nil {
 		h.t.Fatalf("mint session: %v", err)
 	}
-	return service.Bearer(artifact)
+	return artifact
 }
 
 func (h *accessHarness) policy(bypassers []string, approvers ...domain.PrincipalID) service.AccessPolicyInput {
@@ -147,6 +154,29 @@ func (h *accessHarness) authorizedAt(principal domain.PrincipalID, op authz.Oper
 		return nil
 	}); werr != nil {
 		h.t.Fatalf("authorize tx: %v", werr)
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		h.t.Fatalf("authorize: %v", err)
+	}
+	return err == nil
+}
+
+// bearerAuthorizedAt is authorizedAt through a presented session: the bearer
+// is resolved (session, generation and epoch checks) and op authorized with
+// the transaction clock fixed at `at`, the path every network call takes.
+func (h *accessHarness) bearerAuthorizedAt(artifact string, op authz.Operation, at time.Time) bool {
+	h.t.Helper()
+	var err error
+	if werr := tx.Write(h.t.Context(), h.db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		caller, aerr := az.AuthenticateCaller(ctx, artifact, at)
+		if aerr != nil {
+			return aerr
+		}
+		az.SetClock(at)
+		_, err = az.Authorize(ctx, caller, op, h.scope)
+		return nil
+	}); werr != nil {
+		h.t.Fatalf("authenticate %s at %s: %v", op, at, werr)
 	}
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		h.t.Fatalf("authorize: %v", err)
@@ -271,6 +301,7 @@ func runAccessLifecycle(t *testing.T, db *store.DB) {
 
 	// 5. Approval writes one time-bound grant per capability with an absolute
 	// expiry; a repeated vote is idempotent, a conflicting one refused.
+	preGrant := h.sessionArtifact(reader, false)
 	before := time.Now().UTC()
 	granted := h.approve(req1)
 	if granted.State != "granted" || granted.ExpiresAt == nil {
@@ -292,16 +323,20 @@ func runAccessLifecycle(t *testing.T, db *store.DB) {
 
 	// 6. Use: the capability works now, in a session minted BEFORE the grant
 	// as well as a fresh one.
-	if _, err := h.values.Set(ctx, service.LocalPrincipal(reader), h.scope, "SHARED_KEY", "temporary", nil); err != nil {
-		t.Fatalf("stage under temporary access: %v", err)
+	if _, err := h.values.Set(ctx, service.Bearer(preGrant), h.scope, "SHARED_KEY", "temporary", nil); err != nil {
+		t.Fatalf("stage under temporary access in a pre-grant session: %v", err)
 	}
-	// 7. Expiry is evaluated on every operation: one second before it holds,
-	// one second after it refuses, before any sweep has run.
-	if !h.authorizedAt(reader, authz.OpValueStage, expiry.Add(-time.Second)) {
+	if _, err := h.values.Set(ctx, h.session(reader, false), h.scope, "SHARED_KEY", "temporary-fresh", nil); err != nil {
+		t.Fatalf("stage under temporary access in a fresh session: %v", err)
+	}
+	// 7. Expiry is evaluated on every operation: on that same pre-grant
+	// session, one second before it holds and one second after it refuses,
+	// before any sweep has run (C-ACC).
+	if !h.bearerAuthorizedAt(preGrant, authz.OpValueStage, expiry.Add(-time.Second)) {
 		t.Fatal("temporary access refused before its expiry")
 	}
-	if h.authorizedAt(reader, authz.OpValueStage, expiry.Add(time.Second)) {
-		t.Fatal("temporary access honoured one second after its expiry")
+	if h.bearerAuthorizedAt(preGrant, authz.OpValueStage, expiry.Add(time.Second)) {
+		t.Fatal("temporary access honoured on a pre-grant session one second after its expiry")
 	}
 	// 8. A permanent grant for the same triple outlives the temporary one, and
 	// the temporary one never becomes permanent.

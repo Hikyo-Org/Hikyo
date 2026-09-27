@@ -77,6 +77,10 @@ hikyo access policy delete --instance unknown-ref -> 2 usage
 hikyo access request create --capability reveal --duration 1h --instance unknown-ref -> 2 usage
 hikyo access request create --capability reveal --reason r --instance unknown-ref -> 2 usage
 hikyo access request approve --instance unknown-ref -> 2 usage
+hikyo access policy create --capability reveal --approver principal:usr_x --max-duration 1193047h --instance unknown-ref -> 2 usage
+hikyo access policy create --capability reveal --approver principal:usr_x --ttl -1 --instance unknown-ref -> 2 usage
+hikyo access request create --capability reveal --reason r --duration 1193047h --instance unknown-ref -> 2 usage
+hikyo access request emergency --capability reveal --reason r --duration -1h --instance unknown-ref -> 2 usage
 hikyo access request emergency --reason r --instance unknown-ref -> 2 usage
 hikyo key group list stray --instance unknown-ref -> 2 usage
 hikyo key list --instance unknown-ref --org org_x --project prj_x -> 4 refused

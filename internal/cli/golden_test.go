@@ -254,6 +254,11 @@ func TestExitCodeMatrix(t *testing.T) {
 		{"access request create without a reason", []string{"access", "request", "create", "--capability", "reveal", "--duration", "1h", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"access request create without a duration", []string{"access", "request", "create", "--capability", "reveal", "--reason", "r", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"access request approve without a request", []string{"access", "request", "approve", "--instance", "unknown-ref"}, cli.ExitUsage},
+		// int32 wire fields: an out-of-range value is refused, never wrapped.
+		{"access policy create with a max-duration past int32", []string{"access", "policy", "create", "--capability", "reveal", "--approver", "principal:usr_x", "--max-duration", "1193047h", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access policy create with a negative ttl", []string{"access", "policy", "create", "--capability", "reveal", "--approver", "principal:usr_x", "--ttl", "-1", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access request create with a duration past int32", []string{"access", "request", "create", "--capability", "reveal", "--reason", "r", "--duration", "1193047h", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access request emergency with a negative duration", []string{"access", "request", "emergency", "--capability", "reveal", "--reason", "r", "--duration", "-1h", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"access request emergency without a capability", []string{"access", "request", "emergency", "--reason", "r", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"stray positional on key group list", []string{"key", "group", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"key list with no session", []string{"key", "list", "--instance", "unknown-ref", "--org", "org_x", "--project", "prj_x"}, cli.ExitRefused},

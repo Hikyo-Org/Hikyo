@@ -15,7 +15,7 @@ import {
   type AccessPolicy,
   type AccessPolicyDraft,
   type AccessRequest,
-  type AccessRequestDraft,
+  type EmergencyAccessDraft,
 } from '../api/temporaryAccess.ts';
 import { fetchRevealWindow } from '../api/values.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
@@ -132,7 +132,7 @@ export function TemporaryAccess() {
   const [requestHours, setRequestHours] = useState(1);
   const [reason, setReason] = useState('');
   const [emergencyReason, setEmergencyReason] = useState('');
-  const [ceremony, setCeremony] = useState<{ request: CeremonyRequest; draft: AccessRequestDraft } | null>(null);
+  const [ceremony, setCeremony] = useState<{ request: CeremonyRequest; draft: EmergencyAccessDraft } | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -174,7 +174,7 @@ export function TemporaryAccess() {
   // live sliding window already stands over this environment.
   const takeEmergency = async () => {
     start();
-    const draftRequest: AccessRequestDraft = { capabilities: requested, reason: emergencyReason };
+    const draftRequest: EmergencyAccessDraft = { capabilities: requested, reason: emergencyReason };
     try {
       const window = await fetchRevealWindow({ org, project, environment: selectedEnv });
       if (window.live && !window.single_decision) {
@@ -577,7 +577,11 @@ function AccessRequestRow({
           <dd>
             {request.state === 'open'
               ? when(request.review_expires_at)
-              : when(request.expires_at ?? request.resolved_at)}
+              : request.state === 'granted'
+                ? when(request.expires_at)
+                : request.state === 'expired'
+                  ? when(request.expires_at ?? request.resolved_at)
+                  : when(request.resolved_at ?? request.expires_at)}
           </dd>
         </div>
         <div>

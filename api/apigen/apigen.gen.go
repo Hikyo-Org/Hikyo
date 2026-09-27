@@ -3478,8 +3478,8 @@ type AccessRequestState string
 type AccessRequestInput struct {
 	Capabilities []AccessCapability `json:"capabilities"`
 
-	// DurationSeconds Required for a request; optional for emergency access, which defaults to one hour capped by the policy maximum.
-	DurationSeconds *int32 `json:"duration_seconds,omitempty"`
+	// DurationSeconds How long the access should last, at most the policy maximum.
+	DurationSeconds int32 `json:"duration_seconds"`
 
 	// Reason Why the access is needed. Recorded in the audit trail.
 	Reason string `json:"reason"`
@@ -5490,6 +5490,17 @@ type DynamicProviderList struct {
 
 // DynamicProviderState defines model for DynamicProviderState.
 type DynamicProviderState string
+
+// EmergencyAccessInput defines model for EmergencyAccessInput.
+type EmergencyAccessInput struct {
+	Capabilities []AccessCapability `json:"capabilities"`
+
+	// DurationSeconds Optional; defaults to one hour, capped by the policy maximum.
+	DurationSeconds *int32 `json:"duration_seconds,omitempty"`
+
+	// Reason Why emergency access is needed. Recorded in the audit trail.
+	Reason string `json:"reason"`
+}
 
 // EntityName A display name for an organisation, project or environment. Identity is
 // the immutable id, so this is a label and a rename never breaks a
@@ -10315,7 +10326,7 @@ type RenameEnvironmentJSONRequestBody = RenameRequest
 type CreateAccessRequestJSONRequestBody = AccessRequestInput
 
 // EmergencyAccessJSONRequestBody defines body for EmergencyAccess for application/json ContentType.
-type EmergencyAccessJSONRequestBody = AccessRequestInput
+type EmergencyAccessJSONRequestBody = EmergencyAccessInput
 
 // VoteAccessRequestJSONRequestBody defines body for VoteAccessRequest for application/json ContentType.
 type VoteAccessRequestJSONRequestBody = AccessVoteRequest
