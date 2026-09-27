@@ -269,7 +269,7 @@ func (c *Client) rateDeadline(status int, header http.Header, now time.Time) (ti
 	if raw := header.Get("Retry-After"); raw != "" {
 		c.rateTries = 0
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
-			return now.Add(time.Duration(seconds) * time.Second), true
+			return now.Add(time.Duration(min(seconds, int(adapter.RetryCap/time.Second))) * time.Second), true
 		}
 		if at, err := http.ParseTime(raw); err == nil {
 			return at.UTC(), true

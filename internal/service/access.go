@@ -413,8 +413,12 @@ func (s *Access) Queue(ctx context.Context, actor Actor, scope domain.Scope) (Ac
 			return err
 		}
 		out.Requests = make([]AccessRequestView, 0, len(requests))
+		views := newAccessRequestViews()
+		if ok {
+			views.policies[policy.ID] = &accessPolicyVotes{policy: policy, eligible: make(map[domain.PrincipalID]bool)}
+		}
 		for _, req := range requests {
-			view, err := accessRequestViewWithVotes(ctx, r, az, p, scope, req)
+			view, err := views.view(ctx, r, az, p, scope, req)
 			if err != nil {
 				return err
 			}
@@ -1141,15 +1145,19 @@ func canGrantAll(ctx context.Context, az *authz.TxAuthorizer, principal domain.P
 	if err != nil {
 		return false, err
 	}
+	return canGrantAccessCapabilities(rows, caps, scope), nil
+}
+
+func canGrantAccessCapabilities(rows []authz.GrantRow, caps []string, scope domain.Scope) bool {
 	if mayGrantUnheld(rows, scope) {
-		return true, nil
+		return true
 	}
 	for _, c := range caps {
 		if !holds(rows, domain.Capability(c), scope) {
-			return false, nil
+			return false
 		}
 	}
-	return true, nil
+	return true
 }
 
 // countAccessApprovals counts approve votes from principals who are STILL
@@ -1162,30 +1170,27 @@ func countAccessApprovals(ctx context.Context, r store.Repos, az *authz.TxAuthor
 	if err != nil {
 		return 0, err
 	}
-	count := 0
-	for _, v := range votes {
-		if v.Decision != store.ApprovalDecisionApprove {
-			continue
-		}
-		if v.PrincipalID == req.RequesterPrincipalID && !policy.AllowSelfApproval {
-			continue
-		}
-		voter := domain.PrincipalID(v.PrincipalID)
+	return countAccessApprovalVotes(votes, req, policy, func(voter domain.PrincipalID) (bool, error) {
 		eligible, err := approverEligible(ctx, r, az, p, approvers, voter)
-		if err != nil {
-			return 0, err
-		}
-		if !eligible {
-			continue
+		if err != nil || !eligible {
+			return false, err
 		}
 		holdsVote, err := az.CallerHolds(ctx, authz.Identity{Principal: voter}, authz.OpAccessVote, scope)
-		if err != nil {
-			return 0, err
+		if err != nil || !holdsVote {
+			return false, err
 		}
-		if !holdsVote {
+		return canGrantAll(ctx, az, voter, req.Capabilities, scope)
+	})
+}
+
+func countAccessApprovalVotes(votes []store.AccessVote, req store.AccessRequest, policy store.AccessPolicy,
+	canApprove func(domain.PrincipalID) (bool, error)) (int, error) {
+	count := 0
+	for _, v := range votes {
+		if v.Decision != store.ApprovalDecisionApprove || (v.PrincipalID == req.RequesterPrincipalID && !policy.AllowSelfApproval) {
 			continue
 		}
-		can, err := canGrantAll(ctx, az, voter, req.Capabilities, scope)
+		can, err := canApprove(domain.PrincipalID(v.PrincipalID))
 		if err != nil {
 			return 0, err
 		}
@@ -1339,10 +1344,98 @@ func accessRequestView(req store.AccessRequest) AccessRequestView {
 // not invalidate requests whose policy version or review deadline has changed.
 func accessRequestViewWithVotes(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
 	scope domain.Scope, req store.AccessRequest) (AccessRequestView, error) {
+	return newAccessRequestViews().view(ctx, r, az, p, scope, req)
+}
+
+// accessRequestViews lives only within one Queue transaction and environment.
+// Mutation responses get a fresh instance, so decisions never reuse old authority.
+type accessRequestViews struct {
+	names    *principalNames
+	policies map[string]*accessPolicyVotes
+	voters   map[domain.PrincipalID]accessVoterAuthority
+}
+
+type accessPolicyVotes struct {
+	approversLoaded bool
+	policy          store.AccessPolicy
+	approvers       []store.ApprovalApprover
+	eligible        map[domain.PrincipalID]bool
+}
+
+type accessVoterAuthority struct {
+	holdsVote bool
+	grants    []authz.GrantRow
+}
+
+func newAccessRequestViews() *accessRequestViews {
+	return &accessRequestViews{names: newPrincipalNames(), policies: make(map[string]*accessPolicyVotes), voters: make(map[domain.PrincipalID]accessVoterAuthority)}
+}
+
+func (b *accessRequestViews) policy(ctx context.Context, r store.Repos, p authz.Proof, id string) (*accessPolicyVotes, error) {
+	entry, loaded := b.policies[id]
+	if loaded && (entry == nil || entry.approversLoaded) {
+		return entry, nil
+	}
+	if !loaded {
+		policy, err := r.Access().GetPolicy(ctx, p, id)
+		if errors.Is(err, domain.ErrNotFound) {
+			b.policies[id] = nil
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		entry = &accessPolicyVotes{policy: policy, eligible: make(map[domain.PrincipalID]bool)}
+	}
+	approvers, err := r.Access().ListApprovers(ctx, p, id)
+	if err != nil {
+		return nil, err
+	}
+	entry.approvers, entry.approversLoaded = approvers, true
+	b.policies[id] = entry
+	return entry, nil
+}
+
+func (b *accessRequestViews) canApprove(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
+	scope domain.Scope, policy *accessPolicyVotes, voter domain.PrincipalID, caps []string) (bool, error) {
+	eligible, ok := policy.eligible[voter]
+	if !ok {
+		var err error
+		eligible, err = approverEligible(ctx, r, az, p, policy.approvers, voter)
+		if err != nil {
+			return false, err
+		}
+		policy.eligible[voter] = eligible
+	}
+	if !eligible {
+		return false, nil
+	}
+	authority, ok := b.voters[voter]
+	if !ok {
+		var err error
+		authority.holdsVote, err = az.CallerHolds(ctx, authz.Identity{Principal: voter}, authz.OpAccessVote, scope)
+		if err != nil {
+			return false, err
+		}
+		if authority.holdsVote {
+			authority.grants, err = az.GrantRowsForPrincipal(ctx, voter)
+			if err != nil {
+				return false, err
+			}
+		}
+		b.voters[voter] = authority
+	}
+	if !authority.holdsVote {
+		return false, nil
+	}
+	return canGrantAccessCapabilities(authority.grants, caps, scope), nil
+}
+
+func (b *accessRequestViews) view(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof,
+	scope domain.Scope, req store.AccessRequest) (AccessRequestView, error) {
 	view := accessRequestView(req)
-	names := newPrincipalNames()
 	var err error
-	view.RequesterName, err = names.get(ctx, az, domain.PrincipalID(req.RequesterPrincipalID))
+	view.RequesterName, err = b.names.get(ctx, az, domain.PrincipalID(req.RequesterPrincipalID))
 	if err != nil {
 		return AccessRequestView{}, err
 	}
@@ -1351,7 +1444,7 @@ func accessRequestViewWithVotes(ctx context.Context, r store.Repos, az *authz.Tx
 		return AccessRequestView{}, err
 	}
 	for _, v := range votes {
-		name, err := names.get(ctx, az, domain.PrincipalID(v.PrincipalID))
+		name, err := b.names.get(ctx, az, domain.PrincipalID(v.PrincipalID))
 		if err != nil {
 			return AccessRequestView{}, err
 		}
@@ -1359,20 +1452,18 @@ func accessRequestViewWithVotes(ctx context.Context, r store.Repos, az *authz.Tx
 			Decision: string(v.Decision), CreatedAt: v.CreatedAt})
 	}
 	if req.State == store.AccessStateOpen {
-		policy, err := r.Access().GetPolicy(ctx, p, req.PolicyID)
-		switch {
-		case err == nil:
-			view.MinApprovals = policy.MinApprovals
-			approvers, err := r.Access().ListApprovers(ctx, p, req.PolicyID)
-			if err != nil {
-				return AccessRequestView{}, err
-			}
-			view.Approvals, err = countAccessApprovals(ctx, r, az, p, scope, approvers, req, policy)
-			if err != nil {
-				return AccessRequestView{}, err
-			}
-		case !errors.Is(err, domain.ErrNotFound):
+		policy, err := b.policy(ctx, r, p, req.PolicyID)
+		if err != nil {
 			return AccessRequestView{}, err
+		}
+		if policy != nil {
+			view.MinApprovals = policy.policy.MinApprovals
+			view.Approvals, err = countAccessApprovalVotes(votes, req, policy.policy, func(voter domain.PrincipalID) (bool, error) {
+				return b.canApprove(ctx, r, az, p, scope, policy, voter, req.Capabilities)
+			})
+			if err != nil {
+				return AccessRequestView{}, err
+			}
 		}
 	}
 	return view, nil

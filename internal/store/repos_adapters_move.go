@@ -796,7 +796,7 @@ func reserveAdapterMoveClaims(ctx context.Context, db adapterDB, chain domain.Sc
 			return err
 		}
 		surface := adapter.Secret
-		if adapter.Classification(classification) == adapter.ConfigClassification {
+		if adapter.Classification(classification) == adapter.ConfigClassification && provider != string(adapter.CloudflareProvider) && provider != string(adapter.VaultKVProvider) {
 			surface = adapter.Variable
 		}
 		claims = append(claims, claim{keyID: keyID, surface: string(surface), effective: target.NamePrefix + name})
@@ -810,7 +810,7 @@ func reserveAdapterMoveClaims(ctx context.Context, db adapterDB, chain domain.Sc
 	for _, pending := range claims {
 		var configured int
 		configuredCollision := db.SQL(
-			`SELECT COUNT(*) FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE t.org_id=? AND t.project_id=? AND t.id<>? AND t.state='active' AND a.state='active' AND a.origin=? AND t.destination_kind=? AND t.destination_owner=? AND t.destination_name=? AND t.destination_environment=? AND (?=t.name_prefix||? OR (?=CASE WHEN k.classification='config' THEN 'variable' ELSE 'secret' END AND ?=t.name_prefix||k.name))`,
+			`SELECT COUNT(*) FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE t.org_id=? AND t.project_id=? AND t.id<>? AND t.state='active' AND a.state='active' AND a.origin=? AND t.destination_kind=? AND t.destination_owner=? AND t.destination_name=? AND t.destination_environment=? AND (?=t.name_prefix||? OR (?=CASE WHEN k.classification='config' AND a.provider NOT IN ('cloudflare','vault-kv') THEN 'variable' ELSE 'secret' END AND ?=t.name_prefix||k.name))`,
 		)
 		if err := db.QueryRow(ctx, configuredCollision, chain.Org, chain.Project, target.ID, origin, target.DestinationKind, target.DestinationOwner, target.DestinationName, target.DestinationEnvironment, pending.effective, adapter.SentinelName, pending.surface, pending.effective).Scan(&configured); err != nil {
 			return err
@@ -882,6 +882,25 @@ func reserveAWSMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope,
 		}
 	}
 	if err := closeMoveRows(rows); err != nil {
+		return err
+	}
+	pending := db.SQL(`SELECT target_id,effective_name FROM adapter_route_move_claims WHERE org_id=? AND project_id=? AND provider_origin=? AND destination_kind IN ('json-object','per-key') AND destination_owner=? AND target_id<>? ORDER BY target_id,effective_name`)
+	pendingRows, err := db.Query(ctx, pending, chain.Org, chain.Project, origin, target.DestinationOwner, target.ID)
+	if err != nil {
+		return err
+	}
+	for pendingRows.Next() {
+		var otherTarget, effective string
+		if err := pendingRows.Scan(&otherTarget, &effective); err != nil {
+			_ = closeMoveRows(pendingRows)
+			return err
+		}
+		if desired[strings.ToUpper(effective)] {
+			_ = closeMoveRows(pendingRows)
+			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effective, otherTarget)
+		}
+	}
+	if err := closeMoveRows(pendingRows); err != nil {
 		return err
 	}
 	for _, claim := range claims {

@@ -485,7 +485,7 @@ Receipts for correction/release record the decision but are not replay instructi
 The public [privacy guide](../site/src/content/docs/docs/privacy.mdx) owns operator
 examples, destructive-action warnings and residual limits.
 
-## 8. Temporary access ([mvp-boundary.md](../adr/mvp-boundary.md) declared amendment 5, #152)
+## 8. Temporary access ([mvp-boundary.md](../adr/mvp-boundary.md) declared amendment 7, #152)
 
 Policy administration is project-scoped (`manage-members`); requests and their
 decisions address one environment. Every verb is human-session only.

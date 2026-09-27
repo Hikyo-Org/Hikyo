@@ -30,7 +30,7 @@ over the #65/#157 deployment seam.
 - `web/src/api/sensitiveInventory.json` re-pinned for `api/adapters.ts` and
   `routes/Adapters.tsx`. Reviewed: the credential still flows only through
   `useSensitiveState` into the existing create mutation.
-- ADR gate: `mvp-boundary.md` declared amendment 5 plus the section 4.1 row, and
+- ADR gate: `mvp-boundary.md` declared amendment 6 plus the section 4.1 row, and
   a banner on `deployment-adapter.md` naming the destination class and its
   no-read closure.
 

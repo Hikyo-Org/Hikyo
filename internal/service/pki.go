@@ -955,7 +955,7 @@ func (s *PKI) PublishIssuerCRL(ctx context.Context, actor Actor, name string, ve
 		if err != nil {
 			return err
 		}
-		published, err := r.PKI().PublishCRL(ctx, proof, target.ID, der, target.CRLNumber, number, now, now.Add(pki.CRLValidity))
+		published, err := r.PKI().PublishCRL(ctx, proof, target.ID, der, target.CRLNumber, number, target.RevocationSeq, now, now.Add(pki.CRLValidity))
 		if err != nil {
 			return err
 		}

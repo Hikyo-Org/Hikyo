@@ -282,3 +282,14 @@ func TestClientConfigValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestRateDeadlineClampsBeforeDurationConversion(t *testing.T) {
+	now := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	for _, raw := range []string{"18446744074", "9223372036854775807"} {
+		client := &Client{}
+		at, ok := client.rateDeadline(http.StatusTooManyRequests, http.Header{"Retry-After": []string{raw}}, now)
+		if !ok || !at.Equal(now.Add(adapter.RetryCap)) {
+			t.Fatalf("Retry-After %s: got %v, %v; want capped retry", raw, at, ok)
+		}
+	}
+}

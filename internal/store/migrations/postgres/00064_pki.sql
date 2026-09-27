@@ -47,6 +47,8 @@ CREATE TABLE pki_issuers (
     issued_count BIGINT NOT NULL DEFAULT 0,
     crl_der BYTEA,
     crl_number BIGINT NOT NULL DEFAULT 0,
+    revocation_seq BIGINT NOT NULL DEFAULT 0 CHECK (revocation_seq >= 0),
+    crl_revocation_seq BIGINT NOT NULL DEFAULT 0 CHECK (crl_revocation_seq >= 0),
     crl_this_update TIMESTAMPTZ,
     crl_next_update TIMESTAMPTZ,
     row_version BIGINT NOT NULL DEFAULT 1,

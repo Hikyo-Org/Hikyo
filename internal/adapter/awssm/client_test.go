@@ -280,3 +280,15 @@ func TestPackageDocumentsTheClosure(t *testing.T) {
 		t.Fatal("package documentation lost the no-read closure statement")
 	}
 }
+
+func TestRetryAfterClampsSecondsBeforeDurationConversion(t *testing.T) {
+	now := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	for _, header := range []string{"9223372036854775807", "9223372037", "36000000000"} {
+		if got := retryAfter(header, now); !got.Equal(now.Add(adapter.RetryCap)) {
+			t.Errorf("Retry-After %s: %v, want cap %v", header, got, now.Add(adapter.RetryCap))
+		}
+	}
+	if got := retryAfter("7", now); !got.Equal(now.Add(7 * time.Second)) {
+		t.Errorf("normal delay changed: %v", got)
+	}
+}
