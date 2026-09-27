@@ -256,6 +256,9 @@ export function CertificatesTab({
   );
 }
 
+/** Issues from a CSR or a generated key. Generated keys require passkey
+ * reauthentication and stay in sensitive component state; dismissal waits for
+ * the user to confirm storage. Issuance failures refresh the certificate listing. */
 function IssueDialog({
   project,
   environments,

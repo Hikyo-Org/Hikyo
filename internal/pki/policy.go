@@ -306,7 +306,8 @@ func ipRangeCovers(older, newer string) bool {
 // Narrows returns nil only when every certificate newer could permit, older
 // also permits. It is the fail-closed gate on profile updates: a widening, or
 // any change it cannot prove is a narrowing, is refused with ErrWidening and
-// the first reason found.
+// the first reason found. Both policies must be valid; this function
+// normalizes them but does not validate them.
 func Narrows(older, newer Policy) error {
 	older, newer = older.Normalize(), newer.Normalize()
 	widen := func(format string, args ...any) error {

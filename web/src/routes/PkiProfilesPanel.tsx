@@ -135,6 +135,8 @@ export function PkiProfilesPanel() {
   );
 }
 
+/** Edits policy against the version captured when editing starts, manages
+ * bindings, and requires the profile name before deletion. */
 function ProfileRow({
   profile,
   onDone,

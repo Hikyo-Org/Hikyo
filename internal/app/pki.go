@@ -22,6 +22,10 @@ type pkiWorker struct {
 	selfConfig *service.SelfConfig
 }
 
+// Run sweeps PKI state until ctx is canceled, retrying errors on subsequent
+// iterations. It repeats immediately after reported work, otherwise waiting
+// for poll (five seconds when nonpositive). A self-config capture failure
+// skips that iteration's sweep.
 func (w *pkiWorker) Run(ctx context.Context) {
 	poll := w.poll
 	if poll <= 0 {
@@ -60,6 +64,9 @@ type pkiGaugeSource struct {
 	log     *slog.Logger
 }
 
+// PKISnapshot reads instance-wide live, unknown, and held counts with a
+// two-second timeout. Read failures return zero counts and an error; callers
+// must treat those counts as unavailable.
 func (s pkiGaugeSource) PKISnapshot() (live, unknown, held int64, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
