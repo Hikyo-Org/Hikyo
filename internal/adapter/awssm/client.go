@@ -334,6 +334,7 @@ func errorCode(raw string) string {
 func retryAfter(header string, now time.Time) time.Time {
 	if header != "" {
 		if seconds, err := strconv.Atoi(strings.TrimSpace(header)); err == nil && seconds >= 0 {
+			seconds = min(seconds, int(adapter.RetryCap/time.Second))
 			return now.Add(time.Duration(seconds) * time.Second)
 		}
 		if at, err := http.ParseTime(header); err == nil {
