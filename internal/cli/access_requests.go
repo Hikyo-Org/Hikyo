@@ -171,7 +171,7 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 			}
 			return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}))
 		}
-		return failf(ExitRefused, "access policy not found")
+		return failf(ExitNotFound, "access policy not found")
 	case "delete":
 		return client.Do(ctx, http.MethodDelete, base+"/access-policies/"+url.PathEscape(flags.positional()), nil, nil)
 	}

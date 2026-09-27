@@ -149,7 +149,13 @@ type DueAccessRequest struct {
 
 // AccessRepo is the proof-bound surface of the temporary-access engine. The
 // approver and bypasser rows reuse the #151 row shapes.
+// AccessReader exposes only label-free operational counts to read transactions.
+type AccessReader interface {
+	OperationalCounts(ctx context.Context, p authz.Proof, now time.Time) (open, active int64, err error)
+}
+
 type AccessRepo interface {
+	AccessReader
 	InsertPolicy(ctx context.Context, p authz.Proof, policy NewAccessPolicy) error
 	GetPolicy(ctx context.Context, p authz.Proof, id string) (AccessPolicy, error)
 	// CoveringPolicy returns the policy governing requests to envID: the
@@ -186,7 +192,4 @@ type AccessRepo interface {
 	// SelectDue returns one bounded installation-wide sweep batch.
 	SelectDue(ctx context.Context, p authz.Proof, now time.Time) ([]DueAccessRequest, error)
 	MarkExpired(ctx context.Context, p authz.Proof, id string, from AccessRequestState, now time.Time) (bool, error)
-	// OperationalCounts returns the installation-wide open-request and
-	// active-grant counts for the label-free /metrics gauges.
-	OperationalCounts(ctx context.Context, p authz.Proof, now time.Time) (open, active int64, err error)
 }
