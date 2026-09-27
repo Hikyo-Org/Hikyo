@@ -111,6 +111,9 @@ type Adapter struct {
 	AuthorityPrincipalID string
 	State                string
 	CreatedAt            string
+	SpkiPin              string
+	CaBundlePem          string
+	AllowPersonalToken   int64
 }
 
 type AdapterConfigureFence struct {
@@ -166,21 +169,22 @@ type AdapterEffect struct {
 }
 
 type AdapterLedger struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	TargetID        string
-	ProviderOrigin  string
-	DestinationID   int64
-	Surface         string
-	EffectiveName   string
-	NormalizedName  string
-	State           string
-	UpdatedAt       string
-	DestinationKind string
-	RepositoryID    int64
-	Missing         int64
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	TargetID         string
+	ProviderOrigin   string
+	DestinationID    int64
+	Surface          string
+	EffectiveName    string
+	NormalizedName   string
+	State            string
+	UpdatedAt        string
+	DestinationKind  string
+	RepositoryID     int64
+	Missing          int64
+	DestinationScope string
 }
 
 type AdapterOutbox struct {
@@ -293,6 +297,10 @@ type AdapterTarget struct {
 	LastAttemptedAt        sql.NullString
 	LastErrorClass         sql.NullString
 	DriftAttention         int64
+	DestinationScope       string
+	VariableProtected      int64
+	VariableHidden         int64
+	VariableExpand         int64
 }
 
 type AdapterTargetKey struct {

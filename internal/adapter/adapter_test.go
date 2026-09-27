@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}
@@ -172,10 +172,61 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 			t.Fatalf("ParseProvider(%q) = %q, %v", provider, got, err)
 		}
 	}
-	for _, raw := range []string{"", "gitlab", "FORGEJO", "webhook", "sealed_webhook"} {
+	for _, raw := range []string{"", "gitlab-ci", "GITLAB", "FORGEJO", "webhook", "sealed_webhook"} {
 		if _, err := ParseProvider(raw); err == nil {
 			t.Fatalf("ParseProvider(%q) accepted unknown provider", raw)
 		}
+	}
+}
+
+func TestGitLabMaskingRuleIsPinned(t *testing.T) {
+	for value, want := range map[string]bool{
+		"abcdefgh":             true,
+		"A-Za_z0.9~+/=@:":      true,
+		"abcdefg":              false,
+		"abc defgh":            false,
+		"abcdefgh\n":           false,
+		"abcdefgh!":            false,
+		"abcdefgh$":            false,
+		"\u00e9abcdefgh":       false,
+		"eyJhbGciOiJIUzI1NiJ9": true,
+	} {
+		if got := GitLabMaskable(value); got != want {
+			t.Errorf("GitLabMaskable(%q) = %v, want %v", value, got, want)
+		}
+	}
+}
+
+func TestValidateGitLabManifestNamesKeysNeverValues(t *testing.T) {
+	const secret = "not maskable!"
+	for _, tt := range []struct {
+		entry ManifestEntry
+		want  string
+	}{
+		{entry: ManifestEntry{CanonicalName: "TOKEN", Classification: SecretClassification, Value: secret}, want: "cannot be masked"},
+		{entry: ManifestEntry{CanonicalName: "CI_JOB_TOKEN", Classification: ConfigClassification, Value: "x"}, want: "predefined"},
+		{entry: ManifestEntry{CanonicalName: "gitlab_user", Classification: ConfigClassification, Value: "x"}, want: "predefined"},
+		{entry: ManifestEntry{CanonicalName: "9LIVES", Classification: ConfigClassification, Value: "x"}, want: "key syntax"},
+		{entry: ManifestEntry{CanonicalName: SentinelName, Classification: ConfigClassification, Value: "x"}, want: "sentinel"},
+	} {
+		err := ValidateGitLabManifest("", []ManifestEntry{tt.entry}, true)
+		if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), tt.entry.CanonicalName) || strings.Contains(err.Error(), secret) {
+			t.Errorf("%s: err = %v, want %q naming the key without plaintext", tt.entry.CanonicalName, err, tt.want)
+		}
+	}
+	ok := []ManifestEntry{
+		{CanonicalName: "mixedCase", Classification: ConfigClassification, Value: "multi\nline $ok"},
+		{CanonicalName: "TOKEN", Classification: SecretClassification, Value: "abcdefgh"},
+	}
+	if err := ValidateGitLabManifest("", ok, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateGitLabManifest("", []ManifestEntry{{CanonicalName: "A", Classification: ConfigClassification}, {CanonicalName: "a", Classification: ConfigClassification}}, false); err == nil {
+		t.Fatal("case-insensitive collision accepted")
+	}
+	// Name-only validation (plan, workflow rendering) never sees values.
+	if err := ValidateGitLabManifest("", []ManifestEntry{{CanonicalName: "TOKEN", Classification: SecretClassification}}, false); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -183,8 +234,9 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 // provider accepts another's kinds: the seam cannot route a CI target into a
 // cloud secret manager or the reverse.
 func TestDestinationKindsArePartitionedByProvider(t *testing.T) {
-	entries := []ManifestEntry{{KeyID: "key", CanonicalName: "TOKEN", Classification: SecretClassification, Value: "v"}}
+	entries := []ManifestEntry{{KeyID: "key", CanonicalName: "TOKEN", Classification: SecretClassification, Value: "abcdefgh"}}
 	cases := map[Provider][]Destination{
+		GitLabProvider:            {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}},
 		SealedWebhookProvider:     {{Kind: Organization, Owner: "receiver"}},
 		CloudflareProvider:        {{Kind: WorkersScript, Owner: "account", Name: "script"}, {Kind: PagesProject, Owner: "account", Name: "project", Environment: "preview"}},
 		VaultKVProvider:           {{Kind: Repository, Owner: "secret", Name: "app"}},
@@ -260,5 +312,23 @@ func TestVaultKVMappingNamesPathsOnly(t *testing.T) {
 	want := "# Vault/OpenBao KV v2: one secret per key, field \"value\".\nenv:\n  A: secret/apps/pay/P_A#value\n  B: secret/apps/pay/P_B#value\n"
 	if got != want || strings.Contains(got, "plaintext") {
 		t.Fatalf("VaultKVMapping() = %q, want %q", got, want)
+	}
+}
+
+func TestGitLabManifestRefusesCanonicalAliasCollision(t *testing.T) {
+	for _, names := range [][]string{{"A", "P_A"}, {"p_a", "A"}, {"P_MANAGED_BY_HIKYO"}} {
+		entries := make([]ManifestEntry, 0, len(names))
+		for _, name := range names {
+			entries = append(entries, ManifestEntry{CanonicalName: name, Classification: ConfigClassification})
+		}
+		if err := ValidateGitLabManifest("P_", entries, false); err == nil || !strings.Contains(err.Error(), "canonical alias") {
+			t.Fatalf("names %v: %v", names, err)
+		}
+		if _, err := WorkflowForProvider("gitlab", "P_", entries); err == nil {
+			t.Fatalf("workflow accepted aliases %v", names)
+		}
+	}
+	if err := ValidateGitLabManifest("", []ManifestEntry{{CanonicalName: "A", Classification: ConfigClassification}, {CanonicalName: "P_A", Classification: ConfigClassification}}, false); err != nil {
+		t.Fatal(err)
 	}
 }

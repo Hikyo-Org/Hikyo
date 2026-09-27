@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 67 plus 69, while the
+// The runtime-created fixture includes migrations 45 through 69, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+24 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 67 plus 69 only")
+	if len(current.Entries) != len(legacy.Entries)+25 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 69 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -334,6 +334,45 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	// Reverse 00069 (generic file targets), children before parents.
 	for _, table := range []string{"file_target_keys", "file_targets"} {
 		drillExec(t, db, "DROP TABLE "+table)
+	}
+	// Reverse 00068 (GitLab adapter). The empty
+	// adapters evidence above guarantees no target or ledger row carries a
+	// GitLab scope or flag. SQLite's adapters rebuild is undone below with
+	// 00054's reversal, which recreates the table from its 00025 declaration.
+	legacyLedgerIndex, err := store.MigrationsFS.ReadFile("migrations/" + string(engine) + "/00025_github_actions_adapter.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ledgerIndex, ok := strings.Cut(string(legacyLedgerIndex), "CREATE UNIQUE INDEX adapter_ledger_active_provider_name")
+	if !ok {
+		t.Fatal("missing legacy adapter ledger index declaration")
+	}
+	ledgerIndex, _, ok = strings.Cut(ledgerIndex, ";")
+	if !ok {
+		t.Fatal("unterminated legacy adapter ledger index declaration")
+	}
+	if db.Engine() != store.EngineSQLite {
+		for _, query := range []string{
+			"ALTER TABLE adapters DROP CONSTRAINT adapters_provider_options_check",
+			"ALTER TABLE adapters DROP COLUMN spki_pin",
+			"ALTER TABLE adapters DROP COLUMN ca_bundle_pem",
+			"ALTER TABLE adapters DROP COLUMN allow_personal_token",
+			"ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check",
+			"ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check CHECK (provider IN ('forgejo', 'github-actions'))",
+		} {
+			drillExec(t, db, query)
+		}
+	}
+	for _, query := range []string{
+		"ALTER TABLE adapter_targets DROP COLUMN destination_scope",
+		"ALTER TABLE adapter_targets DROP COLUMN variable_protected",
+		"ALTER TABLE adapter_targets DROP COLUMN variable_hidden",
+		"ALTER TABLE adapter_targets DROP COLUMN variable_expand",
+		"DROP INDEX adapter_ledger_active_provider_name",
+		"ALTER TABLE adapter_ledger DROP COLUMN destination_scope",
+		"CREATE UNIQUE INDEX adapter_ledger_active_provider_name" + ledgerIndex,
+	} {
+		drillExec(t, db, query)
 	}
 	// Reverse 00067; it also reverses prior destination-kind widenings on empty tables.
 	reverseAWSAdapter(t, db)
@@ -467,7 +506,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,69)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69)",
 	} {
 		drillExec(t, db, query)
 	}

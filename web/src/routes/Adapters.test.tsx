@@ -19,6 +19,7 @@ afterEach(() => vi.unstubAllGlobals());
 it.each([
   ['forgejo', 'Forgejo'],
   ['github-actions', 'GitHub Actions'],
+  ['gitlab', 'GitLab'],
   ['aws-secrets-manager', 'AWS Secrets Manager'],
   ['vault-kv', 'Vault / OpenBao KV'],
   ['cloudflare', 'Cloudflare Workers & Pages'],
@@ -293,4 +294,64 @@ it('offers Cloudflare destinations and sends one Pages environment', async () =>
     expect(submitted[1]?.allow_environment_create).toBe(false);
     expect(field('Account id')).toBeDefined();
   } finally { await unmount(); }
+});
+
+it('TargetForm for GitLab sends a project with scope and variable flags and no GitHub routing', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(
+    <TargetForm
+      title="Add target"
+      provider="gitlab"
+      environments={[{ id: 'env_1', name: 'prod' }]}
+      keys={[{ id: 'key_1', name: 'API_TOKEN' } as never]}
+      busy={false}
+      onCancel={() => undefined}
+      onSubmit={(input) => {
+        submitted.push(input);
+        return Promise.resolve();
+      }}
+    />,
+  );
+  try {
+    const field = (label: string) => {
+      const found = [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label));
+      if (found === undefined) return null;
+      const inside = found.querySelector('select, input');
+      if (inside !== null) return inside;
+      return found.htmlFor === '' ? null : container.querySelector(`#${CSS.escape(found.htmlFor)}`);
+    };
+    const kind = field('Destination kind');
+    if (!(kind instanceof HTMLSelectElement)) throw new Error('kind select missing');
+    expect([...kind.options].map((o) => o.textContent)).toEqual(['GitLab project', 'GitLab group']);
+    expect(container.textContent).not.toContain('GitHub environment');
+    const namespace = field('Namespace');
+    const project = field('Project');
+    const scope = field('Environment scope');
+    if (!(namespace instanceof HTMLInputElement) || !(project instanceof HTMLInputElement) || !(scope instanceof HTMLInputElement)) {
+      throw new Error('GitLab fields missing');
+    }
+    expect(scope.value).toBe('*');
+    await act(async () => typeInto(namespace, 'platform/backend'));
+    await act(async () => typeInto(project, 'api'));
+    await act(async () => typeInto(scope, 'production'));
+    const protectedBox = [...container.querySelectorAll('input[type="checkbox"]')].find((input) =>
+      (input.closest('label')?.textContent ?? input.parentElement?.textContent ?? '').includes('Protected'),
+    );
+    if (!(protectedBox instanceof HTMLInputElement)) throw new Error('protected checkbox missing');
+    await act(async () => protectedBox.click());
+
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]).toMatchObject({
+      destination_kind: 'repository', destination_owner: 'platform/backend', destination_name: 'api',
+      destination_environment: '', visibility: '', selected_repository_ids: [],
+      destination_scope: 'production', variable_protected: true, variable_hidden: false, variable_expand: false,
+    });
+
+    await act(async () => selectValue(kind, 'organization'));
+    expect(field('Visibility')).toBeNull();
+    expect(field('Group path')).not.toBeNull();
+  } finally {
+    await unmount();
+  }
 });

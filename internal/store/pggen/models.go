@@ -111,6 +111,9 @@ type Adapter struct {
 	State                string
 	CreatedAt            pgtype.Timestamptz
 	CredentialExpiresAt  pgtype.Timestamptz
+	SpkiPin              string
+	CaBundlePem          string
+	AllowPersonalToken   bool
 }
 
 type AdapterConfigureFence struct {
@@ -166,21 +169,22 @@ type AdapterEffect struct {
 }
 
 type AdapterLedger struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	TargetID        string
-	ProviderOrigin  string
-	DestinationID   int64
-	Surface         string
-	EffectiveName   string
-	NormalizedName  string
-	State           string
-	UpdatedAt       pgtype.Timestamptz
-	DestinationKind string
-	RepositoryID    int64
-	Missing         bool
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	TargetID         string
+	ProviderOrigin   string
+	DestinationID    int64
+	Surface          string
+	EffectiveName    string
+	NormalizedName   string
+	State            string
+	UpdatedAt        pgtype.Timestamptz
+	DestinationKind  string
+	RepositoryID     int64
+	Missing          bool
+	DestinationScope string
 }
 
 type AdapterOutbox struct {
@@ -293,6 +297,10 @@ type AdapterTarget struct {
 	LastAttemptedAt        pgtype.Timestamptz
 	LastErrorClass         pgtype.Text
 	DriftAttention         bool
+	DestinationScope       string
+	VariableProtected      bool
+	VariableHidden         bool
+	VariableExpand         bool
 }
 
 type AdapterTargetKey struct {

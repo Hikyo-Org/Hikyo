@@ -1,7 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo, GitHub Actions, AWS Secrets Manager, or a sealed webhook receiver without reading provider values back.
-description: Push selected published values to Forgejo, GitHub Actions, Cloudflare Workers and Pages, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, GitLab, Cloudflare, AWS Secrets Manager, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -12,21 +11,16 @@ fetch.
 For a CI job that creates and tears down its own environments, use the
 [pull-request preview guide](/docs/preview-environments/).
 
-The CI adapters (Forgejo and GitHub Actions) are one-way and value-blind. They
-write selected values from one Hikyo environment to a repository, organization,
-or GitHub repository-environment Actions namespace. The
-[AWS Secrets Manager adapter](#aws-secrets-manager) is one-way and value-blind
-too; it writes secrets into one AWS account and region. Neither adapter links a variable GET or list endpoint. Secret planning reads
-The Forgejo, GitHub Actions, and Cloudflare adapters are one-way and value-blind. The Forgejo and GitHub
-Actions adapters write selected values from one Hikyo environment to a
-repository, organization, or GitHub repository-environment Actions
-namespace. The Cloudflare adapter writes them as encrypted Workers secrets or
-Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). The [Vault/OpenBao KV v2 adapter](#vaultopenbao-kv-v2) follows the same rules for a secret-manager destination. Forgejo and GitHub Actions link no variable GET or list endpoint: secret planning reads
-names only, and variable planning uses Hikyo's ownership ledger. Cloudflare reads
-Pages and Workers settings but decodes only names and types, discarding plaintext
-fields. Vault reads metadata only. Hikyo therefore
-cannot detect provider-side value drift. Run a converge to restore the last
-published Hikyo state. The
+The deployment adapters are one-way and value-blind. Forgejo and GitHub Actions
+write to repository, organization, or GitHub environment namespaces; GitLab
+writes project or group CI/CD variables. Cloudflare writes encrypted Workers
+secrets or Pages variables. AWS Secrets Manager writes into one account and
+region, and Vault/OpenBao KV v2 writes one secret per key. CI variable planning
+uses Hikyo's ownership ledger, without variable GET or list endpoints. Cloudflare
+reads settings but decodes only names and types, discarding plaintext fields.
+AWS and Vault read metadata only; their provider sections explain how metadata
+detects external changes. CI adapters cannot detect provider-side value drift;
+run a converge to restore published Hikyo values. The
 [sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
 an instance administrator has pinned; it has no read path at all.
 
@@ -172,6 +166,74 @@ sentinels last. `--keep-remote` releases custody instead and loudly lists the
 orphaned names. Remove targets while the PAT still authenticates. If a dead or
 revoked credential prevents scrub, Hikyo completes local teardown but reports
 the remote names as orphaned.
+
+## GitLab CI/CD variables
+
+The GitLab adapter writes project or group CI/CD variables on gitlab.com or a
+self-managed GitLab 16.0 or newer. GitLab's variable reads return stored
+values, so its client has no read or list operation of any kind: every
+existence and ownership decision comes from Hikyo's ledger, and `adapter plan`
+reports keys Hikyo does not yet own as `unknown-until-sync`. A key already held
+by someone else is discovered only when GitLab refuses the create as already
+taken. That is recorded as a conflict for explicit adoption, and the existing
+variable is never overwritten.
+
+**Token.** Use a project or group access token with the `api` scope and the
+Maintainer role (Owner for group destinations, which GitLab requires to manage
+group variables). A personal access token is refused by default because it can
+act as its owner everywhere they have access; creating the adapter with
+`--allow-personal-token` (or the browser checkbox) accepts one and records that
+choice in the audit trail. Tokens with `sudo` or `admin_mode` are always
+refused. An expiry within 14 days shows as a target warning; an expired token
+fails the converge as an authentication error.
+
+**Destinations.** `--kind project` takes `--owner NAMESPACE --repo PROJECT`;
+`--kind group` takes `--owner GROUP/PATH`. Non-default group environment scopes require GitLab Premium or Ultimate; use `*` on GitLab Free ([GitLab API](https://docs.gitlab.com/api/group_level_variables/)). Both are pinned by numeric id, and a
+project or group that moves or is renamed is refused until an operator
+reconfigures the target. Each target has one GitLab environment scope,
+`--scope` (default `*`). The scope is fixed once the target exists; to change
+it, remove the target (retain or prune) and add a new one. One project can
+receive the same key under different scopes from different Hikyo environments,
+which is the usual shape:
+
+```sh
+hikyo adapter create --provider gitlab --origin https://gitlab.example.com \
+  --env prod --kind project --owner platform --repo api --scope production \
+  --protected --include '*'
+hikyo adapter target add --adapter adp_123 --env staging --kind project \
+  --owner platform --repo api --scope staging --include '*'
+```
+
+**Flags.** Secret-classified keys are always written masked. `--hidden`
+creates them masked and hidden (GitLab 17.4 or newer; an older GitLab is
+refused by name rather than downgraded). `--protected` limits every managed
+variable to protected branches and tags; removing it later requires the full
+reauthentication ceremony because it widens who can read the values. Values are
+written raw by default, so a `$` is delivered byte-exactly;
+`--expand-variables` opts into GitLab's variable expansion.
+
+**Masking constraints.** Hikyo applies a conservative masking policy: a single-line value of at least
+8 characters drawn from `A-Z a-z 0-9 _ @ : . ~ + / = -`. Hikyo checks every
+selected secret against that rule before a job is queued and fails by key name
+without printing the value. Exclude nonconforming secrets from the target; do not
+reclassify sensitive keys as configuration, which is unmasked. GitLab allows a
+broader alphabet with expansion disabled, but Hikyo retains this stricter rule.
+Hikyo never ships a secret unmasked. Keys must match
+`[A-Za-z_][A-Za-z0-9_]*`, at most 255 characters, and may not start with `CI_`
+or `GITLAB_`.
+
+**Self-managed TLS.** `--ca-bundle-file` adds PEM trust anchors for an internal
+CA. `--spki-pin` pins the server's `base64(sha256(SubjectPublicKeyInfo))`, the
+same value `openssl x509 -pubkey -noout | openssl pkey -pubin -outform der |
+openssl dgst -sha256 -binary | base64` prints. The pin is checked after normal
+certificate verification, never instead of it. Both are fixed for the
+adapter's lifetime and move with it through an origin change; to change them,
+create a new adapter. A self-managed instance on a private address also needs
+its CIDR in the adapter egress policy.
+
+The `MANAGED_BY_HIKYO` sentinel is a single unprotected variable per
+destination and scope, written first and removed last. Rate limits honour
+`Retry-After` and `RateLimit-Reset`.
 
 ## Multiple targets: selection, health, and control
 

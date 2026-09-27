@@ -55,6 +55,7 @@ type AdapterSnapshotEntry struct {
 type AdapterExecution struct {
 	Provider, Origin, CredentialOwnerID string
 	CredentialCiphertext                []byte
+	Transport                           AdapterTransport
 	Target                              adapter.Target
 	Entries                             []AdapterSnapshotEntry
 	Ledger                              []adapter.LedgerEntry
@@ -64,7 +65,47 @@ type AdapterExecution struct {
 type AdapterActivation struct {
 	Provider, Origin, CredentialOwnerID string
 	CredentialCiphertext                []byte
+	Transport                           AdapterTransport
 	Target                              adapter.Target
+}
+
+// AdapterTransport is the stored provider transport policy (GitLab only).
+type AdapterTransport struct {
+	SPKIPin            string
+	CABundlePEM        string
+	AllowPersonalToken bool
+}
+
+// Transport returns the adapter's stored transport policy.
+func (r AdapterRecord) Transport() AdapterTransport {
+	return AdapterTransport{SPKIPin: r.SPKIPin, CABundlePEM: r.CABundlePEM, AllowPersonalToken: r.AllowPersonalToken}
+}
+
+// Config returns the module configuration for origin under this policy.
+func (t AdapterTransport) Config(origin string) adapter.Config {
+	return adapter.Config{Origin: origin, SPKIPin: t.SPKIPin, CABundlePEM: t.CABundlePEM, AllowPersonalToken: t.AllowPersonalToken}
+}
+
+// transportTargetColumns selects the adapter transport policy and the
+// target's GitLab scope and variable flags, in scanTransportTarget order.
+const transportTargetColumns = `a.spki_pin,a.ca_bundle_pem,CASE WHEN a.allow_personal_token THEN 1 ELSE 0 END,t.destination_scope,CASE WHEN t.variable_protected THEN 1 ELSE 0 END,CASE WHEN t.variable_hidden THEN 1 ELSE 0 END,CASE WHEN t.variable_expand THEN 1 ELSE 0 END`
+
+type transportTargetScan struct {
+	transport                        AdapterTransport
+	scope                            string
+	allowPersonal, protected, hidden int
+	expand                           int
+}
+
+func (s *transportTargetScan) dest() []any {
+	return []any{&s.transport.SPKIPin, &s.transport.CABundlePEM, &s.allowPersonal, &s.scope, &s.protected, &s.hidden, &s.expand}
+}
+
+func (s *transportTargetScan) apply(transport *AdapterTransport, target *adapter.Target) {
+	*transport = s.transport
+	transport.AllowPersonalToken = s.allowPersonal == 1
+	target.Destination.Scope = s.scope
+	target.Options = adapter.VariableOptions{Protected: s.protected == 1, Hidden: s.hidden == 1, Expand: s.expand == 1}
 }
 
 func adapterJobScope(job adapter.Job) domain.Scope {
@@ -110,16 +151,18 @@ func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (Ad
 		var out AdapterExecution
 		var kind string
 		query := db.SQL(
-			`SELECT a.provider,a.origin,a.id,a.credential_ciphertext,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_outbox j ON j.id=? AND j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.generation=? AND j.state='running' AND j.lease_owner=?`,
+			`SELECT a.provider,a.origin,a.id,a.credential_ciphertext,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,` + transportTargetColumns + ` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_outbox j ON j.id=? AND j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=? AND t.generation=? AND j.state='running' AND j.lease_owner=?`,
 		)
 		args := []any{job.ID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner}
 		var credential, selectedRaw []byte
-		if err := db.QueryRow(ctx, query, args...).Scan(&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &kind, &out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw, &out.Target.NamePrefix, &out.Target.Generation); err != nil {
+		var transport transportTargetScan
+		if err := db.QueryRow(ctx, query, args...).Scan(append([]any{&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &kind, &out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw, &out.Target.NamePrefix, &out.Target.Generation}, transport.dest()...)...); err != nil {
 			if isNoRows(err) {
 				return AdapterExecution{}, ErrNotFound
 			}
 			return AdapterExecution{}, err
 		}
+		transport.apply(&out.Transport, &out.Target)
 		if len(credential) == 0 {
 			return AdapterExecution{}, fmt.Errorf("%w: adapter credential is absent", adapter.ErrProviderAuth)
 		}
@@ -201,20 +244,22 @@ func (r *AdapterRuntime) LoadActivation(ctx context.Context, job adapter.Job) (A
 			return AdapterActivation{}, fmt.Errorf("%w: job is not a route activation", domain.ErrInvalid)
 		}
 		query := db.SQL(
-			`SELECT a.provider,COALESCE(m.pending_origin,a.origin),a.id,COALESCE(m.pending_credential_ciphertext,a.credential_ciphertext),mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.destination_id,mt.repository_id,mt.visibility,mt.selected_repository_ids,mt.name_prefix,t.generation FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=j.route_move_id AND m.org_id=j.org_id AND m.project_id=j.project_id AND m.adapter_id=a.id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE j.id=? AND j.route_move_id=? AND j.target_id=? AND j.org_id=? AND j.project_id=? AND j.environment_id=? AND j.generation=? AND j.kind='activate' AND j.state='running' AND j.lease_owner=? AND m.state='activating' AND t.state='moving'`,
+			`SELECT a.provider,COALESCE(m.pending_origin,a.origin),a.id,COALESCE(m.pending_credential_ciphertext,a.credential_ciphertext),mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.destination_id,mt.repository_id,mt.visibility,mt.selected_repository_ids,mt.name_prefix,t.generation,` + transportTargetColumns + ` FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=j.route_move_id AND m.org_id=j.org_id AND m.project_id=j.project_id AND m.adapter_id=a.id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE j.id=? AND j.route_move_id=? AND j.target_id=? AND j.org_id=? AND j.project_id=? AND j.environment_id=? AND j.generation=? AND j.kind='activate' AND j.state='running' AND j.lease_owner=? AND m.state='activating' AND t.state='moving'`,
 		)
 		var out AdapterActivation
 		var credential, selectedRaw []byte
 		var kind string
+		var transport transportTargetScan
 		args := []any{job.ID, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner}
-		if err := db.QueryRow(ctx, query, args...).Scan(&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &out.Target.Environment, &kind,
+		if err := db.QueryRow(ctx, query, args...).Scan(append([]any{&out.Provider, &out.Origin, &out.CredentialOwnerID, &credential, &out.Target.Environment, &kind,
 			&out.Target.Destination.Owner, &out.Target.Destination.Name, &out.Target.Destination.Environment, &out.Target.Destination.NumericID, &out.Target.Destination.RepositoryID, &out.Target.Destination.Visibility, &selectedRaw,
-			&out.Target.NamePrefix, &out.Target.Generation); err != nil {
+			&out.Target.NamePrefix, &out.Target.Generation}, transport.dest()...)...); err != nil {
 			if isNoRows(err) {
 				return AdapterActivation{}, ErrNotFound
 			}
 			return AdapterActivation{}, err
 		}
+		transport.apply(&out.Transport, &out.Target)
 		if len(credential) == 0 {
 			return AdapterActivation{}, fmt.Errorf("%w: adapter credential is absent", adapter.ErrProviderAuth)
 		}
@@ -627,18 +672,18 @@ func (j *adapterJournal) Reserve(ctx context.Context, effect adapter.Effect) (ad
 		err := tx.QueryRow(ctx, selectQuery, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), normalized).Scan(&raw)
 		if err == nil {
 			if adapter.LedgerState(raw) == adapter.Released {
-				var origin, destinationKind string
+				var origin, destinationKind, destinationScope string
 				var destinationID, repositoryID int64
 				currentRoute := tx.SQL(
-					`SELECT a.origin,t.destination_kind,t.destination_id,t.repository_id FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=?`,
+					`SELECT a.origin,t.destination_kind,t.destination_id,t.repository_id,t.destination_scope FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=?`,
 				)
-				if err := tx.QueryRow(ctx, currentRoute, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID).Scan(&origin, &destinationKind, &destinationID, &repositoryID); err != nil {
+				if err := tx.QueryRow(ctx, currentRoute, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID).Scan(&origin, &destinationKind, &destinationID, &repositoryID, &destinationScope); err != nil {
 					return err
 				}
 				reactivate := tx.SQLPerEngine(
-					`UPDATE adapter_ledger SET state='reserved',missing=0,effective_name=?,provider_origin=?,destination_kind=?,repository_id=?,destination_id=?,updated_at=? WHERE org_id=? AND project_id=? AND environment_id=? AND target_id=? AND surface=? AND normalized_name=? AND state='released'`,
-					`UPDATE adapter_ledger SET state='reserved',missing=false,effective_name=$1,provider_origin=$2,destination_kind=$3,repository_id=$4,destination_id=$5,updated_at=$6 WHERE org_id=$7 AND project_id=$8 AND environment_id=$9 AND target_id=$10 AND surface=$11 AND normalized_name=$12 AND state='released'`)
-				rows, updateErr := tx.Exec(ctx, reactivate, effect.EffectiveName, origin, destinationKind, repositoryID, destinationID, tx.Stamp(time.Now()), j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), normalized)
+					`UPDATE adapter_ledger SET state='reserved',missing=0,effective_name=?,provider_origin=?,destination_kind=?,repository_id=?,destination_id=?,destination_scope=?,updated_at=? WHERE org_id=? AND project_id=? AND environment_id=? AND target_id=? AND surface=? AND normalized_name=? AND state='released'`,
+					`UPDATE adapter_ledger SET state='reserved',missing=false,effective_name=$1,provider_origin=$2,destination_kind=$3,repository_id=$4,destination_id=$5,destination_scope=$6,updated_at=$7 WHERE org_id=$8 AND project_id=$9 AND environment_id=$10 AND target_id=$11 AND surface=$12 AND normalized_name=$13 AND state='released'`)
+				rows, updateErr := tx.Exec(ctx, reactivate, effect.EffectiveName, origin, destinationKind, repositoryID, destinationID, destinationScope, tx.Stamp(time.Now()), j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), normalized)
 				if constraint(updateErr) != nil {
 					return adapter.ErrConflict
 				}
@@ -667,18 +712,18 @@ func (j *adapterJournal) Reserve(ctx context.Context, effect adapter.Effect) (ad
 		if ledgerRows >= 10_000 {
 			return adapter.ErrLedgerFull
 		}
-		var origin, destinationKind string
+		var origin, destinationKind, destinationScope string
 		var destinationID, repositoryID int64
 		lookup := tx.SQL(
-			`SELECT a.origin,t.destination_kind,t.destination_id,t.repository_id FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=?`,
+			`SELECT a.origin,t.destination_kind,t.destination_id,t.repository_id,t.destination_scope FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.environment_id=?`,
 		)
-		if err := tx.QueryRow(ctx, lookup, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID).Scan(&origin, &destinationKind, &destinationID, &repositoryID); err != nil {
+		if err := tx.QueryRow(ctx, lookup, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID).Scan(&origin, &destinationKind, &destinationID, &repositoryID, &destinationScope); err != nil {
 			return err
 		}
 		insert := tx.SQL(
-			`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,destination_scope,surface,effective_name,normalized_name,state,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		)
-		_, err = tx.Exec(ctx, insert, newAdapterID("led"), j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, origin, destinationKind, repositoryID, destinationID, string(effect.Surface), effect.EffectiveName, normalized, string(adapter.Reserved), tx.Stamp(time.Now()))
+		_, err = tx.Exec(ctx, insert, newAdapterID("led"), j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, origin, destinationKind, repositoryID, destinationID, destinationScope, string(effect.Surface), effect.EffectiveName, normalized, string(adapter.Reserved), tx.Stamp(time.Now()))
 		if constraint(err) != nil {
 			return adapter.ErrConflict
 		}

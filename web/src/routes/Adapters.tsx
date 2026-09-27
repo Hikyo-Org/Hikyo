@@ -123,8 +123,12 @@ function destinationText(target: AdapterTarget): string {
     target.destination_name === ''
       ? target.destination_owner
       : `${target.destination_owner}/${target.destination_name}`;
+  if (target.destination_scope !== undefined && target.destination_scope !== '') {
+    return `${base} [scope ${target.destination_scope}]`;
+  }
   return target.destination_environment === '' ? base : `${base} (${target.destination_environment})`;
 }
+
 
 function environmentSet(adapter: Adapter, extra?: string): string[] {
   const ids = new Set(adapter.targets.map((target) => target.environment_id));
@@ -903,6 +907,10 @@ function CreateAdapterPanel({
   const [credential, setCredential] = useSensitiveState('');
   const [access, setAccess] = useSensitiveState<AwsAccess>(emptyAwsAccess);
   const aws = provider === 'aws-secrets-manager';
+  const [spkiPin, setSpkiPin] = useState('');
+  const [caBundle, setCaBundle] = useState('');
+  const [allowPersonalToken, setAllowPersonalToken] = useState(false);
+  const personalTokenHintId = useId();
   return (
     <section className="panel adapters__adapter" aria-label="New adapter">
       <div className="adapters__adapter-head">
@@ -917,9 +925,9 @@ function CreateAdapterPanel({
               {
               const value = event.target.value;
               const next: AdapterProviderKind =
-                value === 'github-actions' || value === 'vault-kv' || value === 'cloudflare' || value === 'aws-secrets-manager' ? value : 'forgejo';
+                value === 'gitlab' || value === 'github-actions' || value === 'vault-kv' || value === 'cloudflare' || value === 'aws-secrets-manager' ? value : 'forgejo';
               setProvider(next);
-              setOrigin(next === 'github-actions' ? 'https://api.github.com' : next === 'cloudflare' ? 'https://api.cloudflare.com' : '');
+              setOrigin(next === 'github-actions' ? 'https://api.github.com' : next === 'gitlab' ? 'https://gitlab.com' : next === 'cloudflare' ? 'https://api.cloudflare.com' : '');
               setCredential('');
               setAccess(emptyAwsAccess);
             }
@@ -927,6 +935,7 @@ function CreateAdapterPanel({
           >
             <option value="forgejo">Forgejo</option>
             <option value="github-actions">GitHub Actions</option>
+            <option value="gitlab">GitLab</option>
             <option value="aws-secrets-manager">AWS Secrets Manager</option>
             <option value="vault-kv">Vault / OpenBao KV v2</option>
             <option value="cloudflare">Cloudflare Workers &amp; Pages</option>
@@ -934,7 +943,7 @@ function CreateAdapterPanel({
         </label>
         <label className="field">
           <span className="field__label">
-            {provider === 'github-actions' ? 'GitHub API base URL' : provider === 'vault-kv' ? 'Server address' : aws ? 'Secrets Manager endpoint' : 'Origin'}
+            {provider === 'github-actions' ? 'GitHub API base URL' : provider === 'gitlab' ? 'GitLab base URL' : provider === 'vault-kv' ? 'Server address' : aws ? 'Secrets Manager endpoint' : 'Origin'}
           </span>
           <input
             value={origin}
@@ -943,6 +952,7 @@ function CreateAdapterPanel({
             placeholder={
               provider === 'github-actions'
                 ? 'https://HOST/api/v3'
+                : provider === 'gitlab' ? 'https://gitlab.example.com'
                 : provider === 'vault-kv'
                   ? 'https://vault.example.com:8200'
                   : aws ? 'https://secretsmanager.eu-west-1.amazonaws.com' : 'https://git.example.com'
@@ -951,6 +961,44 @@ function CreateAdapterPanel({
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
+        {provider === 'gitlab' ? (
+          <>
+            <p className="field__hint">
+              Use a project or group access token with the api scope and the Maintainer role (Owner for group
+              variables). Hikyo never reads GitLab variables back: their values are only ever written.
+            </p>
+            <Input
+              label="SPKI pin (optional)"
+              mono
+              value={spkiPin}
+              onChange={(event) => setSpkiPin(event.target.value)}
+              placeholder="base64(sha256(SubjectPublicKeyInfo))"
+              hint="Checked after normal certificate verification. Fixed for the adapter's lifetime."
+            />
+            <label className="field">
+              <span className="field__label">CA bundle (optional)</span>
+              <textarea
+                className="mono"
+                value={caBundle}
+                rows={4}
+                onChange={(event) => setCaBundle(event.target.value)}
+                placeholder="-----BEGIN CERTIFICATE-----"
+              />
+            </label>
+            <div className="field">
+              <Checkbox
+                label="Accept a personal access token"
+                aria-describedby={personalTokenHintId}
+                checked={allowPersonalToken}
+                onChange={(event) => setAllowPersonalToken(event.target.checked)}
+              />
+              <p className="field__hint" id={personalTokenHintId}>
+                Refused by default: a personal token can act as its owner everywhere they have access. Prefer a
+                project or group access token.
+              </p>
+            </div>
+          </>
+        ) : null}
         {aws ? <p className="field__hint">One-way and value-blind: Hikyo writes secrets and never reads one back. The region comes from the endpoint.</p> : null}
         {provider === 'vault-kv' ? (
           <p className="field__hint">
@@ -989,7 +1037,13 @@ function CreateAdapterPanel({
         onSubmit={async (input) => {
           try {
             await ceremonyFor('adapter.configure', [input.environment_id]);
-            await create.mutateAsync({ provider, origin, credential: aws ? awsAccessDescriptor(access) : credential, target: input });
+            await create.mutateAsync({
+              provider,
+              origin,
+              credential: aws ? awsAccessDescriptor(access) : credential,
+              target: input,
+              ...(provider === 'gitlab' ? { gitlab: { spkiPin, caBundle, allowPersonalToken } } : {}),
+            });
             setCredential('');
             setAccess(emptyAwsAccess);
             feedback.ok('Adapter created. Its first converge is queued.');
@@ -1090,6 +1144,11 @@ export function TargetForm({
   const [include, setInclude] = useState('');
   const [exclude, setExclude] = useState('');
   const [classification, setClassification] = useState<'' | 'secret' | 'config'>('');
+  const gitlab = provider === 'gitlab';
+  const [scope, setScope] = useState(initial?.destination_scope ?? '*');
+  const [variableProtected, setVariableProtected] = useState(initial?.variable_protected ?? false);
+  const [variableHidden, setVariableHidden] = useState(initial?.variable_hidden ?? false);
+  const [variableExpand, setVariableExpand] = useState(initial?.variable_expand ?? false);
 
   // Default to the first environment until the operator picks one, derived
   // during render so no state write is needed when environments load late.
@@ -1103,7 +1162,7 @@ export function TargetForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const selectsRepositories = effectiveKind === 'organization' && visibility === 'selected';
+    const selectsRepositories = !gitlab && effectiveKind === 'organization' && visibility === 'selected';
     const parsedIds = selectsRepositories ? zRepositoryIdList.safeParse(repositoryIds) : null;
     if (parsedIds !== null && !parsedIds.success) {
       setRepositoryIdsError(parsedIds.error.issues[0]?.message ?? 'Repository ids are not valid.');
@@ -1128,11 +1187,19 @@ export function TargetForm({
       destination_environment:
         effectiveKind === 'environment' || isAwsKind(effectiveKind) ? destinationEnvironment : effectiveKind === 'pages-project' ? destinationEnvironment || 'production' : '',
       allow_environment_create: effectiveKind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
-      visibility: effectiveKind === 'organization' ? visibility : '',
+      visibility: effectiveKind === 'organization' && !gitlab ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
       name_prefix: normalisePrefix(prefix),
       key_ids: [...keyIds],
       ...(selection === undefined ? {} : { key_selection: selection }),
+      ...(gitlab
+        ? {
+            destination_scope: scope.trim() === '' ? '*' : scope.trim(),
+            variable_protected: variableProtected,
+            variable_hidden: variableHidden,
+            variable_expand: variableExpand,
+          }
+        : {}),
     });
   };
 
@@ -1183,7 +1250,12 @@ export function TargetForm({
               setKind(value === 'organization' || value === 'environment' ? value : 'repository');
             }}
           >
-            {cloudflare ? (
+            {gitlab ? (
+              <>
+                <option value="repository">GitLab project</option>
+                <option value="organization">GitLab group</option>
+              </>
+            ) : cloudflare ? (
               <><option value="workers-script">Workers script</option><option value="pages-project">Pages project</option></>
             ) : aws ? (
               <>
@@ -1201,7 +1273,7 @@ export function TargetForm({
         </label>
         )}
         <label className="field">
-          <span className="field__label">{aws ? 'AWS account id' : keyValue ? 'KV v2 mount' : cloudflare ? 'Account id' : 'Owner'}</span>
+          <span className="field__label">{gitlab ? (kind === 'organization' ? 'Group path' : 'Namespace') : aws ? 'AWS account id' : keyValue ? 'KV v2 mount' : cloudflare ? 'Account id' : 'Owner'}</span>
           <input
             value={owner}
             disabled={lockRouting === true}
@@ -1253,10 +1325,10 @@ export function TargetForm({
         ) : null}
         {aws ? null : effectiveKind !== 'organization' ? (
           <label className="field">
-            <span className="field__label">{keyValue ? 'Path prefix' : kind === 'workers-script' ? 'Script' : kind === 'pages-project' ? 'Project' : 'Repository'}</span>
+            <span className="field__label">{gitlab ? 'Project' : keyValue ? 'Path prefix' : kind === 'workers-script' ? 'Script' : kind === 'pages-project' ? 'Project' : 'Repository'}</span>
             <input value={name} disabled={lockRouting === true} onChange={(event) => setName(event.target.value)} />
           </label>
-        ) : (
+        ) : gitlab ? null : (
           <label className="field">
             <span className="field__label">Visibility</span>
             <select
@@ -1274,7 +1346,27 @@ export function TargetForm({
             </select>
           </label>
         )}
-        {effectiveKind === 'organization' && visibility === 'selected' ? (
+        {gitlab ? (
+          <Input
+            label="Environment scope"
+            mono
+            value={scope}
+            disabled={lockRouting === true}
+            onChange={(event) => setScope(event.target.value)}
+            hint="GitLab environment_scope; * for every environment. Fixed once the target exists."
+          />
+        ) : null}
+        {gitlab ? (
+          <div className="field">
+            <Checkbox label="Protected (protected branches and tags only)" checked={variableProtected} onChange={(event) => setVariableProtected(event.target.checked)} />
+            <Checkbox label="Hidden secrets (GitLab 17.4+, applied on creation)" checked={variableHidden} onChange={(event) => setVariableHidden(event.target.checked)} />
+            <Checkbox label="Expand $VARIABLE references in values" checked={variableExpand} onChange={(event) => setVariableExpand(event.target.checked)} />
+            <p className="field__hint">
+              Secret keys are always masked; a value GitLab cannot mask is refused by name, never delivered unmasked.
+            </p>
+          </div>
+        ) : null}
+        {!gitlab && effectiveKind === 'organization' && visibility === 'selected' ? (
           <Input
             label="Repository ids"
             mono

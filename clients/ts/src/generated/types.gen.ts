@@ -314,6 +314,22 @@ export type AdapterTargetInput = {
      */
     destination_environment: string;
     /**
+     * GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
+     */
+    destination_scope?: string;
+    /**
+     * GitLab only. Deliver managed variables as protected (protected branches and tags only).
+     */
+    variable_protected?: boolean;
+    /**
+     * GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
+     */
+    variable_hidden?: boolean;
+    /**
+     * GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
+     */
+    variable_expand?: boolean;
+    /**
      * GitHub organization recipient visibility; empty for other destinations.
      */
     visibility: '' | 'all' | 'private' | 'selected';
@@ -429,6 +445,18 @@ export type CreateAdapterRequest = {
      */
     credential: string;
     target: AdapterTargetInput;
+    /**
+     * GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
+     */
+    spki_pin?: string;
+    /**
+     * GitLab only. PEM trust anchors added to the system roots for a self-hosted instance.
+     */
+    ca_bundle?: string;
+    /**
+     * GitLab only. Protected opt-in to accept a personal access token, which can act as its human owner everywhere they have access. By default only project and group access tokens are accepted.
+     */
+    allow_personal_token?: boolean;
 };
 
 export type UpdateAdapterOriginRequest = {
@@ -455,6 +483,22 @@ export type UpdateAdapterTargetRequest = {
     name_prefix: string;
     key_ids: Array<Id>;
     key_selection?: AdapterKeySelection;
+    /**
+     * GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
+     */
+    destination_scope?: string;
+    /**
+     * GitLab only. Deliver managed variables as protected (protected branches and tags only). Omission preserves the current value.
+     */
+    variable_protected?: boolean;
+    /**
+     * GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab. Omission preserves the current value.
+     */
+    variable_hidden?: boolean;
+    /**
+     * GitLab only. Allow `$VAR` expansion inside values. Omission preserves the current value.
+     */
+    variable_expand?: boolean;
     expected_generation: number;
     keep_remote?: boolean;
 };
@@ -491,6 +535,13 @@ export type AdapterTarget = {
     destination_owner: string;
     destination_name: string;
     destination_environment: string;
+    /**
+     * GitLab environment_scope; empty for other providers.
+     */
+    destination_scope?: string;
+    variable_protected?: boolean;
+    variable_hidden?: boolean;
+    variable_expand?: boolean;
     destination_id: number;
     repository_id: number;
     visibility: '' | 'all' | 'private' | 'selected';
@@ -570,6 +621,15 @@ export type Adapter = {
     authority_principal_id: Id;
     state: 'active' | 'moving' | 'tombstoned';
     created_at: Timestamp;
+    /**
+     * GitLab egress SPKI pin; empty when unpinned.
+     */
+    spki_pin?: string;
+    /**
+     * Whether a GitLab CA bundle is configured.
+     */
+    ca_bundle_present?: boolean;
+    allow_personal_token?: boolean;
     targets: Array<AdapterTarget>;
 };
 

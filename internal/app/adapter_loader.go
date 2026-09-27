@@ -56,7 +56,7 @@ func (l *adapterLoader) LoadActivation(ctx context.Context, job adapter.Job, jou
 	if err != nil {
 		return adapter.LoadedActivation{}, err
 	}
-	lease, err := l.moduleFactory(provider, adapter.Config{Origin: material.Origin}, string(credential))
+	lease, err := l.moduleFactory(provider, material.Transport.Config(material.Origin), string(credential))
 	if err != nil {
 		crypto.Zero(credential)
 		return adapter.LoadedActivation{}, err
@@ -68,7 +68,7 @@ func (l *adapterLoader) LoadActivation(ctx context.Context, job adapter.Job, jou
 	return adapter.LoadedActivation{
 		Module: lease.Module,
 		Request: adapter.ConnectionRequest{
-			Config:      adapter.Config{Origin: material.Origin},
+			Config:      material.Transport.Config(material.Origin),
 			Destination: material.Target.Destination, Access: adapter.Access{Credential: string(credential)},
 			Gate: func(gateCtx context.Context) error {
 				return journal.Gate(gateCtx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "route", Disposition: adapter.Update})
@@ -118,7 +118,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 	if err != nil {
 		return adapter.LoadedSync{}, err
 	}
-	lease, err := l.moduleFactory(provider, adapter.Config{Origin: material.Origin}, string(credential))
+	lease, err := l.moduleFactory(provider, material.Transport.Config(material.Origin), string(credential))
 	if err != nil {
 		crypto.Zero(credential)
 		return adapter.LoadedSync{}, err
@@ -158,7 +158,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 		})
 	}
 	request := adapter.SyncRequest{
-		Config: adapter.Config{Origin: material.Origin}, Target: material.Target,
+		Config: material.Transport.Config(material.Origin), Target: material.Target,
 		Manifest: manifest, Ledger: material.Ledger,
 		Source: adapter.Source{OrgID: job.OrgID, ProjectID: job.ProjectID, EnvironmentID: job.EnvironmentID, Revision: material.Revision},
 	}
