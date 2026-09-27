@@ -200,7 +200,10 @@ func pinnedClient(t *testing.T, server *httptest.Server, namespace, credential s
 	// The test certificate is self-signed for 127.0.0.1; use it as the CA
 	// bundle so chain and hostname verification still run beside the pin.
 	parsed["ca_pem"] = pemCertificate(leaf.Raw)
-	encoded, _ := json.Marshal(parsed)
+	encoded, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	origin := server.URL
 	if namespace != "" {
 		origin += "/" + namespace
@@ -353,11 +356,14 @@ func TestClientRefusesUnpinnedCertificate(t *testing.T) {
 	defer server.Close()
 	// httptest servers share one built-in key, so pin a different SPKI.
 	sum := sha256.Sum256([]byte("some other public key"))
-	credential, _ := json.Marshal(map[string]string{
+	credential, err := json.Marshal(map[string]string{
 		"method": "token", "token": "hvs.static",
 		"ca_pem":      pemCertificate(server.Certificate().Raw),
 		"spki_sha256": base64.StdEncoding.EncodeToString(sum[:]),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	client, err := NewClient(ClientConfig{Origin: server.URL, Credential: string(credential), AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}, Deadline: 5 * time.Second})
 	if err != nil {
 		t.Fatal(err)
