@@ -490,7 +490,12 @@ hikyo adapter create --provider vault-kv \
   by name; adoption never reads the value. A Hikyo path that someone edits
   outside Hikyo is also a conflict: Hikyo reports it and never overwrites it.
   If that key is later removed from the selection or the target is removed,
-  Hikyo releases it with a warning instead of deleting the edit. A delivery interrupted mid-write replays safely from metadata.
+  Hikyo releases it with a warning instead of deleting the edit. An interrupted delivery replays from metadata, with a residual concurrency limit:
+  if an external write takes exactly the pending version and the attempt stops before
+  releasing custody, replay cannot distinguish that write from Hikyo's own. A later
+  retry can overwrite it; the external value remains in KV version history. See the
+  [Vault adapter ownership protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/vault-kv-adapter.md#ownership-and-concurrency-cas-plus-a-marker-protocol)
+  before allowing concurrent external writers.
 - **Retain, prune, destroy.** Removing a target with `--keep-remote` leaves every
   path in place. Without it, and for keys that leave the selection, Hikyo
   soft-deletes the current version: history and metadata stay, and

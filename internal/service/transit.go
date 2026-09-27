@@ -738,7 +738,7 @@ func (s *Transit) ConfigureKey(ctx context.Context, actor Actor, scope domain.Sc
 			}
 			return err
 		}
-		callerCount := int64(0)
+		var callerCount int64
 		if req.Callers != nil {
 			callerCount = int64(len(callers))
 		} else {

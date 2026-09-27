@@ -188,7 +188,7 @@ profile to a scope is its own audited operation.
   `not_after` has not passed. The CRL number is `max(previous + 1, now in
   seconds)`, so it stays monotonic across a restore from an older backup.
 - The worker regenerates a CRL when a revocation newer than the published one
-  exists, or when half of its validity (24 hours) has elapsed, and stores the
+  exists, or when half of its 24-hour validity (12 hours) has elapsed, and stores the
   DER on the issuer row under a CAS on the prior CRL number. Serving a CRL is
   a read of that stored DER and never touches key material.
 - The CRL is served **authenticated**: to operators (`pki-issuer.inspect`,

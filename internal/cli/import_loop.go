@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -35,14 +36,14 @@ func refuseVaultImportLoop(ctx context.Context, client *Client, project string, 
 }
 
 // vaultImportLoop reports the first active vault-kv target whose tree
-// overlaps the imported selection: the same host, namespace and mount, and one
+// overlaps the imported selection: the same host and combined namespace/mount, and one
 // path prefix containing the other.
 func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (string, bool, error) {
 	source, err := url.Parse(result.Identity)
 	if err != nil || !validLoopOrigin(source) {
 		return "", false, failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: invalid source identity")
 	}
-	sourceMount := strings.Trim(result.Scope.Mount, "/")
+	sourceMount := vaultNamespaceMount(result.Namespace, result.Scope.Mount)
 	sourcePath := strings.Trim(result.Scope.PathPrefix, "/")
 	for _, a := range adapters.Items {
 		if string(a.Provider) != "vault-kv" || a.State == apigen.AdapterStateTombstoned {
@@ -52,11 +53,11 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 		if err != nil || !validLoopOrigin(origin) {
 			return "", false, failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: invalid active sync adapter origin")
 		}
-		if !sameEndpoint(origin, source) || strings.Trim(origin.Path, "/") != strings.Trim(result.Namespace, "/") {
+		if !sameEndpoint(origin, source) {
 			continue
 		}
 		for _, target := range a.Targets {
-			if target.State == apigen.AdapterTargetStateTombstoned || strings.Trim(target.DestinationOwner, "/") != sourceMount {
+			if target.State == apigen.AdapterTargetStateTombstoned || vaultNamespaceMount(origin.Path, target.DestinationOwner) != sourceMount {
 				continue
 			}
 			if pathsOverlap(sourcePath, strings.Trim(target.DestinationName, "/")) {
@@ -67,8 +68,14 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 	return "", false, nil
 }
 
+// vaultNamespaceMount unifies a child namespace's mount with its root-namespace
+// path-prefix spelling without altering the case-sensitive path segments.
+func vaultNamespaceMount(namespace, mount string) string {
+	return strings.Trim(strings.Trim(namespace, "/")+"/"+strings.Trim(mount, "/"), "/")
+}
+
 func validLoopOrigin(origin *url.URL) bool {
-	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == ""
+	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == "" && effectivePort(origin) != ""
 }
 
 // pathsOverlap reports equal paths or ancestry at a slash boundary. Inputs
@@ -81,14 +88,22 @@ func pathsOverlap(a, b string) bool {
 // port made explicit, so https://vault.example and https://vault.example:443
 // name the same server.
 func sameEndpoint(a, b *url.URL) bool {
-	return strings.EqualFold(a.Hostname(), b.Hostname()) && effectivePort(a) == effectivePort(b)
+	port := effectivePort(a)
+	return port != "" && strings.EqualFold(a.Hostname(), b.Hostname()) && port == effectivePort(b)
 }
 
 // effectivePort returns an explicit URL port, or the default for HTTP or HTTPS.
-// Other schemes without an explicit port return an empty string.
+// Invalid explicit ports and other schemes without a port return an empty string.
 func effectivePort(u *url.URL) string {
+	if strings.HasSuffix(u.Host, ":") {
+		return ""
+	}
 	if port := u.Port(); port != "" {
-		return port
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return ""
+		}
+		return strconv.FormatUint(number, 10)
 	}
 	switch strings.ToLower(u.Scheme) {
 	case "https":

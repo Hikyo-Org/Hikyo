@@ -993,7 +993,7 @@ func (s *Access) DrainExpired(ctx context.Context) error {
 // query errors are returned; counts should be used only when err is nil.
 func (s *Access) OperationalCounts(ctx context.Context) (open, active int64, err error) {
 	now := s.now()
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		p, pErr := authz.SystemAuthority(authz.SiteScheduler, az.Token())
 		if pErr != nil {
 			return pErr
