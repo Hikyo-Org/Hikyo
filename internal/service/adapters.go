@@ -111,6 +111,9 @@ type AdapterRecord = store.AdapterRecord
 // This sanctioned seam follows the system-architecture ADR; boundary_test.go
 // enforces that handlers never import internal/store directly.
 type AdapterMove = store.AdapterMove
+
+// AdapterMoveTarget exposes pending target metadata through the service seam,
+// keeping transport mappings and fixtures independent of store imports.
 type AdapterMoveTarget = store.AdapterMoveTarget
 
 type AdapterTargetInput struct {
