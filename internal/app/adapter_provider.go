@@ -133,6 +133,10 @@ func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix, endpoints s
 	return &adapterModuleFactory{egressPolicy: egressPolicy, providers: deploymentProviderRegistry(endpoints, policy)}
 }
 
+// Build constructs a provider module using the origin's egress policy.
+// The caller must release the returned lease. Construction errors propagate
+// after any available cleanup; an absent factory or unsupported provider
+// returns an error.
 func (f *adapterModuleFactory) Build(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 	if f == nil {
 		return nil, errors.New("app: adapter module factory is not configured")

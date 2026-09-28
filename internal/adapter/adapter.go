@@ -631,6 +631,8 @@ func ValidateVaultKVManifest(prefix string, entries []ManifestEntry, values bool
 
 // VaultKVMapping renders names only: the KV v2 path each canonical name is
 // delivered to, for Vault Agent, External Secrets, or application wiring.
+// Entries are sorted by canonical name without changing the input. Manifest
+// name validation errors propagate; mount and pathPrefix must already be valid.
 func VaultKVMapping(mount, pathPrefix, prefix string, entries []ManifestEntry) (string, error) {
 	if err := ValidateVaultKVManifest(prefix, entries, false); err != nil {
 		return "", err

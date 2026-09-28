@@ -35,7 +35,8 @@ var _ adapter.Module = (*Module)(nil)
 
 // ValidateConfig accepts only the canonical origin spelling, so one server
 // and namespace cannot be configured twice under different spellings of the
-// same origin.
+// same origin. It rejects invalid origins and performs no server or credential
+// checks.
 func (m *Module) ValidateConfig(cfg adapter.Config) error {
 	canonical, err := CanonicalOrigin(cfg.Origin)
 	if err != nil {
