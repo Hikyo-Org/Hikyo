@@ -158,6 +158,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// own §179 budget, so no approval op takes a separate expensive slot.
 		authz.OpApprovalPolicyWrite, authz.OpApprovalPolicyRead, authz.OpApprovalRequestRead,
 		authz.OpApprovalVote, authz.OpApprovalBypass,
+		// temporary access (#152): policy admin, request, vote, cancel, revoke and
+		// emergency access are bounded single-request acts (a grant writes at
+		// most one row per requestable capability).
+		authz.OpAccessPolicyWrite, authz.OpAccessPolicyRead, authz.OpAccessRequestCreate,
+		authz.OpAccessRequestRead, authz.OpAccessVote, authz.OpAccessCancel,
+		authz.OpAccessRevoke, authz.OpAccessBypass,
 		// grants
 		authz.OpGrantCreateEnv, authz.OpGrantCreateProject, authz.OpGrantCreateOrg, authz.OpGrantCreateInstance,
 		authz.OpGrantListProject, authz.OpGrantListOrg, authz.OpGrantListInstance,

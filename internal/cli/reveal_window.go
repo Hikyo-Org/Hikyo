@@ -96,9 +96,12 @@ func withRevealCeremony(ctx context.Context, client *Client, st *State, ios IO, 
 
 // ensureRevealWindow opens a live reauthentication window over env for the
 // acting session, or returns an error naming why it cannot. `refusal` is the
-// disclosure's own error, returned unchanged when the principal does not hold
-// `read ∧ reveal` here - the chokepoint's answer is not second-guessed, and a
-// ceremony is never offered to someone the server would refuse anyway.
+// action's own error, returned unchanged when no window is live and CanReveal
+// is false, except for approve, reject, bypass, and emergency-access decisions.
+// Those decisions use their own authorization checks. Inline TOTP persists
+// the rotated session and updates the client's bearer. Window lookup, ceremony,
+// and session-persistence errors propagate. Emergency access has no browser
+// handoff here; without inline TOTP it returns a CLI authentication error.
 func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, artifact *SessionArtifact,
 	projectBase, env string, d disclosure, refusal error) error {
 	var window apigen.RevealWindow
@@ -117,7 +120,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	// Approval votes and bypasses require publish authority, not reveal. Their
 	// failed action is the authoritative capability check, so the reveal-window
 	// affordance must not block their purpose-bound ceremony.
-	approvalDecision := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass"
+	// Emergency temporary access (#152) is likewise authorized by its own
+	// operation, not by reveal.
+	approvalDecision := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access"
 	if !window.CanReveal && !approvalDecision {
 		return refusal
 	}
@@ -142,6 +147,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 			why = "it is a protected environment"
 		case window.EffectiveWindowSeconds > 0:
 			why = "no authenticator is enrolled on this account"
+		}
+		if d.purpose == "access" {
+			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
 		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			return failf(ExitAuth, "a disclosure in %s needs a reauthentication window and %s: the ceremony is the browser's, "+

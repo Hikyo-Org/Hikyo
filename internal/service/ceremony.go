@@ -315,6 +315,11 @@ const (
 	// single most consequential action the engine allows, so it is its own
 	// purpose and additionally carries a reason.
 	PurposeBypass ReauthPurpose = "bypass"
+	// PurposeAccess is emergency temporary access (#152): a named bypasser
+	// signs "I am taking these capabilities in this environment WITHOUT the
+	// required approval". It is distinct from PurposeBypass: consent to force a
+	// reviewed change through is not consent to take standing authority.
+	PurposeAccess ReauthPurpose = "access"
 )
 
 // Valid reports membership of the closed set. An unknown purpose is refused
@@ -322,7 +327,7 @@ const (
 func (p ReauthPurpose) Valid() bool {
 	switch p {
 	case PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
-		PurposeApprove, PurposeReject, PurposeBypass:
+		PurposeApprove, PurposeReject, PurposeBypass, PurposeAccess:
 		return true
 	}
 	return false

@@ -38,6 +38,7 @@ const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ defa
 const AccountSecurity = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.AccountSecurity })));
 const Audit = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Audit })));
 const ChangeApprovals = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ChangeApprovals })));
+const TemporaryAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.TemporaryAccess })));
 const InstanceConfig = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceConfig })));
 const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
 const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
@@ -84,6 +85,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   'project-audit': withRouteFallback(<Audit key="audit-project" />),
   'project-settings': withRouteFallback(<ProjectSettings />),
   'change-approvals': withRouteFallback(<ChangeApprovals />),
+  'temporary-access': withRouteFallback(<TemporaryAccess />),
   'instance-admin': withRouteFallback(<InstanceAdmin />),
   'instance-config': withRouteFallback(<WorkspaceScope><InstanceConfig /></WorkspaceScope>),
   'instance-members': withRouteFallback(<Members key="members-instance" scope={{ kind: 'instance' }} />),

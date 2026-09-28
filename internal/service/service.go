@@ -208,11 +208,9 @@ func nowOr(fn func() time.Time) time.Time {
 
 // authorize is the resolve->Authorize prelude every tenant operation runs at
 // the top of its transaction: resolve the caller's live Identity, then mint an
-// operation-bound Proof for the addressed scope. It is a pure extraction of the
-// copy-pasted prelude and preserves the chokepoint exactly — it runs inside the
-// caller's transaction (via the passed authorizer), holds no state, and caches
-// nothing, so "no authorization cache" and "re-authorize before every step"
-// stay mechanical.
+// operation-bound Proof for the addressed scope. It sets the authorizer's
+// temporary-grant evaluation clock to now before authorizing. Caller resolution
+// and authorization errors propagate; no authorization result is cached.
 // Named results + bare returns keep any nil out of the authz.Proof position:
 // the proof-forgery analyzer bans a nil literal there, and a bare return yields
 // the zero interface without writing one.
@@ -221,6 +219,9 @@ func authorize(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op auth
 	if err != nil {
 		return
 	}
+	// Time-bound grants (#152) are judged against this operation's clock, so an
+	// expired temporary grant refuses on the very next protected operation.
+	az.SetClock(now)
 	proof, err = az.Authorize(ctx, caller, op, scope)
 	return
 }

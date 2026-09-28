@@ -578,7 +578,20 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                            true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony": true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote":    true,
-	"POST /api/v1/instance/rotate-token-key":                                                                            true,
+	// Temporary access (#152): policy administration, the request queue and
+	// its decisions read/write only THIS instance's own access rows; nothing is
+	// proxied or forwarded.
+	"GET /api/v1/orgs/{org}/projects/{project}/access-policies":                                                    true,
+	"POST /api/v1/orgs/{org}/projects/{project}/access-policies":                                                   true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                           true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                        true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                         true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency":              true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote":   true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel": true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke": true,
+	"POST /api/v1/instance/rotate-token-key":                                                                       true,
 	// rotate-scanning-key (#74): replaces this instance's own scanning key and
 	// drops this instance's own dismissal rows. It returns this instance's own
 	// data and never fetches, relays or forwards on the caller's behalf.

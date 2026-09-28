@@ -157,6 +157,12 @@
   },
   {
     "engine": "postgres",
+    "name": "CountActiveAccessGrants",
+    "annotation": "instance-scoped",
+    "hash": "5fc2e86bbd1d9da645fe595b42ff1368588d0c3ac03583dd93d67f22ae170195"
+  },
+  {
+    "engine": "postgres",
     "name": "CountActiveApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "b0fac7a5a51fafd5bb5fff5b193fa270e42171b909f560aab674031f3b00ff5a"
@@ -202,6 +208,12 @@
     "name": "CountLiveMachineCredentialsInProject",
     "annotation": "authn-resolution",
     "hash": "d043bf0100fd0838fe814b8f3abfd2a2bf2b5b586b6964100940cacff1e09f57"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountOpenAccessRequests",
+    "annotation": "instance-scoped",
+    "hash": "2b96375a746a217e2661dc52cbdb3130964d59a36b95fd7b5078eaebbbaa6bdf"
   },
   {
     "engine": "postgres",
@@ -286,6 +298,12 @@
     "name": "CreateSelfConfigBinding",
     "annotation": "instance-scoped",
     "hash": "6ccb4d6febf6ae248c7435ada48fa40017af5c7c374da550a38d5592629de1f1"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteAccessGrantsForRequest",
+    "annotation": "authn-resolution",
+    "hash": "da717d64dd86184ce980c30fa092be29b7808a08ea53c99d3c6e329e9f3ba5fb"
   },
   {
     "engine": "postgres",
@@ -955,6 +973,12 @@
   },
   {
     "engine": "postgres",
+    "name": "InsertAccessGrant",
+    "annotation": "authn-resolution",
+    "hash": "f577672c33b3e0c1eaab66675e4733c8d0009222648c6728a8c80650d9cfa139"
+  },
+  {
+    "engine": "postgres",
     "name": "InsertAccount",
     "annotation": "authn-resolution",
     "hash": "e49a478aa77279183d2d478de60367f0c515bc5bfe4cb5d8646e105088bd215a"
@@ -1239,7 +1263,7 @@
     "engine": "postgres",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "c78c886fa880e349269b4d2fddb2a7c73b78955eeda922bf501d3373f5bf175d"
+    "hash": "601ee342bb955db8c9fc5b638acb9356f76b2525e9457caea0cbdddac74208c7"
   },
   {
     "engine": "postgres",
@@ -1276,6 +1300,12 @@
     "name": "ListInstanceConnections",
     "annotation": "authn-resolution",
     "hash": "1a27f2dc9107e038e32067cdfc138d621bc608e9a2e37182520a047350be7dc3"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListLiveAccessGrantsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "a1557956194216f4fc26414cce95d01057224afd2881a88aa6894b2368a3b72d"
   },
   {
     "engine": "postgres",
@@ -1537,6 +1567,12 @@
   },
   {
     "engine": "postgres",
+    "name": "MarkAccessRequestExpired",
+    "annotation": "instance-scoped",
+    "hash": "b3c9fdc72fa8ea504f02c3e19c24dc7c2ef1bb31115f96699b3afa0db6a8042c"
+  },
+  {
+    "engine": "postgres",
     "name": "MarkAllPrincipalsUnreconciled",
     "annotation": "authn-resolution",
     "hash": "583d54cf8e92d8fdd22f4c8ff53eb66b629abad58c021483c9428356f348697a"
@@ -1789,6 +1825,12 @@
   },
   {
     "engine": "postgres",
+    "name": "RecoveryListGrantsBeforeAccess",
+    "annotation": "authn-resolution",
+    "hash": "c78c886fa880e349269b4d2fddb2a7c73b78955eeda922bf501d3373f5bf175d"
+  },
+  {
+    "engine": "postgres",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
@@ -1918,6 +1960,12 @@
     "name": "SealedRemoteCredential",
     "annotation": "instance-scoped",
     "hash": "c00d7dfa31f8e1f2595882928efd88712ac74f9fd69969e61155ec829341a071"
+  },
+  {
+    "engine": "postgres",
+    "name": "SelectDueAccessRequests",
+    "annotation": "instance-scoped",
+    "hash": "8f0655b3b44545a2c130c9b3d2d9f2ccf87f7c710d05285aee728ca1cbcba9ea"
   },
   {
     "engine": "postgres",
@@ -2293,6 +2341,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountActiveAccessGrants",
+    "annotation": "instance-scoped",
+    "hash": "db6583cda8aea817b9336b4b3c57adf4a2e37d28f1ce69d253453cb616d27dda"
+  },
+  {
+    "engine": "sqlite",
     "name": "CountActiveApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "b0fac7a5a51fafd5bb5fff5b193fa270e42171b909f560aab674031f3b00ff5a"
@@ -2338,6 +2392,12 @@
     "name": "CountLiveMachineCredentialsInProject",
     "annotation": "authn-resolution",
     "hash": "7f9c91b7d00b8af1671d90ce22512d272d8832873662d915bc7c7c44a497fe60"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountOpenAccessRequests",
+    "annotation": "instance-scoped",
+    "hash": "2b96375a746a217e2661dc52cbdb3130964d59a36b95fd7b5078eaebbbaa6bdf"
   },
   {
     "engine": "sqlite",
@@ -2422,6 +2482,12 @@
     "name": "CreateSelfConfigBinding",
     "annotation": "instance-scoped",
     "hash": "e394a77de0706af7a2f01bd8061fa08f1f04045124f155bbc4ac8bc657dee696"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteAccessGrantsForRequest",
+    "annotation": "authn-resolution",
+    "hash": "668656c671434750bd8efd9d9512553032bd6271990432299d742231e5d988a7"
   },
   {
     "engine": "sqlite",
@@ -3091,6 +3157,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "InsertAccessGrant",
+    "annotation": "authn-resolution",
+    "hash": "8ce5844cf2ba36359e3856f77f705229b730bb136e4ea2f424769dd80159b18c"
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertAccount",
     "annotation": "authn-resolution",
     "hash": "53162bffe9c6fec06198d7b5430de4813739f09f157f3e9fb5748fe66fa97c62"
@@ -3375,7 +3447,7 @@
     "engine": "sqlite",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "12f8885d414a5669fceb4dda190cc9b04f88be10f96d956b50c5e9c12cd181e1"
+    "hash": "601ee342bb955db8c9fc5b638acb9356f76b2525e9457caea0cbdddac74208c7"
   },
   {
     "engine": "sqlite",
@@ -3412,6 +3484,12 @@
     "name": "ListInstanceConnections",
     "annotation": "authn-resolution",
     "hash": "1a27f2dc9107e038e32067cdfc138d621bc608e9a2e37182520a047350be7dc3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListLiveAccessGrantsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "6b0d1b21a62296e3b665f599c14596743563c9dfc639b40011682eb4f21ce18d"
   },
   {
     "engine": "sqlite",
@@ -3673,6 +3751,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "MarkAccessRequestExpired",
+    "annotation": "instance-scoped",
+    "hash": "b3c9fdc72fa8ea504f02c3e19c24dc7c2ef1bb31115f96699b3afa0db6a8042c"
+  },
+  {
+    "engine": "sqlite",
     "name": "MarkAllPrincipalsUnreconciled",
     "annotation": "authn-resolution",
     "hash": "583d54cf8e92d8fdd22f4c8ff53eb66b629abad58c021483c9428356f348697a"
@@ -3925,6 +4009,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "RecoveryListGrantsBeforeAccess",
+    "annotation": "authn-resolution",
+    "hash": "12f8885d414a5669fceb4dda190cc9b04f88be10f96d956b50c5e9c12cd181e1"
+  },
+  {
+    "engine": "sqlite",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
@@ -4054,6 +4144,12 @@
     "name": "SealedRemoteCredential",
     "annotation": "instance-scoped",
     "hash": "b9bde21fc56d19bfaab7e96f2085e673e995967a221cce6da73a3f1793b9375b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SelectDueAccessRequests",
+    "annotation": "instance-scoped",
+    "hash": "8f0655b3b44545a2c130c9b3d2d9f2ccf87f7c710d05285aee728ca1cbcba9ea"
   },
   {
     "engine": "sqlite",

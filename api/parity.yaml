@@ -162,6 +162,17 @@ operations:
   listApprovalRequests:        {webui: change-approvals}
   getApprovalCeremony:         {webui: change-approvals}
   voteApprovalRequest:         {webui: change-approvals}
+  # temporary access (#152)
+  listAccessPolicies:          {webui: temporary-access}
+  createAccessPolicy:          {webui: temporary-access}
+  updateAccessPolicy:          {webui: temporary-access}
+  deleteAccessPolicy:          {webui: temporary-access}
+  listAccessRequests:          {webui: temporary-access}
+  createAccessRequest:         {webui: temporary-access}
+  emergencyAccess:             {webui: temporary-access}
+  voteAccessRequest:           {webui: temporary-access}
+  cancelAccessRequest:         {webui: temporary-access}
+  revokeAccessRequest:         {webui: temporary-access}
 
   # definitions
   # Browser bundle workflow uses each operation directly (#575).

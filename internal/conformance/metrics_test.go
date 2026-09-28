@@ -92,6 +92,9 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_approval_requests_open", MaxSeries: 1},
 		{Name: "hikyo_approval_requests_expired", MaxSeries: 1},
 		{Name: "hikyo_approval_gauges_known", MaxSeries: 1},
+		{Name: "hikyo_access_requests_open", MaxSeries: 1},
+		{Name: "hikyo_access_grants_active", MaxSeries: 1},
+		{Name: "hikyo_access_gauges_known", MaxSeries: 1},
 		// Disaster-recovery gauges (#145): label-free, one series each.
 		{Name: "hikyo_last_backup_export_success_timestamp_seconds", MaxSeries: 1},
 		{Name: "hikyo_backup_rpo_exceeded", MaxSeries: 1},
@@ -133,6 +136,7 @@ func (stubMeasuredSources) SSHSnapshot() (int64, int64, error)        { return 0
 func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
 func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
+func (stubMeasuredSources) AccessSnapshot() (int64, int64, error)         { return 0, 0, nil }
 
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
@@ -145,6 +149,7 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics.SetSSHSource(stubMeasuredSources{})
 	metrics.SetTransitSource(stubMeasuredSources{})
 	metrics.SetPKISource(stubMeasuredSources{})
+	metrics.SetAccessSource(stubMeasuredSources{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

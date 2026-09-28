@@ -8,6 +8,86 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessGrant struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	ProjectID   string
+	EnvID       string
+	RequestID   string
+	CreatedAt   pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+}
+
+type AccessPolicy struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	Capabilities       string
+	MaxDurationSeconds int32
+	MinApprovals       int32
+	AllowSelfApproval  bool
+	RequestTtlSeconds  int32
+	Enabled            bool
+	Version            int64
+	CreatedBy          string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type AccessPolicyApprover struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	PolicyID       string
+	Kind           string
+	SubjectID      string
+	ScopeBindingID string
+}
+
+type AccessPolicyBypasser struct {
+	ID          string
+	OrgID       string
+	ProjectID   string
+	PolicyID    string
+	PrincipalID string
+}
+
+type AccessRequest struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	PolicyID             string
+	PolicyVersion        int64
+	RequesterPrincipalID string
+	Capabilities         string
+	DurationSeconds      int32
+	Reason               string
+	Bypassed             bool
+	State                string
+	InvalidatedCause     string
+	ResolvedBy           string
+	CreatedAt            pgtype.Timestamptz
+	ReviewExpiresAt      pgtype.Timestamptz
+	GrantedAt            pgtype.Timestamptz
+	ExpiresAt            pgtype.Timestamptz
+	ResolvedAt           pgtype.Timestamptz
+}
+
+type AccessVote struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	RequestID     string
+	PrincipalID   string
+	Decision      string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type Account struct {
 	ID                 string
 	PrincipalID        string

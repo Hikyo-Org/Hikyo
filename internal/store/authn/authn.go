@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -36,6 +37,7 @@ import (
 type Resolver struct {
 	historicalRecoveryBeforePrivacy    bool
 	historicalRecoveryBeforeSelfConfig bool
+	historicalRecoveryBeforeAccess     bool
 	historicalRecoveryBeforePKI        bool
 	selfConfigOrgID                    domain.OrgID
 	sq                                 *sqlitegen.Queries
@@ -44,6 +46,24 @@ type Resolver struct {
 	// can express (restoredPostLegacyTables).
 	sqdb sqlitegen.DBTX
 	pgdb pggen.DBTX
+	// clock is the transaction's evaluation instant for time-bound grants
+	// (#152). Zero means the wall clock at the moment of the lookup.
+	clock time.Time
+}
+
+// SetClock fixes the instant time-bound grants are evaluated against for the
+// rest of this transaction. The service layer sets it from its own clock at
+// the top of every authorized operation, so an injected test clock and the
+// production wall clock take the same path. Zero restores wall-clock evaluation
+// at each lookup.
+func (r *Resolver) SetClock(now time.Time) { r.clock = now.UTC() }
+
+// evaluationTime returns the fixed UTC clock, or the current UTC time if unset.
+func (r *Resolver) evaluationTime() time.Time {
+	if r.clock.IsZero() {
+		return time.Now().UTC()
+	}
+	return r.clock
 }
 
 // NewSQLite binds a Resolver to an open sqlite transaction (or, for
@@ -267,6 +287,8 @@ func (r *Resolver) resolveEnv(ctx context.Context, s domain.Scope) (domain.Scope
 // unknown principal simply has no grants — indistinguishable from a revoked
 // one, which is the contract. Current policy is read inside the operation's
 // own transaction; there is no authorization cache (permission-model ADR).
+// On schemas with temporary access, grants expiring at or before the evaluation
+// clock are excluded. Query and stored-grant conversion errors are propagated.
 func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
 	r.selfConfigOrgID = ""
 	if r.historicalRecoveryBeforePrivacy {
@@ -275,8 +297,13 @@ func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.G
 	if r.historicalRecoveryBeforeSelfConfig {
 		return r.recoveryGrantsBeforeSelfConfig(ctx, p)
 	}
+	if r.historicalRecoveryBeforeAccess {
+		return r.recoveryGrantsBeforeAccess(ctx, p)
+	}
 	if r.sq != nil {
-		rows, err := r.sq.ListGrantsForPrincipal(ctx, string(p))
+		rows, err := r.sq.ListGrantsForPrincipal(ctx, sqlitegen.ListGrantsForPrincipalParams{
+			PrincipalID: string(p), Now: encodeTime(r.evaluationTime()),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -291,7 +318,9 @@ func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.G
 		}
 		return out, nil
 	}
-	rows, err := r.pg.ListGrantsForPrincipal(ctx, string(p))
+	rows, err := r.pg.ListGrantsForPrincipal(ctx, pggen.ListGrantsForPrincipalParams{
+		PrincipalID: string(p), Now: pgTimestamp(r.evaluationTime()),
+	})
 	if err != nil {
 		return nil, err
 	}

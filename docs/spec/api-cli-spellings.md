@@ -425,6 +425,24 @@ Receipts for correction/release record the decision but are not replay instructi
 The public [privacy guide](../site/src/content/docs/docs/privacy.mdx) owns operator
 examples, destructive-action warnings and residual limits.
 
+## 8. Temporary access ([mvp-boundary.md](../adr/mvp-boundary.md) declared amendment 5, #152)
+
+Policy administration is project-scoped (`manage-members`); requests and their
+decisions address one environment. Every verb is human-session only.
+
+### Verbs and flags
+
+- `access policy list`: the project's access policies.
+- `access policy create --capability C --approver principal:<id> [--covers ENV] [--max-duration 8h] [--min-approvals N] [--ttl SECONDS] [--allow-self-approval] [--disabled] [--bypasser <principalId>]`: `--capability` (read, reveal, reveal-history, edit, publish, pin), `--approver` and `--bypasser` are repeatable; `--covers` empty means every environment.
+- `access policy update <policy> …same flags…`: replaces fields and member sets; bumps the version, invalidating open requests filed under the old one.
+- `access policy delete <policy>`.
+- `access request list`: the addressed environment's offer and requests.
+- `access request create --capability C --duration 1h --reason R`: file an immutable request.
+- `access request approve <request>` / `access request reject <request>`: cast one vote; the approve that reaches the quorum grants.
+- `access request cancel <request>`: the requester withdraws an open request.
+- `access request revoke <request>`: end granted access now (holder, approver or member manager).
+- `access request emergency --capability C --reason R [--duration 30m]`: emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
+
 ## Local repository and CI secret scanning ([secret-scanning.md](../adr/secret-scanning.md) and [api-cli-surface.md](../adr/api-cli-surface.md) amendments 2026-09-26, [#153](https://github.com/Hikyo-Org/Hikyo/issues/153))
 
 ```

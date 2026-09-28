@@ -190,6 +190,8 @@ type API struct {
 	// Approvals is the change-approval administration and review surface (#151).
 	// The merge/bypass DECISION rides Revisions.PublishPlanned, not this.
 	Approvals ApprovalService
+	// Access is the approval-mediated temporary-access surface (#152).
+	Access AccessService
 	// SCIM is the provisioning ADMINISTRATION surface (human sessions,
 	// `manage-members` at org scope); SCIMWire is the identity provider's own
 	// protocol path (a provisioning credential, `scim-provision`). They are two

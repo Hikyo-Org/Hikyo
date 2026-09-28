@@ -153,6 +153,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	retentionSvc := &service.Retention{DB: db, PKI: pkiRuntime, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
+	accessSvc := &service.Access{DB: db, Auth: authSvc}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("boot: update release client: %w", err)
@@ -216,6 +217,8 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// their counts at scrape time under scheduler authority (#151, mirroring the
 	// storage high-water gauge's shared-door read).
 	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc, log: log})
+	// Temporary access (#152): open requests and grants in force, same shape.
+	metrics.SetAccessSource(accessMetricsSource{svc: accessSvc, log: log})
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	metrics.SetSSHSource(sshGaugeSource{svc: sshService, log: log})
 	metrics.SetTransitSource(transitGaugeSource{runtime: transitRuntime, log: log})
@@ -315,6 +318,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		PKI:           pkiService,
 		Audits:        &service.Audits{DB: db, Budget: budget},
 		Approvals:     approvalsSvc,
+		Access:        accessSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
 		// the identity provider's wire read the same bindings, the same mapping
 		// table and the same bounds. Two instances would let the wire clamp a
@@ -422,6 +426,13 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			// event. Idempotent and cross-tenant, like payload_gc beside it.
 			Name: "approval_expiry_sweep",
 			Run:  approvalsSvc.ExpireDue,
+		}, {
+			// Temporary access (#152): release grants past their absolute expiry
+			// and requests past their review window, rotate holders' sessions,
+			// and record per-request expiry events. The chokepoint already
+			// stopped honouring expired rows; this is bookkeeping and evidence.
+			Name: "access_expiry_sweep",
+			Run:  accessSvc.DrainExpired,
 		}, {
 			// Delivery-target condition reporting (#788, ADR D6): purge rows
 			// with no accepted report for 30 days, across all tenants, each

@@ -597,6 +597,16 @@ access:
   hikyo access registration show [--org O | --instance-scope] [-o table|json]
   hikyo access registration set [--org O | --instance-scope] --file <policy.json>
   hikyo access registration delete [--org O | --instance-scope]
+  hikyo access policy list [-o table|json]
+  hikyo access policy create --capability C --approver principal:<id> [--covers ENV] [--max-duration 8h]
+      [--min-approvals N] [--ttl SECONDS] [--allow-self-approval] [--disabled] [--bypasser <id>]
+  hikyo access policy update <policy> …same flags as create… [--clear-bypassers]
+      (omitted fields keep their current values)
+  hikyo access policy delete <policy>
+  hikyo access request list --env E [-o table|json]
+  hikyo access request create --env E --capability C --duration 1h --reason R
+  hikyo access request approve|reject|cancel|revoke <request> --env E
+  hikyo access request emergency --env E --capability C --reason R [--duration 30m]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false

@@ -1938,6 +1938,153 @@ export type ApprovalVoteRequest = {
     decision: 'approve' | 'reject';
 };
 
+export type AccessPolicyInput = {
+    /**
+     * The environment this policy covers; empty means every environment in the project.
+     */
+    environment_id?: string;
+    capabilities: Array<AccessCapability>;
+    /**
+     * The longest duration a request (or emergency access) may run.
+     */
+    max_duration_seconds: number;
+    min_approvals: number;
+    allow_self_approval?: boolean;
+    /**
+     * How long a request may wait for a decision before it expires.
+     */
+    request_ttl_seconds: number;
+    enabled: boolean;
+    approvers: Array<ApprovalApprover>;
+    /**
+     * Principals who may take emergency access without the quorum.
+     */
+    bypassers?: Array<Id>;
+};
+
+/**
+ * The closed set of capabilities temporary access may confer.
+ */
+export type AccessCapability = 'read' | 'reveal' | 'reveal-history' | 'edit' | 'publish' | 'pin';
+
+export type AccessPolicy = {
+    /**
+     * Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+     */
+    principal_names?: {
+        [key: string]: string;
+    };
+    id: Id;
+    environment_id: string;
+    capabilities: Array<AccessCapability>;
+    max_duration_seconds: number;
+    min_approvals: number;
+    allow_self_approval: boolean;
+    request_ttl_seconds: number;
+    enabled: boolean;
+    version: number;
+    approvers: Array<ApprovalApprover>;
+    bypassers: Array<Id>;
+    created_at: Timestamp;
+    updated_at: Timestamp;
+};
+
+export type AccessPolicyList = {
+    items: Array<AccessPolicy>;
+};
+
+/**
+ * What may be requested in this environment. The approver roster is deliberately absent.
+ */
+export type AccessOffer = {
+    policy_id: Id;
+    policy_version: number;
+    capabilities: Array<AccessCapability>;
+    max_duration_seconds: number;
+    min_approvals: number;
+    enabled: boolean;
+    /**
+     * Whether the caller is a named emergency-access principal of this policy.
+     */
+    caller_may_bypass: boolean;
+};
+
+export type AccessRequestInput = {
+    capabilities: Array<AccessCapability>;
+    /**
+     * How long the access should last, at most the policy maximum.
+     */
+    duration_seconds: number;
+    /**
+     * Why the access is needed. Recorded in the audit trail.
+     */
+    reason: string;
+};
+
+export type EmergencyAccessInput = {
+    capabilities: Array<AccessCapability>;
+    /**
+     * Optional; defaults to one hour, capped by the policy maximum.
+     */
+    duration_seconds?: number;
+    /**
+     * Why emergency access is needed. Recorded in the audit trail.
+     */
+    reason: string;
+};
+
+export type AccessVoteRequest = {
+    decision: 'approve' | 'reject';
+};
+
+export type AccessRequest = {
+    /**
+     * Whether this queue caller can currently approve this request; the vote endpoint reauthorizes every decision.
+     */
+    readonly can_approve?: boolean;
+    /**
+     * Current display name of the referenced principal, when available.
+     */
+    requester_name?: string;
+    id: Id;
+    environment_id: Id;
+    policy_id: Id;
+    policy_version: number;
+    requester: Id;
+    capabilities: Array<AccessCapability>;
+    duration_seconds: number;
+    reason: string;
+    /**
+     * Whether this is emergency access taken without the quorum.
+     */
+    bypassed: boolean;
+    state: 'open' | 'granted' | 'rejected' | 'cancelled' | 'expired' | 'invalidated' | 'revoked';
+    invalidated_cause: '' | 'policy_changed' | 'policy_disabled' | 'approver_removed';
+    /**
+     * Who resolved the request, when a person did.
+     */
+    resolved_by?: Id;
+    min_approvals: number;
+    /**
+     * Approvals from currently-eligible approvers, for an open request.
+     */
+    approvals: number;
+    votes: Array<ApprovalVote>;
+    created_at: Timestamp;
+    review_expires_at: Timestamp;
+    granted_at?: Timestamp;
+    /**
+     * The absolute instant granted access stops.
+     */
+    expires_at?: Timestamp;
+    resolved_at?: Timestamp;
+};
+
+export type AccessQueue = {
+    offer?: AccessOffer;
+    items: Array<AccessRequest>;
+};
+
 export type PublishResult = {
     /**
      * Every version id that committed, closure included.
@@ -4464,7 +4611,7 @@ export type WebauthnReauthStartRequest = {
  * unit, a different decision, and the human agreed to only one of them.
  *
  */
-export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'self-config' | 'approve' | 'reject' | 'bypass';
+export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'self-config' | 'approve' | 'reject' | 'bypass' | 'access';
 
 /**
  * The account-security proof for removing a credential, selected
@@ -5527,6 +5674,50 @@ export type RotateSshcaRequestWritable = {
      * How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
      */
     overlap_seconds?: number | null;
+};
+
+export type AccessRequestWritable = {
+    /**
+     * Current display name of the referenced principal, when available.
+     */
+    requester_name?: string;
+    id: Id;
+    environment_id: Id;
+    policy_id: Id;
+    policy_version: number;
+    requester: Id;
+    capabilities: Array<AccessCapability>;
+    duration_seconds: number;
+    reason: string;
+    /**
+     * Whether this is emergency access taken without the quorum.
+     */
+    bypassed: boolean;
+    state: 'open' | 'granted' | 'rejected' | 'cancelled' | 'expired' | 'invalidated' | 'revoked';
+    invalidated_cause: '' | 'policy_changed' | 'policy_disabled' | 'approver_removed';
+    /**
+     * Who resolved the request, when a person did.
+     */
+    resolved_by?: Id;
+    min_approvals: number;
+    /**
+     * Approvals from currently-eligible approvers, for an open request.
+     */
+    approvals: number;
+    votes: Array<ApprovalVote>;
+    created_at: Timestamp;
+    review_expires_at: Timestamp;
+    granted_at?: Timestamp;
+    /**
+     * The absolute instant granted access stops.
+     */
+    expires_at?: Timestamp;
+    resolved_at?: Timestamp;
+};
+
+export type AccessQueueWritable = {
+    offer?: AccessOffer;
+    items: Array<AccessRequestWritable>;
 };
 
 export type PkiIssuerName = PkiName;
@@ -22136,6 +22327,856 @@ export type GetApprovalCeremonyResponses = {
 };
 
 export type GetApprovalCeremonyResponse = GetApprovalCeremonyResponses[keyof GetApprovalCeremonyResponses];
+
+export type ListAccessPoliciesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/access-policies';
+};
+
+export type ListAccessPoliciesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListAccessPoliciesError = ListAccessPoliciesErrors[keyof ListAccessPoliciesErrors];
+
+export type ListAccessPoliciesResponses = {
+    /**
+     * The project's access policies.
+     */
+    200: AccessPolicyList;
+};
+
+export type ListAccessPoliciesResponse = ListAccessPoliciesResponses[keyof ListAccessPoliciesResponses];
+
+export type CreateAccessPolicyData = {
+    body: AccessPolicyInput;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/access-policies';
+};
+
+export type CreateAccessPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateAccessPolicyError = CreateAccessPolicyErrors[keyof CreateAccessPolicyErrors];
+
+export type CreateAccessPolicyResponses = {
+    /**
+     * The created policy.
+     */
+    200: AccessPolicy;
+};
+
+export type CreateAccessPolicyResponse = CreateAccessPolicyResponses[keyof CreateAccessPolicyResponses];
+
+export type DeleteAccessPolicyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        policy: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}';
+};
+
+export type DeleteAccessPolicyErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteAccessPolicyError = DeleteAccessPolicyErrors[keyof DeleteAccessPolicyErrors];
+
+export type DeleteAccessPolicyResponses = {
+    /**
+     * The policy was deleted.
+     */
+    204: void;
+};
+
+export type DeleteAccessPolicyResponse = DeleteAccessPolicyResponses[keyof DeleteAccessPolicyResponses];
+
+export type UpdateAccessPolicyData = {
+    body: AccessPolicyInput;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        policy: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}';
+};
+
+export type UpdateAccessPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type UpdateAccessPolicyError = UpdateAccessPolicyErrors[keyof UpdateAccessPolicyErrors];
+
+export type UpdateAccessPolicyResponses = {
+    /**
+     * The updated policy.
+     */
+    200: AccessPolicy;
+};
+
+export type UpdateAccessPolicyResponse = UpdateAccessPolicyResponses[keyof UpdateAccessPolicyResponses];
+
+export type ListAccessRequestsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests';
+};
+
+export type ListAccessRequestsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListAccessRequestsError = ListAccessRequestsErrors[keyof ListAccessRequestsErrors];
+
+export type ListAccessRequestsResponses = {
+    /**
+     * The offer and the request queue.
+     */
+    200: AccessQueue;
+};
+
+export type ListAccessRequestsResponse = ListAccessRequestsResponses[keyof ListAccessRequestsResponses];
+
+export type CreateAccessRequestData = {
+    body: AccessRequestInput;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests';
+};
+
+export type CreateAccessRequestErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateAccessRequestError = CreateAccessRequestErrors[keyof CreateAccessRequestErrors];
+
+export type CreateAccessRequestResponses = {
+    /**
+     * The filed request.
+     */
+    200: AccessRequest;
+};
+
+export type CreateAccessRequestResponse = CreateAccessRequestResponses[keyof CreateAccessRequestResponses];
+
+export type EmergencyAccessData = {
+    body: EmergencyAccessInput;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency';
+};
+
+export type EmergencyAccessErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type EmergencyAccessError = EmergencyAccessErrors[keyof EmergencyAccessErrors];
+
+export type EmergencyAccessResponses = {
+    /**
+     * The granted emergency request.
+     */
+    200: AccessRequest;
+};
+
+export type EmergencyAccessResponse = EmergencyAccessResponses[keyof EmergencyAccessResponses];
+
+export type VoteAccessRequestData = {
+    body: AccessVoteRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        accessRequest: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote';
+};
+
+export type VoteAccessRequestErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type VoteAccessRequestError = VoteAccessRequestErrors[keyof VoteAccessRequestErrors];
+
+export type VoteAccessRequestResponses = {
+    /**
+     * The request after the change.
+     */
+    200: AccessRequest;
+};
+
+export type VoteAccessRequestResponse = VoteAccessRequestResponses[keyof VoteAccessRequestResponses];
+
+export type CancelAccessRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        accessRequest: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel';
+};
+
+export type CancelAccessRequestErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CancelAccessRequestError = CancelAccessRequestErrors[keyof CancelAccessRequestErrors];
+
+export type CancelAccessRequestResponses = {
+    /**
+     * The request after the change.
+     */
+    200: AccessRequest;
+};
+
+export type CancelAccessRequestResponse = CancelAccessRequestResponses[keyof CancelAccessRequestResponses];
+
+export type RevokeAccessRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        accessRequest: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke';
+};
+
+export type RevokeAccessRequestErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeAccessRequestError = RevokeAccessRequestErrors[keyof RevokeAccessRequestErrors];
+
+export type RevokeAccessRequestResponses = {
+    /**
+     * The request after the change.
+     */
+    200: AccessRequest;
+};
+
+export type RevokeAccessRequestResponse = RevokeAccessRequestResponses[keyof RevokeAccessRequestResponses];
 
 export type DiffRevisionsData = {
     body: RevisionDiffRequest;
