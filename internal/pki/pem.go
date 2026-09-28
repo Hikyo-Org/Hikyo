@@ -113,7 +113,9 @@ func MarshalPrivateKey(key crypto.Signer) ([]byte, error) {
 	return x509.MarshalPKCS8PrivateKey(key)
 }
 
-// UnmarshalPrivateKey opens a sealed-then-unsealed PKCS#8 key.
+// UnmarshalPrivateKey parses unencrypted PKCS#8 DER and returns a signer.
+// It propagates parsing errors and rejects keys that cannot sign; callers
+// must unseal stored input before calling it.
 func UnmarshalPrivateKey(pkcs8 []byte) (crypto.Signer, error) {
 	key, err := x509.ParsePKCS8PrivateKey(pkcs8)
 	if err != nil {

@@ -150,6 +150,9 @@ func (s *PKI) pkiCallerGate(ctx context.Context, az *authz.TxAuthorizer, caller 
 
 // selectIssuer picks the signing version: the requested issuer (which the
 // profile must allow) or the first allowed issuer with an active version.
+// A restore hold on that version returns ErrPKIIssuerHeld without trying
+// later candidates. No active candidate returns ErrPKINoActiveIssuer;
+// lookup errors other than not-found are propagated.
 func selectIssuer(ctx context.Context, r store.Repos, proof authz.Proof, policy pki.Policy, requested string) (store.PKIIssuer, error) {
 	candidates := policy.AllowedIssuers
 	if requested != "" {

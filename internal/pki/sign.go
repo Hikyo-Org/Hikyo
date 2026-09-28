@@ -138,9 +138,9 @@ func SignIntermediate(parent Parent, public crypto.PublicKey, subject Subject, n
 	return x509.CreateCertificate(rand.Reader, template, parent.Certificate, public, parent.Signer)
 }
 
-// VerifyCA checks that certDER is a usable issuer for key: a CA certificate
-// with certificate and CRL signing, currently valid, whose public key is the
-// sealed key's, and which chains to the last supplied chain certificate,
+// VerifyCA checks that certDER is a usable issuer for public: a CA certificate
+// with certificate and CRL signing, currently valid, whose public key matches
+// public, and which chains to the last supplied chain certificate,
 // using earlier entries as intermediates. With no chain, the certificate
 // must be self-signed. A self-issued trust anchor must verify its own
 // signature; a cross-signed rollover is verified against the supplied parent.
@@ -367,5 +367,5 @@ func NextCRLNumber(previous int64, now time.Time) int64 {
 
 func bigInt(v int64) *big.Int { return big.NewInt(v) }
 
-// CRLNumber is NextCRLNumber as the *big.Int CreateCRL takes.
+// CRLNumber converts an already chosen CRL number to the *big.Int CreateCRL takes.
 func CRLNumber(v int64) *big.Int { return bigInt(v) }
