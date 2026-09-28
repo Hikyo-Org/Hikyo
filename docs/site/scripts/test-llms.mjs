@@ -11,7 +11,9 @@ const dist = resolve(fileURLToPath(new URL('..', import.meta.url)), 'dist');
 const index = await readFile(resolve(dist, 'llms.txt'), 'utf8');
 const full = await readFile(resolve(dist, 'llms-full.txt'), 'utf8');
 
-const links = [...index.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1]);
+// Page entries only: `- [Title](url)` or `- [Title](url): description`, with
+// Fumadocs' `\[` `\]` escapes in titles and a lazy URL that may contain `)`.
+const links = [...index.matchAll(/^\s*- \[(?:\\.|[^\]\\])*\]\((\S+?)\)(?::|$)/gm)].map((match) => match[1]);
 for (const link of links) {
   assert.ok(link.startsWith('https://hikyo.app/'), `llms.txt link is not absolute: ${link}`);
 }
