@@ -1,0 +1,69 @@
+name: reporting-e2e
+
+# Delivery-target condition reporting from a real operator on kind to a real
+# browser (#791). It needs a kind cluster and Chromium together, which no
+# pull-request job has, so it runs on a schedule and on demand instead of as a
+# PR gate. The workload is synthetic and needs no secrets.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reporting-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
+      # A pinned, checksummed binary download, the k8s-e2e job's pattern: kind
+      # is a single static binary, no third-party action needed.
+      - name: Install kind (pinned archive)
+        env:
+          KIND_VERSION: v0.32.0
+          KIND_SHA256: 50030de23cf40a18505f20426f6a8506bedf13c6e509244bd1fa9463721b0f54
+        run: |
+          binary="$RUNNER_TEMP/kind"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            --retry 4 --retry-delay 2 --retry-all-errors \
+            "https://github.com/kubernetes-sigs/kind/releases/download/$KIND_VERSION/kind-linux-amd64" \
+            --output "$binary"
+          printf '%s  %s\n' "$KIND_SHA256" "$binary" | sha256sum --check --strict
+          chmod +x "$binary"
+          sudo install "$binary" /usr/local/bin/kind
+          kind version
+      # The exact Chromium of the locked @playwright/test. The flow suite gets
+      # it from the Playwright container; this job needs the host's Docker for
+      # kind, so it installs the browser on the runner instead.
+      - name: Install web dependencies and Chromium
+        run: |
+          pnpm --dir clients/ts install --frozen-lockfile
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web exec playwright install --with-deps chromium
+      - name: Operator to browser reporting suite
+        env:
+          HIKYO_REPORTING_E2E_ARTIFACTS: ${{ runner.temp }}/reporting-e2e
+        run: ./scripts/ci/reporting-e2e.sh
+      - name: Preserve screenshots, operator log and captured report bodies
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reporting-e2e-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/reporting-e2e/
+            web/test-results/reporting/
+          if-no-files-found: error
+          retention-days: 30
