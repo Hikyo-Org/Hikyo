@@ -585,6 +585,8 @@ type accessCollector struct {
 	known  *prometheus.Desc
 }
 
+// newAccessCollector defines the two access count gauges and their measurement
+// status gauge; the data source is attached separately.
 func newAccessCollector() *accessCollector {
 	return &accessCollector{descs: [2]*prometheus.Desc{
 		prometheus.NewDesc(MetricAccessRequestsOpen, "Temporary-access requests awaiting a decision.", nil, nil),
@@ -592,6 +594,7 @@ func newAccessCollector() *accessCollector {
 	}, known: prometheus.NewDesc(MetricAccessGaugesKnown, "Whether the temporary-access gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
 }
 
+// Describe sends the access count and measurement status descriptors to ch.
 func (c *accessCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, desc := range c.descs {
 		ch <- desc

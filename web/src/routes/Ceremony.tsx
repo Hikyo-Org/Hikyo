@@ -205,6 +205,7 @@ export function Ceremony({
     }
   };
 
+  /** Runs a passkey ceremony bound to the request's signed purpose, environment, and key IDs. */
   const onPasskey = () =>
     void attempt('passkey', () =>
       runPasskeyCeremony({

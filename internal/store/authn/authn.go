@@ -284,7 +284,7 @@ func (r *Resolver) resolveEnv(ctx context.Context, s domain.Scope) (domain.Scope
 }
 
 // Grants returns the principal's full grant set for formula evaluation. An
-// unknown principal simply has no grants — indistinguishable from a revoked
+// unknown principal simply has no grants; indistinguishable from a revoked
 // one, which is the contract. Current policy is read inside the operation's
 // own transaction; there is no authorization cache (permission-model ADR).
 // On schemas with temporary access, grants expiring at or before the evaluation

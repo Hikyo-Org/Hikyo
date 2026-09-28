@@ -164,15 +164,21 @@ export function TemporaryAccess() {
   const envName = envItems.find((e) => e.id === selectedEnv)?.name ?? selectedEnv;
   const isManager = policies.isSuccess;
 
+  /** Builds mutation callbacks that show a success notice or a formatted refusal. */
   const done = (message: string) => ({
     onSuccess: () => setNotice(message),
     onError: (error: unknown) => setActionError(refusal(error)),
   });
+  /** Clears feedback before starting another request action. */
   const start = () => {
     setActionError(null);
     setNotice(null);
   };
 
+  /**
+   * Submits currently offered capabilities with hours rounded to seconds,
+   * clearing the reason on success and displaying failures.
+   */
   const submitRequest = () => {
     start();
     action.mutate(
@@ -190,8 +196,11 @@ export function TemporaryAccess() {
     );
   };
 
-  // Emergency access always takes its own purpose-bound decision unless a
-  // live sliding window already stands over this environment.
+  /**
+   * Takes emergency access immediately under a live sliding window, otherwise
+   * stages the draft for reauthentication. Window-check failures are displayed;
+   * the checking state is cleared after either path.
+   */
   const takeEmergency = async () => {
     start();
     setCheckingWindow(true);
@@ -213,6 +222,10 @@ export function TemporaryAccess() {
     }
   };
 
+  /**
+   * Opens the editor with defaults for a null policy or a copy of an existing policy
+   * and its member lists.
+   */
   const openEditor = (policy: AccessPolicy | null) => {
     setActionError(null);
     if (policy === null) {
@@ -239,6 +252,10 @@ export function TemporaryAccess() {
     setFormOpen(true);
   };
 
+  /**
+   * Saves the current draft with parsed member lists, closing the editor on success
+   * and displaying failures.
+   */
   const submitPolicy = () => {
     setActionError(null);
     savePolicy.mutate(

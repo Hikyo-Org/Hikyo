@@ -59,6 +59,8 @@ func accessPolicyInput(body apigen.AccessPolicyInput) service.AccessPolicyInput 
 	return in
 }
 
+// accessRequestInput maps the requested capabilities, duration in seconds, and
+// reason to service input without validating them.
 func accessRequestInput(body apigen.AccessRequestInput) service.AccessRequestInput {
 	return service.AccessRequestInput{
 		Capabilities: accessCapabilityStrings(body.Capabilities), Reason: body.Reason,
@@ -76,6 +78,7 @@ func emergencyAccessInput(body apigen.EmergencyAccessInput) service.AccessReques
 	return in
 }
 
+// accessCapabilityStrings copies wire capability names in order without validation.
 func accessCapabilityStrings(caps []apigen.AccessCapability) []string {
 	out := make([]string, 0, len(caps))
 	for _, c := range caps {
@@ -84,6 +87,8 @@ func accessCapabilityStrings(caps []apigen.AccessCapability) []string {
 	return out
 }
 
+// wireAccessCapabilities copies capability names for JSON output, returning an
+// empty slice for nil input without validating names.
 func wireAccessCapabilities(caps []string) []apigen.AccessCapability {
 	out := make([]apigen.AccessCapability, 0, len(caps))
 	for _, c := range caps {
@@ -147,6 +152,8 @@ func wireAccessRequest(r service.AccessRequestView) apigen.AccessRequest {
 	return out
 }
 
+// ListAccessPolicies returns the addressed project's policies as a JSON list,
+// propagating service errors.
 func (a *API) ListAccessPolicies(ctx context.Context, req apigen.ListAccessPoliciesRequestObject) (apigen.ListAccessPoliciesResponseObject, error) {
 	policies, err := a.Access.ListPolicies(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project))
 	if err != nil {
@@ -159,6 +166,8 @@ func (a *API) ListAccessPolicies(ctx context.Context, req apigen.ListAccessPolic
 	return apigen.ListAccessPolicies200JSONResponse(apigen.AccessPolicyList{Items: items}), nil
 }
 
+// CreateAccessPolicy creates a policy in the addressed project and returns it
+// as JSON, propagating service errors.
 func (a *API) CreateAccessPolicy(ctx context.Context, req apigen.CreateAccessPolicyRequestObject) (apigen.CreateAccessPolicyResponseObject, error) {
 	policy, err := a.Access.CreatePolicy(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), accessPolicyInput(*req.Body))
 	if err != nil {
@@ -167,6 +176,8 @@ func (a *API) CreateAccessPolicy(ctx context.Context, req apigen.CreateAccessPol
 	return apigen.CreateAccessPolicy200JSONResponse(wireAccessPolicy(policy)), nil
 }
 
+// UpdateAccessPolicy replaces the addressed policy and returns it as JSON,
+// propagating service errors.
 func (a *API) UpdateAccessPolicy(ctx context.Context, req apigen.UpdateAccessPolicyRequestObject) (apigen.UpdateAccessPolicyResponseObject, error) {
 	policy, err := a.Access.UpdatePolicy(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project),
 		string(req.Policy), accessPolicyInput(*req.Body))
@@ -176,6 +187,8 @@ func (a *API) UpdateAccessPolicy(ctx context.Context, req apigen.UpdateAccessPol
 	return apigen.UpdateAccessPolicy200JSONResponse(wireAccessPolicy(policy)), nil
 }
 
+// DeleteAccessPolicy deletes the addressed policy and returns a no-content
+// response, propagating service errors.
 func (a *API) DeleteAccessPolicy(ctx context.Context, req apigen.DeleteAccessPolicyRequestObject) (apigen.DeleteAccessPolicyResponseObject, error) {
 	if err := a.Access.DeletePolicy(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), string(req.Policy)); err != nil {
 		return nil, err
@@ -183,6 +196,8 @@ func (a *API) DeleteAccessPolicy(ctx context.Context, req apigen.DeleteAccessPol
 	return apigen.DeleteAccessPolicy204Response{}, nil
 }
 
+// ListAccessRequests returns the environment's request queue and covering offer
+// as JSON, omitting the offer when absent and propagating service errors.
 func (a *API) ListAccessRequests(ctx context.Context, req apigen.ListAccessRequestsRequestObject) (apigen.ListAccessRequestsResponseObject, error) {
 	queue, err := a.Access.Queue(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment))
 	if err != nil {
@@ -202,6 +217,8 @@ func (a *API) ListAccessRequests(ctx context.Context, req apigen.ListAccessReque
 	return apigen.ListAccessRequests200JSONResponse(out), nil
 }
 
+// CreateAccessRequest files an environment request and returns it as JSON,
+// propagating service errors.
 func (a *API) CreateAccessRequest(ctx context.Context, req apigen.CreateAccessRequestRequestObject) (apigen.CreateAccessRequestResponseObject, error) {
 	view, err := a.Access.Request(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), accessRequestInput(*req.Body))
 	if err != nil {
@@ -210,6 +227,8 @@ func (a *API) CreateAccessRequest(ctx context.Context, req apigen.CreateAccessRe
 	return apigen.CreateAccessRequest200JSONResponse(wireAccessRequest(view)), nil
 }
 
+// EmergencyAccess asks the service for emergency access in the addressed
+// environment and returns the request as JSON, propagating service errors.
 func (a *API) EmergencyAccess(ctx context.Context, req apigen.EmergencyAccessRequestObject) (apigen.EmergencyAccessResponseObject, error) {
 	view, err := a.Access.EmergencyAccess(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), emergencyAccessInput(*req.Body))
 	if err != nil {
@@ -218,6 +237,8 @@ func (a *API) EmergencyAccess(ctx context.Context, req apigen.EmergencyAccessReq
 	return apigen.EmergencyAccess200JSONResponse(wireAccessRequest(view)), nil
 }
 
+// VoteAccessRequest submits an approve or reject decision and returns the
+// request as JSON, propagating service errors.
 func (a *API) VoteAccessRequest(ctx context.Context, req apigen.VoteAccessRequestRequestObject) (apigen.VoteAccessRequestResponseObject, error) {
 	view, err := a.Access.Vote(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment),
 		string(req.AccessRequest), string(req.Body.Decision))
@@ -227,6 +248,8 @@ func (a *API) VoteAccessRequest(ctx context.Context, req apigen.VoteAccessReques
 	return apigen.VoteAccessRequest200JSONResponse(wireAccessRequest(view)), nil
 }
 
+// CancelAccessRequest withdraws the addressed request and returns it as JSON,
+// propagating service errors.
 func (a *API) CancelAccessRequest(ctx context.Context, req apigen.CancelAccessRequestRequestObject) (apigen.CancelAccessRequestResponseObject, error) {
 	view, err := a.Access.Cancel(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), string(req.AccessRequest))
 	if err != nil {
@@ -235,6 +258,8 @@ func (a *API) CancelAccessRequest(ctx context.Context, req apigen.CancelAccessRe
 	return apigen.CancelAccessRequest200JSONResponse(wireAccessRequest(view)), nil
 }
 
+// RevokeAccessRequest ends the addressed granted access and returns the
+// request as JSON, propagating service errors.
 func (a *API) RevokeAccessRequest(ctx context.Context, req apigen.RevokeAccessRequestRequestObject) (apigen.RevokeAccessRequestResponseObject, error) {
 	view, err := a.Access.Revoke(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), string(req.AccessRequest))
 	if err != nil {

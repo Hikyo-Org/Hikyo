@@ -95,10 +95,13 @@ type sqliteAccess struct {
 	tok *authz.TxToken
 }
 
+// Access returns the temporary-access repository bound to this transaction.
 func (r sqliteRepos) Access() AccessRepo {
 	return sqliteAccess{q: sqlitegen.New(r.db), tok: r.tok}
 }
 
+// accessPolicyFromSqlite decodes a stored policy, propagating capability JSON
+// and timestamp errors.
 func accessPolicyFromSqlite(row sqlitegen.AccessPolicy) (AccessPolicy, error) {
 	caps, err := unmarshalCapabilities("access policy", row.ID, row.Capabilities)
 	if err != nil {
@@ -121,6 +124,9 @@ func accessPolicyFromSqlite(row sqlitegen.AccessPolicy) (AccessPolicy, error) {
 	}, nil
 }
 
+// InsertPolicy creates a version-one policy in the proof's project. Proof,
+// encoding, and database errors are returned, with constraint conflicts mapped
+// to ErrConflict.
 func (r sqliteAccess) InsertPolicy(ctx context.Context, p authz.Proof, policy NewAccessPolicy) error {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyInsert, r.tok)
 	if err != nil {
@@ -183,6 +189,8 @@ func (r sqliteAccess) CoveringPolicy(ctx context.Context, p authz.Proof, envID s
 	return AccessPolicy{}, false, nil
 }
 
+// ListPolicies returns the proof's project policies ordered by environment
+// and ID, propagating proof, query, and decoding errors.
 func (r sqliteAccess) ListPolicies(ctx context.Context, p authz.Proof) ([]AccessPolicy, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyList, r.tok)
 	if err != nil {
@@ -227,6 +235,8 @@ func (r sqliteAccess) UpdatePolicy(ctx context.Context, p authz.Proof, update Ac
 	return n > 0, constraint(err)
 }
 
+// DeletePolicy removes a policy in the proof's project and reports whether
+// it existed, propagating proof and database errors.
 func (r sqliteAccess) DeletePolicy(ctx context.Context, p authz.Proof, id string) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyDelete, r.tok)
 	if err != nil {
@@ -238,6 +248,8 @@ func (r sqliteAccess) DeletePolicy(ctx context.Context, p authz.Proof, id string
 	return n > 0, err
 }
 
+// InsertApprover adds a policy approver in the proof's project, returning
+// proof or database errors with constraint conflicts mapped to ErrConflict.
 func (r sqliteAccess) InsertApprover(ctx context.Context, p authz.Proof, a NewApprovalApprover) error {
 	chain, err := authz.Verify(p, authz.StoreAccessApproverInsert, r.tok)
 	if err != nil {
@@ -249,6 +261,8 @@ func (r sqliteAccess) InsertApprover(ctx context.Context, p authz.Proof, a NewAp
 	}))
 }
 
+// ListApprovers returns the policy's approvers in the proof's project ordered
+// by kind and subject, propagating proof and query errors.
 func (r sqliteAccess) ListApprovers(ctx context.Context, p authz.Proof, policyID string) ([]ApprovalApprover, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessApproverList, r.tok)
 	if err != nil {
@@ -268,6 +282,8 @@ func (r sqliteAccess) ListApprovers(ctx context.Context, p authz.Proof, policyID
 	return out, nil
 }
 
+// ClearApprovers removes the policy's approvers in the proof's project and
+// returns the number removed, propagating proof and database errors.
 func (r sqliteAccess) ClearApprovers(ctx context.Context, p authz.Proof, policyID string) (int64, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessApproverClear, r.tok)
 	if err != nil {
@@ -278,6 +294,9 @@ func (r sqliteAccess) ClearApprovers(ctx context.Context, p authz.Proof, policyI
 	})
 }
 
+// InsertBypasser names an emergency-access principal for a policy in the
+// proof's project, returning proof or database errors with constraint conflicts
+// mapped to ErrConflict.
 func (r sqliteAccess) InsertBypasser(ctx context.Context, p authz.Proof, b NewApprovalBypasser) error {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserInsert, r.tok)
 	if err != nil {
@@ -288,6 +307,8 @@ func (r sqliteAccess) InsertBypasser(ctx context.Context, p authz.Proof, b NewAp
 	}))
 }
 
+// ListBypassers returns the policy's emergency-access principals in the proof's
+// project ordered by principal ID, propagating proof and query errors.
 func (r sqliteAccess) ListBypassers(ctx context.Context, p authz.Proof, policyID string) ([]ApprovalBypasser, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserList, r.tok)
 	if err != nil {
@@ -306,6 +327,8 @@ func (r sqliteAccess) ListBypassers(ctx context.Context, p authz.Proof, policyID
 	return out, nil
 }
 
+// ClearBypassers removes the policy's emergency-access principals in the proof's
+// project and returns the number removed, propagating proof and database errors.
 func (r sqliteAccess) ClearBypassers(ctx context.Context, p authz.Proof, policyID string) (int64, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserClear, r.tok)
 	if err != nil {
@@ -332,6 +355,8 @@ func (r sqliteAccess) IsBypasser(ctx context.Context, p authz.Proof, policyID, p
 	return err == nil, err
 }
 
+// accessRequestFromSqlite decodes a stored request, preserving absent optional
+// timestamps as nil and propagating capability JSON and timestamp errors.
 func accessRequestFromSqlite(row sqlitegen.AccessRequest) (AccessRequest, error) {
 	caps, err := unmarshalCapabilities("access request", row.ID, row.Capabilities)
 	if err != nil {
@@ -465,6 +490,8 @@ func (r sqliteAccess) ResolveRequest(ctx context.Context, p authz.Proof, res Acc
 	return n > 0, err
 }
 
+// accessVoteFromSqlite decodes a stored vote, returning an error for an invalid
+// creation timestamp.
 func accessVoteFromSqlite(row sqlitegen.AccessVote) (AccessVote, error) {
 	created, err := parseStampField("access vote", row.ID, "created_at", row.CreatedAt)
 	if err != nil {
@@ -474,6 +501,8 @@ func accessVoteFromSqlite(row sqlitegen.AccessVote) (AccessVote, error) {
 		Decision: ApprovalVoteDecision(row.Decision), CreatedAt: created}, nil
 }
 
+// InsertVote records a vote in the proof's environment, returning proof or
+// database errors with constraint conflicts mapped to ErrConflict.
 func (r sqliteAccess) InsertVote(ctx context.Context, p authz.Proof, vote AccessVote) error {
 	chain, err := authz.Verify(p, authz.StoreAccessVoteInsert, r.tok)
 	if err != nil {
@@ -506,6 +535,8 @@ func (r sqliteAccess) GetVote(ctx context.Context, p authz.Proof, requestID, pri
 	return accessVoteFromSqlite(row)
 }
 
+// ListVotes returns a request's votes in the proof's environment ordered by
+// creation time and ID, propagating proof, query, and decoding errors.
 func (r sqliteAccess) ListVotes(ctx context.Context, p authz.Proof, requestID string) ([]AccessVote, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessVoteList, r.tok)
 	if err != nil {
@@ -586,10 +617,13 @@ type pgAccess struct {
 	tok *authz.TxToken
 }
 
+// Access returns the temporary-access repository bound to this transaction.
 func (r pgRepos) Access() AccessRepo {
 	return pgAccess{q: pggen.New(r.db), tok: r.tok}
 }
 
+// accessPolicyFromPg decodes a stored policy with UTC timestamps, propagating
+// capability JSON errors.
 func accessPolicyFromPg(row pggen.AccessPolicy) (AccessPolicy, error) {
 	caps, err := unmarshalCapabilities("access policy", row.ID, row.Capabilities)
 	if err != nil {
@@ -605,6 +639,9 @@ func accessPolicyFromPg(row pggen.AccessPolicy) (AccessPolicy, error) {
 	}, nil
 }
 
+// InsertPolicy creates a version-one policy in the proof's project. Proof,
+// encoding, and database errors are returned, with constraint conflicts mapped
+// to ErrConflict.
 func (r pgAccess) InsertPolicy(ctx context.Context, p authz.Proof, policy NewAccessPolicy) error {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyInsert, r.tok)
 	if err != nil {
@@ -667,6 +704,8 @@ func (r pgAccess) CoveringPolicy(ctx context.Context, p authz.Proof, envID strin
 	return AccessPolicy{}, false, nil
 }
 
+// ListPolicies returns the proof's project policies ordered by environment
+// and ID, propagating proof, query, and decoding errors.
 func (r pgAccess) ListPolicies(ctx context.Context, p authz.Proof) ([]AccessPolicy, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyList, r.tok)
 	if err != nil {
@@ -711,6 +750,8 @@ func (r pgAccess) UpdatePolicy(ctx context.Context, p authz.Proof, update Access
 	return n > 0, constraint(err)
 }
 
+// DeletePolicy removes a policy in the proof's project and reports whether
+// it existed, propagating proof and database errors.
 func (r pgAccess) DeletePolicy(ctx context.Context, p authz.Proof, id string) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessPolicyDelete, r.tok)
 	if err != nil {
@@ -722,6 +763,8 @@ func (r pgAccess) DeletePolicy(ctx context.Context, p authz.Proof, id string) (b
 	return n > 0, err
 }
 
+// InsertApprover adds a policy approver in the proof's project, returning
+// proof or database errors with constraint conflicts mapped to ErrConflict.
 func (r pgAccess) InsertApprover(ctx context.Context, p authz.Proof, a NewApprovalApprover) error {
 	chain, err := authz.Verify(p, authz.StoreAccessApproverInsert, r.tok)
 	if err != nil {
@@ -733,6 +776,8 @@ func (r pgAccess) InsertApprover(ctx context.Context, p authz.Proof, a NewApprov
 	}))
 }
 
+// ListApprovers returns the policy's approvers in the proof's project ordered
+// by kind and subject, propagating proof and query errors.
 func (r pgAccess) ListApprovers(ctx context.Context, p authz.Proof, policyID string) ([]ApprovalApprover, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessApproverList, r.tok)
 	if err != nil {
@@ -752,6 +797,8 @@ func (r pgAccess) ListApprovers(ctx context.Context, p authz.Proof, policyID str
 	return out, nil
 }
 
+// ClearApprovers removes the policy's approvers in the proof's project and
+// returns the number removed, propagating proof and database errors.
 func (r pgAccess) ClearApprovers(ctx context.Context, p authz.Proof, policyID string) (int64, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessApproverClear, r.tok)
 	if err != nil {
@@ -762,6 +809,9 @@ func (r pgAccess) ClearApprovers(ctx context.Context, p authz.Proof, policyID st
 	})
 }
 
+// InsertBypasser names an emergency-access principal for a policy in the
+// proof's project, returning proof or database errors with constraint conflicts
+// mapped to ErrConflict.
 func (r pgAccess) InsertBypasser(ctx context.Context, p authz.Proof, b NewApprovalBypasser) error {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserInsert, r.tok)
 	if err != nil {
@@ -772,6 +822,8 @@ func (r pgAccess) InsertBypasser(ctx context.Context, p authz.Proof, b NewApprov
 	}))
 }
 
+// ListBypassers returns the policy's emergency-access principals in the proof's
+// project ordered by principal ID, propagating proof and query errors.
 func (r pgAccess) ListBypassers(ctx context.Context, p authz.Proof, policyID string) ([]ApprovalBypasser, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserList, r.tok)
 	if err != nil {
@@ -790,6 +842,8 @@ func (r pgAccess) ListBypassers(ctx context.Context, p authz.Proof, policyID str
 	return out, nil
 }
 
+// ClearBypassers removes the policy's emergency-access principals in the proof's
+// project and returns the number removed, propagating proof and database errors.
 func (r pgAccess) ClearBypassers(ctx context.Context, p authz.Proof, policyID string) (int64, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessBypasserClear, r.tok)
 	if err != nil {
@@ -816,6 +870,8 @@ func (r pgAccess) IsBypasser(ctx context.Context, p authz.Proof, policyID, princ
 	return err == nil, err
 }
 
+// accessRequestFromPg decodes a stored request with UTC timestamps, preserving
+// absent optional timestamps as nil and propagating capability JSON errors.
 func accessRequestFromPg(row pggen.AccessRequest) (AccessRequest, error) {
 	caps, err := unmarshalCapabilities("access request", row.ID, row.Capabilities)
 	if err != nil {
@@ -931,12 +987,15 @@ func (r pgAccess) ResolveRequest(ctx context.Context, p authz.Proof, res AccessR
 	return n > 0, err
 }
 
+// accessVoteFromPg maps a stored vote with its creation time in UTC.
 func accessVoteFromPg(row pggen.AccessVote) (AccessVote, error) {
 	created := row.CreatedAt.Time.UTC()
 	return AccessVote{ID: row.ID, RequestID: row.RequestID, PrincipalID: row.PrincipalID,
 		Decision: ApprovalVoteDecision(row.Decision), CreatedAt: created}, nil
 }
 
+// InsertVote records a vote in the proof's environment, returning proof or
+// database errors with constraint conflicts mapped to ErrConflict.
 func (r pgAccess) InsertVote(ctx context.Context, p authz.Proof, vote AccessVote) error {
 	chain, err := authz.Verify(p, authz.StoreAccessVoteInsert, r.tok)
 	if err != nil {
@@ -969,6 +1028,8 @@ func (r pgAccess) GetVote(ctx context.Context, p authz.Proof, requestID, princip
 	return accessVoteFromPg(row)
 }
 
+// ListVotes returns a request's votes in the proof's environment ordered by
+// creation time and ID, propagating proof and query errors.
 func (r pgAccess) ListVotes(ctx context.Context, p authz.Proof, requestID string) ([]AccessVote, error) {
 	chain, err := authz.Verify(p, authz.StoreAccessVoteList, r.tok)
 	if err != nil {
