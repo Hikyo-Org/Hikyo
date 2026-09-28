@@ -19,14 +19,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -59,7 +58,8 @@ import (
 // The operator reaches the server through its own listener, the front, which
 // records every report and tombstone body it receives. Replays crafted by the
 // test go to the browser's listener instead, so the record holds only what the
-// real operator put on the wire.
+// real operator put on the wire. The operator is stopped while a crafted
+// request's effect is asserted, so no heartbeat can land in between.
 
 const (
 	reportingOperatorVersion = "0.0.0-reporting-e2e"
@@ -120,6 +120,37 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
+// The categories of string no report may carry (ADR D4). The audit refuses to
+// pass unless the run observed at least one of each.
+const (
+	deniedSecretValue   = "secret value"
+	deniedConfigValue   = "config value"
+	deniedKeyName       = "key name"
+	deniedBearer        = "bearer"
+	deniedMessage       = "condition message"
+	deniedCursor        = "cursor"
+	deniedCursorBinding = "cursor binding"
+	deniedStamp         = "stamp"
+	deniedManagedSecret = "managed Secret UID"
+)
+
+// gatedListener is the front's listener. While down it closes every
+// connection it accepts before a byte is exchanged, and the port stays held.
+type gatedListener struct {
+	net.Listener
+	down atomic.Bool
+}
+
+func (l *gatedListener) Accept() (net.Conn, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil || !l.down.Load() {
+			return conn, err
+		}
+		_ = conn.Close()
+	}
+}
+
 type reportingWorld struct {
 	*opEnv
 	kubeconfig string
@@ -127,12 +158,15 @@ type reportingWorld struct {
 	binary     string
 	clock      *offsetClock
 	router     http.Handler
+	delivery   *service.Delivery
 	browser    *httptest.Server
-	frontAddr  string
+	gate       *gatedListener
 	operator   *exec.Cmd
-	log        *os.File
-	admin      service.Actor
-	pokes      int
+	// halt cancels the running operator's context, which signals it.
+	halt  context.CancelFunc
+	log   *os.File
+	admin service.Actor
+	pokes int
 	// happyToken is the happy CR's bearer, which the crafted replays present.
 	happyToken string
 	// doomed is the service account whose credential is revoked and which is
@@ -141,9 +175,10 @@ type reportingWorld struct {
 
 	mu   sync.Mutex
 	wire []wireRecord
-	// denied is everything no report may carry (ADR D4): values, key names,
-	// credentials, and every condition message, cursor and stamp a CR held.
-	denied map[string]bool
+	// denied is everything no report may carry (ADR D4), by category: values,
+	// key names, credentials, and every condition message, cursor and stamp a
+	// CR held.
+	denied map[string]string
 }
 
 func TestK8sReportingBrowser(t *testing.T) {
@@ -155,9 +190,10 @@ func TestK8sReportingBrowser(t *testing.T) {
 		opEnv:      &opEnv{t: t, ctx: ctx, restCfg: restCfg, scheme: sch},
 		kubeconfig: os.Getenv(kubeconfigEnv),
 		clock:      &offsetClock{},
-		denied: map[string]bool{
-			cfgKeyOne: true, cfgKeyTwo: true, secKeyOne: true, secKeyTwo: true,
-			cfgValOne: true, cfgValTwo: true, secValOne: true, secValTwo: true,
+		denied: map[string]string{
+			cfgKeyOne: deniedKeyName, cfgKeyTwo: deniedKeyName, secKeyOne: deniedKeyName, secKeyTwo: deniedKeyName,
+			cfgValOne: deniedConfigValue, cfgValTwo: deniedConfigValue,
+			secValOne: deniedSecretValue, secValTwo: deniedSecretValue,
 		},
 	}
 	root := repoRoot(t)
@@ -195,6 +231,7 @@ func TestK8sReportingBrowser(t *testing.T) {
 	auth := authService(t, w.db)
 	w.browser = httptest.NewUnstartedServer(nil)
 	origin := "https://" + w.browser.Listener.Addr().String()
+	w.delivery = &service.Delivery{DB: w.db, Keyring: kr, Now: w.clock.Now}
 	w.router = server.NewPublic(&service.System{DB: w.db}, &server.API{
 		Runtime:      &service.System{DB: w.db},
 		Auth:         auth,
@@ -207,7 +244,7 @@ func TestK8sReportingBrowser(t *testing.T) {
 		Keys:         &service.Keys{DB: w.db, Keyring: kr},
 		Settings:     &service.ProjectSettings{DB: w.db, Auth: auth},
 		Identities:   &service.Identities{DB: w.db, Auth: auth},
-		Delivery:     &service.Delivery{DB: w.db, Keyring: kr, Now: w.clock.Now},
+		Delivery:     w.delivery,
 		// The other machine-access tabs list on the same page load.
 		Dynamic: &service.Dynamic{DB: w.db, Keyring: kr, Auth: auth, Runtime: store.NewDynamicRuntime(w.db)},
 		SSH:     &service.SSH{DB: w.db, Keyring: kr, Auth: auth, Runtime: store.NewSSHRuntime(w.db)},
@@ -284,7 +321,12 @@ func (w *reportingWorld) drive(steps map[string]func() any, origin string) {
 	t.Cleanup(control.Close)
 	t.Cleanup(func() { close(quit) })
 
+	// pnpm starts node, which starts Chromium. They share one process group so
+	// that a cancelled test takes all of them, not only pnpm.
 	playwright := exec.CommandContext(t.Context(), "pnpm", "exec", "playwright", "test", "--config", "e2e/reporting.config.ts")
+	playwright.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	playwright.Cancel = func() error { return syscall.Kill(-playwright.Process.Pid, syscall.SIGKILL) }
+	playwright.WaitDelay = 10 * time.Second
 	playwright.Dir = filepath.Join(repoRoot(t), "web")
 	playwright.Env = append(os.Environ(),
 		"HIKYO_REPORTING_E2E_ORIGIN="+origin,
@@ -293,6 +335,8 @@ func (w *reportingWorld) drive(steps map[string]func() any, origin string) {
 	)
 	playwright.Stdout, playwright.Stderr = os.Stdout, os.Stderr
 	must(t, playwright.Start())
+	// A step that fails the test leaves this function before Playwright exits.
+	t.Cleanup(func() { _ = syscall.Kill(-playwright.Process.Pid, syscall.SIGKILL) })
 	done := make(chan error, 1)
 	go func() { done <- playwright.Wait() }()
 
@@ -329,8 +373,8 @@ func (w *reportingWorld) drive(steps map[string]func() any, origin string) {
 
 // seedViewer creates the second tenant and the human the browser signs in as,
 // who is also the administrator the steps act as: `read` and
-// `manage-identities` on both projects, and org-scope `manage-members`,
-// because no human holds `report-delivery-status` and only an org member
+// `manage-identities` on both projects, and org-scope `manage-members` in
+// both organisations, because no human holds `report-delivery-status` and only an org member
 // manager may grant what it does not hold. Its id is production-shaped, which
 // the SPA's parsers require of every `created_by` it is shown.
 func (w *reportingWorld) seedViewer() {
@@ -344,9 +388,11 @@ func (w *reportingWorld) seedViewer() {
 		fmt.Sprintf(`INSERT INTO projects (id, org_id, name, created_at) VALUES ('%s', '%s', 'e2e-b', %s)`, e2ePrjB, e2eOrgB, ts),
 		fmt.Sprintf(`INSERT INTO project_schema_revisions (org_id, project_id, revision) VALUES ('%s', '%s', 0)`, e2eOrgB, e2ePrjB),
 		fmt.Sprintf(`INSERT INTO environments (id, org_id, project_id, name, note, created_at, display_order) VALUES ('%s', '%s', '%s', 'dev', '', %s, 0)`, e2eEnvB, e2eOrgB, e2ePrjB, ts),
-		fmt.Sprintf(`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_rep_mm', '%s', 'manage-members', '%s', NULL, NULL, %s)`, boot.PrincipalID, e2eOrg, ts),
 	}
 	for i, project := range [][2]string{{e2eOrg, e2ePrj}, {e2eOrgB, e2ePrjB}} {
+		stmts = append(stmts, fmt.Sprintf(
+			`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_rep_mm%d', '%s', 'manage-members', '%s', NULL, NULL, %s)`,
+			i, boot.PrincipalID, project[0], ts))
 		for j, capability := range []string{"read", "manage-identities"} {
 			stmts = append(stmts, fmt.Sprintf(
 				`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_rep_v%d%d', '%s', '%s', '%s', '%s', NULL, %s)`,
@@ -360,18 +406,10 @@ func (w *reportingWorld) seedViewer() {
 	w.admin = service.LocalPrincipal(boot.PrincipalID)
 }
 
-// startFront opens the operator's listener over the shared router. The address
-// is fixed after the first start so the HikyoInstance stays valid across a
-// restart, and httptest serves one built-in certificate, so its trust anchor
-// does too.
+// startFront opens the operator's listener over the shared router. It stays
+// open for the whole run, so the HikyoInstance's address cannot be taken by
+// another process; unreachable is the gate, not a closed port.
 func (w *reportingWorld) startFront() {
-	addr := w.frontAddr
-	if addr == "" {
-		addr = "127.0.0.1:0"
-	}
-	ln, err := net.Listen("tcp", addr)
-	must(w.t, err)
-	w.frontAddr = ln.Addr().String()
 	front := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "/delivery-targets") {
 			w.router.ServeHTTP(rw, r)
@@ -389,16 +427,33 @@ func (w *reportingWorld) startFront() {
 		w.wire = append(w.wire, wireRecord{path: r.URL.Path, body: body, status: rec.status})
 		w.mu.Unlock()
 	}))
-	must(w.t, front.Listener.Close())
-	front.Listener = ln
+	w.gate = &gatedListener{Listener: front.Listener}
+	front.Listener = w.gate
 	front.StartTLS()
 	w.server = front
 	w.caPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: front.Certificate().Raw})
 }
 
+// setUnreachable makes the server unreachable for the operator, or reachable
+// again. Going down also drops the connections the operator keeps alive, so
+// its next request has to dial: the dial is accepted and closed before the TLS
+// handshake, which the operator sees as a transport error with no HTTP status.
+func (w *reportingWorld) setUnreachable(down bool) {
+	w.gate.down.Store(down)
+	if down {
+		w.server.CloseClientConnections()
+	}
+}
+
 // startOperator runs the shipped operator process against the kind cluster.
 func (w *reportingWorld) startOperator(reporting bool) {
-	w.operator = exec.Command(w.binary, "operator")
+	ctx, halt := context.WithCancel(w.ctx)
+	w.halt = halt
+	w.operator = exec.CommandContext(ctx, w.binary, "operator")
+	// SIGTERM is the shutdown a pod gets; a process that ignores it is killed
+	// when the delay runs out, so a stop never waits without bound.
+	w.operator.Cancel = func() error { return w.operator.Process.Signal(syscall.SIGTERM) }
+	w.operator.WaitDelay = 15 * time.Second
 	w.operator.Env = append(os.Environ(),
 		"KUBECONFIG="+w.kubeconfig,
 		"HIKYO_OPERATOR_NAMESPACE="+w.ns,
@@ -408,14 +463,17 @@ func (w *reportingWorld) startOperator(reporting bool) {
 		"HIKYO_OPERATOR_STATUS_REPORTING="+strconv.FormatBool(reporting),
 	)
 	w.operator.Stdout, w.operator.Stderr = w.log, w.log
-	must(w.t, w.operator.Start())
+	if err := w.operator.Start(); err != nil {
+		halt()
+		w.t.Fatalf("start the operator: %v", err)
+	}
 }
 
 func (w *reportingWorld) stopOperator() {
 	if w.operator == nil {
 		return
 	}
-	_ = w.operator.Process.Signal(syscall.SIGTERM)
+	w.halt()
 	_ = w.operator.Wait()
 	w.operator = nil
 }
@@ -423,36 +481,50 @@ func (w *reportingWorld) stopOperator() {
 // observeDenied adds what the namespace's CRs hold right now to the denied
 // set. A deleted CR takes its status with it, so it runs as soon as a target
 // has reported, and again after every step for what changed since.
+func (w *reportingWorld) deny(value, category string) {
+	if value != "" {
+		w.denied[value] = category
+	}
+}
+
 func (w *reportingWorld) observeDenied() {
 	var crs hikyov1.HikyoSecretList
 	must(w.t, w.cl.List(w.ctx, &crs, client.InNamespace(w.ns)))
 	for _, cr := range crs.Items {
 		for _, c := range cr.Status.Conditions {
-			w.denied[c.Message] = true
+			w.deny(c.Message, deniedMessage)
 		}
-		for _, v := range []string{cr.Status.Cursor, cr.Status.CursorBinding, cr.Status.Stamp, cr.Status.ManagedSecretUID} {
-			w.denied[v] = true
-		}
+		w.deny(cr.Status.Cursor, deniedCursor)
+		w.deny(cr.Status.CursorBinding, deniedCursorBinding)
+		w.deny(cr.Status.Stamp, deniedStamp)
+		w.deny(cr.Status.ManagedSecretUID, deniedManagedSecret)
 	}
 }
 
-// reporter creates a workload service account holding `read` and
-// `report-delivery-status` on the e2e environment, and its designated
-// bootstrap Secret, named after the account.
+// reporter creates a workload service account in the e2e project; see
+// reporterIn.
 func (w *reportingWorld) reporter(name string) (service.ServiceAccountView, service.MintResult) {
+	return w.reporterIn(name, e2eScopeEnv())
+}
+
+// reporterIn creates a workload service account in env's project holding
+// `read` and `report-delivery-status` on env, and its designated bootstrap
+// Secret, named after the account.
+func (w *reportingWorld) reporterIn(name string, env domain.Scope) (service.ServiceAccountView, service.MintResult) {
+	project := domain.Scope{Org: env.Org, Project: env.Project}
 	ident := identitySvc(w.db)
-	sa, err := ident.CreateServiceAccount(w.ctx, w.admin, e2eScopePrj(), name, domain.ClassWorkload)
+	sa, err := ident.CreateServiceAccount(w.ctx, w.admin, project, name, domain.ClassWorkload)
 	must(w.t, err)
-	minted, err := ident.MintCredential(w.ctx, w.admin, e2eScopePrj(), sa.ID, service.MintRequest{})
+	minted, err := ident.MintCredential(w.ctx, w.admin, project, sa.ID, service.MintRequest{})
 	must(w.t, err)
 	for _, capability := range []domain.Capability{domain.CapRead, domain.CapReportDeliveryStatus} {
 		if _, err := grantSvcWithAuth(w.db).Create(w.ctx, w.admin, service.GrantSpec{
-			Target: sa.Principal, Capability: capability, Scope: e2eScopeEnv(),
+			Target: sa.Principal, Capability: capability, Scope: env,
 		}); err != nil {
 			w.t.Fatalf("grant %s to %s: %v", capability, name, err)
 		}
 	}
-	w.denied[minted.Value] = true
+	w.deny(minted.Value, deniedBearer)
 	w.createBootstrapSecret(name, minted.Value, instanceName, true)
 	return sa, minted
 }
@@ -510,8 +582,11 @@ func (w *reportingWorld) waitAnswer(match string, status int) int {
 func (w *reportingWorld) reconcileNow(name string) {
 	w.pokes++
 	cr := w.getCR(name)
+	// A merge patch of the one field: an Update would carry the whole object
+	// and conflict with the operator's own status writes.
+	base := cr.DeepCopy()
 	cr.Spec.ResyncInterval = fmt.Sprintf("%ds", 240-w.pokes)
-	must(w.t, w.cl.Update(w.ctx, cr))
+	must(w.t, w.cl.Patch(w.ctx, cr, client.MergeFrom(base)))
 }
 
 // reportAgain forces a reconcile and waits until the server accepted the
@@ -578,27 +653,38 @@ func (w *reportingWorld) stepHappyPath() any {
 	return nil
 }
 
-// Scenario 2. The CR presents project A's credential and names tenant B's
-// environment.
-func (w *reportingWorld) stepCrossTenant() any {
-	cr := &hikyov1.HikyoSecret{
-		ObjectMeta: metav1.ObjectMeta{Namespace: w.ns, Name: "cross-tenant"},
+// targetB creates a CR naming tenant B's environment under the named
+// bootstrap Secret.
+func (w *reportingWorld) targetB(name, secretRef string) {
+	must(w.t, w.cl.Create(w.ctx, &hikyov1.HikyoSecret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: w.ns, Name: name},
 		Spec: hikyov1.HikyoSecretSpec{
 			InstanceRef: hikyov1.InstanceRef{Name: instanceName},
 			Scope:       hikyov1.Scope{Org: e2eOrgB, Project: e2ePrjB, Environment: e2eEnvB},
-			Target:      hikyov1.Target{Name: "cross-tenant-secret"},
+			Target:      hikyov1.Target{Name: name + "-secret"},
 			Mapping:     []hikyov1.Mapping{{Key: cfgKeyOne, SecretKey: cfgKeyOne}},
-			Auth:        hikyov1.AuthRef{SecretRef: &hikyov1.LocalObjectRef{Name: "happy-reporter"}},
+			Auth:        hikyov1.AuthRef{SecretRef: &hikyov1.LocalObjectRef{Name: secretRef}},
 		},
-	}
-	must(w.t, w.cl.Create(w.ctx, cr))
+	}))
+}
+
+// Scenario 2. Tenant B's own reporter reports into B first, so the browser has
+// a row proving it can read B. Then a CR presents project A's credential and
+// names the same environment.
+func (w *reportingWorld) stepCrossTenant() any {
+	w.reporterIn("tenant-b-reporter", domain.Scope{Org: e2eOrgB, Project: e2ePrjB, Env: e2eEnvB})
+	w.targetB("tenant-b", "tenant-b-reporter")
+	w.waitAnswer(`"name":"tenant-b"`, http.StatusNoContent)
+	w.waitRows("tenant-b", 1)
+
+	w.targetB("cross-tenant", "happy-reporter")
 	w.waitAnswer(`"name":"cross-tenant"`, http.StatusNotFound)
 	for _, r := range w.sent(`"name":"cross-tenant"`) {
 		if !strings.Contains(r.path, e2eEnvB) || r.status != http.StatusNotFound {
 			w.t.Fatalf("cross-tenant report to %s answered %d, want 404 on tenant B's environment", r.path, r.status)
 		}
 	}
-	if got := dtRows(w.t, w.db, "name = 'cross-tenant' OR environment_id = '"+e2eEnvB+"'"); got != 0 {
+	if got := dtRows(w.t, w.db, "name = 'cross-tenant' OR (environment_id = '"+e2eEnvB+"' AND name <> 'tenant-b')"); got != 0 {
 		w.t.Fatalf("a refused cross-tenant report left %d rows", got)
 	}
 	return nil
@@ -640,9 +726,13 @@ func (w *reportingWorld) stepPrincipalDeleted() any {
 	return nil
 }
 
-// Scenario 4, ordering: three replays of the operator's own last accepted
-// report, each refused 409 and none of them recorded on the row.
+// Scenario 4, ordering: three crafted replays of the operator's own last
+// accepted report, each refused 409 and none of them recorded on the row. The
+// operator is stopped first and stays stopped until the stale step, so no
+// heartbeat of its own can move the row, or clear the refusal that follows,
+// before the browser has read it.
 func (w *reportingWorld) stepOutOfOrder() any {
+	w.stopOperator()
 	accepted := w.lastAccepted("happy")
 	before := w.snapshot("happy")
 	older := accepted
@@ -665,8 +755,8 @@ func (w *reportingWorld) stepOutOfOrder() any {
 	return nil
 }
 
-// Scenario 4, vocabulary: a reason outside the vocabulary is the one refusal
-// the row records.
+// Scenario 4, vocabulary: a crafted report whose reason is outside the
+// vocabulary is the one refusal the row records.
 func (w *reportingWorld) stepUnknownReason() any {
 	report := w.lastAccepted("happy")
 	report.ReportedAt = report.ReportedAt.Add(time.Second)
@@ -677,27 +767,35 @@ func (w *reportingWorld) stepUnknownReason() any {
 	return nil
 }
 
-// Scenario 5, stale: an accepted report clears the refusal, the operator
-// stops, and the delivery clock moves past the threshold.
+// Scenario 5, stale: the operator comes back and its accepted report clears
+// the refusal, then it stops and the delivery clock moves past the threshold.
 func (w *reportingWorld) stepOperatorStopped() any {
+	w.startOperator(true)
 	w.reportAgain("happy")
 	w.stopOperator()
 	w.clock.set(pastStale)
 	return nil
 }
 
-// Scenario 5, never reported: a CR created while reporting is disabled
-// reconciles and sends nothing, so it has no row.
+// Scenario 5, never reported: with reporting disabled the operator reconciles
+// the new CR, and every other one, and sends nothing at all until it has
+// exited, so the new CR has no row.
 func (w *reportingWorld) stepReportingDisabled() any {
 	w.clock.set(0)
+	w.mu.Lock()
+	before := len(w.wire)
+	w.mu.Unlock()
 	w.startOperator(false)
 	w.reporter("never-reported-reporter")
 	w.createCR(crSpec{name: "never-reported", target: "never-reported-secret", secretRef: "never-reported-reporter", mapping: configMapping(), projection: hikyov1.ProjectionConfigOnly})
 	w.waitCondition("never-reported", hikyov1.ConditionReady, metav1.ConditionTrue, hikyov1.ReasonReconciled)
-	if sent := w.sent(`"name":"never-reported"`); len(sent) != 0 || w.rows("never-reported") != 0 {
-		w.t.Fatalf("a CR reconciled with reporting disabled sent %d reports and holds %d rows", len(sent), w.rows("never-reported"))
-	}
 	w.stopOperator()
+	w.mu.Lock()
+	sent := len(w.wire) - before
+	w.mu.Unlock()
+	if sent != 0 || w.rows("never-reported") != 0 {
+		w.t.Fatalf("an operator with reporting disabled sent %d requests and its new CR holds %d rows", sent, w.rows("never-reported"))
+	}
 	return nil
 }
 
@@ -720,27 +818,42 @@ func (w *reportingWorld) stepTombstone() any {
 	return nil
 }
 
-// Scenario 6, unreachable: the front is closed when the CR is deleted, so the
-// tombstone is lost. There is no finalizer: the CR goes anyway.
+// Scenario 6, unreachable: the server cannot be reached when the CR is
+// deleted, so the tombstone is lost. There is no finalizer: the CR goes anyway.
 func (w *reportingWorld) stepUnreachableDelete() any {
 	w.reporter("orphaned-reporter")
 	w.target("orphaned", "orphaned-reporter")
 	uid := string(w.getCR("orphaned").UID)
-	w.server.Close()
+	w.mu.Lock()
+	before := len(w.wire)
+	w.mu.Unlock()
+	w.setUnreachable(true)
 	must(w.t, w.cl.Delete(w.ctx, w.getCR("orphaned")))
+	var failure string
 	poll(w.t, w.ctx, func(ctx context.Context) (bool, error) {
-		var cr hikyov1.HikyoSecret
-		err := w.cl.Get(ctx, types.NamespacedName{Namespace: w.ns, Name: "orphaned"}, &cr)
-		if !apierrors.IsNotFound(err) {
-			return false, err
-		}
 		events, err := w.cs.CoreV1().Events(w.ns).List(ctx, metav1.ListOptions{FieldSelector: "involvedObject.uid=" + uid + ",reason=StatusReportFailed"})
 		if err != nil {
 			return false, err
 		}
-		return slices.ContainsFunc(events.Items, func(e corev1.Event) bool { return strings.Contains(e.Message, "tombstone") }), nil
+		i := slices.IndexFunc(events.Items, func(e corev1.Event) bool { return strings.Contains(e.Message, "status tombstone failed") })
+		if i < 0 {
+			return false, nil
+		}
+		failure = events.Items[i].Message
+		return true, nil
 	})
-	w.startFront()
+	w.t.Logf("the operator's tombstone failure: %s", failure)
+	// A transport failure, not an answer: nothing reached the router.
+	if strings.Contains(failure, "server answered status") {
+		w.t.Fatalf("the tombstone was answered, not lost: %s", failure)
+	}
+	w.mu.Lock()
+	reached := len(w.wire) - before
+	w.mu.Unlock()
+	if reached != 0 {
+		w.t.Fatalf("%d delivery-target requests reached the unreachable server", reached)
+	}
+	w.setUnreachable(false)
 	if got := w.rows("orphaned"); got != 1 {
 		w.t.Fatalf("rows after a lost tombstone = %d, want the row still held", got)
 	}
@@ -752,55 +865,76 @@ func (w *reportingWorld) stepStaleAfterDelete() any {
 	return nil
 }
 
-// The hourly purge, run at a clock thirty days on. It is the scheduler's own
-// job function; only the clock is the test's. The happy CR reports once more
-// a day short of that clock, so the purge has a row it must spare.
+// The hourly purge: the scheduler's own job function on the server's own
+// delivery service, under the one clock. The happy CR reports an hour short of
+// thirty days on, so it is the row the purge must spare. The orphaned row,
+// received at the real time, survives a purge at that clock and goes in one
+// two hours later: the threshold lies within an hour of thirty days.
 func (w *reportingWorld) stepPurge() any {
-	w.clock.set(deliverytarget.PurgeAfter - 24*time.Hour)
+	w.clock.set(deliverytarget.PurgeAfter - time.Hour)
 	w.reportAgain("happy")
 	w.stopOperator()
-	purge := &service.Delivery{DB: w.db, Keyring: probeKeyring(w.t, w.db), Now: func() time.Time {
-		return time.Now().Add(deliverytarget.PurgeAfter + time.Hour)
-	}}
-	must(w.t, purge.PurgeExpiredTargets(w.ctx))
-	if orphaned, happy := w.rows("orphaned"), w.rows("happy"); orphaned != 0 || happy != 1 {
-		w.t.Fatalf("rows after the purge: orphaned %d, happy %d; want 0 and 1", orphaned, happy)
+	must(w.t, w.delivery.PurgeExpiredTargets(w.ctx))
+	if got := w.rows("orphaned"); got != 1 {
+		w.t.Fatalf("rows an hour short of thirty days = %d, want the row still held", got)
 	}
-	if got := dtEvents(w.t, w.db, "identity.delivery_target_purged", ""); got == 0 {
-		w.t.Fatal("the purge recorded no identity.delivery_target_purged event")
+	if got := dtEvents(w.t, w.db, "identity.delivery_target_purged", ""); got != 0 {
+		w.t.Fatalf("purge events an hour short of thirty days = %d, want 0", got)
+	}
+
+	held := dtRows(w.t, w.db, "1 = 1")
+	w.clock.set(deliverytarget.PurgeAfter + time.Hour)
+	must(w.t, w.delivery.PurgeExpiredTargets(w.ctx))
+	if orphaned, happy := w.rows("orphaned"), w.rows("happy"); orphaned != 0 || happy != 1 {
+		w.t.Fatalf("rows an hour past thirty days: orphaned %d, happy %d; want 0 and 1", orphaned, happy)
+	}
+	purged := held - dtRows(w.t, w.db, "1 = 1")
+	if got := dtEvents(w.t, w.db, "identity.delivery_target_purged", ""); got != purged {
+		w.t.Fatalf("purge events = %d for %d purged rows", got, purged)
 	}
 	w.clock.set(0)
 	return nil
 }
 
 // Scenario 7. Every body the operator sent during the run decodes strictly
-// into its contract type and carries nothing from the denied set.
+// into its contract type and carries nothing from the denied set, and the
+// denied set holds something the run observed in every category.
 func (w *reportingWorld) stepWireAudit() any {
 	w.mu.Lock()
 	wire := slices.Clone(w.wire)
 	w.mu.Unlock()
-	var reports, tombstones int
+	counts := map[string]int{}
+	for _, category := range w.denied {
+		counts[category]++
+	}
+	for _, category := range []string{
+		deniedSecretValue, deniedConfigValue, deniedKeyName, deniedBearer, deniedMessage,
+		deniedCursor, deniedCursorBinding, deniedStamp, deniedManagedSecret,
+	} {
+		if counts[category] == 0 {
+			w.t.Fatalf("the run observed no %s, so the audit would not have looked for one", category)
+		}
+	}
 	for _, r := range wire {
 		var into any = &apigen.DeliveryTargetReportRequest{}
-		reports++
+		kind := "reports"
 		if strings.HasSuffix(r.path, "/tombstone") {
-			into = &apigen.DeliveryTargetTombstoneRequest{}
-			reports--
-			tombstones++
+			into, kind = &apigen.DeliveryTargetTombstoneRequest{}, "tombstones"
 		}
+		counts[kind]++
 		dec := json.NewDecoder(bytes.NewReader(r.body))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(into); err != nil {
 			w.t.Errorf("a body on the wire is not the contract shape: %v: %s", err, r.body)
 		}
-		for d := range w.denied {
-			if d != "" && bytes.Contains(r.body, []byte(d)) {
-				w.t.Errorf("a body on the wire carries %q: %s", d, r.body)
+		for d, category := range w.denied {
+			if bytes.Contains(r.body, []byte(d)) {
+				w.t.Errorf("a body on the wire carries the %s %q: %s", category, d, r.body)
 			}
 		}
 	}
-	if reports == 0 || tombstones == 0 {
-		w.t.Fatalf("captured %d reports and %d tombstones; the audit needs both", reports, tombstones)
+	if counts["reports"] == 0 || counts["tombstones"] == 0 {
+		w.t.Fatalf("captured %d reports and %d tombstones; the audit needs both", counts["reports"], counts["tombstones"])
 	}
 	var dump bytes.Buffer
 	for _, r := range wire {
@@ -810,5 +944,5 @@ func (w *reportingWorld) stepWireAudit() any {
 	if w.t.Failed() {
 		w.t.FailNow()
 	}
-	return map[string]int{"reports": reports, "tombstones": tombstones, "denied": len(w.denied)}
+	return counts
 }

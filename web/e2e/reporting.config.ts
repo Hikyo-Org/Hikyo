@@ -13,7 +13,7 @@ import { defineConfig, devices } from '@playwright/test';
  * polls is bounded at 60 s on the Go side.
  */
 const origin = process.env['HIKYO_REPORTING_E2E_ORIGIN'];
-if (origin === undefined) {
+if (origin === undefined || origin === '') {
   throw new Error('HIKYO_REPORTING_E2E_ORIGIN is not set: run scripts/ci/reporting-e2e.sh');
 }
 
@@ -28,8 +28,9 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     ...devices['Desktop Chrome'],
-    // Tall enough that every target row is inside the screenshot: the page
-    // scrolls inside its own frame, so a full-page capture would not reach it.
+    // Tall enough that every target row is inside the viewport, which is what
+    // the spec captures: the page scrolls inside its own frame, so a full-page
+    // capture would not reach further than this does.
     viewport: { width: 1280, height: 1600 },
     baseURL: origin,
     // The in-process server presents the Go test certificate.

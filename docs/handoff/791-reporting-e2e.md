@@ -23,8 +23,8 @@ Three real parties:
 
 - **Operator:** the shipped `hikyo operator` process, built with
   `-X main.version=0.0.0-reporting-e2e`, run on the host against kind with its
-  own leader election. Stopped with SIGTERM, restarted with
-  `HIKYO_OPERATOR_STATUS_REPORTING=false` and back.
+  own leader election. Stopped with SIGTERM (killed after 15 s if it ignores
+  it), restarted with `HIKYO_OPERATOR_STATUS_REPORTING=false` and back.
 - **Server:** the real router over a real SQLite datastore, in the test
   process. That is what makes `service.Delivery.Now` reachable: staleness and
   the purge move that clock and never sleep. The shipped binary has no clock
@@ -35,13 +35,30 @@ Three real parties:
 
 Playwright owns the order. Each test calls `POST /step/<name>` on a control
 endpoint; the step runs on the Go test goroutine, arranges cluster and server
-state and asserts the wire; the test then asserts the page. The Go test fails
-if Playwright fails or if any step never ran.
+state and asserts the wire. The test then loads the Kubernetes tab afresh and
+asserts rows on it: a row's `data-state`, its sentence, its absence. Every
+load first waits for a control row that must be there (`happy` in project A,
+`tenant-b` in project B) and for no listing failure, so an absence is never
+asserted on a page that did not load or cannot read the environment. Statuses
+(401, 404, 409, 422), stored rows, audit events and the payload audit are
+asserted in Go, not in the browser. Scenario 7 has no page assertion at all.
+The Go test fails if Playwright fails or if any step never ran.
 
 The operator has its own TLS listener, the front. It records every
-`/delivery-targets` body and the status answered. Crafted replays go to the
-browser's listener, so the record holds only what the operator sent. Closing
-the front is "server unreachable": the browser keeps working.
+`/delivery-targets` body and the status answered. Crafted requests go to the
+browser's listener, so the record, and `wire.log`, holds only what the
+operator sent. The operator is stopped from the first crafted request until
+the browser has read the `refused` row, so none of its heartbeats can land in
+between.
+
+"Server unreachable" keeps the front's port open and refuses on it: the
+operator's kept-alive connections are dropped, and every new connection is
+accepted and closed before the TLS handshake. The operator's tombstone
+therefore fails in transport with no HTTP status. Its Event reads `status
+tombstone failed: ... read: connection reset by peer` (an EOF is the same
+failure with other timing). It is not a refused connection and not a timeout.
+The step asserts that the Event names no status and that no request reached
+the router. The browser's listener is untouched.
 
 Each step reply carries the delivery clock's offset and the spec sets the
 page clock to match, so "received 16 minutes ago" on a screenshot agrees with
@@ -69,20 +86,25 @@ HIKYO_K8S_E2E_KUBECONFIG=/path/to/kubeconfig \
 
 ## Scenario map
 
-| Issue scenario | Playwright test | Go step | Screenshot |
-| --- | --- | --- | --- |
-| 1 happy path | `1 happy path: a reconciled CR is reported with its namespace and name` | `stepHappyPath` | `01-reported` |
-| 2 cross-tenant | `2 cross-tenant: a report naming another tenant is refused and shows nowhere` | `stepCrossTenant` | `02-cross-tenant-project-b` |
-| 3 grant revoked | `3 revoked grant: the row turns reporter-revoked` | `stepGrantRevoked` | `03-grant-revoked` |
-| 3 token revoked | `3 revoked credential: its row is reporter-revoked while other CRs keep reporting` | `stepCredentialRevoked` | `04-credential-revoked` |
-| 3 principal deleted | `3 deleted principal: its rows are gone` | `stepPrincipalDeleted` | `05-principal-deleted` |
-| 4 ordering, 409 | `4 out-of-order reports are refused 409 and never shown as refused` | `stepOutOfOrder` | `06-out-of-order-unchanged` |
-| 4 unknown reason, 422 | `4 unknown reason: refused 422 and the row says refused` | `stepUnknownReason` | `07-refused` |
-| 5 stale | `5 stale: after the operator stops, the row is stale` | `stepOperatorStopped` | `08-stale` |
-| 5 never reported | `5 never reported: a CR created while reporting is disabled has no row` | `stepReportingDisabled` | `09-never-reported-tab`, `10-never-reported-account` |
-| 6 tombstone | `6 deletion: the tombstone removes the row` | `stepTombstone` | `11-tombstoned` |
-| 6 unreachable at delete | `6 deletion with the server unreachable: the row stays, goes stale, and is purged` | `stepUnreachableDelete`, `stepStaleAfterDelete`, `stepPurge` | `12-orphaned-reported`, `13-orphaned-stale`, `14-orphaned-purged` |
-| 7 secret-safe payload | `7 secret-safe payload: every body on the wire is value-free` | `stepWireAudit` | none (`wire.log`) |
+Sender says who produced the statuses the scenario turns on. Only the real
+operator's requests are in `wire.log`; crafted requests are posted by the Go
+test with the happy CR's own bearer, starting from the operator's last
+accepted body.
+
+| Issue scenario | Playwright test | Go step | Sender and status | Screenshot |
+| --- | --- | --- | --- | --- |
+| 1 happy path | `1 happy path: a reconciled CR is reported with its namespace and name` | `stepHappyPath` | real operator, 204 | `01-reported` |
+| 2 cross-tenant | `2 cross-tenant: a report naming another tenant is refused and shows nowhere` | `stepCrossTenant` | real operator: 204 for tenant B's own CR, 404 for the cross-tenant CR | `02-cross-tenant-project-b` |
+| 3 grant revoked | `3 revoked grant: the row turns reporter-revoked` | `stepGrantRevoked` | real operator, 404 | `03-grant-revoked` |
+| 3 token revoked | `3 revoked credential: its row is reporter-revoked while other CRs keep reporting` | `stepCredentialRevoked` | real operator: 401 for the revoked CR, 204 for `happy` | `04-credential-revoked` |
+| 3 principal deleted | `3 deleted principal: its rows are gone` | `stepPrincipalDeleted` | none (service call) | `05-principal-deleted` |
+| 4 ordering | `4 out-of-order reports are refused 409 and never shown as refused` | `stepOutOfOrder` | crafted, 3 x 409 | `06-out-of-order-unchanged` |
+| 4 unknown reason | `4 unknown reason: refused 422 and the row says refused` | `stepUnknownReason` | crafted, 422 | `07-refused` |
+| 5 stale | `5 stale: after the operator stops, the row is stale` | `stepOperatorStopped` | real operator, 204, then stopped | `08-stale` |
+| 5 never reported | `5 never reported: a CR created while reporting is disabled has no row` | `stepReportingDisabled` | real operator, reporting off: no request | `09-never-reported-tab`, `10-never-reported-account` |
+| 6 tombstone | `6 deletion: the tombstone removes the row` | `stepTombstone` | real operator, tombstone 204 | `11-tombstoned` |
+| 6 unreachable at delete | `6 deletion with the server unreachable: the row stays, goes stale, and is purged` | `stepUnreachableDelete`, `stepStaleAfterDelete`, `stepPurge` | real operator: tombstone fails in transport, no status; the purge is a service call | `12-orphaned-reported`, `13-orphaned-stale`, `14-orphaned-purged` |
+| 7 secret-safe payload | `7 secret-safe payload: every body on the wire is value-free` | `stepWireAudit` | every real operator body of the run | none (`wire.log`) |
 
 ## Deviations from the issue wording
 
@@ -96,17 +118,27 @@ HIKYO_K8S_E2E_KUBECONFIG=/path/to/kubeconfig \
   health." The `unknown` badge itself is reachable only for a quota-refused
   principal without rows, which is service-level coverage
   (`TestDeliveryTargetQuotaNoticeAcrossEnvironments`).
+- **Scenario 2, a row in tenant B.** "Nothing visible in B" is asserted as
+  "only B's own target is visible in B". Tenant B's own reporter and CR report
+  first; without that row an unreadable environment and an empty one render
+  the same "No reports." Tenant B's environment has nothing published, so
+  that CR's fetch fails and it asserts `Synced=False/FetchFailed`; its report
+  is accepted and the row's state is `reported` all the same.
 - **Scenario 6, "purges later".** The purge is the scheduler's own job
-  function, `PurgeExpiredTargets`, called once with a clock thirty days on.
-  The hourly scheduler is not part of the in-process server. The happy CR
-  reports at a delivery clock 29 days on first, so the purge must spare it:
-  the orphaned row goes, the happy row stays. The browser then reads at the
-  real clock again (a session would not survive 29 days), so screenshot 14
-  shows the happy row received in the future.
+  function, `PurgeExpiredTargets`, on the server's own delivery service under
+  the one clock. The hourly scheduler is not part of the in-process server.
+  It runs twice: at 30 days less an hour the orphaned row survives and no
+  purge event exists; at 30 days plus an hour it is gone, with one purge event
+  per purged row. The happy CR reports at the first of those clocks, so the
+  second purge must spare it. The browser then reads at the real clock again
+  (a session would not survive 30 days), so screenshot 14 shows the happy row
+  received in the future.
 - **Scenario 7, condition messages.** The denied set is built from the run
-  itself: every condition message, cursor, cursor binding, stamp and managed
-  Secret UID any CR held after any step, every minted bearer, and the four key
-  names and values. Bodies are also decoded strictly into the contract types.
+  itself, by category: secret value, config value, key name, bearer, condition
+  message, cursor, cursor binding, stamp, managed Secret UID. CR status is read
+  as soon as a target has reported and after every step. The audit fails if
+  any category is empty, and the spec asserts each count. Bodies are also
+  decoded strictly into the contract types.
 - **Revocations are made through the services**, as the administrator the
   browser is signed in as, not by clicking. The grant dialog and revoke
   buttons are the flow suite's subject (`machine-access.spec.ts`).
@@ -128,8 +160,12 @@ HIKYO_K8S_E2E_KUBECONFIG=/path/to/kubeconfig \
 - **An operator restart re-reports every CR**: its reporting state is in
   memory. After the restart in scenario 6 the never-reported CR gets a row;
   scenario 5 asserts before that.
-- **A killed operator leaves its lease**, so each restart waits for it
-  (about 20 s). That is startup, not a threshold wait.
+- **A stopped operator leaves its lease**, so each of the three restarts
+  waits for it (about 17 s). That is startup, not a threshold wait.
+- **Playwright runs in its own process group**, which is killed when the test
+  is cancelled or fails, so no node or Chromium outlives it.
+- **Screenshots are the viewport**, 1280 x 1600, not full-page: the page
+  scrolls inside its own frame.
 - **The suite is not a PR gate.** No pull-request job has both kind and
   Chromium, and `scripts/ci/ci-job-registry.json` is read from the base
   commit. `k8s-e2e.sh` runs `TestK8sOperator` only, so it does not pick this

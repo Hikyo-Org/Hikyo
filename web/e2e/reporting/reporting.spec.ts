@@ -11,6 +11,10 @@ import { z } from 'zod';
  * and the server and asserts the wire (statuses, rows, captured bodies), then
  * asserts here what a human reading the Kubernetes tab is shown. No state may
  * read as healthy unless it is `reported`.
+ *
+ * Every page load is proved by a row that must be there, its control, before
+ * anything is asserted absent: a listing that failed, is still loading or is
+ * unreadable renders no rows either.
  */
 
 function required(name: string): string {
@@ -33,7 +37,21 @@ const zFacts = z.object({
   orgB: z.string(),
   projectB: z.string(),
 });
-const zAudit = z.object({ reports: z.number(), tombstones: z.number(), denied: z.number() });
+/** What the payload audit looked at, by kind of body and category of denied string. */
+const zAudit = z.record(z.string(), z.number());
+const AUDITED = [
+  'reports',
+  'tombstones',
+  'secret value',
+  'config value',
+  'key name',
+  'bearer',
+  'condition message',
+  'cursor',
+  'cursor binding',
+  'stamp',
+  'managed Secret UID',
+];
 
 /**
  * How far the server's delivery clock is ahead of real time. The Go side moves
@@ -75,16 +93,24 @@ test.afterAll(async () => {
   await page.close();
 });
 
-/** openTargets loads a project's Kubernetes tab afresh, so every state is read, never cached. */
-async function openTargets(org: string, project: string): Promise<void> {
+/**
+ * openTargets loads a project's Kubernetes tab afresh, so every state is read,
+ * never cached, and returns only once the listing is on the page: the control
+ * row is rendered, nothing is still being read and no listing failed.
+ */
+async function openTargets(org: string, project: string, control: string): Promise<void> {
   await page.clock.setFixedTime(Date.now() + clockOffsetMs);
   await page.goto(`/orgs/${org}/projects/${project}/machine-access`);
   await page.getByRole('tab', { name: /^Kubernetes targets/ }).click();
   await expect(page.getByRole('heading', { name: 'Reported by controllers' })).toBeVisible();
+  await expect(row(control)).toHaveCount(1);
   await expect(page.getByText('Reading delivery-target reports…')).toHaveCount(0);
+  await expect(page.getByText(/could not be read, so they are unknown here/)).toHaveCount(0);
+  await expect(page.getByText(/capabilities could not be read/)).toHaveCount(0);
 }
 
-const openA = () => openTargets(facts.org, facts.project);
+/** Project A's control is the happy CR, which holds a row from the first test to the last. */
+const openA = () => openTargets(facts.org, facts.project, 'happy');
 
 function row(name: string): Locator {
   return page
@@ -99,7 +125,7 @@ async function expectState(name: string, state: string): Promise<void> {
 }
 
 async function shot(name: string): Promise<void> {
-  await page.screenshot({ path: join(SCREENSHOTS, `${name}.png`), fullPage: true });
+  await page.screenshot({ path: join(SCREENSHOTS, `${name}.png`) });
 }
 
 test('1 happy path: a reconciled CR is reported with its namespace and name', async () => {
@@ -114,12 +140,16 @@ test('1 happy path: a reconciled CR is reported with its namespace and name', as
 
 test('2 cross-tenant: a report naming another tenant is refused and shows nowhere', async () => {
   await arrange('cross-tenant');
-  await openTargets(facts.orgB, facts.projectB);
-  await expect(page.getByText('No reports.')).toBeVisible();
-  await expect(page.locator('tr[data-state]')).toHaveCount(0);
+  // Tenant B's own target is listed, so B is readable and its listing loaded.
+  await openTargets(facts.orgB, facts.projectB, 'tenant-b');
+  await expectState('tenant-b', 'reported');
+  await expect(page.locator('tr[data-state]')).toHaveCount(1);
+  await expect(row('cross-tenant')).toHaveCount(0);
   await shot('02-cross-tenant-project-b');
   await openA();
+  await expectState('happy', 'reported');
   await expect(row('cross-tenant')).toHaveCount(0);
+  await expect(row('tenant-b')).toHaveCount(0);
 });
 
 test('3 revoked grant: the row turns reporter-revoked', async () => {
@@ -184,6 +214,7 @@ test('5 never reported: a CR created while reporting is disabled has no row', as
 test('6 deletion: the tombstone removes the row', async () => {
   await arrange('tombstone');
   await openA();
+  await expectState('happy', 'reported');
   await expect(row('tombstoned')).toHaveCount(0);
   await shot('11-tombstoned');
 });
@@ -199,17 +230,17 @@ test('6 deletion with the server unreachable: the row stays, goes stale, and is 
   await expectState('orphaned', 'stale');
   await shot('13-orphaned-stale');
 
-  // The happy CR reported a day before the purge clock, so it is spared.
+  // The happy CR reported an hour short of the purge threshold, so it is spared.
   await arrange('purge');
   await openA();
+  await expectState('happy', 'reported');
   await expect(row('orphaned')).toHaveCount(0);
-  await expect(row('happy')).toHaveCount(1);
   await shot('14-orphaned-purged');
 });
 
 test('7 secret-safe payload: every body on the wire is value-free', async () => {
   const audit = await step('wire-audit', zAudit);
-  expect(audit.reports).toBeGreaterThan(0);
-  expect(audit.tombstones).toBeGreaterThan(0);
-  expect(audit.denied).toBeGreaterThan(0);
+  for (const audited of AUDITED) {
+    expect(audit[audited], audited).toBeGreaterThan(0);
+  }
 });
