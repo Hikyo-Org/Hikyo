@@ -152,6 +152,14 @@ who can, who is left out by an except (naming the rule and the except), who
 has Reveal without See, and who no rule reaches. This is the resolver the
 permission ADR made a precondition for key-level access.
 
+### D11. People on Members, machines on Machine access
+
+Members lists people only. A service account's rules live with its
+credentials on Machine access, which reuses the same rule editor; the editor
+disables every permission the permission ADR's machine allowlists forbid,
+with the reason. "Who can…?" answers across people and machines, marking
+machines, because "who can reach this key?" must include deploy accounts.
+
 ## Consequences and open points
 
 - **Evaluation** stays one chokepoint with no cache; matching a `where` adds a

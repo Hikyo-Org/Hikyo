@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 
-import { Panel } from '../Sections.tsx';
-import { label, PERM_GROUPS, PERMS, PRESETS, type PermShape } from './model.ts';
+import { JumpIndex, Panel } from '../Sections.tsx';
+import { label, MACHINE_REVEAL_HINT, PERM_GROUPS, PERMS, PRESETS, SHAPE_NEEDS } from './model.ts';
 import { Lock } from './parts.tsx';
-
-const SHAPE_NOTE: Record<Exclude<PermShape, 'key'>, string> = {
-  env: 'all keys of an environment',
-  project: 'a whole project',
-  org: 'all projects',
-};
 
 function Terms({ terms }: { terms: readonly (readonly [term: ReactNode, id: string, definition: ReactNode])[] }) {
   return (
@@ -35,10 +29,19 @@ export function AccessGlossary() {
       <p className="page__lede">
         Every word the access screens use, and nothing else. The Members page, the rule editor and Who can…? all use exactly these names.
       </p>
+      <JumpIndex
+        sections={[
+          { id: 'gloss-people', label: 'People and rules' },
+          ...PERM_GROUPS.map((group) => ({ id: `gloss-${group.toLowerCase()}`, label: group })),
+          { id: 'gloss-presets', label: 'Presets' },
+          { id: 'gloss-where', label: 'Where' },
+        ]}
+      />
       <Panel id="gloss-people" title="People and rules">
         <Terms
           terms={[
             ['Member', 'member', 'A person or machine (service account) in this organisation.'],
+            ['Machine', 'machine', `A service account: its credential carries the identity. A machine never holds Pin or a management permission. Reveal: ${MACHINE_REVEAL_HINT}`],
             ['Rule', 'rule', 'One line of access: a set of permissions, and where they apply. A member can have several rules; they add up.'],
             ['Permission', 'permission', 'One thing a member may do, like See or Reveal. Listed below. Each is ticked on its own.'],
             ['Preset', 'preset', 'A shortcut that ticks a common set of permissions: Viewer, Editor, Publisher, Admin. Only the ticked permissions are saved; the preset name is shown when a rule matches one exactly.'],
@@ -53,7 +56,7 @@ export function AccessGlossary() {
               p.id,
               <>
                 {p.desc}
-                {p.shape === 'key' ? null : <span className="access-hint"> Only on rules that cover {SHAPE_NOTE[p.shape]}.</span>}
+                {p.shape === 'key' ? null : <span className="access-hint"> Only on rules that cover {SHAPE_NEEDS[p.shape]}.</span>}
               </>,
             ])}
           />

@@ -6788,11 +6788,78 @@ label.chk:has(input:disabled) {
   max-width: 24rem;
 }
 
+/* --- Toggle chip (ui/ToggleChip) ---------------------------------------------
+ *
+ * A pick-set item as a pressable chip: badge radius, control height. The
+ * state is carried by the glyph and the accessible name; the tone only
+ * echoes it. Include mode: `+` off, check and accent fill when pressed.
+ * Exclude mode: a dashed accent hairline while in, the danger tone and a
+ * strike-through once left out. */
+.toggle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-badge);
+  background: var(--bg-panel);
+  color: var(--tx);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.toggle-chip.mono {
+  font-size: var(--fs-mono);
+}
+
+.toggle-chip:hover {
+  background: color-mix(in oklch, var(--bg-panel), var(--tx) 8%);
+}
+
+.toggle-chip[data-state='off'] {
+  color: var(--tx-dim);
+}
+
+.toggle-chip[data-state='included'] {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
+}
+
+.toggle-chip[data-state='implied'] {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.toggle-chip[data-state='excluded'] {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.toggle-chip[data-state='excluded'] .toggle-chip__label {
+  text-decoration: line-through;
+}
+
+.toggle-chip:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.toggle-chip__mark {
+  flex: none;
+  width: 1em;
+  text-align: center;
+}
+
 /* --- Member access rules prototype (routes/accessRules, Storybook only) ------
  *
  * Ported from docs/site/public/prototypes/member-access/6. State is never
  * colour-only: an except carries a cross and the word, a secret a lock and
- * the word, a Where tap its state in text. Tokens only. */
+ * the word. Tokens only. */
 .access-rules p,
 .access-dialog p {
   margin: 0;
@@ -6811,7 +6878,6 @@ label.chk:has(input:disabled) {
 .access-people,
 .access-rule-list,
 .access-answer,
-.access-log,
 .access-diff ul {
   margin: 0;
   padding: 0;
@@ -6835,28 +6901,33 @@ label.chk:has(input:disabled) {
 .access-rule-list,
 .access-rule__main,
 .access-editor__section,
-.access-perm-group,
+.access-perm-list,
 .access-axis,
 .access-summary,
-.access-log__entry,
-.access-diff {
+.access-diff,
+.access-answer__why {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
 .access-person__who {
+  align-items: flex-start;
   gap: var(--space-1);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
 
 .access-person__who strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--tx);
   font-size: var(--fs-md);
 }
 
-.access-person__add {
+.access-person__action {
   align-self: flex-start;
 }
 
@@ -6881,8 +6952,8 @@ label.chk:has(input:disabled) {
 .access-presets,
 .access-picks,
 .access-examples,
-.access-axis__head,
-.access-ask {
+.access-ask,
+.access-filter {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -6892,6 +6963,7 @@ label.chk:has(input:disabled) {
 .access-where {
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
+  overflow-wrap: anywhere;
 }
 
 .access-where__sep {
@@ -6905,26 +6977,24 @@ label.chk:has(input:disabled) {
   color: var(--danger);
 }
 
-.access-pick {
-  padding: 0 var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
+.access-filter,
+.access-ask {
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-5);
 }
 
-.access-pick[data-state='implied'] {
-  border-style: dashed;
-  border-color: var(--accent);
+.access-filter > .field {
+  flex: 1 1 var(--width-dialog);
+  min-width: 0;
 }
 
-.access-pick[data-state='excepted'] {
-  border-color: var(--danger);
-  color: var(--danger);
-  background: var(--danger-soft);
-  text-decoration: line-through;
+.access-ask {
+  margin-top: var(--space-3);
 }
 
-.access-pick[data-state='off'] {
-  color: var(--tx-dim);
+.access-ask > .field {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .access-editor__section {
@@ -6943,18 +7013,25 @@ label.chk:has(input:disabled) {
   margin-right: auto;
 }
 
-.access-perm-group {
-  gap: var(--space-1);
-}
-
 .access-perm__desc {
   padding-left: calc(var(--chk-box) + var(--chk-gap));
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
 
-.access-perm__why {
+.access-perm__note {
   color: var(--tx-faint);
+}
+
+/* The note is always on the row; only this glyph and the control's disabled
+   state change when Where blocks the permission, so the row keeps its height. */
+.access-perm__mark {
+  visibility: hidden;
+  fill: var(--danger);
+}
+
+.access-perm--blocked .access-perm__mark {
+  visibility: visible;
 }
 
 .access-axis {
@@ -6963,26 +7040,11 @@ label.chk:has(input:disabled) {
   border-radius: var(--radius-container);
 }
 
-.access-axis__head {
-  gap: var(--space-3);
-}
-
-.access-axis__head h3,
-.access-perm-group h3 {
+.access-axis h3 {
   margin: 0;
 }
 
-.access-axis__head h3 {
-  min-width: 12ch;
-}
-
-.access-seg {
-  display: inline-flex;
-  gap: var(--space-1);
-}
-
-.access-single-keys > summary,
-.access-noreach > summary {
+.access-disclosure > summary {
   display: flex;
   align-items: center;
   min-height: var(--control);
@@ -6992,7 +7054,6 @@ label.chk:has(input:disabled) {
 }
 
 .access-summary,
-.access-log__entry,
 .access-diff {
   padding: var(--space-3);
   border: 1px solid var(--panel-line);
@@ -7003,6 +7064,7 @@ label.chk:has(input:disabled) {
 
 .access-summary__sentence {
   font-size: var(--fs-md);
+  overflow-wrap: anywhere;
 }
 
 .access-diff--gain {
@@ -7014,21 +7076,11 @@ label.chk:has(input:disabled) {
   list-style: disc;
 }
 
-.access-ask {
-  align-items: flex-end;
-  font-size: var(--fs-lg);
-  font-weight: 700;
-}
-
-.access-ask .field {
-  font-weight: 400;
-}
-
 .access-examples {
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
 }
 
-#access-who-can > h3 {
+#access-answer > h3 {
   margin: var(--space-4) 0 var(--space-1);
 }
 
@@ -7037,11 +7089,19 @@ label.chk:has(input:disabled) {
   grid-template-columns: var(--icon) minmax(0, 1fr);
   align-items: baseline;
   column-gap: var(--space-2);
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
+}
+
+.access-answer strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .access-answer__why {
   grid-column: 2;
+  gap: var(--space-1);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
@@ -7060,13 +7120,6 @@ label.chk:has(input:disabled) {
 
 .access-answer__glyph--none {
   fill: var(--tx-faint);
-}
-
-.access-log {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 .access-gloss {
@@ -7102,5 +7155,10 @@ label.chk:has(input:disabled) {
   .access-gloss > div {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);
+  }
+
+  .access-ask {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

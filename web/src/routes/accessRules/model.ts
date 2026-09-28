@@ -106,7 +106,9 @@ export type Rule = {
 export type Key = { readonly id: string; readonly project: string; readonly name: string; readonly folder: string; readonly secret: boolean };
 export type Env = { readonly id: string; readonly protected: boolean };
 export type Project = { readonly id: string; readonly envs: readonly Env[] };
-export type Person = { readonly id: string; readonly name: string; readonly handle: string; readonly note: string };
+/** A person signs in; a machine is a service account whose credential carries the identity. */
+export type MemberKind = 'person' | 'machine';
+export type Person = { readonly id: string; readonly kind: MemberKind; readonly name: string; readonly handle: string; readonly note: string };
 
 export type World = {
   readonly people: readonly Person[];
@@ -119,6 +121,7 @@ export type World = {
 export const keyPick = (keyId: string) => `#${keyId}`;
 
 export const personName = (world: World, id: string) => world.people.find((p) => p.id === id)?.name ?? id;
+export const kindOf = (world: World, id: string): MemberKind => world.people.find((p) => p.id === id)?.kind ?? 'person';
 export const keyById = (world: World, id: string) => world.keys.find((k) => k.id === id);
 export const projectKeys = (world: World, project: string) => world.keys.filter((k) => k.project === project);
 export const projectEnvs = (world: World, project: string) => world.projects.find((p) => p.id === project)?.envs ?? [];
@@ -142,23 +145,65 @@ export function itemLabel(world: World, item: string): { text: string; secret: b
   return key === undefined ? { text: '(deleted key)', secret: false } : { text: `${key.folder}/${key.name}`, secret: key.secret };
 }
 
-/** Is this permission possible on a rule of this shape? */
-export function allowed(id: PermId, rule: Pick<Rule, 'projects' | 'envs' | 'keys'>): boolean {
-  const { shape } = perm(id);
+/**
+ * What no machine principal may hold (permission-model ADR, "Machine
+ * principals"): no management capability, and no Pin outside the pin rules.
+ * Reveal stays possible, behind the project's machine reveal opt-in.
+ */
+export const MACHINE_FORBIDDEN: readonly PermId[] = ['pin', 'manage-members', 'manage-identities', 'manage-adapters', 'project-settings', 'manage-projects'];
+
+export const MACHINE_FORBIDDEN_WHY = 'Machines cannot hold this';
+
+/** Shown under Reveal and Reveal history for a machine: never implied, a per-project operator act. */
+export const MACHINE_REVEAL_HINT = "Needs the project's machine reveal opt-in.";
+
+type Shaped = Pick<Rule, 'projects' | 'envs' | 'keys'>;
+
+function shapeFits(shape: PermShape, rule: Shaped): boolean {
   if (shape === 'env') return !narrowKeys(rule);
   if (shape === 'project') return !narrowKeys(rule) && !narrowEnvs(rule);
   if (shape === 'org') return rule.projects === '*' && !narrowKeys(rule) && !narrowEnvs(rule);
   return true;
 }
 
-/** The ticked permissions this rule can actually carry, in vocabulary order. */
-export const effective = (rule: Pick<Rule, 'perms' | 'projects' | 'envs' | 'keys'>): PermId[] =>
-  PERMS.map((p) => p.id).filter((id) => rule.perms.includes(id) && allowed(id, rule));
+/** Can a member of this kind hold this permission on a rule of this shape, and if not, why. */
+export function availability(id: PermId, rule: Shaped, kind: MemberKind = 'person'): { ok: true } | { ok: false; why: string } {
+  if (kind === 'machine' && MACHINE_FORBIDDEN.includes(id)) return { ok: false, why: MACHINE_FORBIDDEN_WHY };
+  const { shape } = perm(id);
+  if (shape !== 'key' && !shapeFits(shape, rule)) return { ok: false, why: `Not available here: ${SHAPE_WHY[shape]}` };
+  return { ok: true };
+}
 
-/** The preset this rule matches exactly, after its shape drops what it cannot carry. */
-export function presetOf(rule: Rule): string | null {
-  const eff = effective(rule).join();
-  const match = PRESETS.find((preset) => PERMS.map((p) => p.id).filter((id) => preset.perms.includes(id) && allowed(id, rule)).join() === eff);
+export const allowed = (id: PermId, rule: Shaped, kind: MemberKind = 'person') => availability(id, rule, kind).ok;
+
+/** What each non-key shape needs, as the glossary and the permission list word it. */
+export const SHAPE_NEEDS: Record<Exclude<PermShape, 'key'>, string> = {
+  env: 'all keys of an environment',
+  project: 'a whole project',
+  org: 'all projects',
+};
+
+/**
+ * The standing condition a permission carries for a member of this kind, or
+ * undefined when it has none. It depends on the permission and the member
+ * only, never on the rule's Where, so a list can show it on every row and
+ * only flip whether it is currently blocking: the rows never change height.
+ */
+export function requirement(id: PermId, kind: MemberKind = 'person'): string | undefined {
+  if (kind === 'machine' && MACHINE_FORBIDDEN.includes(id)) return `${MACHINE_FORBIDDEN_WHY}.`;
+  if (kind === 'machine' && (id === 'reveal' || id === 'reveal-history')) return MACHINE_REVEAL_HINT;
+  const { shape } = perm(id);
+  return shape === 'key' ? undefined : `Only on rules that cover ${SHAPE_NEEDS[shape]}.`;
+}
+
+/** The ticked permissions this rule can actually carry, in vocabulary order. */
+export const effective = (rule: Pick<Rule, 'perms' | 'projects' | 'envs' | 'keys'>, kind: MemberKind = 'person'): PermId[] =>
+  PERMS.map((p) => p.id).filter((id) => rule.perms.includes(id) && allowed(id, rule, kind));
+
+/** The preset this rule matches exactly, after its shape and member kind drop what it cannot carry. */
+export function presetOf(rule: Rule, kind: MemberKind = 'person'): string | null {
+  const eff = effective(rule, kind).join();
+  const match = PRESETS.find((preset) => PERMS.map((p) => p.id).filter((id) => preset.perms.includes(id) && allowed(id, rule, kind)).join() === eff);
   return match?.name ?? null;
 }
 
@@ -171,7 +216,7 @@ export type Reach = { hit: false } | { hit: true; ok: true } | { hit: true; ok: 
  * key limits never narrow it; an environment except removes everything.
  */
 export function ruleReaches(world: World, rule: Rule, id: PermId, project: string, env: string, keyId?: string): Reach {
-  if (!effective(rule).includes(id)) return { hit: false };
+  if (!effective(rule, kindOf(world, rule.member)).includes(id)) return { hit: false };
   if (!projectsOf(world, rule).includes(project)) return { hit: false };
   if (rule.envs.mode === 'only' && !rule.envs.list.includes(env)) return { hit: false };
   if (rule.envs.mode === 'all' && rule.envs.exc.includes(env)) return { hit: true, ok: false, why: `except ${env}` };
@@ -241,7 +286,7 @@ export function reachOf(world: World, rule: Rule): ReachSummary {
   return {
     environments: pairs.length,
     keys: keys.size,
-    secrets: effective(rule).includes('reveal') ? secrets : null,
+    secrets: effective(rule, kindOf(world, rule.member)).includes('reveal') ? secrets : null,
     protectedEnvs: pairs.filter((pair) => pair.env.protected).length,
     grows: rule.projects === '*' ? 'projects' : rule.envs.mode === 'all' ? 'environments' : null,
   };
@@ -272,7 +317,6 @@ export function whereText(world: World, rule: Pick<Rule, 'projects' | 'envs' | '
   return `${projectsText(rule)} › ${envs} › ${keys}`;
 }
 
-export const ruleText = (world: World, rule: Rule) => `${effective(rule).map(label).join(', ')} in ${whereText(world, rule)}`;
 
 /* ---------- editing ---------- */
 
@@ -285,11 +329,8 @@ export function toggleItem(axis: Axis, item: string): Axis {
 export const setMode = (axis: Axis, mode: Axis['mode']): Axis =>
   axis.mode === mode ? axis : mode === 'all' ? ALL : { mode: 'only', list: [] };
 
-export type ItemState = 'included' | 'implied' | 'excepted' | 'off';
-
-/** `implied`: covered because the axis is "All, except..." and this item is not left out. */
-export const itemState = (axis: Axis, item: string): ItemState =>
-  axis.mode === 'all' ? (axis.exc.includes(item) ? 'excepted' : 'implied') : axis.list.includes(item) ? 'included' : 'off';
+/** Is this item tapped: included under "Only...", left out under "All, except..."? */
+export const tapped = (axis: Axis, item: string) => (axis.mode === 'all' ? axis.exc : axis.list).includes(item);
 
 export const hasWhere = (rule: Pick<Rule, 'projects' | 'envs' | 'keys'>) =>
   (rule.projects === '*' || rule.projects.length > 0) &&
@@ -298,7 +339,7 @@ export const hasWhere = (rule: Pick<Rule, 'projects' | 'envs' | 'keys'>) =>
 
 /** Save or replace a rule; a new one (id 0) gets the next id. Only the permissions it can carry are stored. */
 export function saveRule(world: World, draft: Rule): World {
-  const rule = { ...draft, perms: effective(draft), id: draft.id === 0 ? Math.max(0, ...world.rules.map((r) => r.id)) + 1 : draft.id };
+  const rule = { ...draft, perms: effective(draft, kindOf(world, draft.member)), id: draft.id === 0 ? Math.max(0, ...world.rules.map((r) => r.id)) + 1 : draft.id };
   const exists = world.rules.some((r) => r.id === rule.id);
   return { ...world, rules: exists ? world.rules.map((r) => (r.id === rule.id ? rule : r)) : [...world.rules, rule] };
 }
@@ -315,7 +356,6 @@ const updateKey = (world: World, keyId: string, patch: Partial<Pick<Key, 'name' 
 /** A folder pick covers whatever is in the folder now, so a moved key leaves it; a single-key pick follows the id. */
 export const moveKey = (world: World, keyId: string, folder: string) => updateKey(world, keyId, { folder });
 export const renameKey = (world: World, keyId: string, name: string) => updateKey(world, keyId, { name });
-export const addKey = (world: World, key: Key): World => ({ ...world, keys: [...world.keys, key] });
 
 /** Every `member|permission|environment` that reaches this key, key-shaped permissions other than See. */
 export function accessTo(world: World, keyId: string): Set<string> {

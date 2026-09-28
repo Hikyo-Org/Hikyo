@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHANGES, makeWorld } from './fixture.ts';
-import { accessDiff, allowed, effective, moveKey, perm, PRESETS, presetOf, reachOf, renameKey, resolve, type World } from './model.ts';
+import { makeWorld } from './fixture.ts';
+import { accessDiff, allowed, availability, effective, MACHINE_FORBIDDEN_WHY, moveKey, perm, PRESETS, presetOf, reachOf, renameKey, requirement, resolve, type PermId, type World } from './model.ts';
 
 const DB_PASSWORD = 'payments_k3';
 const STRIPE_SECRET_KEY = 'payments_k5';
@@ -63,11 +63,42 @@ describe('access rules model', () => {
     ]);
   });
 
-  it('a rename changes nobody\'s access', () => {
+  it("a rename changes nobody's access", () => {
     const world = makeWorld();
-    const rename = CHANGES.find((c) => c.id === 'rename-stripe');
-    if (rename === undefined) throw new Error('fixture has no rename change');
-    expect(accessDiff(world, rename.apply(world), rename.keyId)).toEqual({ gained: [], lost: [] });
+    expect(accessDiff(world, renameKey(world, STRIPE_SECRET_KEY, 'STRIPE_API_KEY'), STRIPE_SECRET_KEY)).toEqual({ gained: [], lost: [] });
+  });
+
+  it('machines cannot hold management permissions or Pin, whatever the rule shape', () => {
+    const wide = ruleOf(makeWorld(), 1);
+    const forbidden: PermId[] = ['pin', 'manage-members', 'manage-identities', 'manage-adapters', 'project-settings', 'manage-projects'];
+    const held: PermId[] = ['read', 'edit', 'publish', 'definitions-edit', 'reveal', 'reveal-history'];
+    for (const id of forbidden) {
+      expect(availability(id, wide, 'machine')).toEqual({ ok: false, why: MACHINE_FORBIDDEN_WHY });
+      expect(allowed(id, wide, 'person')).toBe(true);
+    }
+    for (const id of held) {
+      expect(allowed(id, wide, 'machine')).toBe(true);
+    }
+  });
+
+  it('a permission row note depends on the member kind only, never on Where', () => {
+    expect(requirement('pin')).toBe('Only on rules that cover all keys of an environment.');
+    expect(requirement('edit')).toBeUndefined();
+    expect(requirement('manage-members', 'machine')).toBe('Machines cannot hold this.');
+    expect(requirement('reveal', 'machine')).toBe("Needs the project's machine reveal opt-in.");
+    expect(requirement('reveal')).toBeUndefined();
+  });
+
+  it('a machine rule drops what machines cannot hold, and resolves without it', () => {
+    const world: World = {
+      ...makeWorld(),
+      rules: [{ id: 1, member: 'ci', perms: ['read', 'publish', 'pin', 'manage-members'], projects: ['payments'], envs: { mode: 'all', exc: [] }, keys: { mode: 'all', exc: [] } }],
+    };
+    const [rule] = world.rules;
+    if (rule === undefined) throw new Error('no rule');
+    expect(effective(rule, 'machine')).toEqual(['read', 'publish']);
+    expect(resolve(world, 'ci', 'manage-members', 'payments', 'prod', DB_PASSWORD).state).toBe('no');
+    expect(resolve(world, 'ci', 'publish', 'payments', 'prod', DB_PASSWORD).state).toBe('yes');
   });
 
   it('Reveal without See resolves to the needs-See state', () => {

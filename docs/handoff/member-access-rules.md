@@ -28,6 +28,7 @@ owner took, and what is owed before any of it becomes operative.
 | 4 | One vocabulary, tickable permissions, presets, glossary | 1B See not forced; 2B Admin preset without secrets; 3 folder admins create keys in the folder, folder picks follow the folder, single-key picks follow the key id |
 | 5 | Key add / move / rename simulator | A: a widening move needs confirmation |
 | 6 | Widening move confirmation | Final. Except stays rule-local (no global deny) |
+| Storybook review | Editor, Members, Who can...? | Where before permissions; search on Members; Members lists people only, machines' rules move to Machine access (D11); Who can...? form ordered Permission, Project, Environment, Key with descriptions; simulator dropped, key-move confirmation kept as its own component |
 
 ## Owed before the amendment is operative
 

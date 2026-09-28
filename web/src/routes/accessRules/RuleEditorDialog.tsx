@@ -1,22 +1,22 @@
 import { useId, useState, type ReactNode } from 'react';
 
 import { Button } from '../../ui/Button.tsx';
-import { Checkbox } from '../../ui/Checkbox.tsx';
-import { cx } from '../../ui/cx.ts';
+import { ChoiceGroup } from '../../ui/ChoiceGroup.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
+import { Radio } from '../../ui/Radio.tsx';
+import { ToggleChip } from '../../ui/ToggleChip.tsx';
 import {
   ALL,
-  allowed,
+  availability,
   effective,
   envNames,
   folderNames,
   hasWhere,
-  itemState,
   keyPick,
+  kindOf,
   label,
+  MACHINE_FORBIDDEN_WHY,
   narrowKeys,
-  PERM_GROUPS,
-  PERMS,
   personName,
   PRESETS,
   projectKeys,
@@ -24,25 +24,25 @@ import {
   reachOf,
   reachText,
   setMode,
-  SHAPE_WHY,
+  tapped,
   toggleItem,
   whereText,
   type Axis,
-  type Perm,
   type Rule,
   type World,
 } from './model.ts';
-import { EnvName, KeyItem, Pick } from './parts.tsx';
+import { EnvName, KeyItem } from './parts.tsx';
+import { PermissionList } from './PermissionList.tsx';
 
 /** A fresh rule for a member: See ticked, no Where yet. Id 0 until saved. */
 export const newRule = (member: string): Rule => ({ id: 0, member, perms: ['read'], projects: [], envs: ALL, keys: ALL });
 
 /**
- * The rule editor: presets that only tick boxes, the permissions grouped
- * Values / Secrets / Administration with what each lets you do, and Where as
- * three axes of taps. A permission the rule's Where is too narrow to carry is
- * disabled with the reason inline; it stays ticked in the draft and comes
- * back when Where widens. The sentence at the foot reads the draft live.
+ * The rule editor. Where comes first (projects, environments, keys, each
+ * "All, except..." or "Only..."), then what: presets that only tick boxes,
+ * and the permission list. Nothing above a tapped control changes when it is
+ * tapped: Where only grows downwards, the permission rows keep their height
+ * (see {@link PermissionList}), and the live sentence sits at the foot.
  */
 export function RuleEditorDialog({
   world,
@@ -58,13 +58,18 @@ export function RuleEditorDialog({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(rule);
+  const kind = kindOf(world, draft.member);
   const projects = projectsOf(world, draft);
-  const eff = effective(draft);
+  const eff = effective(draft, kind);
   const where = hasWhere(draft);
   const valid = eff.length > 0 && where;
-  const dropped = draft.perms.filter((id) => !allowed(id, draft));
+  const whyNot = draft.perms.flatMap((id) => {
+    const a = availability(id, draft, kind);
+    return a.ok ? [] : [{ id, why: a.why }];
+  });
+  const machineDropped = whyNot.filter((x) => x.why === MACHINE_FORBIDDEN_WHY).map((x) => x.id);
+  const shapeDropped = whyNot.filter((x) => x.why !== MACHINE_FORBIDDEN_WHY).map((x) => x.id);
   const name = personName(world, draft.member);
-  const setAxis = (axis: 'envs' | 'keys') => (next: Axis) => setDraft({ ...draft, [axis]: next });
   const toggleProject = (project: string) => {
     const list = draft.projects === '*' ? [] : draft.projects;
     setDraft({ ...draft, projects: list.includes(project) ? list.filter((p) => p !== project) : [...list, project] });
@@ -94,67 +99,76 @@ export function RuleEditorDialog({
       }
     >
       <fieldset className="access-editor__section">
-        <legend className="eyebrow">Permissions</legend>
-        <div className="access-presets">
-          <span>Presets tick boxes:</span>
-          {PRESETS.map((preset) => (
-            <Button key={preset.name} type="button" variant="quiet" onClick={() => setDraft({ ...draft, perms: [...preset.perms] })}>
-              {preset.name}
-            </Button>
-          ))}
-        </div>
-        {PERM_GROUPS.map((group) => (
-          <div key={group} className="access-perm-group">
-            <h3 className="eyebrow">{group}</h3>
-            {PERMS.filter((p) => p.group === group).map((p) => (
-              <PermRow
-                key={p.id}
-                perm={p}
-                available={allowed(p.id, draft)}
-                checked={draft.perms.includes(p.id)}
-                onChange={(on) => setDraft({ ...draft, perms: on ? [...draft.perms, p.id] : draft.perms.filter((x) => x !== p.id) })}
-              />
-            ))}
-          </div>
-        ))}
-      </fieldset>
-
-      <fieldset className="access-editor__section">
         <legend className="eyebrow">Where</legend>
-        <AxisBox title="Projects" hint={draft.projects === '*' ? 'All projects, including ones created later.' : 'Tap one or more projects.'}>
+        <AxisBox title="Projects" hint="Tap one or more projects, or all projects, which includes ones created later.">
           <div className="access-picks">
-            <Pick state={draft.projects === '*' ? 'included' : 'off'} onToggle={() => setDraft({ ...draft, projects: draft.projects === '*' ? [] : '*' })}>
+            <ToggleChip mono pressed={draft.projects === '*'} onClick={() => setDraft({ ...draft, projects: draft.projects === '*' ? [] : '*' })}>
               all projects
-            </Pick>
-            {world.projects.map((p) => (
-              <Pick
-                key={p.id}
-                state={draft.projects === '*' ? 'implied' : draft.projects.includes(p.id) ? 'included' : 'off'}
-                disabled={draft.projects === '*'}
-                onToggle={() => toggleProject(p.id)}
-              >
-                {p.id}
-              </Pick>
-            ))}
+            </ToggleChip>
+            {world.projects.map((p) =>
+              draft.projects === '*' ? (
+                <ToggleChip key={p.id} mono mode="exclude" pressed={false} disabled>
+                  {p.id}
+                </ToggleChip>
+              ) : (
+                <ToggleChip key={p.id} mono pressed={draft.projects.includes(p.id)} onClick={() => toggleProject(p.id)}>
+                  {p.id}
+                </ToggleChip>
+              ),
+            )}
           </div>
         </AxisBox>
         {projects.length > 0 ? (
           <>
-            <AxisEditor title="Environments" axis={draft.envs} onChange={setAxis('envs')} items={envNames(world, projects)} render={(e) => <EnvName world={world} name={e} />} />
-            <AxisEditor title="Keys" axis={draft.keys} onChange={setAxis('keys')} items={folderNames(world, projects)} render={(f) => `${f}/`}>
-              <details className="access-single-keys">
+            <AxisEditor
+              title="Environments"
+              axis={draft.envs}
+              onChange={(envs) => setDraft({ ...draft, envs })}
+              items={envNames(world, projects)}
+              render={(e) => <EnvName world={world} name={e} />}
+            />
+            <AxisEditor
+              title="Keys"
+              axis={draft.keys}
+              onChange={(keys) => setDraft({ ...draft, keys })}
+              items={folderNames(world, projects)}
+              render={(f) => `${f}/`}
+            >
+              <details className="access-disclosure">
                 <summary>Single keys…</summary>
                 <div className="access-picks">
                   {singleKeys.map((item) => (
-                    <Pick key={item} state={itemState(draft.keys, item)} onToggle={() => setAxis('keys')(toggleItem(draft.keys, item))}>
+                    <AxisChip key={item} axis={draft.keys} item={item} onChange={(keys) => setDraft({ ...draft, keys })}>
                       <KeyItem world={world} item={item} />
-                    </Pick>
+                    </AxisChip>
                   ))}
                 </div>
               </details>
             </AxisEditor>
           </>
         ) : null}
+      </fieldset>
+
+      <fieldset className="access-editor__section">
+        <legend className="eyebrow">Permissions</legend>
+        <div className="access-presets" role="group" aria-label="Presets">
+          <span className="access-hint">Presets tick boxes:</span>
+          {PRESETS.map((preset) => (
+            <Button key={preset.name} type="button" variant="quiet" onClick={() => setDraft({ ...draft, perms: [...preset.perms] })}>
+              {preset.name}
+            </Button>
+          ))}
+        </div>
+        <PermissionList
+          mode="multi"
+          kind={kind}
+          selected={draft.perms}
+          onChange={(perms) => setDraft({ ...draft, perms })}
+          blocked={(id) => {
+            const a = availability(id, draft, kind);
+            return a.ok ? undefined : a.why;
+          }}
+        />
       </fieldset>
 
       <div className="access-summary">
@@ -170,9 +184,10 @@ export function RuleEditorDialog({
           )}
         </p>
         {valid ? <p>{reachText(reachOf(world, draft))}</p> : null}
-        {dropped.length > 0 && where ? (
-          <p>Left out because this rule is narrower than they need: {dropped.map(label).join(', ')}. They come back if you widen Where.</p>
+        {shapeDropped.length > 0 && where ? (
+          <p>Left out because this rule is narrower than they need: {shapeDropped.map(label).join(', ')}. They come back if you widen Where.</p>
         ) : null}
+        {machineDropped.length > 0 ? <p>Left out because machines cannot hold them: {machineDropped.map(label).join(', ')}.</p> : null}
         {valid && !eff.includes('read') && (eff.includes('reveal') || eff.includes('reveal-history')) ? (
           <p>No See in this rule: Reveal only works where another of their rules gives See.</p>
         ) : null}
@@ -184,30 +199,23 @@ export function RuleEditorDialog({
   );
 }
 
-function PermRow({ perm, available, checked, onChange }: { perm: Perm; available: boolean; checked: boolean; onChange: (on: boolean) => void }) {
-  const descId = useId();
-  return (
-    <div className={cx('access-perm', !available && 'access-perm--off')}>
-      <Checkbox label={perm.label} checked={checked && available} disabled={!available} aria-describedby={descId} onChange={(e) => onChange(e.target.checked)} />
-      <p id={descId} className="access-perm__desc">
-        {perm.desc}
-        {!available && perm.shape !== 'key' ? <span className="access-perm__why"> Not available here: {SHAPE_WHY[perm.shape]}.</span> : null}
-      </p>
-    </div>
-  );
-}
-
 function AxisBox({ title, hint, mode, children }: { title: string; hint: string; mode?: ReactNode; children: ReactNode }) {
   const headingId = useId();
   return (
     <div className="access-axis" role="group" aria-labelledby={headingId}>
-      <div className="access-axis__head">
-        <h3 id={headingId}>{title}</h3>
-        {mode}
-      </div>
+      <h3 id={headingId}>{title}</h3>
+      {mode}
       <p className="access-hint">{hint}</p>
       {children}
     </div>
+  );
+}
+
+function AxisChip({ axis, item, onChange, children }: { axis: Axis; item: string; onChange: (axis: Axis) => void; children: ReactNode }) {
+  return (
+    <ToggleChip mono mode={axis.mode === 'all' ? 'exclude' : 'include'} pressed={tapped(axis, item)} onClick={() => onChange(toggleItem(axis, item))}>
+      {children}
+    </ToggleChip>
   );
 }
 
@@ -226,26 +234,23 @@ function AxisEditor({
   onChange: (axis: Axis) => void;
   children?: ReactNode;
 }) {
+  const group = useId();
   return (
     <AxisBox
       title={title}
-      hint={axis.mode === 'all' ? 'All of them, including ones added later. Tap to leave one out.' : 'Only the ones you tap.'}
+      hint="All, except… covers ones added later: tap to leave one out. Only… covers just what you tap."
       mode={
-        <div className="access-seg" role="group" aria-label={`${title}: how to pick`}>
-          <Button type="button" variant="quiet" aria-pressed={axis.mode === 'all'} onClick={() => onChange(setMode(axis, 'all'))}>
-            All, except…
-          </Button>
-          <Button type="button" variant="quiet" aria-pressed={axis.mode === 'only'} onClick={() => onChange(setMode(axis, 'only'))}>
-            Only…
-          </Button>
-        </div>
+        <ChoiceGroup legend="How to pick" layout="wrap" className="access-axis__mode">
+          <Radio name={group} label="All, except…" checked={axis.mode === 'all'} onChange={() => onChange(setMode(axis, 'all'))} />
+          <Radio name={group} label="Only…" checked={axis.mode === 'only'} onChange={() => onChange(setMode(axis, 'only'))} />
+        </ChoiceGroup>
       }
     >
       <div className="access-picks">
         {items.map((item) => (
-          <Pick key={item} state={itemState(axis, item)} onToggle={() => onChange(toggleItem(axis, item))}>
+          <AxisChip key={item} axis={axis} item={item} onChange={onChange}>
             {render(item)}
-          </Pick>
+          </AxisChip>
         ))}
       </div>
       {children}

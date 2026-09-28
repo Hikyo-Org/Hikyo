@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 
 import { Badge } from '../../ui/Badge.tsx';
-import { Button } from '../../ui/Button.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
-import { isProtectedName, itemLabel, perm, projectsText, type ItemState, type PermId, type Rule, type World } from './model.ts';
+import { effective, isProtectedName, itemLabel, kindOf, perm, presetOf, projectsText, reachOf, reachText, type PermId, type Rule, type World } from './model.ts';
 
 /** A permission as a badge: Secrets carry the lock and the danger tone, Administration the slate one. */
 export function PermBadge({ id }: { id: PermId }) {
@@ -90,31 +89,24 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   );
 }
 
-const STATE_WORD: Record<ItemState, string> = {
-  included: 'included',
-  implied: 'included',
-  excepted: 'left out',
-  off: 'not included',
-};
-
 /**
- * One tappable Where item. Pressed means the tap is in effect: included under
- * "Only...", left out under "All, except...". The state is named in text as
- * well as by the glyph and the tone.
+ * One rule as the Members card and the Who can...? answers both show it: the
+ * permissions it gives (with the preset name when it matches one exactly),
+ * then Where, then optionally what that reaches.
  */
-export function Pick({ state, disabled, onToggle, children }: { state: ItemState; disabled?: boolean; onToggle: () => void; children: ReactNode }) {
+export function RuleSummary({ world, rule, reach = false }: { world: World; rule: Rule; reach?: boolean }) {
+  const kind = kindOf(world, rule.member);
+  const preset = presetOf(rule, kind);
   return (
-    <Button
-      type="button"
-      className="access-pick"
-      data-state={state}
-      aria-pressed={state === 'included' || state === 'excepted'}
-      disabled={disabled}
-      onClick={onToggle}
-    >
-      {state === 'off' ? <span aria-hidden="true">+</span> : <Glyph name={state === 'excepted' ? 'cross' : 'check'} />}
-      <span>{children}</span>
-      <span className="visually-hidden">, {STATE_WORD[state]}</span>
-    </Button>
+    <div className="access-rule__main">
+      <div className="access-rule__perms">
+        {preset === null ? null : <span className="access-hint">{preset}:</span>}
+        {effective(rule, kind).map((id) => (
+          <PermBadge key={id} id={id} />
+        ))}
+      </div>
+      <RuleWhere world={world} rule={rule} />
+      {reach ? <p className="access-rule__reach">{reachText(reachOf(world, rule))}</p> : null}
+    </div>
   );
 }
