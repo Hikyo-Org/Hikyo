@@ -551,7 +551,7 @@ function pageMemberC(){
         <thead><tr><th scope="col">Key</th>${['read','edit','publish','reveal','reveal-history'].map(c => `<th scope="col" class="mono" style="text-transform:none;letter-spacing:0">${c}</th>`).join('')}</tr></thead>
         <tbody>${KEYS[project].map(k => `<tr><td class="mono">${k.f}/${k.k}${k.s?' <span aria-label="secret">🔒</span>':''}</td>${['read','edit','publish','reveal','reveal-history'].map(c => {
           const r = resolve(p,c,project,env,k.k);
-          const tip = r.why.replace(/<[^>]+>/g,'');
+          const tip = new DOMParser().parseFromString(r.why,'text/html').body.textContent || '';
           return `<td title="${esc(tip)}">${r.ok ? '<span class="g-direct">✓<span class="vh"> yes</span></span>' : r.blocked ? '<span class="badge badge--changed">limited</span>' : '<span class="muted">·</span><span class="vh"> no</span>'}</td>`;
         }).join('')}</tr>`).join('')}</tbody>
       </table></div>
