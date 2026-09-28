@@ -93,9 +93,13 @@ Local validation includes relevant Go/race tests, both database backends,
 backup/restore upgrade drills, authorization/query inventories, generated API
 and TypeScript checks, CLI golden help, web tests/typecheck/lint, documentation
 checks and cryptographic-signature/DCO verification. Regression tests cover the
-security and concurrency findings above. Native browser automation was
-unavailable; browser evidence comes from remote desktop/mobile CI, not manual
-inspection.
+security and concurrency findings above. The native collaborative browser was
+unavailable. Local Chromium verified the change-approval and temporary-access
+flows on desktop and mobile; broader browser coverage comes from remote CI.
+Those fixtures derive the cookie domain from the configured origin and preserve
+the server's Secure attribute. Playwright's `url` cookie conversion overwrites
+Secure for HTTP loopback and rejects the resulting `__Host-` cookie, so these
+fixtures deliberately provide an explicit hostname and root path.
 
 Direct adversarial review and repository CodeRabbit findings were executed.
 The separate native cross-provider pass was **skipped**, not CLEAN: current
