@@ -1061,14 +1061,15 @@ const (
 	StoreDeliveryTargetsSelectExpired StoreOp = "deliverytargets.SelectExpired"
 	StoreDeliveryTargetsPurge         StoreOp = "deliverytargets.Purge"
 
-	StoreFileTargetsList         StoreOp = "filetargets.List"
-	StoreFileTargetsGet          StoreOp = "filetargets.Get"
-	StoreFileTargetsKeys         StoreOp = "filetargets.Keys"
-	StoreFileTargetsForPrincipal StoreOp = "filetargets.ForPrincipal"
-	StoreFileTargetsCreate       StoreOp = "filetargets.Create"
-	StoreFileTargetsReplaceKeys  StoreOp = "filetargets.ReplaceKeys"
-	StoreFileTargetsDelete       StoreOp = "filetargets.Delete"
-	StoreFileTargetsRecordReport StoreOp = "filetargets.RecordReport"
+	StoreFileTargetsList           StoreOp = "filetargets.List"
+	StoreFileTargetsGet            StoreOp = "filetargets.Get"
+	StoreFileTargetsKeys           StoreOp = "filetargets.Keys"
+	StoreFileTargetsKeysForTargets StoreOp = "filetargets.KeysForTargets"
+	StoreFileTargetsForPrincipal   StoreOp = "filetargets.ForPrincipal"
+	StoreFileTargetsCreate         StoreOp = "filetargets.Create"
+	StoreFileTargetsReplaceKeys    StoreOp = "filetargets.ReplaceKeys"
+	StoreFileTargetsDelete         StoreOp = "filetargets.Delete"
+	StoreFileTargetsRecordReport   StoreOp = "filetargets.RecordReport"
 
 	StoreRetentionAuditPolicy    StoreOp = "retention.AuditPolicy"
 	StoreRetentionSetAuditPolicy StoreOp = "retention.SetAuditPolicy"
@@ -1457,6 +1458,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreFileTargetsList:                      true,
 	StoreFileTargetsGet:                       true,
 	StoreFileTargetsKeys:                      true,
+	StoreFileTargetsKeysForTargets:            true,
 	StoreFileTargetsForPrincipal:              true,
 	// Secret-change approvals (#151): the read-only doors, licensed on the
 	// audited-none request-read operation and the scheduler expiry read.
@@ -4709,7 +4711,7 @@ var operationTable = map[Operation]opSpec{
 	OpFileTargetInspect: {
 		class: ClassTenant, level: domain.LevelProject,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreFileTargetsList: true, StoreFileTargetsGet: true, StoreFileTargetsKeys: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreFileTargetsList: true, StoreFileTargetsGet: true, StoreFileTargetsKeys: true, StoreFileTargetsKeysForTargets: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventFileTargetInspected},
 	},
 	// The bound workload's report. The store write is conditioned on the

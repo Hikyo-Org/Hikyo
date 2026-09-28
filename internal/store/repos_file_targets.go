@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -181,15 +182,24 @@ func (r sqliteFileTargets) ForPrincipal(ctx context.Context, p authz.Proof, prin
 }
 
 func (r sqliteFileTargets) Keys(ctx context.Context, p authz.Proof, id string) ([]FileTargetKey, error) {
-	selections, err := r.KeysForTargets(ctx, p, []string{id})
-	return selections[id], err
-}
-
-func (r sqliteFileTargets) KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error) {
 	chain, err := authz.Verify(p, authz.StoreFileTargetsKeys, r.tok)
 	if err != nil {
 		return nil, err
 	}
+	selections, err := r.keysForTargets(ctx, chain, []string{id})
+	return selections[id], err
+}
+
+func (r sqliteFileTargets) KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error) {
+	chain, err := authz.Verify(p, authz.StoreFileTargetsKeysForTargets, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	return r.keysForTargets(ctx, chain, ids)
+}
+
+// keysForTargets accepts only the chain verified by the public read methods.
+func (r sqliteFileTargets) keysForTargets(ctx context.Context, chain domain.Scope, ids []string) (map[string][]FileTargetKey, error) {
 	rows, err := r.q.ListFileTargetCatalogue(ctx, sqlitegen.ListFileTargetCatalogueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project)})
 	if err != nil {
 		return nil, err
@@ -365,15 +375,24 @@ func (r pgFileTargets) ForPrincipal(ctx context.Context, p authz.Proof, principa
 }
 
 func (r pgFileTargets) Keys(ctx context.Context, p authz.Proof, id string) ([]FileTargetKey, error) {
-	selections, err := r.KeysForTargets(ctx, p, []string{id})
-	return selections[id], err
-}
-
-func (r pgFileTargets) KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error) {
 	chain, err := authz.Verify(p, authz.StoreFileTargetsKeys, r.tok)
 	if err != nil {
 		return nil, err
 	}
+	selections, err := r.keysForTargets(ctx, chain, []string{id})
+	return selections[id], err
+}
+
+func (r pgFileTargets) KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error) {
+	chain, err := authz.Verify(p, authz.StoreFileTargetsKeysForTargets, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	return r.keysForTargets(ctx, chain, ids)
+}
+
+// keysForTargets accepts only the chain verified by the public read methods.
+func (r pgFileTargets) keysForTargets(ctx context.Context, chain domain.Scope, ids []string) (map[string][]FileTargetKey, error) {
 	rows, err := r.q.ListFileTargetCatalogue(ctx, pggen.ListFileTargetCatalogueParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project)})
 	if err != nil {
 		return nil, err
