@@ -126,6 +126,10 @@ type ApplyOptions struct {
 	// i.e. the running ruleset snapshot differs from the plan's; a same-version
 	// apply runs no scan and ignores them.
 	Acknowledgements []string
+	// ConfirmWidening names the people this apply's key folder moves give
+	// access to through their member access rules (ADR D9), across every moved
+	// key. A widening apply commits only when it names exactly that set.
+	ConfirmWidening []domain.PrincipalID
 }
 
 // ApplyResult is the apply response.

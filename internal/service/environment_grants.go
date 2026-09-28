@@ -77,5 +77,7 @@ func releaseEnvironmentGrants(ctx context.Context, r store.Repos, az *authz.TxAu
 			return err
 		}
 	}
-	return nil
+	// Member access rules naming this environment lose that item in the same
+	// transaction: both environment deletion paths come through here.
+	return releaseEnvironmentRules(ctx, r, az, p, actor, scope)
 }

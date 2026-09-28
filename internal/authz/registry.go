@@ -387,8 +387,15 @@ const (
 	OpRegistrationPolicyPutInstance    Operation = "registration-policy.put-instance"
 	OpRegistrationPolicyDeleteInstance Operation = "registration-policy.delete-instance"
 
-	OpGrantRevokeOrg      Operation = "grant.revoke-org"
-	OpGrantRevokeProject  Operation = "grant.revoke-project"
+	OpGrantRevokeOrg     Operation = "grant.revoke-org"
+	OpGrantRevokeProject Operation = "grant.revoke-project"
+	// Member access rules (member-access-rules ADR). A rule may span several
+	// projects of one org; the service authorizes each project it names, so
+	// these address PROJECT depth. The atom is legacy `manage-members`: rules
+	// themselves never satisfy it (it is inert on rules until delegation
+	// containment exists), so only a grant-holding member manager edits rules.
+	OpRuleCreate          Operation = "rule.create"
+	OpRuleRevoke          Operation = "rule.revoke"
 	OpGrantRevokeEnv      Operation = "grant.revoke-env"
 	OpGrantRevokeInstance Operation = "grant.revoke-instance"
 
@@ -1861,7 +1868,7 @@ var operationTable = map[Operation]opSpec{
 		level:    domain.LevelOrg,
 		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
 		storeOps: map[StoreOp]bool{StoreOrgsGet: true, StoreOrgsDelete: true, StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventOrgDeleted},
+		events:   []audit.EventType{audit.EventRuleRevoked, audit.EventOrgDeleted},
 	},
 
 	// OIDC provider administration (#54). Instance-config, MFA-mandatory. The
@@ -2041,7 +2048,7 @@ var operationTable = map[Operation]opSpec{
 			// lifecycle).
 			StoreScanningDismissalsDeleteByProject: true,
 		},
-		events: []audit.EventType{audit.EventProjectDeleted},
+		events: []audit.EventType{audit.EventRuleRevoked, audit.EventProjectDeleted},
 	},
 
 	// The Environment aggregate (#48). `definitions-edit` is the permission
@@ -2151,7 +2158,7 @@ var operationTable = map[Operation]opSpec{
 			StoreSSHPurgeEnvironment: true,
 			StoreEnvironmentsDelete:  true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventEnvDeleted, audit.EventGrantRevoked},
+		events: []audit.EventType{audit.EventRuleRevoked, audit.EventEnvDeleted, audit.EventGrantRevoked},
 	},
 	OpEnvUpdateNote: {
 		class:    ClassTenant,
@@ -2266,8 +2273,11 @@ var operationTable = map[Operation]opSpec{
 			StoreCatalogueGet: true, StoreCatalogueUpdateMetadata: true,
 			StoreCatalogueRevisionBump: true,
 			StoreCataloguePresenceList: true, StoreAuditTenantInsert: true,
+			// A folder move enumerates the project's environments for the
+			// member-access widening census (ADR D9).
+			StoreEnvironmentsList: true,
 		},
-		events: []audit.EventType{audit.EventKeyMetadataChanged, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
+		events: []audit.EventType{audit.EventRuleMoveWideningConfirmed, audit.EventKeyMetadataChanged, audit.EventScanningFindingBlocked, audit.EventScanningFindingOverridden},
 	},
 	OpKeySetGroup: {
 		class:   ClassTenant,
@@ -2309,7 +2319,7 @@ var operationTable = map[Operation]opSpec{
 			// dropped before the key row goes (#74, ADR section 4 lifecycle).
 			StoreScanningDismissalsDeleteByKey: true,
 		},
-		events: []audit.EventType{audit.EventKeyDeleted},
+		events: []audit.EventType{audit.EventRuleRevoked, audit.EventKeyDeleted},
 	},
 	// Reclassification is a DISTINCT operation, never a field of an ordinary
 	// update: the ceremony's gates and its disclosure-class audit exist only
@@ -2471,7 +2481,7 @@ var operationTable = map[Operation]opSpec{
 			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{
+		events: []audit.EventType{audit.EventRuleMoveWideningConfirmed, audit.EventRuleRevoked,
 			audit.EventDefinitionsApplied, audit.EventGrantRevoked,
 			audit.EventDefinitionsApplyRejectedStale,
 			audit.EventDefinitionsDeletionRefused,
@@ -3689,6 +3699,20 @@ var operationTable = map[Operation]opSpec{
 		// it) is a MODIFICATION; only the release that deleted the row is a
 		// revocation. Both are reachable from this operation.
 		events: []audit.EventType{audit.EventGrantRevoked, audit.EventGrantModified},
+	},
+	OpRuleCreate: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRuleCreated},
+	},
+	OpRuleRevoke: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRuleRevoked},
 	},
 	OpGrantRevokeProject: {
 		class:    ClassTenant,

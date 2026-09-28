@@ -232,6 +232,25 @@ func (r *Resolver) ErasePrivacyAccount(ctx context.Context, account, principal, 
 			return err
 		}
 	}
+	// Member access rules go with the grants: an erased principal keeps no
+	// standing authority of either kind.
+	if !r.historicalRecoveryBeforeRules {
+		if r.sq != nil {
+			if err := r.sq.PrivacyEraseRuleItems(ctx, principal); err != nil {
+				return err
+			}
+			if err := r.sq.PrivacyEraseRules(ctx, principal); err != nil {
+				return err
+			}
+		} else {
+			if err := r.pg.PrivacyEraseRuleItems(ctx, principal); err != nil {
+				return err
+			}
+			if err := r.pg.PrivacyEraseRules(ctx, principal); err != nil {
+				return err
+			}
+		}
+	}
 	if r.sq != nil {
 		if err := r.sq.PrivacyEraseGrantOrigins(ctx, principal); err != nil {
 			return err

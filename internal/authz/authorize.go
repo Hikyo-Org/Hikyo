@@ -87,7 +87,7 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 
 	switch spec.class {
 	case ClassTenant:
-		return a.authorizeTenant(ctx, caller, op, spec, scope)
+		return a.authorizeTenant(ctx, caller, op, spec, scope, nil)
 	case ClassInstance:
 		if scope != (domain.Scope{}) {
 			return nil, fmt.Errorf("authz: instance operation %q addressed with a tenant scope", op)
@@ -126,7 +126,7 @@ func (a *TxAuthorizer) assuranceInadequate(caller Identity, op Operation) bool {
 	return caller.SessionID != "" && FormulaDemandsMFA(op) && !AdequateAssurance(caller.Assurance)
 }
 
-func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, scope domain.Scope) (Proof, error) {
+func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, scope domain.Scope, key *KeyTarget) (Proof, error) {
 	principal := caller.Principal
 	level, err := scope.Level()
 	if err != nil {
@@ -155,7 +155,35 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 	if err != nil {
 		return nil, err
 	}
-	if !evaluate(spec.formula, chain, grants) {
+	held := evaluate(spec.formula, chain, grants)
+	var bound *domain.RuleKey
+	if !held && rulesApply(caller) && ruleSatisfiable(spec.formula) {
+		// Member access rules (member-access-rules ADR) are read ONLY here,
+		// and only when the legacy grants alone do not satisfy the formula,
+		// so every other predicate in the system stays blind to them. A
+		// key-aware call resolves its key from the database on this path
+		// whether or not any rule needs it: the denial's query count then
+		// depends on the operation, never on which rules or keys exist.
+		rules, err := a.r.Rules(ctx, principal)
+		if err != nil {
+			return nil, err
+		}
+		var target *domain.RuleKey
+		if key != nil {
+			resolved, err := a.resolveKeyTarget(ctx, chain, *key)
+			if errors.Is(err, domain.ErrNotFound) {
+				a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
+				return nil, domain.ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			target = &resolved
+			bound = target
+		}
+		held = evaluateWithRules(spec.formula, chain, grants, rules, target)
+	}
+	if !held {
 		// Resolvable, unauthorized: the truthful resolved chain, tenant
 		// trail.
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
@@ -207,7 +235,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected}, nil
+	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected, key: bound}, nil
 }
 
 // machineRevealWithdrawn reports whether a machine caller is reaching for a

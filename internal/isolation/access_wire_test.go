@@ -428,8 +428,10 @@ func TestAccessWireQueryTrace(t *testing.T) {
 //     would make a missing environment cost more than a missing org, and a
 //     caller could count its way to which level exists.
 //   - a DENIAL against an object that exists costs exactly one query more —
-//     the grant lookup, which a miss skips. That difference is structural and
-//     is the residual the tenant-isolation ADR already accepts.
+//     the grant lookup, which a miss skips, plus the member access rule
+//     lookup for an operation whose formula a rule could satisfy. That
+//     difference is structural, fixed per operation, and is the residual the
+//     tenant-isolation ADR already accepts.
 func runAccessWireQueryTrace(t *testing.T, db *store.DB) {
 	e := newAccessWireEnv(t, db)
 	clearOrgGrants(t, db, e.org)
@@ -486,7 +488,12 @@ func runAccessWireQueryTrace(t *testing.T, db *store.DB) {
 		{"grant_list_denied_existing_org", list(realOrg), base + 1},
 		{"grant_list_denied_existing_project", list(realProject), base + 1},
 		{"grant_create_denied_existing_env", create(realEnv), base + 1},
-		{"settings_read_denied_existing_env", readSettings(realEnv), base + 1},
+		// read@environment is an atom a member access rule can satisfy, so a
+		// denial also reads the principal's rules (member-access-rules ADR):
+		// one more query, fixed per operation, never dependent on the object.
+		// The grant operations above carry only manage-members, which rules
+		// never satisfy, and keep their cost.
+		{"settings_read_denied_existing_env", readSettings(realEnv), base + 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			n := serviceQueryCount(t, tc.run)

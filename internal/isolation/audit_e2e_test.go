@@ -607,6 +607,9 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// Recovery runs last on a separate instance of the same engine. The
 		// preceding negative corpus intentionally carries corrupt ciphertext and
 		// cannot honestly prove readable escrow. Both trails remain actual emitters.
+		// Member access rules: created, move-widening confirmed, revoked.
+		runRuleAuditLifecycle(t, db)
+
 		recovered := runBackupLifecycle(t, db.Engine())
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())
 		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
