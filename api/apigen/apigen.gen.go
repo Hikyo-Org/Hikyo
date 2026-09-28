@@ -236,8 +236,10 @@ func (e AdapterConflictEntrySurface) Valid() bool {
 // Defines values for AdapterDestinationKind.
 const (
 	AdapterDestinationKindEnvironment   AdapterDestinationKind = "environment"
+	AdapterDestinationKindJsonObject    AdapterDestinationKind = "json-object"
 	AdapterDestinationKindOrganization  AdapterDestinationKind = "organization"
 	AdapterDestinationKindPagesProject  AdapterDestinationKind = "pages-project"
+	AdapterDestinationKindPerKey        AdapterDestinationKind = "per-key"
 	AdapterDestinationKindRepository    AdapterDestinationKind = "repository"
 	AdapterDestinationKindWorkersScript AdapterDestinationKind = "workers-script"
 )
@@ -247,9 +249,13 @@ func (e AdapterDestinationKind) Valid() bool {
 	switch e {
 	case AdapterDestinationKindEnvironment:
 		return true
+	case AdapterDestinationKindJsonObject:
+		return true
 	case AdapterDestinationKindOrganization:
 		return true
 	case AdapterDestinationKindPagesProject:
+		return true
+	case AdapterDestinationKindPerKey:
 		return true
 	case AdapterDestinationKindRepository:
 		return true
@@ -4278,7 +4284,7 @@ type AdapterConnection struct {
 	Version             string     `json:"version"`
 }
 
-// AdapterDestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+// AdapterDestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 type AdapterDestinationKind string
 
 // AdapterFinding defines model for AdapterFinding.
@@ -4383,7 +4389,7 @@ type AdapterMoveTarget struct {
 	DestinationEnvironment string `json:"destination_environment"`
 	DestinationId          int64  `json:"destination_id"`
 
-	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
 	DestinationName  string                 `json:"destination_name"`
 	DestinationOwner string                 `json:"destination_owner"`
@@ -4439,7 +4445,7 @@ type AdapterTarget struct {
 	DestinationEnvironment string `json:"destination_environment"`
 	DestinationId          int64  `json:"destination_id"`
 
-	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
 	DestinationName  string                 `json:"destination_name"`
 	DestinationOwner string                 `json:"destination_owner"`
@@ -4512,16 +4518,16 @@ type AdapterTargetInput struct {
 	// AllowEnvironmentCreate Explicit consent to create missing GitHub environments using Administration:write.
 	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitempty"`
 
-	// DestinationEnvironment GitHub environment name, or the Pages environment (preview or production) of a pages-project target; empty for other destinations.
+	// DestinationEnvironment GitHub environment, or the Pages environment (preview or production). For AWS, the optional customer KMS key (id, ARN, or alias) applied when creating a secret; changing it is a destination move. Empty for other destinations.
 	DestinationEnvironment string `json:"destination_environment"`
 
-	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 	DestinationKind AdapterDestinationKind `json:"destination_kind"`
 
-	// DestinationName Repository name, Workers script name or Pages project name; empty for organization destinations; the KV path prefix for vault-kv.
+	// DestinationName Repository, Workers script, or Pages project name; empty for organization destinations; the KV path prefix for vault-kv. For AWS json-object, the secret name; for per-key, an optional path prefix ending in `/`.
 	DestinationName string `json:"destination_name"`
 
-	// DestinationOwner Repository or organization owner; the KV v2 mount path for vault-kv (destination_kind repository).
+	// DestinationOwner Provider owner or organization; the KV v2 mount for vault-kv, or the 12-digit AWS account id.
 	DestinationOwner string `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -5364,7 +5370,7 @@ type CopyValuesResult struct {
 
 // CreateAdapterRequest defines model for CreateAdapterRequest.
 type CreateAdapterRequest struct {
-	// Credential Write-only provider credential. Never returned.
+	// Credential Write-only provider credential. Never returned. For aws-secrets-manager it is a JSON access descriptor: `{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`, `{"mode":"web-identity","role_arn":...}`, or `{"mode":"static","access_key_id":...,"secret_access_key":...}`, plus `region` (and optional `sts_origin`) for a non-AWS origin. Modes that use the server's own AWS identity require the node operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
@@ -8596,7 +8602,7 @@ type ResumeAdapterOriginMoveRequest struct {
 type ResumeAdapterTargetMoveRequest struct {
 	DestinationEnvironment string `json:"destination_environment"`
 
-	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
 	DestinationName  string                 `json:"destination_name"`
 	DestinationOwner string                 `json:"destination_owner"`
@@ -10185,7 +10191,7 @@ type UpdateAdapterOriginRequest struct {
 type UpdateAdapterTargetRequest struct {
 	DestinationEnvironment string `json:"destination_environment"`
 
-	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
 	DestinationName  string                 `json:"destination_name"`
 	DestinationOwner string                 `json:"destination_owner"`

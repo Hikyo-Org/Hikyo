@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
@@ -285,6 +286,10 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 		if m.DestinationName == "" || m.DestinationEnvironment == "" || m.RepositoryID <= 0 || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
 			return fmt.Errorf("%w: environment target requires repository and environment identities", domain.ErrInvalid)
 		}
+	case string(adapter.JSONObject), string(adapter.PerKey):
+		if err := adapter.ValidateAWSSecretsManagerDestination(targetDestination(m)); err != nil {
+			return fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+		}
 	case string(adapter.WorkersScript), string(adapter.PagesProject):
 		if err := validateCloudflareTarget(m); err != nil {
 			return err
@@ -312,11 +317,26 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 	return nil
 }
 
+// targetDestination is the routing identity a stored target mutation names.
+func targetDestination(m AdapterTargetMutation) adapter.Destination {
+	return adapter.Destination{
+		Kind: adapter.DestinationKind(m.DestinationKind), Owner: m.DestinationOwner, Name: m.DestinationName,
+		Environment: m.DestinationEnvironment, NumericID: m.DestinationID, RepositoryID: m.RepositoryID,
+		Visibility: m.Visibility, SelectedRepositoryIDs: m.SelectedRepositoryIDs,
+	}
+}
+
+// isAWSDestinationKind reports the destination kinds whose provider names
+// derive from the destination as well as the prefix.
+func isAWSDestinationKind(kind string) bool {
+	return kind == string(adapter.JSONObject) || kind == string(adapter.PerKey)
+}
+
 // validateCloudflareTarget checks the routing fields shared by committed and
 // pending Cloudflare targets. Owner is the account id; Pages targets name one
 // environment so preview and production are separate destinations.
 func validateCloudflareTarget(m AdapterTargetMutation) error {
-	if m.DestinationName == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
+	if m.RepositoryID != 0 || m.DestinationName == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
 		return fmt.Errorf("%w: Cloudflare target requires account and script or project name only", domain.ErrInvalid)
 	}
 	switch m.DestinationKind {
@@ -333,32 +353,46 @@ func validateCloudflareTarget(m AdapterTargetMutation) error {
 }
 
 func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation) ([]adapter.ManifestEntry, error) {
+	_, manifest, err := targetProviderManifest(ctx, db, chain, m)
+	return manifest, err
+}
+
+func adapterProvider(ctx context.Context, db adapterDB, chain domain.Scope, adapterID string) (string, error) {
 	providerQuery := db.SQL(
 		`SELECT provider FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
 	)
-	providerRows, err := db.Query(ctx, providerQuery, m.AdapterID, chain.Org, chain.Project)
+	providerRows, err := db.Query(ctx, providerQuery, adapterID, chain.Org, chain.Project)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+	defer closeAdapterRows(providerRows)
 	var provider string
 	if !providerRows.Next() {
 		if err := providerRows.Err(); err != nil {
-			return nil, err
+			return "", err
 		}
-		return nil, ErrNotFound
+		return "", ErrNotFound
 	}
 	if err := providerRows.Scan(&provider); err != nil {
-		return nil, err
+		return "", err
 	}
 	if providerRows.Next() {
-		return nil, fmt.Errorf("store: adapter provider lookup was not unique")
+		return "", fmt.Errorf("store: adapter provider lookup was not unique")
 	}
-	if err := providerRows.Err(); err != nil {
-		return nil, err
+	return provider, providerRows.Err()
+}
+
+// targetProviderManifest loads the owning adapter's provider and the target's
+// key subset, and refuses a name, destination kind, or provider pairing the
+// provider cannot represent.
+func targetProviderManifest(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation) (string, []adapter.ManifestEntry, error) {
+	provider, err := adapterProvider(ctx, db, chain, m.AdapterID)
+	if err != nil {
+		return "", nil, err
 	}
 	cloudflareKind := m.DestinationKind == string(adapter.WorkersScript) || m.DestinationKind == string(adapter.PagesProject)
 	if cloudflareKind != (provider == string(adapter.CloudflareProvider)) {
-		return nil, fmt.Errorf("%w: destination kind %q is not supported by provider %q", domain.ErrInvalid, m.DestinationKind, provider)
+		return "", nil, fmt.Errorf("%w: destination kind %q is not supported by provider %q", domain.ErrInvalid, m.DestinationKind, provider)
 	}
 	args := []any{chain.Org, chain.Project}
 	for _, id := range m.KeyIDs {
@@ -369,31 +403,35 @@ func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m Ada
 		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`)
 	rows, err := db.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
+	defer closeAdapterRows(rows)
 	var manifest []adapter.ManifestEntry
 	for rows.Next() {
 		var row adapter.ManifestEntry
 		var classification string
 		if err := rows.Scan(&row.KeyID, &row.CanonicalName, &classification); err != nil {
-			return nil, err
+			return "", nil, err
 		}
 		row.Classification = adapter.Classification(classification)
 		manifest = append(manifest, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	if len(manifest) != len(m.KeyIDs) {
-		return nil, ErrNotFound
+		return "", nil, ErrNotFound
 	}
-	if err := adapter.ValidateProviderManifest(provider, m.NamePrefix, manifest, false); err != nil {
-		return nil, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	if err := adapter.ValidateTargetManifest(provider, targetDestination(m), m.NamePrefix, manifest, false); err != nil {
+		return "", nil, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
 	}
-	return manifest, nil
+	return provider, manifest, nil
 }
 
 func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, manifest []adapter.ManifestEntry, excludeTargetID string) error {
+	if isAWSDestinationKind(m.DestinationKind) {
+		return refuseAWSNameCollision(ctx, db, chain, m, manifest, excludeTargetID)
+	}
 	desired := map[string]struct{}{m.NamePrefix + adapter.SentinelName: {}}
 	for _, entry := range manifest {
 		desired[m.NamePrefix+entry.CanonicalName] = struct{}{}
@@ -450,6 +488,66 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 			return err
 		}
 		if _, found := desired[effectiveName]; found {
+			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effectiveName, targetID)
+		}
+	}
+	return pendingRows.Err()
+}
+
+// refuseAWSNameCollision is the AWS form of the configured-name check. One AWS
+// account and region is a single secret namespace shared by both destination
+// kinds, and a json-object target owns its secret name rather than prefixed
+// key names, so claims are computed per target and compared across kinds.
+func refuseAWSNameCollision(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, manifest []adapter.ManifestEntry, excludeTargetID string) error {
+	desired := map[string]bool{}
+	for _, claim := range adapter.ClaimedNames(string(adapter.AWSSecretsManagerProvider), targetDestination(m), m.NamePrefix, manifest) {
+		desired[strings.ToUpper(claim.EffectiveName)] = true
+	}
+	q := db.SQL(`SELECT t.id,t.destination_kind,t.destination_name,t.name_prefix,COALESCE(k.name,'')
+		FROM adapter_targets t
+		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
+		JOIN adapters candidate ON candidate.id=? AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
+		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
+		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
+		WHERE t.org_id=? AND t.project_id=? AND t.state='active' AND a.state='active'
+		AND a.origin=candidate.origin AND t.destination_kind IN ('json-object','per-key') AND t.destination_owner=? AND t.id<>?
+		ORDER BY t.id,k.name`)
+	rows, err := db.Query(ctx, q, m.AdapterID, chain.Org, chain.Project, m.DestinationOwner, excludeTargetID)
+	if err != nil {
+		return err
+	}
+	defer closeAdapterRows(rows)
+	for rows.Next() {
+		var targetID, kind, name, prefix, keyName string
+		if err := rows.Scan(&targetID, &kind, &name, &prefix, &keyName); err != nil {
+			return err
+		}
+		claimed := name
+		if kind == string(adapter.PerKey) {
+			if keyName == "" {
+				continue
+			}
+			claimed = name + prefix + keyName
+		}
+		if desired[strings.ToUpper(claimed)] {
+			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, claimed, targetID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	pending := db.SQL(`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind IN ('json-object','per-key') AND c.destination_owner=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`)
+	pendingRows, err := db.Query(ctx, pending, m.AdapterID, chain.Org, chain.Project, m.DestinationOwner, excludeTargetID)
+	if err != nil {
+		return err
+	}
+	defer closeAdapterRows(pendingRows)
+	for pendingRows.Next() {
+		var targetID, effectiveName string
+		if err := pendingRows.Scan(&targetID, &effectiveName); err != nil {
+			return err
+		}
+		if desired[strings.ToUpper(effectiveName)] {
 			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effectiveName, targetID)
 		}
 	}

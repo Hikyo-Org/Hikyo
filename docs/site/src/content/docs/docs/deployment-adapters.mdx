@@ -1,6 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo, GitHub Actions, Cloudflare Workers and Pages, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, Cloudflare, Vault/OpenBao, AWS Secrets Manager, or a sealed webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -11,18 +11,19 @@ fetch.
 For a CI job that creates and tears down its own environments, use the
 [pull-request preview guide](/docs/preview-environments/).
 
-The Forgejo, GitHub Actions, and Cloudflare adapters are one-way and value-blind. The Forgejo and GitHub
-Actions adapters write selected values from one Hikyo environment to a
-repository, organization, or GitHub repository-environment Actions
-namespace. The Cloudflare adapter writes them as encrypted Workers secrets or
-Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). The [Vault/OpenBao KV v2 adapter](#vaultopenbao-kv-v2) follows the same rules for a secret-manager destination. Forgejo and GitHub Actions link no variable GET or list endpoint: secret planning reads
-names only, and variable planning uses Hikyo's ownership ledger. Cloudflare reads
-Pages and Workers settings but decodes only names and types, discarding plaintext
-fields. Vault reads metadata only. Hikyo therefore
-cannot detect provider-side value drift. Run a converge to restore the last
-published Hikyo state. The
-[sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
-an instance administrator has pinned; it has no read path at all.
+The adapters are one-way and value-blind. Forgejo and GitHub Actions write
+selected values from one Hikyo environment to a repository, organization, or
+GitHub repository-environment Actions namespace. They link no variable GET or
+list endpoint: secret planning reads names only, and variable planning uses
+Hikyo's ownership ledger.
+
+[Cloudflare](#cloudflare-workers-and-pages) writes encrypted Workers secrets or
+Pages variables. Its settings reads decode names and types, discarding plaintext
+fields. [Vault/OpenBao KV v2](#vaultopenbao-kv-v2) and
+[AWS Secrets Manager](#aws-secrets-manager) read metadata only; their sections
+describe how metadata detects external changes. The
+[sealed webhook](#sealed-webhook-receivers) adapter pushes to an HTTPS receiver
+pinned by an instance administrator and has no read path at all.
 
 ## Requirements
 
@@ -333,6 +334,116 @@ GitHub Enterprise Server uses its configured HTTPS API base and inherits the
 GitHub contract best-effort; github.com contract pins do not claim every GHES
 version behaves identically.
 
+## AWS Secrets Manager
+
+The `aws-secrets-manager` adapter writes selected published values into AWS
+Secrets Manager in one account and region. Hikyo stays the source of truth:
+the adapter cannot read a value back. Its provider interface has no
+`GetSecretValue`, `BatchGetSecretValue`, or `GetRandomPassword`, and a test
+fails the build if production code ever names one.
+
+### Destinations
+
+Each target picks one destination kind:
+
+| Kind | What lands in AWS |
+|---|---|
+| `json-object` | One secret named `--secret` whose value is a JSON object: one member per selected key, named name prefix + key, members sorted, no whitespace. Values are JSON strings, so parsing the document returns the exact published bytes. |
+| `per-key` | One secret per selected key, named path prefix + name prefix + key, for example `prod/app/DATABASE_URL`. The optional path prefix must end in `/`. |
+
+The destination owner is the 12-digit AWS account id. Hikyo checks it against
+STS `GetCallerIdentity` and against every secret ARN, so a credential or
+endpoint that lands in another account or region is refused as a destination
+move rather than followed. An optional customer KMS key (`--kms-key`) is applied
+when Hikyo creates a secret; changing it, the mode, the secret name, or the path
+is a destination move with the usual scrub-before-switch.
+
+Names are refused, never rewritten: AWS allows `A-Z a-z 0-9 / _ + = . @ -`,
+up to 512 bytes, and Hikyo also refuses a name ending in `-` plus six
+characters, which AWS ARN lookups confuse with the random ARN suffix. A value
+must be valid UTF-8 without NUL; per-key values must be non-empty and at most
+65536 bytes, and a json-object document must fit the same 65536-byte limit.
+
+### Authentication
+
+The adapter credential is a JSON access descriptor that is sealed on save and
+never returned. The CLI and the web form assemble it; the API takes it as the
+`credential` string.
+
+| Mode | Uses | Secret material |
+|---|---|---|
+| `assume-role` | The node's AWS identity assumes `role_arn` (optional `external_id`, `session_seconds` 900 to 3600). | None |
+| `web-identity` | The node's projected token (`AWS_WEB_IDENTITY_TOKEN_FILE`, as on EKS with IRSA) assumes `role_arn`. The descriptor cannot name a token file. | None |
+| `ambient` | The node's default AWS credential chain (environment, ECS task role, EC2 instance role). | None |
+| `static` | An access key id and secret access key. | The secret access key |
+
+`ambient`, `assume-role`, and `web-identity` act with the server's own AWS
+identity, so they are refused until the node operator sets
+`HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow`. Without that opt-in a project
+administrator cannot borrow the server's IAM role. Scope the role's trust and
+permissions accordingly, and prefer `assume-role` with an `external_id` per
+project.
+
+```sh
+hikyo adapter create --provider aws-secrets-manager \
+  --origin https://secretsmanager.eu-west-1.amazonaws.com \
+  --env prod --kind json-object --owner 123456789012 --secret prod/app/config \
+  --aws-auth assume-role --aws-role-arn arn:aws:iam::123456789012:role/hikyo-sync \
+  --aws-external-id hikyo-prod --names DATABASE_URL,API_TOKEN
+```
+
+For `--aws-auth static`, pass `--aws-access-key-id`; the secret access key is
+read like any adapter credential (no-echo prompt, `--stdin`, or
+`--value-file`). `--aws-*` flags also apply to `hikyo adapter update --origin`
+and `hikyo adapter credential set`.
+
+The IAM policy needs, on the target secret ARNs:
+`secretsmanager:DescribeSecret`, `CreateSecret`, `PutSecretValue`,
+`TagResource`, `RestoreSecret`, and `DeleteSecret`; plus `secretsmanager:ListSecrets`
+(which AWS does not scope to resources) for per-key planning and connection
+tests, `sts:GetCallerIdentity`, and `kms:GenerateDataKey` and `kms:Decrypt` on a
+customer KMS key. Do not grant `GetSecretValue` to the adapter's role.
+
+### Ownership, drift, and deletion
+
+The Hikyo ledger is the only ownership record. On the AWS side each owned
+secret carries the tag `MANAGED_BY_HIKYO=<target id>`, written when the secret
+is created (before its first value). Every Hikyo write sets the `AWSCURRENT` and
+`HIKYO_CURRENT` staging labels in one call and then records the version in the
+`HIKYO_VERSION` tag.
+
+- **Unowned names.** A name that exists without Hikyo ownership is a conflict,
+  never a silent overwrite. Adopt it from a plan like any other adapter; Hikyo
+  then tags it before its first write.
+- **External edits.** If `AWSCURRENT` points at a version Hikyo did not write,
+  the target reports a conflict and needs operator attention; the value is not
+  overwritten. To let Hikyo replace that exact version, tag the secret
+  `HIKYO_VERSION=<that version id>` (the conflict message names it) and resync.
+  A later edit is not covered by that consent.
+- **Retries.** Each write carries an idempotency token that is identical for
+  every retry of one outbox job, so replaying an ambiguous outcome cannot
+  create a second version. A new job writes a new version.
+- **Failures.** Access denied, KMS denial, and expired credentials are `auth`;
+  throttling is `provider_limit` and honours `Retry-After`; a timeout or 5xx
+  after the request was sent is ambiguous and replays with the same token.
+  Per-key targets report each failed name; the other keys still converge.
+- **Deletion.** Prune and teardown delete only ledger-owned names and always
+  schedule deletion with the 30-day recovery window. If the same target needs
+  a pruned name again inside that window, Hikyo restores it; a different
+  target sees the old ownership tag and reports a conflict.
+
+### VPC endpoints and emulators
+
+A VPC endpoint origin (or a local emulator) needs `region` in the descriptor
+(`--aws-region`). Private addresses need an entry in
+`HIKYO_ADAPTER_EGRESS_POLICY_FILE`. HTTPS is always required. The workload
+identity modes accept only recognized AWS Secrets Manager regional, FIPS,
+China, or VPC endpoint DNS names, with the endpoint region matching the
+access descriptor. An egress-policy entry does not authorize an arbitrary
+host to receive the node's credentials. Emulators require `static` credentials.
+Workload identity modes always use AWS's regional STS endpoint, because STS receives
+the node's own identity material; only `static` credentials may name a
+different STS endpoint (`sts_origin`, `--aws-sts-origin`), for an emulator.
 ## Vault/OpenBao KV v2
 
 The `vault-kv` adapter delivers into a Vault or OpenBao **KV version 2** mount.

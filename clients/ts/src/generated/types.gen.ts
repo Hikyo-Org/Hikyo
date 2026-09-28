@@ -283,9 +283,9 @@ export type Id = string;
 export type Timestamp = string;
 
 /**
- * repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+ * repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
  */
-export type AdapterDestinationKind = 'repository' | 'organization' | 'environment' | 'workers-script' | 'pages-project';
+export type AdapterDestinationKind = 'repository' | 'organization' | 'environment' | 'workers-script' | 'pages-project' | 'json-object' | 'per-key';
 
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
@@ -302,15 +302,15 @@ export type AdapterTargetInput = {
     environment_id: Id;
     destination_kind: AdapterDestinationKind;
     /**
-     * Repository or organization owner; the KV v2 mount path for vault-kv (destination_kind repository).
+     * Provider owner or organization; the KV v2 mount for vault-kv, or the 12-digit AWS account id.
      */
     destination_owner: string;
     /**
-     * Repository name, Workers script name or Pages project name; empty for organization destinations; the KV path prefix for vault-kv.
+     * Repository, Workers script, or Pages project name; empty for organization destinations; the KV path prefix for vault-kv. For AWS json-object, the secret name; for per-key, an optional path prefix ending in `/`.
      */
     destination_name: string;
     /**
-     * GitHub environment name, or the Pages environment (preview or production) of a pages-project target; empty for other destinations.
+     * GitHub environment, or the Pages environment (preview or production). For AWS, the optional customer KMS key (id, ARN, or alias) applied when creating a secret; changing it is a destination move. Empty for other destinations.
      */
     destination_environment: string;
     /**
@@ -348,7 +348,7 @@ export type CreateAdapterRequest = {
     provider: AdapterProvider;
     origin: string;
     /**
-     * Write-only provider credential. Never returned.
+     * Write-only provider credential. Never returned. For aws-secrets-manager it is a JSON access descriptor: `{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`, `{"mode":"web-identity","role_arn":...}`, or `{"mode":"static","access_key_id":...,"secret_access_key":...}`, plus `region` (and optional `sts_origin`) for a non-AWS origin. Modes that use the server's own AWS identity require the node operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
      */
     credential: string;
     target: AdapterTargetInput;

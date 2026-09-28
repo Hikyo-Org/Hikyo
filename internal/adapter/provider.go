@@ -9,15 +9,15 @@ import (
 type Provider string
 
 const (
-	ForgejoProvider       Provider = "forgejo"
-	GitHubActionsProvider Provider = "github-actions"
-	SealedWebhookProvider Provider = "sealed-webhook"
-	CloudflareProvider    Provider = "cloudflare"
-	// VaultKVProvider is the one-way Vault/OpenBao KV v2 destination (#162).
-	VaultKVProvider Provider = "vault-kv"
+	ForgejoProvider           Provider = "forgejo"
+	GitHubActionsProvider     Provider = "github-actions"
+	SealedWebhookProvider     Provider = "sealed-webhook"
+	CloudflareProvider        Provider = "cloudflare"
+	VaultKVProvider           Provider = "vault-kv"
+	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {

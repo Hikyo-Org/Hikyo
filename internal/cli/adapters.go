@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 )
 
 type adapterCredentialSource struct {
@@ -46,6 +47,10 @@ func renderAdapterTargetMutation(out io.Writer, format Format, payload []byte) e
 }
 
 func (s adapterCredentialSource) read(ios IO) ([]byte, error) {
+	return s.readPrompt(ios, "Deployment provider credential: ")
+}
+
+func (s adapterCredentialSource) readPrompt(ios IO, prompt string) ([]byte, error) {
 	if s.stdin && s.file != "" {
 		return nil, failf(ExitUsage, "--stdin and --value-file are mutually exclusive")
 	}
@@ -58,7 +63,7 @@ func (s adapterCredentialSource) read(ios IO) ([]byte, error) {
 		raw, err = os.ReadFile(s.file)
 	default:
 		var value string
-		value, err = ios.readPassword("Deployment provider credential: ")
+		value, err = ios.readPassword(prompt)
 		raw = []byte(value)
 	}
 	if err != nil {
@@ -70,6 +75,63 @@ func (s adapterCredentialSource) read(ios IO) ([]byte, error) {
 	raw = []byte(strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r"))
 	if len(raw) == 0 || strings.ContainsAny(string(raw), "\r\n") {
 		return nil, failf(ExitRefused, "adapter credential must be one non-empty line")
+	}
+	return raw, nil
+}
+
+// adapterAWSAuth assembles the AWS Secrets Manager access descriptor from
+// flags. Only the static secret access key is secret, and it is read like any
+// adapter credential: no-echo prompt, --stdin, or --value-file, never argv.
+type adapterAWSAuth struct {
+	mode, roleARN, externalID, region, accessKeyID, stsOrigin string
+	sessionSeconds                                            int
+}
+
+func (a *adapterAWSAuth) flags(fs *flag.FlagSet) {
+	fs.StringVar(&a.mode, "aws-auth", "", "AWS Secrets Manager authentication: ambient, assume-role, web-identity, or static")
+	fs.StringVar(&a.roleARN, "aws-role-arn", "", "IAM role ARN for assume-role or web-identity")
+	fs.StringVar(&a.externalID, "aws-external-id", "", "external id for assume-role")
+	fs.IntVar(&a.sessionSeconds, "aws-session-seconds", 0, "assumed-role session duration, 900-3600 seconds")
+	fs.StringVar(&a.region, "aws-region", "", "AWS region; required for a VPC endpoint or emulator origin")
+	fs.StringVar(&a.accessKeyID, "aws-access-key-id", "", "access key id for static authentication; the secret key is read like a credential")
+	fs.StringVar(&a.stsOrigin, "aws-sts-origin", "", "STS endpoint for a VPC endpoint or emulator origin")
+}
+
+func (a adapterAWSAuth) set() bool {
+	return a.mode != "" || a.roleARN != "" || a.externalID != "" || a.sessionSeconds != 0 || a.region != "" || a.accessKeyID != "" || a.stsOrigin != ""
+}
+
+// credential returns the adapter credential: the assembled AWS descriptor
+// when --aws-auth is given, otherwise the raw credential from the source.
+func (a adapterAWSAuth) credential(ios IO, source adapterCredentialSource) ([]byte, error) {
+	if !a.set() {
+		return source.read(ios)
+	}
+	if a.mode == "" {
+		return nil, failf(ExitUsage, "--aws-* flags require --aws-auth")
+	}
+	descriptor := awssm.Descriptor{
+		Mode: awssm.AuthMode(a.mode), Region: a.region, RoleARN: a.roleARN, ExternalID: a.externalID,
+		SessionSeconds: a.sessionSeconds, AccessKeyID: a.accessKeyID, STSOrigin: a.stsOrigin,
+	}
+	if descriptor.Mode == awssm.AuthStatic {
+		secret, err := source.readPrompt(ios, "AWS secret access key: ")
+		if err != nil {
+			return nil, err
+		}
+		descriptor.SecretKey = string(secret)
+		zeroBytes(secret)
+	} else if source.stdin || source.file != "" {
+		return nil, failf(ExitUsage, "--stdin and --value-file carry only the static secret access key")
+	}
+	raw, err := json.Marshal(descriptor)
+	descriptor.SecretKey = ""
+	if err != nil {
+		return nil, failf(ExitInternal, "encode AWS access descriptor: %v", err)
+	}
+	if _, err := awssm.ParseDescriptor(string(raw)); err != nil {
+		zeroBytes(raw)
+		return nil, failf(ExitUsage, "%v", err)
 	}
 	return raw, nil
 }
@@ -131,7 +193,7 @@ func adapterProvider(ctx context.Context, client *Client, base, adapterID string
 // adapterTargetInput validates target routing for the adapter's provider. A
 // sealed-webhook target routes to a receiver namespace only: --kind
 // organization with --owner, and no repository, environment, or visibility.
-func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection) (apigen.AdapterTargetInput, error) {
+func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, aws adapterAWSDestination) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
 	if env == "" || kind == "" || owner == "" || (len(ids) == 0 && selection.empty()) {
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and keys via --keys, --names, --include, or --classification")
@@ -166,6 +228,14 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 		if repo == "" || destinationEnvironment == "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "environment target requires --repo and --destination-environment and refuses visibility routing")
 		}
+	case "json-object", "per-key":
+		if repo != "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "AWS Secrets Manager targets take --secret and --kms-key, not repository or visibility routing")
+		}
+		if kind == "json-object" && aws.secret == "" {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "json-object target requires --secret <secret-name>")
+		}
+		repo, destinationEnvironment = aws.secret, aws.kmsKey
 	case "workers-script":
 		if repo == "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "workers-script target requires --account and --script and refuses environment/visibility routing")
@@ -175,13 +245,27 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "pages-project target requires --account, --pages-project and --destination-environment preview|production")
 		}
 	default:
-		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, environment, workers-script, or pages-project")
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, environment, workers-script, pages-project, json-object, or per-key")
+	}
+	if kind != "json-object" && kind != "per-key" && (aws.secret != "" || aws.kmsKey != "") {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--secret and --kms-key apply only to json-object and per-key targets")
 	}
 	out := apigen.AdapterTargetInput{EnvironmentId: apigen.ID(env), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: owner, DestinationName: repo, DestinationEnvironment: destinationEnvironment, Visibility: apigen.AdapterTargetInputVisibility(visibility), SelectedRepositoryIds: repositoryIDs, NamePrefix: prefix, KeyIds: []apigen.ID{}, KeySelection: selection.body()}
 	for _, id := range ids {
 		out.KeyIds = append(out.KeyIds, apigen.ID(id))
 	}
 	return out, nil
+}
+
+// adapterAWSDestination carries the AWS-only routing flags: the json-object
+// secret name or per-key path prefix, and the optional customer KMS key.
+type adapterAWSDestination struct {
+	secret, kmsKey string
+}
+
+func (a *adapterAWSDestination) flags(fs *flag.FlagSet) {
+	fs.StringVar(&a.secret, "secret", "", "AWS json-object secret name, or per-key path prefix ending in /")
+	fs.StringVar(&a.kmsKey, "kms-key", "", "customer KMS key id, ARN, or alias for secrets Hikyo creates")
 }
 
 // kvAddressing maps --mount/--path onto the repository destination a
@@ -281,14 +365,16 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	var keepRemote, cancelMove, allowEnvironmentCreate bool
 	var source adapterCredentialSource
 	var selection adapterKeySelection
+	var awsDestination adapterAWSDestination
+	var awsAuth adapterAWSAuth
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, https://api.cloudflare.com, or Vault/OpenBao address with optional /namespace")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, https://api.cloudflare.com, AWS Secrets Manager endpoint, or Vault/OpenBao address with optional /namespace")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, cloudflare, or vault-kv")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -296,8 +382,8 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&cancelMove, "cancel-move", false, "cancel the move and reconverge the old route")
 		}
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, or pages-project")
-			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, or per-key")
+			fs.StringVar(&owner, "owner", "", "provider owner, organization, or AWS account id (sealed-webhook: receiver namespace)")
 			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
 			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
@@ -310,10 +396,12 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&prefix, "prefix", "", "structural name prefix")
 			fs.StringVar(&keys, "keys", "", "comma-separated immutable key ids")
 			selection.flags(fs)
+			awsDestination.flags(fs)
 		}
 		if sub == "create" || sub == "update" {
 			fs.BoolVar(&source.stdin, "stdin", false, "read credential from stdin")
 			fs.StringVar(&source.file, "value-file", "", "read credential from file")
+			awsAuth.flags(fs)
 		}
 		if sub == "delete" || sub == "update" {
 			fs.BoolVar(&keepRemote, "keep-remote", false, "release custody without deleting remote names")
@@ -349,8 +437,8 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return failf(ExitUsage, "vault-kv targets take --mount and --path")
 	}
 	if sub == "update" {
-		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != ""
-		credentialFields := source.stdin || source.file != ""
+		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != "" || awsDestination.secret != "" || awsDestination.kmsKey != ""
+		credentialFields := source.stdin || source.file != "" || awsAuth.set()
 		if cancelMove {
 			if moveID == "" || target != "" || origin != "" || targetFields || credentialFields || keepRemote {
 				return failf(ExitUsage, "--cancel-move requires only --move <id>")
@@ -410,8 +498,15 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" && provider != "cloudflare" && provider != "vault-kv" {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, cloudflare, or vault-kv")
+		if _, err := adapter.ParseProvider(provider); err != nil {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
+		}
+		awsKind := kind == "json-object" || kind == "per-key"
+		if (provider == string(adapter.AWSSecretsManagerProvider)) != awsKind {
+			return failf(ExitUsage, "aws-secrets-manager takes exactly the json-object and per-key kinds")
+		}
+		if awsAuth.set() && provider != string(adapter.AWSSecretsManagerProvider) {
+			return failf(ExitUsage, "--aws-* flags apply only to aws-secrets-manager")
 		}
 		if cloudflareKind := kind == "workers-script" || kind == "pages-project"; cloudflareKind != (provider == "cloudflare") {
 			return failf(ExitUsage, "--provider cloudflare takes exactly --kind workers-script or pages-project")
@@ -420,7 +515,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
 		if err != nil {
 			return err
 		}
@@ -431,7 +526,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, "", "adapter.configure", envID); err != nil {
 			return err
 		}
-		credential, err := source.read(ios)
+		credential, err := awsAuth.credential(ios, source)
 		if err != nil {
 			return err
 		}
@@ -469,7 +564,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			if moveID != "" && string(selectedMove.Kind) != "origin" {
 				return failf(ExitRefused, "move %s is not an origin move", moveID)
 			}
-			credential, err := source.read(ios)
+			credential, err := awsAuth.credential(ios, source)
 			if err != nil {
 				return err
 			}
@@ -494,7 +589,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
 		if err != nil {
 			return err
 		}
@@ -560,12 +655,14 @@ func runAdapterCredential(ctx context.Context, ios IO, args []string) error {
 	}
 	var adapterID, moveID string
 	var source adapterCredentialSource
+	var awsAuth adapterAWSAuth
 	st, flags, err := parseCommon("adapter credential "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&adapterID, "adapter", "", "adapter id")
 		if sub == "set" {
 			fs.StringVar(&moveID, "move", "", "attention-required origin move id to resume")
 			fs.BoolVar(&source.stdin, "stdin", false, "read credential from stdin")
 			fs.StringVar(&source.file, "value-file", "", "read credential from file")
+			awsAuth.flags(fs)
 		}
 	})
 	if err != nil {
@@ -596,7 +693,7 @@ func runAdapterCredential(ctx context.Context, ios IO, args []string) error {
 	if err := runAdapterCeremony(ctx, ios, client, st, artifact, adapterBase(org, project), adapterID, "adapter.credential-set"); err != nil {
 		return err
 	}
-	credential, err := source.read(ios)
+	credential, err := awsAuth.credential(ios, source)
 	if err != nil {
 		return err
 	}
@@ -644,6 +741,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat, mount, kvPath string
 	var keep, allowEnvironmentCreate bool
 	var selection adapterKeySelection
+	var awsDestination adapterAWSDestination
 	st, flags, err := parseCommon("adapter target "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&adapterID, "adapter", "", "adapter id")
 		fs.StringVar(&outFormat, "o", "table", "output format: table or json")
@@ -652,8 +750,8 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "add" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, or pages-project")
-			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, or per-key")
+			fs.StringVar(&owner, "owner", "", "provider owner, organization, or AWS account id (sealed-webhook: receiver namespace)")
 			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
 			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
@@ -666,6 +764,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&prefix, "prefix", "", "structural prefix")
 			fs.StringVar(&keys, "keys", "", "comma-separated key ids")
 			selection.flags(fs)
+			awsDestination.flags(fs)
 		}
 		if sub == "remove" {
 			fs.BoolVar(&keep, "keep-remote", false, "release custody without deleting remote names")
@@ -723,7 +822,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure", envID); err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
 		if err != nil {
 			return err
 		}

@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/cloudflare"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/sealedwebhook"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/vaultkv"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 type providerConstructor func(adapter.Config, string, []netip.Prefix) (adapter.Module, func(), error)
@@ -20,11 +22,19 @@ type adapterModuleFactory struct {
 	providers    map[adapter.Provider]providerConstructor
 }
 
+// adapterProviderPolicy is the node operator's provider-level posture. It is
+// fixed at startup; no project-scoped request can change it.
+type adapterProviderPolicy struct {
+	// awsWorkloadIdentity admits AWS descriptors that borrow this node's own
+	// AWS identity (HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow).
+	awsWorkloadIdentity bool
+}
+
 // sealedWebhookEndpoints is the activated instance-admin receiver registry,
 // keyed by exact canonical origin.
 type sealedWebhookEndpoints map[string]*sealedwebhook.Endpoint
 
-func deploymentProviderRegistry(endpoints sealedWebhookEndpoints) map[adapter.Provider]providerConstructor {
+func deploymentProviderRegistry(endpoints sealedWebhookEndpoints, policy adapterProviderPolicy) map[adapter.Provider]providerConstructor {
 	return map[adapter.Provider]providerConstructor{
 		adapter.ForgejoProvider: func(config adapter.Config, credential string, allowed []netip.Prefix) (adapter.Module, func(), error) {
 			client, err := forgejo.NewClient(forgejo.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second})
@@ -39,6 +49,13 @@ func deploymentProviderRegistry(endpoints sealedWebhookEndpoints) map[adapter.Pr
 				return nil, nil, err
 			}
 			return &githubactions.Module{API: client}, client.Forget, nil
+		},
+		adapter.AWSSecretsManagerProvider: func(config adapter.Config, credential string, allowed []netip.Prefix) (adapter.Module, func(), error) {
+			client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second, WorkloadIdentity: policy.awsWorkloadIdentity})
+			if err != nil {
+				return nil, nil, awsConstructionError(err)
+			}
+			return &awssm.Module{API: client}, client.Forget, nil
 		},
 		adapter.SealedWebhookProvider: func(config adapter.Config, credential string, allowed []netip.Prefix) (adapter.Module, func(), error) {
 			endpoint := endpoints[config.Origin]
@@ -75,6 +92,21 @@ func deploymentProviderRegistry(endpoints sealedWebhookEndpoints) map[adapter.Pr
 	}
 }
 
+// awsConstructionError classifies an AWS module construction refusal. A bad
+// origin or descriptor is the caller's to fix (400 with its safe detail); a
+// descriptor that needs the node's workload identity while the node operator
+// has not allowed it is also terminal for the worker, never retried.
+func awsConstructionError(err error) error {
+	var config *awssm.ConfigError
+	if !errors.As(err, &config) {
+		return err
+	}
+	if errors.Is(err, awssm.ErrWorkloadIdentityDisabled) {
+		return errors.Join(domain.ErrInvalid, adapter.ErrProviderAuth, err)
+	}
+	return errors.Join(domain.ErrInvalid, err)
+}
+
 // egressOrigin is the operator egress-policy key for an adapter origin. The
 // policy is keyed by bare https origins; a Vault/OpenBao origin may carry a
 // namespace path, which does not change where the adapter dials.
@@ -89,8 +121,8 @@ func egressOrigin(provider adapter.Provider, origin string) string {
 	return parsed.Base
 }
 
-func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix, endpoints sealedWebhookEndpoints) *adapterModuleFactory {
-	return &adapterModuleFactory{egressPolicy: egressPolicy, providers: deploymentProviderRegistry(endpoints)}
+func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix, endpoints sealedWebhookEndpoints, policy adapterProviderPolicy) *adapterModuleFactory {
+	return &adapterModuleFactory{egressPolicy: egressPolicy, providers: deploymentProviderRegistry(endpoints, policy)}
 }
 
 func (f *adapterModuleFactory) Build(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {

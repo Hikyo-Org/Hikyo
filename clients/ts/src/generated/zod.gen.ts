@@ -299,14 +299,16 @@ export const zCertificateIssueResult = z.object({
 export const zTimestamp = z.iso.datetime();
 
 /**
- * repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+ * repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
  */
 export const zAdapterDestinationKind = z.enum([
     'repository',
     'organization',
     'environment',
     'workers-script',
-    'pages-project'
+    'pages-project',
+    'json-object',
+    'per-key'
 ]);
 
 export const zAdapterVisibility = z.enum([

@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}
@@ -176,6 +176,41 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 		if _, err := ParseProvider(raw); err == nil {
 			t.Fatalf("ParseProvider(%q) accepted unknown provider", raw)
 		}
+	}
+}
+
+// Every compiled-in provider names the destination kinds it accepts, and no
+// provider accepts another's kinds: the seam cannot route a CI target into a
+// cloud secret manager or the reverse.
+func TestDestinationKindsArePartitionedByProvider(t *testing.T) {
+	entries := []ManifestEntry{{KeyID: "key", CanonicalName: "TOKEN", Classification: SecretClassification, Value: "v"}}
+	cases := map[Provider][]Destination{
+		SealedWebhookProvider:     {{Kind: Organization, Owner: "receiver"}},
+		CloudflareProvider:        {{Kind: WorkersScript, Owner: "account", Name: "script"}, {Kind: PagesProject, Owner: "account", Name: "project", Environment: "preview"}},
+		VaultKVProvider:           {{Kind: Repository, Owner: "secret", Name: "app"}},
+		ForgejoProvider:           {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}},
+		GitHubActionsProvider:     {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}, {Kind: Environment, Owner: "o", Name: "r", Environment: "e"}},
+		AWSSecretsManagerProvider: {{Kind: JSONObject, Owner: "123456789012", Name: "app"}, {Kind: PerKey, Owner: "123456789012"}},
+	}
+	for provider, destinations := range cases {
+		for _, destination := range destinations {
+			if err := ValidateTargetManifest(string(provider), destination, "", entries, true); err != nil {
+				t.Errorf("%s rejected its own kind %s: %v", provider, destination.Kind, err)
+			}
+		}
+		for other, foreign := range cases {
+			if other == provider || (provider != AWSSecretsManagerProvider && other != AWSSecretsManagerProvider) {
+				continue
+			}
+			for _, destination := range foreign {
+				if err := ValidateTargetManifest(string(provider), destination, "", entries, true); err == nil {
+					t.Errorf("%s accepted %s's destination kind %s", provider, other, destination.Kind)
+				}
+			}
+		}
+	}
+	if len(cases) != len(SupportedProviders()) {
+		t.Fatalf("destination partition covers %d providers, compiled-in set has %d", len(cases), len(SupportedProviders()))
 	}
 }
 

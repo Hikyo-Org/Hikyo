@@ -62,6 +62,8 @@ export function providerLabel(provider: string): string {
       return 'Sealed webhook';
     case 'vault-kv':
       return 'Vault / OpenBao KV';
+    case 'aws-secrets-manager':
+      return 'AWS Secrets Manager';
     case 'cloudflare':
       return 'Cloudflare Workers & Pages';
     default:
@@ -203,7 +205,7 @@ function useInvalidateAdapters(ref: ProjectRef) {
 }
 
 /** The providers this build can create; responses may name others. */
-export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv';
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv' | 'aws-secrets-manager';
 
 export type CreateAdapterInput = {
   readonly provider: AdapterProviderKind;

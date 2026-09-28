@@ -38,6 +38,11 @@ const (
 	Repository   DestinationKind = "repository"
 	Organization DestinationKind = "organization"
 	Environment  DestinationKind = "environment"
+	// JSONObject delivers the whole selected manifest as one AWS Secrets
+	// Manager secret holding a canonical JSON object.
+	JSONObject DestinationKind = "json-object"
+	// PerKey delivers each selected key as its own AWS Secrets Manager secret.
+	PerKey DestinationKind = "per-key"
 	// WorkersScript is one Cloudflare Workers script: Owner is the account id,
 	// Name the script name.
 	WorkersScript DestinationKind = "workers-script"
@@ -174,6 +179,10 @@ type SyncRequest struct {
 	// Completed names were durably finished earlier in this leased job before
 	// an in-job provider-rate wait. Modules skip them when plaintext is reloaded.
 	Completed []Change
+	// JobID is the outbox job this attempt belongs to. It is identical across
+	// every retry of one job, so a provider that supports request idempotency
+	// tokens can replay an unknown outcome without writing twice.
+	JobID string
 	// Source pins the exact source scope and revision this job converges.
 	// Providers that carry provenance on the wire (sealed-webhook) require it.
 	Source Source
@@ -405,6 +414,8 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 		return ValidateGitHubActionsManifest(prefix, entries, values)
 	case ForgejoProvider:
 		return ValidateManifest(prefix, entries)
+	case AWSSecretsManagerProvider:
+		return fmt.Errorf("adapter: %s validation requires the target destination", provider)
 	case SealedWebhookProvider:
 		return ValidateSealedWebhookManifest(prefix, entries, values)
 	case VaultKVProvider:
@@ -414,6 +425,56 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 	default:
 		return fmt.Errorf("adapter: unknown provider %q", provider)
 	}
+}
+
+// ValidateTargetManifest is the destination-aware form of
+// ValidateProviderManifest. Cloud secret managers derive effective names from
+// the destination as well as the prefix, so they need the whole route.
+func ValidateTargetManifest(provider string, destination Destination, prefix string, entries []ManifestEntry, values bool) error {
+	kind, err := ParseProvider(provider)
+	if err != nil {
+		return err
+	}
+	if kind == AWSSecretsManagerProvider {
+		return ValidateAWSSecretsManagerManifest(destination, prefix, entries, values)
+	}
+	if destination.Kind == JSONObject || destination.Kind == PerKey {
+		return fmt.Errorf("adapter: %s does not support destination kind %q", provider, destination.Kind)
+	}
+	return ValidateProviderManifest(provider, prefix, entries, values)
+}
+
+// Claim is one provider name a target configuration will own.
+type Claim struct {
+	Surface       Surface
+	EffectiveName string
+	KeyID         string
+}
+
+// ClaimedNames lists every provider name a target configuration owns,
+// including management sentinels where the provider stores them as names.
+// Stores use it to refuse two targets claiming one destination name.
+func ClaimedNames(provider string, destination Destination, prefix string, manifest []ManifestEntry) []Claim {
+	if Provider(provider) == AWSSecretsManagerProvider {
+		return awsClaims(destination, prefix, manifest)
+	}
+	out := []Claim{{Surface: Secret, EffectiveName: prefix + SentinelName}, {Surface: Variable, EffectiveName: prefix + SentinelName}}
+	for _, entry := range manifest {
+		out = append(out, Claim{Surface: entry.Surface(), EffectiveName: prefix + entry.CanonicalName, KeyID: entry.KeyID})
+	}
+	return out
+}
+
+// ConsumptionForTarget renders the names-only consumption snippet an operator
+// copies into the workload. It never carries values.
+func ConsumptionForTarget(provider string, destination Destination, prefix string, entries []ManifestEntry) (string, error) {
+	if Provider(provider) == AWSSecretsManagerProvider {
+		if err := ValidateAWSSecretsManagerManifest(destination, prefix, entries, false); err != nil {
+			return "", err
+		}
+		return renderAWSConsumption(destination, prefix, entries), nil
+	}
+	return WorkflowForProvider(provider, prefix, entries)
 }
 
 // WorkflowForProvider validates names and renders provider wiring: Cloudflare

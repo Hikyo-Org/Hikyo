@@ -175,7 +175,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	if err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 	}
-	var moduleFactory adapter.ModuleFactory = newAdapterModuleFactory(cfg.AdapterEgressPolicy, sealedEndpoints).Build
+	var moduleFactory adapter.ModuleFactory = newAdapterModuleFactory(cfg.AdapterEgressPolicy, sealedEndpoints, adapterProviderPolicy{awsWorkloadIdentity: cfg.AdapterAWSWorkloadIdentity}).Build
 	if cfg.Dev && cfg.DevAdapterFakeProvider {
 		// The browser flow suite's stand-in provider (#157): config.Load has
 		// already refused this switch on anything but a --dev server.
