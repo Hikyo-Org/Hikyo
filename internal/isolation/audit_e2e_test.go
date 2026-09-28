@@ -484,6 +484,9 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// refusal, a tombstone and the scheduled 30-day purge, each through
 		// the real service under a real workload credential.
 		runDeliveryTargetAuditLifecycle(t, db)
+		// Generic file destinations (#164): configuration, inspection and a
+		// bound client's applied report through the real services.
+		runFileTargetAuditLifecycle(t, db)
 		// SCIM provisioning (#73): every `scim.*` type gets a real emitter —
 		// binding, credential, user, group, mapping, attention and the lockout
 		// pair — before the trails are read.

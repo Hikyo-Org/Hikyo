@@ -470,6 +470,8 @@ type Repos interface {
 	DeliveryTargets() DeliveryTargetRepo
 	// Transit is the managed-key surface (#156, transit ADR).
 	Transit() TransitRepo
+	// FileTargets is the generic file-destination surface (#164).
+	FileTargets() FileTargetRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -524,6 +526,7 @@ type ReadRepos interface {
 	PKI() PKIReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
+	FileTargets() FileTargetReader
 }
 
 // DefinitionsPlan is a stored plan row (#70). Bundle holds the canonical bundle

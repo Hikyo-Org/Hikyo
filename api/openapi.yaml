@@ -6671,6 +6671,7 @@ paths:
       - $ref: "#/components/parameters/DeliveryCursor"
       - $ref: "#/components/parameters/DeliveryProjection"
       - $ref: "#/components/parameters/DeliveryAcknowledgedKeys"
+      - $ref: "#/components/parameters/DeliveryFileTarget"
       - name: parameters
         in: query
         description: JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
@@ -6719,6 +6720,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeliveryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
@@ -11786,6 +11789,153 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  # ---------------------------------------------------------------------------
+  # Generic file destinations (#164): a PULL-class target. The server stores an
+  # environment, a key selection and one bound workload service account, and
+  # never a host path, format, mode or owner: those live only in the client's
+  # local config. There is no push, outbox, ledger or provider credential; the
+  # bound account fetches `delivery?target=<id>` and reports what it applied.
+  # ---------------------------------------------------------------------------
+  /api/v1/orgs/{org}/projects/{project}/file-targets:
+    parameters: [{$ref: "#/components/parameters/OrgID"}, {$ref: "#/components/parameters/ProjectID"}]
+    get:
+      operationId: listFileTargets
+      tags: [adapters]
+      summary: List the project's file targets.
+      x-hikyo-class: tenant
+      x-hikyo-operation: file-target.inspect
+      x-hikyo-formula: [manage-adapters@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+        "200": {description: File targets., content: {application/json: {schema: {$ref: "#/components/schemas/FileTargetList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createFileTarget
+      tags: [adapters]
+      summary: Bind a workload service account to an environment and key selection.
+      description: |
+        The service account must be a `workload` account of this project and
+        not already bound to a file target. Once bound, its delivery is
+        narrowed to the selection and must name the target, so the account is
+        target-scoped. The selection resolves to immutable key ids at save,
+        with the #157 rules. Needs both `manage-adapters` and
+        `manage-identities` on the project, because it reshapes an identity's
+        delivery.
+      x-hikyo-class: tenant
+      x-hikyo-operation: file-target.create
+      x-hikyo-formula: [manage-adapters@project, manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateFileTargetRequest"}}}}
+      responses:
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+        "201": {description: The file target., content: {application/json: {schema: {$ref: "#/components/schemas/FileTarget"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}:
+    parameters: [{$ref: "#/components/parameters/OrgID"}, {$ref: "#/components/parameters/ProjectID"}, {$ref: "#/components/parameters/FileTargetID"}]
+    get:
+      operationId: getFileTarget
+      tags: [adapters]
+      summary: Show one file target, its selection and its last report.
+      x-hikyo-class: tenant
+      x-hikyo-operation: file-target.inspect
+      x-hikyo-formula: [manage-adapters@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+        "200": {description: The file target., content: {application/json: {schema: {$ref: "#/components/schemas/FileTarget"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    patch:
+      operationId: updateFileTarget
+      tags: [adapters]
+      summary: Replace a file target's key selection.
+      description: |
+        A full replacement under a generation compare-and-swap: a stale
+        `expected_generation` is a 409. The environment and service account
+        are immutable; delete and re-create to change them.
+      x-hikyo-class: tenant
+      x-hikyo-operation: file-target.update
+      x-hikyo-formula: [manage-adapters@project, manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/UpdateFileTargetRequest"}}}}
+      responses:
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+        "200": {description: The file target., content: {application/json: {schema: {$ref: "#/components/schemas/FileTarget"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deleteFileTarget
+      tags: [adapters]
+      summary: Remove a file target.
+      description: |
+        Refused with 409 while the bound service account still holds a live
+        credential: removing the binding would widen that account's delivery
+        back to the whole environment. Revoke its credentials first, or delete
+        the service account, which removes the target with it. Nothing on the
+        destination host changes; the client keeps its last generation.
+      x-hikyo-class: tenant
+      x-hikyo-operation: file-target.delete
+      x-hikyo-formula: [manage-adapters@project, manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+        "204": {description: Removed.}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/FileTargetID"
+    post:
+      operationId: reportFileTarget
+      tags: [delivery]
+      summary: Report what the bound file-sync client applied.
+      description: |
+        The bound workload's value-free write: a closed state, the revision
+        and target generation it rendered, its keyed generation stamp and its
+        own clock. Only the bound principal may report, and only in the
+        target's environment; anything else is the uniform 404. A repeat
+        report is not audited; a changed one is. Reports older than the last
+        accepted reported_at are refused with 409. Shares the delivery-target
+        report budget (60/min per principal, 300/min per organisation).
+      x-hikyo-class: tenant
+      x-hikyo-operation: file-target.report
+      x-hikyo-formula: [report-delivery-status@environment]
+      x-hikyo-artifacts: [machine-credential]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/FileTargetReportRequest"}}}}
+      responses:
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+        "204": {description: Accepted.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/orgs/{org}/projects/{project}/dynamic-providers:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -13492,6 +13642,11 @@ components:
       in: path
       required: true
       schema: {$ref: "#/components/schemas/ID"}
+    FileTargetID:
+      name: fileTarget
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
     AdapterTargetID:
       name: target
       in: path
@@ -13691,6 +13846,17 @@ components:
         maxItems: 100
         items: {type: string}
 
+    DeliveryFileTarget:
+      name: target
+      in: query
+      required: false
+      description: |
+        The file target (#164) the presenting workload is bound to. A bound
+        account is delivered that target's key selection only and must name
+        it (400 otherwise); naming a target the caller is not bound to, or one
+        in another environment, is the uniform 404. Unbound callers omit it.
+        Added in API revision 7.
+      schema: {$ref: "#/components/schemas/ID"}
     DeliveryAcknowledgedKeys:
       name: acknowledged_keys
       in: query
@@ -14568,6 +14734,110 @@ components:
           uniqueItems: true
           items: {type: string, minLength: 1, maxLength: 64}
         classification: {type: string, enum: ["", secret, config]}
+
+    FileTargetKey:
+      type: object
+      additionalProperties: false
+      required: [key_id, name, classification]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string}
+        classification: {type: string, enum: [secret, config]}
+
+    FileTargetState:
+      type: string
+      enum: [applied, current, offline, refused, failed]
+      description: |
+        What the client reached: `applied` published a new generation;
+        `current` found nothing to change; `offline` rendered from its
+        encrypted offline snapshot while the server was unreachable; `refused`
+        kept the last generation because a key could not be represented or a
+        local policy refused; `failed` kept the last generation after a
+        filesystem failure.
+
+    FileTargetReport:
+      type: object
+      additionalProperties: false
+      required: [state, revision, generation, stamp, reported_at, received_at]
+      description: The client's last accepted report. An assertion, not verified host state.
+      properties:
+        state: {$ref: "#/components/schemas/FileTargetState"}
+        revision: {type: integer, format: int64, minimum: 0}
+        generation: {type: integer, format: int64, minimum: 1}
+        stamp: {type: string, maxLength: 35, description: "The keyed generation stamp (`v1-<32 hex>`), or empty."}
+        reported_at: {type: string, format: date-time}
+        received_at: {type: string, format: date-time}
+
+    FileTarget:
+      type: object
+      additionalProperties: false
+      required: [id, environment_id, name, service_account_id, principal_id, generation, created_at, updated_at, keys, report]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string}
+        service_account_id: {$ref: "#/components/schemas/ID"}
+        principal_id: {$ref: "#/components/schemas/ID"}
+        generation: {type: integer, format: int64, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        keys:
+          type: array
+          description: The resolved selection. Membership is by immutable id; names are echoed for the operator.
+          items: {$ref: "#/components/schemas/FileTargetKey"}
+        report:
+          description: The last report, or null when the client has never reported.
+          oneOf:
+            - $ref: "#/components/schemas/FileTargetReport"
+            - type: "null"
+
+    FileTargetList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/FileTarget"}
+
+    CreateFileTargetRequest:
+      type: object
+      additionalProperties: false
+      required: [environment_id, name, service_account_id]
+      properties:
+        environment_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string, minLength: 1, maxLength: 63, pattern: "^[a-z][a-z0-9-]{0,62}$"}
+        service_account_id: {$ref: "#/components/schemas/ID"}
+        key_ids:
+          type: array
+          maxItems: 512
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/ID"}
+        key_selection: {$ref: "#/components/schemas/AdapterKeySelection"}
+
+    UpdateFileTargetRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_generation]
+      properties:
+        expected_generation: {type: integer, format: int64, minimum: 1}
+        key_ids:
+          type: array
+          maxItems: 512
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/ID"}
+        key_selection: {$ref: "#/components/schemas/AdapterKeySelection"}
+
+    FileTargetReportRequest:
+      type: object
+      additionalProperties: false
+      required: [state, revision, generation, reported_at]
+      properties:
+        state: {$ref: "#/components/schemas/FileTargetState"}
+        revision: {type: integer, format: int64, minimum: 0}
+        generation: {type: integer, format: int64, minimum: 1}
+        stamp: {type: string, pattern: "^v1-[0-9a-f]{32}$"}
+        reported_at: {type: string, format: date-time}
 
     CreateAdapterRequest:
       type: object
@@ -18610,6 +18880,15 @@ components:
         cursor is current — in which case `keys` is empty and NOTHING was
         disclosed. Only a fetch that actually delivers values is a disclosure.
       properties:
+        file_target_generation:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Present when the fetch named a file target (#164): the target's
+            configuration generation this delivery was narrowed under, on both
+            dispositions, so the bound client can report exactly what it
+            rendered. Added in API revision 7.
         credential_id:
           allOf:
             - $ref: "#/components/schemas/ID"

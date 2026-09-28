@@ -58,7 +58,7 @@ var authRuleRows = []authRuleRow{
 		"context create", "context list", "context show", "context delete",
 		"account establish-credential", "account recovery begin",
 		"account passkey enrol", "account passkey list", "account passkey remove",
-		"definitions scaffold", "scan",
+		"definitions scaffold", "file-sync doctor", "scan",
 		"update channel stable", "update channel nightly", "update channel off", "update check",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations("env param list", "env param add", "env param delete")},
@@ -126,6 +126,7 @@ var authRuleRows = []authRuleRow{
 		"pki issuer release-hold", "pki issuer crl",
 		"pki profile list", "pki profile show", "pki profile create", "pki profile update", "pki profile delete",
 		"pki profile bind", "pki profile unbind",
+		"file-target create", "file-target list", "file-target show", "file-target update", "file-target delete",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"env list", "env show", "env create", "env delete",
@@ -145,6 +146,7 @@ var authRuleRows = []authRuleRow{
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",
+		"file-sync render",
 	)},
 }
 

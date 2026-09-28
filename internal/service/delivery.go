@@ -89,6 +89,9 @@ type FetchResult struct {
 	// SnapshotExpiresAt is IssuedAt + delivery.SnapshotMaxAge.
 	IssuedAt          time.Time
 	SnapshotExpiresAt time.Time
+	// FileTargetGeneration is the named file target's configuration
+	// generation (#164), zero for an unbound caller.
+	FileTargetGeneration int64
 }
 
 // DeliveredKey is one key as the machine surface delivers it: its name, its
@@ -123,6 +126,11 @@ type FetchOptions struct {
 	// fetch audit record AS PRESENTED and otherwise ignored — the server filters
 	// nothing and refuses nothing on it (k8s ADR § Loader-control).
 	AcknowledgedKeys []string
+	// Target names the file target (#164) the caller is bound to. A workload
+	// bound to a file target is delivered that target's key selection only and
+	// must name it; any other caller naming a target gets the uniform
+	// nonexistent answer.
+	Target string
 }
 
 // OfflineRecord is one client-durable disclosure record produced before an
@@ -373,8 +381,15 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			grants = withoutReveal(grants)
 		}
 
+		// A file-target binding (#164) narrows the delivery to the target's
+		// selection BEFORE any value is opened, so an unselected secret never
+		// crosses, is never decrypted and never moves this caller's token.
+		only, targetGeneration, err := fileTargetSelection(ctx, r, p, caller.Principal, scope, opts.Target)
+		if err != nil {
+			return err
+		}
 		rows, manifest, revision, snapshotRevision, err := deliveryRows(
-			ctx, r, p, sealer, scope, selected, grants, mode, pinnedNonCurrent, opts.Parameters)
+			ctx, r, p, sealer, scope, selected, grants, mode, pinnedNonCurrent, opts.Parameters, only)
 		if err != nil {
 			return err
 		}
@@ -428,10 +443,11 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			Current:  current, Cursor: computed, ChangeToken: changeToken,
 			CredentialExpiresAt: caller.CredentialExpiresAt,
 			SchemaRevision:      revision, PinnedRevision: out.PinnedRevision,
-			PinExpired:        out.PinExpired,
-			CredentialID:      caller.CredentialID,
-			IssuedAt:          issuedAt,
-			SnapshotExpiresAt: issuedAt.Add(delivery.SnapshotMaxAge),
+			PinExpired:           out.PinExpired,
+			FileTargetGeneration: targetGeneration,
+			CredentialID:         caller.CredentialID,
+			IssuedAt:             issuedAt,
+			SnapshotExpiresAt:    issuedAt.Add(delivery.SnapshotMaxAge),
 		}
 		if !current {
 			out.Keys = rows
@@ -458,21 +474,25 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if acknowledged == nil {
 			acknowledged = []string{}
 		}
+		fetchPayload := audit.Payload{
+			"disposition":          disposition,
+			"parameters":           auditedParameters(opts.Parameters),
+			"credential_id":        caller.CredentialID,
+			"credential_kind":      caller.Artifact,
+			"principal_class":      string(caller.Class),
+			"scope":                renderScope(scope),
+			"key_count":            len(out.Keys),
+			"projection":           string(mode),
+			"acknowledged_keys":    acknowledged,
+			"delivered_count":      delivered,
+			"change_token_version": crypto.TokenVersion,
+			"cursor_presented":     cursor != "",
+		}
+		if opts.Target != "" {
+			fetchPayload["file_target"] = opts.Target
+		}
 		fetchEvent, err := domainEvent(ctx, audit.EventDeliveryFetched, caller.Principal,
-			audit.Object{Type: "environment", ID: string(scope.Env)}, audit.Payload{
-				"disposition":          disposition,
-				"parameters":           auditedParameters(opts.Parameters),
-				"credential_id":        caller.CredentialID,
-				"credential_kind":      caller.Artifact,
-				"principal_class":      string(caller.Class),
-				"scope":                renderScope(scope),
-				"key_count":            len(out.Keys),
-				"projection":           string(mode),
-				"acknowledged_keys":    acknowledged,
-				"delivered_count":      delivered,
-				"change_token_version": crypto.TokenVersion,
-				"cursor_presented":     cursor != "",
-			})
+			audit.Object{Type: "environment", ID: string(scope.Env)}, fetchPayload)
 		if err != nil {
 			return err
 		}
@@ -723,7 +743,7 @@ func (s *Delivery) recordUnbound(ctx context.Context, actor Actor, cause error) 
 // ordering.
 func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	scope domain.Scope, selected *store.Snapshot, grants []authz.GrantRow, mode delivery.Mode,
-	pinnedNonCurrent bool, supplied map[string]string) (keys []DeliveredKey, manifest []delivery.Row, schemaRevision, snapshotRevision int64, err error) {
+	pinnedNonCurrent bool, supplied map[string]string, only map[string]bool) (keys []DeliveredKey, manifest []delivery.Row, schemaRevision, snapshotRevision int64, err error) {
 	var snapshot store.Snapshot
 	if selected == nil {
 		snapshot, err = r.Snapshots().Latest(ctx, p)
@@ -757,6 +777,9 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 	manifest = make([]delivery.Row, 0, len(entries))
 	renderBytes := 0
 	for _, entry := range entries {
+		if only != nil && !only[entry.KeyID] {
+			continue
+		}
 		secret := entry.Classification == string(schema.Secret)
 		// config-only is a server-side authorized term: a secret key is not in
 		// the delivery and not in the manifest the token covers, so a secret's

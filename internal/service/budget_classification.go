@@ -75,8 +75,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpAdapterSync, authz.OpAdapterConfigure)
 	add(budgetClassNamed, "machine-fetch §179: Delivery.FetchAs (300/min·org + 1000/min·instance)",
 		authz.OpDeliveryFetch)
-	add(budgetClassNamed, "delivery-target report: separate bucket, 60/min·principal + 300/min·org, charged after authorization (k8s-condition-reporting ADR D8)",
-		authz.OpDeliveryTargetReport, authz.OpDeliveryTargetTombstone)
+	add(budgetClassNamed, "delivery-target and file-target reports: separate bucket, 60/min·principal + 300/min·org, charged after authorization (k8s-condition-reporting ADR D8)",
+		authz.OpDeliveryTargetReport, authz.OpDeliveryTargetTombstone, authz.OpFileTargetReport)
 	add(budgetClassNamed, "transit §179 (transit ADR D9): Transit.use (600/min·principal + 6000/min·org), installation-wide under HA",
 		authz.OpTransitUse)
 	add(budgetClassNamed, "schema-revision §151: chargeOnce before BumpSchemaRevision (60/h·project)",
@@ -115,6 +115,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpValueReveal)
 	add(budgetClassExempt, "delivery-target list: one environment, at most 100 rows per reporting principal (§10 authenticated API)",
 		authz.OpDeliveryTargetList)
+	add(budgetClassExempt, "file-target configuration and inspection: project-scoped admin metadata, one row per workload service account (§10 authenticated API)",
+		authz.OpFileTargetCreate, authz.OpFileTargetUpdate, authz.OpFileTargetDelete, authz.OpFileTargetInspect)
 	add(budgetClassExempt, "paged audit read ≤1000/page (§2/§10)",
 		authz.OpAuditQueryOrg, authz.OpAuditQueryProject, authz.OpAuditQueryEnv, authz.OpAuditInstanceQuery)
 	add(budgetClassExempt, "outbox worker push; §12 outbox concurrency (1/target, 4/org) bounds it",

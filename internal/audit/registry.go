@@ -802,6 +802,13 @@ const (
 	EventAdapterScrub             EventType = "adapter.scrub"
 	EventAdapterSuperseded        EventType = "adapter.superseded"
 
+	// Generic file destinations (#164): configuration of a pull-class target,
+	// its metadata read, and each change the bound client reports applying.
+	// No path, format or value ever appears: the server never learns them.
+	EventFileTargetConfigured EventType = "file_target.configured"
+	EventFileTargetInspected  EventType = "file_target.inspected"
+	EventFileTargetApplied    EventType = "file_target.applied"
+
 	// Dynamic secrets (#147).
 	EventDynamicProviderConfigured        EventType = "dynamic.provider_configured"
 	EventDynamicProviderCredentialReplace EventType = "dynamic.provider_credential_replace"
@@ -3053,6 +3060,9 @@ var registry = map[EventType]TypeSpec{
 			// cursor's bind-tuple, so recording it makes "which projection was in
 			// force" answerable from the trail.
 			"projection": {Kind: KindString, Required: true, Enum: []string{"full", "config-only"}},
+			// The file target (#164) whose selection narrowed this delivery;
+			// empty for an unbound caller.
+			"file_target": {Kind: KindString, MaxBytes: 64},
 			// The loader-control keys the consumer acknowledged, RECORDED AS
 			// PRESENTED — not sorted, not deduped — because the audit answer the
 			// ADR wants is "which acknowledgement was in force for this delivery"
@@ -3294,6 +3304,33 @@ var registry = map[EventType]TypeSpec{
 		SchemaVersion: 1, Retention: RetentionAccess,
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
 		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+
+	// --- Generic file destinations (#164) ------------------------------------
+	EventFileTargetConfigured: adapterLifecycleEvent(Schema{
+		"mutation":           {Kind: KindString, Required: true, Enum: []string{"create", "update", "delete"}},
+		"environment_id":     {Kind: KindString, Required: true},
+		"service_account_id": {Kind: KindString, Required: true},
+		"generation":         {Kind: KindInt, Required: true},
+		"key_count":          {Kind: KindInt, Required: true},
+	}),
+	EventFileTargetInspected: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true},
+		Trails:   map[Trail]bool{TrailTenant: true}, Schema: Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+	// One event per reported CHANGE (a new state, revision or stamp), never
+	// per heartbeat: the condition-reporting ADR's D8 volume rule.
+	EventFileTargetApplied: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"state":      {Kind: KindString, Required: true, Enum: []string{"applied", "current", "offline", "refused", "failed"}},
+			"revision":   {Kind: KindInt, Required: true},
+			"generation": {Kind: KindInt, Required: true},
+			"stamp":      {Kind: KindString, MaxBytes: 35},
+		},
 	},
 
 	// --- Dynamic secrets (#147) ----------------------------------------------

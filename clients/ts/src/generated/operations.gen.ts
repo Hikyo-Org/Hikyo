@@ -95,6 +95,7 @@ import {
   createEnvironment,
   createFederatedBinding,
   createFederationIssuer,
+  createFileTarget,
   createFolder,
   createInstanceGrant,
   createKey,
@@ -119,6 +120,7 @@ import {
   deleteDynamicProvider,
   deleteEnvironment,
   deleteFederationIssuer,
+  deleteFileTarget,
   deleteFolder,
   deleteInstanceRegistrationPolicy,
   deleteKey,
@@ -156,6 +158,7 @@ import {
   getEnvironment,
   getEnvironmentSettings,
   getEnvironmentSignals,
+  getFileTarget,
   getFolder,
   getInstanceConfig,
   getInstanceRegistrationPolicy,
@@ -204,6 +207,7 @@ import {
   listEnvironmentParameters,
   listEnvironments,
   listFederationIssuers,
+  listFileTargets,
   listFolders,
   listIdentities,
   listInstanceConnections,
@@ -296,6 +300,7 @@ import {
   renewLease,
   reorderEnvironments,
   reportDeliveryTarget,
+  reportFileTarget,
   requestInstanceUpdate,
   resetCredential,
   resumeAdapterMove,
@@ -403,6 +408,7 @@ import {
   updateAdapterTarget,
   updateApprovalPolicy,
   updateFederationIssuer,
+  updateFileTarget,
   updateKeyDeclaration,
   updateKeyMetadata,
   updateMyProfile,
@@ -451,6 +457,7 @@ import type {
   CreateEnvironmentData,
   CreateFederatedBindingData,
   CreateFederationIssuerData,
+  CreateFileTargetData,
   CreateFolderData,
   CreateInstanceGrantData,
   CreateKeyData,
@@ -475,6 +482,7 @@ import type {
   DeleteDynamicProviderData,
   DeleteEnvironmentData,
   DeleteFederationIssuerData,
+  DeleteFileTargetData,
   DeleteFolderData,
   DeleteInstanceRegistrationPolicyData,
   DeleteKeyData,
@@ -512,6 +520,7 @@ import type {
   GetEnvironmentData,
   GetEnvironmentSettingsData,
   GetEnvironmentSignalsData,
+  GetFileTargetData,
   GetFolderData,
   GetInstanceConfigData,
   GetInstanceRegistrationPolicyData,
@@ -560,6 +569,7 @@ import type {
   ListEnvironmentParametersData,
   ListEnvironmentsData,
   ListFederationIssuersData,
+  ListFileTargetsData,
   ListFoldersData,
   ListIdentitiesData,
   ListInstanceConnectionsData,
@@ -652,6 +662,7 @@ import type {
   RenewLeaseData,
   ReorderEnvironmentsData,
   ReportDeliveryTargetData,
+  ReportFileTargetData,
   RequestInstanceUpdateData,
   ResetCredentialData,
   ResumeAdapterMoveData,
@@ -759,6 +770,7 @@ import type {
   UpdateAdapterTargetData,
   UpdateApprovalPolicyData,
   UpdateFederationIssuerData,
+  UpdateFileTargetData,
   UpdateKeyDeclarationData,
   UpdateKeyMetadataData,
   UpdateMyProfileData,
@@ -806,6 +818,7 @@ import {
   zCreateEnvironmentResponse,
   zCreateFederatedBindingResponse,
   zCreateFederationIssuerResponse,
+  zCreateFileTargetResponse,
   zCreateFolderResponse,
   zCreateInstanceGrantResponse,
   zCreateKeyGroupResponse,
@@ -849,6 +862,7 @@ import {
   zGetEnvironmentResponse,
   zGetEnvironmentSettingsResponse,
   zGetEnvironmentSignalsResponse,
+  zGetFileTargetResponse,
   zGetFolderResponse,
   zGetInstanceConfigResponse,
   zGetInstanceRegistrationPolicyResponse,
@@ -897,6 +911,7 @@ import {
   zListEnvironmentParametersResponse,
   zListEnvironmentsResponse,
   zListFederationIssuersResponse,
+  zListFileTargetsResponse,
   zListFoldersResponse,
   zListIdentitiesResponse,
   zListInstanceConnectionsResponse,
@@ -1077,6 +1092,7 @@ import {
   zUpdateAdapterTargetResponse,
   zUpdateApprovalPolicyResponse,
   zUpdateFederationIssuerResponse,
+  zUpdateFileTargetResponse,
   zUpdateKeyDeclarationResponse,
   zUpdateKeyMetadataResponse,
   zUpdateMyProfileResponse,
@@ -1124,6 +1140,7 @@ export const createEnvGrantOp: BodyOperation<CreateEnvGrantData, typeof zCreateE
 export const createEnvironmentOp: BodyOperation<CreateEnvironmentData, typeof zCreateEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createEnvironment, [201], zCreateEnvironmentResponse);
 export const createFederatedBindingOp: BodyOperation<CreateFederatedBindingData, typeof zCreateFederatedBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createFederatedBinding, [201], zCreateFederatedBindingResponse);
 export const createFederationIssuerOp: BodyOperation<CreateFederationIssuerData, typeof zCreateFederationIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createFederationIssuer, [201], zCreateFederationIssuerResponse);
+export const createFileTargetOp: BodyOperation<CreateFileTargetData, typeof zCreateFileTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createFileTarget, [201], zCreateFileTargetResponse);
 export const createFolderOp: BodyOperation<CreateFolderData, typeof zCreateFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createFolder, [201], zCreateFolderResponse);
 export const createInstanceGrantOp: BodyOperation<CreateInstanceGrantData, typeof zCreateInstanceGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createInstanceGrant, [200], zCreateInstanceGrantResponse);
 export const createKeyOp: BodyOperation<CreateKeyData, typeof zCreateKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createKey, [201], zCreateKeyResponse);
@@ -1167,6 +1184,7 @@ export const getDefinitionsSettingsOp: BodyOperation<GetDefinitionsSettingsData,
 export const getEnvironmentOp: BodyOperation<GetEnvironmentData, typeof zGetEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironment, [200], zGetEnvironmentResponse);
 export const getEnvironmentSettingsOp: BodyOperation<GetEnvironmentSettingsData, typeof zGetEnvironmentSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSettings, [200], zGetEnvironmentSettingsResponse);
 export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, typeof zGetEnvironmentSignalsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSignals, [200], zGetEnvironmentSignalsResponse);
+export const getFileTargetOp: BodyOperation<GetFileTargetData, typeof zGetFileTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFileTarget, [200], zGetFileTargetResponse);
 export const getFolderOp: BodyOperation<GetFolderData, typeof zGetFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFolder, [200], zGetFolderResponse);
 export const getInstanceConfigOp: BodyOperation<GetInstanceConfigData, typeof zGetInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceConfig, [200], zGetInstanceConfigResponse);
 export const getInstanceRegistrationPolicyOp: BodyOperation<GetInstanceRegistrationPolicyData, typeof zGetInstanceRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceRegistrationPolicy, [200], zGetInstanceRegistrationPolicyResponse);
@@ -1215,6 +1233,7 @@ export const listDynamicProvidersOp: BodyOperation<ListDynamicProvidersData, typ
 export const listEnvironmentParametersOp: BodyOperation<ListEnvironmentParametersData, typeof zListEnvironmentParametersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironmentParameters, [200], zListEnvironmentParametersResponse);
 export const listEnvironmentsOp: BodyOperation<ListEnvironmentsData, typeof zListEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironments, [200], zListEnvironmentsResponse);
 export const listFederationIssuersOp: BodyOperation<ListFederationIssuersData, typeof zListFederationIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFederationIssuers, [200], zListFederationIssuersResponse);
+export const listFileTargetsOp: BodyOperation<ListFileTargetsData, typeof zListFileTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFileTargets, [200], zListFileTargetsResponse);
 export const listFoldersOp: BodyOperation<ListFoldersData, typeof zListFoldersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFolders, [200], zListFoldersResponse);
 export const listIdentitiesOp: BodyOperation<ListIdentitiesData, typeof zListIdentitiesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listIdentities, [200], zListIdentitiesResponse);
 export const listInstanceConnectionsOp: BodyOperation<ListInstanceConnectionsData, typeof zListInstanceConnectionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listInstanceConnections, [200], zListInstanceConnectionsResponse);
@@ -1395,6 +1414,7 @@ export const updateAdapterOriginOp: BodyOperation<UpdateAdapterOriginData, typeo
 export const updateAdapterTargetOp: BodyOperation<UpdateAdapterTargetData, typeof zUpdateAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterTarget, [200, 202], zUpdateAdapterTargetResponse);
 export const updateApprovalPolicyOp: BodyOperation<UpdateApprovalPolicyData, typeof zUpdateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateApprovalPolicy, [200], zUpdateApprovalPolicyResponse);
 export const updateFederationIssuerOp: BodyOperation<UpdateFederationIssuerData, typeof zUpdateFederationIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateFederationIssuer, [200], zUpdateFederationIssuerResponse);
+export const updateFileTargetOp: BodyOperation<UpdateFileTargetData, typeof zUpdateFileTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateFileTarget, [200], zUpdateFileTargetResponse);
 export const updateKeyDeclarationOp: BodyOperation<UpdateKeyDeclarationData, typeof zUpdateKeyDeclarationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyDeclaration, [200], zUpdateKeyDeclarationResponse);
 export const updateKeyMetadataOp: BodyOperation<UpdateKeyMetadataData, typeof zUpdateKeyMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyMetadata, [200], zUpdateKeyMetadataResponse);
 export const updateMyProfileOp: BodyOperation<UpdateMyProfileData, typeof zUpdateMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateMyProfile, [200], zUpdateMyProfileResponse);
@@ -1409,6 +1429,7 @@ export const deleteAccessPolicyOp: BodylessOperation<DeleteAccessPolicyData> = /
 export const deleteApprovalPolicyOp: BodylessOperation<DeleteApprovalPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteApprovalPolicy, [204]);
 export const deleteEnvironmentOp: BodylessOperation<DeleteEnvironmentData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteEnvironment, [204]);
 export const deleteFederationIssuerOp: BodylessOperation<DeleteFederationIssuerData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFederationIssuer, [204]);
+export const deleteFileTargetOp: BodylessOperation<DeleteFileTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFileTarget, [204]);
 export const deleteFolderOp: BodylessOperation<DeleteFolderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFolder, [204]);
 export const deleteInstanceRegistrationPolicyOp: BodylessOperation<DeleteInstanceRegistrationPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteInstanceRegistrationPolicy, [204]);
 export const deleteKeyOp: BodylessOperation<DeleteKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteKey, [204]);
@@ -1426,6 +1447,7 @@ export const establishCredentialOp: BodylessOperation<EstablishCredentialData> =
 export const logoutOp: BodylessOperation<LogoutData> = /* @__PURE__ */ new GeneratedBodylessOperation(logout, [204]);
 export const removeRemoteOp: BodylessOperation<RemoveRemoteData> = /* @__PURE__ */ new GeneratedBodylessOperation(removeRemote, [204]);
 export const reportDeliveryTargetOp: BodylessOperation<ReportDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportDeliveryTarget, [204]);
+export const reportFileTargetOp: BodylessOperation<ReportFileTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportFileTarget, [204]);
 export const retireSamlSpKeyOp: BodylessOperation<RetireSamlSpKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(retireSamlSpKey, [204]);
 export const revokeAdapterCredentialOp: BodylessOperation<RevokeAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeAdapterCredential, [204]);
 export const revokeDynamicProviderCredentialOp: BodylessOperation<RevokeDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeDynamicProviderCredential, [204]);

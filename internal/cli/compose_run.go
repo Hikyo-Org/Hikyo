@@ -222,7 +222,7 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 			dim Dimension
 			val string
 		}{{DimOrg, cfg.Org}, {DimProject, cfg.Project}, {DimEnv, cfg.Environment}} {
-			if err := foldConfigDim(&resolved, d.dim, d.val, composeConfigName); err != nil {
+			if err := foldConfigDim(&resolved, d.dim, d.val, composeConfigName, SourceConfig); err != nil {
 				return err
 			}
 		}

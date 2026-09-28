@@ -296,6 +296,7 @@ operations:
   reconcileOfflineRecords:     {exception: client-local-delivery}
   reportDeliveryTarget:        {exception: client-local-delivery}
   tombstoneDeliveryTarget:     {exception: client-local-delivery}
+  reportFileTarget:            {exception: client-local-delivery}
   listDeliveryTargets:         {webui: machine-access}
 
   # scim
@@ -425,6 +426,13 @@ operations:
   resumeAdapterTarget:         {webui: adapters}
   testAdapterTarget:           {webui: adapters}
   adoptAdapterTargetNames:     {webui: adapters}
+
+  # generic file destinations (#164 shipped API+CLI; management WebUI #819)
+  listFileTargets:             {issue: 819}
+  createFileTarget:            {issue: 819}
+  getFileTarget:               {issue: 819}
+  updateFileTarget:            {issue: 819}
+  deleteFileTarget:            {issue: 819}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}

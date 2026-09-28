@@ -99,6 +99,10 @@ func (s stubDelivery) ListTargets(context.Context, service.Actor, domain.Scope) 
 	return service.DeliveryTargetList{}, s.err
 }
 
+func (s stubDelivery) ReportFileTarget(context.Context, string, domain.Scope, string, service.FileTargetReport) error {
+	return s.err
+}
+
 type stubFederation struct {
 	err           error
 	createRequest *service.IssuerRequest

@@ -279,3 +279,21 @@ func TestConstructorRejectsUnauditedPKIKeyReads(t *testing.T) {
 		})
 	}
 }
+
+// Batch file-target metadata belongs only to project inspection. Single-target
+// readers retain their existing operation and cannot acquire batch authority.
+func TestFileTargetBatchKeysOnlyInspection(t *testing.T) {
+	for op, spec := range operationTable {
+		if got, want := spec.storeOps[StoreFileTargetsKeysForTargets], op == OpFileTargetInspect; got != want {
+			t.Errorf("%s batch authority=%v, want %v", op, got, want)
+		}
+	}
+	if !readOnlyStoreOps[StoreFileTargetsKeysForTargets] {
+		t.Fatal("batch metadata must be classified read-only")
+	}
+	for site, ops := range systemSites {
+		if ops[StoreFileTargetsKeysForTargets] {
+			t.Errorf("system site %s gained batch authority", site)
+		}
+	}
+}

@@ -390,6 +390,66 @@ Marc already [approved `conflict` and `limit_exceeded` and accepted the SOPS/KMS
 
 Existing open contracts `ProtocolCapability`, `SessionArtifact`, `AuthMethod` and `FactorClass` remain open. #617 additionally opens identity-provider kind, OIDC/SAML purpose and grant origin, with unknown-consumer fixtures. Audit event types and adapter-plan warnings already use strings. Control/state enums are not widened merely to make a test pass. The remaining potentially extensible response fields `AdapterProvider` and `SamlProviderWarning.code` require an explicit pre-freeze disposition and unknown-consumer validation; the [acceptance ledger](../release/acceptance-1.0.md) must not treat the enum audit as complete until that is resolved. `DynamicProviderKind` remains deliberately closed to PostgreSQL under #147.
 
+## 10. Generic file destinations ([#164](https://github.com/Hikyo-Org/Hikyo/issues/164), proposed amendment to [deployment-adapter.md](../adr/deployment-adapter.md))
+
+Two nouns. `file-target` administers the pull-class target (human session,
+`manage-adapters` on the project for `list` and `show`; `create`, `update`
+and `delete` also require `manage-identities`). `file-sync` is the
+client on the destination host (machine credential only, `--token-file` or
+`HIKYO_TOKEN`), configured by a client-local `hikyo-file-sync.yaml` that names
+the destination directory; the server never receives that path.
+
+### Verbs and flags
+
+- `hikyo file-target list [-o table|json]`
+- `hikyo file-target create --env E --name <name> --sa <service-account> [--keys <id,...>] [--names ...] [--include ...] [--exclude ...] [--classification secret|config]`
+- `hikyo file-target show <target> [-o table|json]`
+- `hikyo file-target update <target> --expected-generation N [--keys ...] [--names ...] [--include ...] [--exclude ...] [--classification ...]`
+  (a full replacement of the selection; a stale generation is exit 4)
+- `hikyo file-target delete <target>` (exit 4 while the bound account holds a live credential)
+- `hikyo file-sync render --config FILE [--token-file PATH]`
+- `hikyo file-sync doctor --config FILE [-o table|json]` (local checks only; no network, no credential)
+
+Target resolution folds `org`, `project`, `environment` and `instance` from
+the config exactly as Compose folds `hikyo-compose.yaml`; the echo names the
+source `hikyo-file-sync.yaml`. The config refuses `token`, `token_file` and
+`credential` keys at any depth. There is no `watch` mode: `refresh.mode` is
+`oneshot` or `poll` (fetch until the cursor is current, then exit), and
+continuous refresh is a timer running it.
+
+### Exit codes
+
+The closed set applies. Notable mappings: a render refusal by key name (not
+delivered, presence-only secret, unrepresentable value, unacknowledged
+loader-control key), a foreign file or symlink at a configured name, a
+directory bound to another target, a dropped file under `on_removed: refuse`,
+`require_tmpfs` on a non-tmpfs or unverifiable directory, a concurrent client
+holding the destination lock, and an expired or rolled-back offline snapshot
+→ **4**; a transport failure with offline serve off, or a poll that never
+reached current within `refresh.timeout` → **6**; a filesystem failure while
+publishing → **1**. Failures before the `current` symlink swap preserve the
+prior generation. Failures after the swap can leave the new generation current
+and require inspection or repair.
+
+### Stderr strings that are stable surface
+
+- `rendered revision <n> generation <stamp> into <directory>`
+- `unchanged revision <n> generation <stamp>`
+- `up to date: revision <n>, generation <stamp>`
+- `serving stale from <issued_at RFC3339Nano>` followed by the `rendered`/`unchanged` line with `offline snapshot` in place of `revision <n>`
+- `retained <name> as an unmanaged file`, `pruned <name>`
+
+### Destination layout
+
+Every binding publishes the same way, one file or many:
+`<dir>/.hikyo-gen/<generation>/<name>` holds an immutable, fsynced generation
+completed by a `.complete` marker; `<dir>/.hikyo-gen/current` is a symlink
+renamed into place as the single commit point; `<dir>/<name>` is a stable
+symlink to `.hikyo-gen/current/<name>`. A reader opening `<dir>/<name>` sees a
+complete file of the old or the new generation; a reader that needs a
+consistent SET resolves `<dir>/.hikyo-gen/current` once and reads the files
+under it. The previous generation is kept for one publication.
+
 ## Doctor evidence collection
 
 `hikyo doctor --instance REF --evidence -o json` wraps the existing findings in

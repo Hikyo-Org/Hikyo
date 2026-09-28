@@ -41,6 +41,7 @@
     "local-development",
     "repository-scanning",
     "compose",
+    "file-sync",
     "kubernetes-operator",
     "configuration-rollouts",
     "---Identity providers---",

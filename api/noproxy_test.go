@@ -521,6 +521,16 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets":            true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets":           true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone": true,
+	// Generic file destinations (#164). The administration routes read and
+	// write this instance's own file-target rows; the report stores a client
+	// assertion carried IN the request. The server never contacts the host the
+	// client renders on and never learns its path.
+	"GET /api/v1/orgs/{org}/projects/{project}/file-targets":                                                 true,
+	"POST /api/v1/orgs/{org}/projects/{project}/file-targets":                                                true,
+	"GET /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}":                                    true,
+	"PATCH /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}":                                  true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}":                                 true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report": true,
 
 	// The reveal ceremony's TOTP opener (#58). It opens a window on THIS
 	// instance's own session; nothing crosses a network.

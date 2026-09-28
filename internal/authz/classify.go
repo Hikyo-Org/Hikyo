@@ -771,27 +771,33 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// Deployment adapters (#65). Dynamic reveal and reauthentication checks
 	// refine these operations in service, but every route still names the
 	// static proof-bearing operation whose audit family it reaches.
-	"http:GET /api/v1/orgs/{org}/projects/{project}/adapters":                            {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapters":                           {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
-	"http:GET /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}":                  {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
-	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}":                {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
-	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}":               {Class: ClassTenant, Ops: []Operation{OpAdapterDelete}},
-	"http:PUT /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential":       {Class: ClassTenant, Ops: []Operation{OpAdapterCredentialSet}},
-	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential":    {Class: ClassTenant, Ops: []Operation{OpAdapterCredentialRevoke}},
-	"http:GET /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets":          {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets":         {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
-	"http:GET /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":            {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
-	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":          {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
-	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":         {Class: ClassTenant, Ops: []Operation{OpAdapterDelete}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan":      {Class: ClassTenant, Ops: []Operation{OpAdapterPlan}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync":      {Class: ClassTenant, Ops: []Operation{OpAdapterSync}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause":     {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume":    {Class: ClassTenant, Ops: []Operation{OpAdapterSync}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test":      {Class: ClassTenant, Ops: []Operation{OpAdapterTest}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions": {Class: ClassTenant, Ops: []Operation{OpAdapterAdopt}},
-	"http:GET /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
-	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":              {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
-	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":             {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/adapters":                                                     {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapters":                                                    {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}":                                           {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
+	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}":                                         {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}":                                        {Class: ClassTenant, Ops: []Operation{OpAdapterDelete}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential":                                {Class: ClassTenant, Ops: []Operation{OpAdapterCredentialSet}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/credential":                             {Class: ClassTenant, Ops: []Operation{OpAdapterCredentialRevoke}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets":                                   {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapters/{adapter}/targets":                                  {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":                                     {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
+	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":                                   {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}":                                  {Class: ClassTenant, Ops: []Operation{OpAdapterDelete}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/plan":                               {Class: ClassTenant, Ops: []Operation{OpAdapterPlan}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/sync":                               {Class: ClassTenant, Ops: []Operation{OpAdapterSync}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/pause":                              {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/resume":                             {Class: ClassTenant, Ops: []Operation{OpAdapterSync}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/test":                               {Class: ClassTenant, Ops: []Operation{OpAdapterTest}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions":                          {Class: ClassTenant, Ops: []Operation{OpAdapterAdopt}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                                         {Class: ClassTenant, Ops: []Operation{OpAdapterInspect}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/file-targets":                                                 {Class: ClassTenant, Ops: []Operation{OpFileTargetInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/file-targets":                                                {Class: ClassTenant, Ops: []Operation{OpFileTargetCreate}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}":                                    {Class: ClassTenant, Ops: []Operation{OpFileTargetInspect}},
+	"http:PATCH /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}":                                  {Class: ClassTenant, Ops: []Operation{OpFileTargetUpdate}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}":                                 {Class: ClassTenant, Ops: []Operation{OpFileTargetDelete}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report": {Class: ClassTenant, Ops: []Operation{OpFileTargetReport}},
+	"http:PATCH /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                                       {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move}":                                      {Class: ClassTenant, Ops: []Operation{OpAdapterConfigure}},
 
 	// Dynamic secrets (#147).
 	"http:GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers":                                 {Class: ClassTenant, Ops: []Operation{OpDynamicProviderInspect}},
@@ -1028,6 +1034,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// class is the verb's, and every sub-verb reaches only those two routes.
 	"cli:run":     {Class: ClassTenant},
 	"cli:compose": {Class: ClassTenant},
+	// Generic file destinations (#164). `file-target` reaches only the
+	// project-scoped file-target routes; `file-sync` reaches the tenant-scoped
+	// delivery route, its offline-records reconciliation and the
+	// environment-scoped report route, and nothing wider.
+	"cli:file-target": {Class: ClassTenant},
+	"cli:file-sync":   {Class: ClassTenant},
 	// `definitions` (#70) reaches only the tenant-scoped export/check/plan/apply
 	// routes; server operations own every authorization and audit decision.
 	"cli:definitions": {Class: ClassTenant},

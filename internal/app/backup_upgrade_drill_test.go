@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 68, while the
+// The runtime-created fixture includes migrations 45 through 69, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+24 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 68 only")
+	if len(current.Entries) != len(legacy.Entries)+25 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 69 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -303,6 +303,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM ssh_profiles",
 		"SELECT COUNT(*) FROM ssh_profile_requesters",
 		"SELECT COUNT(*) FROM ssh_certificates",
+		"SELECT COUNT(*) FROM file_targets",
+		"SELECT COUNT(*) FROM file_target_keys",
 		"SELECT COUNT(*) FROM access_policies",
 		"SELECT COUNT(*) FROM access_policy_approvers",
 		"SELECT COUNT(*) FROM access_policy_bypassers",
@@ -326,10 +328,14 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI or temporary-access evidence", query, err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access or file-target evidence", query, err)
 		}
 	}
-	// Reverse 00068 (GitLab adapter) first: newest migration first. The empty
+	// Reverse 00069 (generic file targets), children before parents.
+	for _, table := range []string{"file_target_keys", "file_targets"} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
+	// Reverse 00068 (GitLab adapter). The empty
 	// adapters evidence above guarantees no target or ledger row carries a
 	// GitLab scope or flag. SQLite's adapters rebuild is undone below with
 	// 00054's reversal, which recreates the table from its 00025 declaration.
@@ -504,7 +510,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69)",
 	} {
 		drillExec(t, db, query)
 	}

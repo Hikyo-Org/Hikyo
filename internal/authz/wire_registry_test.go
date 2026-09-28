@@ -39,11 +39,11 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// operation-linked routes (17 instance issuer and profile routes, 7
 	// environment certificate routes) and the `pki` and `cert` CLI verbs.
 	// #153 adds the client-local `scan` verb (no route, operation or event).
-	if got := len(facts.Wire()); got != 419 {
-		t.Fatalf("wire entries = %d, want 419", got)
+	if got := len(facts.Wire()); got != 427 {
+		t.Fatalf("wire entries = %d, want 427", got)
 	}
-	if got := len(facts.WireRoutes()); got != 309 {
-		t.Fatalf("operation-linked entries = %d, want 309", got)
+	if got := len(facts.WireRoutes()); got != 315 {
+		t.Fatalf("operation-linked entries = %d, want 315", got)
 	}
 	if got := len(facts.WireEvents()); got != 83 {
 		t.Fatalf("direct-event entries = %d, want 83", got)

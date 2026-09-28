@@ -161,6 +161,23 @@ func runCompose(ctx context.Context, ios IO, args []string) error {
 // error), and REQUIRES a machine credential. It never falls back to the stored
 // human session — that path is a refusal in this build.
 func resolveMachineTarget(st *State, ios IO, flags commonFlags, cfg *compose.Config, cfgPath, verb string) (*Client, TrustEntry, Resolved, string, error) {
+	var mc *machineConfig
+	if cfg != nil {
+		mc = &machineConfig{Name: composeConfigName, Instance: cfg.Instance, Org: cfg.Org, Project: cfg.Project, Environment: cfg.Environment}
+	}
+	return resolveMachineConfigTarget(st, ios, flags, mc, cfgPath, verb)
+}
+
+// machineConfig is the part of a client-local config file (hikyo-compose.yaml,
+// hikyo-file-sync.yaml) that addresses the instance and tenant chain. Name is
+// the file's conventional name, used in refusals.
+type machineConfig struct {
+	Name, Instance, Org, Project, Environment string
+}
+
+// resolveMachineConfigTarget is resolveMachineTarget for any client-local
+// config: the same folding, the same machine-only refusal, the same trust rule.
+func resolveMachineConfigTarget(st *State, ios IO, flags commonFlags, cfg *machineConfig, cfgPath, verb string) (*Client, TrustEntry, Resolved, string, error) {
 	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
 	if err != nil {
 		return nil, TrustEntry{}, Resolved{}, "", err
@@ -170,7 +187,7 @@ func resolveMachineTarget(st *State, ios IO, flags commonFlags, cfg *compose.Con
 			dim Dimension
 			val string
 		}{{DimOrg, cfg.Org}, {DimProject, cfg.Project}, {DimEnv, cfg.Environment}} {
-			if err := foldConfigDim(&resolved, d.dim, d.val, cfgPath); err != nil {
+			if err := foldConfigDim(&resolved, d.dim, d.val, cfgPath, Source(cfg.Name)); err != nil {
 				return nil, TrustEntry{}, Resolved{}, "", err
 			}
 		}
@@ -225,27 +242,27 @@ func resolveMachineTarget(st *State, ios IO, flags commonFlags, cfg *compose.Con
 
 // foldConfigDim fills an unresolved dimension from the config, or refuses when
 // the config disagrees with an already-resolved one, naming both sources.
-func foldConfigDim(r *Resolved, dim Dimension, cfgVal, cfgPath string) error {
+func foldConfigDim(r *Resolved, dim Dimension, cfgVal, cfgPath string, source Source) error {
 	cfgVal = strings.TrimSpace(cfgVal)
 	if cfgVal == "" {
 		return nil
 	}
 	if cur := r.Values[dim]; cur != "" {
 		if cur != cfgVal {
-			return failf(ExitUsage, "hikyo compose: %s is %q (from %s) but %q (from %s) — refusing rather than picking one",
+			return failf(ExitUsage, "%s is %q (from %s) but %q (from %s) — refusing rather than picking one",
 				dim, cur, r.Sources[dim], cfgVal, cfgPath)
 		}
 		return nil
 	}
 	r.Values[dim] = cfgVal
-	r.Sources[dim] = SourceConfig
+	r.Sources[dim] = source
 	return nil
 }
 
 // machineEntry resolves the trust entry the credential is presented to. The
 // machine path NEVER establishes trust interactively: an origin the config
 // names must already be provisioned in the local store.
-func machineEntry(st *State, resolved Resolved, cfg *compose.Config) (TrustEntry, error) {
+func machineEntry(st *State, resolved Resolved, cfg *machineConfig) (TrustEntry, error) {
 	var cfgOrigin string
 	if cfg != nil && strings.TrimSpace(cfg.Instance) != "" {
 		o, err := CanonicalOrigin(cfg.Instance)
@@ -258,12 +275,12 @@ func machineEntry(st *State, resolved Resolved, cfg *compose.Config) (TrustEntry
 	instance := resolved.Get(DimInstance)
 	if instance == "" {
 		if cfgOrigin != "" {
-			entry, err := lookupByOrigin(st, cfgOrigin)
+			entry, err := lookupByOrigin(st, cfgOrigin, cfg.Name)
 			if err != nil {
 				return TrustEntry{}, err
 			}
 			resolved.Values[DimInstance] = entry.Name
-			resolved.Sources[DimInstance] = SourceConfig
+			resolved.Sources[DimInstance] = Source(cfg.Name)
 			return entry, nil
 		}
 		// Exactly one established instance is the only reading; two or more is an
@@ -290,12 +307,12 @@ func machineEntry(st *State, resolved Resolved, cfg *compose.Config) (TrustEntry
 	if cfgOrigin != "" && entry.Origin != cfgOrigin {
 		return TrustEntry{}, failf(ExitUsage,
 			"instance %q resolves to origin %s but %s names %s — refusing rather than picking one",
-			instance, entry.Origin, composeConfigName, cfgOrigin)
+			instance, entry.Origin, cfg.Name, cfgOrigin)
 	}
 	return entry, nil
 }
 
-func lookupByOrigin(st *State, origin string) (TrustEntry, error) {
+func lookupByOrigin(st *State, origin, cfgName string) (TrustEntry, error) {
 	entries, err := st.Trust().Load()
 	if err != nil {
 		return TrustEntry{}, err
@@ -307,7 +324,7 @@ func lookupByOrigin(st *State, origin string) (TrustEntry, error) {
 	}
 	return TrustEntry{}, failf(ExitRefused,
 		"%s names instance %s, which is not in the local trust store; provision it with `hikyo context create --instance %s` or --trust-file (the machine path never establishes trust interactively)",
-		composeConfigName, origin, origin)
+		cfgName, origin, origin)
 }
 
 // ---------------------------------------------------------------------------
@@ -382,23 +399,30 @@ func (s *composeStack) flushOffline(ctx context.Context) error {
 	if s.stateDir == "" {
 		return nil
 	}
-	records, files, err := compose.Pending(s.stateDir)
+	return flushOfflineRecords(ctx, s.client, s.org, s.project, s.env, s.stateDir)
+}
+
+// flushOfflineRecords is the shared flush-before-fetch for every client that
+// keeps offline disclosure records under a state directory (Compose, #164
+// file sync).
+func flushOfflineRecords(ctx context.Context, client *Client, org, project, env, stateDir string) error {
+	records, files, err := compose.Pending(stateDir)
 	if err != nil {
 		return failf(ExitInternal, "reading pending offline records: %v", err)
 	}
 	if len(records) == 0 {
 		return nil
 	}
-	path := deliveryPath(s.org, s.project, s.env) + "/offline-records"
+	path := deliveryPath(org, project, env) + "/offline-records"
 	const batch = 1000
 	for i := 0; i < len(records); i += batch {
 		end := min(i+batch, len(records))
 		body := apigen.ReconcileOfflineRecordsRequest{Records: toAPIRecords(records[i:end])}
-		if err := s.client.Do(ctx, http.MethodPost, path, body, nil); err != nil {
+		if err := client.Do(ctx, http.MethodPost, path, body, nil); err != nil {
 			return err // refuses the fetch: ExitUnavailable or the server's mapped code
 		}
 	}
-	if err := compose.MarkFlushed(s.stateDir, files); err != nil {
+	if err := compose.MarkFlushed(stateDir, files); err != nil {
 		return failf(ExitInternal, "marking offline records flushed: %v", err)
 	}
 	return nil

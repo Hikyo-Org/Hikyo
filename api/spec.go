@@ -57,6 +57,8 @@ var SpecYAML []byte
 // data plane (#156, transit ADR).
 // Revision 7 adds the private PKI (#154): instance CA issuers and certificate
 // profiles, and environment-scoped certificate issuance.
+// Revision 7 adds generic file destinations (#164): file-target operations,
+// the bound client's report and the delivery `target` parameter.
 const Revision = 7
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
