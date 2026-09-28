@@ -234,6 +234,7 @@ type AdapterRouteMoveClaim struct {
 	DestinationOwner       string
 	DestinationName        string
 	DestinationEnvironment string
+	DestinationScope       string
 	Surface                string
 	EffectiveName          string
 	NormalizedName         string
@@ -264,6 +265,7 @@ type AdapterRouteMoveTarget struct {
 	SelectedRepositoryIds  string
 	NamePrefix             string
 	OrphanedNames          string
+	DestinationScope       string
 }
 
 type AdapterTarget struct {
