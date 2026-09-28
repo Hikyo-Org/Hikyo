@@ -3,6 +3,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Button } from '../../ui/Button.tsx';
 import { ChoiceGroup } from '../../ui/ChoiceGroup.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
+import { Disclosure } from '../../ui/Disclosure.tsx';
 import { Radio } from '../../ui/Radio.tsx';
 import { ToggleChip } from '../../ui/ToggleChip.tsx';
 import {
@@ -21,17 +22,14 @@ import {
   PRESETS,
   projectKeys,
   projectsOf,
-  reachOf,
-  reachText,
   setMode,
   tapped,
   toggleItem,
-  whereText,
   type Axis,
   type Rule,
   type World,
 } from './model.ts';
-import { EnvName, KeyItem } from './parts.tsx';
+import { EnvName, KeyItem, RuleSummary } from './parts.tsx';
 import { PermissionList } from './PermissionList.tsx';
 
 /** A fresh rule for a member: See ticked, no Where yet. Id 0 until saved. */
@@ -42,7 +40,8 @@ export const newRule = (member: string): Rule => ({ id: 0, member, perms: ['read
  * "All, except..." or "Only..."), then what: presets that only tick boxes,
  * and the permission list. Nothing above a tapped control changes when it is
  * tapped: Where only grows downwards, the permission rows keep their height
- * (see {@link PermissionList}), and the live sentence sits at the foot.
+ * (see {@link PermissionList}), and "Saves as" sits at the foot. The
+ * action row stays pinned, and a click on the scrim cancels, like every editor.
  */
 export function RuleEditorDialog({
   world,
@@ -82,6 +81,8 @@ export function RuleEditorDialog({
       className="access-dialog"
       title={`${rule.id === 0 ? 'New rule' : 'Edit rule'} · ${name}`}
       onCancel={onCancel}
+      onBackdropClick={onCancel}
+      pinActions
       actions={
         <>
           {rule.id !== 0 && onRemove !== undefined ? (
@@ -134,16 +135,13 @@ export function RuleEditorDialog({
               items={folderNames(world, projects)}
               render={(f) => `${f}/`}
             >
-              <details className="access-disclosure">
-                <summary>Single keys…</summary>
-                <div className="access-picks">
-                  {singleKeys.map((item) => (
-                    <AxisChip key={item} axis={draft.keys} item={item} onChange={(keys) => setDraft({ ...draft, keys })}>
-                      <KeyItem world={world} item={item} />
-                    </AxisChip>
-                  ))}
-                </div>
-              </details>
+              <Disclosure label={`Pick single keys (${singleKeys.length})`} className="access-picks">
+                {singleKeys.map((item) => (
+                  <AxisChip key={item} axis={draft.keys} item={item} onChange={(keys) => setDraft({ ...draft, keys })}>
+                    <KeyItem world={world} item={item} />
+                  </AxisChip>
+                ))}
+              </Disclosure>
             </AxisEditor>
           </>
         ) : null}
@@ -160,7 +158,6 @@ export function RuleEditorDialog({
           ))}
         </div>
         <PermissionList
-          mode="multi"
           kind={kind}
           selected={draft.perms}
           onChange={(perms) => setDraft({ ...draft, perms })}
@@ -171,30 +168,20 @@ export function RuleEditorDialog({
         />
       </fieldset>
 
-      <div className="access-summary">
-        <p className="access-summary__sentence">
-          {valid ? (
-            <>
-              {name.split(' ')[0]} can <strong>{eff.map(label).join(', ')}</strong> in <strong>{whereText(world, draft)}</strong>.
-            </>
-          ) : eff.length === 0 ? (
-            'Tick at least one permission.'
-          ) : (
-            'Pick where this rule applies.'
-          )}
-        </p>
-        {valid ? <p>{reachText(reachOf(world, draft))}</p> : null}
-        {shapeDropped.length > 0 && where ? (
-          <p>Left out because this rule is narrower than they need: {shapeDropped.map(label).join(', ')}. They come back if you widen Where.</p>
-        ) : null}
-        {machineDropped.length > 0 ? <p>Left out because machines cannot hold them: {machineDropped.map(label).join(', ')}.</p> : null}
+      <section className="access-summary" aria-label="Saves as">
+        <h3 className="eyebrow">Saves as</h3>
+        {valid ? (
+          <RuleSummary world={world} rule={draft} reach />
+        ) : (
+          <p className="access-summary__empty">{eff.length === 0 ? 'Tick at least one permission.' : 'Pick where this rule applies.'}</p>
+        )}
+        {shapeDropped.length > 0 && where ? <p className="access-hint">Left out until Where is wider: {shapeDropped.map(label).join(', ')}.</p> : null}
+        {machineDropped.length > 0 ? <p className="access-hint">Left out, machines cannot hold: {machineDropped.map(label).join(', ')}.</p> : null}
         {valid && !eff.includes('read') && (eff.includes('reveal') || eff.includes('reveal-history')) ? (
-          <p>No See in this rule: Reveal only works where another of their rules gives See.</p>
+          <p className="access-hint">No See here: Reveal only works where another of their rules gives See.</p>
         ) : null}
-        {valid && narrowKeys(draft) && eff.includes('read') ? (
-          <p>See always covers the whole environment: key names and config values are shared by all keys.</p>
-        ) : null}
-      </div>
+        {valid && narrowKeys(draft) && eff.includes('read') ? <p className="access-hint">See always covers the whole environment.</p> : null}
+      </section>
     </Dialog>
   );
 }
@@ -240,7 +227,7 @@ function AxisEditor({
       title={title}
       hint="All, except… covers ones added later: tap to leave one out. Only… covers just what you tap."
       mode={
-        <ChoiceGroup legend="How to pick" layout="wrap" className="access-axis__mode">
+        <ChoiceGroup legend="How to pick" layout="wrap">
           <Radio name={group} label="All, except…" checked={axis.mode === 'all'} onChange={() => onChange(setMode(axis, 'all'))} />
           <Radio name={group} label="Only…" checked={axis.mode === 'only'} onChange={() => onChange(setMode(axis, 'only'))} />
         </ChoiceGroup>

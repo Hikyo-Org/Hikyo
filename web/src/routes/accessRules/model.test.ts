@@ -84,7 +84,6 @@ describe('access rules model', () => {
   it('a permission row note depends on the member kind only, never on Where', () => {
     expect(requirement('pin')).toBe('Only on rules that cover all keys of an environment.');
     expect(requirement('edit')).toBeUndefined();
-    expect(requirement('manage-members', 'machine')).toBe('Machines cannot hold this.');
     expect(requirement('reveal', 'machine')).toBe("Needs the project's machine reveal opt-in.");
     expect(requirement('reveal')).toBeUndefined();
   });

@@ -10,6 +10,10 @@ import { Lock } from './parts.tsx';
  * gains and who loses before anything is saved. The Definitions move flow
  * shows it when `accessDiff(before, after, keyId).gained` is not empty;
  * moves that only narrow, renames and adds save without it.
+ *
+ * A decision, not an editor: like every other decision dialog in the app it
+ * has no scrim dismissal, only Cancel and Escape. The actions stay pinned so
+ * a long gain or loss list never hides them.
  */
 export function KeyMoveConfirmDialog({
   before,
@@ -35,6 +39,7 @@ export function KeyMoveConfirmDialog({
       className="access-dialog"
       lede={`${change}. Rules that named the old folder in an except no longer leave this key out.`}
       onCancel={onCancel}
+      pinActions
       actions={
         <>
           <Button type="button" onClick={onCancel}>

@@ -97,7 +97,20 @@ export const EditorFolderScopedAdmin: Story = {
     const machines = dialog.getByRole('checkbox', { name: 'Manage machines' });
     await expect(machines).toBeDisabled();
     await expect(machines).toHaveAccessibleDescription(/needs a whole project/);
-    await expect(dialog.getByText(/Left out because this rule is narrower than they need: Pin, Manage machines/)).toBeVisible();
+    await expect(dialog.getByText(/Left out until Where is wider: Pin, Manage machines/)).toBeVisible();
+    // "Saves as" is the same rule summary the Members card shows.
+    const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
+    await expect(saves.getByText('Define keys')).toBeVisible();
+    await expect(saves.getByText(/only db\//)).toBeVisible();
+    // The action row stays in the dialog's box: Save is reachable without scrolling.
+    await expect(dialog.getByRole('button', { name: 'Save' }).getBoundingClientRect().bottom).toBeLessThanOrEqual(dialogEl.getBoundingClientRect().bottom);
+
+    const toggle = dialog.getByRole('button', { name: 'Pick single keys (8)' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(dialog.queryByRole('button', { name: /^db\/DB_PASSWORD/ })).toBeNull();
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(dialog.getByRole('button', { name: /^db\/DB_PASSWORD/ })).toBeVisible();
 
     const height = permissions.getBoundingClientRect().height;
     await userEvent.click(within(dialog.getByRole('group', { name: 'Keys' })).getByRole('radio', { name: 'All, except…' }));
@@ -122,8 +135,9 @@ export const EditorNewRule: Story = {
 };
 
 // The editor opened for the deploy-prod workload machine, as Machine access
-// will open it: the permission ADR's machine allowlists disable Pin and every
-// management permission, and Reveal names the per-project opt-in.
+// will open it: what the permission ADR's machine allowlists forbid (Pin and
+// every management permission) is not offered, one line names it, and
+// Reveal names the per-project opt-in.
 export const MachineRuleEditor: Story = {
   name: 'Machine rule editor',
   render: () => {
@@ -132,50 +146,71 @@ export const MachineRuleEditor: Story = {
   },
   play: async ({ canvas }) => {
     const dialog = within(await canvas.findByRole('dialog', { name: 'Edit rule · deploy-prod' }));
+    // What a machine can never hold is not offered at all, and named once.
     for (const name of ['Pin', 'Manage access', 'Manage machines', 'Manage deploys', 'Change settings', 'Manage projects']) {
-      const box = dialog.getByRole('checkbox', { name });
-      await expect(box).toBeDisabled();
-      await expect(box).toHaveAccessibleDescription(/Machines cannot hold this/);
+      await expect(dialog.queryByRole('checkbox', { name })).toBeNull();
     }
+    await expect(
+      dialog.getByText('Machines cannot hold Pin, Manage access, Manage machines, Manage deploys, Change settings or Manage projects.'),
+    ).toBeVisible();
     await expect(dialog.getByRole('checkbox', { name: 'See' })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toBeEnabled();
     const reveal = dialog.getByRole('checkbox', { name: 'Reveal' });
     await expect(reveal).toBeChecked();
     await expect(reveal).toHaveAccessibleDescription(/Needs the project's machine reveal opt-in\./);
-    const sentence = dialog.getByText((_, el) => el?.classList.contains('access-summary__sentence') === true);
-    await expect(sentence).toHaveTextContent('deploy-prod can See, Reveal in payments › prod › all keys.');
+    const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
+    await expect(saves.getByText('Reveal')).toBeVisible();
+    await expect(saves.getByText(/payments/)).toBeVisible();
   },
 };
 
-// Who can...? as a form: permission (with the editor's explanations), then
-// project, environment and key. Default question: Reveal on DB_PASSWORD in
-// payments prod. Each answer shows the deciding rule as the Members card does.
+// Who can...? as a compact form: permission (its explanation as the hint),
+// project, environment, key. Default question: Reveal on DB_PASSWORD in
+// payments prod. Answers are tables in the Members page's anatomy, each row
+// with an Edit rule action that opens the deciding rule in the editor.
 export const WhoCan: Story = {
-  render: () => <WhoCanPage world={makeWorld()} />,
+  render: () => <WhoCanPage initialWorld={makeWorld()} />,
   play: async ({ canvas }) => {
-    const reveal = canvas.getByRole('radio', { name: 'Reveal' });
-    await expect(reveal).toBeChecked();
-    await expect(reveal).toHaveAccessibleDescription(/Show current secret values/);
-    await expect(canvas.queryByRole('radio', { name: 'Pin' })).toBeNull();
-    const [project, env, key] = ['Project', 'Environment', 'Key'].map((name) => canvas.getByRole('combobox', { name }));
-    if (project === undefined || env === undefined || key === undefined) throw new Error('form incomplete');
-    await expect(before(reveal, project) && before(project, env) && before(env, key)).toBe(true);
+    const [permission, project, env, key] = ['Permission', 'Project', 'Environment', 'Key'].map((name) => canvas.getByRole('combobox', { name }));
+    if (permission === undefined || project === undefined || env === undefined || key === undefined) throw new Error('form incomplete');
+    await expect(before(permission, project) && before(project, env) && before(env, key)).toBe(true);
+    await expect(permission).toHaveValue('reveal');
+    await expect(permission).toHaveAccessibleDescription(/Show current secret values/);
 
-    const yes = within(canvas.getByRole('list', { name: 'Yes: 3' }));
-    await expect(yes.getByText('Marc Went')).toBeVisible();
-    const machine = yes.getByText('deploy-prod').closest('li');
-    if (machine === null) throw new Error('no answer row for deploy-prod');
-    await expect(within(machine).getByText('Machine')).toBeVisible();
-    // Alice's deciding rule, as badges and a Where line.
-    const alice = yes.getByText('Alice Novak').closest('li');
-    if (alice === null) throw new Error('no answer row for Alice');
-    await expect(within(alice).getByText('Define keys')).toBeVisible();
-    await expect(within(alice).getByText(/only db\//)).toBeVisible();
-    const excepted = within(canvas.getByRole('list', { name: 'No, left out by an except: 2' }));
-    await expect(excepted.getByText('Bob Tran')).toBeVisible();
-    await expect(excepted.getByText('Dana Ruiz')).toBeVisible();
+    const yes = within(canvas.getByRole('table', { name: 'Yes: 3' }));
+    await expect(yes.getByRole('rowheader', { name: 'Marc Went' })).toBeVisible();
+    await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('Machine');
+    // Alice's deciding rule: badges in Permissions, the Where line beside them.
+    const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));
+    await expect(alice.getByText('Define keys')).toBeVisible();
+    await expect(alice.getByText(/only db\//)).toBeVisible();
+    const excepted = within(canvas.getByRole('table', { name: 'No, left out by an except: 2' }));
+    await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText('Left out: this rule has except prod.')).toBeVisible();
+    await expect(excepted.getByRole('rowheader', { name: 'Dana Ruiz' })).toBeVisible();
 
-    await userEvent.click(canvas.getByRole('radio', { name: 'See' }));
-    await expect(within(canvas.getByRole('list', { name: 'Yes: 5' })).getByText('Bob Tran')).toBeVisible();
+    // Only who CAN, or nearly could: members no rule reaches are not listed.
+    await expect(canvas.queryByText('Chen Li')).toBeNull();
+    await expect(canvas.queryByRole('table', { name: /No rule reaches/ })).toBeNull();
+
+    // See: an except narrows only its own rule, so Bob is a yes, with the why as a second line.
+    await userEvent.selectOptions(permission, 'read');
+    await expect(permission).toHaveAccessibleDescription(/Key names, descriptions/);
+    const see = within(canvas.getByRole('table', { name: 'Yes: 5' }));
+    await expect(within(see.getByRole('row', { name: /Bob Tran/ })).getByText(/an except only narrows its own rule/)).toBeVisible();
+
+    // Edit the deciding rule from its answer: the same editor, and saving recomputes the answer.
+    await userEvent.selectOptions(permission, 'reveal');
+    await userEvent.click(canvas.getByRole('button', { name: 'Edit rule of Alice Novak' }));
+    const dialog = within(await canvas.findByRole('dialog', { name: 'Edit rule · Alice Novak' }));
+    await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).toBeChecked();
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Reveal' }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    await expect(canvas.queryByRole('dialog')).toBeNull();
+    const after = within(canvas.getByRole('table', { name: 'Yes: 2' }));
+    await expect(after.queryByRole('rowheader', { name: 'Alice Novak' })).toBeNull();
+    // Machine rows open the same editor (it is the Machine access editor too).
+    await userEvent.click(canvas.getByRole('button', { name: 'Edit rule of deploy-prod' }));
+    await expect(await canvas.findByRole('dialog', { name: 'Edit rule · deploy-prod' })).toBeVisible();
   },
 };
 

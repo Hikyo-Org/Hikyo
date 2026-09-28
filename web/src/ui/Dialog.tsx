@@ -1,5 +1,6 @@
 import {
   useId,
+  useLayoutEffect,
   useRef,
   type MouseEvent,
   type ReactNode,
@@ -32,7 +33,14 @@ import { useModalDialog } from './useModalDialog.ts';
  * acknowledged before it closes calls `preventDefault()` there.
  *
  * `onBackdropClick` is the editors' third way out, opt-in per dialog.
+ *
+ * `pinActions` keeps the action row in view: the title and actions stay put
+ * and only the body between them scrolls, so an editor longer than the
+ * viewport can be cancelled or saved without scrolling to its end. Opt-in,
+ * for editors whose body can outgrow the dialog.
  */
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])';
+
 export function Dialog({
   title,
   mono,
@@ -42,6 +50,7 @@ export function Dialog({
   onCancel,
   onBackdropClick,
   initialFocus,
+  pinActions,
   className,
   children,
 }: {
@@ -66,10 +75,21 @@ export function Dialog({
    */
   onBackdropClick?: () => void;
   initialFocus?: RefObject<HTMLElement | null>;
+  /** Scroll the body between a fixed title and a fixed action row. */
+  pinActions?: boolean;
   className?: string;
   children?: ReactNode;
 }) {
   const ref = useModalDialog(initialFocus);
+  const body = useRef<HTMLDivElement>(null);
+  // A pinned body is a scroll container, and the platform's dialog focusing
+  // steps count a scroller as focusable: without this the ring lands on the
+  // whole body instead of on the first control, as it does in a dialog
+  // without pinned actions. Runs after the open in useModalDialog.
+  useLayoutEffect(() => {
+    if (pinActions !== true || initialFocus !== undefined) return;
+    body.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+  }, [pinActions, initialFocus]);
   const titleId = useId();
   const pressedScrim = useRef(false);
   const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
@@ -85,7 +105,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className={cx('dialog', size === 'wide' && 'dialog--wide', className)}
+      className={cx('dialog', size === 'wide' && 'dialog--wide', pinActions === true && 'dialog--pinned', className)}
       aria-labelledby={titleId}
       onCancel={onCancel}
       onMouseDown={
@@ -107,7 +127,13 @@ export function Dialog({
         {title}
       </h2>
       {lede !== undefined ? <p className="dialog__lede">{lede}</p> : null}
-      {children}
+      {pinActions === true ? (
+        <div className="dialog__body" ref={body}>
+          {children}
+        </div>
+      ) : (
+        children
+      )}
       {actions !== undefined ? <div className="dialog__actions">{actions}</div> : null}
     </dialog>
   );

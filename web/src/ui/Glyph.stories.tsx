@@ -3,7 +3,7 @@ import { expect } from 'storybook/test';
 
 import { Glyph, type GlyphName } from './Glyph.tsx';
 
-const names: readonly GlyphName[] = ['lock', 'link', 'check', 'cross', 'warn', 'delta', 'draft', 'ellipsis'];
+const names: readonly GlyphName[] = ['lock', 'link', 'check', 'cross', 'warn', 'delta', 'draft', 'ellipsis', 'chevron'];
 
 const meta = {
   component: Glyph,

@@ -3088,6 +3088,31 @@ fieldset.field > legend {
   align-items: center;
 }
 
+/* Pinned actions (Dialog `pinActions`): the dialog stops scrolling as a whole
+   and only its body does, between the title and the action row. The body is
+   pulled out by exactly one focus ring (width plus offset) and padded back
+   in, so a ring on a control at the body's edge is not clipped by the scroll
+   box, whatever padding the dialog has at this width. */
+.dialog--pinned {
+  overflow: hidden;
+}
+
+.dialog--pinned .dialog__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  margin: 0 calc(-1 * (var(--ring-width) + var(--ring-offset)));
+  padding: var(--space-1) calc(var(--ring-width) + var(--ring-offset));
+  overflow: auto;
+}
+
+.dialog--pinned .dialog__actions {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--panel-line);
+}
+
 /* --- Machine access (#67, locked prototype #31 iteration 3) ---------------
  *
  * Nothing here carries state by colour: an expiry is a sentence, a journey
@@ -6788,6 +6813,43 @@ label.chk:has(input:disabled) {
   max-width: 24rem;
 }
 
+/* --- Disclosure (ui/Disclosure) ----------------------------------------------
+ *
+ * A text-style toggle: no border, no fill, a chevron that turns from right to
+ * down (instantly: no motion to reduce). A control by height and focus ring. */
+.disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.disclosure__toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.disclosure__toggle:hover {
+  color: var(--tx);
+}
+
+.disclosure__toggle[aria-expanded='true'] .disclosure__chevron {
+  transform: rotate(90deg);
+}
+
+/* The content may carry a caller's layout class that sets `display`. */
+.disclosure__content[hidden] {
+  display: none;
+}
+
 /* --- Toggle chip (ui/ToggleChip) ---------------------------------------------
  *
  * A pick-set item as a pressable chip: badge radius, control height. The
@@ -6865,6 +6927,13 @@ label.chk:has(input:disabled) {
   margin: 0;
 }
 
+/* The page is a grid; without this its panels would take the answer tables'
+   minimum width and widen the page on a phone instead of letting the table
+   wrapper scroll. */
+.access-rules > * {
+  min-width: 0;
+}
+
 .access-hint,
 .access-rule__reach {
   color: var(--tx-dim);
@@ -6877,7 +6946,6 @@ label.chk:has(input:disabled) {
 
 .access-people,
 .access-rule-list,
-.access-answer,
 .access-diff ul {
   margin: 0;
   padding: 0;
@@ -6904,8 +6972,7 @@ label.chk:has(input:disabled) {
 .access-perm-list,
 .access-axis,
 .access-summary,
-.access-diff,
-.access-answer__why {
+.access-diff {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -6952,7 +7019,6 @@ label.chk:has(input:disabled) {
 .access-presets,
 .access-picks,
 .access-examples,
-.access-ask,
 .access-filter {
   display: flex;
   flex-wrap: wrap;
@@ -6961,13 +7027,30 @@ label.chk:has(input:disabled) {
 }
 
 .access-where {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
   overflow-wrap: anywhere;
 }
 
-.access-where__sep {
+.access-where__part {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+
+.access-where__label {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
   color: var(--tx-faint);
+}
+
+.access-where__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
 }
 
 .access-except {
@@ -6977,23 +7060,8 @@ label.chk:has(input:disabled) {
   color: var(--danger);
 }
 
-.access-filter,
-.access-ask {
-  align-items: flex-start;
-  gap: var(--space-3) var(--space-5);
-}
-
 .access-filter > .field {
   flex: 1 1 var(--width-dialog);
-  min-width: 0;
-}
-
-.access-ask {
-  margin-top: var(--space-3);
-}
-
-.access-ask > .field {
-  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -7019,8 +7087,21 @@ label.chk:has(input:disabled) {
   font-size: var(--fs-sm);
 }
 
-.access-perm__note {
+.access-perm__note,
+.access-perm__never {
   color: var(--tx-faint);
+  font-size: var(--fs-sm);
+}
+
+.access-perm__note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding-left: calc(var(--chk-box) + var(--chk-gap));
+}
+
+.access-perm--blocked .access-perm__note {
+  color: var(--tx-dim);
 }
 
 /* The note is always on the row; only this glyph and the control's disabled
@@ -7044,15 +7125,6 @@ label.chk:has(input:disabled) {
   margin: 0;
 }
 
-.access-disclosure > summary {
-  display: flex;
-  align-items: center;
-  min-height: var(--control);
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
 .access-summary,
 .access-diff {
   padding: var(--space-3);
@@ -7060,11 +7132,6 @@ label.chk:has(input:disabled) {
   border-radius: var(--radius-container);
   background: var(--bg);
   font-size: var(--fs-sm);
-}
-
-.access-summary__sentence {
-  font-size: var(--fs-md);
-  overflow-wrap: anywhere;
 }
 
 .access-diff--gain {
@@ -7080,32 +7147,6 @@ label.chk:has(input:disabled) {
   margin-top: var(--space-3);
 }
 
-#access-answer > h3 {
-  margin: var(--space-4) 0 var(--space-1);
-}
-
-.access-answer li {
-  display: grid;
-  grid-template-columns: var(--icon) minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: var(--space-2);
-  padding: var(--space-2) 0;
-}
-
-.access-answer strong {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.access-answer__why {
-  grid-column: 2;
-  gap: var(--space-1);
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
-}
-
 .access-answer__glyph--yes {
   fill: var(--accent);
 }
@@ -7116,10 +7157,6 @@ label.chk:has(input:disabled) {
 
 .access-answer__glyph--warn {
   fill: var(--changed);
-}
-
-.access-answer__glyph--none {
-  fill: var(--tx-faint);
 }
 
 .access-gloss {
@@ -7157,8 +7194,78 @@ label.chk:has(input:disabled) {
     gap: var(--space-1);
   }
 
+}
+
+.access-summary h3 {
+  margin: 0;
+}
+
+.access-summary__empty {
+  color: var(--tx-dim);
+}
+
+/* Who can...?: four fields in one row on desktop, stacked on a phone. */
+.access-ask {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-3) var(--space-4);
+}
+
+.access-ask select {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 800px) {
   .access-ask {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.access-answer__question {
+  margin-bottom: var(--space-2);
+}
+
+/* Answer tables reuse the Members page's `.grants` anatomy; the wrapper owns
+   the sideways scroll so a phone never scrolls the page. */
+.access-table {
+  position: relative; /* contains the visually-hidden action text, so it scrolls with the table instead of widening the page */
+  margin-top: var(--space-3);
+  overflow-x: auto;
+}
+
+.access-table .grants {
+  min-width: var(--width-dialog);
+}
+
+.access-table .grants th,
+.access-table .grants td {
+  border-color: var(--panel-line);
+}
+
+.access-table__caption {
+  padding-bottom: var(--space-2);
+  color: var(--tx);
+  font-weight: 700;
+  text-align: left;
+}
+
+.access-table .grants th[scope='row'] {
+  color: var(--tx);
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.access-table__member {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.access-table__note {
+  margin-top: var(--space-1);
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
 }

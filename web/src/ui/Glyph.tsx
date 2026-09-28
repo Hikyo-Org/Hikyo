@@ -7,12 +7,13 @@ import { cx } from './cx.ts';
  * colour. Replaces the colour emoji the routes used for `lock` (secret) and
  * `link` (linked key), which render per platform and ignore the palette, and
  * gives the text glyphs (check, cross, delta, draft, ellipsis) one weight.
+ * `chevron` points right; a disclosure rotates it to point down when open.
  *
  * A glyph is decorative beside the word that names the state (DESIGN.md:
  * never colour-only, never glyph-only), so it is `aria-hidden` unless a
  * `label` is given, in which case it is an image with that name.
  */
-export type GlyphName = 'lock' | 'link' | 'check' | 'cross' | 'warn' | 'delta' | 'draft' | 'ellipsis';
+export type GlyphName = 'lock' | 'link' | 'check' | 'cross' | 'warn' | 'delta' | 'draft' | 'ellipsis' | 'chevron';
 
 const PATHS: Record<GlyphName, string> = {
   lock: 'M5 7V5a3 3 0 0 1 6 0v2h1v7H4V7h1zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2z',
@@ -22,6 +23,7 @@ const PATHS: Record<GlyphName, string> = {
   warn: 'M7.2 3h1.6v6H7.2zM8 10.6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z',
   delta: 'M8 3l5 10H3zm0 3.2L5.6 11.5h4.8z',
   draft: 'M8 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 1.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  chevron: 'M6 3.5 10.5 8 6 12.5 4.9 11.4 8.3 8 4.9 4.6z',
   ellipsis: 'M3 8a1.2 1.2 0 1 1 2.4 0A1.2 1.2 0 0 1 3 8zm3.8 0a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 0 1-2.4 0zm3.8 0a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 0 1-2.4 0z',
 };
 

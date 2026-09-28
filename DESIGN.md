@@ -93,3 +93,44 @@ Families and rules:
 - Group headers: collapsible; collapsed state shows comma-separated key names. Key rows stay one line: a linked-key membership is a `🔗` glyph after the name with the group named in the accessible text, never a second line.
 - Revision history on a phone is an explicit drill-in (list, then detail with a back action); the desktop drawer keeps list and detail side by side.
 - Sidebar: one table (`web/src/app/navigation.ts`) renders desktop and mobile; a context block (project or instance) stacks above the organisation block, which is never hidden; instance and account destinations live in the rail on desktop and in the drawer on mobile. Every scope is a {Members, Settings} pair with the same page anatomy (h1 · lede · jump index · panels).
+
+## Review rules
+
+Rules distilled from owner review of the member-access screens (2026-09-28). Use them as a checklist when adding a story or cleaning up an existing one. Each rule names the failure it prevents.
+
+**Words**
+
+1. **One concept, one name, everywhere.** A capability, state or object has exactly one label, and every surface (editor, list, answer, glossary) renders it from one table. A selector that says "see" while the editor says "View" is a bug.
+2. **Define the vocabulary where people meet it.** Anything a user must choose between carries its one-line meaning at the point of choice (checkbox description, or the field hint under a select), and a glossary page lists every term.
+3. **No opaque bundles.** A preset or role name never hides what it grants: presets tick visible boxes, and a matching preset is shown beside the permissions, never instead of them. Secrets are always an explicit tick, never part of a preset.
+
+**Order and layout**
+
+4. **Ask in dependency order.** Inputs that constrain others come first: where before what; permission, project, environment, key in that order.
+5. **Nothing moves under the pointer.** Changing a control must not shift content above or around it. Conditional notes get a reserved, always-present line whose icon and tone change; hints do not change length with state.
+6. **Dialogs keep their exits in reach.** Actions are pinned at the bottom while the body scrolls; editors opt into backdrop close; Escape and Cancel stay the ways out (no corner X).
+7. **Short before the primary action.** The summary above Save uses the same components as the list (badges, where line) plus one short reach line, not a paragraph of bold prose.
+
+**Controls**
+
+8. **Each function has its own look.** Buttons act, toggle chips include or leave out, a disclosure (text with a rotating chevron) expands. Two different functions never share a look, and an expander never looks like a button.
+9. **If it looks like a link, it is one.** Separators such as `›` imply navigation; use labelled parts instead, or make the thing actually navigate (for example an Edit rule action on an answer row).
+10. **Pick the control for the list length.** Radios for two to four short options; longer lists with descriptions become a select with a live hint. Essential meaning never lives only in a tooltip (touch has no hover).
+11. **Hide the impossible, disable the conditional.** Options this subject can never have are hidden, replaced by one line naming them. Options another input can unlock stay visible and disabled, with the reason on its own line.
+
+**Consistency**
+
+12. **Same data, same component.** Anything shown in two places (a rule on the Members list and in a Who can...? answer) uses one shared component.
+13. **Use the app's patterns before inventing.** Results and listings use the existing table and panel anatomy; controls use `web/src/ui` atoms. A missing generic pattern becomes a new atom with its own story, never a one-off in a route.
+14. **Lists that grow get search.** Any list of people, keys or rules gets a filter input from the start.
+15. **One home per kind of thing.** People and machines do not share a list; each kind is managed in one place. Questions that span kinds (who can reach this key?) answer across all of them and mark the kind.
+16. **Omit what the user cannot act on.** Empty or non-actionable groups ("no rule reaches") are left out rather than collapsed.
+
+**Safety**
+
+17. **Name who is affected before a widening change commits.** An operation that gives anyone new access (for example moving a key out of an excepted folder) shows who gains what and needs explicit confirmation.
+
+**Stories**
+
+18. **Stories show the product, not the prototype.** Simulators and scenario switchers stay in `docs/site/public/prototypes`; a story keeps only the reusable piece (for example the confirmation dialog).
+19. **Verify like a user.** Every changed story is rendered in both themes at desktop width and at 390px, with no page overflow, and its `play` asserts the behaviour the story exists to show.

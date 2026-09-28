@@ -185,12 +185,12 @@ export const SHAPE_NEEDS: Record<Exclude<PermShape, 'key'>, string> = {
 
 /**
  * The standing condition a permission carries for a member of this kind, or
- * undefined when it has none. It depends on the permission and the member
+ * undefined when it has none. What a machine can never hold has no condition:
+ * the list hides it (see {@link MACHINE_FORBIDDEN}). It depends on the permission and the member
  * only, never on the rule's Where, so a list can show it on every row and
  * only flip whether it is currently blocking: the rows never change height.
  */
 export function requirement(id: PermId, kind: MemberKind = 'person'): string | undefined {
-  if (kind === 'machine' && MACHINE_FORBIDDEN.includes(id)) return `${MACHINE_FORBIDDEN_WHY}.`;
   if (kind === 'machine' && (id === 'reveal' || id === 'reveal-history')) return MACHINE_REVEAL_HINT;
   const { shape } = perm(id);
   return shape === 'key' ? undefined : `Only on rules that cover ${SHAPE_NEEDS[shape]}.`;
@@ -303,20 +303,6 @@ export function reachText(reach: ReachSummary): string {
     ...(reach.grows === null ? [] : [`new ${reach.grows} included`]),
   ].join(' · ');
 }
-
-export const projectsText = (rule: Pick<Rule, 'projects'>) => (rule.projects === '*' ? 'all projects' : rule.projects.join(', '));
-
-/** Where, as one line of plain text (the Who can...? answers quote it). */
-export function whereText(world: World, rule: Pick<Rule, 'projects' | 'envs' | 'keys'>): string {
-  const envs = rule.envs.mode === 'all'
-    ? `all environments${rule.envs.exc.length > 0 ? ` except ${rule.envs.exc.join(', ')}` : ''}`
-    : rule.envs.list.join(', ');
-  const keys = rule.keys.mode === 'all'
-    ? `all keys${rule.keys.exc.length > 0 ? ` except ${rule.keys.exc.map((i) => itemLabel(world, i).text).join(', ')}` : ''}`
-    : `only ${rule.keys.list.map((i) => itemLabel(world, i).text).join(', ')}`;
-  return `${projectsText(rule)} › ${envs} › ${keys}`;
-}
-
 
 /* ---------- editing ---------- */
 
