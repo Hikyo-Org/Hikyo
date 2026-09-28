@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PROTOTYPE: Hikyo member access granularity, iteration 2</title>
+<!--
+  THROWAWAY PROTOTYPE: member access granularity, iteration 2.
+
+  Iteration 1 verdict (Marc): none of a/b/c made access clearer; add
+  negative permissions ("grant on the project, except ...").
+
+  Question: does reading access as RULES (level . where . except) make it
+  clearer than capability chips, and does one include/except tree replace
+  the scope select, the key picker and the negative permission at once?
+
+  STATUS: explores an AMENDMENT to the locked permission ADR
+  (docs/adr/permission-model.md), which has no deny rules and defers
+  key/folder grants. Nothing here is locked.
+
+  Semantics shown:
+    - A rule = person + level (or none) + reveal / history flags + included
+      paths + excepted paths. Paths: org, project, env, folder, key.
+    - Levels (View / Edit / Publish / Admin) are a DISPLAY reading of the
+      stored capability atoms; a set that matches no level shows its atoms.
+      Reveal and reveal-history are never inside a level.
+    - EXCEPT IS RULE-LOCAL, NOT A DENY: it narrows only its own rule. Another
+      rule reaching the same place still reaches it (Bob: publish payments
+      except prod, plus view prod: Bob can view prod). The resolver says so.
+    - Paths are live: an except on db/ also covers keys added to db/ later
+      (fail-closed); an include on db/ also covers them.
+    - Folder / key paths limit edit, publish, reveal, history. read stays
+      environment-wide: key names and config values remain visible.
+-->
+<style>
+  :root{
+    --sans:'Instrument Sans',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --bg:oklch(0.19 0.012 220);
+    --bg-raise:oklch(0.23 0.014 220);
+    --bg-panel:oklch(0.225 0.014 220);
+    --bg-hover:oklch(0.27 0.016 220);
+    --line:oklch(0.5 0.016 220);
+    --chrome-line:oklch(0.3488 0.01488 220);
+    --panel-line:oklch(0.34 0.014 220);
+    --tx:oklch(0.93 0.008 200);
+    --tx-dim:oklch(0.76 0.01 210);
+    --tx-faint:oklch(0.71 0.012 215);
+    --accent:oklch(0.82 0.09 195);
+    --on-accent:oklch(0.2 0.02 220);
+    --danger:oklch(0.72 0.13 25);
+    --changed:oklch(0.78 0.07 250);
+    --accent-soft:color-mix(in oklch,var(--accent) 14%,transparent);
+    --danger-soft:color-mix(in oklch,var(--danger) 14%,transparent);
+    --changed-soft:color-mix(in oklch,var(--changed) 14%,transparent);
+    --overlay-shadow:0 12px 40px oklch(0 0 0/.5);
+    --control:36px;
+    --fs-xs:11px;--fs-sm:13px;--fs-md:14px;--fs-lg:16px;--fs-xl:20px;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
+    --ease:cubic-bezier(0.25,1,0.5,1);--dur:180ms;
+  }
+  [data-theme=light]{
+    --bg:oklch(0.965 0.008 200);
+    --bg-raise:oklch(0.995 0.004 200);
+    --bg-panel:oklch(0.935 0.01 200);
+    --bg-hover:oklch(0.895 0.012 200);
+    --line:oklch(0.64 0.012 210);
+    --chrome-line:oklch(0.8388 0.00752 204.4);
+    --panel-line:oklch(0.82 0.014 210);
+    --tx:oklch(0.25 0.03 225);
+    --tx-dim:oklch(0.44 0.02 220);
+    --tx-faint:oklch(0.46 0.02 218);
+    --accent:oklch(0.45 0.085 210);
+    --on-accent:oklch(0.97 0.008 200);
+    --danger:oklch(0.48 0.14 30);
+    --changed:oklch(0.45 0.08 250);
+    --accent-soft:color-mix(in oklch,var(--accent) 10%,transparent);
+    --danger-soft:color-mix(in oklch,var(--danger) 10%,transparent);
+    --changed-soft:color-mix(in oklch,var(--changed) 12%,transparent);
+    --overlay-shadow:0 12px 40px oklch(0.3 0.02 220/.25);
+  }
+  @media (pointer:coarse){:root{--control:44px}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg)}
+  body{color:var(--tx);font-family:var(--sans);font-size:var(--fs-md);line-height:1.5;-webkit-font-smoothing:antialiased}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :is(button,select,input,a,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .mono,code{font-family:var(--mono);font-size:var(--fs-sm)}
+  .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  /* shell */
+  #app{display:grid;grid-template-columns:232px 1fr;min-height:100dvh}
+  #side{background:var(--bg-panel);border-right:1px solid var(--chrome-line);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:var(--space-4)}
+  .eyebrow{font-size:var(--fs-xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-faint)}
+  .navgroup{display:flex;flex-direction:column;gap:2px}
+  .navgroup .eyebrow{padding:0 var(--space-2) var(--space-1)}
+  .nav{display:flex;align-items:center;min-height:var(--control);padding:0 var(--space-2);border-radius:4px;color:var(--tx-dim);text-decoration:none;background:none;border:0;text-align:left;width:100%}
+  .nav:hover{background:var(--bg-hover);color:var(--tx)}
+  .nav[aria-current=page]{background:var(--bg-hover);color:var(--tx);font-weight:500}
+  .nav[aria-disabled=true]{opacity:.5;cursor:default}
+  .nav[aria-disabled=true]:hover{background:none;color:var(--tx-dim)}
+  main{padding:var(--space-6) clamp(16px,4vw,48px) 120px;min-width:0}
+  h1{font-size:var(--fs-xl);font-weight:700;line-height:1.2}
+  h2{font-size:var(--fs-lg);font-weight:700}
+  h3{font-size:var(--fs-md);font-weight:700}
+  .lede{font-size:var(--fs-sm);color:var(--tx-dim);max-width:68ch;margin-top:var(--space-2)}
+  .panel{border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-panel);padding:var(--space-4);margin-top:var(--space-5)}
+  .panel__head{display:flex;align-items:baseline;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-3)}
+  .panel__head p{font-size:var(--fs-sm);color:var(--tx-dim)}
+  .row{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+
+  /* controls */
+  .btn{min-height:var(--control);padding:0 var(--space-3);border-radius:4px;border:1px solid var(--line);background:transparent;font-weight:500;display:inline-flex;align-items:center;gap:var(--space-2);white-space:nowrap}
+  .btn:hover{background:var(--bg-hover)}
+  .btn--primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  .btn--primary:hover{background:var(--accent);filter:brightness(1.06)}
+  .btn--quiet{border-color:transparent;color:var(--tx-dim);font-weight:400}
+  .btn--quiet:hover{color:var(--tx)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  select,input[type=text],input[type=search]{min-height:var(--control);border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:0 var(--space-2)}
+  label.field select{width:100%;min-width:0}
+  label.field{display:flex;flex-direction:column;gap:var(--space-1);font-size:var(--fs-sm);color:var(--tx-dim)}
+  .chk{display:flex;align-items:flex-start;gap:var(--space-2);font-size:var(--fs-sm);min-height:24px}
+  .chk input{width:18px;height:18px;margin-top:2px;flex-shrink:0;accent-color:var(--accent)}
+  .chk--off{opacity:.55}
+
+  /* badges */
+  .badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:3px;font-size:var(--fs-xs);font-weight:500;border:1px solid var(--panel-line);color:var(--tx-dim);white-space:nowrap}
+  .badge.mono{font-family:var(--mono)}
+  .badge--danger{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .badge--changed{border-color:var(--changed);color:var(--changed);background:var(--changed-soft)}
+  .badge--ok{border-color:var(--accent);color:var(--accent)}
+  .badge--link{cursor:pointer;background:none}
+  .badge--link:hover{background:var(--bg-hover)}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%}
+  th{font-size:var(--fs-xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-faint);text-align:left;padding:var(--space-2);border-bottom:1px solid var(--panel-line);white-space:nowrap}
+  td{padding:var(--space-2);border-bottom:1px solid var(--panel-line);vertical-align:top;font-size:var(--fs-sm)}
+  tr:last-child td{border-bottom:0}
+  tbody tr.click{cursor:pointer}
+  tbody tr.click:hover td{background:var(--bg-hover)}
+  .who{display:flex;flex-direction:column}
+  .who b{font-weight:500;font-size:var(--fs-md)}
+  .who span{color:var(--tx-faint);font-size:var(--fs-xs);font-family:var(--mono)}
+  .caps{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);list-style:none}
+  .cap{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:var(--fs-sm);padding:1px 0}
+  .cap .x{border:0;background:none;color:var(--tx-faint);width:20px;height:20px;border-radius:3px;line-height:1}
+  .cap .x:hover{background:var(--bg-hover);color:var(--danger)}
+  .muted{color:var(--tx-faint)}
+  .dim{color:var(--tx-dim)}
+  .lock{font-size:.9em}
+
+  /* access map (c) */
+  .map th,.map td{text-align:center}
+  .map th:first-child,.map td:first-child{text-align:left}
+  .map td.cell{min-width:78px}
+  .map .indent1{padding-left:var(--space-5)}
+  .map .indent2{padding-left:calc(var(--space-5)*2)}
+  .cellbtn{border:1px solid transparent;background:none;border-radius:4px;min-height:28px;padding:0 6px;display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:var(--fs-sm)}
+  .cellbtn:hover{border-color:var(--line)}
+  .g-direct{color:var(--accent)}
+  .g-inh{color:var(--tx-dim)}
+  .g-none{color:var(--tx-faint)}
+  .legend{display:flex;flex-wrap:wrap;gap:var(--space-4);font-size:var(--fs-sm);color:var(--tx-dim);margin-top:var(--space-3)}
+
+  /* tree (b, picker) */
+  .split{display:grid;grid-template-columns:260px 1fr;gap:var(--space-4);margin-top:var(--space-5)}
+  .tree{list-style:none;border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-panel);padding:var(--space-2)}
+  .tree li{list-style:none}
+  .tree .folder{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--control);padding:0 var(--space-2);border:0;background:none;border-radius:4px;text-align:left;font-family:var(--mono);font-size:var(--fs-sm)}
+  .tree .folder:hover{background:var(--bg-hover)}
+  .tree .folder[aria-current=true]{background:var(--bg-hover);font-weight:500}
+  .tree .key{padding:2px var(--space-2) 2px var(--space-5);font-family:var(--mono);font-size:var(--fs-sm);color:var(--tx-dim)}
+  .policy td{vertical-align:middle}
+  .policy .cellbtn{font-family:var(--sans);text-align:left}
+
+  .picker{border:1px solid var(--panel-line);border-radius:6px;padding:var(--space-2) var(--space-3);max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+  .picker .sub{padding-left:var(--space-5)}
+  .summary{border-left:2px solid var(--accent);padding:var(--space-2) var(--space-3);background:var(--accent-soft);border-radius:0 4px 4px 0;font-size:var(--fs-sm)}
+  .summary.warn{border-color:var(--changed);background:var(--changed-soft)}
+  .summary.bad{border-color:var(--danger);background:var(--danger-soft)}
+
+  /* who can */
+  .resolver{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3)}
+  .answer{list-style:none;display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-3)}
+  .answer li{display:grid;grid-template-columns:22px 180px 1fr;gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
+  .answer .why{color:var(--tx-dim)}
+  .answer .why code{color:var(--tx)}
+
+  /* dialog */
+  dialog{margin:auto;border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-raise);color:var(--tx);box-shadow:var(--overlay-shadow);width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0}
+  dialog::backdrop{background:oklch(0 0 0/.45)}
+  .dlg{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5)}
+  .dlg__foot{display:flex;gap:var(--space-2);justify-content:flex-end;flex-wrap:wrap}
+
+  /* floating switcher */
+  #bar{position:fixed;right:16px;bottom:16px;z-index:50;display:flex;flex-direction:column;gap:var(--space-2);background:var(--bg-raise);border:1px solid var(--line);border-radius:6px;padding:var(--space-2) var(--space-3);box-shadow:var(--overlay-shadow);max-width:calc(100vw - 32px)}
+  #bar .row{gap:var(--space-1)}
+  #bar button{min-height:32px;padding:0 var(--space-2);border:1px solid var(--panel-line);border-radius:4px;background:none;font-size:var(--fs-sm)}
+  #bar button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  #bar .hint{font-size:var(--fs-xs);color:var(--tx-faint);max-width:44ch}
+
+  @media (max-width:800px){
+    #app{grid-template-columns:minmax(0,1fr)}
+    #side{flex-direction:row;overflow-x:auto;padding:var(--space-2);border-right:0;border-bottom:1px solid var(--chrome-line);gap:var(--space-2)}
+    .navgroup{flex-direction:row;align-items:center}
+    .navgroup .eyebrow{display:none}
+    .nav{white-space:nowrap}
+    main{padding:var(--space-5) var(--space-3) 200px}
+    .split{grid-template-columns:minmax(0,1fr)}
+    .resolver{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .answer li{grid-template-columns:22px 1fr}
+    .answer .why{grid-column:2}
+    #bar{left:8px;right:8px;bottom:8px}
+  }
+</style>
+<style>
+  /* iteration 2 additions */
+  .people{list-style:none;display:flex;flex-direction:column}
+  .person{display:grid;grid-template-columns:200px minmax(0,1fr);gap:var(--space-4);padding:var(--space-4) 0;border-bottom:1px solid var(--panel-line)}
+  .person:last-child{border-bottom:0}
+  .rules{list-style:none;display:flex;flex-direction:column;gap:var(--space-2)}
+  .rule{display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-2) var(--space-3);border:1px solid var(--panel-line);border-radius:6px;background:var(--bg)}
+  .rule__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .rule__line{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px var(--space-2)}
+  .lvl{font-weight:700}
+  .where{font-family:var(--mono);font-size:var(--fs-sm)}
+  .sep{color:var(--tx-faint)}
+  .except{font-family:var(--mono);font-size:var(--fs-sm);color:var(--danger)}
+  .reach{font-size:var(--fs-xs);color:var(--tx-faint)}
+  .flag{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:3px;font-size:var(--fs-xs);font-weight:500;border:1px solid var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .flag--hist{border-color:var(--changed);color:var(--changed);background:var(--changed-soft)}
+  .addrule{align-self:flex-start}
+
+  .levels{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:4px;overflow:hidden;width:max-content;max-width:100%}
+  .levels button{min-height:var(--control);padding:0 var(--space-3);border:0;border-right:1px solid var(--line);background:none}
+  .levels button:last-child{border-right:0}
+  .levels button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);font-weight:500}
+  .lvlhint{font-size:var(--fs-sm);color:var(--tx-dim)}
+
+  .ttree{list-style:none;border:1px solid var(--panel-line);border-radius:6px;padding:var(--space-2);max-height:340px;overflow:auto}
+  .ttree ul{list-style:none;padding-left:var(--space-5)}
+  .node{display:flex;align-items:center;gap:var(--space-2);min-height:32px}
+  .twist{width:24px;height:24px;border:0;background:none;color:var(--tx-faint);border-radius:3px}
+  .twist:hover{background:var(--bg-hover)}
+  .twist--none{visibility:hidden}
+  .tri{min-width:92px;height:26px;border-radius:3px;border:1px solid var(--panel-line);background:none;font-size:var(--fs-xs);font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:4px;color:var(--tx-faint)}
+  .tri[data-s=inc]{border-color:var(--accent);color:var(--on-accent);background:var(--accent)}
+  .tri[data-s=exc]{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .tri[data-s=via]{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+  .tri[data-s=off]{}
+  .nodelabel{font-family:var(--mono);font-size:var(--fs-sm)}
+  .nodelabel.dimmed{color:var(--tx-faint)}
+  .sentence{font-size:var(--fs-md);line-height:1.6}
+  .sentence b{font-weight:700}
+  .quick{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-3)}
+  .quick button{min-height:32px;padding:0 var(--space-2);border:1px solid var(--panel-line);border-radius:3px;background:none;font-size:var(--fs-sm)}
+  .quick button:hover{background:var(--bg-hover)}
+  @media (max-width:800px){
+    .person{grid-template-columns:minmax(0,1fr);gap:var(--space-2)}
+    .tri{min-width:78px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="side" aria-label="Prototype navigation"></nav>
+  <main id="main"></main>
+</div>
+<div id="bar" role="region" aria-label="Prototype switcher"></div>
+<dialog id="dlg" aria-labelledby="dlg-title"></dialog>
+
+<script>
+/* ---------- fixture ---------- */
+const PEOPLE = {
+  marc:{name:'Marc Went',id:'usr_01marc',note:'owner'},
+  alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
+  bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
+  chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
+  dana:{name:'Dana Ruiz',id:'usr_01dana',note:'SRE'},
+  ci:{name:'ci-deploy',id:'mch_01cideploy',note:'automation credential'},
+};
+const PROJECTS = {
+  payments:{envs:[{id:'dev'},{id:'staging'},{id:'prod',prot:true}]},
+  web:{envs:[{id:'dev'},{id:'prod',prot:true}]},
+};
+const KEYS = {
+  payments:[
+    {k:'DB_HOST',f:'db',s:false},{k:'DB_USER',f:'db',s:false},{k:'DB_PASSWORD',f:'db',s:true},
+    {k:'STRIPE_PUBLISHABLE_KEY',f:'stripe',s:false},{k:'STRIPE_SECRET_KEY',f:'stripe',s:true},{k:'STRIPE_WEBHOOK_SECRET',f:'stripe',s:true},
+    {k:'LOG_LEVEL',f:'app',s:false},{k:'SESSION_SECRET',f:'app',s:true},
+  ],
+  web:[{k:'API_URL',f:'app',s:false},{k:'SENTRY_DSN',f:'app',s:true},{k:'COOKIE_SECRET',f:'app',s:true}],
+};
+/* Levels are a display reading of the stored atoms, not a new stored role.
+   Reveal and reveal-history are never part of a level: they stay flags. */
+const LEVELS = {
+  view:{label:'View',atoms:['read'],hint:'key names, schemas, config values'},
+  edit:{label:'Edit',atoms:['read','edit'],hint:'View, plus drafts that someone else publishes'},
+  publish:{label:'Publish',atoms:['read','edit','publish','pin'],hint:'Edit, plus publishing and pins'},
+  admin:{label:'Admin',atoms:['read','edit','publish','pin','definitions-edit','manage-identities','manage-adapters','project-settings','manage-members'],hint:'Publish, plus definitions, machine access, settings and members'},
+};
+/* A rule: one person, one level (or none) plus flags, a set of included
+   paths and a set of excepted paths. Paths are '*' (whole org), 'project',
+   'project/env', 'project/env/folder', 'project/env/folder/KEY'.
+   An exception narrows ONLY its own rule. It is not a deny: another rule
+   that reaches the same place still reaches it. */
+let seq = 1;
+const R = (p,level,flags,inc,exc,atoms) => ({id:seq++,p,level,reveal:!!flags.reveal,history:!!flags.history,inc,exc:exc||[],atoms:atoms||null});
+const RULES = [
+  R('marc','admin',{reveal:1,history:1},['*']),
+  R('alice','publish',{},['payments']),
+  R('alice',null,{reveal:1},['payments/staging','payments/prod/db']),
+  R('bob','publish',{reveal:1},['payments','web'],['payments/prod','web/prod']),
+  R('bob','view',{},['payments/prod','web/prod']),
+  R('chen','edit',{},['payments/staging/stripe']),
+  R('dana','view',{},['*']),
+  R('dana',null,{reveal:1,history:1},['payments/prod'],['payments/prod/db']),
+  R('ci',null,{},['payments/staging'],[],['read','edit','publish']),
+];
+
+/* ---------- state ---------- */
+const S = {
+  page: new URLSearchParams(location.search).get('page') === 'whocan' ? 'whocan' : 'members',
+  theme: localStorage.getItem('proto-theme') || 'dark',
+  who: {cap:'reveal',project:'payments',env:'prod',key:'DB_PASSWORD'},
+  flash: '',
+};
+
+/* ---------- model ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const isProt = (pr,env) => PROJECTS[pr]?.envs.some(e => e.id === env && e.prot);
+const allEnvs = () => Object.entries(PROJECTS).flatMap(([pr,d]) => d.envs.map(e => [pr,e.id]));
+const segs = path => path === '*' ? [] : path.split('/');
+/* Does path cover (project, env, folder, key)? A path covers everything under it. */
+function covers(path,pr,env,folder,key){
+  const s = segs(path), t = [pr,env,folder,key];
+  return s.every((x,i) => t[i] === undefined ? false : x === t[i]);
+}
+const depth = path => segs(path).length; // 0 org, 1 project, 2 env, 3 folder, 4 key
+const atomsOf = r => [...(r.atoms || (r.level ? LEVELS[r.level].atoms : [])), ...(r.reveal?['reveal']:[]), ...(r.history?['reveal-history']:[])];
+/* read is project-wide by design: a folder or key path can neither narrow
+   nor except it. A folder include still grants read on its environment. */
+function ruleReaches(r,cap,pr,env,k){
+  if(!atomsOf(r).includes(cap)) return {hit:false};
+  const key = k ? KEYS[pr].find(x => x.k === k) : null;
+  const f = key ? key.f : undefined;
+  const fine = cap !== 'read';
+  const incOk = r.inc.some(p => fine ? covers(p,pr,env,f,k) : (depth(p) <= 2 ? covers(p,pr,env,f,k) : covers(segs(p).slice(0,2).join('/'),pr,env,f,k)));
+  if(!incOk) return {hit:false};
+  const exc = r.exc.find(p => fine ? covers(p,pr,env,f,k) : depth(p) <= 2 && covers(p,pr,env,f,k));
+  if(exc) return {hit:true,ok:false,exc};
+  return {hit:true,ok:true};
+}
+function resolve(p,cap,pr,env,k){
+  const rs = RULES.filter(r => r.p === p);
+  const out = rs.map(r => ({r,...ruleReaches(r,cap,pr,env,k)})).filter(x => x.hit);
+  const ok = out.find(x => x.ok);
+  const blocked = out.find(x => !x.ok);
+  if(ok) return {state:'yes',rule:ok.r,alsoExcepted:blocked};
+  if(blocked) return {state:'excepted',rule:blocked.r,exc:blocked.exc};
+  return {state:'no'};
+}
+
+/* ---------- display ---------- */
+const pathLabel = p => {
+  if(p === '*') return 'all of acme';
+  const s = segs(p);
+  return s.join('/') + (s.length === 3 ? '/' : '') + (s.length === 2 && isProt(s[0],s[1]) ? ' 🔒' : '');
+};
+const levelLabel = r => r.level ? LEVELS[r.level].label : r.atoms ? r.atoms.join(', ') : '';
+function reachOf(r){
+  const envs = allEnvs().filter(([pr,env]) => r.inc.some(p => depth(p) <= 2 ? covers(p,pr,env) : covers(segs(p).slice(0,2).join('/'),pr,env)) && !r.exc.some(p => depth(p) <= 2 && covers(p,pr,env)));
+  const parts = [`${envs.length} of ${allEnvs().length} environments`];
+  if(r.reveal){
+    let n = 0; for(const [pr,env] of allEnvs()) for(const k of KEYS[pr]) if(k.s && ruleReaches(r,'reveal',pr,env,k.k).ok) n++;
+    parts.push(`reveals ${n} secret values`);
+  }
+  const prodIn = envs.filter(([pr,env]) => isProt(pr,env)).length;
+  parts.push(prodIn ? `${prodIn} protected` : 'no protected environment');
+  if(r.inc.some(p => depth(p) <= 1)) parts.push('new environments included');
+  return parts.join(' · ');
+}
+function ruleLine(r,withActions){
+  const lvl = levelLabel(r);
+  return `<li class="rule">
+    <div class="rule__main">
+      <div class="rule__line">
+        ${lvl ? `<span class="lvl">${esc(lvl)}</span>` : ''}
+        ${r.reveal ? `<span class="flag">🔓 reveals secrets</span>` : ''}
+        ${r.history ? `<span class="flag flag--hist">↺ reveals history</span>` : ''}
+        <span class="sep">in</span>
+        <span class="where">${r.inc.map(pathLabel).join(', ')}</span>
+        ${r.exc.length ? `<span class="sep">except</span><span class="except">✕ ${r.exc.map(pathLabel).join(', ')}</span>` : ''}
+      </div>
+      <span class="reach">${reachOf(r)}</span>
+    </div>
+    ${withActions ? `<button class="btn btn--quiet" data-edit="${r.id}" aria-label="Edit rule">Edit</button>` : ''}
+  </li>`;
+}
+
+/* ---------- chrome ---------- */
+function renderSide(){
+  $('#side').innerHTML = `
+    <div class="navgroup"><span class="eyebrow">Organisation · acme</span>
+      <button class="nav" data-go="members" ${S.page==='members'?'aria-current="page"':''}>Members</button>
+      <button class="nav" data-go="whocan" ${S.page==='whocan'?'aria-current="page"':''}>Who can...?</button>
+      <button class="nav" aria-disabled="true">Settings</button>
+    </div>`;
+}
+function renderBar(){
+  $('#bar').innerHTML = `<div class="row">
+      <a class="btn btn--quiet" href="../1/" style="min-height:32px">‹ iteration 1</a>
+      <button data-theme-toggle aria-label="Toggle theme">${S.theme==='dark'?'☾':'☀'}</button>
+    </div>
+    <p class="hint">Iteration 2: access as rules (level · where · except). Tap Edit or Add access.</p>`;
+}
+
+/* ---------- pages ---------- */
+function pageMembers(){
+  return `
+    <h1>Members · acme</h1>
+    <p class="lede">Each line is one access rule: a level, where it applies, and what it leaves out. <strong>Except</strong> narrows only its own line; if another line reaches the same place, that line still counts. Secrets are always a separate flag, never part of a level.</p>
+    <section class="panel" aria-labelledby="mem-h">
+      <div class="panel__head"><h2 id="mem-h">Members</h2><p>${Object.keys(PEOPLE).length} members, ${RULES.length} rules</p><span class="spacer"></span><button class="btn">Invite</button></div>
+      <ul class="people">${Object.keys(PEOPLE).map(p => `<li class="person">
+        <div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
+        <div style="display:flex;flex-direction:column;gap:var(--space-2)">
+          <ul class="rules">${RULES.filter(r => r.p===p).map(r => ruleLine(r,true)).join('') || '<li class="muted">· no access</li>'}</ul>
+          <button class="btn btn--quiet addrule" data-add="${p}">+ Add access</button>
+        </div>
+      </li>`).join('')}</ul>
+    </section>`;
+}
+
+function pageWhoCan(){
+  const w = S.who;
+  const envs = PROJECTS[w.project].envs, keys = KEYS[w.project];
+  if(!envs.some(e => e.id===w.env)) w.env = envs[0].id;
+  if(!keys.some(k => k.k===w.key)) w.key = keys[0].k;
+  const res = Object.keys(PEOPLE).map(p => ({p,...resolve(p,w.cap,w.project,w.env,w.key)}));
+  const yes = res.filter(r => r.state==='yes'), exc = res.filter(r => r.state==='excepted'), no = res.filter(r => r.state==='no');
+  const capName = {read:'view',edit:'edit',publish:'publish',reveal:'reveal','reveal-history':'reveal history of'}[w.cap];
+  const line = (r,glyph,cls,why) => `<li><span class="${cls}" aria-hidden="true">${glyph}</span><span>${PEOPLE[r.p].name}</span><span class="why">${why}</span></li>`;
+  const ruleText = r => `${[levelLabel(r), r.reveal ? 'reveals secrets' : '', r.history ? 'reveals history' : ''].filter(Boolean).join(' + ')} in ${r.inc.map(pathLabel).join(', ')}${r.exc.length?` except ${r.exc.map(pathLabel).join(', ')}`:''}`.trim();
+  return `
+    <h1>Who can...?</h1>
+    <p class="lede">Pick a key, not just a scope. The answer names the rule that grants access and, for anyone left out by an <strong>except</strong>, which one.</p>
+    <section class="panel" aria-labelledby="wc-h">
+      <h2 id="wc-h" class="vh">Question</h2>
+      <div class="resolver">
+        <label class="field">Can<select data-who="cap">${[['read','view'],['edit','edit'],['publish','publish'],['reveal','reveal'],['reveal-history','reveal history of']].map(([v,l]) => `<option value="${v}" ${v===w.cap?'selected':''}>${l}</option>`).join('')}</select></label>
+        <label class="field">Project<select data-who="project">${Object.keys(PROJECTS).map(p => `<option ${p===w.project?'selected':''}>${p}</option>`).join('')}</select></label>
+        <label class="field">Environment<select data-who="env">${envs.map(e => `<option value="${e.id}" ${e.id===w.env?'selected':''}>${e.id}${e.prot?' 🔒':''}</option>`).join('')}</select></label>
+        <label class="field">Key<select data-who="key">${[...new Set(keys.map(k => k.f))].map(f => `<optgroup label="${f}/">${keys.filter(k => k.f===f).map(k => `<option value="${k.k}" ${k.k===w.key?'selected':''}>${k.k}${k.s?' (secret)':''}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      </div>
+      <div class="quick" aria-label="Example questions">
+        <button data-q="reveal|payments|prod|DB_PASSWORD">reveal prod DB_PASSWORD</button>
+        <button data-q="reveal|payments|prod|STRIPE_SECRET_KEY">reveal prod STRIPE_SECRET_KEY</button>
+        <button data-q="read|payments|prod|LOG_LEVEL">view prod LOG_LEVEL</button>
+        <button data-q="edit|payments|prod|LOG_LEVEL">edit prod LOG_LEVEL</button>
+        <button data-q="edit|payments|staging|DB_HOST">edit staging DB_HOST</button>
+      </div>
+      <h3 style="margin-top:var(--space-5)">Can ${capName} <code>${w.key}</code> in ${w.project}/${w.env}: ${yes.length}</h3>
+      <ul class="answer">${yes.map(r => line(r,'✓','g-direct',`via <code>${esc(ruleText(r.rule))}</code>${r.alsoExcepted ? `. Another rule excepts it (<code>${esc(pathLabel(r.alsoExcepted.exc))}</code>), but an except only narrows its own rule.` : ''}`)).join('') || '<li class="muted">· no one</li>'}</ul>
+      ${exc.length ? `<h3 style="margin-top:var(--space-4)">Left out by an except: ${exc.length}</h3><ul class="answer">${exc.map(r => line(r,'✕','except',`<code>${esc(ruleText(r.rule))}</code> reaches here, but excepts <code>${esc(pathLabel(r.exc))}</code>`)).join('')}</ul>` : ''}
+      <details style="margin-top:var(--space-4)"><summary class="dim" style="min-height:var(--control);display:flex;align-items:center;cursor:pointer">No rule reaches: ${no.length}</summary><ul class="answer">${no.map(r => line(r,'·','muted','no rule covers this')).join('')}</ul></details>
+    </section>`;
+}
+
+/* ---------- rule editor ---------- */
+function openDialog(html,bind){
+  const d = $('#dlg'); d.innerHTML = html; if(!d.open) d.showModal(); bind && bind(d);
+  d.querySelectorAll('[data-close]').forEach(b => b.onclick = () => d.close());
+}
+function editor(rule,p){
+  const st = rule
+    ? {id:rule.id,p:rule.p,level:rule.level,reveal:rule.reveal,history:rule.history,inc:[...rule.inc],exc:[...rule.exc],atoms:rule.atoms}
+    : {id:null,p,level:'view',reveal:false,history:false,inc:[],exc:[],atoms:null};
+  const open = new Set(['*','payments','web']);
+  st.inc.concat(st.exc).forEach(x => { const s = segs(x); for(let i=1;i<s.length;i++) open.add(s.slice(0,i).join('/')); });
+  /* node state: inc | exc | via (covered by an included ancestor) | off */
+  const stateOf = path => {
+    if(st.inc.includes(path)) return 'inc';
+    if(st.exc.includes(path)) return 'exc';
+    const s = segs(path);
+    for(let i = s.length - 1; i >= 0; i--){
+      const anc = i === 0 ? '*' : s.slice(0,i).join('/');
+      if(st.exc.includes(anc)) return 'excvia';
+      if(st.inc.includes(anc)) return 'via';
+    }
+    return 'off';
+  };
+  const cycle = path => {
+    const s = stateOf(path);
+    const drop = arr => arr.filter(x => x !== path && !(path === '*' ? true : x.startsWith(path + '/')));
+    if(s === 'off'){ st.inc = drop(st.inc); st.exc = drop(st.exc); st.inc.push(path); }
+    else if(s === 'inc'){ st.inc = st.inc.filter(x => x !== path); }
+    else if(s === 'via'){ st.exc = drop(st.exc); st.exc.push(path); }
+    else if(s === 'exc'){ st.exc = st.exc.filter(x => x !== path); }
+  };
+  const triLabel = {inc:'✓ include',exc:'✕ except',via:'✓ included',excvia:'✕ excepted',off:'· off'};
+  const children = path => {
+    if(path === '*') return Object.keys(PROJECTS).map(p => ({path:p,label:p}));
+    const s = segs(path);
+    if(s.length === 1) return PROJECTS[s[0]].envs.map(e => ({path:`${s[0]}/${e.id}`,label:e.id + (e.prot?' 🔒':'')}));
+    if(s.length === 2) return [...new Set(KEYS[s[0]].map(k => k.f))].map(f => ({path:`${path}/${f}`,label:f + '/'}));
+    if(s.length === 3) return KEYS[s[0]].filter(k => k.f === s[2]).map(k => ({path:`${path}/${k.k}`,label:k.k + (k.s?' 🔒':'')}));
+    return [];
+  };
+  const nodeHtml = (n) => {
+    const kids = children(n.path);
+    const s = stateOf(n.path);
+    const isOpen = open.has(n.path);
+    const disabled = s === 'excvia';
+    return `<li><div class="node">
+      <button class="twist ${kids.length?'':'twist--none'}" type="button" data-twist="${n.path}" aria-expanded="${isOpen}" aria-label="${isOpen?'Collapse':'Expand'} ${esc(n.label)}">${isOpen?'▾':'▸'}</button>
+      <button class="tri" type="button" data-tri="${n.path}" data-s="${s==='excvia'?'exc':s}" ${disabled?'disabled':''} aria-label="${esc(n.label)}: ${triLabel[s]}">${triLabel[s]}</button>
+      <span class="nodelabel ${s==='off'||s==='excvia'?'dimmed':''}">${esc(n.label)}</span>
+    </div>${kids.length && isOpen ? `<ul>${kids.map(nodeHtml).join('')}</ul>` : ''}</li>`;
+  };
+  const draw = () => {
+    const tmp = {level:st.level,reveal:st.reveal,history:st.history,inc:st.inc,exc:st.exc,atoms:st.atoms};
+    const hasAccess = st.level || st.reveal || st.history || st.atoms;
+    const fineExc = st.exc.filter(x => depth(x) >= 3);
+    const fineInc = st.inc.filter(x => depth(x) >= 3);
+    const orgWide = st.inc.includes('*');
+    openDialog(`<form class="dlg" method="dialog" style="gap:var(--space-4)">
+      <h2 id="dlg-title">${st.id ? 'Edit access' : 'Add access'} · ${PEOPLE[st.p].name}</h2>
+      <fieldset style="border:0;display:flex;flex-direction:column;gap:var(--space-2)"><legend class="eyebrow" style="margin-bottom:var(--space-2)">Level</legend>
+        <div class="levels" role="group" aria-label="Level">
+          <button type="button" data-level="" aria-pressed="${!st.level && !st.atoms}">None</button>
+          ${Object.entries(LEVELS).map(([id,l]) => `<button type="button" data-level="${id}" aria-pressed="${st.level===id}">${l.label}</button>`).join('')}
+        </div>
+        <p class="lvlhint">${st.level ? LEVELS[st.level].hint : st.atoms ? `Custom set: ${st.atoms.join(', ')}. Picking a level replaces it.` : 'No level: only the secret flags below apply.'}</p>
+        <label class="chk"><input type="checkbox" data-flag="reveal" ${st.reveal?'checked':''}> <span><strong>Reveal secrets</strong> <span class="muted">· current secret values, with reauthentication</span></span></label>
+        <label class="chk"><input type="checkbox" data-flag="history" ${st.history?'checked':''}> <span><strong>Reveal history</strong> <span class="muted">· superseded secret values</span></span></label>
+      </fieldset>
+      <fieldset style="border:0;display:flex;flex-direction:column;gap:var(--space-2)"><legend class="eyebrow" style="margin-bottom:var(--space-2)">Where</legend>
+        <p class="lvlhint">Tap to include. Inside an included place, tap to except. An except follows the folder: keys added to it later stay excepted.</p>
+        <ul class="ttree">${nodeHtml({path:'*',label:'acme (whole organisation)'})}</ul>
+      </fieldset>
+      <div class="summary ${orgWide?'bad':st.exc.length?'':'warn'}">
+        <p class="sentence">${hasAccess && st.inc.length ? `${PEOPLE[st.p].name.split(' ')[0]} can ${[levelLabel(tmp) ? `<b>${esc(levelLabel(tmp).toLowerCase())}</b>` : '', st.reveal ? '<b>reveal secrets</b>' : '', st.history ? '<b>reveal history</b>' : ''].filter(Boolean).join(' and ')} in <b>${st.inc.map(pathLabel).join(', ')}</b>${st.exc.length ? `, except <b>${st.exc.map(pathLabel).join(', ')}</b>` : ''}.` : 'Pick a level or flag, then where it applies.'}</p>
+        ${hasAccess && st.inc.length ? `<p class="reach" style="font-size:var(--fs-sm)">${reachOf(tmp)}</p>` : ''}
+        ${orgWide ? '<p style="font-size:var(--fs-sm)">Whole organisation: reaches every project, including production and projects created later.</p>' : ''}
+        ${fineInc.length || fineExc.length ? '<p style="font-size:var(--fs-sm)">Folder and key choices limit edit, publish and reveal. Key names and config values stay visible across the environment.</p>' : ''}
+      </div>
+      <div class="dlg__foot">
+        ${st.id ? '<button class="btn" type="button" data-del style="color:var(--danger);border-color:var(--danger);margin-right:auto">Remove rule</button>' : ''}
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn btn--primary" type="button" data-save ${hasAccess && st.inc.length ? '' : 'disabled'}>Save</button>
+      </div>
+    </form>`, d => {
+      d.querySelectorAll('[data-level]').forEach(b => b.onclick = () => { st.level = b.dataset.level || null; st.atoms = null; draw(); });
+      d.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { st[i.dataset.flag] = i.checked; draw(); });
+      d.querySelectorAll('[data-twist]').forEach(b => b.onclick = () => { const x = b.dataset.twist; open.has(x) ? open.delete(x) : open.add(x); draw(); });
+      d.querySelectorAll('[data-tri]').forEach(b => b.onclick = () => { cycle(b.dataset.tri); draw(); d.querySelector(`[data-tri="${b.dataset.tri}"]`)?.focus(); });
+      const del = d.querySelector('[data-del]');
+      if(del) del.onclick = () => { RULES.splice(RULES.findIndex(r => r.id === st.id),1); d.close(); render(); };
+      d.querySelector('[data-save]').onclick = () => {
+        const next = {id:st.id || seq++,p:st.p,level:st.level,reveal:st.reveal,history:st.history,inc:st.inc,exc:st.exc,atoms:st.atoms};
+        const i = RULES.findIndex(r => r.id === st.id);
+        i >= 0 ? RULES.splice(i,1,next) : RULES.push(next);
+        d.close(); render();
+      };
+    });
+  };
+  draw();
+}
+
+/* ---------- render + events ---------- */
+function render(){
+  document.documentElement.dataset.theme = S.theme;
+  renderSide(); renderBar();
+  $('#main').innerHTML = S.page === 'whocan' ? pageWhoCan() : pageMembers();
+  const u = new URL(location); u.searchParams.set('page',S.page); history.replaceState(null,'',u);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('button');
+  if(!t || t.closest('#dlg')) return;
+  if(t.hasAttribute('data-theme-toggle')){ S.theme = S.theme==='dark'?'light':'dark'; localStorage.setItem('proto-theme',S.theme); render(); return; }
+  if(t.dataset.go){ if(t.getAttribute('aria-disabled')==='true') return; S.page = t.dataset.go; render(); window.scrollTo(0,0); return; }
+  if(t.dataset.edit){ editor(RULES.find(r => r.id === +t.dataset.edit)); return; }
+  if(t.dataset.add){ editor(null,t.dataset.add); return; }
+  if(t.dataset.q){ const [cap,project,env,key] = t.dataset.q.split('|'); Object.assign(S.who,{cap,project,env,key}); render(); return; }
+});
+document.addEventListener('change', e => { const t = e.target; if(t.dataset.who){ S.who[t.dataset.who] = t.value; render(); } });
+render();
+</script>
+</body>
+</html>

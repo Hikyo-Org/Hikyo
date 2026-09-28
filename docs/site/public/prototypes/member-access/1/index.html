@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PROTOTYPE: Hikyo member access granularity, iteration 1</title>
+<!--
+  THROWAWAY PROTOTYPE: member access granularity, iteration 1.
+
+  Question: members want finer access than scope level (only some keys,
+  folders or key groups inside a project, per capability) without the
+  Members page drowning in permission rows. Where does the fine grain live,
+  and on which page is it authored and read back?
+
+  STATUS: exploration of an AMENDMENT. The locked permission ADR
+  (docs/adr/permission-model.md) records key- and folder-scoped grants as
+  "deferred (fog)" and names a resolver UI as the precondition. Nothing here
+  is a locked design.
+
+  Model constraints every variant respects:
+    - Grants stay additive, no deny rules. Fine grain only ever NARROWS a
+      scope grant: effective = scope grant AND key limit.
+    - Folders and key groups are selectors, not scopes. A selector expands
+      to per-key entries at write time, exactly like a role template expands
+      to grants. Keys added to the folder later are not included.
+    - read is not narrowable (key catalogue is project-wide, classification
+      is the sensitivity boundary). pin is revision-wide. Narrowable atoms:
+      edit, publish, reveal, reveal-history.
+    - "Who can...?" gains a key picker in every variant.
+
+  Three STRUCTURAL variants (?variant=a|b|c), each with its own pages
+  (?page=...), switchable via the floating bar:
+    a  inline: the Members table stays principal x scope; a narrowed grant
+       carries a "db/ . 3 keys" chip; the grant dialog gains a key picker.
+    b  resource side: Members stays scope-only; restrictions are authored on
+       the folder / key in Definitions as allowlists over current holders.
+    c  member profile: Members becomes a compact roster; each member gets a
+       page with an access map (scope tree x capability) and per-key
+       effective access.
+-->
+<style>
+  :root{
+    --sans:'Instrument Sans',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --bg:oklch(0.19 0.012 220);
+    --bg-raise:oklch(0.23 0.014 220);
+    --bg-panel:oklch(0.225 0.014 220);
+    --bg-hover:oklch(0.27 0.016 220);
+    --line:oklch(0.5 0.016 220);
+    --chrome-line:oklch(0.3488 0.01488 220);
+    --panel-line:oklch(0.34 0.014 220);
+    --tx:oklch(0.93 0.008 200);
+    --tx-dim:oklch(0.76 0.01 210);
+    --tx-faint:oklch(0.71 0.012 215);
+    --accent:oklch(0.82 0.09 195);
+    --on-accent:oklch(0.2 0.02 220);
+    --danger:oklch(0.72 0.13 25);
+    --changed:oklch(0.78 0.07 250);
+    --accent-soft:color-mix(in oklch,var(--accent) 14%,transparent);
+    --danger-soft:color-mix(in oklch,var(--danger) 14%,transparent);
+    --changed-soft:color-mix(in oklch,var(--changed) 14%,transparent);
+    --overlay-shadow:0 12px 40px oklch(0 0 0/.5);
+    --control:36px;
+    --fs-xs:11px;--fs-sm:13px;--fs-md:14px;--fs-lg:16px;--fs-xl:20px;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
+    --ease:cubic-bezier(0.25,1,0.5,1);--dur:180ms;
+  }
+  [data-theme=light]{
+    --bg:oklch(0.965 0.008 200);
+    --bg-raise:oklch(0.995 0.004 200);
+    --bg-panel:oklch(0.935 0.01 200);
+    --bg-hover:oklch(0.895 0.012 200);
+    --line:oklch(0.64 0.012 210);
+    --chrome-line:oklch(0.8388 0.00752 204.4);
+    --panel-line:oklch(0.82 0.014 210);
+    --tx:oklch(0.25 0.03 225);
+    --tx-dim:oklch(0.44 0.02 220);
+    --tx-faint:oklch(0.46 0.02 218);
+    --accent:oklch(0.45 0.085 210);
+    --on-accent:oklch(0.97 0.008 200);
+    --danger:oklch(0.48 0.14 30);
+    --changed:oklch(0.45 0.08 250);
+    --accent-soft:color-mix(in oklch,var(--accent) 10%,transparent);
+    --danger-soft:color-mix(in oklch,var(--danger) 10%,transparent);
+    --changed-soft:color-mix(in oklch,var(--changed) 12%,transparent);
+    --overlay-shadow:0 12px 40px oklch(0.3 0.02 220/.25);
+  }
+  @media (pointer:coarse){:root{--control:44px}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg)}
+  body{color:var(--tx);font-family:var(--sans);font-size:var(--fs-md);line-height:1.5;-webkit-font-smoothing:antialiased}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :is(button,select,input,a,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .mono,code{font-family:var(--mono);font-size:var(--fs-sm)}
+  .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  /* shell */
+  #app{display:grid;grid-template-columns:232px 1fr;min-height:100dvh}
+  #side{background:var(--bg-panel);border-right:1px solid var(--chrome-line);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:var(--space-4)}
+  .eyebrow{font-size:var(--fs-xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-faint)}
+  .navgroup{display:flex;flex-direction:column;gap:2px}
+  .navgroup .eyebrow{padding:0 var(--space-2) var(--space-1)}
+  .nav{display:flex;align-items:center;min-height:var(--control);padding:0 var(--space-2);border-radius:4px;color:var(--tx-dim);text-decoration:none;background:none;border:0;text-align:left;width:100%}
+  .nav:hover{background:var(--bg-hover);color:var(--tx)}
+  .nav[aria-current=page]{background:var(--bg-hover);color:var(--tx);font-weight:500}
+  .nav[aria-disabled=true]{opacity:.5;cursor:default}
+  .nav[aria-disabled=true]:hover{background:none;color:var(--tx-dim)}
+  main{padding:var(--space-6) clamp(16px,4vw,48px) 120px;min-width:0}
+  h1{font-size:var(--fs-xl);font-weight:700;line-height:1.2}
+  h2{font-size:var(--fs-lg);font-weight:700}
+  h3{font-size:var(--fs-md);font-weight:700}
+  .lede{font-size:var(--fs-sm);color:var(--tx-dim);max-width:68ch;margin-top:var(--space-2)}
+  .panel{border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-panel);padding:var(--space-4);margin-top:var(--space-5)}
+  .panel__head{display:flex;align-items:baseline;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-3)}
+  .panel__head p{font-size:var(--fs-sm);color:var(--tx-dim)}
+  .row{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+
+  /* controls */
+  .btn{min-height:var(--control);padding:0 var(--space-3);border-radius:4px;border:1px solid var(--line);background:transparent;font-weight:500;display:inline-flex;align-items:center;gap:var(--space-2);white-space:nowrap}
+  .btn:hover{background:var(--bg-hover)}
+  .btn--primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  .btn--primary:hover{background:var(--accent);filter:brightness(1.06)}
+  .btn--quiet{border-color:transparent;color:var(--tx-dim);font-weight:400}
+  .btn--quiet:hover{color:var(--tx)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  select,input[type=text],input[type=search]{min-height:var(--control);border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:0 var(--space-2)}
+  label.field select{width:100%;min-width:0}
+  label.field{display:flex;flex-direction:column;gap:var(--space-1);font-size:var(--fs-sm);color:var(--tx-dim)}
+  .chk{display:flex;align-items:flex-start;gap:var(--space-2);font-size:var(--fs-sm);min-height:24px}
+  .chk input{width:18px;height:18px;margin-top:2px;accent-color:var(--accent)}
+  .chk--off{opacity:.55}
+
+  /* badges */
+  .badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:3px;font-size:var(--fs-xs);font-weight:500;border:1px solid var(--panel-line);color:var(--tx-dim);white-space:nowrap}
+  .badge.mono{font-family:var(--mono)}
+  .badge--danger{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .badge--changed{border-color:var(--changed);color:var(--changed);background:var(--changed-soft)}
+  .badge--ok{border-color:var(--accent);color:var(--accent)}
+  .badge--link{cursor:pointer;background:none}
+  .badge--link:hover{background:var(--bg-hover)}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%}
+  th{font-size:var(--fs-xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-faint);text-align:left;padding:var(--space-2);border-bottom:1px solid var(--panel-line);white-space:nowrap}
+  td{padding:var(--space-2);border-bottom:1px solid var(--panel-line);vertical-align:top;font-size:var(--fs-sm)}
+  tr:last-child td{border-bottom:0}
+  tbody tr.click{cursor:pointer}
+  tbody tr.click:hover td{background:var(--bg-hover)}
+  .who{display:flex;flex-direction:column}
+  .who b{font-weight:500;font-size:var(--fs-md)}
+  .who span{color:var(--tx-faint);font-size:var(--fs-xs);font-family:var(--mono)}
+  .caps{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);list-style:none}
+  .cap{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:var(--fs-sm);padding:1px 0}
+  .cap .x{border:0;background:none;color:var(--tx-faint);width:20px;height:20px;border-radius:3px;line-height:1}
+  .cap .x:hover{background:var(--bg-hover);color:var(--danger)}
+  .muted{color:var(--tx-faint)}
+  .dim{color:var(--tx-dim)}
+  .lock{font-size:.9em}
+
+  /* access map (c) */
+  .map th,.map td{text-align:center}
+  .map th:first-child,.map td:first-child{text-align:left}
+  .map td.cell{min-width:78px}
+  .map .indent1{padding-left:var(--space-5)}
+  .map .indent2{padding-left:calc(var(--space-5)*2)}
+  .cellbtn{border:1px solid transparent;background:none;border-radius:4px;min-height:28px;padding:0 6px;display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:var(--fs-sm)}
+  .cellbtn:hover{border-color:var(--line)}
+  .g-direct{color:var(--accent)}
+  .g-inh{color:var(--tx-dim)}
+  .g-none{color:var(--tx-faint)}
+  .legend{display:flex;flex-wrap:wrap;gap:var(--space-4);font-size:var(--fs-sm);color:var(--tx-dim);margin-top:var(--space-3)}
+
+  /* tree (b, picker) */
+  .split{display:grid;grid-template-columns:260px 1fr;gap:var(--space-4);margin-top:var(--space-5)}
+  .tree{list-style:none;border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-panel);padding:var(--space-2)}
+  .tree li{list-style:none}
+  .tree .folder{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--control);padding:0 var(--space-2);border:0;background:none;border-radius:4px;text-align:left;font-family:var(--mono);font-size:var(--fs-sm)}
+  .tree .folder:hover{background:var(--bg-hover)}
+  .tree .folder[aria-current=true]{background:var(--bg-hover);font-weight:500}
+  .tree .key{padding:2px var(--space-2) 2px var(--space-5);font-family:var(--mono);font-size:var(--fs-sm);color:var(--tx-dim)}
+  .policy td{vertical-align:middle}
+  .policy .cellbtn{font-family:var(--sans);text-align:left}
+
+  .picker{border:1px solid var(--panel-line);border-radius:6px;padding:var(--space-2) var(--space-3);max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+  .picker .sub{padding-left:var(--space-5)}
+  .summary{border-left:2px solid var(--accent);padding:var(--space-2) var(--space-3);background:var(--accent-soft);border-radius:0 4px 4px 0;font-size:var(--fs-sm)}
+  .summary.warn{border-color:var(--changed);background:var(--changed-soft)}
+  .summary.bad{border-color:var(--danger);background:var(--danger-soft)}
+
+  /* who can */
+  .resolver{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3)}
+  .answer{list-style:none;display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-3)}
+  .answer li{display:grid;grid-template-columns:22px 180px 1fr;gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
+  .answer .why{color:var(--tx-dim)}
+  .answer .why code{color:var(--tx)}
+
+  /* dialog */
+  dialog{margin:auto;border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-raise);color:var(--tx);box-shadow:var(--overlay-shadow);width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0}
+  dialog::backdrop{background:oklch(0 0 0/.45)}
+  .dlg{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5)}
+  .dlg__foot{display:flex;gap:var(--space-2);justify-content:flex-end;flex-wrap:wrap}
+
+  /* floating switcher */
+  #bar{position:fixed;right:16px;bottom:16px;z-index:50;display:flex;flex-direction:column;gap:var(--space-2);background:var(--bg-raise);border:1px solid var(--line);border-radius:6px;padding:var(--space-2) var(--space-3);box-shadow:var(--overlay-shadow);max-width:calc(100vw - 32px)}
+  #bar .row{gap:var(--space-1)}
+  #bar button{min-height:32px;padding:0 var(--space-2);border:1px solid var(--panel-line);border-radius:4px;background:none;font-size:var(--fs-sm)}
+  #bar button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  #bar .hint{font-size:var(--fs-xs);color:var(--tx-faint);max-width:44ch}
+
+  @media (max-width:800px){
+    #app{grid-template-columns:minmax(0,1fr)}
+    #side{flex-direction:row;overflow-x:auto;padding:var(--space-2);border-right:0;border-bottom:1px solid var(--chrome-line);gap:var(--space-2)}
+    .navgroup{flex-direction:row;align-items:center}
+    .navgroup .eyebrow{display:none}
+    .nav{white-space:nowrap}
+    main{padding:var(--space-5) var(--space-3) 200px}
+    .split{grid-template-columns:minmax(0,1fr)}
+    .resolver{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .answer li{grid-template-columns:22px 1fr}
+    .answer .why{grid-column:2}
+    #bar{left:8px;right:8px;bottom:8px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="side" aria-label="Prototype navigation"></nav>
+  <main id="main"></main>
+</div>
+<div id="bar" role="region" aria-label="Prototype switcher"></div>
+<dialog id="dlg" aria-labelledby="dlg-title"></dialog>
+
+<script>
+/* ---------- fixture ---------- */
+const PEOPLE = {
+  marc:{name:'Marc Went',id:'usr_01marc',note:'you'},
+  alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
+  bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
+  chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
+  dana:{name:'Dana Ruiz',id:'usr_01dana',note:'SRE'},
+  ci:{name:'ci-deploy',id:'mch_01cideploy',note:'automation credential'},
+};
+const PROJECTS = {
+  payments:{envs:[{id:'dev'},{id:'staging'},{id:'prod',prot:true}]},
+  web:{envs:[{id:'dev'},{id:'prod',prot:true}]},
+};
+const KEYS = {
+  payments:[
+    {k:'DB_HOST',f:'db',s:false,g:[]},
+    {k:'DB_USER',f:'db',s:false,g:['db-creds']},
+    {k:'DB_PASSWORD',f:'db',s:true,g:['db-creds']},
+    {k:'STRIPE_PUBLISHABLE_KEY',f:'stripe',s:false,g:[]},
+    {k:'STRIPE_SECRET_KEY',f:'stripe',s:true,g:[]},
+    {k:'STRIPE_WEBHOOK_SECRET',f:'stripe',s:true,g:[]},
+    {k:'LOG_LEVEL',f:'app',s:false,g:[]},
+    {k:'SESSION_SECRET',f:'app',s:true,g:[]},
+  ],
+  web:[
+    {k:'API_URL',f:'app',s:false,g:[]},
+    {k:'SENTRY_DSN',f:'app',s:true,g:[]},
+    {k:'COOKIE_SECRET',f:'app',s:true,g:[]},
+  ],
+};
+const ENV_CAPS = ['read','edit','publish','pin','reveal','reveal-history'];
+const NARROWABLE = ['edit','publish','reveal','reveal-history'];
+const ADMIN_CAPS = ['read','edit','publish','pin','definitions-edit','manage-identities','manage-adapters','project-settings','manage-members','reveal','reveal-history','manage-projects'];
+
+let nextId = 1;
+const g = (p,cap,scope,sel,origin) => ({id:nextId++,p,cap,scope,sel:sel||null,origin:origin||'manual'});
+/* A selector is shown by its source (folder / group / keys) and stored as the
+   per-key list it expanded to at write time. */
+const sel = (project,src,label) => ({src,label,keys:expand(project,src)});
+function expand(project,src){
+  return KEYS[project].filter(x => (src.folders||[]).includes(x.f) || (src.groups||[]).some(gr => x.g.includes(gr)) || (src.keys||[]).includes(x.k)).map(x => x.k);
+}
+const GRANTS = [
+  ...ADMIN_CAPS.map(c => g('marc',c,'org',null,'template: admin')),
+  ...['read','edit','publish','pin'].map(c => g('alice',c,'payments',null,'template: publisher')),
+  g('alice','reveal','payments/staging'),
+  g('alice','reveal','payments/prod',sel('payments',{folders:['db']},'db/')),
+  ...['read','edit','publish','pin'].map(c => g('bob',c,'payments/dev',null,'template: publisher')),
+  ...['read','edit','publish','pin'].map(c => g('bob',c,'web/dev',null,'template: publisher')),
+  g('bob','reveal','payments/dev'), g('bob','reveal','web/dev'),
+  g('bob','read','payments/prod',null,'template: viewer'), g('bob','read','web/prod',null,'template: viewer'),
+  g('chen','read','payments/staging',null,'template: editor'),
+  g('chen','edit','payments/staging',sel('payments',{folders:['stripe']},'stripe/'),'template: editor'),
+  g('dana','read','org',null,'template: viewer'),
+  g('dana','reveal','payments/prod'),
+  g('dana','reveal-history','payments/prod',sel('payments',{groups:['db-creds']},'group db-creds')),
+  ...['read','edit','publish'].map(c => g('ci',c,'payments/staging',null,'automation')),
+];
+/* Variant b: key limits live on the resource as allowlists that narrow the
+   holders of a scope grant. Grant selectors do not exist in b. */
+const POLICIES = [
+  {id:1,project:'payments',env:'prod',folder:'db',cap:'reveal',allow:['alice','marc']},
+];
+
+/* ---------- state ---------- */
+const PAGES = {
+  a:[['members','Members'],['whocan','Who can...?']],
+  b:[['members','Members'],['keys','Key access'],['whocan','Who can...?']],
+  c:[['members','Members'],['member','Member: Chen Li'],['whocan','Who can...?']],
+};
+const VARIANT_NAMES = {a:'a · inline chips',b:'b · on the key',c:'c · member profile'};
+const qs = new URLSearchParams(location.search);
+const S = {
+  variant: ['a','b','c'].includes(qs.get('variant')) ? qs.get('variant') : 'a',
+  page: qs.get('page') || 'members',
+  member: qs.get('member') || 'chen',
+  folder: 'db',
+  mapEnv: 'payments/staging',
+  who: {project:'payments',env:'prod',key:'DB_PASSWORD',cap:'reveal'},
+  theme: localStorage.getItem('proto-theme') || 'dark',
+  flash: '',
+};
+if(!PAGES[S.variant].some(([id]) => id === S.page)) S.page = 'members';
+
+/* ---------- model ---------- */
+const scopeParts = s => { if(s==='org') return {level:'org'}; const [project,env] = s.split('/'); return env ? {level:'env',project,env} : {level:'project',project}; };
+const covers = (scope,project,env) => scope === 'org' || scope === project || scope === `${project}/${env}`;
+const isProt = (project,env) => PROJECTS[project].envs.some(e => e.id === env && e.prot);
+const scopeLabel = s => { const p = scopeParts(s); if(p.level==='org') return 'acme (org)'; if(p.level==='project') return p.project; return `${p.project}/${p.env}${isProt(p.project,p.env)?' 🔒':''}`; };
+const keyOf = (project,k) => KEYS[project].find(x => x.k === k);
+const useSel = () => S.variant !== 'b';
+
+/* Does principal p hold cap on key k in project/env? Returns {ok, why, blocked?}. */
+function resolve(p,cap,project,env,k){
+  const hits = GRANTS.filter(x => x.p === p && x.cap === cap && covers(x.scope,project,env));
+  if(!hits.length) return {ok:false,why:`no <code>${cap}</code> grant reaches <code>${project}/${env}</code>`};
+  const open = hits.find(x => !useSel() || !x.sel);
+  const viaSel = hits.find(x => useSel() && x.sel && x.sel.keys.includes(k));
+  const grant = open || viaSel;
+  if(!grant){
+    const h = hits[0];
+    return {ok:false,blocked:true,why:`holds <code>${cap}</code> on <code>${scopeLabel(h.scope)}</code> limited to ${h.sel.label}, which does not include <code>${k}</code>`};
+  }
+  if(S.variant === 'b'){
+    const key = keyOf(project,k);
+    const pol = POLICIES.find(x => x.project === project && x.env === env && x.cap === cap && x.folder === key.f);
+    if(pol && !pol.allow.includes(p)) return {ok:false,blocked:true,why:`holds <code>${cap}</code> on <code>${scopeLabel(grant.scope)}</code>, but the <code>${pol.folder}/</code> allowlist in ${env} names only ${pol.allow.map(n => PEOPLE[n].name.split(' ')[0]).join(', ')}`};
+    if(pol) return {ok:true,why:`<code>${cap}</code> on <code>${scopeLabel(grant.scope)}</code> and named on the <code>${pol.folder}/</code> allowlist`};
+  }
+  const inh = grant.scope !== `${project}/${env}` ? ` (inherited from ${scopeLabel(grant.scope)})` : '';
+  return {ok:true,why: grant.sel && useSel() ? `<code>${cap}</code> on <code>${scopeLabel(grant.scope)}</code>, limited to ${grant.sel.label}, which includes <code>${k}</code>` : `<code>${cap}</code> on <code>${scopeLabel(grant.scope)}</code>${inh}`};
+}
+const totalKeys = (grant) => { const p = scopeParts(grant.scope); return p.level === 'org' ? Object.values(KEYS).reduce((n,l) => n + l.length,0) : KEYS[p.project].length; };
+
+/* ---------- render helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const who = p => `<div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span></div>`;
+function go(page,extra){ Object.assign(S,{page},extra||{}); S.flash=''; sync(); render(); window.scrollTo(0,0); }
+function sync(){
+  const u = new URL(location); u.searchParams.set('variant',S.variant); u.searchParams.set('page',S.page);
+  if(S.page==='member') u.searchParams.set('member',S.member); else u.searchParams.delete('member');
+  history.replaceState(null,'',u);
+}
+function rowsByScope(){
+  const map = new Map();
+  for(const x of GRANTS){ const key = `${x.p}|${x.scope}`; if(!map.has(key)) map.set(key,{p:x.p,scope:x.scope,grants:[]}); map.get(key).grants.push(x); }
+  return [...map.values()];
+}
+
+/* ---------- chrome ---------- */
+function renderSide(){
+  const pages = PAGES[S.variant];
+  $('#side').innerHTML = `
+    <div class="navgroup"><span class="eyebrow">Organisation · acme</span>
+      ${pages.filter(([id]) => id !== 'keys').map(([id,label]) => `<button class="nav" data-go="${id}" ${S.page===id?'aria-current="page"':''}>${label}</button>`).join('')}
+      <button class="nav" aria-disabled="true">Settings</button>
+    </div>
+    <div class="navgroup"><span class="eyebrow">Project · payments</span>
+      <button class="nav" aria-disabled="true">Values</button>
+      <button class="nav" ${S.variant==='b'?'data-go="keys"':'aria-disabled="true"'} ${S.page==='keys'?'aria-current="page"':''}>Definitions</button>
+      <button class="nav" aria-disabled="true">Machine access</button>
+    </div>`;
+}
+function renderBar(){
+  const hints = {
+    a:'Fine grain lives on the grant line. Nothing moves; chips grow a key-limit badge.',
+    b:'Fine grain lives on the folder or key. Members stays scope-only.',
+    c:'Members is a roster; each person has a profile with an access map.',
+  };
+  $('#bar').innerHTML = `
+    <div class="row" role="group" aria-label="Variant">
+      ${['a','b','c'].map(v => `<button data-variant="${v}" aria-pressed="${S.variant===v}">${VARIANT_NAMES[v]}</button>`).join('')}
+      <button data-theme-toggle aria-label="Toggle theme">${S.theme==='dark'?'☾':'☀'}</button>
+    </div>
+    <p class="hint">${hints[S.variant]}</p>`;
+}
+
+/* ---------- pages ---------- */
+function pageMembersA(){
+  const rows = rowsByScope();
+  return `
+    <h1>Members · acme</h1>
+    <p class="lede">One row per member per scope. Each capability is its own revocable grant. A grant can be <strong>limited to keys</strong>: the badge names the folder, group or keys it was limited to and how many of the scope's keys it reaches. Limits only narrow; they never add access.</p>
+    <section class="panel" aria-labelledby="mem-h">
+      <div class="panel__head"><h2 id="mem-h">Members</h2><p>${rows.length} rows for ${Object.keys(PEOPLE).length} members</p><span class="spacer"></span>
+        <button class="btn btn--primary" data-open="grant">New grant</button></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th scope="col">Member</th><th scope="col">Scope</th><th scope="col">Capabilities</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td>${who(r.p)}</td>
+          <td><span class="badge mono ${scopeParts(r.scope).level==='org'?'badge--changed':''} ${r.scope.endsWith('prod')?'badge--danger':''}">${scopeLabel(r.scope)}</span></td>
+          <td><ul class="caps">${r.grants.map(x => `<li class="cap" title="${esc(x.origin)}">${x.cap}${x.sel ? ` <span class="badge badge--changed" title="Stored as ${x.sel.keys.length} per-key entries: ${x.sel.keys.join(', ')}">↳ ${x.sel.label} · ${x.sel.keys.length}/${totalKeys(x)} keys</span>` : ''}<button class="x" aria-label="Revoke ${x.cap} on ${scopeLabel(r.scope)} for ${PEOPLE[r.p].name}" data-revoke="${x.id}">✕</button></li>`).join('')}</ul></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </section>
+    ${ceilingNote('a')}`;
+}
+function ceilingNote(v){
+  const t = {
+    a:'<strong>Where this breaks:</strong> every key limit is another badge on an already dense row. Ten members with three limited grants each is readable; forty members each limited differently per environment is not, and "why can\'t Bob see STRIPE_SECRET_KEY?" still needs Who can...?.',
+    b:'<strong>Where this breaks:</strong> an allowlist answers "only these people may reveal db/", but not "Chen may only edit stripe/". To confine Chen to stripe/ you would have to restrict every other folder against Chen, touching every other member too. Alice\'s reveal on prod is unrestricted outside db/ here for exactly that reason.',
+    c:'<strong>Where this breaks:</strong> the roster hides detail by design, so auditing "who can reveal production?" across people goes through Who can...? rather than scanning one table. Two surfaces to keep consistent instead of one.',
+  };
+  return `<p class="summary warn" style="margin-top:var(--space-5)">${t[v]}</p>`;
+}
+
+function pageMembersB(){
+  const rows = rowsByScope();
+  const excludedFor = (p) => POLICIES.filter(pol => GRANTS.some(x => x.p===p && x.cap===pol.cap && covers(x.scope,pol.project,pol.env)) && !pol.allow.includes(p));
+  return `
+    <h1>Members · acme</h1>
+    <p class="lede">One row per member per scope, unchanged. Grants here are always whole-scope. Finer limits are set on the folder or key in <button class="btn btn--quiet" data-go="keys" style="min-height:0;padding:0">Definitions › Key access</button>; a row that one of them narrows says so and links there.</p>
+    <section class="panel" aria-labelledby="mem-h">
+      <div class="panel__head"><h2 id="mem-h">Members</h2><p>${rows.length} rows for ${Object.keys(PEOPLE).length} members</p><span class="spacer"></span>
+        <button class="btn btn--primary" data-open="grant-b">New grant</button></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th scope="col">Member</th><th scope="col">Scope</th><th scope="col">Capabilities</th></tr></thead>
+        <tbody>${rows.map(r => {
+          const ex = excludedFor(r.p).filter(pol => r.grants.some(x => x.cap===pol.cap && covers(x.scope,pol.project,pol.env)));
+          return `<tr>
+          <td>${who(r.p)}</td>
+          <td><span class="badge mono ${scopeParts(r.scope).level==='org'?'badge--changed':''} ${r.scope.endsWith('prod')?'badge--danger':''}">${scopeLabel(r.scope)}</span></td>
+          <td><ul class="caps">${r.grants.map(x => `<li class="cap">${x.cap}<button class="x" aria-label="Revoke ${x.cap}" data-revoke="${x.id}">✕</button></li>`).join('')}</ul>
+            ${ex.map(pol => `<button class="badge badge--changed badge--link" data-go="keys" data-folder="${pol.folder}" style="margin-top:4px">! not on the ${pol.folder}/ ${pol.cap} allowlist in ${pol.project}/${pol.env}</button>`).join(' ')}
+          </td></tr>`;}).join('')}</tbody>
+      </table></div>
+    </section>
+    ${ceilingNote('b')}`;
+}
+
+function pageKeysB(){
+  const project = 'payments';
+  const folders = [...new Set(KEYS[project].map(x => x.f))];
+  const f = S.folder;
+  const keys = KEYS[project].filter(x => x.f === f);
+  const envs = PROJECTS[project].envs;
+  const holders = (cap,env) => Object.keys(PEOPLE).filter(p => GRANTS.some(x => x.p===p && x.cap===cap && covers(x.scope,project,env)));
+  return `
+    <h1>Key access · payments</h1>
+    <p class="lede">Who may use the keys in a folder, per environment. By default everyone holding the capability on the environment may. An <strong>allowlist</strong> narrows that to named holders: it never grants anything, so a name on it still needs the capability from Members. Stored per key; a key added to the folder later starts unrestricted.</p>
+    <div class="split">
+      <ul class="tree" aria-label="Folders">
+        ${folders.map(x => `<li><button class="folder" data-folder="${x}" ${x===f?'aria-current="true"':''}>▸ ${x}/ <span class="spacer"></span>${POLICIES.some(p => p.folder===x)?'<span class="badge badge--changed">limited</span>':''}</button>
+          ${x===f ? KEYS[project].filter(k => k.f===x).map(k => `<div class="key">${k.k}${k.s?' <span class="lock" aria-label="secret">🔒</span>':''}${k.g.length?` <span class="muted" title="group ${k.g[0]}">🔗</span>`:''}</div>`).join('') : ''}
+        </li>`).join('')}
+      </ul>
+      <section class="panel" style="margin-top:0" aria-labelledby="pol-h">
+        <div class="panel__head"><h2 id="pol-h" class="mono">${f}/</h2><p>${keys.length} keys, ${keys.filter(k => k.s).length} secret</p></div>
+        <div class="tablewrap"><table class="policy">
+          <thead><tr><th scope="col">Capability</th>${envs.map(e => `<th scope="col">${e.id}${e.prot?' 🔒':''}</th>`).join('')}</tr></thead>
+          <tbody>${NARROWABLE.map(cap => `<tr><th scope="row" class="mono" style="text-transform:none;letter-spacing:0;font-size:var(--fs-sm);color:var(--tx)">${cap}</th>
+            ${envs.map(e => {
+              const h = holders(cap,e.id);
+              const pol = POLICIES.find(p => p.project===project && p.env===e.id && p.cap===cap && p.folder===f);
+              if(!h.length) return `<td class="muted">no holders</td>`;
+              return `<td><button class="cellbtn" data-policy="${cap}|${e.id}">${pol ? `<span class="badge badge--changed">only</span> ${pol.allow.map(p => PEOPLE[p].name.split(' ')[0]).join(', ')}` : `<span class="dim">all holders (${h.length})</span>`}</button></td>`;
+            }).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+        <p class="legend"><span><span class="badge badge--changed">only</span> allowlist narrows this cell</span><span>read is not listed: the key catalogue and config values are project-wide by design</span></p>
+      </section>
+    </div>`;
+}
+
+function pageMembersC(){
+  const people = Object.keys(PEOPLE);
+  const reach = p => {
+    const gs = GRANTS.filter(x => x.p === p);
+    const projects = new Set(gs.flatMap(x => { const s = scopeParts(x.scope); return s.level==='org' ? Object.keys(PROJECTS) : [s.project]; }));
+    const prodReveal = gs.some(x => x.cap==='reveal' && Object.entries(PROJECTS).some(([pr,d]) => d.envs.some(e => e.prot && covers(x.scope,pr,e.id))));
+    const limits = gs.filter(x => x.sel).length;
+    const admin = gs.some(x => x.cap==='manage-members');
+    return {projects:[...projects],prodReveal,limits,admin,count:gs.length};
+  };
+  const role = p => {
+    const origins = [...new Set(GRANTS.filter(x => x.p===p).map(x => x.origin.replace('template: ','')))].filter(o => o!=='manual');
+    return origins.length ? origins.join(' + ') : 'custom';
+  };
+  return `
+    <h1>Members · acme</h1>
+    <p class="lede">One row per person. The row summarises reach; everything granular (scopes, capabilities, key limits) lives on the member's own page, so this list stays the same size however detailed access gets.</p>
+    <section class="panel" aria-labelledby="mem-h">
+      <div class="panel__head"><h2 id="mem-h">Members</h2><p>${people.length} members</p><span class="spacer"></span>
+        <input type="search" placeholder="Filter members" aria-label="Filter members"><button class="btn">Invite</button></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th scope="col">Member</th><th scope="col">Seeded from</th><th scope="col">Reach</th><th scope="col">Production secrets</th><th scope="col">Key limits</th><th scope="col"><span class="vh">Open</span></th></tr></thead>
+        <tbody>${people.map(p => { const r = reach(p); return `<tr class="click" data-member="${p}">
+          <td>${who(p)}</td>
+          <td class="mono">${role(p)}</td>
+          <td>${r.admin?'<span class="badge badge--changed">org admin</span> ':''}${r.projects.map(x => `<span class="badge mono">${x}</span>`).join(' ')}</td>
+          <td>${r.prodReveal ? '<span class="badge badge--danger">🔒 can reveal</span>' : '<span class="muted">· none</span>'}</td>
+          <td>${r.limits ? `<span class="badge badge--changed">${r.limits} limited</span>` : '<span class="muted">· none</span>'}</td>
+          <td><button class="btn btn--quiet" data-member="${p}" aria-label="Open ${PEOPLE[p].name}">›</button></td>
+        </tr>`;}).join('')}</tbody>
+      </table></div>
+    </section>
+    ${ceilingNote('c')}`;
+}
+
+function pageMemberC(){
+  const p = S.member;
+  const gs = GRANTS.filter(x => x.p === p);
+  const rows = [{scope:'org',label:'acme',depth:0}];
+  for(const [pr,d] of Object.entries(PROJECTS)){ rows.push({scope:pr,label:pr,depth:1}); for(const e of d.envs) rows.push({scope:`${pr}/${e.id}`,label:e.id+(e.prot?' 🔒':''),depth:2}); }
+  const cell = (row,cap) => {
+    const direct = gs.find(x => x.cap===cap && x.scope===row.scope);
+    if(direct) return direct.sel
+      ? `<button class="cellbtn g-direct" data-cell="${direct.id}" aria-label="${cap} on ${row.scope}, limited to ${direct.sel.label}">● <span class="badge badge--changed">${direct.sel.label}</span></button>`
+      : `<button class="cellbtn g-direct" data-cell="${direct.id}" aria-label="${cap} granted on ${row.scope}">● <span class="vh">granted</span></button>`;
+    const parts = row.scope.split('/');
+    const above = gs.find(x => x.cap===cap && (x.scope==='org' || (parts.length===2 && x.scope===parts[0])) && x.scope!==row.scope);
+    if(above) return `<span class="g-inh" title="inherited from ${scopeLabel(above.scope)}">↓<span class="vh">inherited from ${scopeLabel(above.scope)}</span></span>`;
+    return `<button class="cellbtn g-none" data-add="${cap}|${row.scope}" aria-label="Grant ${cap} on ${row.scope}">+</button>`;
+  };
+  const mgmt = gs.filter(x => !ENV_CAPS.includes(x.cap));
+  const [project,env] = S.mapEnv.split('/');
+  return `
+    <p><button class="btn btn--quiet" data-go="members" style="padding:0">‹ Members</button></p>
+    <h1>${PEOPLE[p].name}</h1>
+    <p class="lede"><span class="mono">${PEOPLE[p].id}</span> · ${PEOPLE[p].note}. ${gs.length} grants. Every mark on the map is its own revocable grant; key limits narrow a single mark.</p>
+    <section class="panel" aria-labelledby="map-h">
+      <div class="panel__head"><h2 id="map-h">Access map</h2><p>Scopes down, capabilities across. Click a mark to limit it to keys or revoke it; click + to grant.</p><span class="spacer"></span><button class="btn" data-open="grant">Apply template…</button></div>
+      <div class="tablewrap"><table class="map">
+        <thead><tr><th scope="col">Scope</th>${ENV_CAPS.map(c => `<th scope="col" class="mono" style="text-transform:none;letter-spacing:0">${c}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr><td class="indent${r.depth} mono">${r.label}</td>${ENV_CAPS.map(c => `<td class="cell">${cell(r,c)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+      <div class="legend"><span class="g-direct">● granted here</span><span class="g-inh">↓ inherited from above</span><span><span class="badge badge--changed">stripe/</span> limited to keys</span><span class="g-none">+ not held</span></div>
+      ${mgmt.length ? `<p class="dim" style="margin-top:var(--space-3);font-size:var(--fs-sm)">Management: ${mgmt.map(x => `<span class="badge mono">${x.cap} @ ${scopeLabel(x.scope)}</span>`).join(' ')}</p>` : ''}
+    </section>
+    <section class="panel" aria-labelledby="eff-h">
+      <div class="panel__head"><h2 id="eff-h">Effective on keys</h2><p>What ${PEOPLE[p].name.split(' ')[0]} can do to each key, after limits.</p><span class="spacer"></span>
+        <label class="field" style="flex-direction:row;align-items:center">Environment <select data-mapenv>${Object.entries(PROJECTS).flatMap(([pr,d]) => d.envs.map(e => `<option value="${pr}/${e.id}" ${S.mapEnv===`${pr}/${e.id}`?'selected':''}>${pr}/${e.id}${e.prot?' 🔒':''}</option>`)).join('')}</select></label></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th scope="col">Key</th>${['read','edit','publish','reveal','reveal-history'].map(c => `<th scope="col" class="mono" style="text-transform:none;letter-spacing:0">${c}</th>`).join('')}</tr></thead>
+        <tbody>${KEYS[project].map(k => `<tr><td class="mono">${k.f}/${k.k}${k.s?' <span aria-label="secret">🔒</span>':''}</td>${['read','edit','publish','reveal','reveal-history'].map(c => {
+          const r = resolve(p,c,project,env,k.k);
+          const tip = r.why.replace(/<[^>]+>/g,'');
+          return `<td title="${esc(tip)}">${r.ok ? '<span class="g-direct">✓<span class="vh"> yes</span></span>' : r.blocked ? '<span class="badge badge--changed">limited</span>' : '<span class="muted">·</span><span class="vh"> no</span>'}</td>`;
+        }).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+      <p class="legend"><span class="g-direct">✓ can</span><span><span class="badge badge--changed">limited</span> holds the capability, key excluded by a limit</span><span class="muted">· not held</span></p>
+    </section>`;
+}
+
+function pageWhoCan(){
+  const w = S.who;
+  const envs = PROJECTS[w.project].envs;
+  const keys = KEYS[w.project];
+  if(!keys.some(k => k.k===w.key)) w.key = keys[0].k;
+  if(!envs.some(e => e.id===w.env)) w.env = envs[0].id;
+  const res = Object.keys(PEOPLE).map(p => ({p,...resolve(p,w.cap,w.project,w.env,w.key)}));
+  const yes = res.filter(r => r.ok), blocked = res.filter(r => !r.ok && r.blocked), no = res.filter(r => !r.ok && !r.blocked);
+  const li = (r,glyph,cls) => `<li><span class="${cls}" aria-hidden="true">${glyph}</span><span>${PEOPLE[r.p].name}</span><span class="why">${r.why}</span></li>`;
+  return `
+    <h1>Who can…?</h1>
+    <p class="lede">The resolver for fine-grained access: pick a key, not just a scope. It lists who can, who holds the capability but is limited away from this key, and why. Required by the permission ADR before key-level limits can ship, in every variant.</p>
+    <section class="panel" aria-labelledby="wc-h">
+      <h2 id="wc-h" class="vh">Question</h2>
+      <div class="resolver">
+        <label class="field">Capability<select data-who="cap">${NARROWABLE.concat(['read']).map(c => `<option ${c===w.cap?'selected':''}>${c}</option>`).join('')}</select></label>
+        <label class="field">Project<select data-who="project">${Object.keys(PROJECTS).map(p => `<option ${p===w.project?'selected':''}>${p}</option>`).join('')}</select></label>
+        <label class="field">Environment<select data-who="env">${envs.map(e => `<option value="${e.id}" ${e.id===w.env?'selected':''}>${e.id}${e.prot?' 🔒':''}</option>`).join('')}</select></label>
+        <label class="field">Key<select data-who="key">${[...new Set(keys.map(k => k.f))].map(f => `<optgroup label="${f}/">${keys.filter(k => k.f===f).map(k => `<option value="${k.k}" ${k.k===w.key?'selected':''}>${k.k}${k.s?' (secret)':''}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      </div>
+      <h3 style="margin-top:var(--space-5)">Can: ${yes.length}</h3>
+      <ul class="answer">${yes.map(r => li(r,'✓','g-direct')).join('') || '<li class="muted">· no one</li>'}</ul>
+      ${blocked.length ? `<h3 style="margin-top:var(--space-4)">Limited away: ${blocked.length}</h3><ul class="answer">${blocked.map(r => li(r,'!','g-inh')).join('')}</ul>` : ''}
+      <details style="margin-top:var(--space-4)"><summary class="dim" style="min-height:var(--control);display:flex;align-items:center;cursor:pointer">Cannot: ${no.length}</summary><ul class="answer">${no.map(r => li(r,'·','muted')).join('')}</ul></details>
+    </section>`;
+}
+
+/* ---------- dialogs ---------- */
+function openDialog(html,bind){
+  const d = $('#dlg'); d.innerHTML = html; if(!d.open) d.showModal(); bind && bind(d);
+  d.querySelectorAll('[data-close]').forEach(b => b.onclick = () => d.close());
+}
+function grantDialog(pre){
+  const st = Object.assign({p:'chen',scope:'payments/staging',caps:['edit'],mode:'limit',folders:['stripe'],groups:[],keys:[]},pre||{});
+  const allowLimit = S.variant !== 'b';
+  const scopes = ['org',...Object.entries(PROJECTS).flatMap(([pr,d]) => [pr,...d.envs.map(e => `${pr}/${e.id}`)])];
+  const draw = () => {
+    const sp = scopeParts(st.scope);
+    const project = sp.project;
+    const canLimit = allowLimit && sp.level !== 'org' && st.caps.some(c => NARROWABLE.includes(c));
+    const limiting = canLimit && st.mode === 'limit';
+    const picked = limiting ? expand(project,{folders:st.folders,groups:st.groups,keys:st.keys}) : [];
+    const total = sp.level==='org' ? Object.values(KEYS).reduce((n,l) => n+l.length,0) : KEYS[project].length;
+    const reach = limiting ? picked.length : total;
+    const secrets = limiting ? picked.filter(k => keyOf(project,k).s).length : (sp.level==='org' ? Object.values(KEYS).flat() : KEYS[project]).filter(k => k.s).length;
+    const folders = project ? [...new Set(KEYS[project].map(k => k.f))] : [];
+    const groups = project ? [...new Set(KEYS[project].flatMap(k => k.g))] : [];
+    const narrowCaps = st.caps.filter(c => NARROWABLE.includes(c));
+    const wideCaps = st.caps.filter(c => !NARROWABLE.includes(c));
+    openDialog(`<form class="dlg" method="dialog">
+      <h2 id="dlg-title">New grant</h2>
+      <div class="row" style="align-items:flex-end">
+        <label class="field" style="flex:1">Member<select name="p">${Object.keys(PEOPLE).map(p => `<option value="${p}" ${p===st.p?'selected':''}>${PEOPLE[p].name}</option>`).join('')}</select></label>
+        <label class="field" style="flex:1">Scope<select name="scope">${scopes.map(s => `<option value="${s}" ${s===st.scope?'selected':''}>${scopeLabel(s)}</option>`).join('')}</select></label>
+      </div>
+      <fieldset style="border:0;display:flex;flex-direction:column;gap:2px"><legend class="eyebrow" style="margin-bottom:var(--space-2)">Capabilities, each its own revocable grant</legend>
+        ${ENV_CAPS.map(c => `<label class="chk"><input type="checkbox" name="cap" value="${c}" ${st.caps.includes(c)?'checked':''}><span class="mono">${c}</span>${allowLimit && !NARROWABLE.includes(c) ? `<span class="muted"> · always whole scope${c==='read'?': the key catalogue is project-wide':': a pin covers a whole revision'}</span>`:''}</label>`).join('')}
+      </fieldset>
+      ${allowLimit ? `<fieldset style="border:0;display:flex;flex-direction:column;gap:var(--space-2)"><legend class="eyebrow" style="margin-bottom:var(--space-2)">Applies to</legend>
+        ${sp.level==='org' ? '<p class="muted" style="font-size:var(--fs-sm)">Key limits need a project or environment scope: key catalogues are per project.</p>' : !narrowCaps.length ? '<p class="muted" style="font-size:var(--fs-sm)">Pick edit, publish, reveal or reveal-history to limit to keys.</p>' : `
+        <label class="chk"><input type="radio" name="mode" value="all" ${st.mode==='all'?'checked':''}> All ${total} keys in ${scopeLabel(st.scope)}</label>
+        <label class="chk"><input type="radio" name="mode" value="limit" ${st.mode==='limit'?'checked':''}> Only selected keys</label>
+        ${limiting ? `<div class="picker" role="group" aria-label="Keys">
+          ${folders.map(f => `<label class="chk"><input type="checkbox" name="folder" value="${f}" ${st.folders.includes(f)?'checked':''}><span class="mono">${f}/</span><span class="muted">&nbsp;folder</span></label>
+            ${KEYS[project].filter(k => k.f===f).map(k => { const via = st.folders.includes(f) || k.g.some(x => st.groups.includes(x)); return `<label class="chk sub ${via?'chk--off':''}"><input type="checkbox" name="key" value="${k.k}" ${via||st.keys.includes(k.k)?'checked':''} ${via?'disabled':''}><span class="mono">${k.k}</span>${k.s?' 🔒':''}</label>`;}).join('')}`).join('')}
+          ${groups.map(gr => `<label class="chk"><input type="checkbox" name="group" value="${gr}" ${st.groups.includes(gr)?'checked':''}><span class="mono">🔗 ${gr}</span><span class="muted">&nbsp;key group</span></label>`).join('')}
+        </div>` : ''}`}
+      </fieldset>` : `<p class="summary">Grants on this page are always whole-scope. To keep a folder to named people, set an allowlist in Definitions › Key access.</p>`}
+      <p class="summary ${sp.level==='org'?'bad':limiting?'':'warn'}">
+        ${PEOPLE[st.p].name} ${st.caps.length ? `gets <strong>${st.caps.join(', ')}</strong>` : 'gets nothing yet'} on ${scopeLabel(st.scope)}.
+        ${narrowCaps.length ? `${narrowCaps.join(', ')} reaches <strong>${reach} of ${total} keys</strong> (${secrets} secret).` : ''}
+        ${limiting && wideCaps.length ? ` ${wideCaps.join(', ')} still covers all ${total}.` : ''}
+        ${limiting ? ` Stored as ${picked.length} per-key entries; keys added to the chosen folders later are <strong>not</strong> included.` : ''}
+        ${sp.level==='org' ? ' Organisation scope: reaches every project, including production.' : ''}
+      </p>
+      <div class="dlg__foot"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn--primary" type="button" data-submit ${!st.caps.length || (limiting && !picked.length)?'disabled':''}>Grant ${st.caps.length||''}</button></div>
+    </form>`, d => {
+      const f = d.querySelector('form');
+      f.onchange = () => {
+        const fd = new FormData(f);
+        st.p = fd.get('p'); st.scope = fd.get('scope'); st.caps = fd.getAll('cap');
+        if(fd.get('mode')) st.mode = fd.get('mode');
+        st.folders = fd.getAll('folder'); st.groups = fd.getAll('group');
+        st.keys = fd.getAll('key').filter(k => !expand(scopeParts(st.scope).project||'payments',{folders:st.folders,groups:st.groups}).includes(k));
+        draw();
+      };
+      d.querySelector('[data-submit]').onclick = () => {
+        const label = [...st.folders.map(x => x+'/'), ...st.groups.map(x => 'group '+x), ...(st.keys.length?[`${st.keys.length} key${st.keys.length>1?'s':''}`]:[])].join(' + ');
+        if(st.replace){ const i = GRANTS.findIndex(y => y.id === st.replace); if(i >= 0) GRANTS.splice(i,1); }
+        for(const c of st.caps){
+          const s = limiting && NARROWABLE.includes(c) ? {src:{},label,keys:picked} : null;
+          GRANTS.push(g(st.p,c,st.scope,s));
+        }
+        S.flash = `Granted ${st.caps.join(', ')} to ${PEOPLE[st.p].name} on ${scopeLabel(st.scope)}. Each is its own revocable line.`;
+        d.close(); render();
+      };
+    });
+  };
+  draw();
+}
+function cellDialog(id){
+  const x = GRANTS.find(y => y.id === +id);
+  const sp = scopeParts(x.scope);
+  const narrow = NARROWABLE.includes(x.cap) && sp.level !== 'org';
+  openDialog(`<div class="dlg">
+    <h2 id="dlg-title"><span class="mono">${x.cap}</span> on ${scopeLabel(x.scope)}</h2>
+    <p class="dim" style="font-size:var(--fs-sm)">${PEOPLE[x.p].name} · origin ${x.origin}</p>
+    ${x.sel ? `<p class="summary">Limited to ${x.sel.label}: ${x.sel.keys.map(k => `<code>${k}</code>`).join(', ')}.</p>` : narrow ? `<p class="summary warn">Reaches all ${KEYS[sp.project].length} keys in ${sp.project}.</p>` : `<p class="summary warn">${x.cap} ${x.cap==='read'?'is project-wide by design and cannot be limited to keys.':sp.level==='org'?'at organisation scope cannot be limited to keys: key catalogues are per project.':'covers a whole revision and cannot be limited to keys.'}</p>`}
+    <div class="dlg__foot">
+      <button class="btn" data-close>Close</button>
+      ${narrow ? `<button class="btn" data-limit>${x.sel?'Change key limit…':'Limit to keys…'}</button>` : ''}
+      <button class="btn" style="color:var(--danger);border-color:var(--danger)" data-rv>Revoke</button>
+    </div></div>`, d => {
+      d.querySelector('[data-rv]').onclick = () => { revoke(x.id); d.close(); };
+      const l = d.querySelector('[data-limit]');
+      if(l) l.onclick = () => { const folders = x.sel ? [...new Set(x.sel.keys.map(k => keyOf(sp.project,k).f))] : []; grantDialog({p:x.p,scope:x.scope,caps:[x.cap],mode:'limit',folders,replace:x.id}); };
+    });
+}
+function policyDialog(cap,env){
+  const project = 'payments', f = S.folder;
+  const holders = Object.keys(PEOPLE).filter(p => GRANTS.some(x => x.p===p && x.cap===cap && covers(x.scope,project,env)));
+  let pol = POLICIES.find(p => p.project===project && p.env===env && p.cap===cap && p.folder===f);
+  const chosen = new Set(pol ? pol.allow : holders);
+  const keys = KEYS[project].filter(k => k.f===f);
+  const draw = () => {
+    const losing = holders.filter(p => !chosen.has(p));
+    openDialog(`<div class="dlg">
+      <h2 id="dlg-title">Who may ${cap} <span class="mono">${f}/</span> in ${env}${isProt(project,env)?' 🔒':''}</h2>
+      <p class="dim" style="font-size:var(--fs-sm)">Only people who already hold <code>${cap}</code> on ${project}/${env} are listed. An allowlist narrows; to add someone, grant them ${cap} in Members first.</p>
+      <div class="picker">${holders.map(p => `<label class="chk"><input type="checkbox" value="${p}" ${chosen.has(p)?'checked':''}>${PEOPLE[p].name}<span class="muted">&nbsp;· ${PEOPLE[p].note}</span></label>`).join('')}</div>
+      <p class="summary ${losing.length?'warn':''}">${losing.length ? `${losing.map(p => PEOPLE[p].name).join(', ')} will lose ${cap} on ${keys.length} keys (${keys.map(k => k.k).join(', ')}) in ${env}. Their other grants are untouched.` : 'Everyone holding the capability keeps it: no allowlist is stored.'}</p>
+      <div class="dlg__foot"><button class="btn" data-close>Cancel</button><button class="btn btn--primary" data-save ${chosen.size===0?'disabled':''}>Save</button></div>
+    </div>`, d => {
+      d.querySelectorAll('.picker input').forEach(i => i.onchange = () => { i.checked ? chosen.add(i.value) : chosen.delete(i.value); draw(); });
+      d.querySelector('[data-save]').onclick = () => {
+        if(pol) POLICIES.splice(POLICIES.indexOf(pol),1);
+        if(losing.length) POLICIES.push({id:Date.now(),project,env,folder:f,cap,allow:[...chosen]});
+        d.close(); render();
+      };
+    });
+  };
+  draw();
+}
+function revoke(id){
+  const i = GRANTS.findIndex(x => x.id === +id);
+  if(i < 0) return;
+  const [x] = GRANTS.splice(i,1);
+  S.flash = `Revoked ${x.cap} on ${scopeLabel(x.scope)} for ${PEOPLE[x.p].name}.`;
+  render();
+}
+
+/* ---------- render + events ---------- */
+function render(){
+  document.documentElement.dataset.theme = S.theme;
+  renderSide(); renderBar();
+  const v = S.variant, p = S.page;
+  const body = p==='whocan' ? pageWhoCan()
+    : p==='keys' ? pageKeysB()
+    : p==='member' ? pageMemberC()
+    : v==='a' ? pageMembersA() : v==='b' ? pageMembersB() : pageMembersC();
+  $('#main').innerHTML = (S.flash ? `<p class="summary" role="status" style="margin-bottom:var(--space-4)">${esc(S.flash)}</p>` : '') + body;
+  if(p==='member'){ const t = PAGES.c.find(x => x[0]==='member'); t[1] = `Member: ${PEOPLE[S.member].name}`; renderSide(); }
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('button,[data-member]');
+  if(!t) return;
+  if(t.dataset.variant){ S.variant = t.dataset.variant; if(!PAGES[S.variant].some(([id]) => id===S.page)) S.page='members'; S.flash=''; sync(); render(); return; }
+  if(t.hasAttribute('data-theme-toggle')){ S.theme = S.theme==='dark'?'light':'dark'; localStorage.setItem('proto-theme',S.theme); render(); return; }
+  if(t.dataset.folder && !t.dataset.go){ S.folder = t.dataset.folder; render(); return; }
+  if(t.dataset.go){ if(t.getAttribute('aria-disabled')==='true') return; go(t.dataset.go, t.dataset.folder ? {folder:t.dataset.folder} : null); return; }
+  if(t.dataset.member){ go('member',{member:t.dataset.member}); return; }
+  if(t.dataset.revoke){ revoke(t.dataset.revoke); return; }
+  if(t.dataset.open==='grant'){ grantDialog(S.page==='member'?{p:S.member}:null); return; }
+  if(t.dataset.open==='grant-b'){ grantDialog({caps:['reveal'],scope:'payments/prod',p:'bob'}); return; }
+  if(t.dataset.cell){ cellDialog(t.dataset.cell); return; }
+  if(t.dataset.add){ const [cap,scope] = t.dataset.add.split('|'); grantDialog({p:S.member,scope,caps:[cap],mode:'all'}); return; }
+  if(t.dataset.policy){ const [cap,env] = t.dataset.policy.split('|'); policyDialog(cap,env); return; }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if(t.dataset.who){ S.who[t.dataset.who] = t.value; render(); return; }
+  if(t.hasAttribute('data-mapenv')){ S.mapEnv = t.value; render(); }
+});
+document.addEventListener('keydown', e => {
+  if($('#dlg').open || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const i = ['a','b','c'].indexOf(S.variant);
+  if(e.key==='ArrowRight' || e.key==='ArrowLeft'){ S.variant = ['a','b','c'][(i + (e.key==='ArrowRight'?1:2)) % 3]; if(!PAGES[S.variant].some(([id]) => id===S.page)) S.page='members'; sync(); render(); }
+});
+sync(); render();
+</script>
+</body>
+</html>

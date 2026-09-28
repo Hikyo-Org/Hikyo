@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PROTOTYPE: Hikyo member access granularity, iteration 3</title>
+<!--
+  THROWAWAY PROTOTYPE: member access granularity, iteration 3.
+
+  Iteration 2 verdict (Marc): wants e.g. Admin on a single folder, for one
+  or more environments, not the whole org or project. The it-2 tree needed
+  a tap per environment for that and Admin was implicitly project-wide.
+
+  Question: is "where" clearer as three independent axes, projects ›
+  environments › keys, each "all, except…" or "only…", and can Admin be
+  scoped to a folder by saying exactly which admin powers survive there?
+
+  STATUS: explores an AMENDMENT to the locked permission ADR
+  (docs/adr/permission-model.md: no deny rules, key/folder grants deferred).
+
+  Semantics shown:
+    - Rule = person + level + reveal / history flags + projects × envs × keys.
+    - Environments are named once and apply in every chosen project that has
+      one; "all" includes environments (and "all projects" projects) created
+      later. Key axis "all" includes keys added later; an except on a folder
+      follows the folder.
+    - EXCEPT IS RULE-LOCAL, NOT A DENY.
+    - Level powers depend on rule shape: read/edit/publish, definitions-edit
+      and manage-members work on a folder; pin needs whole environments;
+      manage-identities, manage-adapters, project-settings need a whole
+      project. The editor lists which survive and why.
+    - Folder-scoped manage-members delegates only inside the rule, at most at
+      its level.
+    - read stays environment-wide: key names and config values stay visible.
+-->
+<style>
+  :root{
+    --sans:'Instrument Sans',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --bg:oklch(0.19 0.012 220);
+    --bg-raise:oklch(0.23 0.014 220);
+    --bg-panel:oklch(0.225 0.014 220);
+    --bg-hover:oklch(0.27 0.016 220);
+    --line:oklch(0.5 0.016 220);
+    --chrome-line:oklch(0.3488 0.01488 220);
+    --panel-line:oklch(0.34 0.014 220);
+    --tx:oklch(0.93 0.008 200);
+    --tx-dim:oklch(0.76 0.01 210);
+    --tx-faint:oklch(0.71 0.012 215);
+    --accent:oklch(0.82 0.09 195);
+    --on-accent:oklch(0.2 0.02 220);
+    --danger:oklch(0.72 0.13 25);
+    --changed:oklch(0.78 0.07 250);
+    --accent-soft:color-mix(in oklch,var(--accent) 14%,transparent);
+    --danger-soft:color-mix(in oklch,var(--danger) 14%,transparent);
+    --changed-soft:color-mix(in oklch,var(--changed) 14%,transparent);
+    --overlay-shadow:0 12px 40px oklch(0 0 0/.5);
+    --control:36px;
+    --fs-xs:11px;--fs-sm:13px;--fs-md:14px;--fs-lg:16px;--fs-xl:20px;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
+    --ease:cubic-bezier(0.25,1,0.5,1);--dur:180ms;
+  }
+  [data-theme=light]{
+    --bg:oklch(0.965 0.008 200);
+    --bg-raise:oklch(0.995 0.004 200);
+    --bg-panel:oklch(0.935 0.01 200);
+    --bg-hover:oklch(0.895 0.012 200);
+    --line:oklch(0.64 0.012 210);
+    --chrome-line:oklch(0.8388 0.00752 204.4);
+    --panel-line:oklch(0.82 0.014 210);
+    --tx:oklch(0.25 0.03 225);
+    --tx-dim:oklch(0.44 0.02 220);
+    --tx-faint:oklch(0.46 0.02 218);
+    --accent:oklch(0.45 0.085 210);
+    --on-accent:oklch(0.97 0.008 200);
+    --danger:oklch(0.48 0.14 30);
+    --changed:oklch(0.45 0.08 250);
+    --accent-soft:color-mix(in oklch,var(--accent) 10%,transparent);
+    --danger-soft:color-mix(in oklch,var(--danger) 10%,transparent);
+    --changed-soft:color-mix(in oklch,var(--changed) 12%,transparent);
+    --overlay-shadow:0 12px 40px oklch(0.3 0.02 220/.25);
+  }
+  @media (pointer:coarse){:root{--control:44px}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg)}
+  body{color:var(--tx);font-family:var(--sans);font-size:var(--fs-md);line-height:1.5;-webkit-font-smoothing:antialiased}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :is(button,select,input,a,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .mono,code{font-family:var(--mono);font-size:var(--fs-sm)}
+  .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  /* shell */
+  #app{display:grid;grid-template-columns:232px 1fr;min-height:100dvh}
+  #side{background:var(--bg-panel);border-right:1px solid var(--chrome-line);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:var(--space-4)}
+  .eyebrow{font-size:var(--fs-xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-faint)}
+  .navgroup{display:flex;flex-direction:column;gap:2px}
+  .navgroup .eyebrow{padding:0 var(--space-2) var(--space-1)}
+  .nav{display:flex;align-items:center;min-height:var(--control);padding:0 var(--space-2);border-radius:4px;color:var(--tx-dim);text-decoration:none;background:none;border:0;text-align:left;width:100%}
+  .nav:hover{background:var(--bg-hover);color:var(--tx)}
+  .nav[aria-current=page]{background:var(--bg-hover);color:var(--tx);font-weight:500}
+  .nav[aria-disabled=true]{opacity:.5;cursor:default}
+  .nav[aria-disabled=true]:hover{background:none;color:var(--tx-dim)}
+  main{padding:var(--space-6) clamp(16px,4vw,48px) 120px;min-width:0}
+  h1{font-size:var(--fs-xl);font-weight:700;line-height:1.2}
+  h2{font-size:var(--fs-lg);font-weight:700}
+  h3{font-size:var(--fs-md);font-weight:700}
+  .lede{font-size:var(--fs-sm);color:var(--tx-dim);max-width:68ch;margin-top:var(--space-2)}
+  .panel{border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-panel);padding:var(--space-4);margin-top:var(--space-5)}
+  .panel__head{display:flex;align-items:baseline;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-3)}
+  .panel__head p{font-size:var(--fs-sm);color:var(--tx-dim)}
+  .row{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+
+  /* controls */
+  .btn{min-height:var(--control);padding:0 var(--space-3);border-radius:4px;border:1px solid var(--line);background:transparent;font-weight:500;display:inline-flex;align-items:center;gap:var(--space-2);white-space:nowrap}
+  .btn:hover{background:var(--bg-hover)}
+  .btn--primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  .btn--primary:hover{background:var(--accent);filter:brightness(1.06)}
+  .btn--quiet{border-color:transparent;color:var(--tx-dim);font-weight:400}
+  .btn--quiet:hover{color:var(--tx)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  select,input[type=text],input[type=search]{min-height:var(--control);border:1px solid var(--line);border-radius:4px;background:var(--bg);padding:0 var(--space-2)}
+  label.field select{width:100%;min-width:0}
+  label.field{display:flex;flex-direction:column;gap:var(--space-1);font-size:var(--fs-sm);color:var(--tx-dim)}
+  .chk{display:flex;align-items:flex-start;gap:var(--space-2);font-size:var(--fs-sm);min-height:24px}
+  .chk input{width:18px;height:18px;margin-top:2px;flex-shrink:0;accent-color:var(--accent)}
+  .chk--off{opacity:.55}
+
+  /* badges */
+  .badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:3px;font-size:var(--fs-xs);font-weight:500;border:1px solid var(--panel-line);color:var(--tx-dim);white-space:nowrap}
+  .badge.mono{font-family:var(--mono)}
+  .badge--danger{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .badge--changed{border-color:var(--changed);color:var(--changed);background:var(--changed-soft)}
+  .badge--ok{border-color:var(--accent);color:var(--accent)}
+  .badge--link{cursor:pointer;background:none}
+  .badge--link:hover{background:var(--bg-hover)}
+
+  /* tables */
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%}
+  th{font-size:var(--fs-xs);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--tx-faint);text-align:left;padding:var(--space-2);border-bottom:1px solid var(--panel-line);white-space:nowrap}
+  td{padding:var(--space-2);border-bottom:1px solid var(--panel-line);vertical-align:top;font-size:var(--fs-sm)}
+  tr:last-child td{border-bottom:0}
+  tbody tr.click{cursor:pointer}
+  tbody tr.click:hover td{background:var(--bg-hover)}
+  .who{display:flex;flex-direction:column}
+  .who b{font-weight:500;font-size:var(--fs-md)}
+  .who span{color:var(--tx-faint);font-size:var(--fs-xs);font-family:var(--mono)}
+  .caps{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);list-style:none}
+  .cap{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:var(--fs-sm);padding:1px 0}
+  .cap .x{border:0;background:none;color:var(--tx-faint);width:20px;height:20px;border-radius:3px;line-height:1}
+  .cap .x:hover{background:var(--bg-hover);color:var(--danger)}
+  .muted{color:var(--tx-faint)}
+  .dim{color:var(--tx-dim)}
+  .lock{font-size:.9em}
+
+  /* access map (c) */
+  .map th,.map td{text-align:center}
+  .map th:first-child,.map td:first-child{text-align:left}
+  .map td.cell{min-width:78px}
+  .map .indent1{padding-left:var(--space-5)}
+  .map .indent2{padding-left:calc(var(--space-5)*2)}
+  .cellbtn{border:1px solid transparent;background:none;border-radius:4px;min-height:28px;padding:0 6px;display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:var(--fs-sm)}
+  .cellbtn:hover{border-color:var(--line)}
+  .g-direct{color:var(--accent)}
+  .g-inh{color:var(--tx-dim)}
+  .g-none{color:var(--tx-faint)}
+  .legend{display:flex;flex-wrap:wrap;gap:var(--space-4);font-size:var(--fs-sm);color:var(--tx-dim);margin-top:var(--space-3)}
+
+  /* tree (b, picker) */
+  .split{display:grid;grid-template-columns:260px 1fr;gap:var(--space-4);margin-top:var(--space-5)}
+  .tree{list-style:none;border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-panel);padding:var(--space-2)}
+  .tree li{list-style:none}
+  .tree .folder{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--control);padding:0 var(--space-2);border:0;background:none;border-radius:4px;text-align:left;font-family:var(--mono);font-size:var(--fs-sm)}
+  .tree .folder:hover{background:var(--bg-hover)}
+  .tree .folder[aria-current=true]{background:var(--bg-hover);font-weight:500}
+  .tree .key{padding:2px var(--space-2) 2px var(--space-5);font-family:var(--mono);font-size:var(--fs-sm);color:var(--tx-dim)}
+  .policy td{vertical-align:middle}
+  .policy .cellbtn{font-family:var(--sans);text-align:left}
+
+  .picker{border:1px solid var(--panel-line);border-radius:6px;padding:var(--space-2) var(--space-3);max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+  .picker .sub{padding-left:var(--space-5)}
+  .summary{border-left:2px solid var(--accent);padding:var(--space-2) var(--space-3);background:var(--accent-soft);border-radius:0 4px 4px 0;font-size:var(--fs-sm)}
+  .summary.warn{border-color:var(--changed);background:var(--changed-soft)}
+  .summary.bad{border-color:var(--danger);background:var(--danger-soft)}
+
+  /* who can */
+  .resolver{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3)}
+  .answer{list-style:none;display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-3)}
+  .answer li{display:grid;grid-template-columns:22px 180px 1fr;gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
+  .answer .why{color:var(--tx-dim)}
+  .answer .why code{color:var(--tx)}
+
+  /* dialog */
+  dialog{margin:auto;border:1px solid var(--panel-line);border-radius:6px;background:var(--bg-raise);color:var(--tx);box-shadow:var(--overlay-shadow);width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0}
+  dialog::backdrop{background:oklch(0 0 0/.45)}
+  .dlg{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-5)}
+  .dlg__foot{display:flex;gap:var(--space-2);justify-content:flex-end;flex-wrap:wrap}
+
+  /* floating switcher */
+  #bar{position:fixed;right:16px;bottom:16px;z-index:50;display:flex;flex-direction:column;gap:var(--space-2);background:var(--bg-raise);border:1px solid var(--line);border-radius:6px;padding:var(--space-2) var(--space-3);box-shadow:var(--overlay-shadow);max-width:calc(100vw - 32px)}
+  #bar .row{gap:var(--space-1)}
+  #bar button{min-height:32px;padding:0 var(--space-2);border:1px solid var(--panel-line);border-radius:4px;background:none;font-size:var(--fs-sm)}
+  #bar button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  #bar .hint{font-size:var(--fs-xs);color:var(--tx-faint);max-width:44ch}
+
+  @media (max-width:800px){
+    #app{grid-template-columns:minmax(0,1fr)}
+    #side{flex-direction:row;overflow-x:auto;padding:var(--space-2);border-right:0;border-bottom:1px solid var(--chrome-line);gap:var(--space-2)}
+    .navgroup{flex-direction:row;align-items:center}
+    .navgroup .eyebrow{display:none}
+    .nav{white-space:nowrap}
+    main{padding:var(--space-5) var(--space-3) 200px}
+    .split{grid-template-columns:minmax(0,1fr)}
+    .resolver{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .answer li{grid-template-columns:22px 1fr}
+    .answer .why{grid-column:2}
+    #bar{left:8px;right:8px;bottom:8px}
+  }
+</style>
+<style>
+  /* iteration 2 additions */
+  .people{list-style:none;display:flex;flex-direction:column}
+  .person{display:grid;grid-template-columns:200px minmax(0,1fr);gap:var(--space-4);padding:var(--space-4) 0;border-bottom:1px solid var(--panel-line)}
+  .person:last-child{border-bottom:0}
+  .rules{list-style:none;display:flex;flex-direction:column;gap:var(--space-2)}
+  .rule{display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-2) var(--space-3);border:1px solid var(--panel-line);border-radius:6px;background:var(--bg)}
+  .rule__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .rule__line{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px var(--space-2)}
+  .lvl{font-weight:700}
+  .where{font-family:var(--mono);font-size:var(--fs-sm)}
+  .sep{color:var(--tx-faint)}
+  .except{font-family:var(--mono);font-size:var(--fs-sm);color:var(--danger)}
+  .reach{font-size:var(--fs-xs);color:var(--tx-faint)}
+  .flag{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:3px;font-size:var(--fs-xs);font-weight:500;border:1px solid var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .flag--hist{border-color:var(--changed);color:var(--changed);background:var(--changed-soft)}
+  .addrule{align-self:flex-start}
+
+  .levels{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:4px;overflow:hidden;width:max-content;max-width:100%}
+  .levels button{min-height:var(--control);padding:0 var(--space-3);border:0;border-right:1px solid var(--line);background:none}
+  .levels button:last-child{border-right:0}
+  .levels button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);font-weight:500}
+  .lvlhint{font-size:var(--fs-sm);color:var(--tx-dim)}
+
+  .ttree{list-style:none;border:1px solid var(--panel-line);border-radius:6px;padding:var(--space-2);max-height:340px;overflow:auto}
+  .ttree ul{list-style:none;padding-left:var(--space-5)}
+  .node{display:flex;align-items:center;gap:var(--space-2);min-height:32px}
+  .twist{width:24px;height:24px;border:0;background:none;color:var(--tx-faint);border-radius:3px}
+  .twist:hover{background:var(--bg-hover)}
+  .twist--none{visibility:hidden}
+  .tri{min-width:92px;height:26px;border-radius:3px;border:1px solid var(--panel-line);background:none;font-size:var(--fs-xs);font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:4px;color:var(--tx-faint)}
+  .tri[data-s=inc]{border-color:var(--accent);color:var(--on-accent);background:var(--accent)}
+  .tri[data-s=exc]{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .tri[data-s=via]{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+  .tri[data-s=off]{}
+  .nodelabel{font-family:var(--mono);font-size:var(--fs-sm)}
+  .nodelabel.dimmed{color:var(--tx-faint)}
+  .sentence{font-size:var(--fs-md);line-height:1.6}
+  .sentence b{font-weight:700}
+  .quick{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-3)}
+  .quick button{min-height:32px;padding:0 var(--space-2);border:1px solid var(--panel-line);border-radius:3px;background:none;font-size:var(--fs-sm)}
+  .quick button:hover{background:var(--bg-hover)}
+  @media (max-width:800px){
+    .person{grid-template-columns:minmax(0,1fr);gap:var(--space-2)}
+    .tri{min-width:78px}
+  }
+</style>
+<style>
+  .chips{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+  .chip{min-height:36px;padding:0 var(--space-3);border-radius:3px;border:1px solid var(--panel-line);background:none;font-family:var(--mono);font-size:var(--fs-sm);display:inline-flex;align-items:center;gap:6px;color:var(--tx-dim)}
+  .chip[data-s=inc]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+  .chip[data-s=via]{border-color:var(--accent);border-style:dashed;color:var(--accent)}
+  .chip[data-s=exc]{border-color:var(--danger);color:var(--danger);background:var(--danger-soft);text-decoration:line-through}
+  .chip:disabled{opacity:.45;cursor:not-allowed}
+  .axis{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3);border:1px solid var(--panel-line);border-radius:6px}
+  .axis__head{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+  .axis__head h3{font-size:var(--fs-sm);font-weight:700;min-width:96px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .seg button{min-height:32px;padding:0 var(--space-3);border:0;border-right:1px solid var(--line);background:none;font-size:var(--fs-sm)}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed=true]{background:var(--bg-hover);font-weight:700}
+  .caplist{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px var(--space-4);font-size:var(--fs-sm)}
+  .caplist li{display:flex;gap:var(--space-2);align-items:baseline}
+  .caplist .no{color:var(--tx-faint)}
+  .keys-more summary{font-size:var(--fs-sm);color:var(--tx-dim);cursor:pointer;min-height:32px;display:flex;align-items:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="side" aria-label="Prototype navigation"></nav>
+  <main id="main"></main>
+</div>
+<div id="bar" role="region" aria-label="Prototype switcher"></div>
+<dialog id="dlg" aria-labelledby="dlg-title"></dialog>
+
+<script>
+/* ---------- fixture ---------- */
+const PEOPLE = {
+  marc:{name:'Marc Went',id:'usr_01marc',note:'owner'},
+  alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
+  bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
+  chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
+  dana:{name:'Dana Ruiz',id:'usr_01dana',note:'SRE'},
+  ci:{name:'ci-deploy',id:'mch_01cideploy',note:'automation credential'},
+};
+const PROJECTS = {
+  payments:{envs:[{id:'dev'},{id:'staging'},{id:'prod',prot:true}]},
+  web:{envs:[{id:'dev'},{id:'prod',prot:true}]},
+};
+const KEYS = {
+  payments:[
+    {k:'DB_HOST',f:'db',s:false},{k:'DB_USER',f:'db',s:false},{k:'DB_PASSWORD',f:'db',s:true},
+    {k:'STRIPE_PUBLISHABLE_KEY',f:'stripe',s:false},{k:'STRIPE_SECRET_KEY',f:'stripe',s:true},{k:'STRIPE_WEBHOOK_SECRET',f:'stripe',s:true},
+    {k:'LOG_LEVEL',f:'app',s:false},{k:'SESSION_SECRET',f:'app',s:true},
+  ],
+  web:[{k:'API_URL',f:'app',s:false},{k:'SENTRY_DSN',f:'app',s:true},{k:'COOKIE_SECRET',f:'app',s:true}],
+};
+/* Levels are a display reading of stored capability atoms. What a level
+   can do depends on how wide the rule is: some powers only exist for a
+   whole project (settings, machine access, adapters). */
+const LEVELS = {
+  view:{label:'View'},
+  edit:{label:'Edit'},
+  publish:{label:'Publish'},
+  admin:{label:'Admin'},
+};
+const RANK = {view:1,edit:2,publish:3,admin:4};
+/* Capability table: [atom, plain words, minimum level, narrowest allowed shape].
+   shape: 'key' works on a folder/key; 'env' needs whole environments (all keys);
+   'project' needs all keys AND all environments of the project. */
+const CAPS = [
+  ['read','see key names, schemas and config values','view','key'],
+  ['edit','draft value changes','edit','key'],
+  ['publish','publish drafts, roll back','publish','key'],
+  ['pin','pin a revision for workloads','publish','env'],
+  ['definitions-edit','add, rename, remove keys and rules','admin','key'],
+  ['manage-members','give others access, up to this rule and never wider','admin','key'],
+  ['manage-identities','service accounts and their credentials','admin','project'],
+  ['manage-adapters','deployment adapters and sync','admin','project'],
+  ['project-settings','protected flag, reauth window, retention','admin','project'],
+];
+/* A rule: person, level, secret flags, and three independent axes.
+   projects: '*' (all, including future) or a list.
+   envs / keys: {mode:'all', exc:[...]} or {mode:'only', list:[...]}.
+   Environments are named once and apply in every chosen project that has one.
+   Key items: 'db' (a folder) or 'db/DB_PASSWORD' (one key).
+   An except narrows ONLY its own rule; it is not a deny. */
+let seq = 1;
+const ALL = () => ({mode:'all',exc:[]});
+const ONLY = list => ({mode:'only',list});
+const EXC = exc => ({mode:'all',exc});
+const R = (p,level,flags,projects,envs,keys,atoms) => ({id:seq++,p,level,reveal:!!flags.reveal,history:!!flags.history,projects,envs,keys,atoms:atoms||null});
+const RULES = [
+  R('marc','admin',{reveal:1,history:1},'*',ALL(),ALL()),
+  R('alice','publish',{},['payments'],ALL(),ALL()),
+  R('alice','admin',{reveal:1},['payments'],ONLY(['staging','prod']),ONLY(['db'])),
+  R('bob','publish',{reveal:1},['payments','web'],EXC(['prod']),ALL()),
+  R('bob','view',{},['payments','web'],ONLY(['prod']),ALL()),
+  R('chen','edit',{},['payments'],ONLY(['staging']),ONLY(['stripe'])),
+  R('dana','view',{},'*',ALL(),ALL()),
+  R('dana',null,{reveal:1,history:1},['payments'],ONLY(['prod']),EXC(['db'])),
+  R('ci',null,{},['payments'],ONLY(['staging']),ALL(),['read','edit','publish']),
+];
+
+/* ---------- state ---------- */
+const S = {
+  page: new URLSearchParams(location.search).get('page') === 'whocan' ? 'whocan' : 'members',
+  theme: localStorage.getItem('proto-theme') || 'dark',
+  who: {cap:'definitions-edit',project:'payments',env:'prod',key:'DB_PASSWORD'},
+};
+
+/* ---------- model ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const isProt = (pr,env) => PROJECTS[pr]?.envs.some(e => e.id === env && e.prot);
+const projList = r => r.projects === '*' ? Object.keys(PROJECTS) : r.projects;
+const envNames = projects => [...new Set(projects.flatMap(p => PROJECTS[p].envs.map(e => e.id)))];
+const protName = name => Object.values(PROJECTS).some(d => d.envs.some(e => e.id === name && e.prot));
+const folderNames = projects => [...new Set(projects.flatMap(p => KEYS[p].map(k => k.f)))];
+const keyMatch = (item,k) => item === k.f || item === `${k.f}/${k.k}`;
+const narrowKeys = r => !(r.keys.mode === 'all' && r.keys.exc.length === 0);
+const narrowEnvs = r => !(r.envs.mode === 'all' && r.envs.exc.length === 0);
+
+/* Which atoms does this rule carry, given its shape? */
+function atomsOf(r){
+  const out = [];
+  if(r.atoms) out.push(...r.atoms);
+  else if(r.level) for(const [atom,,min,shape] of CAPS){
+    if(RANK[r.level] < RANK[min]) continue;
+    if(shape === 'env' && narrowKeys(r)) continue;
+    if(shape === 'project' && (narrowKeys(r) || narrowEnvs(r))) continue;
+    out.push(atom);
+  }
+  if(r.reveal) out.push('reveal');
+  if(r.history) out.push('reveal-history');
+  return out;
+}
+/* Does rule r give cap on (pr, env, key)? read ignores key narrowing (the
+   catalogue and config values are environment-wide); an env except removes
+   everything. */
+function ruleReaches(r,cap,pr,env,keyName){
+  if(!atomsOf(r).includes(cap)) return {hit:false};
+  if(!projList(r).includes(pr)) return {hit:false};
+  if(r.envs.mode === 'only' && !r.envs.list.includes(env)) return {hit:false};
+  if(r.envs.mode === 'all' && r.envs.exc.includes(env)) return {hit:true,ok:false,why:`except ${env}`};
+  if(cap === 'read' || !keyName) return {hit:true,ok:true};
+  const k = KEYS[pr].find(x => x.k === keyName);
+  if(r.keys.mode === 'only' && !r.keys.list.some(i => keyMatch(i,k))) return {hit:false};
+  if(r.keys.mode === 'all'){ const e = r.keys.exc.find(i => keyMatch(i,k)); if(e) return {hit:true,ok:false,why:`except ${e.includes('/') ? e : e + '/'}`}; }
+  return {hit:true,ok:true};
+}
+function resolve(p,cap,pr,env,k){
+  const hits = RULES.filter(r => r.p === p).map(r => ({r,...ruleReaches(r,cap,pr,env,k)})).filter(x => x.hit);
+  const ok = hits.find(x => x.ok), no = hits.find(x => !x.ok);
+  if(ok) return {state:'yes',rule:ok.r,also:no};
+  if(no) return {state:'excepted',rule:no.r,why:no.why};
+  return {state:'no'};
+}
+
+/* ---------- display ---------- */
+const levelLabel = r => r.level ? LEVELS[r.level].label : r.atoms ? r.atoms.join(', ') : '';
+const envText = (r,projects) => r.envs.mode === 'all'
+  ? (r.envs.exc.length ? {main:'all environments',exc:r.envs.exc.map(e => e + (protName(e)?' 🔒':''))} : {main:'all environments',exc:[]})
+  : {main:r.envs.list.map(e => e + (protName(e)?' 🔒':'')).join(', '),exc:[]};
+const keyText = r => r.keys.mode === 'all'
+  ? {main:'all keys',exc:r.keys.exc.map(i => i.includes('/') ? i : i + '/')}
+  : {main:'only ' + r.keys.list.map(i => i.includes('/') ? i : i + '/').join(', '),exc:[]};
+const projText = r => r.projects === '*' ? 'all projects' : r.projects.join(', ');
+function reachOf(r){
+  const pairs = projList(r).flatMap(pr => PROJECTS[pr].envs.filter(e => r.envs.mode === 'all' ? !r.envs.exc.includes(e.id) : r.envs.list.includes(e.id)).map(e => [pr,e.id]));
+  const parts = [`${pairs.length} environment${pairs.length===1?'':'s'}`];
+  const keys = new Set(); let secrets = 0;
+  for(const [pr,env] of pairs) for(const k of KEYS[pr]){
+    const r0 = {...r,atoms:['edit'],level:null,reveal:false,history:false};
+    if(ruleReaches(r0,'edit',pr,env,k.k).ok) keys.add(pr+k.k);
+    if(r.reveal && k.s && ruleReaches(r,'reveal',pr,env,k.k).ok) secrets++;
+  }
+  parts.push(`${keys.size} keys`);
+  if(r.reveal) parts.push(`reveals ${secrets} secret values`);
+  const prot = pairs.filter(([pr,e]) => isProt(pr,e)).length;
+  parts.push(prot ? `${prot} protected` : 'no protected environment');
+  if(r.projects === '*') parts.push('new projects included');
+  else if(r.envs.mode === 'all') parts.push('new environments included');
+  return parts.join(' · ');
+}
+function ruleLine(r){
+  const e = envText(r), k = keyText(r);
+  const lost = r.level === 'admin' && (narrowKeys(r) || narrowEnvs(r)) ? CAPS.filter(c => c[2]==='admin' && !atomsOf(r).includes(c[0])).length : 0;
+  return `<li class="rule">
+    <div class="rule__main">
+      <div class="rule__line">
+        ${levelLabel(r) ? `<span class="lvl">${esc(levelLabel(r))}</span>` : ''}
+        ${r.reveal ? '<span class="flag">🔓 reveals secrets</span>' : ''}
+        ${r.history ? '<span class="flag flag--hist">↺ reveals history</span>' : ''}
+      </div>
+      <div class="rule__line">
+        <span class="where">${projText(r)}</span><span class="sep">›</span>
+        <span class="where">${e.main}</span>${e.exc.length ? `<span class="except">✕ ${e.exc.join(', ')}</span>` : ''}<span class="sep">›</span>
+        <span class="where">${k.main}</span>${k.exc.length ? `<span class="except">✕ ${k.exc.join(', ')}</span>` : ''}
+      </div>
+      <span class="reach">${reachOf(r)}${lost ? ` · admin within this scope: ${lost} project-wide powers do not apply` : ''}</span>
+    </div>
+    <button class="btn btn--quiet" data-edit="${r.id}" aria-label="Edit rule">Edit</button>
+  </li>`;
+}
+
+/* ---------- chrome ---------- */
+function renderSide(){
+  $('#side').innerHTML = `
+    <div class="navgroup"><span class="eyebrow">Organisation · acme</span>
+      <button class="nav" data-go="members" ${S.page==='members'?'aria-current="page"':''}>Members</button>
+      <button class="nav" data-go="whocan" ${S.page==='whocan'?'aria-current="page"':''}>Who can...?</button>
+      <button class="nav" aria-disabled="true">Settings</button>
+    </div>`;
+}
+function renderBar(){
+  $('#bar').innerHTML = `<div class="row">
+      <a class="btn btn--quiet" href="../2/" style="min-height:32px">‹ iteration 2</a>
+      <button data-theme-toggle aria-label="Toggle theme">${S.theme==='dark'?'☾':'☀'}</button>
+    </div>
+    <p class="hint">Iteration 3: where = projects › environments › keys, each "all, except" or "only". Admin works on a folder.</p>`;
+}
+
+/* ---------- pages ---------- */
+function pageMembers(){
+  return `
+    <h1>Members · acme</h1>
+    <p class="lede">Each card is one access rule: what (level and secret flags), then where, read left to right: <strong>projects › environments › keys</strong>. Each step is either "all, except" or "only". An except narrows only its own rule.</p>
+    <section class="panel" aria-labelledby="mem-h">
+      <div class="panel__head"><h2 id="mem-h">Members</h2><p>${Object.keys(PEOPLE).length} members, ${RULES.length} rules</p><span class="spacer"></span><button class="btn">Invite</button></div>
+      <ul class="people">${Object.keys(PEOPLE).map(p => `<li class="person">
+        <div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
+        <div style="display:flex;flex-direction:column;gap:var(--space-2)">
+          <ul class="rules">${RULES.filter(r => r.p===p).map(ruleLine).join('') || '<li class="muted">· no access</li>'}</ul>
+          <button class="btn btn--quiet addrule" data-add="${p}">+ Add access</button>
+        </div>
+      </li>`).join('')}</ul>
+    </section>`;
+}
+
+function pageWhoCan(){
+  const w = S.who;
+  const envs = PROJECTS[w.project].envs, keys = KEYS[w.project];
+  if(!envs.some(e => e.id===w.env)) w.env = envs[0].id;
+  if(!keys.some(k => k.k===w.key)) w.key = keys[0].k;
+  const res = Object.keys(PEOPLE).map(p => ({p,...resolve(p,w.cap,w.project,w.env,w.key)}));
+  const yes = res.filter(r => r.state==='yes'), exc = res.filter(r => r.state==='excepted'), no = res.filter(r => r.state==='no');
+  const ruleText = r => { const e = envText(r), k = keyText(r); return `${[levelLabel(r), r.reveal?'reveals secrets':'', r.history?'reveals history':''].filter(Boolean).join(' + ')} · ${projText(r)} › ${e.main}${e.exc.length?' except '+e.exc.join(', '):''} › ${k.main}${k.exc.length?' except '+k.exc.join(', '):''}`; };
+  const line = (r,glyph,cls,why) => `<li><span class="${cls}" aria-hidden="true">${glyph}</span><span>${PEOPLE[r.p].name}</span><span class="why">${why}</span></li>`;
+  const capOpts = [['read','see'],['edit','edit'],['publish','publish'],['definitions-edit','change definitions of'],['manage-members','give others access to'],['reveal','reveal'],['reveal-history','reveal history of']];
+  return `
+    <h1>Who can...?</h1>
+    <p class="lede">Ask about one key in one environment. The answer names the rule that grants it, or the except that leaves someone out.</p>
+    <section class="panel" aria-labelledby="wc-h">
+      <h2 id="wc-h" class="vh">Question</h2>
+      <div class="resolver">
+        <label class="field">Can<select data-who="cap">${capOpts.map(([v,l]) => `<option value="${v}" ${v===w.cap?'selected':''}>${l}</option>`).join('')}</select></label>
+        <label class="field">Project<select data-who="project">${Object.keys(PROJECTS).map(p => `<option ${p===w.project?'selected':''}>${p}</option>`).join('')}</select></label>
+        <label class="field">Environment<select data-who="env">${envs.map(e => `<option value="${e.id}" ${e.id===w.env?'selected':''}>${e.id}${e.prot?' 🔒':''}</option>`).join('')}</select></label>
+        <label class="field">Key<select data-who="key">${[...new Set(keys.map(k => k.f))].map(f => `<optgroup label="${f}/">${keys.filter(k => k.f===f).map(k => `<option value="${k.k}" ${k.k===w.key?'selected':''}>${k.k}${k.s?' (secret)':''}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      </div>
+      <div class="quick" aria-label="Example questions">
+        <button data-q="definitions-edit|payments|prod|DB_PASSWORD">change definitions of prod DB_PASSWORD</button>
+        <button data-q="manage-members|payments|staging|DB_USER">give access to staging DB_USER</button>
+        <button data-q="reveal|payments|prod|DB_PASSWORD">reveal prod DB_PASSWORD</button>
+        <button data-q="read|payments|prod|LOG_LEVEL">see prod LOG_LEVEL</button>
+        <button data-q="publish|payments|dev|DB_HOST">publish dev DB_HOST</button>
+      </div>
+      <h3 style="margin-top:var(--space-5)">Yes: ${yes.length}</h3>
+      <ul class="answer">${yes.map(r => line(r,'✓','g-direct',`via <code>${esc(ruleText(r.rule))}</code>${r.also ? `. Another rule has <code>${esc(r.also.why)}</code>, but an except only narrows its own rule.` : ''}`)).join('') || '<li class="muted">· no one</li>'}</ul>
+      ${exc.length ? `<h3 style="margin-top:var(--space-4)">Left out by an except: ${exc.length}</h3><ul class="answer">${exc.map(r => line(r,'✕','except',`<code>${esc(ruleText(r.rule))}</code> reaches here, but has <code>${esc(r.why)}</code>`)).join('')}</ul>` : ''}
+      <details style="margin-top:var(--space-4)"><summary class="dim" style="min-height:var(--control);display:flex;align-items:center;cursor:pointer">No rule reaches: ${no.length}</summary><ul class="answer">${no.map(r => line(r,'·','muted','no rule covers this')).join('')}</ul></details>
+    </section>`;
+}
+
+/* ---------- editor ---------- */
+function openDialog(html,bind){
+  const d = $('#dlg'); d.innerHTML = html; if(!d.open) d.showModal(); bind && bind(d);
+  d.querySelectorAll('[data-close]').forEach(b => b.onclick = () => d.close());
+}
+function editor(rule,p){
+  const clone = x => JSON.parse(JSON.stringify(x));
+  const st = rule ? clone(rule) : {id:null,p,level:'view',reveal:false,history:false,projects:[],envs:ALL(),keys:ALL(),atoms:null};
+  /* one chip control per axis: in "all" mode a tap toggles except, in "only" mode it toggles include */
+  const chipState = (axis,item) => axis.mode === 'all' ? (axis.exc.includes(item) ? 'exc' : 'via') : (axis.list.includes(item) ? 'inc' : 'off');
+  const toggle = (axis,item) => {
+    const arr = axis.mode === 'all' ? axis.exc : axis.list;
+    const i = arr.indexOf(item); i >= 0 ? arr.splice(i,1) : arr.push(item);
+  };
+  const setMode = (key,mode) => { st[key] = mode === 'all' ? ALL() : ONLY([]); };
+  const draw = () => {
+    const projects = st.projects === '*' ? Object.keys(PROJECTS) : st.projects;
+    const envs = envNames(projects), folders = folderNames(projects);
+    const hasWhat = st.level || st.reveal || st.history || st.atoms;
+    const hasWhere = projects.length && (st.envs.mode === 'all' || st.envs.list.length) && (st.keys.mode === 'all' || st.keys.list.length);
+    const valid = hasWhat && hasWhere;
+    const atoms = atomsOf(st);
+    const e = envText(st), k = keyText(st);
+    const capsHere = st.level ? CAPS.filter(c => RANK[st.level] >= RANK[c[2]]) : [];
+    const shapeWhy = shape => shape === 'env' ? 'needs all keys of an environment' : 'needs a whole project: all environments and all keys';
+    const axisHtml = (key,title,items,label) => {
+      const ax = st[key];
+      return `<div class="axis"><div class="axis__head"><h3>${title}</h3>
+        <div class="seg" role="group" aria-label="${title} mode"><button type="button" data-mode="${key}|all" aria-pressed="${ax.mode==='all'}">All, except…</button><button type="button" data-mode="${key}|only" aria-pressed="${ax.mode==='only'}">Only…</button></div></div>
+        <p class="lvlhint">${ax.mode==='all' ? `Everything${key==='envs'?', including environments added later':', including keys added later'}. Tap to except.` : 'Tap to include.'}</p>
+        <div class="chips">${items.map(([id,lab]) => { const s = chipState(ax,id); return `<button type="button" class="chip" data-chip="${key}|${id}" data-s="${s}" aria-pressed="${s==='inc'||s==='via'}" aria-label="${esc(lab)}: ${s==='exc'?'excepted':s==='off'?'not included':'included'}">${s==='exc'?'✕':s==='off'?'+':'✓'} ${esc(lab)}</button>`; }).join('')}</div>
+        ${key==='keys' ? `<details class="keys-more" ${st.keys[st.keys.mode==='all'?'exc':'list'].some(i => i.includes('/'))?'open':''}><summary>Single keys…</summary><div class="chips">${projects.flatMap(pr => KEYS[pr].map(x => [`${x.f}/${x.k}`,`${x.f}/${x.k}${x.s?' 🔒':''}`])).filter((v,i,a) => a.findIndex(y => y[0]===v[0])===i).map(([id,lab]) => { const s = chipState(ax,id); return `<button type="button" class="chip" data-chip="keys|${id}" data-s="${s}" aria-label="${esc(lab)}">${s==='exc'?'✕':s==='off'?'+':'✓'} ${esc(lab)}</button>`; }).join('')}</div></details>` : ''}
+      </div>`;
+    };
+    openDialog(`<form class="dlg" method="dialog">
+      <h2 id="dlg-title">${st.id ? 'Edit access' : 'Add access'} · ${PEOPLE[st.p].name}</h2>
+      <fieldset style="border:0;display:flex;flex-direction:column;gap:var(--space-2)"><legend class="eyebrow" style="margin-bottom:var(--space-2)">What</legend>
+        <div class="levels" role="group" aria-label="Level">
+          <button type="button" data-level="" aria-pressed="${!st.level && !st.atoms}">None</button>
+          ${Object.entries(LEVELS).map(([id,l]) => `<button type="button" data-level="${id}" aria-pressed="${st.level===id}">${l.label}</button>`).join('')}
+        </div>
+        <label class="chk"><input type="checkbox" data-flag="reveal" ${st.reveal?'checked':''}> <span><strong>Reveal secrets</strong> <span class="muted">· current secret values, with reauthentication</span></span></label>
+        <label class="chk"><input type="checkbox" data-flag="history" ${st.history?'checked':''}> <span><strong>Reveal history</strong> <span class="muted">· superseded secret values</span></span></label>
+      </fieldset>
+      <fieldset style="border:0;display:flex;flex-direction:column;gap:var(--space-2)"><legend class="eyebrow" style="margin-bottom:var(--space-2)">Where</legend>
+        <div class="axis"><div class="axis__head"><h3>Projects</h3></div>
+          <div class="chips">
+            <button type="button" class="chip" data-proj="*" data-s="${st.projects==='*'?'inc':'off'}" aria-pressed="${st.projects==='*'}">${st.projects==='*'?'✓':'+'} all projects</button>
+            ${Object.keys(PROJECTS).map(pr => { const s = st.projects==='*' ? 'via' : st.projects.includes(pr) ? 'inc' : 'off'; return `<button type="button" class="chip" data-proj="${pr}" data-s="${s}" ${st.projects==='*'?'disabled':''} aria-pressed="${s!=='off'}">${s==='off'?'+':'✓'} ${pr}</button>`; }).join('')}
+          </div>
+          ${st.projects==='*' ? '<p class="lvlhint">Includes projects created later.</p>' : ''}
+        </div>
+        ${projects.length ? axisHtml('envs','Environments',envs.map(x => [x, x + (protName(x)?' 🔒':'')]),'env') + axisHtml('keys','Keys',folders.map(f => [f, f + '/']),'key') : '<p class="lvlhint">Pick a project to choose environments and keys.</p>'}
+      </fieldset>
+      ${st.level ? `<div class="summary ${st.level==='admin'&&(narrowKeys(st)||narrowEnvs(st))?'warn':''}"><p style="font-weight:700;margin-bottom:var(--space-2)">${LEVELS[st.level].label} here means</p>
+        <ul class="caplist">${capsHere.map(([atom,words,,shape]) => atoms.includes(atom) ? `<li><span class="g-direct">✓</span><span>${words}</span></li>` : `<li class="no"><span>✕</span><span>${words}: ${shapeWhy(shape)}</span></li>`).join('')}</ul>
+        ${st.level==='admin' && atoms.includes('manage-members') && (narrowKeys(st)||narrowEnvs(st)) ? '<p class="reach" style="margin-top:var(--space-2);font-size:var(--fs-sm)">Delegation stays inside this rule: they can give others access to these keys in these environments, at most at this level.</p>' : ''}
+      </div>` : ''}
+      <div class="summary ${st.projects==='*'?'bad':''}">
+        <p class="sentence">${valid ? `${PEOPLE[st.p].name.split(' ')[0]} can ${[levelLabel(st) ? `<b>${esc(levelLabel(st).toLowerCase())}</b>` : '', st.reveal?'<b>reveal secrets</b>':'', st.history?'<b>reveal history</b>':''].filter(Boolean).join(' and ')} in <b>${projText(st)}</b> › <b>${e.main}</b>${e.exc.length?` except <b>${e.exc.join(', ')}</b>`:''} › <b>${k.main}</b>${k.exc.length?` except <b>${k.exc.join(', ')}</b>`:''}.` : 'Pick what, then where.'}</p>
+        ${valid ? `<p class="reach" style="font-size:var(--fs-sm)">${reachOf(st)}</p>` : ''}
+        ${narrowKeys(st) && valid ? '<p style="font-size:var(--fs-sm)">Key limits apply to edit, publish, definitions, members and reveal. Key names and config values stay visible across the environment.</p>' : ''}
+      </div>
+      <div class="dlg__foot">
+        ${st.id ? '<button class="btn" type="button" data-del style="color:var(--danger);border-color:var(--danger);margin-right:auto">Remove rule</button>' : ''}
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn btn--primary" type="button" data-save ${valid?'':'disabled'}>Save</button>
+      </div>
+    </form>`, d => {
+      const redraw = sel => { const top = d.scrollTop; draw(); d.scrollTop = top; if(sel) d.querySelector(sel)?.focus(); };
+      d.querySelectorAll('[data-level]').forEach(b => b.onclick = () => { st.level = b.dataset.level || null; st.atoms = null; redraw(`[data-level="${b.dataset.level}"]`); });
+      d.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { st[i.dataset.flag] = i.checked; redraw(`[data-flag="${i.dataset.flag}"]`); });
+      d.querySelectorAll('[data-proj]').forEach(b => b.onclick = () => {
+        const x = b.dataset.proj;
+        if(x === '*') st.projects = st.projects === '*' ? [] : '*';
+        else { const i = st.projects.indexOf(x); i >= 0 ? st.projects.splice(i,1) : st.projects.push(x); }
+        redraw(`[data-proj="${x}"]`);
+      });
+      d.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { const [key,mode] = b.dataset.mode.split('|'); if(st[key].mode !== mode) setMode(key,mode); redraw(`[data-mode="${b.dataset.mode}"]`); });
+      d.querySelectorAll('[data-chip]').forEach(b => b.onclick = () => { const [key,...rest] = b.dataset.chip.split('|'); toggle(st[key],rest.join('|')); redraw(`[data-chip="${b.dataset.chip}"]`); });
+      const del = d.querySelector('[data-del]');
+      if(del) del.onclick = () => { RULES.splice(RULES.findIndex(r => r.id === st.id),1); d.close(); render(); };
+      d.querySelector('[data-save]').onclick = () => {
+        const next = {...clone(st),id:st.id || seq++};
+        const i = RULES.findIndex(r => r.id === st.id);
+        i >= 0 ? RULES.splice(i,1,next) : RULES.push(next);
+        d.close(); render();
+      };
+    });
+  };
+  draw();
+}
+
+/* ---------- render + events ---------- */
+function render(){
+  document.documentElement.dataset.theme = S.theme;
+  renderSide(); renderBar();
+  $('#main').innerHTML = S.page === 'whocan' ? pageWhoCan() : pageMembers();
+  const u = new URL(location); u.searchParams.set('page',S.page); history.replaceState(null,'',u);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('button');
+  if(!t || t.closest('#dlg')) return;
+  if(t.hasAttribute('data-theme-toggle')){ S.theme = S.theme==='dark'?'light':'dark'; localStorage.setItem('proto-theme',S.theme); render(); return; }
+  if(t.dataset.go){ if(t.getAttribute('aria-disabled')==='true') return; S.page = t.dataset.go; render(); window.scrollTo(0,0); return; }
+  if(t.dataset.edit){ editor(RULES.find(r => r.id === +t.dataset.edit)); return; }
+  if(t.dataset.add){ editor(null,t.dataset.add); return; }
+  if(t.dataset.q){ const [cap,project,env,key] = t.dataset.q.split('|'); Object.assign(S.who,{cap,project,env,key}); render(); return; }
+});
+document.addEventListener('change', e => { const t = e.target; if(t.dataset.who){ S.who[t.dataset.who] = t.value; render(); } });
+render();
+</script>
+</body>
+</html>
