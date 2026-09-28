@@ -72,7 +72,9 @@ export type EmergencyAccessDraft = {
   readonly reason: string;
 };
 
+/** Builds the project-wide policy cache key, independent of environment. */
 const accessPoliciesKey = (ref: MatrixRef) => ['access-policies', ref.org, ref.project] as const;
+/** Builds the cache key for one environment's temporary-access queue. */
 export const accessQueueKey = (ref: MatrixRef, environment: string) =>
   ['access-requests', ref.org, ref.project, environment] as const;
 
@@ -116,6 +118,7 @@ function policyBody(draft: AccessPolicyDraft) {
   };
 }
 
+/** Builds an ordinary request body with its explicit duration in seconds. */
 function requestBody(draft: AccessRequestDraft) {
   return { capabilities: [...draft.capabilities], reason: draft.reason, duration_seconds: draft.durationSeconds };
 }

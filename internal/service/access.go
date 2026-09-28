@@ -347,7 +347,9 @@ func (s *Access) DeletePolicy(ctx context.Context, actor Actor, scope domain.Sco
 	})
 }
 
-// ListPolicies returns the project's access policies.
+// ListPolicies returns the project's access policies with member sets and
+// available principal names and records a policy-read audit event. It requires
+// manage-members at the project; authorization, lookup, and audit errors propagate.
 func (s *Access) ListPolicies(ctx context.Context, actor Actor, scope domain.Scope) ([]AccessPolicyView, error) {
 	now := s.now()
 	var out []AccessPolicyView
