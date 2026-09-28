@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 // llms.txt advertises a Markdown twin (`<url>.md`) for every page and a single
 // /llms-full.txt with all of them. Keep the index, the twins, and the full file
-// in step: every indexed page must have a non-empty twin whose heading also
-// is carried whole by llms-full.txt.
+// in step: every indexed page must have a non-empty twin that llms-full.txt
+// carries whole, and llms-full.txt must carry no page the index omits.
 const dist = resolve(fileURLToPath(new URL('..', import.meta.url)), 'dist');
 const index = await readFile(resolve(dist, 'llms.txt'), 'utf8');
 const full = await readFile(resolve(dist, 'llms-full.txt'), 'utf8');
