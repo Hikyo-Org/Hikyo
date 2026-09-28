@@ -12,15 +12,15 @@ const index = await readFile(resolve(dist, 'llms.txt'), 'utf8');
 const full = await readFile(resolve(dist, 'llms-full.txt'), 'utf8');
 
 // Page entries only: `- [Title](url)` or `- [Title](url): description`, with
-// Fumadocs' `\[` `\]` escapes in titles and a lazy URL that may contain `)`.
-const links = [...index.matchAll(/^\s*- \[(?:\\.|[^\]\\])*\]\((\S+?)\)(?::|$)/gm)].map((match) => match[1]);
+// Fumadocs' `\[` `\]` escapes in titles and its `\(` `\)` escapes in URLs.
+const links = [...index.matchAll(/^\s*- \[(?:\\.|[^\]\\])*\]\((\S+?)\)(?::|$)/gm)].map((match) => match[1].replace(/\\([()])/g, '$1'));
 for (const link of links) {
   assert.ok(link.startsWith('https://hikyo.app/'), `llms.txt link is not absolute: ${link}`);
 }
 const urls = links.map((link) => new URL(link).pathname);
 assert.ok(urls.length > 50, `llms.txt lists only ${urls.length} pages`);
 // The reverse direction: llms-full.txt must not carry pages the index omits.
-const fullUrls = [...full.matchAll(/^# .+ \((\/[^)\r\n]*)\)$/gm)].map((match) => match[1]);
+const fullUrls = [...full.matchAll(/^# .+ \((\/[^\r\n]*)\)$/gm)].map((match) => match[1]);
 assert.deepEqual([...new Set(fullUrls)].sort(), [...new Set(urls)].sort(), 'llms.txt and llms-full.txt list different pages');
 
 for (const url of urls) {
