@@ -7,7 +7,7 @@
 <!--
   THROWAWAY PROTOTYPE: member access granularity, iteration 2.
 
-  Iteration 1 verdict (Marc): none of a/b/c made access clearer; add
+  Iteration 1 verdict (Sam): none of a/b/c made access clearer; add
   negative permissions ("grant on the project, except ...").
 
   Question: does reading access as RULES (level . where . except) make it
@@ -278,7 +278,7 @@
 <script>
 /* ---------- fixture ---------- */
 const PEOPLE = {
-  marc:{name:'Marc Went',id:'usr_01marc',note:'owner'},
+  sam:{name:'Sam Ortiz',id:'usr_01sam',note:'owner'},
   alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
   bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
   chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
@@ -313,7 +313,7 @@ const LEVELS = {
 let seq = 1;
 const R = (p,level,flags,inc,exc,atoms) => ({id:seq++,p,level,reveal:!!flags.reveal,history:!!flags.history,inc,exc:exc||[],atoms:atoms||null});
 const RULES = [
-  R('marc','admin',{reveal:1,history:1},['*']),
+  R('sam','admin',{reveal:1,history:1},['*']),
   R('alice','publish',{},['payments']),
   R('alice',null,{reveal:1},['payments/staging','payments/prod/db']),
   R('bob','publish',{reveal:1},['payments','web'],['payments/prod','web/prod']),
@@ -430,7 +430,7 @@ function pageMembers(){
     <section class="panel" aria-labelledby="mem-h">
       <div class="panel__head"><h2 id="mem-h">Members</h2><p>${Object.keys(PEOPLE).length} members, ${RULES.length} rules</p><span class="spacer"></span><button class="btn">Invite</button></div>
       <ul class="people">${Object.keys(PEOPLE).map(p => `<li class="person">
-        <div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
+        <div class="who"><b>${PEOPLE[p].name}${p==='sam'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
         <div style="display:flex;flex-direction:column;gap:var(--space-2)">
           <ul class="rules">${RULES.filter(r => r.p===p).map(r => ruleLine(r,true)).join('') || '<li class="muted">· no access</li>'}</ul>
           <button class="btn btn--quiet addrule" data-add="${p}">+ Add access</button>

@@ -7,7 +7,7 @@
 <!--
   THROWAWAY PROTOTYPE: member access granularity, iteration 3.
 
-  Iteration 2 verdict (Marc): wants e.g. Admin on a single folder, for one
+  Iteration 2 verdict (Sam): wants e.g. Admin on a single folder, for one
   or more environments, not the whole org or project. The it-2 tree needed
   a tap per environment for that and Admin was implicitly project-wide.
 
@@ -298,7 +298,7 @@
 <script>
 /* ---------- fixture ---------- */
 const PEOPLE = {
-  marc:{name:'Marc Went',id:'usr_01marc',note:'owner'},
+  sam:{name:'Sam Ortiz',id:'usr_01sam',note:'owner'},
   alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
   bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
   chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
@@ -353,7 +353,7 @@ const ONLY = list => ({mode:'only',list});
 const EXC = exc => ({mode:'all',exc});
 const R = (p,level,flags,projects,envs,keys,atoms) => ({id:seq++,p,level,reveal:!!flags.reveal,history:!!flags.history,projects,envs,keys,atoms:atoms||null});
 const RULES = [
-  R('marc','admin',{reveal:1,history:1},'*',ALL(),ALL()),
+  R('sam','admin',{reveal:1,history:1},'*',ALL(),ALL()),
   R('alice','publish',{},['payments'],ALL(),ALL()),
   R('alice','admin',{reveal:1},['payments'],ONLY(['staging','prod']),ONLY(['db'])),
   R('bob','publish',{reveal:1},['payments','web'],EXC(['prod']),ALL()),
@@ -381,7 +381,7 @@ const protName = name => Object.values(PROJECTS).some(d => d.envs.some(e => e.id
 const folderNames = projects => [...new Set(projects.flatMap(p => KEYS[p].map(k => k.f)))];
 const keyMatch = (item,k) => item === k.f || item === `${k.f}/${k.k}`;
 const narrowKeys = r => !(r.keys.mode === 'all' && r.keys.exc.length === 0);
-const narrowEnvs = r => !(r.envs.mode === 'all' && r.envs.exc.length === 0);
+const envsNarrowed = r => !(r.envs.mode === 'all' && r.envs.exc.length === 0);
 
 /* Which atoms does this rule carry, given its shape? */
 function atomsOf(r){
@@ -390,7 +390,7 @@ function atomsOf(r){
   else if(r.level) for(const [atom,,min,shape] of CAPS){
     if(RANK[r.level] < RANK[min]) continue;
     if(shape === 'env' && narrowKeys(r)) continue;
-    if(shape === 'project' && (narrowKeys(r) || narrowEnvs(r))) continue;
+    if(shape === 'project' && (narrowKeys(r) || envsNarrowed(r))) continue;
     out.push(atom);
   }
   if(r.reveal) out.push('reveal');
@@ -447,7 +447,7 @@ function reachOf(r){
 }
 function ruleLine(r){
   const e = envText(r), k = keyText(r);
-  const lost = r.level === 'admin' && (narrowKeys(r) || narrowEnvs(r)) ? CAPS.filter(c => c[2]==='admin' && !atomsOf(r).includes(c[0])).length : 0;
+  const lost = r.level === 'admin' && (narrowKeys(r) || envsNarrowed(r)) ? CAPS.filter(c => c[2]==='admin' && !atomsOf(r).includes(c[0])).length : 0;
   return `<li class="rule">
     <div class="rule__main">
       <div class="rule__line">
@@ -491,7 +491,7 @@ function pageMembers(){
     <section class="panel" aria-labelledby="mem-h">
       <div class="panel__head"><h2 id="mem-h">Members</h2><p>${Object.keys(PEOPLE).length} members, ${RULES.length} rules</p><span class="spacer"></span><button class="btn">Invite</button></div>
       <ul class="people">${Object.keys(PEOPLE).map(p => `<li class="person">
-        <div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
+        <div class="who"><b>${PEOPLE[p].name}${p==='sam'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
         <div style="display:flex;flex-direction:column;gap:var(--space-2)">
           <ul class="rules">${RULES.filter(r => r.p===p).map(ruleLine).join('') || '<li class="muted">· no access</li>'}</ul>
           <button class="btn btn--quiet addrule" data-add="${p}">+ Add access</button>
@@ -589,9 +589,9 @@ function editor(rule,p){
         </div>
         ${projects.length ? axisHtml('envs','Environments',envs.map(x => [x, x + (protName(x)?' 🔒':'')]),'env') + axisHtml('keys','Keys',folders.map(f => [f, f + '/']),'key') : '<p class="lvlhint">Pick a project to choose environments and keys.</p>'}
       </fieldset>
-      ${st.level ? `<div class="summary ${st.level==='admin'&&(narrowKeys(st)||narrowEnvs(st))?'warn':''}"><p style="font-weight:700;margin-bottom:var(--space-2)">${LEVELS[st.level].label} here means</p>
+      ${st.level ? `<div class="summary ${st.level==='admin'&&(narrowKeys(st)||envsNarrowed(st))?'warn':''}"><p style="font-weight:700;margin-bottom:var(--space-2)">${LEVELS[st.level].label} here means</p>
         <ul class="caplist">${capsHere.map(([atom,words,,shape]) => atoms.includes(atom) ? `<li><span class="g-direct">✓</span><span>${words}</span></li>` : `<li class="no"><span>✕</span><span>${words}: ${shapeWhy(shape)}</span></li>`).join('')}</ul>
-        ${st.level==='admin' && atoms.includes('manage-members') && (narrowKeys(st)||narrowEnvs(st)) ? '<p class="reach" style="margin-top:var(--space-2);font-size:var(--fs-sm)">Delegation stays inside this rule: they can give others access to these keys in these environments, at most at this level.</p>' : ''}
+        ${st.level==='admin' && atoms.includes('manage-members') && (narrowKeys(st)||envsNarrowed(st)) ? '<p class="reach" style="margin-top:var(--space-2);font-size:var(--fs-sm)">Delegation stays inside this rule: they can give others access to these keys in these environments, at most at this level.</p>' : ''}
       </div>` : ''}
       <div class="summary ${st.projects==='*'?'bad':''}">
         <p class="sentence">${valid ? `${PEOPLE[st.p].name.split(' ')[0]} can ${[levelLabel(st) ? `<b>${esc(levelLabel(st).toLowerCase())}</b>` : '', st.reveal?'<b>reveal secrets</b>':'', st.history?'<b>reveal history</b>':''].filter(Boolean).join(' and ')} in <b>${projText(st)}</b> › <b>${e.main}</b>${e.exc.length?` except <b>${e.exc.join(', ')}</b>`:''} › <b>${k.main}</b>${k.exc.length?` except <b>${k.exc.join(', ')}</b>`:''}.` : 'Pick what, then where.'}</p>

@@ -7,7 +7,7 @@
 <!--
   THROWAWAY PROTOTYPE: member access granularity, iteration 5.
 
-  Decisions from iteration 4 (Marc):
+  Decisions from iteration 4 (Sam):
     1. Permissions are independent; See is never forced on (ADR: no
        prerequisite chaining). Revealing still needs See (ADR formula
        read AND reveal): the resolver shows "has Reveal but not See".
@@ -343,7 +343,7 @@ const SHAPE_WHY = {env:'needs all keys of an environment', project:'needs a whol
 /* ---------- fixture ---------- */
 /* keys get a stable id at creation; renames and moves keep it */
 const PEOPLE = {
-  marc:{name:'Marc Went',id:'usr_01marc',note:'owner'},
+  sam:{name:'Sam Ortiz',id:'usr_01sam',note:'owner'},
   alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
   bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
   chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
@@ -371,7 +371,7 @@ const ONLY = list => ({mode:'only',list});
 const EXC = exc => ({mode:'all',exc});
 const R = (p,perms,projects,envs,keys) => ({id:seq++,p,perms,projects,envs,keys});
 const RULES = [
-  R('marc',PERMS.map(x => x[0]),'*',ALL(),ALL()),
+  R('sam',PERMS.map(x => x[0]),'*',ALL(),ALL()),
   R('alice',['read','edit','publish','pin'],['payments'],ALL(),ALL()),
   R('alice',['read','edit','publish','reveal','definitions-edit','manage-members'],['payments'],ONLY(['staging','prod']),ONLY(['db'])),
   R('bob',['read','edit','publish','pin','reveal'],['payments','web'],EXC(['prod']),ALL()),
@@ -402,13 +402,13 @@ const folderNames = projects => [...new Set(projects.flatMap(p => KEYS[p].map(k 
 const keyMatch = (item,k) => item.startsWith('#') ? item.slice(1) === k.id : item === k.f;
 const itemLabel = item => { if(!item.startsWith('#')) return item + '/'; const k = keyById(item.slice(1)); return k ? `${k.f}/${k.k}` : '(deleted key)'; };
 const narrowKeys = r => !(r.keys.mode === 'all' && r.keys.exc.length === 0);
-const narrowEnvs = r => !(r.envs.mode === 'all' && r.envs.exc.length === 0);
+const envsNarrowed = r => !(r.envs.mode === 'all' && r.envs.exc.length === 0);
 /* Is this permission possible for a rule of this shape? */
 function allowed(id,r){
   const sh = P[id].shape;
   if(sh === 'env') return !narrowKeys(r);
-  if(sh === 'project') return !narrowKeys(r) && !narrowEnvs(r);
-  if(sh === 'org') return r.projects === '*' && !narrowKeys(r) && !narrowEnvs(r);
+  if(sh === 'project') return !narrowKeys(r) && !envsNarrowed(r);
+  if(sh === 'org') return r.projects === '*' && !narrowKeys(r) && !envsNarrowed(r);
   return true;
 }
 const effective = r => r.perms.filter(id => allowed(id,r));
@@ -498,7 +498,7 @@ function pageMembers(){
     <section class="panel" aria-labelledby="mem-h">
       <div class="panel__head"><h2 id="mem-h">Members</h2><p>${Object.keys(PEOPLE).length} members, ${RULES.length} rules</p><span class="spacer"></span><button class="btn">Invite</button></div>
       <ul class="people">${Object.keys(PEOPLE).map(p => `<li class="person">
-        <div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
+        <div class="who"><b>${PEOPLE[p].name}${p==='sam'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span><span style="font-family:var(--sans)">${PEOPLE[p].note}</span></div>
         <div style="display:flex;flex-direction:column;gap:var(--space-2)">
           <ul class="rules">${RULES.filter(r => r.p===p).map(ruleLine).join('') || '<li class="muted">· no access</li>'}</ul>
           <button class="btn btn--quiet addrule" data-add="${p}">+ Add rule</button>

@@ -178,7 +178,7 @@ export const WhoCan: Story = {
     await expect(permission).toHaveAccessibleDescription(/Show current secret values/);
 
     const yes = within(canvas.getByRole('table', { name: 'Yes: 3' }));
-    await expect(yes.getByRole('rowheader', { name: 'Marc Went' })).toBeVisible();
+    await expect(yes.getByRole('rowheader', { name: 'Sam Ortiz' })).toBeVisible();
     await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('Machine');
     // Alice's deciding rule: badges in Permissions, the Where line beside them.
     const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));

@@ -12,7 +12,7 @@ export function makeWorld(): World {
   const keys = (project: string, list: [name: string, folder: string, secret: boolean][]): Key[] =>
     list.map(([name, folder, secret], i) => ({ id: `${project}_k${i + 1}`, project, name, folder, secret }));
   const rules: Omit<Rule, 'id'>[] = [
-    { member: 'marc', perms: PERMS.map((p) => p.id), projects: '*', envs: ALL, keys: ALL },
+    { member: 'sam', perms: PERMS.map((p) => p.id), projects: '*', envs: ALL, keys: ALL },
     { member: 'alice', perms: ['read', 'edit', 'publish', 'pin'], projects: ['payments'], envs: ALL, keys: ALL },
     { member: 'alice', perms: ['read', 'edit', 'publish', 'reveal', 'definitions-edit', 'manage-members'], projects: ['payments'], envs: only(['staging', 'prod']), keys: only(['db']) },
     { member: 'bob', perms: ['read', 'edit', 'publish', 'pin', 'reveal'], projects: ['payments', 'web'], envs: except(['prod']), keys: ALL },
@@ -26,7 +26,7 @@ export function makeWorld(): World {
   ];
   return {
     people: [
-      { id: 'marc', kind: 'person', name: 'Marc Went', handle: 'usr_01marc', note: 'owner' },
+      { id: 'sam', kind: 'person', name: 'Sam Ortiz', handle: 'usr_01sam', note: 'owner' },
       { id: 'alice', kind: 'person', name: 'Alice Novak', handle: 'usr_01alice', note: 'DBA' },
       { id: 'bob', kind: 'person', name: 'Bob Tran', handle: 'usr_01bob', note: 'app developer' },
       { id: 'chen', kind: 'person', name: 'Chen Li', handle: 'usr_01chen', note: 'contractor, Stripe integration' },

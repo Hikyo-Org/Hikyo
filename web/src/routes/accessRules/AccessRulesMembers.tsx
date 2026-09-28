@@ -19,7 +19,7 @@ const matches = (person: Person, query: string) => {
  * Each person lists one card per rule. Edits go through {@link RuleEditorDialog} and land in local
  * state; nothing is saved anywhere.
  */
-export function AccessRulesMembers({ initialWorld, you = 'marc' }: { initialWorld: World; you?: string }) {
+export function AccessRulesMembers({ initialWorld, you = 'sam' }: { initialWorld: World; you?: string }) {
   const [world, setWorld] = useState(initialWorld);
   const [editing, setEditing] = useState<Rule | null>(null);
   const [query, setQuery] = useState('');

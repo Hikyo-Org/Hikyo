@@ -237,7 +237,7 @@
 <script>
 /* ---------- fixture ---------- */
 const PEOPLE = {
-  marc:{name:'Marc Went',id:'usr_01marc',note:'you'},
+  sam:{name:'Sam Ortiz',id:'usr_01sam',note:'you'},
   alice:{name:'Alice Novak',id:'usr_01alice',note:'DBA'},
   bob:{name:'Bob Tran',id:'usr_01bob',note:'app developer'},
   chen:{name:'Chen Li',id:'usr_01chen',note:'contractor, Stripe integration'},
@@ -278,7 +278,7 @@ function expand(project,src){
   return KEYS[project].filter(x => (src.folders||[]).includes(x.f) || (src.groups||[]).some(gr => x.g.includes(gr)) || (src.keys||[]).includes(x.k)).map(x => x.k);
 }
 const GRANTS = [
-  ...ADMIN_CAPS.map(c => g('marc',c,'org',null,'template: admin')),
+  ...ADMIN_CAPS.map(c => g('sam',c,'org',null,'template: admin')),
   ...['read','edit','publish','pin'].map(c => g('alice',c,'payments',null,'template: publisher')),
   g('alice','reveal','payments/staging'),
   g('alice','reveal','payments/prod',sel('payments',{folders:['db']},'db/')),
@@ -296,7 +296,7 @@ const GRANTS = [
 /* Variant b: key limits live on the resource as allowlists that narrow the
    holders of a scope grant. Grant selectors do not exist in b. */
 const POLICIES = [
-  {id:1,project:'payments',env:'prod',folder:'db',cap:'reveal',allow:['alice','marc']},
+  {id:1,project:'payments',env:'prod',folder:'db',cap:'reveal',allow:['alice','sam']},
 ];
 
 /* ---------- state ---------- */
@@ -352,7 +352,7 @@ const totalKeys = (grant) => { const p = scopeParts(grant.scope); return p.level
 /* ---------- render helpers ---------- */
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const who = p => `<div class="who"><b>${PEOPLE[p].name}${p==='marc'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span></div>`;
+const who = p => `<div class="who"><b>${PEOPLE[p].name}${p==='sam'?' <span class="badge">you</span>':''}</b><span>${PEOPLE[p].id}</span></div>`;
 function go(page,extra){ Object.assign(S,{page},extra||{}); S.flash=''; sync(); render(); window.scrollTo(0,0); }
 function sync(){
   const u = new URL(location); u.searchParams.set('variant',S.variant); u.searchParams.set('page',S.page);
