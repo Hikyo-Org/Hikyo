@@ -237,6 +237,7 @@ type AdapterRouteMoveClaim struct {
 	EffectiveName          string
 	NormalizedName         string
 	DestinationEnvironment string
+	DestinationScope       string
 }
 
 type AdapterRouteMoveKey struct {
@@ -264,6 +265,7 @@ type AdapterRouteMoveTarget struct {
 	RepositoryID           int64
 	Visibility             string
 	SelectedRepositoryIds  []byte
+	DestinationScope       string
 }
 
 type AdapterTarget struct {
