@@ -11,7 +11,11 @@ const dist = resolve(fileURLToPath(new URL('..', import.meta.url)), 'dist');
 const index = await readFile(resolve(dist, 'llms.txt'), 'utf8');
 const full = await readFile(resolve(dist, 'llms-full.txt'), 'utf8');
 
-const urls = [...index.matchAll(/\]\((\/[^)\s]*)\)/g)].map((match) => match[1]);
+const links = [...index.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1]);
+for (const link of links) {
+  assert.ok(link.startsWith('https://hikyo.app/'), `llms.txt link is not absolute: ${link}`);
+}
+const urls = links.map((link) => new URL(link).pathname);
 assert.ok(urls.length > 50, `llms.txt lists only ${urls.length} pages`);
 
 for (const url of urls) {

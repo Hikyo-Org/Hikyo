@@ -10,15 +10,23 @@ export const prerender = true;
 const summary =
   'Fully open-source, self-hosted control plane for secrets and configuration across development, staging, and production. Every value is explicitly set or absent in every environment: no inheritance, no hidden fallback, no paid operational core. Source: https://github.com/Hikyo-Org/Hikyo';
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ site }) => {
+  if (site === undefined) {
+    throw new Error('llms.txt needs `site` in astro.config.mjs for absolute links');
+  }
+  // indexNode() emits root-relative links; llmstxt.org consumers may read the
+  // file away from hikyo.app, so anchor them to the site origin.
+  const origin = site.origin;
   const body = [
     `# ${source.pageTree.name}`,
     '',
     `> ${summary}`,
     '',
-    'Every page is also available as Markdown at its URL plus `.md` (for example /docs/getting-started.md), and all pages concatenated at /llms-full.txt.',
+    `Every page is also available as Markdown at its URL plus \`.md\` (for example ${origin}/docs/getting-started.md), and all pages concatenated at ${origin}/llms-full.txt.`,
     '',
     ...(await Promise.all(source.pageTree.children.map((node) => docsLlms.indexNode(node)))),
-  ].join('\n');
+  ]
+    .join('\n')
+    .replaceAll('](/', `](${origin}/`);
   return new Response(body, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 };

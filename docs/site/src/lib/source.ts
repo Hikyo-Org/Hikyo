@@ -12,7 +12,7 @@ export const source = loader({
 });
 
 // `_markdown` is exported by remarkLLMs (astro.config.mjs): the page body with
-// imports dropped and MDX components reduced to their children. Keys are made
+// imports dropped and MDX components kept as JSX. Keys are made
 // relative to the site root so they match a collection entry's `filePath`.
 const markdownByFile = new Map(
   Object.entries(
