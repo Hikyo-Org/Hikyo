@@ -224,20 +224,20 @@ func TestAWSAccessDescriptorAssembly(t *testing.T) {
 }
 
 func TestAWSTargetInputRoutesSecretAndKMSKey(t *testing.T) {
-	input, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{secret: "prod/app", kmsKey: "alias/hikyo"})
+	input, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{secret: "prod/app", kmsKey: "alias/hikyo"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if input.DestinationName != "prod/app" || input.DestinationEnvironment != "alias/hikyo" || input.DestinationKind != "json-object" {
 		t.Fatalf("input=%+v", input)
 	}
-	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 		t.Fatal("json-object without --secret accepted")
 	}
-	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "per-key", "123456789012", "repo", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "per-key", "123456789012", "repo", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 		t.Fatal("per-key with --repo accepted")
 	}
-	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "repository", "acme", "app", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{kmsKey: "alias/x"}); err == nil {
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "repository", "acme", "app", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{kmsKey: "alias/x"}, nil); err == nil {
 		t.Fatal("--kms-key accepted on a repository target")
 	}
 }
@@ -245,7 +245,7 @@ func TestAWSTargetInputRoutesSecretAndKMSKey(t *testing.T) {
 func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
 	const env = "env_019c1234-1234-7123-8123-123456789abc"
 	const key = "key_019c1234-1234-7123-8123-123456789abc"
-	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{})
+	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil)
 	if err != nil {
 		t.Fatalf("sealed-webhook namespace target refused: %v", err)
 	}
@@ -258,25 +258,25 @@ func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
 		"environment":     {"organization", "prod", "", "staging", ""},
 		"visibility":      {"organization", "prod", "", "", "all"},
 	} {
-		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 			t.Fatalf("sealed-webhook accepted %s routing", name)
 		}
 	}
-	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 		t.Fatal("github-actions organization target accepted without visibility")
 	}
 }
 
 func TestAdapterCloudflareTargetInput(t *testing.T) {
 	const account = "0123456789abcdef0123456789abcdef"
-	got, err := adapterTargetInput("cloudflare", "env_1", "pages-project", account, "site", "preview", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{})
+	got, err := adapterTargetInput("cloudflare", "env_1", "pages-project", account, "site", "preview", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.DestinationKind != "pages-project" || got.DestinationOwner != account || got.DestinationName != "site" || got.DestinationEnvironment != "preview" {
 		t.Fatalf("input = %+v", got)
 	}
-	if _, err := adapterTargetInput("cloudflare", "env_1", "workers-script", account, "api", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err != nil {
+	if _, err := adapterTargetInput("cloudflare", "env_1", "workers-script", account, "api", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err != nil {
 		t.Fatalf("workers-script refused: %v", err)
 	}
 	for name, args := range map[string][3]string{
@@ -285,7 +285,7 @@ func TestAdapterCloudflareTargetInput(t *testing.T) {
 		"workers with env": {"workers-script", "api", "production"},
 		"workers no name":  {"workers-script", "", ""},
 	} {
-		if _, err := adapterTargetInput("cloudflare", "env_1", args[0], account, args[1], args[2], "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+		if _, err := adapterTargetInput("cloudflare", "env_1", args[0], account, args[1], args[2], "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}

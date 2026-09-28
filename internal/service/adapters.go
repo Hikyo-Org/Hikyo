@@ -112,6 +112,10 @@ type AdapterRecord = store.AdapterRecord
 // enforces that handlers never import internal/store directly.
 type AdapterMove = store.AdapterMove
 
+// AdapterMoveTarget exposes pending target metadata through the service seam,
+// keeping transport mappings and fixtures independent of store imports.
+type AdapterMoveTarget = store.AdapterMoveTarget
+
 type AdapterTargetInput struct {
 	AllowEnvironmentCreate bool
 	EnvironmentID          string
@@ -123,6 +127,12 @@ type AdapterTargetInput struct {
 	SelectedRepositoryIDs  []int64
 	NamePrefix             string
 	KeyIDs                 []string
+	// GitLab only: the environment_scope ("*" when empty) and per-target
+	// variable flags. Every other provider refuses them.
+	DestinationScope  string
+	VariableProtected bool
+	VariableHidden    bool
+	VariableExpand    bool
 	// KeySelection is resolved into KeyIDs before any ceremony (#157) and is
 	// never stored.
 	KeySelection *AdapterKeySelection
@@ -133,7 +143,30 @@ func adapterDestination(input AdapterTargetInput) adapter.Destination {
 		Kind: adapter.DestinationKind(input.DestinationKind), Owner: input.DestinationOwner,
 		Name: input.DestinationName, Environment: input.DestinationEnvironment,
 		Visibility: input.Visibility, SelectedRepositoryIDs: append([]int64(nil), input.SelectedRepositoryIDs...),
+		Scope: input.DestinationScope,
 	}
+}
+
+// normalizeTargetInput applies provider-specific target rules before any
+// provider call: GitLab defaults its scope to every environment, and every
+// other provider refuses GitLab-only fields rather than ignoring them.
+func normalizeTargetInput(provider string, input *AdapterTargetInput) error {
+	if provider == string(adapter.GitLabProvider) {
+		if input.DestinationScope == "" {
+			input.DestinationScope = "*"
+		}
+		if input.DestinationKind != string(adapter.Repository) && input.DestinationKind != string(adapter.Organization) {
+			return fmt.Errorf("%w: a GitLab target is a project (repository) or group (organization)", domain.ErrInvalid)
+		}
+		if input.AllowEnvironmentCreate {
+			return fmt.Errorf("%w: GitLab targets do not create environments; use an environment scope", domain.ErrInvalid)
+		}
+		return nil
+	}
+	if input.DestinationScope != "" || input.VariableProtected || input.VariableHidden || input.VariableExpand {
+		return fmt.Errorf("%w: environment scope and variable flags apply only to GitLab targets", domain.ErrInvalid)
+	}
+	return nil
 }
 
 func targetMutation(id, adapterID string, input AdapterTargetInput, connection adapter.Connection) store.AdapterTargetMutation {
@@ -148,6 +181,8 @@ func targetMutation(id, adapterID string, input AdapterTargetInput, connection a
 		DestinationID: connection.DestinationID, RepositoryID: repositoryID,
 		Visibility: input.Visibility, SelectedRepositoryIDs: append([]int64(nil), input.SelectedRepositoryIDs...),
 		NamePrefix: input.NamePrefix, KeyIDs: append([]string(nil), input.KeyIDs...),
+		DestinationScope: input.DestinationScope, VariableProtected: input.VariableProtected,
+		VariableHidden: input.VariableHidden, VariableExpand: input.VariableExpand,
 	}
 }
 
@@ -212,9 +247,26 @@ type CreateAdapterRequest struct {
 	Origin     string
 	Credential []byte
 	Target     AdapterTargetInput
+	// GitLab-only transport policy (#159). The pin and bundle are public
+	// material; AllowPersonalToken is the documented protected opt-in for a
+	// broader personal access token and is recorded in the audit payload.
+	SPKIPin            string
+	CABundlePEM        string
+	AllowPersonalToken bool
+}
+
+func (r CreateAdapterRequest) config() adapter.Config {
+	return adapter.Config{Origin: r.Origin, SPKIPin: r.SPKIPin, CABundlePEM: r.CABundlePEM, AllowPersonalToken: r.AllowPersonalToken}
+}
+
+// AdapterTargetFlagPatch preserves omitted transport fields during target updates.
+// A nil patch means the caller supplied complete target state.
+type AdapterTargetFlagPatch struct {
+	VariableProtected, VariableHidden, VariableExpand *bool
 }
 
 type UpdateAdapterTargetRequest struct {
+	Flags              *AdapterTargetFlagPatch
 	TargetID           string
 	ExpectedGeneration int64
 	Target             AdapterTargetInput
@@ -364,6 +416,12 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if scope.Project == "" || scope.Env != "" || request.Origin == "" || len(request.Credential) == 0 || request.Target.EnvironmentID == "" {
 		return AdapterView{}, fmt.Errorf("%w: adapter create requires project scope, credential, and first target", domain.ErrInvalid)
 	}
+	if provider != adapter.GitLabProvider && request.config().HasProviderOptions() {
+		return AdapterView{}, fmt.Errorf("%w: spki_pin, ca_bundle, and allow_personal_token apply only to GitLab adapters", domain.ErrInvalid)
+	}
+	if err := normalizeTargetInput(request.Provider, &request.Target); err != nil {
+		return AdapterView{}, err
+	}
 	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
 		return AdapterView{}, err
 	}
@@ -392,12 +450,12 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err != nil {
 		return AdapterView{}, err
 	}
-	lease, err := s.buildModule(provider, request.Origin, string(plain))
+	lease, err := s.buildModule(provider, request.config(), string(plain))
 	if err != nil {
 		return AdapterView{}, err
 	}
 	defer lease.Release()
-	if err := lease.Module.ValidateConfig(adapter.Config{Origin: request.Origin}); err != nil {
+	if err := lease.Module.ValidateConfig(request.config()); err != nil {
 		return AdapterView{}, err
 	}
 	configureEventID, err := audit.NewEventID()
@@ -406,7 +464,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 	beforeCreate, afterCreate := s.environmentCreateAudit(actor, scope, targetID, request.Target, configureEventID)
 	destination := adapterDestination(request.Target)
-	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: request.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, request.Target.EnvironmentID), AllowEnvironmentCreate: request.Target.AllowEnvironmentCreate, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
+	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: request.config(), Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, request.Target.EnvironmentID), AllowEnvironmentCreate: request.Target.AllowEnvironmentCreate, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
 	if err != nil {
 		return AdapterView{}, err
 	}
@@ -421,7 +479,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 		if err := fenceProject(ctx, r, proof, sealer, scope); err != nil {
 			return err
 		}
-		mutation := store.AdapterCreate{ID: adapterID, Provider: request.Provider, Origin: request.Origin, CredentialCiphertext: sealed, CredentialExpiresAt: connection.CredentialExpiresAt, AuthorityPrincipalID: string(caller.Principal), At: now, Target: targetMutation(targetID, adapterID, request.Target, connection)}
+		mutation := store.AdapterCreate{ID: adapterID, Provider: request.Provider, Origin: request.Origin, CredentialCiphertext: sealed, CredentialExpiresAt: connection.CredentialExpiresAt, AuthorityPrincipalID: string(caller.Principal), At: now, Target: targetMutation(targetID, adapterID, request.Target, connection), SPKIPin: request.SPKIPin, CABundlePEM: request.CABundlePEM, AllowPersonalToken: request.AllowPersonalToken}
 		record, target, err := r.Adapters().Create(ctx, proof, mutation)
 		if err != nil {
 			return err
@@ -430,7 +488,14 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 		if err := attachTargetKeys(ctx, r.Adapters(), proof, out.Targets); err != nil {
 			return err
 		}
-		ev, err := domainEvent(ctx, audit.EventAdapterConfigure, caller.Principal, audit.Object{Type: "adapter", ID: adapterID}, audit.Payload{"mutation": "adapter-create", "authority": string(caller.Principal)})
+		payload := audit.Payload{"mutation": "adapter-create", "authority": string(caller.Principal)}
+		if request.SPKIPin != "" {
+			payload["spki_pin"] = request.SPKIPin
+		}
+		if request.AllowPersonalToken {
+			payload["personal_credential_accepted"] = true
+		}
+		ev, err := domainEvent(ctx, audit.EventAdapterConfigure, caller.Principal, audit.Object{Type: "adapter", ID: adapterID}, payload)
 		if err != nil {
 			return err
 		}
@@ -567,7 +632,10 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 		return store.AdapterTarget{}, err
 	}
 	defer crypto.Zero(plain)
-	lease, err := s.buildModule(provider, record.Origin, string(plain))
+	if err := normalizeTargetInput(record.Provider, &input); err != nil {
+		return store.AdapterTarget{}, err
+	}
+	lease, err := s.buildModule(provider, record.Transport().Config(record.Origin), string(plain))
 	if err != nil {
 		return store.AdapterTarget{}, err
 	}
@@ -582,7 +650,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	}
 	beforeCreate, afterCreate := s.environmentCreateAudit(actor, scope, targetID, input, configureEventID)
 	destination := adapterDestination(input)
-	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: record.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, input.EnvironmentID), AllowEnvironmentCreate: input.AllowEnvironmentCreate, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
+	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: record.Transport().Config(record.Origin), Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, input.EnvironmentID), AllowEnvironmentCreate: input.AllowEnvironmentCreate, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
 	if err != nil {
 		return store.AdapterTarget{}, err
 	}
@@ -629,7 +697,7 @@ func targetDestinationChanged(current store.AdapterTarget, requested AdapterTarg
 // prepareTargetMutation performs only the provider-preflight classification.
 // ApplyTargetMutation repeats the authoritative decision in its write
 // transaction before selecting either result branch.
-func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest) (bool, error) {
+func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope domain.Scope, request *UpdateAdapterTargetRequest) (bool, error) {
 	if scope.Project == "" || scope.Env != "" || request.TargetID == "" || request.ExpectedGeneration <= 0 || len(request.Target.KeyIDs) == 0 {
 		return false, fmt.Errorf("%w: target mutation requires target, generation, and full keys replacement", domain.ErrInvalid)
 	}
@@ -649,10 +717,46 @@ func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope
 		if request.Target.EnvironmentID != current.EnvironmentID {
 			return fmt.Errorf("%w: target environment is immutable; remove and add the target", domain.ErrConflict)
 		}
+		resolveTargetFlags(current, request)
+		if current.Provider == string(adapter.GitLabProvider) && request.Target.DestinationScope == "" {
+			request.Target.DestinationScope = current.DestinationScope
+		}
 		move = targetDestinationChanged(current, request.Target)
+		if move {
+			return rejectMoveFlagChanges(current, request.Target)
+		}
 		return nil
 	})
 	return move, err
+}
+
+func resolveTargetFlags(current store.AdapterTarget, request *UpdateAdapterTargetRequest) {
+	if request.Flags != nil {
+		request.Target.VariableProtected = current.VariableProtected
+		request.Target.VariableHidden = current.VariableHidden
+		request.Target.VariableExpand = current.VariableExpand
+		if request.Flags.VariableProtected != nil {
+			request.Target.VariableProtected = *request.Flags.VariableProtected
+		}
+		if request.Flags.VariableHidden != nil {
+			request.Target.VariableHidden = *request.Flags.VariableHidden
+		}
+		if request.Flags.VariableExpand != nil {
+			request.Target.VariableExpand = *request.Flags.VariableExpand
+		}
+	}
+}
+
+// Destination moves retain variable flags through activation. Reject changed
+// flags before starting the move instead of silently discarding requested state.
+func rejectMoveFlagChanges(current store.AdapterTarget, target AdapterTargetInput) error {
+	if current.Provider != string(adapter.GitLabProvider) {
+		return nil
+	}
+	if current.VariableProtected != target.VariableProtected || current.VariableHidden != target.VariableHidden || current.VariableExpand != target.VariableExpand {
+		return fmt.Errorf("%w: update variable flags separately before or after moving the destination", domain.ErrInvalid)
+	}
+	return nil
 }
 
 // ApplyTargetMutation accepts requested target state and owns the update-versus-
@@ -665,7 +769,7 @@ func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope d
 	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
 		return nil, err
 	}
-	preparedMove, err := s.prepareTargetMutation(ctx, actor, scope, request)
+	preparedMove, err := s.prepareTargetMutation(ctx, actor, scope, &request)
 	if err != nil {
 		return nil, err
 	}
@@ -733,6 +837,12 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 	if current.Provider == "github-actions" && request.Target.DestinationKind == string(adapter.Organization) && request.Target.Visibility == "" {
 		return store.AdapterTarget{}, fmt.Errorf("%w: GitHub organization target requires all, private, or selected visibility", domain.ErrInvalid)
 	}
+	if current.Provider == string(adapter.GitLabProvider) && request.Target.DestinationScope == "" {
+		request.Target.DestinationScope = current.DestinationScope
+	}
+	if err := normalizeTargetInput(current.Provider, &request.Target); err != nil {
+		return store.AdapterTarget{}, err
+	}
 	oldIDs, err := r.Adapters().TargetKeyIDs(ctx, proof, request.TargetID)
 	if err != nil {
 		return store.AdapterTarget{}, err
@@ -746,7 +856,11 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 			break
 		}
 	}
-	full := widened || request.Target.NamePrefix != current.NamePrefix ||
+	// Dropping GitLab protection widens who can read delivered values to
+	// unprotected branches, so it takes the full ceremony like a key widening.
+	unprotected := current.VariableProtected && !request.Target.VariableProtected
+	unhidden := current.VariableHidden && !request.Target.VariableHidden
+	full := widened || unprotected || unhidden || request.Target.NamePrefix != current.NamePrefix ||
 		adapter.RecipientSetNeedsCeremony(current.Visibility, current.SelectedRepositoryIDs, request.Target.Visibility, request.Target.SelectedRepositoryIDs)
 	authority := current.AuthorityPrincipalID
 	if full {
@@ -759,7 +873,7 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 		}
 		authority = string(caller.Principal)
 	}
-	updated, err := r.Adapters().UpdateTarget(ctx, proof, store.AdapterTargetUpdate{ExpectedGeneration: request.ExpectedGeneration, AuthorityPrincipalID: authority, At: now, Target: store.AdapterTargetMutation{ID: request.TargetID, AdapterID: current.AdapterID, EnvironmentID: request.Target.EnvironmentID, DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner, DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment, DestinationID: current.DestinationID, RepositoryID: current.RepositoryID, Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...), NamePrefix: request.Target.NamePrefix, KeyIDs: newIDs}})
+	updated, err := r.Adapters().UpdateTarget(ctx, proof, store.AdapterTargetUpdate{ExpectedGeneration: request.ExpectedGeneration, AuthorityPrincipalID: authority, At: now, Target: store.AdapterTargetMutation{ID: request.TargetID, AdapterID: current.AdapterID, EnvironmentID: request.Target.EnvironmentID, DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner, DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment, DestinationID: current.DestinationID, RepositoryID: current.RepositoryID, Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...), NamePrefix: request.Target.NamePrefix, KeyIDs: newIDs, DestinationScope: request.Target.DestinationScope, VariableProtected: request.Target.VariableProtected, VariableHidden: request.Target.VariableHidden, VariableExpand: request.Target.VariableExpand}})
 	if err != nil {
 		return store.AdapterTarget{}, err
 	}
@@ -839,7 +953,7 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 		return err
 	}
 	defer crypto.Zero(plain)
-	lease, err := s.buildModule(provider, record.Origin, string(plain))
+	lease, err := s.buildModule(provider, record.Transport().Config(record.Origin), string(plain))
 	if err != nil {
 		return err
 	}
@@ -848,7 +962,7 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 	destination.NumericID = current.DestinationID
 	destination.RepositoryID = current.RepositoryID
 	_, err = lease.Module.TestConnection(ctx, adapter.ConnectionRequest{
-		Config: adapter.Config{Origin: record.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)},
+		Config: record.Transport().Config(record.Origin), Destination: destination, Access: adapter.Access{Credential: string(plain)},
 		Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, current.EnvironmentID),
 	})
 	return err
@@ -858,6 +972,9 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 // environment move. The current route stays stored for the scrub job; the new
 // route is pending and cannot receive a push until activation tests it.
 func (s *Adapters) applyTargetMove(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity, proof authz.Proof, scope domain.Scope, request UpdateAdapterTargetRequest, current store.AdapterTarget, keepRemote bool, now time.Time) (store.AdapterRouteMoveResult, error) {
+	if err := rejectMoveFlagChanges(current, request.Target); err != nil {
+		return store.AdapterRouteMoveResult{}, err
+	}
 	environments, err := r.Adapters().Environments(ctx, proof, current.AdapterID)
 	if err != nil {
 		return store.AdapterRouteMoveResult{}, err
@@ -870,9 +987,10 @@ func (s *Adapters) applyTargetMove(ctx context.Context, r store.Repos, az *authz
 		Target: store.AdapterTargetMutation{
 			ID: request.TargetID, AdapterID: current.AdapterID, EnvironmentID: request.Target.EnvironmentID,
 			DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner,
-			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment,
+			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment, DestinationScope: request.Target.DestinationScope,
 			Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...), NamePrefix: request.Target.NamePrefix,
-			KeyIDs: append([]string(nil), request.Target.KeyIDs...),
+			KeyIDs:            append([]string(nil), request.Target.KeyIDs...),
+			VariableProtected: request.Target.VariableProtected, VariableHidden: request.Target.VariableHidden, VariableExpand: request.Target.VariableExpand,
 		},
 		ExpectedGeneration: request.ExpectedGeneration, AuthorityPrincipalID: string(caller.Principal),
 		KeepRemote: keepRemote, At: now,
@@ -914,22 +1032,25 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	if scope.Project == "" || scope.Env != "" || adapterID == "" || origin == "" || len(credential) == 0 {
 		return store.AdapterRouteMoveBatch{}, fmt.Errorf("%w: origin move requires adapter, new origin, and new credential", domain.ErrInvalid)
 	}
-	providerName, err := s.providerForAdapter(ctx, actor, scope, adapterID)
+	record, err := s.providerForAdapter(ctx, actor, scope, adapterID)
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
-	provider, err := adapter.ParseProvider(providerName)
+	provider, err := adapter.ParseProvider(record.Provider)
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
 	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
-	lease, err := s.buildModule(provider, origin, string(plain))
+	// The stored transport policy (GitLab pin and trust bundle) moves with the
+	// adapter; the new origin must present the pinned key.
+	config := record.Transport().Config(origin)
+	lease, err := s.buildModule(provider, config, string(plain))
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
 	defer lease.Release()
-	if err := lease.Module.ValidateConfig(adapter.Config{Origin: origin}); err != nil {
+	if err := lease.Module.ValidateConfig(config); err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterConfigure, scope)
@@ -1085,10 +1206,25 @@ func (s *Adapters) ResumeTargetMove(ctx context.Context, actor Actor, scope doma
 		if err := s.requireAdapterCeremony(ctx, az, caller, scope, adapterEnvironmentSet(environments), authz.OpAdapterConfigure, now); err != nil {
 			return err
 		}
+		current, err := r.Adapters().Target(ctx, proof, request.TargetID)
+		if err != nil {
+			return err
+		}
+		resolveTargetFlags(current, &request)
+		if err := rejectMoveFlagChanges(current, request.Target); err != nil {
+			return err
+		}
+		if request.Target.DestinationScope == "" {
+			request.Target.DestinationScope = move.Targets[0].DestinationScope
+		}
 		out, err = r.Adapters().ReplaceMoveTarget(ctx, proof, moveID, store.AdapterTargetMutation{
 			ID: request.TargetID, AdapterID: move.AdapterID, EnvironmentID: request.Target.EnvironmentID,
 			DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner,
-			DestinationName: request.Target.DestinationName, NamePrefix: request.Target.NamePrefix,
+			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment,
+			DestinationScope: request.Target.DestinationScope, RepositoryID: move.Targets[0].RepositoryID,
+			Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...),
+			NamePrefix:        request.Target.NamePrefix,
+			VariableProtected: request.Target.VariableProtected, VariableHidden: request.Target.VariableHidden, VariableExpand: request.Target.VariableExpand,
 			KeyIDs: append([]string(nil), request.Target.KeyIDs...),
 		}, string(caller.Principal), now)
 		if err != nil {
@@ -1109,22 +1245,23 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 	if scope.Project == "" || scope.Env != "" || moveID == "" || origin == "" || len(credential) == 0 {
 		return store.AdapterMove{}, fmt.Errorf("%w: pending origin replacement requires project, move, origin, and credential", domain.ErrInvalid)
 	}
-	providerName, err := s.providerForMove(ctx, actor, scope, moveID)
+	record, err := s.providerForMove(ctx, actor, scope, moveID)
 	if err != nil {
 		return store.AdapterMove{}, err
 	}
-	provider, err := adapter.ParseProvider(providerName)
+	provider, err := adapter.ParseProvider(record.Provider)
 	if err != nil {
 		return store.AdapterMove{}, err
 	}
 	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
-	lease, err := s.buildModule(provider, origin, string(plain))
+	config := record.Transport().Config(origin)
+	lease, err := s.buildModule(provider, config, string(plain))
 	if err != nil {
 		return store.AdapterMove{}, err
 	}
 	defer lease.Release()
-	if err := lease.Module.ValidateConfig(adapter.Config{Origin: origin}); err != nil {
+	if err := lease.Module.ValidateConfig(config); err != nil {
 		return store.AdapterMove{}, err
 	}
 	now := store.CanonTime(s.now())
@@ -1368,13 +1505,13 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 		return adapter.Connection{}, err
 	}
 	defer crypto.Zero(credential)
-	lease, err := s.buildModule(provider, material.Target.Origin, string(credential))
+	lease, err := s.buildModule(provider, material.Transport.Config(material.Target.Origin), string(credential))
 	if err != nil {
 		return adapter.Connection{}, err
 	}
 	defer lease.Release()
 	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{
-		Config: adapter.Config{Origin: material.Target.Origin}, Destination: adapterTarget(material.Target).Destination,
+		Config: material.Transport.Config(material.Target.Origin), Destination: adapterTarget(material.Target).Destination,
 		Access: adapter.Access{Credential: string(credential)}, Gate: s.gate(actor, authz.OpAdapterTest, scope),
 	})
 	if err != nil {
@@ -1514,19 +1651,19 @@ func (s *Adapters) RevokeCredential(ctx context.Context, actor Actor, scope doma
 	})
 }
 
-func (s *Adapters) buildModule(provider adapter.Provider, origin, credential string) (*adapter.ModuleLease, error) {
+func (s *Adapters) buildModule(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 	if s.ModuleFactory == nil {
 		return nil, errors.New("service: adapter module factory is not configured")
 	}
-	return s.ModuleFactory(provider, adapter.Config{Origin: origin}, credential)
+	return s.ModuleFactory(provider, config, credential)
 }
 
 // providerFor authorizes OpAdapterConfigure on scope, resolves the adapter id
 // via adapterID (which may run its own lookups under the same proof), and
 // returns that adapter's provider name. It is the shared body of
 // providerForAdapter and providerForMove.
-func (s *Adapters) providerFor(ctx context.Context, actor Actor, scope domain.Scope, adapterID func(context.Context, store.ReadRepos, authz.Proof) (string, error)) (string, error) {
-	var provider string
+func (s *Adapters) providerFor(ctx context.Context, actor Actor, scope domain.Scope, adapterID func(context.Context, store.ReadRepos, authz.Proof) (string, error)) (store.AdapterRecord, error) {
+	var provider store.AdapterRecord
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
@@ -1540,19 +1677,19 @@ func (s *Adapters) providerFor(ctx context.Context, actor Actor, scope domain.Sc
 		if err != nil {
 			return err
 		}
-		provider = record.Provider
+		provider = record
 		return nil
 	})
 	return provider, err
 }
 
-func (s *Adapters) providerForAdapter(ctx context.Context, actor Actor, scope domain.Scope, adapterID string) (string, error) {
+func (s *Adapters) providerForAdapter(ctx context.Context, actor Actor, scope domain.Scope, adapterID string) (store.AdapterRecord, error) {
 	return s.providerFor(ctx, actor, scope, func(context.Context, store.ReadRepos, authz.Proof) (string, error) {
 		return adapterID, nil
 	})
 }
 
-func (s *Adapters) providerForMove(ctx context.Context, actor Actor, scope domain.Scope, moveID string) (string, error) {
+func (s *Adapters) providerForMove(ctx context.Context, actor Actor, scope domain.Scope, moveID string) (store.AdapterRecord, error) {
 	return s.providerFor(ctx, actor, scope, func(ctx context.Context, r store.ReadRepos, proof authz.Proof) (string, error) {
 		move, err := r.Adapters().Move(ctx, proof, moveID)
 		if err != nil {
@@ -1565,7 +1702,8 @@ func (s *Adapters) providerForMove(ctx context.Context, actor Actor, scope domai
 func adapterTarget(target store.AdapterTarget) adapter.Target {
 	return adapter.Target{
 		ID: target.ID, Environment: target.EnvironmentID, NamePrefix: target.NamePrefix, Generation: target.Generation,
-		Destination: adapter.Destination{Kind: adapter.DestinationKind(target.DestinationKind), Owner: target.DestinationOwner, Name: target.DestinationName, Environment: target.DestinationEnvironment, NumericID: target.DestinationID, RepositoryID: target.RepositoryID, Visibility: target.Visibility, SelectedRepositoryIDs: append([]int64(nil), target.SelectedRepositoryIDs...)},
+		Destination: adapter.Destination{Kind: adapter.DestinationKind(target.DestinationKind), Owner: target.DestinationOwner, Name: target.DestinationName, Environment: target.DestinationEnvironment, NumericID: target.DestinationID, RepositoryID: target.RepositoryID, Visibility: target.Visibility, SelectedRepositoryIDs: append([]int64(nil), target.SelectedRepositoryIDs...), Scope: target.DestinationScope},
+		Options:     adapter.VariableOptions{Protected: target.VariableProtected, Hidden: target.VariableHidden, Expand: target.VariableExpand},
 	}
 }
 
@@ -1601,12 +1739,12 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 		return AdapterPlanResult{}, err
 	}
 	defer crypto.Zero(credential)
-	lease, err := s.buildModule(provider, material.Target.Origin, string(credential))
+	lease, err := s.buildModule(provider, material.Transport.Config(material.Target.Origin), string(credential))
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}
 	defer lease.Release()
-	plan, err := lease.Module.Plan(ctx, adapter.PlanRequest{Config: adapter.Config{Origin: material.Target.Origin}, Target: adapterTarget(material.Target), Manifest: material.Manifest, Ledger: material.Ledger, Gate: s.gate(actor, authz.OpAdapterPlan, scope)})
+	plan, err := lease.Module.Plan(ctx, adapter.PlanRequest{Config: material.Transport.Config(material.Target.Origin), Target: adapterTarget(material.Target), Manifest: material.Manifest, Ledger: material.Ledger, Gate: s.gate(actor, authz.OpAdapterPlan, scope)})
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}

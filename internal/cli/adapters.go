@@ -180,6 +180,29 @@ func (s *adapterKeySelection) flags(fs *flag.FlagSet) {
 	fs.StringVar(&s.classification, "classification", "", "keep only secret or config keys from the pattern selection")
 }
 
+// gitLabTargetFlags are the GitLab-only target options (#159).
+type gitLabTargetFlags struct {
+	scope                     string
+	protected, hidden, expand bool
+}
+
+func (g *gitLabTargetFlags) flags(fs *flag.FlagSet) {
+	fs.StringVar(&g.scope, "scope", "", "GitLab environment scope (default *; immutable once the target exists)")
+	fs.BoolVar(&g.protected, "protected", false, "GitLab: deliver variables as protected (protected branches and tags only)")
+	fs.BoolVar(&g.hidden, "hidden", false, "GitLab >= 17.4: create secret-classified variables masked and hidden")
+	fs.BoolVar(&g.expand, "expand-variables", false, "GitLab: allow $VAR expansion in values (default: raw, byte-exact)")
+}
+
+func (g gitLabTargetFlags) set() bool { return g.scope != "" || g.protected || g.hidden || g.expand }
+
+// gitLabMode reports whether target flags address a GitLab adapter: the
+// provider says so, a GitLab destination kind is named, or a GitLab-only
+// option is set. GitLab projects and groups are stored as the repository and
+// organization destination kinds.
+func gitLabMode(provider, kind string, g gitLabTargetFlags) bool {
+	return provider == "gitlab" || kind == "project" || kind == "group" || g.set()
+}
+
 // adapterProvider reads the adapter's provider so target validation matches the
 // routing shape that provider accepts.
 func adapterProvider(ctx context.Context, client *Client, base, adapterID string) (string, error) {
@@ -193,10 +216,16 @@ func adapterProvider(ctx context.Context, client *Client, base, adapterID string
 // adapterTargetInput validates target routing for the adapter's provider. A
 // sealed-webhook target routes to a receiver namespace only: --kind
 // organization with --owner, and no repository, environment, or visibility.
-func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, aws adapterAWSDestination) (apigen.AdapterTargetInput, error) {
+func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, aws adapterAWSDestination, gitlab *gitLabTargetFlags) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
 	if env == "" || kind == "" || owner == "" || (len(ids) == 0 && selection.empty()) {
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and keys via --keys, --names, --include, or --classification")
+	}
+	if gitlab != nil {
+		if aws.secret != "" || aws.kmsKey != "" {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "GitLab targets refuse AWS routing flags")
+		}
+		return gitLabTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, ids, selection, *gitlab)
 	}
 	repositoryIDs, err := splitAdapterRepositoryIDs(selectedRepositories)
 	if err != nil {
@@ -251,6 +280,38 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--secret and --kms-key apply only to json-object and per-key targets")
 	}
 	out := apigen.AdapterTargetInput{EnvironmentId: apigen.ID(env), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: owner, DestinationName: repo, DestinationEnvironment: destinationEnvironment, Visibility: apigen.AdapterTargetInputVisibility(visibility), SelectedRepositoryIds: repositoryIDs, NamePrefix: prefix, KeyIds: []apigen.ID{}, KeySelection: selection.body()}
+	for _, id := range ids {
+		out.KeyIds = append(out.KeyIds, apigen.ID(id))
+	}
+	return out, nil
+}
+
+func gitLabTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix string, ids []string, selection adapterKeySelection, g gitLabTargetFlags) (apigen.AdapterTargetInput, error) {
+	if destinationEnvironment != "" || visibility != "" || selectedRepositories != "" {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "GitLab targets refuse GitHub routing flags; use --scope for the environment scope")
+	}
+	var destinationKind apigen.AdapterDestinationKind
+	switch kind {
+	case "project", "repository":
+		if repo == "" {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "GitLab project target requires --owner NAMESPACE and --repo PROJECT")
+		}
+		destinationKind = apigen.AdapterDestinationKind("repository")
+	case "group", "organization":
+		if repo != "" {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "GitLab group target takes only --owner GROUP/PATH")
+		}
+		destinationKind = apigen.AdapterDestinationKind("organization")
+	default:
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "GitLab --kind must be project or group")
+	}
+	scope := g.scope
+	out := apigen.AdapterTargetInput{
+		EnvironmentId: apigen.ID(env), DestinationKind: destinationKind, DestinationOwner: owner, DestinationName: repo,
+		Visibility: apigen.AdapterTargetInputVisibility(""), SelectedRepositoryIds: []int64{}, NamePrefix: prefix,
+		KeyIds: []apigen.ID{}, KeySelection: selection.body(),
+		DestinationScope: &scope, VariableProtected: &g.protected, VariableHidden: &g.hidden, VariableExpand: &g.expand,
+	}
 	for _, id := range ids {
 		out.KeyIds = append(out.KeyIds, apigen.ID(id))
 	}
@@ -362,19 +423,26 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return runAdapterAction(ctx, ios, sub, rest)
 	}
 	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, mount, kvPath string
-	var keepRemote, cancelMove, allowEnvironmentCreate bool
+	var keepRemote, cancelMove, allowEnvironmentCreate, allowPersonalToken bool
 	var source adapterCredentialSource
 	var selection adapterKeySelection
 	var awsDestination adapterAWSDestination
 	var awsAuth adapterAWSAuth
+	var spkiPin, caBundleFile string
+	var gitlab gitLabTargetFlags
+	var targetFlagSet *flag.FlagSet
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
+		targetFlagSet = fs
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, https://api.cloudflare.com, AWS Secrets Manager endpoint, or Vault/OpenBao address with optional /namespace")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, https://api.cloudflare.com, AWS Secrets Manager endpoint, GitLab base URL, or Vault/OpenBao address with optional /namespace")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, aws-secrets-manager, or gitlab")
+			fs.StringVar(&spkiPin, "spki-pin", "", "GitLab: base64(sha256(SubjectPublicKeyInfo)) the server must present")
+			fs.StringVar(&caBundleFile, "ca-bundle-file", "", "GitLab: PEM file of extra trust anchors for a self-hosted instance")
+			fs.BoolVar(&allowPersonalToken, "allow-personal-token", false, "GitLab: accept a personal access token, which can act as its owner everywhere they have access (refused by default)")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -382,10 +450,10 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&cancelMove, "cancel-move", false, "cancel the move and reconverge the old route")
 		}
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, or per-key")
-			fs.StringVar(&owner, "owner", "", "provider owner, organization, or AWS account id (sealed-webhook: receiver namespace)")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, per-key, project, or group")
+			fs.StringVar(&owner, "owner", "", "provider owner, GitLab namespace or group path, organization, or AWS account id (sealed-webhook: receiver namespace)")
 			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
-			fs.StringVar(&repo, "repo", "", "provider repository")
+			fs.StringVar(&repo, "repo", "", "provider repository or GitLab project path")
 			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
 			fs.StringVar(&kvPath, "path", "", "Vault/OpenBao KV path prefix under the mount (vault-kv)")
 			fs.StringVar(&repo, "script", "", "Cloudflare Workers script name (alias of --repo)")
@@ -396,6 +464,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&prefix, "prefix", "", "structural name prefix")
 			fs.StringVar(&keys, "keys", "", "comma-separated immutable key ids")
 			selection.flags(fs)
+			gitlab.flags(fs)
 			awsDestination.flags(fs)
 		}
 		if sub == "create" || sub == "update" {
@@ -437,7 +506,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return failf(ExitUsage, "vault-kv targets take --mount and --path")
 	}
 	if sub == "update" {
-		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != "" || awsDestination.secret != "" || awsDestination.kmsKey != ""
+		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != "" || gitlab.set() || awsDestination.secret != "" || awsDestination.kmsKey != ""
 		credentialFields := source.stdin || source.file != "" || awsAuth.set()
 		if cancelMove {
 			if moveID == "" || target != "" || origin != "" || targetFields || credentialFields || keepRemote {
@@ -499,7 +568,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
 		if _, err := adapter.ParseProvider(provider); err != nil {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, gitlab, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
 		}
 		awsKind := kind == "json-object" || kind == "per-key"
 		if (provider == string(adapter.AWSSecretsManagerProvider)) != awsKind {
@@ -511,13 +580,28 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if cloudflareKind := kind == "workers-script" || kind == "pages-project"; cloudflareKind != (provider == "cloudflare") {
 			return failf(ExitUsage, "--provider cloudflare takes exactly --kind workers-script or pages-project")
 		}
+		if provider != "gitlab" && (spkiPin != "" || caBundleFile != "" || allowPersonalToken || gitlab.set()) {
+			return failf(ExitUsage, "--spki-pin, --ca-bundle-file, --allow-personal-token, --scope, --protected, --hidden, and --expand-variables require --provider gitlab")
+		}
 		envID, err := resolved.Require(DimEnv)
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
+		var gitlabInput *gitLabTargetFlags
+		if provider == "gitlab" {
+			gitlabInput = &gitlab
+		}
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination, gitlabInput)
 		if err != nil {
 			return err
+		}
+		var caBundle string
+		if caBundleFile != "" {
+			raw, err := os.ReadFile(caBundleFile)
+			if err != nil {
+				return failf(ExitUsage, "--ca-bundle-file: %v", err)
+			}
+			caBundle = string(raw)
 		}
 		if allowEnvironmentCreate && (provider != "github-actions" || kind != "environment") {
 			return failf(ExitUsage, "--create-environment requires a GitHub environment target")
@@ -532,7 +616,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		defer zeroBytes(credential)
 		var out apigen.Adapter
-		if err := client.Do(ctx, http.MethodPost, base+"/adapters", apigen.CreateAdapterRequest{Provider: apigen.AdapterProvider(provider), Origin: origin, Credential: string(credential), Target: input}, &out); err != nil {
+		request := apigen.CreateAdapterRequest{Provider: apigen.AdapterProvider(provider), Origin: origin, Credential: string(credential), Target: input}
+		if provider == "gitlab" {
+			request.SpkiPin, request.CaBundle, request.AllowPersonalToken = &spkiPin, &caBundle, &allowPersonalToken
+		}
+		if err := client.Do(ctx, http.MethodPost, base+"/adapters", request, &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, adapterListTable(apigen.AdapterList{Items: []apigen.Adapter{out}}))
@@ -589,7 +677,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
+		var gitlabInput *gitLabTargetFlags
+		if gitLabMode(provider, kind, gitlab) {
+			gitlabInput = &gitlab
+		}
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination, gitlabInput)
 		if err != nil {
 			return err
 		}
@@ -611,6 +703,30 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			if input.EnvironmentId != current.Target.EnvironmentId {
 				return failf(ExitRefused, "target environment is immutable; remove and add the target")
 			}
+			gitLabTarget := current.Target.DestinationScope != nil && *current.Target.DestinationScope != ""
+			if gitLabTarget && gitlabInput == nil {
+				// A GitLab target is updated with GitLab semantics even when
+				// named by its stored kind (repository or organization).
+				if input, err = adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination, &gitlab); err != nil {
+					return err
+				}
+			}
+			if gitLabTarget {
+				specified := map[string]bool{}
+				targetFlagSet.Visit(func(f *flag.Flag) { specified[f.Name] = true })
+				if !specified["protected"] {
+					input.VariableProtected = current.Target.VariableProtected
+				}
+				if !specified["hidden"] {
+					input.VariableHidden = current.Target.VariableHidden
+				}
+				if !specified["expand-variables"] {
+					input.VariableExpand = current.Target.VariableExpand
+				}
+				if !specified["scope"] {
+					input.DestinationScope = current.Target.DestinationScope
+				}
+			}
 			existing := make([]string, 0, len(current.Mapping))
 			for _, mapping := range current.Mapping {
 				existing = append(existing, string(mapping.KeyId))
@@ -623,7 +739,9 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 				}
 			}
 			destinationChanged := input.DestinationKind != current.Target.DestinationKind || input.DestinationOwner != current.Target.DestinationOwner || input.DestinationName != current.Target.DestinationName || input.DestinationEnvironment != current.Target.DestinationEnvironment
-			full := destinationChanged || input.NamePrefix != current.Target.NamePrefix || widened || adapter.RecipientSetNeedsCeremony(string(current.Target.Visibility), current.Target.SelectedRepositoryIds, string(input.Visibility), input.SelectedRepositoryIds)
+			unprotected := current.Target.VariableProtected != nil && *current.Target.VariableProtected && (input.VariableProtected == nil || !*input.VariableProtected)
+			unhidden := current.Target.VariableHidden != nil && *current.Target.VariableHidden && (input.VariableHidden == nil || !*input.VariableHidden)
+			full := destinationChanged || unprotected || unhidden || input.NamePrefix != current.Target.NamePrefix || widened || adapter.RecipientSetNeedsCeremony(string(current.Target.Visibility), current.Target.SelectedRepositoryIds, string(input.Visibility), input.SelectedRepositoryIds)
 			if full {
 				if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure"); err != nil {
 					return err
@@ -633,7 +751,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 				return failf(ExitUsage, "--keep-remote applies only to a destination move")
 			}
 			path = base + "/adapter-targets/" + url.PathEscape(target)
-			body = apigen.UpdateAdapterTargetRequest{EnvironmentId: input.EnvironmentId, DestinationKind: input.DestinationKind, DestinationOwner: input.DestinationOwner, DestinationName: input.DestinationName, DestinationEnvironment: input.DestinationEnvironment, Visibility: apigen.UpdateAdapterTargetRequestVisibility(input.Visibility), SelectedRepositoryIds: input.SelectedRepositoryIds, NamePrefix: input.NamePrefix, KeyIds: input.KeyIds, ExpectedGeneration: current.Target.Generation, KeepRemote: &keepRemote}
+			body = apigen.UpdateAdapterTargetRequest{EnvironmentId: input.EnvironmentId, DestinationKind: input.DestinationKind, DestinationOwner: input.DestinationOwner, DestinationName: input.DestinationName, DestinationEnvironment: input.DestinationEnvironment, Visibility: apigen.UpdateAdapterTargetRequestVisibility(input.Visibility), SelectedRepositoryIds: input.SelectedRepositoryIds, NamePrefix: input.NamePrefix, KeyIds: input.KeyIds, ExpectedGeneration: current.Target.Generation, KeepRemote: &keepRemote, DestinationScope: input.DestinationScope, VariableProtected: input.VariableProtected, VariableHidden: input.VariableHidden, VariableExpand: input.VariableExpand}
 			var response []byte
 			if err := client.Do(ctx, http.MethodPatch, path, body, &response); err != nil {
 				return err
@@ -741,6 +859,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat, mount, kvPath string
 	var keep, allowEnvironmentCreate bool
 	var selection adapterKeySelection
+	var gitlab gitLabTargetFlags
 	var awsDestination adapterAWSDestination
 	st, flags, err := parseCommon("adapter target "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&adapterID, "adapter", "", "adapter id")
@@ -750,10 +869,10 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "add" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, or per-key")
-			fs.StringVar(&owner, "owner", "", "provider owner, organization, or AWS account id (sealed-webhook: receiver namespace)")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, pages-project, json-object, per-key, project, or group")
+			fs.StringVar(&owner, "owner", "", "provider owner, GitLab namespace or group path, organization, or AWS account id (sealed-webhook: receiver namespace)")
 			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
-			fs.StringVar(&repo, "repo", "", "provider repository")
+			fs.StringVar(&repo, "repo", "", "provider repository or GitLab project path")
 			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
 			fs.StringVar(&kvPath, "path", "", "Vault/OpenBao KV path prefix under the mount (vault-kv)")
 			fs.StringVar(&repo, "script", "", "Cloudflare Workers script name (alias of --repo)")
@@ -764,6 +883,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&prefix, "prefix", "", "structural prefix")
 			fs.StringVar(&keys, "keys", "", "comma-separated key ids")
 			selection.flags(fs)
+			gitlab.flags(fs)
 			awsDestination.flags(fs)
 		}
 		if sub == "remove" {
@@ -822,7 +942,11 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure", envID); err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
+		var gitlabInput *gitLabTargetFlags
+		if gitLabMode(provider, kind, gitlab) {
+			gitlabInput = &gitlab
+		}
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination, gitlabInput)
 		if err != nil {
 			return err
 		}

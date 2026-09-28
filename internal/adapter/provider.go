@@ -15,9 +15,10 @@ const (
 	CloudflareProvider        Provider = "cloudflare"
 	VaultKVProvider           Provider = "vault-kv"
 	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
+	GitLabProvider            Provider = "gitlab"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {

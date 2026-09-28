@@ -299,7 +299,7 @@ func TestAdapterCreateRejectsUnknownProviderBeforeCredentialUse(t *testing.T) {
 		return adapter.NewModuleLease(fakeAdapterPlanModule{}, nil)
 	}}
 	_, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
-		Provider: "gitlab", Origin: "https://gitlab.example", Credential: []byte("provider-token"),
+		Provider: "bitbucket", Origin: "https://bitbucket.example", Credential: []byte("provider-token"),
 		Target: AdapterTargetInput{EnvironmentID: "env_one", KeyIDs: []string{"key_one"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "unknown provider") {

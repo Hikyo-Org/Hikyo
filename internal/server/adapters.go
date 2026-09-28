@@ -30,7 +30,7 @@ func targetInput(in apigen.AdapterTargetInput) service.AdapterTargetInput {
 	for i := range in.KeyIds {
 		keys[i] = string(in.KeyIds[i])
 	}
-	return service.AdapterTargetInput{AllowEnvironmentCreate: derefBool(in.AllowEnvironmentCreate), EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys, KeySelection: keySelection(in.KeySelection)}
+	return service.AdapterTargetInput{AllowEnvironmentCreate: derefBool(in.AllowEnvironmentCreate), EnvironmentID: string(in.EnvironmentId), DestinationKind: string(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment, Visibility: string(in.Visibility), SelectedRepositoryIDs: append([]int64(nil), in.SelectedRepositoryIds...), NamePrefix: in.NamePrefix, KeyIDs: keys, KeySelection: keySelection(in.KeySelection), DestinationScope: deref(in.DestinationScope), VariableProtected: derefBool(in.VariableProtected), VariableHidden: derefBool(in.VariableHidden), VariableExpand: derefBool(in.VariableExpand)}
 }
 
 func keySelection(in *apigen.AdapterKeySelection) *service.AdapterKeySelection {
@@ -83,6 +83,7 @@ func adapterTargetResponse(in service.AdapterTarget, conflicts ...service.Adapte
 		DestinationKind: apigen.AdapterDestinationKind(in.DestinationKind), DestinationOwner: in.DestinationOwner, DestinationName: in.DestinationName, DestinationEnvironment: in.DestinationEnvironment,
 		DestinationId: in.DestinationID, RepositoryId: in.RepositoryID, Visibility: apigen.AdapterTargetVisibility(in.Visibility), SelectedRepositoryIds: int64List(in.SelectedRepositoryIDs),
 		NamePrefix: in.NamePrefix, Generation: in.Generation, State: apigen.AdapterTargetState(in.State),
+		DestinationScope: &in.DestinationScope, VariableProtected: &in.VariableProtected, VariableHidden: &in.VariableHidden, VariableExpand: &in.VariableExpand,
 		// The contract's sync_status is the derived operator health, never
 		// the stored outcome column (#157).
 		SyncStatus:            apigen.AdapterTargetSyncStatus(in.Health()),
@@ -126,7 +127,7 @@ func adapterResponse(in service.AdapterView) (apigen.Adapter, error) {
 		}
 		credentialExpires = &parsed
 	}
-	return apigen.Adapter{Id: apigen.ID(in.Adapter.ID), Provider: apigen.AdapterProvider(in.Adapter.Provider), Origin: in.Adapter.Origin, CredentialPresent: in.Adapter.CredentialPresent, CredentialSetAt: credentialSet, CredentialExpiresAt: credentialExpires, AuthorityPrincipalId: apigen.ID(in.Adapter.AuthorityPrincipalID), State: apigen.AdapterState(in.Adapter.State), CreatedAt: created, Targets: targets}, nil
+	return apigen.Adapter{Id: apigen.ID(in.Adapter.ID), Provider: apigen.AdapterProvider(in.Adapter.Provider), Origin: in.Adapter.Origin, CredentialPresent: in.Adapter.CredentialPresent, CredentialSetAt: credentialSet, CredentialExpiresAt: credentialExpires, AuthorityPrincipalId: apigen.ID(in.Adapter.AuthorityPrincipalID), State: apigen.AdapterState(in.Adapter.State), CreatedAt: created, Targets: targets, SpkiPin: &in.Adapter.SPKIPin, CaBundlePresent: new(in.Adapter.CABundlePEM != ""), AllowPersonalToken: &in.Adapter.AllowPersonalToken}, nil
 }
 
 func teardownResponse(in service.AdapterTeardownResult) apigen.AdapterTeardown {
@@ -146,7 +147,7 @@ func adapterMoveResponse(in service.AdapterMove) (apigen.AdapterMove, error) {
 	}
 	out := apigen.AdapterMove{Id: apigen.ID(in.ID), AdapterId: apigen.ID(in.AdapterID), Kind: apigen.AdapterMoveKind(in.Kind), State: apigen.AdapterMoveState(in.State), KeepRemote: in.KeepRemote, PendingOrigin: in.PendingOrigin, CreatedAt: created, Targets: []apigen.AdapterMoveTarget{}}
 	for _, target := range in.Targets {
-		row := apigen.AdapterMoveTarget{TargetId: apigen.ID(target.TargetID), EnvironmentId: apigen.ID(target.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(target.DestinationKind), DestinationOwner: target.DestinationOwner, DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationId: target.DestinationID, RepositoryId: target.RepositoryID, Visibility: apigen.AdapterMoveTargetVisibility(target.Visibility), SelectedRepositoryIds: int64List(target.SelectedRepositoryIDs), NamePrefix: target.NamePrefix, OrphanedNames: append([]string{}, target.Orphaned...), Jobs: []apigen.AdapterMoveJob{}}
+		row := apigen.AdapterMoveTarget{TargetId: apigen.ID(target.TargetID), EnvironmentId: apigen.ID(target.EnvironmentID), DestinationKind: apigen.AdapterDestinationKind(target.DestinationKind), DestinationOwner: target.DestinationOwner, DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationScope: target.DestinationScope, DestinationId: target.DestinationID, RepositoryId: target.RepositoryID, Visibility: apigen.AdapterMoveTargetVisibility(target.Visibility), SelectedRepositoryIds: int64List(target.SelectedRepositoryIDs), NamePrefix: target.NamePrefix, OrphanedNames: append([]string{}, target.Orphaned...), Jobs: []apigen.AdapterMoveJob{}}
 		for _, job := range target.Jobs {
 			row.Jobs = append(row.Jobs, apigen.AdapterMoveJob{Id: apigen.ID(job.ID), TargetId: apigen.ID(job.TargetID), Kind: apigen.AdapterMoveJobKind(job.Kind), State: apigen.AdapterMoveJobState(job.State)})
 		}
@@ -172,7 +173,7 @@ func (a *API) ListAdapters(ctx context.Context, req apigen.ListAdaptersRequestOb
 }
 
 func (a *API) CreateAdapter(ctx context.Context, req apigen.CreateAdapterRequestObject) (apigen.CreateAdapterResponseObject, error) {
-	view, err := a.Adapters.Create(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), service.CreateAdapterRequest{Provider: string(req.Body.Provider), Origin: req.Body.Origin, Credential: []byte(req.Body.Credential), Target: targetInput(req.Body.Target)})
+	view, err := a.Adapters.Create(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), service.CreateAdapterRequest{Provider: string(req.Body.Provider), Origin: req.Body.Origin, Credential: []byte(req.Body.Credential), Target: targetInput(req.Body.Target), SPKIPin: deref(req.Body.SpkiPin), CABundlePEM: deref(req.Body.CaBundle), AllowPersonalToken: derefBool(req.Body.AllowPersonalToken)})
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +265,7 @@ func (a *API) ResumeAdapterMove(ctx context.Context, req apigen.ResumeAdapterMov
 		for _, id := range target.KeyIds {
 			input.KeyIDs = append(input.KeyIDs, string(id))
 		}
-		move, err = a.Adapters.ResumeTargetMove(ctx, service.Bearer(bearer(ctx)), scope, string(req.Move), service.UpdateAdapterTargetRequest{TargetID: string(target.TargetId), Target: input})
+		move, err = a.Adapters.ResumeTargetMove(ctx, service.Bearer(bearer(ctx)), scope, string(req.Move), service.UpdateAdapterTargetRequest{TargetID: string(target.TargetId), Target: input, Flags: &service.AdapterTargetFlagPatch{}})
 	}
 	if err != nil {
 		return nil, err
@@ -356,11 +357,11 @@ type targetMutationService interface {
 }
 
 func updateAdapterTarget(ctx context.Context, adapters targetMutationService, req apigen.UpdateAdapterTargetRequestObject) (apigen.UpdateAdapterTargetResponseObject, error) {
-	input := service.AdapterTargetInput{EnvironmentID: string(req.Body.EnvironmentId), DestinationKind: string(req.Body.DestinationKind), DestinationOwner: req.Body.DestinationOwner, DestinationName: req.Body.DestinationName, DestinationEnvironment: req.Body.DestinationEnvironment, Visibility: string(req.Body.Visibility), SelectedRepositoryIDs: append([]int64(nil), req.Body.SelectedRepositoryIds...), NamePrefix: req.Body.NamePrefix, KeySelection: keySelection(req.Body.KeySelection)}
+	input := service.AdapterTargetInput{EnvironmentID: string(req.Body.EnvironmentId), DestinationKind: string(req.Body.DestinationKind), DestinationOwner: req.Body.DestinationOwner, DestinationName: req.Body.DestinationName, DestinationEnvironment: req.Body.DestinationEnvironment, Visibility: string(req.Body.Visibility), SelectedRepositoryIDs: append([]int64(nil), req.Body.SelectedRepositoryIds...), NamePrefix: req.Body.NamePrefix, KeySelection: keySelection(req.Body.KeySelection), DestinationScope: deref(req.Body.DestinationScope), VariableProtected: derefBool(req.Body.VariableProtected), VariableHidden: derefBool(req.Body.VariableHidden), VariableExpand: derefBool(req.Body.VariableExpand)}
 	for _, id := range req.Body.KeyIds {
 		input.KeyIDs = append(input.KeyIDs, string(id))
 	}
-	request := service.UpdateAdapterTargetRequest{TargetID: string(req.Target), ExpectedGeneration: req.Body.ExpectedGeneration, Target: input}
+	request := service.UpdateAdapterTargetRequest{TargetID: string(req.Target), ExpectedGeneration: req.Body.ExpectedGeneration, Target: input, Flags: &service.AdapterTargetFlagPatch{VariableProtected: req.Body.VariableProtected, VariableHidden: req.Body.VariableHidden, VariableExpand: req.Body.VariableExpand}}
 	result, err := adapters.ApplyTargetMutation(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), request, req.Body.KeepRemote != nil && *req.Body.KeepRemote)
 	if err != nil {
 		return nil, err

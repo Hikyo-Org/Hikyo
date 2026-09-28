@@ -16,9 +16,9 @@ import (
 
 func scanAdapterRecord(row interface{ Scan(...any) error }) (AdapterRecord, error) {
 	var out AdapterRecord
-	var credential int
+	var credential, allowPersonal int
 	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
-	err := row.Scan(&out.ID, &out.Provider, &out.Origin, &credential, &credentialSetAt, &credentialExpiresAt, &out.AuthorityPrincipalID, &out.State, &createdAt)
+	err := row.Scan(&out.ID, &out.Provider, &out.Origin, &credential, &credentialSetAt, &credentialExpiresAt, &out.AuthorityPrincipalID, &out.State, &createdAt, &out.SPKIPin, &out.CABundlePEM, &allowPersonal)
 	if isNoRows(err) {
 		return AdapterRecord{}, ErrNotFound
 	}
@@ -26,13 +26,14 @@ func scanAdapterRecord(row interface{ Scan(...any) error }) (AdapterRecord, erro
 		return AdapterRecord{}, err
 	}
 	out.CredentialPresent = credential == 1
+	out.AllowPersonalToken = allowPersonal == 1
 	out.CredentialSetAt = credentialSetAt.value
 	out.CredentialExpiresAt = credentialExpiresAt.value
 	out.CreatedAt = createdAt.value
 	return out, nil
 }
 
-const adapterRecordColumns = `id,provider,origin,CASE WHEN credential_ciphertext IS NULL THEN 0 ELSE 1 END,credential_set_at,credential_expires_at,authority_principal_id,state,created_at`
+const adapterRecordColumns = `id,provider,origin,CASE WHEN credential_ciphertext IS NULL THEN 0 ELSE 1 END,credential_set_at,credential_expires_at,authority_principal_id,state,created_at,spki_pin,ca_bundle_pem,CASE WHEN allow_personal_token THEN 1 ELSE 0 END`
 
 type adapterStoredTime struct{ value string }
 
@@ -92,11 +93,11 @@ func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapte
 	}
 	var record AdapterRecord
 	var credential []byte
-	var present int
+	var present, allowPersonal int
 	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
 	err = r.db.QueryRow(ctx, r.db.SQLPerEngine(
 		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`,
-		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`), adapterID, chain.Org, chain.Project).Scan(&record.ID, &record.Provider, &record.Origin, &present, &credentialSetAt, &credentialExpiresAt, &record.AuthorityPrincipalID, &record.State, &createdAt, &credential)
+		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`), adapterID, chain.Org, chain.Project).Scan(&record.ID, &record.Provider, &record.Origin, &present, &credentialSetAt, &credentialExpiresAt, &record.AuthorityPrincipalID, &record.State, &createdAt, &record.SPKIPin, &record.CABundlePEM, &allowPersonal, &credential)
 	if isNoRows(err) {
 		return AdapterRecord{}, nil, ErrNotFound
 	}
@@ -104,6 +105,7 @@ func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapte
 		return AdapterRecord{}, nil, err
 	}
 	record.CredentialPresent = present == 1
+	record.AllowPersonalToken = allowPersonal == 1
 	record.CredentialSetAt = credentialSetAt.value
 	record.CredentialExpiresAt = credentialExpiresAt.value
 	record.CreatedAt = createdAt.value
@@ -161,7 +163,7 @@ func collectAdapterTargets(rows adapterTargetRows) ([]AdapterTarget, error) {
 	return out, rows.Err()
 }
 
-const adapterTargetColumns = `t.id,t.adapter_id,t.environment_id,a.provider,a.origin,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,t.state,t.sync_status,t.converged_revision,t.failure_names,t.warnings,a.authority_principal_id,t.paused_at,t.last_attempted_revision,t.last_attempted_at,t.last_error_class,t.drift_attention,COALESCE(j.state,''),j.next_attempt_at,COALESCE(j.attempt_count,0)`
+const adapterTargetColumns = `t.id,t.adapter_id,t.environment_id,a.provider,a.origin,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,t.state,t.sync_status,t.converged_revision,t.failure_names,t.warnings,a.authority_principal_id,t.paused_at,t.last_attempted_revision,t.last_attempted_at,t.last_error_class,t.drift_attention,COALESCE(j.state,''),j.next_attempt_at,COALESCE(j.attempt_count,0),t.destination_scope,CASE WHEN t.variable_protected THEN 1 ELSE 0 END,CASE WHEN t.variable_hidden THEN 1 ELSE 0 END,CASE WHEN t.variable_expand THEN 1 ELSE 0 END`
 
 // adapterTargetFrom is the FROM clause every adapterTargetColumns read uses:
 // the owning adapter for provider/origin/authority, and the target's active
@@ -443,7 +445,7 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
 		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
 		WHERE t.org_id=? AND t.project_id=? AND t.state='active' AND a.state='active'
-		AND a.origin=candidate.origin AND t.destination_kind=? AND t.destination_id=? AND t.id<>?
+		AND a.origin=candidate.origin AND t.destination_kind=? AND t.destination_id=? AND t.destination_scope=? AND t.id<>?
 		ORDER BY t.id,k.name`,
 		`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
 			FROM adapter_targets t
@@ -452,9 +454,9 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 			LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
 			LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
 			WHERE t.org_id=$2 AND t.project_id=$3 AND t.state='active' AND a.state='active'
-			AND a.origin=candidate.origin AND t.destination_kind=$4 AND t.destination_id=$5 AND t.id<>$6
+			AND a.origin=candidate.origin AND t.destination_kind=$4 AND t.destination_id=$5 AND t.destination_scope=$6 AND t.id<>$7
 			ORDER BY t.id,k.name`)
-	rows, err := db.Query(ctx, q, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationID, excludeTargetID)
+	rows, err := db.Query(ctx, q, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationID, m.DestinationScope, excludeTargetID)
 	if err != nil {
 		return err
 	}
@@ -476,9 +478,9 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 		return err
 	}
 	pendingQuery := db.SQL(
-		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
+		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.destination_scope=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
 	)
-	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, excludeTargetID)
+	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationScope, excludeTargetID)
 	if err != nil {
 		return err
 	}
@@ -567,9 +569,9 @@ func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 		return err
 	}
 	q := db.SQL(
-		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'active','never',?)`,
+		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at,destination_scope,variable_protected,variable_hidden,variable_expand) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'active','never',?,?,?,?,?)`,
 	)
-	if _, err := db.Exec(ctx, q, m.ID, chain.Org, chain.Project, m.EnvironmentID, m.AdapterID, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationID, m.RepositoryID, m.Visibility, selected, m.NamePrefix, db.Stamp(at)); err != nil {
+	if _, err := db.Exec(ctx, q, m.ID, chain.Org, chain.Project, m.EnvironmentID, m.AdapterID, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationID, m.RepositoryID, m.Visibility, selected, m.NamePrefix, db.Stamp(at), m.DestinationScope, m.VariableProtected, m.VariableHidden, m.VariableExpand); err != nil {
 		return constraint(err)
 	}
 	for _, keyID := range m.KeyIDs {
@@ -604,16 +606,16 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 		expires = r.db.Stamp(m.CredentialExpiresAt)
 	}
 	if _, err := r.db.Exec(ctx, r.db.SQL(
-		`INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,'active',?)`,
+		`INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at,spki_pin,ca_bundle_pem,allow_personal_token) VALUES (?,?,?,?,?,?,?,?,?,'active',?,?,?,?)`,
 	),
-		m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, stamp, expires, m.AuthorityPrincipalID, stamp); err != nil {
+		m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, stamp, expires, m.AuthorityPrincipalID, stamp, m.SPKIPin, m.CABundlePEM, m.AllowPersonalToken); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, constraint(err)
 	}
 	if err := insertTargetConfig(ctx, r.db, chain, m.Target, at); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
 	atString := at.Format(timeFormat)
-	record := AdapterRecord{ID: m.ID, Provider: m.Provider, Origin: m.Origin, CredentialPresent: true, CredentialSetAt: atString, AuthorityPrincipalID: m.AuthorityPrincipalID, State: "active", CreatedAt: atString}
+	record := AdapterRecord{ID: m.ID, Provider: m.Provider, Origin: m.Origin, CredentialPresent: true, CredentialSetAt: atString, AuthorityPrincipalID: m.AuthorityPrincipalID, State: "active", CreatedAt: atString, SPKIPin: m.SPKIPin, CABundlePEM: m.CABundlePEM, AllowPersonalToken: m.AllowPersonalToken}
 	if !m.CredentialExpiresAt.IsZero() {
 		record.CredentialExpiresAt = CanonTime(m.CredentialExpiresAt).Format(timeFormat)
 	}
@@ -621,7 +623,7 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 }
 
 func mutationTarget(record AdapterRecord, m AdapterTargetMutation, generation int64) AdapterTarget {
-	return AdapterTarget{ID: m.ID, AdapterID: m.AdapterID, Provider: record.Provider, EnvironmentID: m.EnvironmentID, Origin: record.Origin, DestinationKind: m.DestinationKind, DestinationOwner: m.DestinationOwner, DestinationName: m.DestinationName, DestinationEnvironment: m.DestinationEnvironment, DestinationID: m.DestinationID, RepositoryID: m.RepositoryID, Visibility: m.Visibility, SelectedRepositoryIDs: append([]int64(nil), m.SelectedRepositoryIDs...), NamePrefix: m.NamePrefix, Generation: generation, State: "active", SyncStatus: "never", AuthorityPrincipalID: record.AuthorityPrincipalID}
+	return AdapterTarget{ID: m.ID, AdapterID: m.AdapterID, Provider: record.Provider, EnvironmentID: m.EnvironmentID, Origin: record.Origin, DestinationKind: m.DestinationKind, DestinationOwner: m.DestinationOwner, DestinationName: m.DestinationName, DestinationEnvironment: m.DestinationEnvironment, DestinationID: m.DestinationID, RepositoryID: m.RepositoryID, Visibility: m.Visibility, SelectedRepositoryIDs: append([]int64(nil), m.SelectedRepositoryIDs...), NamePrefix: m.NamePrefix, Generation: generation, State: "active", SyncStatus: "never", AuthorityPrincipalID: record.AuthorityPrincipalID, DestinationScope: m.DestinationScope, VariableProtected: m.VariableProtected, VariableHidden: m.VariableHidden, VariableExpand: m.VariableExpand}
 }
 
 func (r adapterQueries) AddTarget(ctx context.Context, p authz.Proof, m AdapterTargetUpdate) (AdapterTargetAddResult, error) {
@@ -776,6 +778,11 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if current.AdapterID != m.Target.AdapterID || current.EnvironmentID != m.Target.EnvironmentID || current.DestinationKind != m.Target.DestinationKind || current.DestinationOwner != m.Target.DestinationOwner || current.DestinationName != m.Target.DestinationName || current.DestinationEnvironment != m.Target.DestinationEnvironment || current.DestinationID != m.Target.DestinationID || current.RepositoryID != m.Target.RepositoryID {
 		return AdapterTargetUpdateResult{}, fmt.Errorf("%w: moving an adapter target requires the scrub transition", domain.ErrConflict)
 	}
+	if current.DestinationScope != m.Target.DestinationScope {
+		// Owned variables are keyed by scope; changing it in place would
+		// orphan them. Remove the target (retain or prune) and add a new one.
+		return AdapterTargetUpdateResult{}, fmt.Errorf("%w: a GitLab environment scope is immutable; remove the target and add a new one", domain.ErrConflict)
+	}
 	var activeJob string
 	activeQuery := db.SQL(
 		`SELECT COALESCE(active_job_id,'') FROM adapter_targets WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
@@ -802,9 +809,9 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 		return AdapterTargetUpdateResult{}, err
 	}
 	q = db.SQL(
-		`UPDATE adapter_targets SET visibility=?,selected_repository_ids=?,name_prefix=? WHERE id=? AND org_id=? AND project_id=? AND generation=? AND state='active' AND provider_lease_job_id IS NULL`,
+		`UPDATE adapter_targets SET visibility=?,selected_repository_ids=?,name_prefix=?,variable_protected=?,variable_hidden=?,variable_expand=? WHERE id=? AND org_id=? AND project_id=? AND generation=? AND state='active' AND provider_lease_job_id IS NULL`,
 	)
-	n, err := db.Exec(ctx, q, m.Target.Visibility, selectedJSON, m.Target.NamePrefix, m.Target.ID, chain.Org, chain.Project, m.ExpectedGeneration)
+	n, err := db.Exec(ctx, q, m.Target.Visibility, selectedJSON, m.Target.NamePrefix, m.Target.VariableProtected, m.Target.VariableHidden, m.Target.VariableExpand, m.Target.ID, chain.Org, chain.Project, m.ExpectedGeneration)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
@@ -825,6 +832,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 		return AdapterTargetUpdateResult{}, errors.Join(err, ErrNotFound)
 	}
 	current.NamePrefix = m.Target.NamePrefix
+	current.VariableProtected, current.VariableHidden, current.VariableExpand = m.Target.VariableProtected, m.Target.VariableHidden, m.Target.VariableExpand
 	current.Visibility = m.Target.Visibility
 	current.SelectedRepositoryIDs = append([]int64(nil), m.Target.SelectedRepositoryIDs...)
 	current.Generation = enqueued[0].Generation

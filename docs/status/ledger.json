@@ -165,7 +165,7 @@
       "kind": "capability",
       "title": "Delivery",
       "status": "implemented",
-      "implemented": "Compose delivery and `hikyo run`, Kubernetes operator/CRDs, Forgejo, GitHub Actions, Cloudflare Workers/Pages, AWS Secrets Manager, and Vault/OpenBao KV v2 adapters with multi-target synchronization and a browser-operated adapter lifecycle, and machine-reveal opt-in",
+      "implemented": "Compose delivery and `hikyo run`, Kubernetes operator/CRDs, Forgejo, GitHub Actions, GitLab CI/CD variables, Cloudflare Workers/Pages, AWS Secrets Manager, and Vault/OpenBao KV v2 adapters with multi-target synchronization and a browser-operated adapter lifecycle, and machine-reveal opt-in",
       "evidence": [
         { "label": "#63 handoff", "path": "docs/handoff/63-compose-delivery.md" },
         { "label": "#64 handoff", "path": "docs/handoff/64-k8s-operator.md" },
@@ -173,6 +173,7 @@
         { "label": "#66 handoff", "path": "docs/handoff/66-github-actions-adapter.md" },
         { "label": "#157 handoff", "path": "docs/handoff/157-multi-target-sync.md" },
         { "label": "#158 handoff", "path": "docs/handoff/158-aws-secrets-manager.md" },
+        { "label": "#159 handoff", "path": "docs/handoff/159-gitlab-adapter.md" },
         { "label": "#162 handoff", "path": "docs/handoff/162-vault-kv-adapter.md" },
         { "label": "#504 handoff", "path": "docs/handoff/504-webui-parity-acceptance.md" },
         { "label": "#161 handoff", "path": "docs/handoff/161-cloudflare-adapter.md" }

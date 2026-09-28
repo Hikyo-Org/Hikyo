@@ -647,13 +647,19 @@ type AdapterTarget struct {
 	Visibility             string
 	SelectedRepositoryIDs  []int64
 	NamePrefix             string
-	Generation             int64
-	State                  string
-	SyncStatus             string
-	ConvergedRevision      *int64
-	FailureNames           []string
-	Warnings               []string
-	AuthorityPrincipalID   string
+	// GitLab only: DestinationScope is the environment_scope and the
+	// Variable* flags are the per-target delivery options (#159).
+	DestinationScope     string
+	VariableProtected    bool
+	VariableHidden       bool
+	VariableExpand       bool
+	Generation           int64
+	State                string
+	SyncStatus           string
+	ConvergedRevision    *int64
+	FailureNames         []string
+	Warnings             []string
+	AuthorityPrincipalID string
 	// Multi-target control and health (#157). PausedAt is non-nil while an
 	// operator has paused the target. LastAttempted* record the most recent
 	// converge attempt whether or not it succeeded; LastErrorClass is the
@@ -722,6 +728,10 @@ type AdapterRecord struct {
 	AuthorityPrincipalID string
 	State                string
 	CreatedAt            string
+	// GitLab egress trust and token policy (#159). Public material only.
+	SPKIPin            string
+	CABundlePEM        string
+	AllowPersonalToken bool
 }
 
 type AdapterTargetMutation struct {
@@ -738,6 +748,10 @@ type AdapterTargetMutation struct {
 	SelectedRepositoryIDs  []int64
 	NamePrefix             string
 	KeyIDs                 []string
+	DestinationScope       string
+	VariableProtected      bool
+	VariableHidden         bool
+	VariableExpand         bool
 }
 
 type AdapterCreate struct {
@@ -749,6 +763,9 @@ type AdapterCreate struct {
 	AuthorityPrincipalID string
 	Target               AdapterTargetMutation
 	At                   time.Time
+	SPKIPin              string
+	CABundlePEM          string
+	AllowPersonalToken   bool
 }
 
 type AdapterConfigureFence struct {
@@ -824,11 +841,11 @@ type AdapterMoveJob struct {
 }
 
 type AdapterMoveTarget struct {
-	TargetID, EnvironmentID, DestinationKind, DestinationOwner, DestinationName, DestinationEnvironment, Visibility, NamePrefix string
-	DestinationID, RepositoryID                                                                                                 int64
-	SelectedRepositoryIDs                                                                                                       []int64
-	Orphaned                                                                                                                    []string
-	Jobs                                                                                                                        []AdapterMoveJob
+	TargetID, EnvironmentID, DestinationKind, DestinationOwner, DestinationName, DestinationEnvironment, DestinationScope, Visibility, NamePrefix string
+	DestinationID, RepositoryID                                                                                                                   int64
+	SelectedRepositoryIDs                                                                                                                         []int64
+	Orphaned                                                                                                                                      []string
+	Jobs                                                                                                                                          []AdapterMoveJob
 }
 
 type AdapterMove struct {
@@ -876,6 +893,7 @@ type AdapterReader interface {
 
 type AdapterPlanMaterial struct {
 	Target               AdapterTarget
+	Transport            AdapterTransport
 	CredentialCiphertext []byte
 	Manifest             []adapter.ManifestEntry
 	Ledger               []adapter.LedgerEntry

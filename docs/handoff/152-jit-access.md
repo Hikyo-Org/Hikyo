@@ -4,7 +4,7 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/152. Builds on the #151
 approval engine's shapes (approver sets, SCIM-group eligibility, reauthentication
 purposes) without sharing its tables.
 
-Spec: `docs/adr/mvp-boundary.md` declared amendment 5 + criterion **C-ACC**;
+Spec: `docs/adr/mvp-boundary.md` declared amendment 7 + criterion **C-ACC**;
 `docs/adr/permission-model.md` amendment banner (time-bound human grants).
 
 ## What shipped

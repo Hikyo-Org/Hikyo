@@ -155,12 +155,17 @@ func TestUpdateAdapterTargetMapsOneIntentToServiceResult(t *testing.T) {
 				DestinationName: "app", Visibility: "", NamePrefix: "PROD_",
 				KeyIds: []apigen.ID{"key_one"}, ExpectedGeneration: 7, KeepRemote: &keepRemote,
 			}
+			disabled := false
+			body.VariableHidden = &disabled
 			stub := &recordingTargetMutationService{result: tt.result}
 			response, err := updateAdapterTarget(withBearer(t.Context(), "bearer"), stub, apigen.UpdateAdapterTargetRequestObject{
 				Org: "org_one", Project: "prj_one", Target: "tgt_one", Body: &body,
 			})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if stub.request.Flags == nil || stub.request.Flags.VariableProtected != nil || stub.request.Flags.VariableHidden == nil || *stub.request.Flags.VariableHidden {
+				t.Fatalf("optional flag presence lost: %+v", stub.request.Flags)
 			}
 			recorder := httptest.NewRecorder()
 			if err := response.VisitUpdateAdapterTargetResponse(recorder); err != nil {
@@ -170,5 +175,15 @@ func TestUpdateAdapterTargetMapsOneIntentToServiceResult(t *testing.T) {
 				t.Fatalf("status=%d request=%+v keep_remote=%v", recorder.Code, stub.request, stub.keepRemote)
 			}
 		})
+	}
+}
+
+func TestAdapterMoveResponsePreservesGitLabScope(t *testing.T) {
+	out, err := adapterMoveResponse(service.AdapterMove{CreatedAt: "2026-08-17T00:00:00Z", Targets: []service.AdapterMoveTarget{{TargetID: "tgt_gitlab", DestinationScope: "production"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Targets) != 1 || out.Targets[0].DestinationScope != "production" {
+		t.Fatalf("move response lost GitLab scope: %+v", out.Targets)
 	}
 }

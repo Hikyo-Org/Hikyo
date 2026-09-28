@@ -5,6 +5,7 @@ import type { AdapterProvider, SamlProviderWarning } from './generated/types.gen
 
 import {
   zAdapterProvider,
+  zUpdateAdapterTargetRequest,
   zDynamicProviderKind,
   zSamlProviderWarning,
   zCreateOrgRequest,
@@ -142,4 +143,11 @@ test('SAML warning preserves an unknown code and its server diagnostic', () => {
 test('dynamic provider kind keeps the closed PostgreSQL-only contract', () => {
   assert.equal(zDynamicProviderKind.parse('postgres'), 'postgres');
   assert.throws(() => zDynamicProviderKind.parse('future-provider'));
+});
+
+test('GitLab update flags preserve omission and explicit false', () => {
+  const schema = zUpdateAdapterTargetRequest.pick({ variable_protected: true, variable_hidden: true, variable_expand: true });
+  assert.deepEqual(schema.parse({}), {});
+  const explicit = { variable_protected: false, variable_hidden: false, variable_expand: false };
+  assert.deepEqual(schema.parse(explicit), explicit);
 });

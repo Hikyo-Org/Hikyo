@@ -40,6 +40,7 @@ for its ripple register.
 | encryption-model ADR | [encryption-model.md](./encryption-model.md) |
 | flat-model ADR | [flat-model.md](./flat-model.md) |
 | github-adapter ADR | [github-adapter.md](./github-adapter.md) |
+| gitlab-adapter ADR | [gitlab-adapter.md](./gitlab-adapter.md) |
 | human-auth ADR | [human-auth.md](./human-auth.md) |
 | import-paths ADR | [import-paths.md](./import-paths.md) |
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |

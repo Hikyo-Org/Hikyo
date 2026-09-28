@@ -4,7 +4,7 @@ Issue: https://github.com/Hikyo-Org/Hikyo/issues/158. Built on the #157
 multi-target seam (targets, outbox, health, pause/resume, retain-or-prune).
 Scope authorization: the maintainer lifted the post-1.0 gate recorded in the
 2026-08-24 spike comment and authorized implementation on 2026-09-26. The ADR
-amendment is declared in `docs/adr/mvp-boundary.md` (declared amendment 5 and
+amendment is declared in `docs/adr/mvp-boundary.md` (declared amendment 8 and
 the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 adversarial cross-model review the amendment procedure requires is still
 pending and should run before merge.

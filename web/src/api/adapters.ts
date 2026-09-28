@@ -54,6 +54,7 @@ export type { AdapterTargetInput };
 /** providerLabel names a provider for display; unknown values pass through. */
 export function providerLabel(provider: string): string {
   switch (provider) {
+    case 'gitlab': return 'GitLab';
     case 'forgejo':
       return 'Forgejo';
     case 'github-actions':
@@ -205,7 +206,7 @@ function useInvalidateAdapters(ref: ProjectRef) {
 }
 
 /** The providers this build can create; responses may name others. */
-export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv' | 'aws-secrets-manager';
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv' | 'aws-secrets-manager' | 'gitlab';
 
 export type CreateAdapterInput = {
   readonly provider: AdapterProviderKind;
@@ -213,6 +214,12 @@ export type CreateAdapterInput = {
   /** Write-only. Held in component state only for the request. */
   readonly credential: string;
   readonly target: AdapterTargetInput;
+  /** GitLab only: public egress trust material and the personal-token opt-in. */
+  readonly gitlab?: {
+    readonly spkiPin: string;
+    readonly caBundle: string;
+    readonly allowPersonalToken: boolean;
+  };
 };
 
 export function useCreateAdapter(ref: ProjectRef) {
@@ -226,6 +233,13 @@ export function useCreateAdapter(ref: ProjectRef) {
           origin: input.origin,
           credential: input.credential,
           target: input.target,
+          ...(input.gitlab === undefined
+            ? {}
+            : {
+                spki_pin: input.gitlab.spkiPin,
+                ca_bundle: input.gitlab.caBundle,
+                allow_personal_token: input.gitlab.allowPersonalToken,
+              }),
         },
       }),
     onSettled: () => invalidate(),
@@ -276,6 +290,10 @@ function updateBody(input: UpdateAdapterTargetInput): UpdateAdapterTargetRequest
     name_prefix: input.input.name_prefix,
     key_ids: input.input.key_ids,
     ...(input.input.key_selection === undefined ? {} : { key_selection: input.input.key_selection }),
+    ...(input.input.destination_scope === undefined ? {} : { destination_scope: input.input.destination_scope }),
+    ...(input.input.variable_protected === undefined ? {} : { variable_protected: input.input.variable_protected }),
+    ...(input.input.variable_hidden === undefined ? {} : { variable_hidden: input.input.variable_hidden }),
+    ...(input.input.variable_expand === undefined ? {} : { variable_expand: input.input.variable_expand }),
     expected_generation: Number(input.expectedGeneration),
   };
 }

@@ -351,6 +351,10 @@ export const zAdapterTargetInput = z.object({
     destination_owner: z.string().min(1).max(255),
     destination_name: z.string().max(255),
     destination_environment: z.string().max(255),
+    destination_scope: z.string().max(255).optional(),
+    variable_protected: z.boolean().optional().default(false),
+    variable_hidden: z.boolean().optional().default(false),
+    variable_expand: z.boolean().optional().default(false),
     visibility: z.enum([
         '',
         'all',
@@ -367,7 +371,10 @@ export const zCreateAdapterRequest = z.object({
     provider: zAdapterProvider,
     origin: z.url().max(2048),
     credential: z.string().min(1).max(4096),
-    target: zAdapterTargetInput
+    target: zAdapterTargetInput,
+    spki_pin: z.string().max(64).optional(),
+    ca_bundle: z.string().max(65536).optional(),
+    allow_personal_token: z.boolean().optional().default(false)
 });
 
 export const zUpdateAdapterOriginRequest = z.object({
@@ -396,6 +403,10 @@ export const zUpdateAdapterTargetRequest = z.object({
     name_prefix: z.string().max(64).regex(/^(?:[A-Z_][A-Z0-9_]*)?$/),
     key_ids: z.array(zId).min(0).max(512),
     key_selection: zAdapterKeySelection.optional(),
+    destination_scope: z.string().max(255).optional(),
+    variable_protected: z.boolean().optional(),
+    variable_hidden: z.boolean().optional(),
+    variable_expand: z.boolean().optional(),
     expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     keep_remote: z.boolean().optional().default(false)
 });
@@ -772,6 +783,7 @@ export const zAdapterMoveTarget = z.object({
     destination_owner: z.string(),
     destination_name: z.string(),
     destination_environment: z.string(),
+    destination_scope: z.string(),
     destination_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     repository_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     visibility: z.enum([
@@ -4026,6 +4038,10 @@ export const zAdapterTarget = z.object({
     destination_owner: z.string(),
     destination_name: z.string(),
     destination_environment: z.string(),
+    destination_scope: z.string().optional(),
+    variable_protected: z.boolean().optional(),
+    variable_hidden: z.boolean().optional(),
+    variable_expand: z.boolean().optional(),
     destination_id: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     repository_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     visibility: z.enum([
@@ -4090,6 +4106,9 @@ export const zAdapter = z.object({
         'tombstoned'
     ]),
     created_at: zTimestamp,
+    spki_pin: z.string().optional(),
+    ca_bundle_present: z.boolean().optional(),
+    allow_personal_token: z.boolean().optional(),
     targets: z.array(zAdapterTarget)
 });
 
