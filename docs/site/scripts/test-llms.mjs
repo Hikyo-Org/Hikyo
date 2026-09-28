@@ -19,6 +19,9 @@ for (const link of links) {
 }
 const urls = links.map((link) => new URL(link).pathname);
 assert.ok(urls.length > 50, `llms.txt lists only ${urls.length} pages`);
+// The reverse direction: llms-full.txt must not carry pages the index omits.
+const fullUrls = [...full.matchAll(/^# .+ \((\/[^)\r\n]*)\)$/gm)].map((match) => match[1]);
+assert.deepEqual([...new Set(fullUrls)].sort(), [...new Set(urls)].sort(), 'llms.txt and llms-full.txt list different pages');
 
 for (const url of urls) {
   const twin = await readFile(resolve(dist, `.${url}.md`), 'utf8');
