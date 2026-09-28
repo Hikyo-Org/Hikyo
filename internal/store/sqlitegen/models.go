@@ -1534,6 +1534,52 @@ type TotpCredential struct {
 	CreatedAt       string
 }
 
+type TransitKey struct {
+	ID                        string
+	OrgID                     string
+	ProjectID                 string
+	EnvironmentID             string
+	Name                      string
+	Algorithm                 string
+	Custody                   string
+	AllowedOperations         string
+	Exportable                int64
+	State                     string
+	LatestVersion             int64
+	MinEncryptVersion         int64
+	MinDecryptVersion         int64
+	MinAvailableVersion       int64
+	CompromisedThroughVersion int64
+	RotationPeriodSeconds     int64
+	PurgeStarted              int64
+	DeletionAfter             sql.NullString
+	CreatedBy                 string
+	CreatedAt                 string
+	UpdatedAt                 string
+}
+
+type TransitKeyCaller struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	PrincipalID   string
+	Operations    string
+}
+
+type TransitKeyVersion struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	KeyID              string
+	Version            int64
+	MaterialCiphertext []byte
+	ExternalRef        sql.NullString
+	PublicKey          []byte
+	CreatedAt          string
+}
+
 type ValueEntry struct {
 	ID            string
 	OrgID         string

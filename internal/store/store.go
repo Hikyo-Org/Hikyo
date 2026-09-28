@@ -464,6 +464,8 @@ type Repos interface {
 	Approvals() ApprovalRepo
 	// DeliveryTargets is the delivery-target condition-report surface (#788).
 	DeliveryTargets() DeliveryTargetRepo
+	// Transit is the managed-key surface (#156, transit ADR).
+	Transit() TransitRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -512,6 +514,8 @@ type ReadRepos interface {
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
 	SSH() SSHReader
+	// Transit is the managed-key metadata read side (#156).
+	Transit() TransitReader
 	PKI() PKIReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader

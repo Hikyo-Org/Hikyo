@@ -51,6 +51,8 @@ func BudgetClassOf(op authz.Operation) (reason string, known bool) {
 	return c.reason, ok
 }
 
+// buildBudgetClassification assigns budget categories and reasons to operations.
+// It panics if an operation is assigned more than once.
 func buildBudgetClassification() map[authz.Operation]budgetClassification {
 	m := map[authz.Operation]budgetClassification{}
 	add := func(class budgetClass, reason string, ops ...authz.Operation) {
@@ -75,6 +77,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDeliveryFetch)
 	add(budgetClassNamed, "delivery-target report: separate bucket, 60/min·principal + 300/min·org, charged after authorization (k8s-condition-reporting ADR D8)",
 		authz.OpDeliveryTargetReport, authz.OpDeliveryTargetTombstone)
+	add(budgetClassNamed, "transit §179 (transit ADR D9): Transit.use (600/min·principal + 6000/min·org), installation-wide under HA",
+		authz.OpTransitUse)
 	add(budgetClassNamed, "schema-revision §151: chargeOnce before BumpSchemaRevision (60/h·project)",
 		authz.OpKeyCreate, authz.OpKeyRename, authz.OpKeyUpdateDeclaration, authz.OpKeyUpdateMetadata,
 		authz.OpKeySetGroup, authz.OpKeyDelete, authz.OpKeyReclassify,
@@ -221,6 +225,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSSHCAInspect, authz.OpSSHCARetireKey, authz.OpSSHCADelete,
 		authz.OpSSHProfileConfigure, authz.OpSSHProfileInspect, authz.OpSSHProfileDelete,
 		authz.OpSSHCertInspect, authz.OpSSHCertRevoke,
+		// transit key management (#156): one key row and its version, state
+		// or caller rows per call; the data plane is the named `transit`
+		// category above
+		authz.OpTransitKeyCreate, authz.OpTransitKeyInspect, authz.OpTransitKeyConfigure,
+		authz.OpTransitKeyRotate, authz.OpTransitKeyLifecycle, authz.OpTransitKeyTrim,
 		// private PKI (#154): certificate reads and revocation write one row
 		// and sign nothing; the CRL is re-signed by the worker, not the request
 		authz.OpCertificateInspect, authz.OpCertificateRevoke,

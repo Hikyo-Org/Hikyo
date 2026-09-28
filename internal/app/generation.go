@@ -24,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/transit"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/webui"
 	"github.com/google/uuid"
@@ -193,6 +194,19 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	sshService := &service.SSH{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: store.NewSSHRuntime(db)}
 
+	// Transit (#156): software custody only. The external-custody seam has no
+	// production provider in this release, so an external key is refused at
+	// creation rather than served from anywhere else.
+	transitRuntime := store.NewTransitRuntime(db)
+	transitService := &service.Transit{
+		DB: db, Keyring: kr, Budget: budget,
+		Custody: transit.NewRegistry(&transit.Software{Keyring: kr}),
+	}
+	if owner.haCoord != nil {
+		// Installation-wide transit rate counters under HA (transit ADR D9).
+		transitService.Shared = owner.haCoord
+	}
+
 	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig}
 	// One RED collector shared by the API middleware (writer) and the
 	// operational /metrics handler (reader) (#513). The limiter supplies its
@@ -204,6 +218,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc, log: log})
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	metrics.SetSSHSource(sshGaugeSource{svc: sshService, log: log})
+	metrics.SetTransitSource(transitGaugeSource{runtime: transitRuntime, log: log})
 	pkiService := &service.PKI{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: pkiRuntime}
 	metrics.SetPKISource(pkiGaugeSource{runtime: pkiRuntime, log: log})
 	// The hierarchy, value, and revision services are named here so the read-only
@@ -296,6 +311,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Adapters:      adapterService,
 		Dynamic:       dynamicService,
 		SSH:           sshService,
+		Transit:       transitService,
 		PKI:           pkiService,
 		Audits:        &service.Audits{DB: db, Budget: budget},
 		Approvals:     approvalsSvc,
@@ -412,6 +428,24 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			// with its tenant-trail purge event.
 			Name: "delivery_target_purge",
 			Run:  deliverySvc.PurgeExpiredTargets,
+		}, {
+			// Transit automatic rotation (#156, transit ADR D5): append a
+			// version to every active key whose rotation period elapsed. Under
+			// HA this is a singleton job; each append is a guarded compare-
+			// and-swap, so even a stale leader cannot duplicate a version.
+			Name: "transit_rotation",
+			Run: func(ctx context.Context) error {
+				_, err := transitService.RotateDue(ctx)
+				return err
+			},
+		}, {
+			// Transit deletion purge (#156, transit ADR D6): erase the material
+			// of every key past its deletion delay and tombstone it.
+			Name: "transit_purge",
+			Run: func(ctx context.Context) error {
+				_, err := transitService.PurgeDue(ctx)
+				return err
+			},
 		}, {
 			// Read-only operator nudge (#75/#187, scheduler option A): warn when a
 			// scope still carries a retiring DEK version so an operator runs

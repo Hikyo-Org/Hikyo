@@ -78,6 +78,14 @@ const (
 	// environment. Workload-only, never implied by `read`.
 	CapReportDeliveryStatus Capability = "report-delivery-status"
 
+	// CapCryptoUse and CapCryptoManage are the transit ADR's two atoms (#156,
+	// permission-model declared amendment 2026-09-26). crypto-use authorizes
+	// the transit data plane at environment scope and is on the workload and
+	// automation allowlists; crypto-manage authorizes key management at
+	// project scope and is human-only. Neither is implied by any other atom
+	// and neither is seeded by a template.
+	CapCryptoUse    Capability = "crypto-use"
+	CapCryptoManage Capability = "crypto-manage"
 	// CapIssueCertificate is the private-PKI amendment's atom (#154, pki ADR
 	// D4): request, renew and revoke X.509 leaf certificates through an
 	// instance certificate profile bound to the environment. It reads and
@@ -99,12 +107,14 @@ var capabilityLevels = map[Capability]Level{
 	CapPin:           LevelEnv,
 
 	CapReportDeliveryStatus: LevelEnv,
+	CapCryptoUse:            LevelEnv,
 	CapIssueCertificate:     LevelEnv,
 
 	CapDefinitionsEdit:  LevelProject,
 	CapProjectSettings:  LevelProject,
 	CapManageIdentities: LevelProject,
 	CapManageAdapters:   LevelProject,
+	CapCryptoManage:     LevelProject,
 
 	CapManageMembers: LevelProject,
 

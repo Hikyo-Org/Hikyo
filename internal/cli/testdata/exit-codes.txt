@@ -69,6 +69,9 @@ hikyo approval request approve --instance unknown-ref -> 2 usage
 hikyo approval request bypass req_x --instance unknown-ref -> 2 usage
 hikyo approval policy list stray --instance unknown-ref -> 2 usage
 hikyo key group list stray --instance unknown-ref -> 2 usage
+hikyo transit key trim payments typo --instance unknown-ref -> 2 usage
+hikyo transit encrypt payments typo --instance unknown-ref -> 2 usage
+hikyo transit key show --instance unknown-ref -> 2 usage
 hikyo key list --instance unknown-ref --org org_x --project prj_x -> 4 refused
 hikyo import -> 2 usage
 hikyo import --from k8s --mapping m.json -> 2 usage

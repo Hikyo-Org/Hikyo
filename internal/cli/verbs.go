@@ -198,6 +198,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"ssh-ca":              runSSHCA,
 	"ssh-profile":         runSSHProfile,
 	"ssh-cert":            runSSHCert,
+	"transit":             runTransit,
 	"pki":                 runPKI,
 	"cert":                runCert,
 	"run":                 runRun,
@@ -486,6 +487,31 @@ ssh certificates:
   returned; a generated user key is shown exactly once through the print
   triad. Hosts trust "ssh-ca trusted-keys" (TrustedUserCAKeys) and refuse
   "ssh-ca krl" (RevokedKeys); refresh both on a timer.
+
+transit (managed keys; key material never leaves custody):
+  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|hmac-sha256
+      [--custody software] [--allow op,op] [--rotation-period 720h]
+      [--caller principal=op,op]...
+  hikyo transit key list --env E [-o table|json]
+  hikyo transit key show <name> --env E [-o table|json]
+  hikyo transit key configure <name> --env E [--min-encrypt-version N]
+      [--min-decrypt-version N] [--rotation-period D|0] [--caller p=op,op]... [--clear-callers]
+  hikyo transit key rotate|trim <name> --env E
+  hikyo transit key disable|enable|retire|compromise|cancel-deletion <name> --env E
+  hikyo transit key schedule-deletion <name> --env E [--delay 168h]
+  hikyo transit encrypt <key> --env E (--stdin | --input-file PATH)
+      [--aad-file PATH] [--key-version N]
+  hikyo transit sign|hmac <key> --env E (--stdin | --input-file PATH) [--key-version N]
+  hikyo transit decrypt <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
+      [--output-file PATH | --dangerously-print]
+  hikyo transit rewrap <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
+  hikyo transit datakey <key> --env E [--bits 256] [--aad-file PATH]
+      [--plaintext [--output-file PATH | --dangerously-print]]
+  hikyo transit verify <key> --env E --signature S (--stdin | --input-file PATH)
+  hikyo transit hmac-verify <key> --env E --mac M (--stdin | --input-file PATH)
+
+  inputs come from stdin or a file, never argv. Decrypted plaintext and a
+  plaintext data key are shown exactly once, through the print triad.
 
 private PKI:
   hikyo pki issuer list [-o table|json]

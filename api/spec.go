@@ -53,6 +53,8 @@ var SpecYAML []byte
 // list) and its `/meta` protocol capability.
 // Revision 6 adds SSH user certificates (#155): CAs, profiles, issuance,
 // revocation, the host trust bundle and the KRL.
+// Revision 7 adds transit: managed-key lifecycle and the cryptographic
+// data plane (#156, transit ADR).
 // Revision 7 adds the private PKI (#154): instance CA issuers and certificate
 // profiles, and environment-scoped certificate issuance.
 const Revision = 7

@@ -105,6 +105,12 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
   },
   { id: 'pin', deepest: 'environment', covers: 'create, reassign or release a revision pin for this environment', humanGrantable: true },
   {
+    id: 'crypto-use',
+    deepest: 'environment',
+    covers: 'encrypt, decrypt, sign, verify and MAC with this environment\'s transit keys, as each key allows',
+    humanGrantable: true,
+  },
+  {
     id: 'issue-certificate',
     deepest: 'environment',
     covers: 'request, renew and revoke X.509 certificates through a certificate profile bound to this environment',
@@ -130,6 +136,12 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
   },
   { id: 'manage-identities', deepest: 'project', covers: 'service accounts and their scoped credentials', humanGrantable: true },
   { id: 'manage-adapters', deepest: 'project', covers: 'deployment-module configuration and sync triggering', humanGrantable: true },
+  {
+    id: 'crypto-manage',
+    deepest: 'project',
+    covers: 'create, configure, rotate, retire and delete transit keys; never their material',
+    humanGrantable: true,
+  },
   { id: 'manage-members', deepest: 'project', covers: 'create, modify and revoke grants at or below that scope', humanGrantable: true },
   { id: 'manage-projects', deepest: 'org', covers: 'create and delete projects', humanGrantable: true },
   {

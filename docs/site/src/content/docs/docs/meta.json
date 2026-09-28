@@ -35,6 +35,7 @@
     "deployment-adapters",
     "dynamic-secrets",
     "ssh-certificates",
+    "transit",
     "private-pki",
     "mcp",
     "local-development",

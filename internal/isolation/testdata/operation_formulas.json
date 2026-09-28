@@ -1933,6 +1933,63 @@
     ]
   },
   {
+    "operation": "transit.key-configure",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-create",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "transit.key-lifecycle",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-rotate",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-trim",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.use",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-use@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
     "operation": "update.job-read",
     "class": "instance",
     "level": "instance",

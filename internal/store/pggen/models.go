@@ -1536,6 +1536,52 @@ type TotpCredential struct {
 	CreatedAt       pgtype.Timestamptz
 }
 
+type TransitKey struct {
+	ID                        string
+	OrgID                     string
+	ProjectID                 string
+	EnvironmentID             string
+	Name                      string
+	Algorithm                 string
+	Custody                   string
+	AllowedOperations         string
+	Exportable                int32
+	State                     string
+	LatestVersion             int32
+	MinEncryptVersion         int32
+	MinDecryptVersion         int32
+	MinAvailableVersion       int32
+	CompromisedThroughVersion int32
+	RotationPeriodSeconds     int64
+	PurgeStarted              int32
+	DeletionAfter             pgtype.Timestamptz
+	CreatedBy                 string
+	CreatedAt                 pgtype.Timestamptz
+	UpdatedAt                 pgtype.Timestamptz
+}
+
+type TransitKeyCaller struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	PrincipalID   string
+	Operations    string
+}
+
+type TransitKeyVersion struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	KeyID              string
+	Version            int32
+	MaterialCiphertext []byte
+	ExternalRef        pgtype.Text
+	PublicKey          []byte
+	CreatedAt          pgtype.Timestamptz
+}
+
 type ValueEntry struct {
 	ID            string
 	OrgID         string

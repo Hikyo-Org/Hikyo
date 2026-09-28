@@ -3080,6 +3080,180 @@ func (e TotpSelfConfigReauthRequestPurpose) Valid() bool {
 	}
 }
 
+// Defines values for TransitAlgorithm.
+const (
+	TransitAlgorithmEd25519           TransitAlgorithm = "ed25519"
+	TransitAlgorithmHmacSha256        TransitAlgorithm = "hmac-sha256"
+	TransitAlgorithmXchacha20Poly1305 TransitAlgorithm = "xchacha20-poly1305"
+)
+
+// Valid indicates whether the value is a known member of the TransitAlgorithm enum.
+func (e TransitAlgorithm) Valid() bool {
+	switch e {
+	case TransitAlgorithmEd25519:
+		return true
+	case TransitAlgorithmHmacSha256:
+		return true
+	case TransitAlgorithmXchacha20Poly1305:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitCustody.
+const (
+	TransitCustodyExternal TransitCustody = "external"
+	TransitCustodySoftware TransitCustody = "software"
+)
+
+// Valid indicates whether the value is a known member of the TransitCustody enum.
+func (e TransitCustody) Valid() bool {
+	switch e {
+	case TransitCustodyExternal:
+		return true
+	case TransitCustodySoftware:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitDataKeyRequestBits.
+const (
+	N128 TransitDataKeyRequestBits = 128
+	N256 TransitDataKeyRequestBits = 256
+	N512 TransitDataKeyRequestBits = 512
+)
+
+// Valid indicates whether the value is a known member of the TransitDataKeyRequestBits enum.
+func (e TransitDataKeyRequestBits) Valid() bool {
+	switch e {
+	case N128:
+		return true
+	case N256:
+		return true
+	case N512:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitKeyState.
+const (
+	TransitKeyStateActive          TransitKeyState = "active"
+	TransitKeyStateDisabled        TransitKeyState = "disabled"
+	TransitKeyStatePendingDeletion TransitKeyState = "pending-deletion"
+	TransitKeyStateRetired         TransitKeyState = "retired"
+)
+
+// Valid indicates whether the value is a known member of the TransitKeyState enum.
+func (e TransitKeyState) Valid() bool {
+	switch e {
+	case TransitKeyStateActive:
+		return true
+	case TransitKeyStateDisabled:
+		return true
+	case TransitKeyStatePendingDeletion:
+		return true
+	case TransitKeyStateRetired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitKeyVersionMaterial.
+const (
+	TransitKeyVersionMaterialErased   TransitKeyVersionMaterial = "erased"
+	TransitKeyVersionMaterialExternal TransitKeyVersionMaterial = "external"
+	TransitKeyVersionMaterialSealed   TransitKeyVersionMaterial = "sealed"
+)
+
+// Valid indicates whether the value is a known member of the TransitKeyVersionMaterial enum.
+func (e TransitKeyVersionMaterial) Valid() bool {
+	switch e {
+	case TransitKeyVersionMaterialErased:
+		return true
+	case TransitKeyVersionMaterialExternal:
+		return true
+	case TransitKeyVersionMaterialSealed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitLifecycleRequestAction.
+const (
+	CancelDeletion   TransitLifecycleRequestAction = "cancel-deletion"
+	Compromise       TransitLifecycleRequestAction = "compromise"
+	Disable          TransitLifecycleRequestAction = "disable"
+	Enable           TransitLifecycleRequestAction = "enable"
+	Retire           TransitLifecycleRequestAction = "retire"
+	ScheduleDeletion TransitLifecycleRequestAction = "schedule-deletion"
+)
+
+// Valid indicates whether the value is a known member of the TransitLifecycleRequestAction enum.
+func (e TransitLifecycleRequestAction) Valid() bool {
+	switch e {
+	case CancelDeletion:
+		return true
+	case Compromise:
+		return true
+	case Disable:
+		return true
+	case Enable:
+		return true
+	case Retire:
+		return true
+	case ScheduleDeletion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitOperation.
+const (
+	TransitOperationDatakey          TransitOperation = "datakey"
+	TransitOperationDatakeyPlaintext TransitOperation = "datakey-plaintext"
+	TransitOperationDecrypt          TransitOperation = "decrypt"
+	TransitOperationEncrypt          TransitOperation = "encrypt"
+	TransitOperationHmac             TransitOperation = "hmac"
+	TransitOperationHmacVerify       TransitOperation = "hmac-verify"
+	TransitOperationRewrap           TransitOperation = "rewrap"
+	TransitOperationSign             TransitOperation = "sign"
+	TransitOperationVerify           TransitOperation = "verify"
+)
+
+// Valid indicates whether the value is a known member of the TransitOperation enum.
+func (e TransitOperation) Valid() bool {
+	switch e {
+	case TransitOperationDatakey:
+		return true
+	case TransitOperationDatakeyPlaintext:
+		return true
+	case TransitOperationDecrypt:
+		return true
+	case TransitOperationEncrypt:
+		return true
+	case TransitOperationHmac:
+		return true
+	case TransitOperationHmacVerify:
+		return true
+	case TransitOperationRewrap:
+		return true
+	case TransitOperationSign:
+		return true
+	case TransitOperationVerify:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateAdapterTargetRequestVisibility.
 const (
 	UpdateAdapterTargetRequestVisibilityAll      UpdateAdapterTargetRequestVisibility = "all"
@@ -4877,6 +5051,14 @@ type ClonedEnvironment struct {
 	UncopiedSecrets []KeyName `json:"uncopied_secrets"`
 }
 
+// ConfigureTransitKeyRequest defines model for ConfigureTransitKeyRequest.
+type ConfigureTransitKeyRequest struct {
+	Callers               *[]TransitCaller `json:"callers,omitempty"`
+	MinDecryptVersion     *int64           `json:"min_decrypt_version,omitempty"`
+	MinEncryptVersion     *int64           `json:"min_encrypt_version,omitempty"`
+	RotationPeriodSeconds *int64           `json:"rotation_period_seconds,omitempty"`
+}
+
 // CopyValuesRequest defines model for CopyValuesRequest.
 type CopyValuesRequest struct {
 	// ConfirmProtected The protected-environment confirmation. A protected destination
@@ -5213,6 +5395,19 @@ type CreateServiceAccountRequest struct {
 	// creation and IMMUTABLE afterwards.
 	Kind ServiceAccountKind `json:"kind"`
 	Name string             `json:"name"`
+}
+
+// CreateTransitKeyRequest defines model for CreateTransitKeyRequest.
+type CreateTransitKeyRequest struct {
+	Algorithm         TransitAlgorithm    `json:"algorithm"`
+	AllowedOperations *[]TransitOperation `json:"allowed_operations,omitempty"`
+	Callers           *[]TransitCaller    `json:"callers,omitempty"`
+	Custody           *TransitCustody     `json:"custody,omitempty"`
+
+	// Exportable Must be false or absent; exportable keys are refused.
+	Exportable            *bool          `json:"exportable,omitempty"`
+	Name                  TransitKeyName `json:"name"`
+	RotationPeriodSeconds *int64         `json:"rotation_period_seconds,omitempty"`
 }
 
 // CredentialKind How a credential authenticates its service account. The discriminator
@@ -9483,6 +9678,208 @@ type TotpStatus struct {
 	Pending bool `json:"pending"`
 }
 
+// TransitAlgorithm defines model for TransitAlgorithm.
+type TransitAlgorithm string
+
+// TransitCaller defines model for TransitCaller.
+type TransitCaller struct {
+	Operations []TransitOperation `json:"operations"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+}
+
+// TransitCiphertextResult defines model for TransitCiphertextResult.
+type TransitCiphertextResult struct {
+	Ciphertext string `json:"ciphertext"`
+	KeyVersion int64  `json:"key_version"`
+}
+
+// TransitCustody defines model for TransitCustody.
+type TransitCustody string
+
+// TransitDataKeyRequest defines model for TransitDataKeyRequest.
+type TransitDataKeyRequest struct {
+	Bits *TransitDataKeyRequestBits `json:"bits,omitempty"`
+
+	// Context Standard base64.
+	Context *string `json:"context,omitempty"`
+
+	// Plaintext Also return the data key in plaintext; requires datakey-plaintext.
+	Plaintext *bool `json:"plaintext,omitempty"`
+}
+
+// TransitDataKeyRequestBits defines model for TransitDataKeyRequest.Bits.
+type TransitDataKeyRequestBits int
+
+// TransitDataKeyResult defines model for TransitDataKeyResult.
+type TransitDataKeyResult struct {
+	Ciphertext string `json:"ciphertext"`
+	KeyVersion int64  `json:"key_version"`
+
+	// Plaintext Standard base64 data key when requested. Display-once.
+	Plaintext *string `json:"plaintext,omitempty"`
+}
+
+// TransitDecryptRequest defines model for TransitDecryptRequest.
+type TransitDecryptRequest struct {
+	// Ciphertext A transit ciphertext, `hikyo:v<version>:<base64url>`.
+	Ciphertext string `json:"ciphertext"`
+
+	// Context Standard base64.
+	Context *string `json:"context,omitempty"`
+}
+
+// TransitDecryptResult defines model for TransitDecryptResult.
+type TransitDecryptResult struct {
+	KeyVersion int64 `json:"key_version"`
+
+	// Plaintext Standard base64. Display-once; never stored or logged.
+	Plaintext string `json:"plaintext"`
+}
+
+// TransitEncryptRequest defines model for TransitEncryptRequest.
+type TransitEncryptRequest struct {
+	// Context Standard base64.
+	Context    *string `json:"context,omitempty"`
+	KeyVersion *int64  `json:"key_version,omitempty"`
+
+	// Plaintext Standard base64.
+	Plaintext string `json:"plaintext"`
+}
+
+// TransitHMACRequest defines model for TransitHMACRequest.
+type TransitHMACRequest struct {
+	KeyVersion *int64 `json:"key_version,omitempty"`
+
+	// Message Standard base64.
+	Message string `json:"message"`
+}
+
+// TransitHMACResult defines model for TransitHMACResult.
+type TransitHMACResult struct {
+	KeyVersion int64  `json:"key_version"`
+	Mac        string `json:"mac"`
+}
+
+// TransitHMACVerifyRequest defines model for TransitHMACVerifyRequest.
+type TransitHMACVerifyRequest struct {
+	Mac string `json:"mac"`
+
+	// Message Standard base64.
+	Message string `json:"message"`
+}
+
+// TransitKey defines model for TransitKey.
+type TransitKey struct {
+	Algorithm         TransitAlgorithm   `json:"algorithm"`
+	AllowedOperations []TransitOperation `json:"allowed_operations"`
+	Callers           []TransitCaller    `json:"callers"`
+
+	// CompromisedThroughVersion Versions at or below this are compromised; zero means none.
+	CompromisedThroughVersion int64 `json:"compromised_through_version"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt     Timestamp      `json:"created_at"`
+	CreatedBy     string         `json:"created_by"`
+	Custody       TransitCustody `json:"custody"`
+	DeletionAfter *time.Time     `json:"deletion_after,omitempty"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+
+	// Exportable Always false; key material never leaves custody.
+	Exportable bool `json:"exportable"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id                    ID              `json:"id"`
+	LatestVersion         int64           `json:"latest_version"`
+	MinDecryptVersion     int64           `json:"min_decrypt_version"`
+	MinEncryptVersion     int64           `json:"min_encrypt_version"`
+	Name                  TransitKeyName  `json:"name"`
+	RotationDue           bool            `json:"rotation_due"`
+	RotationPeriodSeconds int64           `json:"rotation_period_seconds"`
+	State                 TransitKeyState `json:"state"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp           `json:"updated_at"`
+	Versions  []TransitKeyVersion `json:"versions"`
+}
+
+// TransitKeyList defines model for TransitKeyList.
+type TransitKeyList struct {
+	Items []TransitKey `json:"items"`
+}
+
+// TransitKeyName defines model for TransitKeyName.
+type TransitKeyName = string
+
+// TransitKeyState defines model for TransitKeyState.
+type TransitKeyState string
+
+// TransitKeyVersion defines model for TransitKeyVersion.
+type TransitKeyVersion struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// Material Where the version's material lives. The material itself is never returned.
+	Material TransitKeyVersionMaterial `json:"material"`
+
+	// PublicKey The Ed25519 public key (standard base64) for signing keys; public metadata.
+	PublicKey *string `json:"public_key,omitempty"`
+	Version   int64   `json:"version"`
+}
+
+// TransitKeyVersionMaterial Where the version's material lives. The material itself is never returned.
+type TransitKeyVersionMaterial string
+
+// TransitLifecycleRequest defines model for TransitLifecycleRequest.
+type TransitLifecycleRequest struct {
+	Action TransitLifecycleRequestAction `json:"action"`
+
+	// DelaySeconds schedule-deletion only; between one and ninety days, seven by default.
+	DelaySeconds *int64 `json:"delay_seconds,omitempty"`
+}
+
+// TransitLifecycleRequestAction defines model for TransitLifecycleRequest.Action.
+type TransitLifecycleRequestAction string
+
+// TransitOperation defines model for TransitOperation.
+type TransitOperation string
+
+// TransitSignRequest defines model for TransitSignRequest.
+type TransitSignRequest struct {
+	KeyVersion *int64 `json:"key_version,omitempty"`
+
+	// Message Standard base64.
+	Message string `json:"message"`
+}
+
+// TransitSignatureResult defines model for TransitSignatureResult.
+type TransitSignatureResult struct {
+	KeyVersion int64  `json:"key_version"`
+	Signature  string `json:"signature"`
+}
+
+// TransitTrimResult defines model for TransitTrimResult.
+type TransitTrimResult struct {
+	Key             TransitKey `json:"key"`
+	VersionsDeleted int64      `json:"versions_deleted"`
+}
+
+// TransitVerifyRequest defines model for TransitVerifyRequest.
+type TransitVerifyRequest struct {
+	// Message Standard base64.
+	Message   string `json:"message"`
+	Signature string `json:"signature"`
+}
+
+// TransitVerifyResult defines model for TransitVerifyResult.
+type TransitVerifyResult struct {
+	KeyVersion int64 `json:"key_version"`
+	Valid      bool  `json:"valid"`
+}
+
 // UnheldGrantReach Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
 type UnheldGrantReach struct {
 	// Instance The caller holds `manage-members` at instance scope, which reaches every organisation.
@@ -11199,6 +11596,39 @@ type CreateSshProfileJSONRequestBody = SSHProfileRequest
 // UpdateSshProfileJSONRequestBody defines body for UpdateSshProfile for application/json ContentType.
 type UpdateSshProfileJSONRequestBody = SSHProfileRequest
 
+// CreateTransitKeyJSONRequestBody defines body for CreateTransitKey for application/json ContentType.
+type CreateTransitKeyJSONRequestBody = CreateTransitKeyRequest
+
+// ConfigureTransitKeyJSONRequestBody defines body for ConfigureTransitKey for application/json ContentType.
+type ConfigureTransitKeyJSONRequestBody = ConfigureTransitKeyRequest
+
+// TransitDataKeyJSONRequestBody defines body for TransitDataKey for application/json ContentType.
+type TransitDataKeyJSONRequestBody = TransitDataKeyRequest
+
+// TransitDecryptJSONRequestBody defines body for TransitDecrypt for application/json ContentType.
+type TransitDecryptJSONRequestBody = TransitDecryptRequest
+
+// TransitEncryptJSONRequestBody defines body for TransitEncrypt for application/json ContentType.
+type TransitEncryptJSONRequestBody = TransitEncryptRequest
+
+// TransitHMACJSONRequestBody defines body for TransitHMAC for application/json ContentType.
+type TransitHMACJSONRequestBody = TransitHMACRequest
+
+// TransitVerifyHMACJSONRequestBody defines body for TransitVerifyHMAC for application/json ContentType.
+type TransitVerifyHMACJSONRequestBody = TransitHMACVerifyRequest
+
+// ChangeTransitKeyStateJSONRequestBody defines body for ChangeTransitKeyState for application/json ContentType.
+type ChangeTransitKeyStateJSONRequestBody = TransitLifecycleRequest
+
+// TransitRewrapJSONRequestBody defines body for TransitRewrap for application/json ContentType.
+type TransitRewrapJSONRequestBody = TransitDecryptRequest
+
+// TransitSignJSONRequestBody defines body for TransitSign for application/json ContentType.
+type TransitSignJSONRequestBody = TransitSignRequest
+
+// TransitVerifyJSONRequestBody defines body for TransitVerify for application/json ContentType.
+type TransitVerifyJSONRequestBody = TransitVerifyRequest
+
 // ExportValuesJSONRequestBody defines body for ExportValues for application/json ContentType.
 type ExportValuesJSONRequestBody = ExportValuesRequest
 
@@ -12339,6 +12769,51 @@ type ServerInterface interface {
 	// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
 	UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID)
+	// ListTransitKeys List the environment's transit keys (metadata only, never material).
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	ListTransitKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateTransitKey Create a named transit key with its first version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	CreateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ShowTransitKey Show one transit key with its versions and caller entries.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ShowTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// ConfigureTransitKey Change a key's version window, rotation period or caller entries.
+	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ConfigureTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitDataKey Generate a data key, wrapped under the key and optionally in plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey)
+	TransitDataKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitDecrypt Decrypt a transit ciphertext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt)
+	TransitDecrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitEncrypt Encrypt plaintext under the key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt)
+	TransitEncrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitHMAC Compute an HMAC-SHA256 over a message.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac)
+	TransitHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitVerifyHMAC Verify an HMAC-SHA256 in constant time.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify)
+	TransitVerifyHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// ChangeTransitKeyState Disable, enable, retire, compromise, schedule or cancel deletion.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle)
+	ChangeTransitKeyState(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitRewrap Move a ciphertext onto the latest key version without returning plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap)
+	TransitRewrap(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// RotateTransitKey Append a new key version; new output uses it.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
+	RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitSign Sign a message with an Ed25519 key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
+	TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TrimTransitKey Permanently delete versions below min_decrypt_version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
+	TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitVerify Verify an Ed25519 signature.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
+	TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
 	// ListValues The environment's resolved values.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values)
 	ListValues(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -14076,6 +14551,96 @@ func (_ Unimplemented) ShowSshProfile(w http.ResponseWriter, r *http.Request, or
 // UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
 // (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
 func (_ Unimplemented) UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTransitKeys List the environment's transit keys (metadata only, never material).
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+func (_ Unimplemented) ListTransitKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTransitKey Create a named transit key with its first version.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+func (_ Unimplemented) CreateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowTransitKey Show one transit key with its versions and caller entries.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+func (_ Unimplemented) ShowTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ConfigureTransitKey Change a key's version window, rotation period or caller entries.
+// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+func (_ Unimplemented) ConfigureTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitDataKey Generate a data key, wrapped under the key and optionally in plaintext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey)
+func (_ Unimplemented) TransitDataKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitDecrypt Decrypt a transit ciphertext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt)
+func (_ Unimplemented) TransitDecrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitEncrypt Encrypt plaintext under the key.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt)
+func (_ Unimplemented) TransitEncrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitHMAC Compute an HMAC-SHA256 over a message.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac)
+func (_ Unimplemented) TransitHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitVerifyHMAC Verify an HMAC-SHA256 in constant time.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify)
+func (_ Unimplemented) TransitVerifyHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangeTransitKeyState Disable, enable, retire, compromise, schedule or cancel deletion.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle)
+func (_ Unimplemented) ChangeTransitKeyState(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitRewrap Move a ciphertext onto the latest key version without returning plaintext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap)
+func (_ Unimplemented) TransitRewrap(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RotateTransitKey Append a new key version; new output uses it.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
+func (_ Unimplemented) RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitSign Sign a message with an Ed25519 key.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
+func (_ Unimplemented) TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TrimTransitKey Permanently delete versions below min_decrypt_version.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
+func (_ Unimplemented) TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitVerify Verify an Ed25519 signature.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
+func (_ Unimplemented) TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -23384,6 +23949,783 @@ func (siw *ServerInterfaceWrapper) UpdateSshProfile(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListTransitKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListTransitKeys(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTransitKeys(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTransitKey(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) ShowTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfigureTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) ConfigureTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfigureTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitDataKey operation middleware
+func (siw *ServerInterfaceWrapper) TransitDataKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitDataKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitDecrypt operation middleware
+func (siw *ServerInterfaceWrapper) TransitDecrypt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitDecrypt(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitEncrypt operation middleware
+func (siw *ServerInterfaceWrapper) TransitEncrypt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitEncrypt(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitHMAC operation middleware
+func (siw *ServerInterfaceWrapper) TransitHMAC(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitHMAC(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitVerifyHMAC operation middleware
+func (siw *ServerInterfaceWrapper) TransitVerifyHMAC(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitVerifyHMAC(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeTransitKeyState operation middleware
+func (siw *ServerInterfaceWrapper) ChangeTransitKeyState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeTransitKeyState(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitRewrap operation middleware
+func (siw *ServerInterfaceWrapper) TransitRewrap(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitRewrap(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotateTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) RotateTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitSign operation middleware
+func (siw *ServerInterfaceWrapper) TransitSign(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitSign(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TrimTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) TrimTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TrimTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitVerify operation middleware
+func (siw *ServerInterfaceWrapper) TransitVerify(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitVerify(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListValues operation middleware
 func (siw *ServerInterfaceWrapper) ListValues(w http.ResponseWriter, r *http.Request) {
 
@@ -28105,6 +29447,51 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl", wrapper.GetCertificateCrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys", wrapper.ListTransitKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys", wrapper.CreateTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}", wrapper.ShowTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}", wrapper.ConfigureTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate", wrapper.RotateTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle", wrapper.ChangeTransitKeyState)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim", wrapper.TrimTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt", wrapper.TransitEncrypt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt", wrapper.TransitDecrypt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap", wrapper.TransitRewrap)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey", wrapper.TransitDataKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign", wrapper.TransitSign)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify", wrapper.TransitVerify)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac", wrapper.TransitHMAC)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify", wrapper.TransitVerifyHMAC)
 	})
 
 	return r
@@ -55154,6 +56541,1841 @@ func (response UpdateSshProfile503JSONResponse) VisitUpdateSshProfileResponse(w 
 	return err
 }
 
+type ListTransitKeysRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListTransitKeysResponseObject interface {
+	VisitListTransitKeysResponse(w http.ResponseWriter) error
+}
+
+type ListTransitKeys200JSONResponse TransitKeyList
+
+func (response ListTransitKeys200JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListTransitKeys401JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListTransitKeys404JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListTransitKeys500JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListTransitKeys503JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKeyRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateTransitKeyJSONRequestBody
+}
+
+type CreateTransitKeyResponseObject interface {
+	VisitCreateTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type CreateTransitKey201JSONResponse TransitKey
+
+func (response CreateTransitKey201JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateTransitKey400JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateTransitKey401JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateTransitKey404JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateTransitKey409JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateTransitKey500JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateTransitKey503JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+}
+
+type ShowTransitKeyResponseObject interface {
+	VisitShowTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type ShowTransitKey200JSONResponse TransitKey
+
+func (response ShowTransitKey200JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowTransitKey401JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowTransitKey404JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowTransitKey500JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowTransitKey503JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *ConfigureTransitKeyJSONRequestBody
+}
+
+type ConfigureTransitKeyResponseObject interface {
+	VisitConfigureTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type ConfigureTransitKey200JSONResponse TransitKey
+
+func (response ConfigureTransitKey200JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ConfigureTransitKey400JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ConfigureTransitKey401JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ConfigureTransitKey404JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ConfigureTransitKey409JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response ConfigureTransitKey500JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ConfigureTransitKey503JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitDataKeyJSONRequestBody
+}
+
+type TransitDataKeyResponseObject interface {
+	VisitTransitDataKeyResponse(w http.ResponseWriter) error
+}
+
+type TransitDataKey200JSONResponse TransitDataKeyResult
+
+func (response TransitDataKey200JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitDataKey400JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitDataKey401JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitDataKey403JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitDataKey404JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitDataKey409JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitDataKey429JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitDataKey500JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitDataKey503JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecryptRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitDecryptJSONRequestBody
+}
+
+type TransitDecryptResponseObject interface {
+	VisitTransitDecryptResponse(w http.ResponseWriter) error
+}
+
+type TransitDecrypt200JSONResponse TransitDecryptResult
+
+func (response TransitDecrypt200JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitDecrypt400JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitDecrypt401JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitDecrypt403JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitDecrypt404JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitDecrypt409JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitDecrypt429JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitDecrypt500JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitDecrypt503JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncryptRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitEncryptJSONRequestBody
+}
+
+type TransitEncryptResponseObject interface {
+	VisitTransitEncryptResponse(w http.ResponseWriter) error
+}
+
+type TransitEncrypt200JSONResponse TransitCiphertextResult
+
+func (response TransitEncrypt200JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitEncrypt400JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitEncrypt401JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitEncrypt403JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitEncrypt404JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitEncrypt409JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitEncrypt429JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitEncrypt500JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitEncrypt503JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMACRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitHMACJSONRequestBody
+}
+
+type TransitHMACResponseObject interface {
+	VisitTransitHMACResponse(w http.ResponseWriter) error
+}
+
+type TransitHMAC200JSONResponse TransitHMACResult
+
+func (response TransitHMAC200JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitHMAC400JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitHMAC401JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitHMAC403JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitHMAC404JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitHMAC409JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitHMAC429JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitHMAC500JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitHMAC503JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMACRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitVerifyHMACJSONRequestBody
+}
+
+type TransitVerifyHMACResponseObject interface {
+	VisitTransitVerifyHMACResponse(w http.ResponseWriter) error
+}
+
+type TransitVerifyHMAC200JSONResponse TransitVerifyResult
+
+func (response TransitVerifyHMAC200JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitVerifyHMAC400JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitVerifyHMAC401JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitVerifyHMAC403JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitVerifyHMAC404JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitVerifyHMAC409JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitVerifyHMAC429JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitVerifyHMAC500JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitVerifyHMAC503JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyStateRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *ChangeTransitKeyStateJSONRequestBody
+}
+
+type ChangeTransitKeyStateResponseObject interface {
+	VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error
+}
+
+type ChangeTransitKeyState200JSONResponse TransitKey
+
+func (response ChangeTransitKeyState200JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ChangeTransitKeyState400JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ChangeTransitKeyState401JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ChangeTransitKeyState404JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ChangeTransitKeyState409JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState500JSONResponse struct{ InternalJSONResponse }
+
+func (response ChangeTransitKeyState500JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ChangeTransitKeyState503JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrapRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitRewrapJSONRequestBody
+}
+
+type TransitRewrapResponseObject interface {
+	VisitTransitRewrapResponse(w http.ResponseWriter) error
+}
+
+type TransitRewrap200JSONResponse TransitCiphertextResult
+
+func (response TransitRewrap200JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitRewrap400JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitRewrap401JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitRewrap403JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitRewrap404JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitRewrap409JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitRewrap429JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitRewrap500JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitRewrap503JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+}
+
+type RotateTransitKeyResponseObject interface {
+	VisitRotateTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type RotateTransitKey200JSONResponse TransitKey
+
+func (response RotateTransitKey200JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RotateTransitKey400JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RotateTransitKey401JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RotateTransitKey404JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RotateTransitKey409JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response RotateTransitKey500JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateTransitKey503JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSignRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitSignJSONRequestBody
+}
+
+type TransitSignResponseObject interface {
+	VisitTransitSignResponse(w http.ResponseWriter) error
+}
+
+type TransitSign200JSONResponse TransitSignatureResult
+
+func (response TransitSign200JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitSign400JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitSign401JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitSign403JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitSign404JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitSign409JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitSign429JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitSign500JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitSign503JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+}
+
+type TrimTransitKeyResponseObject interface {
+	VisitTrimTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type TrimTransitKey200JSONResponse TransitTrimResult
+
+func (response TrimTransitKey200JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TrimTransitKey400JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TrimTransitKey401JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TrimTransitKey404JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TrimTransitKey409JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response TrimTransitKey500JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TrimTransitKey503JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitVerifyJSONRequestBody
+}
+
+type TransitVerifyResponseObject interface {
+	VisitTransitVerifyResponse(w http.ResponseWriter) error
+}
+
+type TransitVerify200JSONResponse TransitVerifyResult
+
+func (response TransitVerify200JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitVerify400JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitVerify401JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitVerify403JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitVerify404JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitVerify409JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitVerify429JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitVerify500JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitVerify503JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListValuesRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -65858,6 +69080,51 @@ type StrictServerInterface interface {
 	// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
 	UpdateSshProfile(ctx context.Context, request UpdateSshProfileRequestObject) (UpdateSshProfileResponseObject, error)
+	// ListTransitKeys List the environment's transit keys (metadata only, never material).
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	ListTransitKeys(ctx context.Context, request ListTransitKeysRequestObject) (ListTransitKeysResponseObject, error)
+	// CreateTransitKey Create a named transit key with its first version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	CreateTransitKey(ctx context.Context, request CreateTransitKeyRequestObject) (CreateTransitKeyResponseObject, error)
+	// ShowTransitKey Show one transit key with its versions and caller entries.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ShowTransitKey(ctx context.Context, request ShowTransitKeyRequestObject) (ShowTransitKeyResponseObject, error)
+	// ConfigureTransitKey Change a key's version window, rotation period or caller entries.
+	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ConfigureTransitKey(ctx context.Context, request ConfigureTransitKeyRequestObject) (ConfigureTransitKeyResponseObject, error)
+	// TransitDataKey Generate a data key, wrapped under the key and optionally in plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey)
+	TransitDataKey(ctx context.Context, request TransitDataKeyRequestObject) (TransitDataKeyResponseObject, error)
+	// TransitDecrypt Decrypt a transit ciphertext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt)
+	TransitDecrypt(ctx context.Context, request TransitDecryptRequestObject) (TransitDecryptResponseObject, error)
+	// TransitEncrypt Encrypt plaintext under the key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt)
+	TransitEncrypt(ctx context.Context, request TransitEncryptRequestObject) (TransitEncryptResponseObject, error)
+	// TransitHMAC Compute an HMAC-SHA256 over a message.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac)
+	TransitHMAC(ctx context.Context, request TransitHMACRequestObject) (TransitHMACResponseObject, error)
+	// TransitVerifyHMAC Verify an HMAC-SHA256 in constant time.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify)
+	TransitVerifyHMAC(ctx context.Context, request TransitVerifyHMACRequestObject) (TransitVerifyHMACResponseObject, error)
+	// ChangeTransitKeyState Disable, enable, retire, compromise, schedule or cancel deletion.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle)
+	ChangeTransitKeyState(ctx context.Context, request ChangeTransitKeyStateRequestObject) (ChangeTransitKeyStateResponseObject, error)
+	// TransitRewrap Move a ciphertext onto the latest key version without returning plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap)
+	TransitRewrap(ctx context.Context, request TransitRewrapRequestObject) (TransitRewrapResponseObject, error)
+	// RotateTransitKey Append a new key version; new output uses it.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
+	RotateTransitKey(ctx context.Context, request RotateTransitKeyRequestObject) (RotateTransitKeyResponseObject, error)
+	// TransitSign Sign a message with an Ed25519 key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
+	TransitSign(ctx context.Context, request TransitSignRequestObject) (TransitSignResponseObject, error)
+	// TrimTransitKey Permanently delete versions below min_decrypt_version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
+	TrimTransitKey(ctx context.Context, request TrimTransitKeyRequestObject) (TrimTransitKeyResponseObject, error)
+	// TransitVerify Verify an Ed25519 signature.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
+	TransitVerify(ctx context.Context, request TransitVerifyRequestObject) (TransitVerifyResponseObject, error)
 	// ListValues The environment's resolved values.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values)
 	ListValues(ctx context.Context, request ListValuesRequestObject) (ListValuesResponseObject, error)
@@ -73382,6 +76649,516 @@ func (sh *strictHandler) UpdateSshProfile(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateSshProfileResponseObject); ok {
 		if err := validResponse.VisitUpdateSshProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTransitKeys operation middleware
+func (sh *strictHandler) ListTransitKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListTransitKeysRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTransitKeys(ctx, request.(ListTransitKeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTransitKeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTransitKeysResponseObject); ok {
+		if err := validResponse.VisitListTransitKeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTransitKey operation middleware
+func (sh *strictHandler) CreateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateTransitKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTransitKey(ctx, request.(CreateTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTransitKeyResponseObject); ok {
+		if err := validResponse.VisitCreateTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowTransitKey operation middleware
+func (sh *strictHandler) ShowTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request ShowTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowTransitKey(ctx, request.(ShowTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowTransitKeyResponseObject); ok {
+		if err := validResponse.VisitShowTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfigureTransitKey operation middleware
+func (sh *strictHandler) ConfigureTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request ConfigureTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body ConfigureTransitKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfigureTransitKey(ctx, request.(ConfigureTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfigureTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfigureTransitKeyResponseObject); ok {
+		if err := validResponse.VisitConfigureTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitDataKey operation middleware
+func (sh *strictHandler) TransitDataKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitDataKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitDataKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitDataKey(ctx, request.(TransitDataKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitDataKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitDataKeyResponseObject); ok {
+		if err := validResponse.VisitTransitDataKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitDecrypt operation middleware
+func (sh *strictHandler) TransitDecrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitDecryptRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitDecryptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitDecrypt(ctx, request.(TransitDecryptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitDecrypt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitDecryptResponseObject); ok {
+		if err := validResponse.VisitTransitDecryptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitEncrypt operation middleware
+func (sh *strictHandler) TransitEncrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitEncryptRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitEncryptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitEncrypt(ctx, request.(TransitEncryptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitEncrypt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitEncryptResponseObject); ok {
+		if err := validResponse.VisitTransitEncryptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitHMAC operation middleware
+func (sh *strictHandler) TransitHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitHMACRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitHMACJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitHMAC(ctx, request.(TransitHMACRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitHMAC")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitHMACResponseObject); ok {
+		if err := validResponse.VisitTransitHMACResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitVerifyHMAC operation middleware
+func (sh *strictHandler) TransitVerifyHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitVerifyHMACRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitVerifyHMACJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitVerifyHMAC(ctx, request.(TransitVerifyHMACRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitVerifyHMAC")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitVerifyHMACResponseObject); ok {
+		if err := validResponse.VisitTransitVerifyHMACResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeTransitKeyState operation middleware
+func (sh *strictHandler) ChangeTransitKeyState(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request ChangeTransitKeyStateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body ChangeTransitKeyStateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeTransitKeyState(ctx, request.(ChangeTransitKeyStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeTransitKeyState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeTransitKeyStateResponseObject); ok {
+		if err := validResponse.VisitChangeTransitKeyStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitRewrap operation middleware
+func (sh *strictHandler) TransitRewrap(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitRewrapRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitRewrapJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitRewrap(ctx, request.(TransitRewrapRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitRewrap")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitRewrapResponseObject); ok {
+		if err := validResponse.VisitTransitRewrapResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RotateTransitKey operation middleware
+func (sh *strictHandler) RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request RotateTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RotateTransitKey(ctx, request.(RotateTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RotateTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RotateTransitKeyResponseObject); ok {
+		if err := validResponse.VisitRotateTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitSign operation middleware
+func (sh *strictHandler) TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitSignRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitSignJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitSign(ctx, request.(TransitSignRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitSign")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitSignResponseObject); ok {
+		if err := validResponse.VisitTransitSignResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TrimTransitKey operation middleware
+func (sh *strictHandler) TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TrimTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TrimTransitKey(ctx, request.(TrimTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TrimTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TrimTransitKeyResponseObject); ok {
+		if err := validResponse.VisitTrimTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitVerify operation middleware
+func (sh *strictHandler) TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitVerifyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitVerifyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitVerify(ctx, request.(TransitVerifyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitVerify")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitVerifyResponseObject); ok {
+		if err := validResponse.VisitTransitVerifyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

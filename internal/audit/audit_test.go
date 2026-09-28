@@ -554,3 +554,58 @@ func mustSpec(t EventType) TypeSpec {
 	}
 	return spec
 }
+
+// TestTransitSchemasCannotCarryMaterial pins transit ADR invariant 6: every
+// transit.* schema is closed, declares no field that could carry plaintext,
+// ciphertext, context, signature, MAC, digest, data key or key material, and
+// validate() refuses a payload that tries to smuggle one in.
+func TestTransitSchemasCannotCarryMaterial(t *testing.T) {
+	transit := map[EventType]Payload{
+		EventTransitKeyCreated:      {"algorithm": "xchacha20-poly1305", "custody": "software", "allowed_operations": []string{"encrypt"}, "rotation_period_seconds": int64(0), "caller_count": int64(0)},
+		EventTransitKeyConfigured:   {"min_encrypt_version": int64(1), "min_decrypt_version": int64(1), "rotation_period_seconds": int64(0), "caller_count": int64(0), "callers_changed": false},
+		EventTransitKeyRotated:      {"version": int64(2), "trigger": "operator"},
+		EventTransitKeyStateChanged: {"action": "disable", "from_state": "active", "to_state": "disabled"},
+		EventTransitKeyTrimmed:      {"min_decrypt_version": int64(2), "versions_deleted": int64(1)},
+		EventTransitKeyDestroyed:    {"custody": "software", "versions_erased": int64(1)},
+		EventTransitOperation:       {"operation": "encrypt", "key_version": int64(2), "input_bytes": int64(5), "output_bytes": int64(80)},
+	}
+	forbidden := []string{
+		"plaintext", "ciphertext", "context", "associated_data", "input", "output",
+		"signature", "mac", "hmac", "digest", "hash", "data_key", "datakey",
+		"key_material", "material", "public_key", "message", "value",
+	}
+	for et, valid := range transit {
+		spec, ok := Spec(et)
+		if !ok {
+			t.Errorf("%s is not registered", et)
+			continue
+		}
+		if err := spec.Schema.validate(et, valid); err != nil {
+			t.Fatalf("%s refused its valid baseline: %v", et, err)
+		}
+		for _, f := range forbidden {
+			if _, ok := spec.Schema[f]; ok {
+				t.Errorf("%s schema declares forbidden field %q", et, f)
+			}
+			payload := make(Payload, len(valid)+1)
+			for field, value := range valid {
+				payload[field] = value
+			}
+			payload[f] = "c2VjcmV0"
+			if err := spec.Schema.validate(et, payload); err == nil {
+				t.Errorf("%s accepted a payload carrying %q", et, f)
+			}
+		}
+	}
+	op := mustSpec(EventTransitOperation)
+	if err := op.Schema.validate(EventTransitOperation, Payload{
+		"operation": "encrypt", "key_version": int64(2), "input_bytes": int64(5), "output_bytes": int64(80),
+	}); err != nil {
+		t.Fatalf("a well-formed transit.operation payload was refused: %v", err)
+	}
+	if err := op.Schema.validate(EventTransitOperation, Payload{
+		"operation": "export", "input_bytes": int64(0), "output_bytes": int64(0),
+	}); err == nil {
+		t.Fatal("an operation outside the closed set was accepted")
+	}
+}

@@ -279,6 +279,24 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                         true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": true,
+	// Transit (#156): every route computes over this instance's own managed
+	// keys; none fetches, relays or forwards. External custody, when a real
+	// provider exists, is a local key-custody call, not a caller-directed fetch.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                           true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":              true,
+	"PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle":   true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey":     true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify":      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac":        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify": true,
 	// Private PKI (#154): issuers, profiles, bindings, certificates and CRLs
 	// are this instance's own durable state, and signing happens in-process.
 	// No route contacts any upstream: a CRL distribution URL is only embedded

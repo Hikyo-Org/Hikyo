@@ -179,6 +179,9 @@ type API struct {
 	Dynamic *service.Dynamic
 	// SSH is the SSH user-certificate surface (#155).
 	SSH *service.SSH
+	// Transit is the managed-key surface (#156). Concrete like Dynamic: it
+	// resolves the caller and applies key policy itself.
+	Transit *service.Transit
 	// PKI is the private-PKI surface (#154).
 	PKI *service.PKI
 	// Audits is the trail read/export surface. Concrete like Adapters: it is

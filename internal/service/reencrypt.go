@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/transit"
 )
 
 // Reencrypt walks a scope's retained ciphertext onto the active DEK version and
@@ -134,10 +135,11 @@ func (s *Reencrypt) SweepRetiring(ctx context.Context) ([]RetiringScope, error) 
 	return out, nil
 }
 
-// ReencryptProject walks a project's value ciphertext onto the active DEK
-// version. (Adapters, pending drafts and snapshot payloads join this walk with
-// their store methods; the DEK-version retire lands once every project table is
-// covered, since a version is retired only when zero ciphertexts reference it.)
+// ReencryptProject moves a project's retained ciphertext, including software
+// transit key material, onto the active DEK version and returns the moved row
+// count. Superseded DEK versions are retired only after all covered tables are
+// on the active version. Keyring, authorization, budget, and store errors
+// propagate; earlier committed chunks remain moved if a later step fails.
 func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, projectID string) (ReencryptResult, error) {
 	if s.Keyring == nil {
 		return ReencryptResult{}, errors.New("service: reencrypt requires a keyring")
@@ -168,7 +170,7 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 	adapterAAD := func(row projectFieldRow) crypto.AAD {
 		return adapter.CredentialAAD(orgID, projectID, row.owner)
 	}
-	// The five project ciphertext tables, defined once and shared by the walk and
+	// The project ciphertext tables, defined once and shared by the walk and
 	// the retire's dryness gate — a DEK version is retired only when zero
 	// ciphertexts across ALL of them reference it, so both must cover the same set.
 	tables := []projectTable{
@@ -242,6 +244,19 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 			},
 			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
 				return r.SSH().ReencryptCAKey(ctx, p, id, newCt, oldCt)
+			}},
+		// Transit key-version material (#156): a project_field envelope bound
+		// to the version row, its environment and its transit key.
+		{"transit_key_version",
+			func(ctx context.Context, r store.Repos, p authz.Proof, cursor string) ([]projectFieldRow, error) {
+				rows, err := r.Transit().ListVersionsForReencrypt(ctx, p, cursor, s.chunkSize())
+				return fieldRows(rows), err
+			},
+			func(row projectFieldRow) crypto.AAD {
+				return transit.MaterialAADFor(orgID, projectID, row.env, row.key, row.id)
+			},
+			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
+				return r.Transit().ReencryptVersion(ctx, p, id, newCt, oldCt)
 			}},
 	}
 

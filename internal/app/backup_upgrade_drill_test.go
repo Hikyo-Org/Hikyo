@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 64, while the
+// The runtime-created fixture includes migrations 45 through 65, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+20 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 64 only")
+	if len(current.Entries) != len(legacy.Entries)+21 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 65 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -303,6 +303,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM ssh_profiles",
 		"SELECT COUNT(*) FROM ssh_profile_requesters",
 		"SELECT COUNT(*) FROM ssh_certificates",
+		"SELECT COUNT(*) FROM transit_keys",
+		"SELECT COUNT(*) FROM transit_key_versions",
+		"SELECT COUNT(*) FROM transit_key_callers",
 		// 00064 (private PKI): no issuer, profile, binding or certificate
 		// may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM pki_issuers",
@@ -319,6 +322,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		if err != nil || evidence != 0 {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate or PKI evidence", query, err)
 		}
+	}
+	// Reverse 00065 (transit) before the lower stack.
+	for _, table := range []string{"transit_key_callers", "transit_key_versions", "transit_keys"} {
+		drillExec(t, db, "DROP TABLE "+table)
 	}
 	// Reverse 00064 (private PKI), 00063 (Vault KV) and 00062 (Cloudflare),
 	// then 00061 (SSH user certificates).
@@ -443,7 +450,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65)",
 	} {
 		drillExec(t, db, query)
 	}

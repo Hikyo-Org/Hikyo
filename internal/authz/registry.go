@@ -626,6 +626,19 @@ const (
 	OpSSHCertIssue        Operation = "ssh-cert.issue"
 	OpSSHCertInspect      Operation = "ssh-cert.inspect"
 	OpSSHCertRevoke       Operation = "ssh-cert.revoke"
+	// Transit (#156, transit ADR D7). Key management rides crypto-manage at
+	// project scope (human-only); the data plane rides crypto-use at
+	// environment scope (workload and automation may hold it). Inspection is
+	// the bare `read@environment` metadata read, audited-none. transit.use
+	// carries postGrantForbidden: key policy (state, version window, per-key
+	// caller entries, allowed operations) refuses after the formula passes.
+	OpTransitKeyCreate    Operation = "transit.key-create"
+	OpTransitKeyInspect   Operation = "transit.key-inspect"
+	OpTransitKeyConfigure Operation = "transit.key-configure"
+	OpTransitKeyRotate    Operation = "transit.key-rotate"
+	OpTransitKeyLifecycle Operation = "transit.key-lifecycle"
+	OpTransitKeyTrim      Operation = "transit.key-trim"
+	OpTransitUse          Operation = "transit.use"
 
 	// Private PKI (#154, pki ADR). Issuers and profiles are instance policy
 	// (`instance-config`); issuance is an environment act under the
@@ -863,6 +876,29 @@ const (
 	StoreSSHListCAKeysForReencrypt    StoreOp = "ssh.ListCAKeysForReencrypt"
 	StoreSSHReencryptCAKey            StoreOp = "ssh.ReencryptCAKey"
 	StoreSSHPurgeEnvironment          StoreOp = "ssh.PurgeEnvironment"
+	// Transit (#156, transit ADR). Request-path, proof-carrying store methods;
+	// the scheduler reaches the rotation and purge doors under scoped system
+	// authority.
+	StoreTransitKeysList                 StoreOp = "transit.ListKeys"
+	StoreTransitKeysGet                  StoreOp = "transit.GetKey"
+	StoreTransitKeysGetForUse            StoreOp = "transit.GetKeyForUse"
+	StoreTransitKeysCount                StoreOp = "transit.CountKeys"
+	StoreTransitKeysCreate               StoreOp = "transit.CreateKey"
+	StoreTransitKeysConfigure            StoreOp = "transit.Configure"
+	StoreTransitKeysChangeState          StoreOp = "transit.ChangeState"
+	StoreTransitKeysCompromise           StoreOp = "transit.Compromise"
+	StoreTransitVersionsList             StoreOp = "transit.ListVersions"
+	StoreTransitVersionMaterial          StoreOp = "transit.VersionMaterial"
+	StoreTransitVersionsAppend           StoreOp = "transit.AppendVersion"
+	StoreTransitVersionsTrim             StoreOp = "transit.Trim"
+	StoreTransitVersionsFenceTrim        StoreOp = "transit.FenceTrim"
+	StoreTransitVersionsListForReencrypt StoreOp = "transit.ListVersionsForReencrypt"
+	StoreTransitVersionsReencrypt        StoreOp = "transit.ReencryptVersion"
+	StoreTransitCallersList              StoreOp = "transit.ListCallers"
+	StoreTransitSelectDeletionDue        StoreOp = "transit.SelectDeletionDue"
+	StoreTransitSelectRotationDue        StoreOp = "transit.SelectRotationDue"
+	StoreTransitDestroyVersions          StoreOp = "transit.DestroyVersions"
+	StoreTransitDestroy                  StoreOp = "transit.Destroy"
 
 	// Private PKI (#154). Request-path store methods; the worker's expiry,
 	// unknown and CRL sweeps run through the proof-free PKIRuntime.
@@ -1238,6 +1274,11 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSSHListProfiles:     true,
 	StoreSSHGetCertificate:   true,
 	StoreSSHListCertificates: true,
+	// Transit key inspection is a bare-read (`read@env`) of metadata only (#156).
+	StoreTransitKeysList:     true,
+	StoreTransitKeysGet:      true,
+	StoreTransitVersionsList: true,
+	StoreTransitCallersList:  true,
 	StoreProjectsGet:         true,
 	StoreProjectsList:        true,
 	StoreProjectsListAll:     true,
@@ -2970,6 +3011,8 @@ var operationTable = map[Operation]opSpec{
 			StoreDynamicProvidersReencrypt:        true,
 			StoreSSHListCAKeysForReencrypt:        true,
 			StoreSSHReencryptCAKey:                true,
+			StoreTransitVersionsListForReencrypt:  true,
+			StoreTransitVersionsReencrypt:         true,
 			StoreKeysAssertActiveDEKVersion:       true,
 			StoreKeysRetireRetiringTier3:          true,
 			StoreReencryptSuccessWrite:            true,
@@ -4536,6 +4579,49 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{StoreSSHGetCertificate: true, StoreSSHRevokeCertificate: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventSSHCertificateRevoked},
 	},
+	// --- Transit (#156) --------------------------------------------------------
+	OpTransitKeyCreate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreTransitKeysCount: true, StoreTransitKeysCreate: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventTransitKeyCreated},
+	},
+	OpTransitKeyInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreTransitKeysList: true, StoreTransitKeysGet: true, StoreTransitVersionsList: true, StoreTransitCallersList: true},
+		auditedNone: true,
+	},
+	OpTransitKeyConfigure: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysConfigure: true, StoreTransitKeysGet: true, StoreTransitVersionsList: true},
+		events:   []audit.EventType{audit.EventTransitKeyConfigured},
+	},
+	OpTransitKeyRotate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreKeysAssertActiveDEKVersion: true, StoreTransitCallersList: true, StoreTransitKeysGet: true, StoreTransitVersionsAppend: true, StoreTransitVersionsList: true},
+		events:   []audit.EventType{audit.EventTransitKeyRotated},
+	},
+	OpTransitKeyLifecycle: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysChangeState: true, StoreTransitKeysCompromise: true, StoreTransitKeysGet: true, StoreTransitVersionsList: true},
+		events:   []audit.EventType{audit.EventTransitKeyStateChanged},
+	},
+	OpTransitKeyTrim: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysGet: true, StoreTransitVersionMaterial: true, StoreTransitVersionsFenceTrim: true, StoreTransitVersionsList: true, StoreTransitVersionsTrim: true},
+		events:   []audit.EventType{audit.EventTransitKeyTrimmed},
+	},
+	OpTransitUse: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula:  Formula{{Cap: domain.CapCryptoUse, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreTransitKeysGetForUse: true, StoreTransitVersionMaterial: true, StoreTransitCallersList: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventTransitOperation},
+	},
 	// --- Private PKI (#154) ---------------------------------------------------
 	OpPKIIssuerInspect: {
 		class: ClassInstance, formula: pkiOperatorFormula,
@@ -4794,6 +4880,16 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		// emitted per row under scoped authority.
 		StoreDeliveryTargetsSelectExpired: true,
 		StoreDeliveryTargetsPurge:         true,
+		// Transit maintenance (#156, tenant-isolation amendment 2026-09-26):
+		// the installation-wide due reads, the guarded automatic-rotation
+		// append (plus the DEK writer fence its sealed material needs), and
+		// the guarded purge that erases material and tombstones the key.
+		StoreTransitSelectDeletionDue:   true,
+		StoreTransitSelectRotationDue:   true,
+		StoreTransitVersionsAppend:      true,
+		StoreTransitDestroyVersions:     true,
+		StoreTransitDestroy:             true,
+		StoreKeysAssertActiveDEKVersion: true,
 	},
 }
 
@@ -4816,6 +4912,8 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventBackupExportFailed,
 		// The delivery-target 30-day purge (#788).
 		audit.EventDeliveryTargetPurged,
+		// Transit automatic rotation and deletion purge (#156).
+		audit.EventTransitKeyRotated, audit.EventTransitKeyDestroyed,
 	},
 }
 
