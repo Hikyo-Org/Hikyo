@@ -48,6 +48,7 @@ for its ripple register.
 | k8s-condition-reporting ADR | [k8s-condition-reporting.md](./k8s-condition-reporting.md) |
 | transit ADR | [transit.md](./transit.md) |
 | machine-identities ADR | [machine-identities.md](./machine-identities.md) |
+| member-access-rules ADR (proposed) | [member-access-rules.md](./member-access-rules.md) |
 | mcp-server ADR | [mcp-server.md](./mcp-server.md) |
 | multi-instance ADR | [multi-instance.md](./multi-instance.md) |
 | mvp-boundary ADR | [mvp-boundary.md](./mvp-boundary.md) |
