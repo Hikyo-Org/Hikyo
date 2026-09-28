@@ -78,11 +78,17 @@ and the `hikyo file-sync` client. The browser surface is tracked in #819.
 - **Decision 8 (a new report route plus `target show`)**: done, but the
   report rides the existing `report-delivery-status` atom (a declared,
   proposed amendment) instead of a new one.
-- **Test matrix**: the macOS leg is not wired. The PR's own required gate
-  reads `scripts/ci/ci-job-registry.json` from the base commit, so a new job
-  must land separately. The package builds and vets for darwin and windows;
-  follow-up: a `macos-latest` job running `go test ./internal/filesync
-  ./internal/cli -run FileSync`.
+- **Test matrix**: the macOS leg rides the existing `scan-xplat` job (a new
+  job cannot gate its own PR: the required gate reads
+  `scripts/ci/ci-job-registry.json` from the base commit). On `macos-latest`
+  it runs `./internal/filesync`, the `FileSync` tests of `./internal/cli`, and
+  `TestFileSyncCLISQLite` from `./internal/isolation`. Linux runs the same
+  tests, plus the PostgreSQL end-to-end run, in `test_core` and the isolation
+  shards. `TestRequireTmpfs` proves the refusal on macOS, where tmpfs cannot
+  be detected.
+- **Watch mode**: not built. Acceptance criterion 5 is met as `oneshot` and
+  `poll`; the resident watcher and `--watch` rows of mvp-boundary § 4 stand
+  (declared amendment 9). Continuous refresh is a timer running the client.
 
 ## Gotchas for the next reader
 
