@@ -58,6 +58,10 @@ func (e *MoveWideningError) SafeDetail() string {
 	return fmt.Sprintf("moving key %s widens access for %s; confirm naming exactly them", e.KeyID, strings.Join(ids, ", "))
 }
 
+// MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
+// mirroring MaxGrantsPerOrg: it makes runaway rule minting loud.
+const MaxRulesPerOrg = 1000
+
 // Rules owns the rule surface.
 type Rules struct {
 	DB  *store.DB
@@ -143,6 +147,13 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (string,
 				return ErrGrantorLacksCapability
 			}
 			unheld = true
+		}
+		existing, err := az.RuleIDsForOrg(ctx, spec.Org)
+		if err != nil {
+			return err
+		}
+		if len(existing) >= MaxRulesPerOrg {
+			return fmt.Errorf("%w: an organization holds at most %d rules", domain.ErrLimitExceeded, MaxRulesPerOrg)
 		}
 		id, err := newID("rul")
 		if err != nil {
@@ -247,13 +258,39 @@ func revokeRule(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p au
 	if err := invalidateGrantChange(ctx, az, stored.Rule.Principal); err != nil {
 		return err
 	}
-	payload := rulePayload(stored.Rule)
+	// A rule that no longer validates carries no Where; render what it
+	// covered from its stored items so the trail still says it.
+	shown := stored.Rule
+	if len(shown.Where.Projects) == 0 {
+		shown.Where = whereFromItems(stored.Items)
+	}
+	payload := rulePayload(shown)
 	payload["cause"] = cause
 	ev, err := domainEvent(ctx, audit.EventRuleRevoked, actor, audit.Object{Type: "rule", ID: stored.Rule.ID}, payload)
 	if err != nil {
 		return err
 	}
 	return r.Audit().InsertTenant(ctx, p, ev)
+}
+
+// whereFromItems rebuilds a Where from stored items for rendering only; it is
+// never evaluated.
+func whereFromItems(items []authz.StoredRuleItem) domain.Where {
+	w := domain.Where{Envs: map[domain.ProjectID][]domain.EnvID{}, Keys: map[domain.ProjectID][]domain.RuleKeyItem{}}
+	for _, it := range items {
+		if !slices.Contains(w.Projects, it.Project) {
+			w.Projects = append(w.Projects, it.Project)
+		}
+		switch {
+		case it.Env != "":
+			w.Envs[it.Project] = append(w.Envs[it.Project], it.Env)
+		case it.KeyID != "":
+			w.Keys[it.Project] = append(w.Keys[it.Project], domain.RuleKeyItem{KeyID: it.KeyID})
+		case it.Axis == "folder":
+			w.Keys[it.Project] = append(w.Keys[it.Project], domain.RuleKeyItem{Folder: it.Folder, IsFolder: true})
+		}
+	}
+	return w
 }
 
 // rulePayload renders a rule for its lifecycle events, as stable ids.

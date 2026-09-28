@@ -72,3 +72,14 @@ func TestRuleValidateRefusesWideningShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestRuleValidateBoundsItems(t *testing.T) {
+	envs := make([]EnvID, MaxRuleItems)
+	for i := range envs {
+		envs[i] = EnvID("e" + string(rune('a'+i%26)) + string(rune('a'+i/26%26)) + string(rune('a'+i/676)))
+	}
+	r := Rule{ID: "r", Capability: CapEdit, Org: "org", Where: Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{"p": envs}, KeyMode: AxisAll}}
+	if err := r.Validate(); err == nil {
+		t.Fatal("an oversized rule validated")
+	}
+}

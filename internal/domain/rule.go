@@ -60,6 +60,11 @@ type RuleKey struct {
 	Folder string
 }
 
+// MaxRuleItems bounds one rule's selector items (projects, environments and
+// keys together), below the rule audit events' list bounds so an oversized
+// rule is refused by name rather than failing at its audit write.
+const MaxRuleItems = 500
+
 // RuleShape is the narrowest Where a capability may sit on (ADR D2, D5).
 type RuleShape int
 
@@ -182,6 +187,9 @@ func (r Rule) Validate() error {
 	}
 	if w.KeyMode == AxisOnly && keyTotal == 0 {
 		return fmt.Errorf("%w: an only-keys rule names at least one folder or key", ErrInvalid)
+	}
+	if len(w.Projects)+envTotal+keyTotal > MaxRuleItems {
+		return fmt.Errorf("%w: a rule names at most %d projects, environments and keys", ErrLimitExceeded, MaxRuleItems)
 	}
 	switch shape {
 	case ShapeEnv:

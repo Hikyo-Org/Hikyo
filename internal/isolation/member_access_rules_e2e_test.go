@@ -294,6 +294,36 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 	})
 
+	t.Run("definitions_apply_move_needs_confirmation", func(t *testing.T) {
+		df := seedDefinitionsProject(t, db, "rulemove", true)
+		svc := definitionsService(t, db)
+		f.create(t, orgAdmin, service.RuleSpec{Target: grantee, Capability: domain.CapEdit, Org: orgA,
+			Where: domain.Where{Projects: []domain.ProjectID{df.project}, EnvMode: domain.AxisAll, KeyMode: domain.AxisOnly,
+				Keys: map[domain.ProjectID][]domain.RuleKeyItem{df.project: {folderItem("moved")}}}})
+		bundle := parseDefinitions(t, exportDefinitions(t, svc, df))
+		for i := range bundle.Keys {
+			if bundle.Keys[i].Name == "BASE_KEY" {
+				bundle.Keys[i].FolderPath = "moved"
+			}
+		}
+		plan := planDefinitions(t, svc, df, encodeDefinitions(t, bundle))
+		var widening *service.MoveWideningError
+		if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), df.scope(), plan.ID, service.ApplyOptions{}); !errors.As(err, &widening) {
+			t.Fatalf("unconfirmed widening apply = %v, want MoveWideningError", err)
+		}
+		if len(widening.Principals) != 1 || widening.Principals[0] != grantee {
+			t.Fatalf("widening names %v, want [grantee]", widening.Principals)
+		}
+		before := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.move_widening_confirmed'")
+		if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), df.scope(), plan.ID,
+			service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{grantee}}); err != nil {
+			t.Fatalf("confirmed apply: %v", err)
+		}
+		if after := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.move_widening_confirmed'"); after != before+1 {
+			t.Fatalf("apply confirmation audited %d times, want 1", after-before)
+		}
+	})
+
 	t.Run("revoke_takes_effect", func(t *testing.T) {
 		if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, revealRule); err != nil {
 			t.Fatal(err)
