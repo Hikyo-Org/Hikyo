@@ -195,8 +195,9 @@ this slice is narrower than D1 to D11:
   grants, and never counts in the lockout census, until delegation containment (D7) is implemented.
   Creating and revoking rules needs legacy `manage-members` on every project the rule names.
 - **Environments bind by id,** not by name: "all, except `prod`" names that environment, and environments
-  created later are included. **Folders bind by exact path,** so a folder rename narrows folder picks
-  (the open point below).
+  created later are included. **Folders bind by path:** an "Only…" folder pick matches keys in exactly
+  that folder, while an except covers the folder and every folder below it (both directions fail
+  closed). A folder rename therefore narrows folder picks (the open point below).
 - **Publishing stays environment-wide:** a key-narrowed rule never satisfies publish, and a folder-scoped
   Define keys rule cannot yet create or delete keys in a project that has environments unless publish is
   held environment-wide.
