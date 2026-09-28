@@ -6787,3 +6787,320 @@ label.chk:has(input:disabled) {
 .instance-org-filter {
   max-width: 24rem;
 }
+
+/* --- Member access rules prototype (routes/accessRules, Storybook only) ------
+ *
+ * Ported from docs/site/public/prototypes/member-access/6. State is never
+ * colour-only: an except carries a cross and the word, a secret a lock and
+ * the word, a Where tap its state in text. Tokens only. */
+.access-rules p,
+.access-dialog p {
+  margin: 0;
+}
+
+.access-hint,
+.access-rule__reach {
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-rule__reach {
+  color: var(--tx-faint);
+}
+
+.access-people,
+.access-rule-list,
+.access-answer,
+.access-log,
+.access-diff ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.access-person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.access-person:last-child {
+  border-bottom: 0;
+}
+
+.access-person__who,
+.access-person__rules,
+.access-rule-list,
+.access-rule__main,
+.access-editor__section,
+.access-perm-group,
+.access-axis,
+.access-summary,
+.access-log__entry,
+.access-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.access-person__who {
+  gap: var(--space-1);
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-person__who strong {
+  color: var(--tx);
+  font-size: var(--fs-md);
+}
+
+.access-person__add {
+  align-self: flex-start;
+}
+
+.access-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+  background: var(--bg);
+}
+
+.access-rule__main {
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.access-rule__perms,
+.access-where,
+.access-presets,
+.access-picks,
+.access-examples,
+.access-axis__head,
+.access-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.access-where {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.access-where__sep {
+  color: var(--tx-faint);
+}
+
+.access-except {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--danger);
+}
+
+.access-pick {
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.access-pick[data-state='implied'] {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.access-pick[data-state='excepted'] {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+  text-decoration: line-through;
+}
+
+.access-pick[data-state='off'] {
+  color: var(--tx-dim);
+}
+
+.access-editor__section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: var(--space-3);
+}
+
+.access-editor__section > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+
+.access-editor__remove {
+  margin-right: auto;
+}
+
+.access-perm-group {
+  gap: var(--space-1);
+}
+
+.access-perm__desc {
+  padding-left: calc(var(--chk-box) + var(--chk-gap));
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-perm__why {
+  color: var(--tx-faint);
+}
+
+.access-axis {
+  padding: var(--space-3);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+}
+
+.access-axis__head {
+  gap: var(--space-3);
+}
+
+.access-axis__head h3,
+.access-perm-group h3 {
+  margin: 0;
+}
+
+.access-axis__head h3 {
+  min-width: 12ch;
+}
+
+.access-seg {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.access-single-keys > summary,
+.access-noreach > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--control);
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.access-summary,
+.access-log__entry,
+.access-diff {
+  padding: var(--space-3);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+  background: var(--bg);
+  font-size: var(--fs-sm);
+}
+
+.access-summary__sentence {
+  font-size: var(--fs-md);
+}
+
+.access-diff--gain {
+  border-color: var(--danger);
+}
+
+.access-diff ul {
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+
+.access-ask {
+  align-items: flex-end;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.access-ask .field {
+  font-weight: 400;
+}
+
+.access-examples {
+  margin-top: var(--space-2);
+}
+
+#access-who-can > h3 {
+  margin: var(--space-4) 0 var(--space-1);
+}
+
+.access-answer li {
+  display: grid;
+  grid-template-columns: var(--icon) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.access-answer__why {
+  grid-column: 2;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-answer__glyph--yes {
+  fill: var(--accent);
+}
+
+.access-answer__glyph--except {
+  fill: var(--danger);
+}
+
+.access-answer__glyph--warn {
+  fill: var(--changed);
+}
+
+.access-answer__glyph--none {
+  fill: var(--tx-faint);
+}
+
+.access-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.access-gloss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.access-gloss > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  gap: var(--space-4);
+}
+
+.access-gloss dt {
+  font-weight: 700;
+  font-size: var(--fs-md);
+}
+
+.access-gloss dd {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+.access-gloss dd code {
+  color: var(--tx);
+}
+
+@media (max-width: 800px) {
+  .access-person,
+  .access-gloss > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}
