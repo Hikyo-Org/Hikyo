@@ -8,7 +8,7 @@
     "dev": "pnpm run prepare-content && astro dev",
     "check": "pnpm run prepare-content && astro check",
     "build": "pnpm run prepare-content && astro build",
-    "test": "node --test scripts/test-pwa-assets.mjs && pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-posthog.mjs && node scripts/test-csp.mjs && node scripts/test-pwa-offline.mjs",
+    "test": "node --test scripts/test-pwa-assets.mjs && pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-posthog.mjs && node scripts/test-csp.mjs && node scripts/test-llms.mjs && node scripts/test-pwa-offline.mjs",
     "verify": "pnpm run check && pnpm run test"
   },
   "dependencies": {
@@ -39,8 +39,8 @@
     "@fontsource/vt323": "^5.3.0",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.2.8",
-    "fumadocs-core": "16.15.0",
-    "fumadocs-ui": "16.15.0",
+    "fumadocs-core": "16.15.15",
+    "fumadocs-ui": "16.15.15",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sharp": "0.35.4",
