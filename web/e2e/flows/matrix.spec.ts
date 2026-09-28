@@ -1617,8 +1617,12 @@ test.describe('change approvals', () => {
           return {
             name: pair.slice(0, equals),
             value: pair.slice(equals + 1),
-            url: BASE_URL,
+            // Playwright derives Secure from `url`; our HTTP loopback still requires
+            // the server's Secure __Host- cookie, scoped to this exact host and '/'.
+            domain: new URL(BASE_URL).hostname,
+            path: '/',
             httpOnly: /;\s*httponly/i.test(header),
+            secure: /;\s*secure(?:;|$)/i.test(header),
             sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
           };
         }),
@@ -1841,8 +1845,12 @@ test.describe('temporary access', () => {
           return {
             name: pair.slice(0, equals),
             value: pair.slice(equals + 1),
-            url: BASE_URL,
+            // Playwright derives Secure from `url`; our HTTP loopback still requires
+            // the server's Secure __Host- cookie, scoped to this exact host and '/'.
+            domain: new URL(BASE_URL).hostname,
+            path: '/',
             httpOnly: /;\s*httponly/i.test(header),
+            secure: /;\s*secure(?:;|$)/i.test(header),
             sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
           };
         }),
