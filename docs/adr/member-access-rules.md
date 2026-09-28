@@ -1,15 +1,15 @@
 # Hikyo member access rules: scoped rules, rule-local exceptions, key-level limits (ADR, decisions owner-approved 2026-09-28)
 
-> **Status: proposed declared amendment to [permission-model.md](./permission-model.md); not operative.**
-> The owner took every decision below on 2026-09-28 while iterating the
-> [member-access prototype](../site/public/prototypes/member-access/) (iterations 1 to 6;
-> iteration 6 is the reference, mirrored in Storybook under *Prototypes/Member access*).
-> The [oss-mechanics.md](./oss-mechanics.md) amendment procedure still owes the
-> reopening of [#15](https://github.com/Hikyo-Org/Hikyo/issues/15) and the
-> cross-provider adversarial review; both are recorded as open in
-> [the handoff](../handoff/member-access-rules.md). This amendment becomes
-> operative only when that review concludes and an implementing PR merges.
-> Until then permission-model.md governs unchanged.
+> **Status: declared amendment to [permission-model.md](./permission-model.md), operative with the
+> implementing PR ([#838](https://github.com/Hikyo-Org/Hikyo/pull/838)).** The owner took every decision below on
+> 2026-09-28 while iterating the [member-access prototype](../site/public/prototypes/member-access/)
+> (iterations 1 to 6; iteration 6 is the reference, mirrored in Storybook under *Prototypes/Member access*),
+> and on the same night directed the full-stack implementation and merge on green ahead of the review.
+> The [oss-mechanics.md](./oss-mechanics.md) amendment procedure still owes the reopening of
+> [#15](https://github.com/Hikyo-Org/Hikyo/issues/15) and the cross-provider adversarial review; both are
+> recorded as open in [the handoff](../handoff/member-access-rules.md). The first slice is deliberately
+> fail-closed (see *First implementation slice*): where it is narrower than the decisions, the decisions
+> are the target and the slice is the floor.
 
 ## Context
 
@@ -173,6 +173,38 @@ machines, because "who can reach this key?" must include deploy accounts.
 - **API and CLI** need a spelling for `where`; the api-cli-surface ADR owns it.
 - **MVP boundary:** this moves "key-scoped reveal" from fog to a decided
   design; scheduling is a separate call.
+
+## First implementation slice (2026-09-29)
+
+The implementation is built so that its worst possible bug is a narrowed rule wrongly denied, never access
+widened. Rules are stored in their own tables (`rules`, `rule_items`, migration 00070) and read only inside
+the authorization chokepoint; every other coverage check (delivery, SSH, federation, the disclosure gate,
+the lockout census, the grantor bound, navigation) stays blind to them and therefore conservative. Where
+this slice is narrower than D1 to D11:
+
+- **Humans only.** Rules for machine principals are refused; machines keep legacy grants. The machine
+  widening gate counts reach per environment and would undercount a key-narrowed machine reveal.
+- **Key-aware operations are an explicit short list:** single-value reveal, staging and declaring one
+  value, and key create, rename, delete and move (a move is authorized on both folders). Every other
+  operation, including bulk reveal, export, diff, copy, publish, pins, delivery and definitions apply, can
+  be satisfied only by a rule that does not narrow keys. A proof obtained through a key-narrowed rule is
+  bound to that key.
+- **See (`read`) cannot be key-narrowed** on a rule (refused, rather than silently widened to the
+  environment), per D5.
+- **Manage access on a rule is inert:** it is stored and shown but grants nothing, cannot create rules or
+  grants, and never counts in the lockout census, until delegation containment (D7) is implemented.
+  Creating and revoking rules needs legacy `manage-members` on every project the rule names.
+- **Environments bind by id,** not by name: "all, except `prod`" names that environment, and environments
+  created later are included. **Folders bind by exact path,** so a folder rename narrows folder picks
+  (the open point below).
+- **Publishing stays environment-wide:** a key-narrowed rule never satisfies publish, and a folder-scoped
+  Define keys rule cannot yet create or delete keys in a project that has environments unless publish is
+  held environment-wide.
+- **No "all projects" on rules** in this slice; a rule names its projects.
+- **The move-widening confirmation (D9)** counts gains through rules only (legacy grants are
+  folder-blind), so it may name someone who already had access through a grant, never fewer people.
+- **Resolver (D10)** answers in the web client over the org's grants, rules and key catalogue; a
+  server-side resolver operation is owed.
 
 ## Rejected alternatives
 
