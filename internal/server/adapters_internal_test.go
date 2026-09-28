@@ -12,7 +12,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 type recordingTargetMutationService struct {
@@ -180,7 +179,7 @@ func TestUpdateAdapterTargetMapsOneIntentToServiceResult(t *testing.T) {
 }
 
 func TestAdapterMoveResponsePreservesGitLabScope(t *testing.T) {
-	out, err := adapterMoveResponse(service.AdapterMove{CreatedAt: "2026-08-17T00:00:00Z", Targets: []store.AdapterMoveTarget{{TargetID: "tgt_gitlab", DestinationScope: "production"}}})
+	out, err := adapterMoveResponse(service.AdapterMove{CreatedAt: "2026-08-17T00:00:00Z", Targets: []service.AdapterMoveTarget{{TargetID: "tgt_gitlab", DestinationScope: "production"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -111,6 +111,7 @@ type AdapterRecord = store.AdapterRecord
 // This sanctioned seam follows the system-architecture ADR; boundary_test.go
 // enforces that handlers never import internal/store directly.
 type AdapterMove = store.AdapterMove
+type AdapterMoveTarget = store.AdapterMoveTarget
 
 type AdapterTargetInput struct {
 	AllowEnvironmentCreate bool
