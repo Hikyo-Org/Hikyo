@@ -696,8 +696,9 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 	// write anywhere in this call, because the whole declare is all-or-nothing.
 	first := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envIDs[0])}
 	// One key per call: a key-narrowed member access rule may admit the write
-	// itself. The materializing publish below stays environment-wide, so such a
-	// rule alone never completes a declare (publish is never key-narrowed).
+	// itself. The materializing publish below is authorized without naming a
+	// key, so a key-narrowed publish rule never satisfies it: such a rule alone
+	// never completes a declare, though publish itself may be key-narrowed.
 	keyTarget := authz.KeyByName(keyName)
 	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, authz.OpValueSet, first, &keyTarget)
 	if err != nil {

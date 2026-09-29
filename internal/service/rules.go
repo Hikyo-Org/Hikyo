@@ -33,12 +33,17 @@ var (
 	ErrNoSuchRule = fmt.Errorf("%w: service: no such rule", domain.ErrNotFound)
 )
 
-// MoveWideningError refuses a key folder move that gives the listed people
-// access through their rules without an explicit confirmation naming exactly
-// them (ADR D9). It is a conflict: the caller is authorized, the resulting
-// state needs their consent.
+// MoveWideningError refuses a key folder move that gives people access
+// through their rules without an explicit confirmation naming exactly them
+// (ADR D9). It is a conflict: the caller is authorized, the resulting state
+// needs their consent.
+//
+// Who gains is administrative information: Principals is set only when the
+// caller holds legacy manage-members on the project (the audience of the rule
+// listing). Anyone else learns only Count, and cannot confirm the move.
 type MoveWideningError struct {
 	KeyID      string
+	Count      int
 	Principals []domain.PrincipalID
 }
 
@@ -48,14 +53,32 @@ func (e *MoveWideningError) Error() string {
 
 func (e *MoveWideningError) Unwrap() error { return domain.ErrConflict }
 
-// SafeDetail names the principals; the caller administers this project's keys
-// and every id here is one its own rule list would show.
+// SafeDetail names the principals only when they were disclosed to the caller.
 func (e *MoveWideningError) SafeDetail() string {
+	if len(e.Principals) == 0 {
+		return fmt.Sprintf("moving key %s widens access for %d people through their access rules; a member manager must confirm it", e.KeyID, e.Count)
+	}
 	ids := make([]string, 0, len(e.Principals))
 	for _, p := range e.Principals {
 		ids = append(ids, string(p))
 	}
 	return fmt.Sprintf("moving key %s widens access for %s; confirm naming exactly them", e.KeyID, strings.Join(ids, ", "))
+}
+
+// moveWideningError builds the refusal for gained, naming them only to a
+// caller holding legacy manage-members on the project. The grant read happens
+// only on this refusal path.
+func moveWideningError(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, scope domain.Scope,
+	keyID string, gained []domain.PrincipalID) error {
+	rows, err := az.GrantRowsForPrincipal(ctx, caller)
+	if err != nil {
+		return err
+	}
+	e := &MoveWideningError{KeyID: keyID, Count: len(gained)}
+	if holds(rows, domain.CapManageMembers, domain.Scope{Org: scope.Org, Project: scope.Project}) {
+		e.Principals = gained
+	}
+	return e
 }
 
 // MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
@@ -210,15 +233,12 @@ func (s *Rules) Revoke(ctx context.Context, actor Actor, org domain.OrgID, id st
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		stored, _, err := az.GetRule(ctx, id)
-		if errors.Is(err, domain.ErrNotFound) {
-			return ErrNoSuchRule
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
 		projects := storedProjects(stored)
-		if stored.Rule.Org != org || len(projects) == 0 {
-			return ErrNoSuchRule
+		if err != nil || stored.Rule.Org != org || len(projects) == 0 {
+			return refuseMissingRule(ctx, az, actor, org, id, now)
 		}
 		caller, p, err := authorize(ctx, az, actor, authz.OpRuleRevoke, domain.Scope{Org: org, Project: projects[0]}, now)
 		if err != nil {
@@ -231,6 +251,17 @@ func (s *Rules) Revoke(ctx context.Context, actor Actor, org domain.OrgID, id st
 		}
 		return revokeRule(ctx, r, az, p, caller.Principal, stored, "revoked")
 	})
+}
+
+// refuseMissingRule answers a revoke of a rule that does not exist in org
+// exactly like one the caller cannot reach: the chokepoint is asked about a
+// project scope that cannot resolve (rule ids never name a project), so the
+// same bare not-found comes back and the denial is captured the same way.
+func refuseMissingRule(ctx context.Context, az *authz.TxAuthorizer, actor Actor, org domain.OrgID, id string, now time.Time) error {
+	if _, _, err := authorize(ctx, az, actor, authz.OpRuleRevoke, domain.Scope{Org: org, Project: domain.ProjectID("rule:" + id)}, now); err != nil {
+		return err
+	}
+	return domain.ErrNotFound
 }
 
 // storedProjects lists the projects a stored rule names, from its items, so
@@ -481,8 +512,8 @@ func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scop
 
 // confirmMoveWidening refuses a widening move unless the confirmation names
 // exactly the gaining set, and records the confirmed set when it does.
-func confirmMoveWidening(ctx context.Context, r store.Repos, p authz.Proof, actor domain.PrincipalID,
-	keyID, from, to string, gained, confirmed []domain.PrincipalID) error {
+func confirmMoveWidening(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, actor domain.PrincipalID,
+	scope domain.Scope, keyID, from, to string, gained, confirmed []domain.PrincipalID) error {
 	if len(gained) == 0 {
 		return nil
 	}
@@ -490,7 +521,7 @@ func confirmMoveWidening(ctx context.Context, r store.Repos, p authz.Proof, acto
 	slices.Sort(want)
 	want = slices.Compact(want)
 	if !slices.Equal(want, gained) {
-		return &MoveWideningError{KeyID: keyID, Principals: gained}
+		return moveWideningError(ctx, az, actor, scope, keyID, gained)
 	}
 	names := make([]string, 0, len(gained))
 	for _, g := range gained {

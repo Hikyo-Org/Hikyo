@@ -176,8 +176,9 @@ func (a *TxAuthorizer) GetRule(ctx context.Context, id string) (StoredRule, bool
 	return a.r.GetRule(ctx, id)
 }
 
-// RulesForProject is the folder-move widening census: every rule the
-// chokepoint would honour that names this project.
+// RulesForProject is the folder-move widening census: every rule of a human
+// principal naming this project, a superset of what the chokepoint honours
+// (a currently restricted principal is still named).
 func (a *TxAuthorizer) RulesForProject(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error) {
 	return a.r.RulesForProject(ctx, string(org), string(project))
 }

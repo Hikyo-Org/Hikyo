@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -30,6 +31,8 @@ const (
 	erin  = domain.PrincipalID("usr_erin")
 	frank = domain.PrincipalID("usr_frank")
 	gina  = domain.PrincipalID("usr_gina")
+	hank  = domain.PrincipalID("usr_hank")
+	ivan  = domain.PrincipalID("usr_ivan")
 )
 
 type rulesFixture struct {
@@ -42,7 +45,7 @@ type rulesFixture struct {
 
 func seedRulesFixture(t *testing.T, db *store.DB) rulesFixture {
 	t.Helper()
-	for _, p := range []domain.PrincipalID{carol, dave, erin, frank, gina} {
+	for _, p := range []domain.PrincipalID{carol, dave, erin, frank, gina, hank, ivan} {
 		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+string(p)+"', 'human', "+ts+")")
 	}
 	f := rulesFixture{rules: &service.Rules{DB: db}, keys: keySvc(t, db), values: valueSvc(t, db)}
@@ -265,10 +268,20 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 			return err
 		}
 		var widening *service.MoveWideningError
+		// The custodian administers keys, not members: it learns how many
+		// people gain, never who.
 		if err := move(); !errors.As(err, &widening) || !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("unconfirmed widening move = %v, want MoveWideningError", err)
 		}
-		if len(widening.Principals) != 2 || widening.Principals[0] != carol || widening.Principals[1] != erin {
+		if widening.Count != 2 || widening.Principals != nil || strings.Contains(widening.SafeDetail(), string(carol)) {
+			t.Fatalf("a non-member-manager was told %+v (%q), want only the count 2", widening, widening.SafeDetail())
+		}
+		// With manage-members on the project the same refusal names them.
+		grantCustodianMemberManagement(t, db)
+		if err := move(); !errors.As(err, &widening) || !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("unconfirmed widening move = %v, want MoveWideningError", err)
+		}
+		if widening.Count != 2 || len(widening.Principals) != 2 || widening.Principals[0] != carol || widening.Principals[1] != erin {
 			t.Fatalf("widening names %v, want [carol erin]", widening.Principals)
 		}
 		if err := move(carol); !errors.As(err, &widening) {
@@ -292,6 +305,79 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 			service.KeyMetadataUpdate{FolderPath: &back}, nil); err != nil {
 			t.Fatalf("narrowing move: %v", err)
 		}
+		revokeCustodianMemberManagement(t, db)
+	})
+
+	t.Run("census_names_subfolder_excepts_and_restricted_people", func(t *testing.T) {
+		// hank: edit everywhere except the vault/ folder, which also excepts
+		// vault/sub. Moving a key out of vault/sub admits him, and the census
+		// names him even while his account is restricted: the restriction can
+		// be lifted later, and nobody would have confirmed that access.
+		project := scopeProject(orgA, prjA1)
+		sub, err := f.keys.Create(t.Context(), service.LocalPrincipal(custodian), project, service.KeySpec{
+			Name: "SUB_KEY", FolderPath: "vault/sub", Classification: string(schema.Secret),
+			Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}}, Presence: schema.DefaultPresenceRules(),
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rule := f.create(t, orgAdmin, service.RuleSpec{Target: hank, Capability: domain.CapEdit, Org: orgA,
+			Where: whereIn(domain.AxisAll, nil, domain.AxisAll, folderItem("vault"))})
+		execRaw(t, db, "UPDATE principals SET privacy_state = 'restricted' WHERE id = '"+string(hank)+"'")
+		to := "misc"
+		var widening *service.MoveWideningError
+		grantCustodianMemberManagement(t, db)
+		defer revokeCustodianMemberManagement(t, db)
+		_, err = f.keys.UpdateMetadata(t.Context(), service.LocalPrincipal(custodian), project, sub.ID,
+			service.KeyMetadataUpdate{FolderPath: &to}, nil)
+		if !errors.As(err, &widening) {
+			t.Fatalf("moving out of an excepted subfolder = %v, want MoveWideningError", err)
+		}
+		if len(widening.Principals) != 1 || widening.Principals[0] != hank {
+			t.Fatalf("widening names %v, want [hank]", widening.Principals)
+		}
+		execRaw(t, db, "UPDATE principals SET privacy_state = 'active' WHERE id = '"+string(hank)+"'")
+		if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, rule); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.keys.Delete(t.Context(), service.LocalPrincipal(custodian), project, sub.ID); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("rule_decided_key_writes_conceal_outside_objects", func(t *testing.T) {
+		// ivan defines keys in the db/ folder only. A name clash with a key
+		// in stripe/ must not tell him that key exists; the custodian, who
+		// reads the whole catalogue, gets the precise conflict.
+		project := scopeProject(orgA, prjA1)
+		rule := f.create(t, orgAdmin, service.RuleSpec{Target: ivan, Capability: domain.CapDefinitionsEdit, Org: orgA,
+			Where: whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))})
+		spec := func(name string) service.KeySpec {
+			return service.KeySpec{Name: name, FolderPath: "db", Classification: string(schema.Secret),
+				Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}}, Presence: schema.DefaultPresenceRules()}
+		}
+		if _, err := f.keys.Create(t.Context(), service.LocalPrincipal(custodian), project, spec("STRIPE_KEY"), nil); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("custodian clash = %v, want conflict (positive control)", err)
+		}
+		_, clash := f.keys.Create(t.Context(), service.LocalPrincipal(ivan), project, spec("STRIPE_KEY"), nil)
+		_, outside := f.keys.Create(t.Context(), service.LocalPrincipal(ivan), project, service.KeySpec{Name: "NEW_KEY", FolderPath: "stripe",
+			Classification: string(schema.Secret), Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}}, Presence: schema.DefaultPresenceRules()}, nil)
+		assertUniformNotFound(t, clash, outside)
+		_, missingGroup := f.keys.Create(t.Context(), service.LocalPrincipal(ivan), project, func() service.KeySpec {
+			k := spec("GROUPED_KEY")
+			k.GroupID = "kgr_elsewhere"
+			return k
+		}(), nil)
+		assertUniformNotFound(t, missingGroup, outside)
+		if _, err := f.keys.Rename(t.Context(), service.LocalPrincipal(custodian), project, f.dbKeyID, "STRIPE_KEY", nil); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("custodian rename clash = %v, want conflict (positive control)", err)
+		}
+		_, renameClash := f.keys.Rename(t.Context(), service.LocalPrincipal(ivan), project, f.dbKeyID, "STRIPE_KEY", nil)
+		_, renameOutside := f.keys.Rename(t.Context(), service.LocalPrincipal(ivan), project, f.strKeyID, "RENAMED", nil)
+		assertUniformNotFound(t, renameClash, renameOutside)
+		if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, rule); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("definitions_apply_move_needs_confirmation", func(t *testing.T) {
@@ -311,8 +397,8 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), df.scope(), plan.ID, service.ApplyOptions{}); !errors.As(err, &widening) {
 			t.Fatalf("unconfirmed widening apply = %v, want MoveWideningError", err)
 		}
-		if len(widening.Principals) != 1 || widening.Principals[0] != grantee {
-			t.Fatalf("widening names %v, want [grantee]", widening.Principals)
+		if widening.Count != 1 || widening.Principals != nil {
+			t.Fatalf("apply refusal told a non-member-manager %+v, want only the count 1", widening)
 		}
 		before := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.move_widening_confirmed'")
 		if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), df.scope(), plan.ID,
@@ -333,6 +419,34 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 		if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, revealRule); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("second revoke = %v, want not found", err)
+		}
+	})
+
+	t.Run("revoke_missing_and_unreachable_are_identical", func(t *testing.T) {
+		// A rule the caller cannot reach and a rule that does not exist (or
+		// lives in another org) answer with the same error and the same
+		// captured denial.
+		live := f.create(t, orgAdmin, service.RuleSpec{Target: dave, Capability: domain.CapEdit, Org: orgA,
+			Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
+		denials := func() int64 {
+			return queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'grant.denied'") +
+				queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'grant.denied'")
+		}
+		before := denials()
+		unreachable := f.rules.Revoke(t.Context(), service.LocalPrincipal(reader), orgA, live)
+		afterUnreachable := denials()
+		missing := f.rules.Revoke(t.Context(), service.LocalPrincipal(reader), orgA, "rul_nonexistent")
+		afterMissing := denials()
+		otherOrg := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgB, live)
+		afterOtherOrg := denials()
+		assertUniformNotFound(t, unreachable, missing)
+		assertUniformNotFound(t, unreachable, otherOrg)
+		if afterUnreachable-before != 1 || afterMissing-afterUnreachable != 1 || afterOtherOrg-afterMissing != 1 {
+			t.Fatalf("denials captured: unreachable %d, missing %d, other org %d; want one each",
+				afterUnreachable-before, afterMissing-afterUnreachable, afterOtherOrg-afterMissing)
+		}
+		if err := f.rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, live); err != nil {
+			t.Fatalf("positive control: %v", err)
 		}
 	})
 
@@ -473,4 +587,18 @@ func runRuleAuditLifecycle(t *testing.T, db *store.DB) {
 	if err := rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, id); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// grantCustodianMemberManagement gives the custodian legacy manage-members on
+// prj_a1 so a widening refusal may name the people who gain.
+func grantCustodianMemberManagement(t *testing.T, db *store.DB) {
+	t.Helper()
+	execRaw(t, db, "INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_cu_mm_tmp', 'usr_custodian', 'manage-members', 'org_a', 'prj_a1', NULL, "+ts+")")
+	seedOrigins(t, db)
+}
+
+func revokeCustodianMemberManagement(t *testing.T, db *store.DB) {
+	t.Helper()
+	execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_cu_mm_tmp'")
+	execRaw(t, db, "DELETE FROM grants WHERE id = 'g_cu_mm_tmp'")
 }

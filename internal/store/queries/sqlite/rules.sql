@@ -26,9 +26,12 @@ WHERE r.principal_id = sqlc.arg(principal_id)
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 ORDER BY r.id, i.id;
 
--- Every live rule that names one project, under the same gates as the
--- chokepoint's lookup, for the folder-move widening census (ADR D9): the
--- census must see exactly the rules authorize() would honour.
+-- Every rule of a human principal that names one project, for the
+-- folder-move widening census (ADR D9). The census must be a SUPERSET of what
+-- authorize() could ever honour, so it deliberately omits the chokepoint's
+-- privacy and restore-epoch gates: a principal restricted today whose rule
+-- gains on this move would otherwise regain that access later with nobody
+-- having confirmed it.
 -- hikyo:authn-resolution
 -- name: ListRulesForProject :many
 SELECT r.id, r.principal_id, r.capability, r.org_id, r.env_mode, r.key_mode,
@@ -42,8 +45,6 @@ JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.org_id = sqlc.arg(org_id)
   AND r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = sqlc.arg(org_id) AND pi.project_id = sqlc.arg(project_id))
   AND p.kind = 'human'
-  AND p.privacy_state = 'active'
-  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 ORDER BY r.id, i.id;
 
 -- One rule with its items, ungated: revocation and pruning act on the stored

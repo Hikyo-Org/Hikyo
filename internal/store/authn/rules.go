@@ -136,8 +136,10 @@ func (r *Resolver) Rules(ctx context.Context, p domain.PrincipalID) ([]domain.Ru
 	return rulesOf(foldRules(rows)), nil
 }
 
-// RulesForProject returns every valid rule naming one project, under the
-// chokepoint's gates, for the folder-move widening census.
+// RulesForProject returns every valid rule of a human principal naming one
+// project, for the folder-move widening census. It is deliberately wider than
+// the chokepoint's lookup (no privacy or restore-epoch gate): the census must
+// name everyone who could ever hold the gained access.
 func (r *Resolver) RulesForProject(ctx context.Context, org, project string) ([]domain.Rule, error) {
 	if r.historicalRecoveryBeforeRules {
 		return nil, nil

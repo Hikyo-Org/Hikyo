@@ -666,10 +666,10 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 	want := slices.Clone(confirmed)
 	slices.Sort(want)
 	if !slices.Equal(slices.Compact(want), union) {
-		return &MoveWideningError{KeyID: moves[0].id, Principals: union}
+		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
 	}
 	for _, m := range moves {
-		if err := confirmMoveWidening(ctx, r, p, caller.Principal, m.id, m.from, m.to, m.gained, m.gained); err != nil {
+		if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, m.id, m.from, m.to, m.gained, m.gained); err != nil {
 			return err
 		}
 	}

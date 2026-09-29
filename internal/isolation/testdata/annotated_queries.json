@@ -1491,7 +1491,7 @@
     "engine": "postgres",
     "name": "ListRulesForProject",
     "annotation": "authn-resolution",
-    "hash": "9638b93ecd4f89dc0feb60da4d57233b9ca80265359ef7321906187ad8264884"
+    "hash": "8aa560265efb552e536f94368e27c092e7fa8f44dafa05d19302690f777f73f0"
   },
   {
     "engine": "postgres",
@@ -3771,7 +3771,7 @@
     "engine": "sqlite",
     "name": "ListRulesForProject",
     "annotation": "authn-resolution",
-    "hash": "9638b93ecd4f89dc0feb60da4d57233b9ca80265359ef7321906187ad8264884"
+    "hash": "8aa560265efb552e536f94368e27c092e7fa8f44dafa05d19302690f777f73f0"
   },
   {
     "engine": "sqlite",

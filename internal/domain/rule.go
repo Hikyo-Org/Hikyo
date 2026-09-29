@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Member access rules (member-access-rules ADR). A rule is one capability for
@@ -250,11 +251,18 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 	if key == nil {
 		return false
 	}
+	// Folder paths are hierarchical. An except of a folder also excepts its
+	// subfolders, and an only-pick of a folder admits that folder exactly:
+	// both readings err towards denial. The root folder "" has no subfolders
+	// in this sense, so excepting it excepts only root keys.
 	matched := slices.ContainsFunc(items, func(it RuleKeyItem) bool {
-		if it.IsFolder {
-			return it.Folder == key.Folder
+		if !it.IsFolder {
+			return key.ID != "" && it.KeyID == key.ID
 		}
-		return key.ID != "" && it.KeyID == key.ID
+		if it.Folder == key.Folder {
+			return true
+		}
+		return w.KeyMode == AxisAll && it.Folder != "" && strings.HasPrefix(key.Folder, it.Folder+"/")
 	})
 	if w.KeyMode == AxisOnly {
 		return matched

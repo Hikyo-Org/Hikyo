@@ -606,7 +606,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 			return fmt.Errorf("%w: a project declares at most %d keys",
 				domain.ErrLimitExceeded, schema.MaxKeysPerProject)
 		}
-		if err := checkGroupMembership(ctx, r, p, spec.GroupID, id, spec.Presence); err != nil {
+		if err := concealBeyondRule(p, checkGroupMembership(ctx, r, p, spec.GroupID, id, spec.Presence)); err != nil {
 			return err
 		}
 		// Surface-2 acknowledged overrides (#74): the block verdict was reached in
@@ -619,7 +619,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 		// Name uniqueness among LIVE keys is the table's constraint, not a
 		// read-then-write here: a pre-check would be a race, and the UNIQUE
 		// index is the only answer that cannot be interleaved past.
-		if err := r.Catalogue().Create(ctx, p, row); err != nil {
+		if err := concealBeyondRule(p, r.Catalogue().Create(ctx, p, row)); err != nil {
 			return err
 		}
 		if err := r.Catalogue().ReplacePresence(ctx, p, id, presenceRows(spec.Presence)); err != nil {
@@ -674,6 +674,20 @@ func checkGroupMembership(ctx context.Context, r store.Repos, p authz.Proof, gro
 		return err
 	}
 	return index.validateStaticMembership(groupID, selfID, presence)
+}
+
+// concealBeyondRule keeps a rule-decided proof from disclosing objects
+// outside its rule: a name clash with a key in another folder, or a group
+// refusal naming other keys, answers as the uniform not-found. A caller
+// authorized by grants reads the catalogue anyway and keeps the precise error.
+func concealBeyondRule(p authz.Proof, err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ruled := authz.BoundKey(p); ruled && (errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrInvalid)) {
+		return domain.ErrNotFound
+	}
+	return err
 }
 
 // Get reads one key with its presence rules.
@@ -781,7 +795,7 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 			nonEmptyLeaf(locKeyName, name), newAckSet(acks), ingressEdit); err != nil {
 			return err
 		}
-		if err := r.Catalogue().Rename(ctx, p, id, name); err != nil {
+		if err := concealBeyondRule(p, r.Catalogue().Rename(ctx, p, id, name)); err != nil {
 			return err
 		}
 		// § 151 schema-revision rate (see Keys.UpdateMetadata).
@@ -894,7 +908,7 @@ func (s *Keys) UpdateMetadata(ctx context.Context, actor Actor, scope domain.Sco
 			if err != nil {
 				return err
 			}
-			if err := confirmMoveWidening(ctx, r, p, caller.Principal, id, before.FolderPath, merged.FolderPath, gained, m.ConfirmWidening); err != nil {
+			if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, id, before.FolderPath, merged.FolderPath, gained, m.ConfirmWidening); err != nil {
 				return err
 			}
 		}

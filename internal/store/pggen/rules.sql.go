@@ -396,8 +396,6 @@ JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.org_id = $1
   AND r.id IN (SELECT pi.rule_id FROM rule_items AS pi WHERE pi.org_id = $1 AND pi.project_id = $2)
   AND p.kind = 'human'
-  AND p.privacy_state = 'active'
-  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 ORDER BY r.id, i.id
 `
 
@@ -420,9 +418,12 @@ type ListRulesForProjectRow struct {
 	FolderPath  string
 }
 
-// Every live rule that names one project, under the same gates as the
-// chokepoint's lookup, for the folder-move widening census (ADR D9): the
-// census must see exactly the rules authorize() would honour.
+// Every rule of a human principal that names one project, for the
+// folder-move widening census (ADR D9). The census must be a SUPERSET of what
+// authorize() could ever honour, so it deliberately omits the chokepoint's
+// privacy and restore-epoch gates: a principal restricted today whose rule
+// gains on this move would otherwise regain that access later with nobody
+// having confirmed it.
 // hikyo:authn-resolution
 func (q *Queries) ListRulesForProject(ctx context.Context, arg ListRulesForProjectParams) ([]ListRulesForProjectRow, error) {
 	rows, err := q.db.Query(ctx, listRulesForProject, arg.OrgID, arg.ProjectID)
