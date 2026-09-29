@@ -2,22 +2,23 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
 import { topLayerDocs } from '../../../.storybook/topLayerDocs.ts';
+import { Panel } from '../Sections.tsx';
 import { AccessGlossary } from './AccessGlossary.tsx';
-import { AccessRulesMembers } from './AccessRulesMembers.tsx';
-import { makeWorld } from './fixture.ts';
+import { IDS, makeWorld } from './fixture.ts';
 import { KeyMoveConfirmDialog } from './KeyMoveConfirmDialog.tsx';
-import { moveKey, type World } from './model.ts';
-import { newRule, RuleEditorDialog } from './RuleEditorDialog.tsx';
-import { WhoCanPage } from './WhoCan.tsx';
+import { envName, newRule, type Rule, type World } from './model.ts';
+import { RuleEditorDialog } from './RuleEditorDialog.tsx';
+import { RulesPanel } from './RulesPanel.tsx';
+import { WhoCan as WhoCanForm } from './WhoCan.tsx';
 
-// The member-access rules prototype (iteration 6 of
-// docs/site/public/prototypes/member-access) as real components over fixture
-// data: no API, no router, no query client. Every story builds its own world
-// from makeWorld(), so an edit in one never leaks into another. The editor
-// and the key-move confirmation mount a native <dialog>, so every story
-// renders framed on the Docs page.
+// The pieces the Members page mounts for member access rules, over the
+// fixture organisation in the listings' own shapes (fixture.ts), turned into
+// the page's model by the same mapping. The Members route story shows them in
+// place; these show each piece's states. The editor and the key-move
+// confirmation mount a native <dialog>, so every story renders framed on the
+// Docs page.
 const meta = {
-  title: 'Prototypes/Member access',
+  title: 'Members/Access rules',
   tags: ['ai-generated'],
   parameters: topLayerDocs,
 } satisfies Meta;
@@ -25,232 +26,271 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function ruleOf(world: World, id: number) {
-  const rule = world.rules.find((r) => r.id === id);
-  if (rule === undefined) throw new Error(`fixture has no rule ${id}`);
-  return rule;
+const PROJECTS = [IDS.payments, IDS.web];
+
+function rulesOf(world: World, member: string): Rule[] {
+  return world.rules.filter((r) => r.member === member && r.source.kind === 'rule');
 }
 
-/** A Panel by its h2: panels are sections with an id, not named regions. */
-function panel(canvas: ReturnType<typeof within>, name: string) {
-  const section = canvas.getByRole('heading', { level: 2, name }).closest('section');
-  if (section === null) throw new Error(`no panel ${name}`);
-  return within(section);
+function ruleAt(world: World, member: string, index: number): Rule {
+  const rule = rulesOf(world, member)[index];
+  if (rule === undefined) throw new Error(`fixture has no rule ${index} for ${member}`);
+  return rule;
 }
 
 /** True when `a` comes before `b` in document order. */
 const before = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
-// Members: people only (machines and their rules live in Machine access),
-// found by name, handle or note, one card per rule (permissions, then Where,
-// then reach).
-export const Members: Story = {
-  render: () => <AccessRulesMembers initialWorld={makeWorld()} />,
+const people = (world: World) => world.people.filter((p) => p.kind === 'person');
+
+// The rules half of Members: people only (machines keep their grants), one
+// card per rule (permissions, then Where, then reach).
+export const Rules: Story = {
+  render: () => {
+    const world = makeWorld();
+    return (
+      <Panel id="members-rules" title="Access rules">
+        <RulesPanel world={world} people={people(world)} you={IDS.sam} canEdit onEdit={fn()} onAdd={fn()} />
+      </Panel>
+    );
+  },
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('heading', { level: 1, name: 'Members · acme' })).toBeVisible();
-    const members = panel(canvas, 'Members');
-    await expect(members.getByText('5 people, 9 rules. Service accounts are managed in Machine access.')).toBeVisible();
-    await expect(members.getByText('Alice Novak')).toBeVisible();
+    await expect(canvas.getByText('Alice Novak')).toBeVisible();
     await expect(canvas.queryByText('ci-deploy')).toBeNull();
-    await expect(canvas.queryByText('deploy-prod')).toBeNull();
-
-    // Search matches the note as well as the name.
-    const search = canvas.getByRole('searchbox', { name: 'Find a person' });
-    await userEvent.type(search, 'sre');
-    await expect(members.getByText('Dana Ruiz')).toBeVisible();
-    await expect(members.queryByText('Alice Novak')).toBeNull();
-    await userEvent.clear(search);
-    await userEvent.type(search, 'nobody here');
-    await expect(members.getByText('· no one matches “nobody here”')).toBeVisible();
-    await userEvent.clear(search);
-
-    await userEvent.click(canvas.getByRole('button', { name: 'Edit rule 2 of Alice Novak' }));
-    const dialog = await canvas.findByRole('dialog', { name: 'Edit rule · Alice Novak' });
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    await expect(canvas.queryByRole('dialog')).toBeNull();
+    // Sam holds grants only.
+    const sam = within(canvas.getByText('Sam Ortiz').closest('li') ?? document.body);
+    await expect(sam.getByText('· no rules')).toBeVisible();
+    await expect(canvas.getByText('you')).toBeVisible();
+    // Alice's folder rule: its Where reads as labelled parts, its reach counts keys.
+    await expect(canvas.getByRole('button', { name: 'Edit rule 2 of Alice Novak' })).toBeVisible();
+    await expect(canvas.getAllByText(/only db\//).length).toBeGreaterThan(0);
+    await expect(canvas.getByText(/2 environments · 3 keys · can reveal 2 secret values · 1 protected/)).toBeVisible();
+    await expect(canvas.getByRole('button', { name: '+ Add rule for Chen Li' })).toBeVisible();
   },
 };
 
-// The editor on Alice's folder-scoped rule (payments › staging, prod › only
-// db/). Where comes first. The Admin preset ticks every non-secret box, so
-// Reveal clears, and what a folder rule cannot carry stays disabled with its
-// condition on the row. Widening Keys to "All, except..." re-enables Pin
-// without changing the height of the permission list.
-export const EditorFolderScopedAdmin: Story = {
+// On a project's Members page a rule that also names another project shows
+// only this project's part, so it cannot be edited from there.
+export const RulesOnAProject: Story = {
+  render: () => {
+    const base = makeWorld();
+    const world: World = {
+      ...base,
+      rules: base.rules.map((rule) =>
+        rule.member === IDS.bob && rule.source.kind === 'rule' ? { ...rule, source: { ...rule.source, otherProjects: true } } : rule,
+      ),
+    };
+    return (
+      <Panel id="members-rules" title="Access rules">
+        <RulesPanel world={world} people={people(world).filter((p) => p.id === IDS.bob)} you={IDS.sam} canEdit onEdit={fn()} onAdd={fn()} />
+      </Panel>
+    );
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getAllByText("Also applies to other projects: change it on the organisation's Members page.")).toHaveLength(2);
+    await expect(canvas.queryByRole('button', { name: /^Edit rule/ })).toBeNull();
+    await expect(canvas.getByRole('button', { name: '+ Add rule for Bob Tran' })).toBeVisible();
+  },
+};
+
+// The editor on Alice's folder rule (payments › staging, prod › only db/).
+// Where comes first. See and Pin need all keys of an environment, so on a
+// folder rule they stay visible but disabled with the reason; widening Keys
+// to "All, except..." enables them without changing the list's height.
+export const EditorFolderRule: Story = {
   render: () => {
     const world = makeWorld();
-    return <RuleEditorDialog world={world} rule={ruleOf(world, 3)} onSave={fn()} onRemove={fn()} onCancel={fn()} />;
+    return <RuleEditorDialog world={world} rule={ruleAt(world, IDS.alice, 1)} projects={PROJECTS} onSave={fn()} onRemove={fn()} onCancel={fn()} />;
   },
   play: async ({ canvas }) => {
     const dialogEl = await canvas.findByRole('dialog', { name: 'Edit rule · Alice Novak' });
     const dialog = within(dialogEl);
     const [where, permissions] = [dialog.getByRole('group', { name: 'Where' }), dialog.getByRole('group', { name: 'Permissions' })];
     await expect(before(where, permissions)).toBe(true);
+    // No "all projects": a rule names its projects.
+    await expect(dialog.queryByRole('button', { name: 'all projects' })).toBeNull();
+    await expect(dialog.getByText(/A rule names its projects/)).toBeVisible();
 
     await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).toBeChecked();
     await userEvent.click(dialog.getByRole('button', { name: 'Admin' }));
     await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).not.toBeChecked();
     await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toBeChecked();
-    const pin = dialog.getByRole('checkbox', { name: 'Pin' });
-    await expect(pin).toBeDisabled();
-    await expect(pin).toHaveAccessibleDescription(/Not available here: needs all keys of an environment\..*Only on rules that cover all keys of an environment\./);
-    const machines = dialog.getByRole('checkbox', { name: 'Manage machines' });
-    await expect(machines).toBeDisabled();
-    await expect(machines).toHaveAccessibleDescription(/needs a whole project/);
-    await expect(dialog.getByText(/Left out until Where is wider: Pin, Manage machines/)).toBeVisible();
-    // "Saves as" is the same rule summary the Members card shows.
+    const see = dialog.getByRole('checkbox', { name: 'See' });
+    await expect(see).toBeDisabled();
+    await expect(see).toHaveAccessibleDescription(/Not available here: needs all keys of an environment\..*Only on rules that cover all keys of an environment\./);
+    await expect(dialog.getByRole('checkbox', { name: 'Manage machines' })).toBeDisabled();
+    // What no rule can carry is not listed, and named once.
+    await expect(dialog.queryByRole('checkbox', { name: 'Manage projects' })).toBeNull();
+    await expect(dialog.getAllByText(/Manage projects needs all projects/).length).toBeGreaterThan(0);
+    // Manage access is kept, and says it gives nothing yet.
+    await expect(dialog.getByRole('checkbox', { name: 'Manage access' })).toHaveAccessibleDescription(/gives nothing yet/);
+    await expect(dialog.getByText(/Left out until Where is wider: See, Pin, Manage machines/)).toBeVisible();
     const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
     await expect(saves.getByText('Define keys')).toBeVisible();
     await expect(saves.getByText(/only db\//)).toBeVisible();
-    // The action row stays in the dialog's box: Save is reachable without scrolling.
     await expect(dialog.getByRole('button', { name: 'Save' }).getBoundingClientRect().bottom).toBeLessThanOrEqual(dialogEl.getBoundingClientRect().bottom);
 
     const toggle = dialog.getByRole('button', { name: 'Pick single keys (8)' });
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(dialog.queryByRole('button', { name: /^db\/DB_PASSWORD/ })).toBeNull();
     await userEvent.click(toggle);
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(dialog.getByRole('button', { name: /^db\/DB_PASSWORD/ })).toBeVisible();
 
     const height = permissions.getBoundingClientRect().height;
     await userEvent.click(within(dialog.getByRole('group', { name: 'Keys' })).getByRole('radio', { name: 'All, except…' }));
-    await expect(pin).toBeEnabled();
+    await expect(see).toBeEnabled();
     await expect(permissions.getBoundingClientRect().height).toBe(height);
   },
 };
 
-// A new rule starts with See ticked and no Where: nothing to save yet.
+// A new rule starts with See ticked and no Where: nothing to save yet. A
+// refused save shows its reason inside the editor, and the draft stays.
 export const EditorNewRule: Story = {
-  render: () => <RuleEditorDialog world={makeWorld()} rule={newRule('bob')} onSave={fn()} onCancel={fn()} />,
+  render: () => (
+    <RuleEditorDialog
+      world={makeWorld()}
+      rule={newRule(IDS.chen)}
+      projects={PROJECTS}
+      failure="Nothing changed: You do not manage access on every project this rule names, or something it names no longer exists. The two are deliberately the same answer."
+      onSave={fn()}
+      onCancel={fn()}
+    />
+  ),
   play: async ({ canvas }) => {
-    const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Bob Tran' }));
-    await expect(before(dialog.getByRole('group', { name: 'Projects' }), dialog.getByRole('group', { name: 'Permissions' }))).toBe(true);
+    const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Chen Li' }));
+    await expect(dialog.getByRole('alert')).toHaveTextContent(/Nothing changed/);
     await expect(dialog.getByRole('checkbox', { name: 'See' })).toBeChecked();
     await expect(dialog.getByText('Pick where this rule applies.')).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
     await expect(dialog.queryByRole('button', { name: 'Remove rule' })).toBeNull();
-    // Environments and keys wait for a project.
     await expect(dialog.queryByRole('group', { name: 'Environments' })).toBeNull();
+    await userEvent.click(dialog.getByRole('button', { name: /^payments/ }));
+    await expect(dialog.getByRole('group', { name: 'Environments' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
   },
 };
 
-// The editor opened for the deploy-prod workload machine, as Machine access
-// will open it: what the permission ADR's machine allowlists forbid (Pin and
-// every management permission) is not offered, one line names it, and
-// Reveal names the per-project opt-in.
-export const MachineRuleEditor: Story = {
-  name: 'Machine rule editor',
-  render: () => {
-    const world = makeWorld();
-    return <RuleEditorDialog world={world} rule={ruleOf(world, 11)} onSave={fn()} onRemove={fn()} onCancel={fn()} />;
-  },
+// Without See on a project its key catalogue is unreadable: folders and keys
+// there cannot be picked, and the editor says so.
+export const EditorWithoutKeyNames: Story = {
+  render: () => <RuleEditorDialog world={makeWorld({ readable: false })} rule={{ ...newRule(IDS.chen), projects: [IDS.payments] }} projects={PROJECTS} onSave={fn()} onCancel={fn()} />,
   play: async ({ canvas }) => {
-    const dialog = within(await canvas.findByRole('dialog', { name: 'Edit rule · deploy-prod' }));
-    // What a machine can never hold is not offered at all, and named once.
-    for (const name of ['Pin', 'Manage access', 'Manage machines', 'Manage deploys', 'Change settings', 'Manage projects']) {
-      await expect(dialog.queryByRole('checkbox', { name })).toBeNull();
-    }
-    await expect(
-      dialog.getByText('Machines cannot hold Pin, Manage access, Manage machines, Manage deploys, Change settings or Manage projects.'),
-    ).toBeVisible();
-    await expect(dialog.getByRole('checkbox', { name: 'See' })).toBeChecked();
-    await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toBeEnabled();
-    const reveal = dialog.getByRole('checkbox', { name: 'Reveal' });
-    await expect(reveal).toBeChecked();
-    await expect(reveal).toHaveAccessibleDescription(/Needs the project's machine reveal opt-in\./);
-    const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
-    await expect(saves.getByText('Reveal')).toBeVisible();
-    await expect(saves.getByText(/payments/)).toBeVisible();
+    const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Chen Li' }));
+    await expect(dialog.getByText(/Key names in payments need See/)).toBeVisible();
+    await expect(dialog.queryByRole('button', { name: /Pick single keys/ })).toBeNull();
+    await expect(dialog.getByText(/keys not readable/)).toBeVisible();
   },
 };
 
-// Who can...? as a compact form: permission (its explanation as the hint),
-// project, environment, key. Default question: Reveal on DB_PASSWORD in
-// payments prod. Answers are tables in the Members page's anatomy, each row
-// with an Edit rule action that opens the deciding rule in the editor.
+// Who can...? over grants and rules: permission, project, environment, key.
+// Default question: Reveal on the first key in payments prod. Answers are
+// tables; a rule row opens its rule, a grant row names the grant list.
 export const WhoCan: Story = {
-  render: () => <WhoCanPage initialWorld={makeWorld()} />,
+  render: () => <WhoCanForm world={makeWorld()} projects={PROJECTS} onEditRule={fn()} />,
   play: async ({ canvas }) => {
     const [permission, project, env, key] = ['Permission', 'Project', 'Environment', 'Key'].map((name) => canvas.getByRole('combobox', { name }));
     if (permission === undefined || project === undefined || env === undefined || key === undefined) throw new Error('form incomplete');
     await expect(before(permission, project) && before(project, env) && before(env, key)).toBe(true);
     await expect(permission).toHaveValue('reveal');
     await expect(permission).toHaveAccessibleDescription(/Show current secret values/);
+    await expect(env).toHaveValue(IDS.payProd);
+    await userEvent.selectOptions(key, IDS.dbPassword);
 
     const yes = within(canvas.getByRole('table', { name: 'Yes: 3' }));
     await expect(yes.getByRole('rowheader', { name: 'Sam Ortiz' })).toBeVisible();
     await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('Machine');
-    // Alice's deciding rule: badges in Permissions, the Where line beside them.
+    await expect(yes.getAllByText('A grant: change it in the grant list.')).toHaveLength(2);
     const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));
-    await expect(alice.getByText('Define keys')).toBeVisible();
     await expect(alice.getByText(/only db\//)).toBeVisible();
     const excepted = within(canvas.getByRole('table', { name: 'No, left out by an except: 2' }));
     await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText('Left out: this rule has except prod.')).toBeVisible();
-    await expect(excepted.getByRole('rowheader', { name: 'Dana Ruiz' })).toBeVisible();
-
-    // Only who CAN, or nearly could: members no rule reaches are not listed.
+    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
     await expect(canvas.queryByText('Chen Li')).toBeNull();
-    await expect(canvas.queryByRole('table', { name: /No rule reaches/ })).toBeNull();
 
-    // See: an except narrows only its own rule, so Bob is a yes, with the why as a second line.
+    // See is never narrowed by keys: an except narrows only its own rule.
     await userEvent.selectOptions(permission, 'read');
-    await expect(permission).toHaveAccessibleDescription(/Key names, descriptions/);
-    const see = within(canvas.getByRole('table', { name: 'Yes: 5' }));
-    await expect(within(see.getByRole('row', { name: /Bob Tran/ })).getByText(/an except only narrows its own rule/)).toBeVisible();
+    await expect(within(canvas.getByRole('table', { name: 'Yes: 5' })).getByRole('rowheader', { name: 'Bob Tran' })).toBeVisible();
 
-    // Edit the deciding rule from its answer: the same editor, and saving recomputes the answer.
     await userEvent.selectOptions(permission, 'reveal');
     await userEvent.click(canvas.getByRole('button', { name: 'Edit rule of Alice Novak' }));
-    const dialog = within(await canvas.findByRole('dialog', { name: 'Edit rule · Alice Novak' }));
-    await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).toBeChecked();
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Reveal' }));
-    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
-    await expect(canvas.queryByRole('dialog')).toBeNull();
-    const after = within(canvas.getByRole('table', { name: 'Yes: 2' }));
-    await expect(after.queryByRole('rowheader', { name: 'Alice Novak' })).toBeNull();
-    // Machine rows open the same editor (it is the Machine access editor too).
-    await userEvent.click(canvas.getByRole('button', { name: 'Edit rule of deploy-prod' }));
-    await expect(await canvas.findByRole('dialog', { name: 'Edit rule · deploy-prod' })).toBeVisible();
   },
 };
 
-// The confirmation the Definitions move flow shows when a key move widens
-// access: DB_PASSWORD leaves db/, so Dana's "except db/" no longer covers it.
+// Without See on the project the question is asked for the whole
+// environment, and says so; key-narrowed rules then do not count.
+export const WhoCanWithoutKeyNames: Story = {
+  render: () => <WhoCanForm world={makeWorld({ readable: false })} projects={PROJECTS} />,
+  play: async ({ canvas }) => {
+    const key = canvas.getByRole('combobox', { name: 'Key' });
+    await expect(key).toBeDisabled();
+    await expect(key).toHaveAccessibleDescription(/Key names need See in this project/);
+    await expect(canvas.getByText('every key')).toBeVisible();
+    await expect(canvas.getByRole('table', { name: 'Yes: 2' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: /^Edit rule/ })).toBeNull();
+  },
+};
+
+const widening = {
+  count: 1,
+  gainers: [
+    { principal_id: IDS.dana, principal_name: 'Dana Ruiz', capability: 'reveal' as const, environments: [IDS.payProd] },
+    { principal_id: IDS.dana, principal_name: 'Dana Ruiz', capability: 'reveal-history' as const, environments: [IDS.payProd] },
+  ],
+};
+
+// The confirmation a key move needs when it widens access: DB_PASSWORD leaves
+// db/, so Dana's "except db/" no longer covers it. The server names who gains
+// to a member manager; confirming resends the move naming exactly them.
+const onMoveConfirm = fn();
+
 export const KeyMoveConfirmation: Story = {
   name: 'Key move confirmation',
   render: () => {
     const world = makeWorld();
     return (
       <KeyMoveConfirmDialog
-        before={world}
-        after={moveKey(world, 'payments_k3', 'app')}
-        keyId="payments_k3"
+        widening={widening}
         change="Move DB_PASSWORD from db/ to app/"
+        envName={(id) => envName(world, id)}
         onCancel={fn()}
-        onConfirm={fn()}
+        onConfirm={onMoveConfirm}
       />
     );
   },
   play: async ({ canvas }) => {
+    onMoveConfirm.mockClear();
     const dialog = within(await canvas.findByRole('dialog', { name: 'This move gives people new access' }));
     const gains = within(dialog.getByRole('region', { name: 'Gains access' }));
     await expect(gains.getByText('Dana Ruiz: Reveal (prod), Reveal history (prod)')).toBeVisible();
-    await expect(gains.queryByText(/deploy-prod/)).toBeNull();
-    const loses = within(dialog.getByRole('region', { name: 'Loses access' }));
-    await expect(loses.getByText('Alice Novak: Reveal (staging, prod), Define keys (staging, prod), Manage access (staging, prod)')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Move and give access' })).toBeVisible();
+    await userEvent.click(dialog.getByRole('button', { name: 'Move and give access' }));
+    await expect(onMoveConfirm).toHaveBeenCalledWith([IDS.dana]);
+  },
+};
+
+// Someone who does not manage access on the project learns only how many
+// gain, and cannot confirm: there is no confirm action, and the dialog says why.
+export const KeyMoveCountOnly: Story = {
+  name: 'Key move, count only',
+  render: () => <KeyMoveConfirmDialog widening={{ count: 3 }} change="Move DB_PASSWORD from db/ to app/" envName={(id) => id} onCancel={fn()} onConfirm={fn()} />,
+  play: async ({ canvas }) => {
+    const dialog = within(await canvas.findByRole('dialog', { name: 'This move gives people new access' }));
+    await expect(dialog.getByText('Gains access: 3 people')).toBeVisible();
+    await expect(dialog.getByText(/ask one of them to make this move/)).toBeVisible();
+    await expect(dialog.queryByRole('button', { name: 'Move and give access' })).toBeNull();
   },
 };
 
 export const Glossary: Story = {
-  render: () => <AccessGlossary />,
+  render: () => (
+    <Panel id="members-glossary" title="Glossary">
+      <AccessGlossary />
+    </Panel>
+  ),
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('heading', { level: 1, name: 'Glossary' })).toBeVisible();
-    await expect(canvas.getByRole('heading', { name: 'Permissions: secrets' })).toBeVisible();
+    await userEvent.click(canvas.getByRole('button', { name: 'Permissions: administration' }));
     const machines = canvas.getByText('Manage machines', { selector: 'dt' });
     await expect(machines.nextElementSibling).toHaveTextContent('Only on rules that cover a whole project.');
-    await expect(canvas.getByText('Machine', { selector: 'dt' }).nextElementSibling).toHaveTextContent(/never holds Pin/);
-    // The Admin preset lists no Secrets permission.
+    await expect(canvas.getByText(/Manage projects needs all projects/)).toBeVisible();
+    await userEvent.click(canvas.getByRole('button', { name: 'Presets' }));
     const admin = canvas.getByText('Admin', { selector: 'dt' });
     await expect(admin.nextElementSibling).not.toHaveTextContent('Reveal');
   },

@@ -3,7 +3,7 @@
 > **Status: declared amendment to [permission-model.md](./permission-model.md), operative with the
 > implementing PR ([#838](https://github.com/Hikyo-Org/Hikyo/pull/838)).** The owner took every decision below on
 > 2026-09-28 while iterating the [member-access prototype](../site/public/prototypes/member-access/)
-> (iterations 1 to 6; iteration 6 is the reference, mirrored in Storybook under *Prototypes/Member access*),
+> (iterations 1 to 6; iteration 6 is the reference, its components now in the WebUI, Storybook *Members/Access rules*),
 > and on the same night directed the full-stack implementation and merge on green ahead of the review.
 > The [oss-mechanics.md](./oss-mechanics.md) amendment procedure still owes the reopening of
 > [#15](https://github.com/Hikyo-Org/Hikyo/issues/15) and the cross-provider adversarial review; both are

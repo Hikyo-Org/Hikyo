@@ -326,6 +326,65 @@ describe('KeyDeclarationDetail', () => {
     await view.unmount();
   });
 
+  /** Move the key to `app` with the given first-write refusal; later writes succeed. */
+  async function moveRefused(first: Error) {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+    let calls = 0;
+    mocks.mutate.mockImplementation(
+      (_input: unknown, callbacks: { onSuccess: () => void; onError: (error: Error) => void }) => {
+        calls += 1;
+        if (calls === 1) callbacks.onError(first);
+        else callbacks.onSuccess();
+      },
+    );
+    const view = await render();
+    const folder = view.container.querySelector<HTMLInputElement>('input.mono');
+    if (folder === null) throw new Error('folder input missing');
+    await act(async () => typeInto(folder, 'app'));
+    await act(async () => buttonBy(view.container, 'Save declaration').click());
+    const dialog = [...view.container.querySelectorAll('dialog[open]')].find(
+      (candidate) => candidate.querySelector('.dialog__title')?.textContent === 'This move gives people new access',
+    );
+    if (!(dialog instanceof HTMLElement)) throw new Error('the widening confirmation is missing');
+    return { view, dialog };
+  }
+
+  it('confirms a widening folder move by naming the gainers and resending with them', async () => {
+    const gainer = 'prn_123e4567-e89b-12d3-a456-42661417000a';
+    const { view, dialog } = await moveRefused(
+      new ApiError(409, 'widens access', undefined, undefined, [], {
+        count: 1,
+        gainers: [{ principal_id: gainer, principal_name: 'Dana Ruiz', capability: 'reveal', environments: ['env_b'] }],
+      }),
+    );
+    expect(dialog.textContent).toContain('Move DATABASE_URL from db/ to app/');
+    expect(dialog.textContent).toContain('Dana Ruiz: Reveal (production)');
+    expect(textOf(view.container)).not.toContain('reload the key and retry');
+
+    const confirm = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Move and give access');
+    if (confirm === undefined) throw new Error('confirm missing');
+    await act(async () => confirm.click());
+    expect(mocks.mutate).toHaveBeenLastCalledWith(
+      { folderPath: 'app', confirmWidening: [gainer] },
+      expect.anything(),
+    );
+    expect(textOf(view.container)).toContain('Saved.');
+    expect(view.container.querySelector('dialog[open] .access-diff')).toBeNull();
+    await view.unmount();
+  });
+
+  it('offers no confirm for a widening refusal that carries only a count, and cancel changes nothing', async () => {
+    const { view, dialog } = await moveRefused(new ApiError(409, 'widens access', undefined, undefined, [], { count: 2 }));
+    expect(dialog.textContent).toContain('Gains access: 2 people');
+    expect([...dialog.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Cancel']);
+    await act(async () => buttonBy(dialog, 'Cancel').click());
+    expect(view.container.querySelector('dialog[open] .access-diff')).toBeNull();
+    expect(mocks.mutate).toHaveBeenCalledTimes(1);
+    expect(textOf(view.container)).not.toContain('Saved.');
+    await view.unmount();
+  });
+
   it('keeps the save disabled until a field changes', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });

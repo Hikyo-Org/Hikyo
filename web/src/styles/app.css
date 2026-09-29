@@ -6917,12 +6917,14 @@ label.chk:has(input:disabled) {
   text-align: center;
 }
 
-/* --- Member access rules prototype (routes/accessRules, Storybook only) ------
+/* --- Member access rules (routes/accessRules, mounted on Members) -----------
  *
- * Ported from docs/site/public/prototypes/member-access/6. State is never
+ * From docs/site/public/prototypes/member-access/6. State is never
  * colour-only: an except carries a cross and the word, a secret a lock and
  * the word. Tokens only. */
-.access-rules p,
+.access-people p,
+.access-table p,
+.access-gloss-parts p,
 .access-dialog p {
   margin: 0;
 }
@@ -6930,8 +6932,14 @@ label.chk:has(input:disabled) {
 /* The page is a grid; without this its panels would take the answer tables'
    minimum width and widen the page on a phone instead of letting the table
    wrapper scroll. */
-.access-rules > * {
+.page--members > * {
   min-width: 0;
+}
+
+.access-gloss-parts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .access-hint,
@@ -7018,7 +7026,6 @@ label.chk:has(input:disabled) {
 .access-where,
 .access-presets,
 .access-picks,
-.access-examples,
 .access-filter {
   display: flex;
   flex-wrap: wrap;
@@ -7141,10 +7148,6 @@ label.chk:has(input:disabled) {
 .access-diff ul {
   padding-left: var(--space-4);
   list-style: disc;
-}
-
-.access-examples {
-  margin-top: var(--space-3);
 }
 
 .access-answer__glyph--yes {

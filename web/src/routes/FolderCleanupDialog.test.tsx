@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { FolderCleanupDialog } from './FolderCleanupDialog.tsx';
+import type { WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -36,6 +37,7 @@ async function render(onApply: (moves: readonly FolderMove[]) => Promise<readonl
         proposals={proposals}
         existingFolders={['Legacy']}
         busy={false}
+        envName={(id) => (id === 'env_01989abc-def0-7123-8123-00000000000b' ? 'production' : id)}
         onApply={onApply}
         onClose={onClose}
       />,
@@ -109,6 +111,69 @@ describe('FolderCleanupDialog', () => {
     expect(view.container.textContent).toContain('Moved 1 so far.');
     // The refused key is still ticked, so a retry is one click.
     expect(view.button(/^Move/).textContent).toBe('Move 1 key(s)');
+    await view.unmount();
+  });
+
+  const gainer = 'usr_01989abc-def0-7123-8123-00000000000a';
+  /** Refuses HIKYO_ARGON2_TIME's unconfirmed move as widening; moves the rest. */
+  const widenedApply = (widening: WideningRefusal) =>
+    vi.fn<(moves: readonly FolderMove[]) => Promise<readonly FolderMoveOutcome[]>>(async (moves) =>
+      moves.map((move) =>
+        move.name === 'HIKYO_ARGON2_TIME' && move.confirmWidening === undefined
+          ? { id: move.id, error: 'Not moved: this move gives people new access through their access rules.', widening }
+          : { id: move.id, error: null },
+      ),
+    );
+  const openDialog = (container: HTMLElement): HTMLElement => {
+    const found = [...container.querySelectorAll('dialog[open]')].find(
+      (node) => node.querySelector('.dialog__title')?.textContent === 'This move gives people new access',
+    );
+    if (!(found instanceof HTMLElement)) throw new Error('widening confirmation missing');
+    return found;
+  };
+
+  it('keeps a widened key with a review that names the gainers and resends only it with confirm_widening', async () => {
+    const onApply = widenedApply({
+      count: 1,
+      gainers: [
+        { principal_id: gainer, principal_name: 'Dana Ruiz', capability: 'reveal', environments: ['env_01989abc-def0-7123-8123-00000000000b'] },
+      ],
+    });
+    const view = await render(onApply);
+    await act(async () => {
+      view.button(/^Move/).click();
+    });
+    expect(view.onClose).not.toHaveBeenCalled();
+    await act(async () => {
+      view.button(/^Review access for HIKYO_ARGON2_TIME/).click();
+    });
+    const dialog = openDialog(view.container);
+    expect(dialog.textContent).toContain('Move HIKYO_ARGON2_TIME from (no folder) to Argon2/');
+    expect(dialog.textContent).toContain('Dana Ruiz: Reveal (production)');
+    const confirm = [...dialog.querySelectorAll('button')].find((node) => node.textContent === 'Move and give access');
+    if (confirm === undefined) throw new Error('confirm missing');
+    await act(async () => confirm.click());
+    expect(onApply).toHaveBeenLastCalledWith([
+      { id: 'id_HIKYO_ARGON2_TIME', name: 'HIKYO_ARGON2_TIME', folder: 'Argon2', confirmWidening: [gainer] },
+    ]);
+    // Moved: the key leaves the list and the confirmation closes.
+    const keys = [...view.container.querySelectorAll('.catalogue-manage__row .mono')].map((node) => node.textContent);
+    expect(keys).toEqual(['HIKYO_EXTERNAL_ORIGIN']);
+    expect(view.container.querySelector('dialog[open] .access-diff')).toBeNull();
+    await view.unmount();
+  });
+
+  it('offers no confirm when the refusal carries only a count', async () => {
+    const view = await render(widenedApply({ count: 2 }));
+    await act(async () => {
+      view.button(/^Move/).click();
+    });
+    await act(async () => {
+      view.button(/^Review access for HIKYO_ARGON2_TIME/).click();
+    });
+    const dialog = openDialog(view.container);
+    expect(dialog.textContent).toContain('Gains access: 2 people');
+    expect([...dialog.querySelectorAll('button')].map((node) => node.textContent)).toEqual(['Cancel']);
     await view.unmount();
   });
 });

@@ -4,133 +4,146 @@ import { Badge } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { Select } from '../../ui/Select.tsx';
-import { Panel } from '../Sections.tsx';
-import { DEFAULT_QUESTION } from './fixture.ts';
-import { keyById, label, perm, PERM_GROUPS, PERMS, projectEnvs, projectKeys, removeRule, resolve, saveRule, type Person, type PermId, type Rule, type World } from './model.ts';
+import { label, perm, PERM_GROUPS, PERMS, projectById, resolve, type Person, type PermId, type Rule, type World } from './model.ts';
 import { Lock, RulePerms, RuleWhere } from './parts.tsx';
-import { RuleEditorDialog } from './RuleEditorDialog.tsx';
 
-type Question = { perm: PermId; project: string; env: string; key: string };
+export type Question = { readonly perm: PermId; readonly project: string; readonly env: string; readonly key: string };
 
-/** Only key-shaped permissions are asked about one key. */
-const ASKABLE = PERMS.filter((p) => p.shape === 'key');
-
-const EXAMPLES: readonly Question[] = [
-  { perm: 'reveal', project: 'payments', env: 'prod', key: 'payments_k3' },
-  { perm: 'definitions-edit', project: 'payments', env: 'prod', key: 'payments_k3' },
-  { perm: 'manage-members', project: 'payments', env: 'staging', key: 'payments_k2' },
-  { perm: 'read', project: 'payments', env: 'prod', key: 'payments_k7' },
-  { perm: 'publish', project: 'payments', env: 'dev', key: 'payments_k1' },
-];
+/** Only permissions a rule may hold on a key are asked about one key. */
+const ASKABLE = PERMS.filter((p) => p.shape !== 'project');
 
 type Row = { person: Person; rule: Rule; note?: string };
 
 /**
- * Who can...? A compact form in dependency order (permission, project,
- * environment, key: the project decides the other two), answered as tables
- * like the Members page: one per outcome, each row the member, the deciding
- * rule's permissions and its Where, and an action that opens that rule in
- * the editor. People and machines both answer. Members no rule reaches are
- * not listed: the question is who CAN.
+ * Who can...? over grants AND rules (ADR D10), in dependency order:
+ * permission, project, environment, key (the project decides the other two).
+ * Answered as tables in the Members page's anatomy, one per outcome: the
+ * member, the deciding rule or grant, and for a rule an action that opens it
+ * in the editor. People and machines both answer, machines marked. Members
+ * nothing reaches are not listed: the question is who CAN.
+ *
+ * Key names come from the project's key catalogue, which needs See; without
+ * it the question falls back to the whole environment and says so.
  */
-export function WhoCan({ world, initial = DEFAULT_QUESTION, onEditRule }: { world: World; initial?: Question; onEditRule: (rule: Rule) => void }) {
-  const [q, setQ] = useState(initial);
-  const envs = projectEnvs(world, q.project);
-  const keys = projectKeys(world, q.project);
-  // A project switch keeps the question askable: fall back to its first environment and key.
-  const env = envs.some((e) => e.id === q.env) ? q.env : (envs[0]?.id ?? '');
-  const key = keys.some((k) => k.id === q.key) ? q.key : (keys[0]?.id ?? '');
-  const asked = keyById(world, key);
-  const permLabel = label(q.perm);
+export function WhoCan({
+  world,
+  projects,
+  onEditRule,
+}: {
+  world: World;
+  /** The projects this surface may ask about. */
+  projects: readonly string[];
+  /** Opens a rule in the editor; absent where rules cannot be edited from here. */
+  onEditRule?: (rule: Rule) => void;
+}) {
+  const [asked, setAsked] = useState<Partial<Question>>({ perm: 'reveal' });
+  const permId = asked.perm ?? 'reveal';
+  const project = projects.includes(asked.project ?? '') ? (asked.project ?? '') : (projects[0] ?? '');
+  const node = projectById(world, project);
+  const envs = node?.envs ?? [];
+  const keys = node?.keys ?? null;
+  // A project switch keeps the question askable: a protected environment first, then the first one.
+  const env = envs.some((e) => e.id === asked.env) ? (asked.env ?? '') : (envs.find((e) => e.protected === true)?.id ?? envs[0]?.id ?? '');
+  const keyId = keys?.some((k) => k.id === asked.key) === true ? (asked.key ?? '') : (keys?.[0]?.id ?? '');
+  const key = keys?.find((k) => k.id === keyId);
+  const envNode = envs.find((e) => e.id === env);
+  const permLabel = label(permId);
   const yes: Row[] = [];
   const excepted: Row[] = [];
   const needsSee: Row[] = [];
-  for (const person of world.people) {
-    const res = resolve(world, person.id, q.perm, q.project, env, key);
-    if (res.state === 'yes') yes.push({ person, rule: res.rule, note: res.also === undefined ? undefined : `Another of their rules has ${res.also.why}, but an except only narrows its own rule.` });
-    else if (res.state === 'excepted') excepted.push({ person, rule: res.rule, note: `Left out: this rule has ${res.why}.` });
-    else if (res.state === 'needsSee') needsSee.push({ person, rule: res.rule, note: `Gives ${permLabel}, but showing a secret needs See here too.` });
+  if (envNode !== undefined) {
+    for (const person of world.people) {
+      const res = resolve(world, person.id, permId, project, env, key);
+      if (res.state === 'yes') yes.push({ person, rule: res.rule, note: res.also === undefined ? undefined : `Another of their rules has ${res.also.why}, but an except only narrows its own rule.` });
+      else if (res.state === 'excepted') excepted.push({ person, rule: res.rule, note: `Left out: this rule ${res.why.startsWith('except') ? 'has' : 'is'} ${res.why}.` });
+      else if (res.state === 'needsSee') needsSee.push({ person, rule: res.rule, note: `Gives ${permLabel}, but showing a secret needs See here too.` });
+    }
   }
 
   return (
     <>
-      <Panel id="access-question" title="Question">
-        <div className="access-ask">
-          <Select
-            label="Permission"
-            hint={perm(q.perm).desc}
-            value={q.perm}
-            onChange={(e) => {
-              const next = ASKABLE.find((p) => p.id === e.target.value);
-              if (next !== undefined) setQ({ ...q, perm: next.id });
-            }}
-          >
-            {PERM_GROUPS.map((group) => (
-              <optgroup key={group} label={group}>
-                {ASKABLE.filter((p) => p.group === group).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
+      <div className="access-ask">
+        <Select
+          label="Permission"
+          hint={perm(permId).desc}
+          value={permId}
+          onChange={(e) => {
+            const next = ASKABLE.find((p) => p.id === e.target.value);
+            if (next !== undefined) setAsked({ ...asked, perm: next.id });
+          }}
+        >
+          {PERM_GROUPS.map((group) => (
+            <optgroup key={group} label={group}>
+              {ASKABLE.filter((p) => p.group === group).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </Select>
+        <Select label="Project" value={project} onChange={(e) => setAsked({ ...asked, project: e.target.value })}>
+          {projects.map((p) => (
+            <option key={p} value={p}>
+              {projectById(world, p)?.name ?? p}
+            </option>
+          ))}
+        </Select>
+        <Select label="Environment" value={env} onChange={(e) => setAsked({ ...asked, env: e.target.value })}>
+          {envs.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+              {e.protected === true ? ' (protected)' : ''}
+            </option>
+          ))}
+        </Select>
+        <Select
+          label="Key"
+          mono
+          value={keyId}
+          disabled={keys === null}
+          hint={keys === null ? 'Key names need See in this project, which you do not hold: answered for the whole environment.' : undefined}
+          onChange={(e) => setAsked({ ...asked, key: e.target.value })}
+        >
+          {keys === null ? <option value="">(every key)</option> : null}
+          {[...new Set((keys ?? []).map((k) => k.folder))].sort().map((folder) => (
+            <optgroup key={folder} label={folder === '' ? '(no folder)' : `${folder}/`}>
+              {(keys ?? [])
+                .filter((k) => k.folder === folder)
+                .map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.name}
+                    {k.secret ? ' (secret)' : ''}
                   </option>
                 ))}
-              </optgroup>
-            ))}
-          </Select>
-          <Select label="Project" value={q.project} onChange={(e) => setQ({ ...q, project: e.target.value })}>
-            {world.projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id}
-              </option>
-            ))}
-          </Select>
-          <Select label="Environment" value={env} onChange={(e) => setQ({ ...q, env: e.target.value })}>
-            {envs.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.id}
-                {e.protected ? ' (protected)' : ''}
-              </option>
-            ))}
-          </Select>
-          <Select label="Key" mono value={key} onChange={(e) => setQ({ ...q, key: e.target.value })}>
-            {[...new Set(keys.map((k) => k.folder))].map((folder) => (
-              <optgroup key={folder} label={`${folder}/`}>
-                {keys
-                  .filter((k) => k.folder === folder)
-                  .map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name}
-                      {k.secret ? ' (secret)' : ''}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </Select>
-        </div>
-        <div className="access-examples" role="group" aria-label="Example questions">
-          {EXAMPLES.map((example) => (
-            <Button key={`${example.perm}|${example.env}|${example.key}`} type="button" variant="quiet" onClick={() => setQ(example)}>
-              {label(example.perm)} · {example.env} {keyById(world, example.key)?.name ?? example.key}
-            </Button>
+            </optgroup>
           ))}
-        </div>
-      </Panel>
+        </Select>
+      </div>
 
-      <Panel id="access-answer" title="Answer">
-        <p className="access-answer__question" aria-live="polite">
-          Who has <strong>{permLabel}</strong> on <strong className="mono">{asked?.name ?? key}</strong>
-          {asked?.secret === true ? <Lock word="secret" /> : null} in{' '}
-          <strong>
-            {q.project} {env}
-          </strong>
-          ?
+      {envNode === undefined ? (
+        <p className="access-hint" role="status">
+          {projects.length === 0 ? 'No project to ask about yet.' : 'This project has no environment to ask about yet.'}
         </p>
-        <AnswerTable glyph="check" tone="yes" caption={`Yes: ${yes.length}`} rows={yes} world={world} onEditRule={onEditRule} empty="· no one" />
-        {excepted.length > 0 ? (
-          <AnswerTable glyph="cross" tone="except" caption={`No, left out by an except: ${excepted.length}`} rows={excepted} world={world} onEditRule={onEditRule} />
-        ) : null}
-        {needsSee.length > 0 ? (
-          <AnswerTable glyph="warn" tone="warn" caption={`No, has ${permLabel} but not See: ${needsSee.length}`} rows={needsSee} world={world} onEditRule={onEditRule} />
-        ) : null}
-      </Panel>
+      ) : (
+        <>
+          <p className="access-answer__question" aria-live="polite">
+            Who has <strong>{permLabel}</strong> on <strong className="mono">{key?.name ?? 'every key'}</strong>
+            {key?.secret === true ? <Lock word="secret" /> : null} in{' '}
+            <strong>
+              {node?.name ?? project} {envNode.name}
+            </strong>
+            ?
+          </p>
+          <AnswerTable glyph="check" tone="yes" caption={`Yes: ${yes.length}`} rows={yes} world={world} onEditRule={onEditRule} empty="· no one" />
+          {excepted.length > 0 ? (
+            <AnswerTable glyph="cross" tone="except" caption={`No, left out by an except: ${excepted.length}`} rows={excepted} world={world} onEditRule={onEditRule} />
+          ) : null}
+          {needsSee.length > 0 ? (
+            <AnswerTable glyph="warn" tone="warn" caption={`No, has ${permLabel} but not See: ${needsSee.length}`} rows={needsSee} world={world} onEditRule={onEditRule} />
+          ) : null}
+        </>
+      )}
     </>
   );
 }
@@ -155,7 +168,7 @@ function AnswerTable({
   caption: string;
   rows: readonly Row[];
   world: World;
-  onEditRule: (rule: Rule) => void;
+  onEditRule: ((rule: Rule) => void) | undefined;
   empty?: ReactNode;
 }) {
   const captionId = useId();
@@ -192,53 +205,24 @@ function AnswerTable({
                 </span>
               </th>
               <td>
-                <RulePerms world={world} rule={rule} />
+                <RulePerms rule={rule} />
               </td>
               <td>
                 <RuleWhere world={world} rule={rule} />
                 {note === undefined ? null : <p className="access-table__note">{note}</p>}
+                {rule.source.kind === 'grant' ? <p className="access-table__note">A grant: change it in the grant list.</p> : null}
               </td>
               <td>
-                <Button type="button" variant="quiet" onClick={() => onEditRule(rule)}>
-                  Edit rule<span className="visually-hidden"> of {person.name}</span>
-                </Button>
+                {onEditRule !== undefined && rule.source.kind === 'rule' && !rule.source.otherProjects ? (
+                  <Button type="button" variant="quiet" onClick={() => onEditRule(rule)}>
+                    Edit rule<span className="visually-hidden"> of {person.name}</span>
+                  </Button>
+                ) : null}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-/**
- * The Who can...? page. It owns the world so an edit made from an answer
- * (the same rule editor Members and Machine access use) recomputes the answer.
- */
-export function WhoCanPage({ initialWorld, initialQuestion }: { initialWorld: World; initialQuestion?: Question }) {
-  const [world, setWorld] = useState(initialWorld);
-  const [editing, setEditing] = useState<Rule | null>(null);
-  return (
-    <div className="page page--chrome access-rules">
-      <h1>Who can…?</h1>
-      <p className="page__lede">Ask about one key in one environment. Permission names and their meaning are the same as in the rule editor.</p>
-      <WhoCan world={world} initial={initialQuestion} onEditRule={setEditing} />
-      {editing === null ? null : (
-        <RuleEditorDialog
-          key={editing.id}
-          world={world}
-          rule={editing}
-          onCancel={() => setEditing(null)}
-          onRemove={(id) => {
-            setWorld(removeRule(world, id));
-            setEditing(null);
-          }}
-          onSave={(rule) => {
-            setWorld(saveRule(world, rule));
-            setEditing(null);
-          }}
-        />
-      )}
     </div>
   );
 }

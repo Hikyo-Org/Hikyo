@@ -135,13 +135,10 @@ operations:
   listOrgGrants:               {webui: members}
   createOrgGrant:              {webui: members}
   revokeOrgGrant:              {webui: members}
-  # Member access rules: stage C of this PR wires the Members surface and
-  # flips these to webui; 838 is the PR, so the network check fails loudly
-  # if that is forgotten.
-  listOrgRules:                {issue: 838}
-  createRule:                  {issue: 838}
-  revokeRule:                  {issue: 838}
-  listProjectRules:            {issue: 838}
+  listOrgRules:                {webui: members}
+  createRule:                  {webui: members}
+  revokeRule:                  {webui: members}
+  listProjectRules:            {webui: members}
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}

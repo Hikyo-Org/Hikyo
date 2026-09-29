@@ -13,6 +13,7 @@ import {
 } from '../api/definitions-bundle.ts';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definitions.ts';
+import { useEnvironments } from '../api/settings.ts';
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -20,6 +21,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
+import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
 
@@ -82,6 +84,14 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
   const [scan, setScan] = useState<{
     findings: readonly RefusalFinding[];
     action: 'plan' | 'apply';
+  } | null>(null);
+  // An apply refused because the plan's folder moves give people new access
+  // through their access rules (ADR D9): the refusal, the acknowledgement
+  // tokens that apply carried (a confirm resends them), and a refused confirm.
+  const [widening, setWidening] = useState<{
+    refusal: WideningRefusal;
+    tokens: readonly string[];
+    failure: string | null;
   } | null>(null);
   const active = useRef<AbortController | null>(null);
   useEffect(() => () => active.current?.abort(), []);
@@ -155,7 +165,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
       if (!signal.aborted) setBusy(false);
     }
   };
-  const apply = async (tokens: readonly string[] = []) => {
+  const apply = async (tokens: readonly string[] = [], confirmWidening: readonly string[] = []) => {
     if (plan === null) return;
     if (settings.definitions_source !== 'db') {
       setConfirm(false);
@@ -173,9 +183,11 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
         transport,
         signal,
         tokens,
+        confirmWidening,
       );
       if (!signal.aborted) {
         setConfirm(false);
+        setWidening(null);
         setPlan(null);
         setChecked(null);
         setBundle(null);
@@ -187,10 +199,32 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
         void queries.invalidateQueries();
       }
     } catch (error) {
-      if (!signal.aborted) {
-        setConfirm(false);
-        refused(error, 'apply');
+      if (signal.aborted) {
+        if (tokens.length > 0) throw error;
+        return;
       }
+      setConfirm(false);
+      // Widening goes to its own confirmation, whichever apply met it (the
+      // first, a scanner override, or a confirm the server refused again).
+      if (error instanceof ApiError && error.status === 409 && error.widening !== undefined) {
+        setScan(null);
+        setWidening({
+          refusal: error.widening,
+          tokens,
+          failure:
+            confirmWidening.length === 0
+              ? null
+              : 'The people gaining access changed since you reviewed them. Review and confirm again.',
+        });
+        return;
+      }
+      if (confirmWidening.length > 0) {
+        setWidening((current) =>
+          current === null ? null : { ...current, failure: bundleRefusalText(error) },
+        );
+        return;
+      }
+      refused(error, 'apply');
       if (tokens.length > 0) throw error;
     } finally {
       if (!signal.aborted) setBusy(false);
@@ -350,6 +384,17 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           ) : null}
         </ConsequencesDialog>
       ) : null}
+      {widening === null ? null : (
+        <WideningConfirm
+          org={org}
+          project={project}
+          widening={widening.refusal}
+          busy={busy}
+          failure={widening.failure}
+          onCancel={() => setWidening(null)}
+          onConfirm={(principals) => void apply(widening.tokens, principals)}
+        />
+      )}
       {scan === null ? null : (
         <ScanBlockDialog
           title="Bundle scanning refused"
@@ -364,6 +409,26 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
         />
       )}
     </Dialog>
+  );
+}
+
+/** The widening confirmation for an apply, with environment names from the
+ *  project's environment list (the settings page already holds it). */
+function WideningConfirm({
+  org,
+  project,
+  ...props
+}: Omit<Parameters<typeof KeyMoveConfirmDialog>[0], 'change' | 'envName'> & {
+  org: string;
+  project: string;
+}) {
+  const environments = useEnvironments(org, project);
+  return (
+    <KeyMoveConfirmDialog
+      {...props}
+      change="Apply this definitions plan"
+      envName={(id) => environments.data?.items.find((environment) => environment.id === id)?.name ?? id}
+    />
   );
 }
 

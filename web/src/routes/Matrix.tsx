@@ -1508,6 +1508,7 @@ export function Matrix({
             ]),
           ].filter((path) => path !== '')}
           busy={moveKeys.isPending}
+          envName={(id) => environments.find((environment) => environment.id === id)?.name ?? id}
           onApply={(moves) =>
             moveKeys.mutateAsync({
               moves,

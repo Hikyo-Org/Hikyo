@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 
+import { Alert } from '../../ui/Alert.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { ChoiceGroup } from '../../ui/ChoiceGroup.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
@@ -7,33 +8,30 @@ import { Disclosure } from '../../ui/Disclosure.tsx';
 import { Radio } from '../../ui/Radio.tsx';
 import { ToggleChip } from '../../ui/ToggleChip.tsx';
 import {
-  ALL,
   availability,
   effective,
-  envNames,
-  folderNames,
+  envChoices,
+  folderChoices,
   hasWhere,
-  keyPick,
-  kindOf,
+  keyChoices,
   label,
-  MACHINE_FORBIDDEN_WHY,
   narrowKeys,
   personName,
   PRESETS,
-  projectKeys,
-  projectsOf,
+  projectById,
+  projectName,
   setMode,
   tapped,
-  toggleItem,
+  toggleItems,
+  toggleProject,
   type Axis,
+  type EnvItem,
+  type KeyItem,
   type Rule,
   type World,
 } from './model.ts';
-import { EnvName, KeyItem, RuleSummary } from './parts.tsx';
+import { KeyLabel, Lock, RuleSummary } from './parts.tsx';
 import { PermissionList } from './PermissionList.tsx';
-
-/** A fresh rule for a member: See ticked, no Where yet. Id 0 until saved. */
-export const newRule = (member: string): Rule => ({ id: 0, member, perms: ['read'], projects: [], envs: ALL, keys: ALL });
 
 /**
  * The rule editor. Where comes first (projects, environments, keys, each
@@ -42,106 +40,120 @@ export const newRule = (member: string): Rule => ({ id: 0, member, perms: ['read
  * tapped: Where only grows downwards, the permission rows keep their height
  * (see {@link PermissionList}), and "Saves as" sits at the foot. The
  * action row stays pinned, and a click on the scrim cancels, like every editor.
+ *
+ * `projects` are the projects this surface may name (one on a project's
+ * Members page). What the server refuses is not offered: no "all projects",
+ * and a permission the Where cannot carry is disabled with its reason.
  */
 export function RuleEditorDialog({
   world,
   rule,
+  projects,
+  busy = false,
+  failure = null,
   onSave,
   onRemove,
   onCancel,
 }: {
   world: World;
   rule: Rule;
+  projects: readonly string[];
+  busy?: boolean;
+  failure?: string | null;
   onSave: (rule: Rule) => void;
-  onRemove?: (id: number) => void;
+  onRemove?: (rule: Rule) => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(rule);
-  const kind = kindOf(world, draft.member);
-  const projects = projectsOf(world, draft);
-  const eff = effective(draft, kind);
+  const chosen = draft.projects === '*' ? projects : draft.projects;
+  const eff = effective(draft);
   const where = hasWhere(draft);
   const valid = eff.length > 0 && where;
-  const whyNot = draft.perms.flatMap((id) => {
-    const a = availability(id, draft, kind);
-    return a.ok ? [] : [{ id, why: a.why }];
-  });
-  const machineDropped = whyNot.filter((x) => x.why === MACHINE_FORBIDDEN_WHY).map((x) => x.id);
-  const shapeDropped = whyNot.filter((x) => x.why !== MACHINE_FORBIDDEN_WHY).map((x) => x.id);
-  const name = personName(world, draft.member);
-  const toggleProject = (project: string) => {
-    const list = draft.projects === '*' ? [] : draft.projects;
-    setDraft({ ...draft, projects: list.includes(project) ? list.filter((p) => p !== project) : [...list, project] });
+  const dropped = draft.perms.filter((id) => !availability(id, draft).ok);
+  const editing = rule.source.kind === 'rule';
+  const unreadable = chosen.filter((p) => projectById(world, p)?.keys === null);
+  const singleKeys = keyChoices(world, chosen, draft);
+  const cancel = () => {
+    if (!busy) onCancel();
   };
-  const singleKeys = projects.flatMap((p) => projectKeys(world, p)).map((k) => keyPick(k.id));
 
   return (
     <Dialog
       size="wide"
       className="access-dialog"
-      title={`${rule.id === 0 ? 'New rule' : 'Edit rule'} · ${name}`}
-      onCancel={onCancel}
-      onBackdropClick={onCancel}
+      title={`${editing ? 'Edit rule' : 'New rule'} · ${personName(world, draft.member)}`}
+      onCancel={(event) => {
+        event.preventDefault();
+        cancel();
+      }}
+      onBackdropClick={cancel}
       pinActions
       actions={
         <>
-          {rule.id !== 0 && onRemove !== undefined ? (
-            <Button type="button" variant="danger" className="access-editor__remove" onClick={() => onRemove(rule.id)}>
+          {editing && onRemove !== undefined ? (
+            <Button type="button" variant="danger" className="access-editor__remove" disabled={busy} onClick={() => onRemove(rule)}>
               Remove rule
             </Button>
           ) : null}
-          <Button type="button" onClick={onCancel}>
+          <Button type="button" disabled={busy} onClick={cancel}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" disabled={!valid} onClick={() => onSave(draft)}>
-            Save
+          <Button type="button" variant="primary" disabled={!valid || busy} aria-busy={busy ? true : undefined} onClick={() => onSave(draft)}>
+            {busy ? 'Saving…' : 'Save'}
           </Button>
         </>
       }
     >
+      {failure === null ? null : <Alert>{failure}</Alert>}
       <fieldset className="access-editor__section">
         <legend className="eyebrow">Where</legend>
-        <AxisBox title="Projects" hint="Tap one or more projects, or all projects, which includes ones created later.">
+        <AxisBox title="Projects" hint="Tap one or more projects. A rule names its projects: access to all projects stays an organisation grant.">
           <div className="access-picks">
-            <ToggleChip mono pressed={draft.projects === '*'} onClick={() => setDraft({ ...draft, projects: draft.projects === '*' ? [] : '*' })}>
-              all projects
-            </ToggleChip>
-            {world.projects.map((p) =>
-              draft.projects === '*' ? (
-                <ToggleChip key={p.id} mono mode="exclude" pressed={false} disabled>
-                  {p.id}
-                </ToggleChip>
-              ) : (
-                <ToggleChip key={p.id} mono pressed={draft.projects.includes(p.id)} onClick={() => toggleProject(p.id)}>
-                  {p.id}
-                </ToggleChip>
-              ),
-            )}
+            {projects.map((p) => (
+              <ToggleChip key={p} mono pressed={chosen.includes(p) && draft.projects !== '*'} onClick={() => setDraft(toggleProject(draft, p))}>
+                {projectName(world, p)}
+              </ToggleChip>
+            ))}
           </div>
         </AxisBox>
-        {projects.length > 0 ? (
+        {chosen.length > 0 ? (
           <>
-            <AxisEditor
+            <AxisEditor<EnvItem>
               title="Environments"
               axis={draft.envs}
               onChange={(envs) => setDraft({ ...draft, envs })}
-              items={envNames(world, projects)}
-              render={(e) => <EnvName world={world} name={e} />}
+              choices={envChoices(world, chosen).map((c) => ({
+                id: c.name,
+                items: c.items,
+                label: (
+                  <>
+                    {c.name}
+                    {c.protected ? <Lock word="protected" /> : null}
+                  </>
+                ),
+              }))}
             />
-            <AxisEditor
+            <AxisEditor<KeyItem>
               title="Keys"
               axis={draft.keys}
               onChange={(keys) => setDraft({ ...draft, keys })}
-              items={folderNames(world, projects)}
-              render={(f) => `${f}/`}
+              choices={folderChoices(world, chosen, draft).map((c) => ({ id: `folder:${c.folder}`, items: c.items, label: c.folder === '' ? '(no folder)' : `${c.folder}/` }))}
             >
-              <Disclosure label={`Pick single keys (${singleKeys.length})`} className="access-picks">
-                {singleKeys.map((item) => (
-                  <AxisChip key={item} axis={draft.keys} item={item} onChange={(keys) => setDraft({ ...draft, keys })}>
-                    <KeyItem world={world} item={item} />
-                  </AxisChip>
-                ))}
-              </Disclosure>
+              {unreadable.length > 0 ? (
+                <p className="access-hint">
+                  Key names in {unreadable.map((p) => projectName(world, p)).join(', ')} need See, which you do not hold there: its folders and keys cannot be picked
+                  here.
+                </p>
+              ) : null}
+              {singleKeys.length > 0 ? (
+                <Disclosure label={`Pick single keys (${singleKeys.length})`} className="access-picks">
+                  {singleKeys.map((item) => (
+                    <AxisChip<KeyItem> key={`${item.project}|${'key' in item ? item.key : ''}`} axis={draft.keys} items={[item]} onChange={(keys) => setDraft({ ...draft, keys })}>
+                      <KeyLabel world={world} item={item} />
+                    </AxisChip>
+                  ))}
+                </Disclosure>
+              ) : null}
             </AxisEditor>
           </>
         ) : null}
@@ -158,11 +170,10 @@ export function RuleEditorDialog({
           ))}
         </div>
         <PermissionList
-          kind={kind}
           selected={draft.perms}
           onChange={(perms) => setDraft({ ...draft, perms })}
           blocked={(id) => {
-            const a = availability(id, draft, kind);
+            const a = availability(id, draft);
             return a.ok ? undefined : a.why;
           }}
         />
@@ -175,12 +186,11 @@ export function RuleEditorDialog({
         ) : (
           <p className="access-summary__empty">{eff.length === 0 ? 'Tick at least one permission.' : 'Pick where this rule applies.'}</p>
         )}
-        {shapeDropped.length > 0 && where ? <p className="access-hint">Left out until Where is wider: {shapeDropped.map(label).join(', ')}.</p> : null}
-        {machineDropped.length > 0 ? <p className="access-hint">Left out, machines cannot hold: {machineDropped.map(label).join(', ')}.</p> : null}
+        {dropped.length > 0 && where ? <p className="access-hint">Left out until Where is wider: {dropped.map(label).join(', ')}.</p> : null}
         {valid && !eff.includes('read') && (eff.includes('reveal') || eff.includes('reveal-history')) ? (
-          <p className="access-hint">No See here: Reveal only works where another of their rules gives See.</p>
+          <p className="access-hint">No See here: Reveal only works where another rule or grant gives See.</p>
         ) : null}
-        {valid && narrowKeys(draft) && eff.includes('read') ? <p className="access-hint">See always covers the whole environment.</p> : null}
+        {valid && narrowKeys(draft) ? <p className="access-hint">See and Pin always cover a whole environment: give them on a rule without key limits.</p> : null}
       </section>
     </Dialog>
   );
@@ -198,27 +208,25 @@ function AxisBox({ title, hint, mode, children }: { title: string; hint: string;
   );
 }
 
-function AxisChip({ axis, item, onChange, children }: { axis: Axis; item: string; onChange: (axis: Axis) => void; children: ReactNode }) {
+function AxisChip<T extends EnvItem | KeyItem>({ axis, items, onChange, children }: { axis: Axis<T>; items: readonly T[]; onChange: (axis: Axis<T>) => void; children: ReactNode }) {
   return (
-    <ToggleChip mono mode={axis.mode === 'all' ? 'exclude' : 'include'} pressed={tapped(axis, item)} onClick={() => onChange(toggleItem(axis, item))}>
+    <ToggleChip mono mode={axis.mode === 'all' ? 'exclude' : 'include'} pressed={tapped(axis, items)} onClick={() => onChange(toggleItems(axis, items))}>
       {children}
     </ToggleChip>
   );
 }
 
-function AxisEditor({
+function AxisEditor<T extends EnvItem | KeyItem>({
   title,
   axis,
-  items,
-  render,
+  choices,
   onChange,
   children,
 }: {
   title: string;
-  axis: Axis;
-  items: readonly string[];
-  render: (item: string) => ReactNode;
-  onChange: (axis: Axis) => void;
+  axis: Axis<T>;
+  choices: readonly { id: string; items: readonly T[]; label: ReactNode }[];
+  onChange: (axis: Axis<T>) => void;
   children?: ReactNode;
 }) {
   const group = useId();
@@ -234,9 +242,9 @@ function AxisEditor({
       }
     >
       <div className="access-picks">
-        {items.map((item) => (
-          <AxisChip key={item} axis={axis} item={item} onChange={onChange}>
-            {render(item)}
+        {choices.map((choice) => (
+          <AxisChip<T> key={choice.id} axis={axis} items={choice.items} onChange={onChange}>
+            {choice.label}
           </AxisChip>
         ))}
       </div>

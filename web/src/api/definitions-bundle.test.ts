@@ -204,6 +204,40 @@ describe('definitions bundle boundary', () => {
       }),
     );
   });
+  it('surfaces a widening refusal and resends the plan naming exactly the gainers', async () => {
+    const gainer = 'prn_123e4567-e89b-12d3-a456-42661417000a';
+    const widening = {
+      count: 1,
+      gainers: [{ principal_id: gainer, capability: 'read', environments: [] }],
+    };
+    const seen: Request[] = [];
+    vi.stubGlobal('fetch', async (request: Request) => {
+      seen.push(request);
+      const confirmed = request.method === 'POST' && (await request.clone().text()).includes('confirm_widening');
+      const [status, body] =
+        request.method === 'GET'
+          ? [200, { definitions_source: 'db' }]
+          : confirmed
+            ? [200, { revision: 3, published: [], plan_id: plan.id }]
+            : [409, { error: { code: 'conflict', message: 'widens access', widening } }];
+      return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    });
+    const refused = await applyBundle(scope, plan, false, {}, new AbortController().signal, ['ack-1']).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(ApiError);
+    expect(refused instanceof ApiError ? refused.widening : undefined).toEqual(widening);
+    await applyBundle(scope, plan, false, {}, new AbortController().signal, ['ack-1'], [gainer]);
+    expect(await seen[3]?.text()).toBe(
+      JSON.stringify({
+        digest: plan.digest,
+        allow_delete: false,
+        acknowledgements: ['ack-1'],
+        confirm_widening: [gainer],
+      }),
+    );
+  });
   it('shows refused and stale operations as actionable text', () => {
     expect(bundleRefusalText(new ApiError(404, 'missing'))).toContain(
       'publish on every affected environment',

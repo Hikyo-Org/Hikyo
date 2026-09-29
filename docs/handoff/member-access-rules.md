@@ -58,7 +58,7 @@ owner took, and what is owed before any of it becomes operative.
 
 - Prototype: `python3 -m http.server -d docs/site/public/prototypes` then open
   `/member-access/6/` (or `/member-access/` for all iterations).
-- Storybook: `pnpm --dir web run storybook`, group *Prototypes/Member access*.
+- Storybook: `pnpm --dir web run storybook`, group *Members/Access rules* (the pieces) and *Routes/Members* (`WithAccessRules`, `ProjectWithAccessRules`, the page).
 
 ## Implementation (stages A and B, branch feat/member-access-rules)
 
@@ -80,9 +80,38 @@ running product.
 - **Deviations from the brief:** listings carry environment and key ids and
   folder paths, not names (names need `read`, which a member manager may
   lack); the project listing shows only its own project's part of a rule.
-- **Owed by stage C:** the Members and Who can...? WebUI on these routes
-  (names through the `read`-gated catalogue routes), and flipping the four
-  `issue: 838` rows in `api/parity.yaml` to `webui`. 838 is this PR, so
-  `scripts/ci/check-parity-issues.sh` fails until then (or until a real
-  implementation issue replaces it).
+- **Stage C (WebUI):** the Members page (org and `?project=` projection)
+  gains three panels under the unchanged grant surface: *Who can reach one
+  key?* (Permission, Project, Environment, Key over grants AND rules), *Access
+  rules* (one card per rule per person, Add / Edit / Remove through
+  `RuleEditorDialog`) and a folding *Glossary*; a *Find a member* search
+  narrows the grant table and the rules. The scope inspector keeps its form
+  and grant sentence and adds the people a rule gives the capability on the
+  whole scope. Machines get no rule editor (humans-only slice). The web model
+  (`web/src/routes/accessRules/model.ts`) groups server rules by principal and
+  Where (one capability per server row), maps legacy grants into the same
+  evaluation, and ports `domain.Rule.Reaches` (folder excepts cover
+  subfolders, only-picks exact, See and Pin never key-narrowed, Manage access
+  inert on rules, Define keys at project level, key-narrowed rules count only
+  for reveal, edit, publish and definitions-edit asked about one key); its
+  unit tests pin that parity. An edit diffs the old rule: same Where moves
+  only changed permissions, a new Where creates the new rows first and
+  revokes the old ones after, and a refused create rolls back what it made.
+  Key names come from `listKeys` (See on the project); without it the editor
+  cannot pick folders or keys there and Who can...? asks for the whole
+  environment, both saying so. Every key folder move (key detail folder
+  field, Matrix Cleanup, definitions apply) answers the 409 `widening` with
+  `KeyMoveConfirmDialog` and resends with `confirm_widening`; a count-only
+  refusal offers no confirm. Parity rows flipped to `webui: members`.
+- **Publish, reconciled:** the ADR slice says a key-narrowed rule never
+  satisfies publish; that holds for revision publish, rollback and apply
+  (no key is named), but `value.set` authorizes edit and publish against one
+  key, so a key-narrowed Publish rule does let its holder set that key's
+  value. The web model counts it for a Who can...? question about one key
+  (over-reporting is the safe direction for that question); no server test
+  pins either reading yet.
+- **Still open after stage C:** a person with neither a grant nor a rule is
+  not listed on Members, so the first access for an invitee comes from the
+  invite template or a grant; a server-side resolver operation (ADR
+  *First implementation slice*); Machine access rules (refused server-side).
 

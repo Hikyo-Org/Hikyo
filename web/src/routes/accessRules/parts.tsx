@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Badge } from '../../ui/Badge.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
-import { effective, isProtectedName, itemLabel, kindOf, perm, presetOf, reachOf, reachText, type PermId, type Rule, type World } from './model.ts';
+import { effective, envById, itemLabel, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
 
 /** A permission as a badge: Secrets carry the lock and the danger tone, Administration the slate one. */
 export function PermBadge({ id }: { id: PermId }) {
@@ -29,16 +29,29 @@ export function Lock({ word }: { word: 'protected' | 'secret' }) {
   );
 }
 
-export function EnvName({ world, name }: { world: World; name: string }) {
-  return (
-    <>
-      {name}
-      {isProtectedName(world, name) ? <Lock word="protected" /> : null}
-    </>
+/** Environment items by name: same-named environments of several projects read as one. */
+function envNames(world: World, items: readonly EnvItem[]): { name: string; protected: boolean }[] {
+  const out = new Map<string, boolean>();
+  for (const item of items) {
+    const env = envById(world, item.environment);
+    const name = env?.name ?? item.environment;
+    out.set(name, (out.get(name) ?? false) || env?.protected === true);
+  }
+  return [...out.entries()].map(([name, isProtected]) => ({ name, protected: isProtected }));
+}
+
+function EnvList({ world, items }: { world: World; items: readonly EnvItem[] }) {
+  return joined(
+    envNames(world, items).map((env) => (
+      <span key={env.name}>
+        {env.name}
+        {env.protected ? <Lock word="protected" /> : null}
+      </span>
+    )),
   );
 }
 
-export function KeyItem({ world, item }: { world: World; item: string }) {
+export function KeyLabel({ world, item }: { world: World; item: KeyItem }) {
   const { text, secret } = itemLabel(world, item);
   return (
     <>
@@ -48,7 +61,21 @@ export function KeyItem({ world, item }: { world: World; item: string }) {
   );
 }
 
-const joined = (nodes: ReactNode[]) => nodes.map((node, i) => (i === 0 ? node : [', ', node]));
+const keyOf = (item: KeyItem) => `${item.project}|${'folder' in item ? `f:${item.folder}` : `k:${item.key}`}`;
+
+function KeyList({ world, items }: { world: World; items: readonly KeyItem[] }) {
+  // A folder picked in several projects reads once.
+  const seen = new Set<string>();
+  const unique = items.filter((item) => {
+    const text = itemLabel(world, item).text;
+    if (seen.has(text)) return false;
+    seen.add(text);
+    return true;
+  });
+  return joined(unique.map((item) => <KeyLabel key={keyOf(item)} world={world} item={item} />));
+}
+
+const joined = (nodes: ReactNode[]) => <>{nodes.map((node, i) => (i === 0 ? node : [', ', node]))}</>;
 
 /** An except: danger ink and a cross, and the word "except" for a screen reader. */
 function Except({ children }: { children: ReactNode }) {
@@ -79,25 +106,35 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   const { envs, keys } = rule;
   return (
     <p className="access-where">
-      <WherePart label="Projects">{rule.projects === '*' ? 'all' : rule.projects.join(', ')}</WherePart>
+      <WherePart label="Projects">{rule.projects === '*' ? 'all' : rule.projects.map((p) => projectName(world, p)).join(', ')}</WherePart>
       <WherePart label="Environments">
         {envs.mode === 'all' ? (
           <>
-            all{envs.exc.length > 0 ? ' ' : null}
-            {envs.exc.length > 0 ? <Except>{joined(envs.exc.map((e) => <EnvName key={e} world={world} name={e} />))}</Except> : null}
+            all{envs.items.length > 0 ? ' ' : null}
+            {envs.items.length > 0 ? (
+              <Except>
+                <EnvList world={world} items={envs.items} />
+              </Except>
+            ) : null}
           </>
         ) : (
-          joined(envs.list.map((e) => <EnvName key={e} world={world} name={e} />))
+          <EnvList world={world} items={envs.items} />
         )}
       </WherePart>
       <WherePart label="Keys">
         {keys.mode === 'all' ? (
           <>
-            all{keys.exc.length > 0 ? ' ' : null}
-            {keys.exc.length > 0 ? <Except>{joined(keys.exc.map((i) => <KeyItem key={i} world={world} item={i} />))}</Except> : null}
+            all{keys.items.length > 0 ? ' ' : null}
+            {keys.items.length > 0 ? (
+              <Except>
+                <KeyList world={world} items={keys.items} />
+              </Except>
+            ) : null}
           </>
         ) : (
-          <>only {joined(keys.list.map((i) => <KeyItem key={i} world={world} item={i} />))}</>
+          <>
+            only <KeyList world={world} items={keys.items} />
+          </>
         )}
       </WherePart>
     </p>
@@ -105,13 +142,12 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
 }
 
 /** A rule's permissions as badges, led by the preset name when it matches one exactly. */
-export function RulePerms({ world, rule }: { world: World; rule: Rule }) {
-  const kind = kindOf(world, rule.member);
-  const preset = presetOf(rule, kind);
+export function RulePerms({ rule }: { rule: Rule }) {
+  const preset = presetOf(rule);
   return (
     <div className="access-rule__perms">
       {preset === null ? null : <span className="access-hint">{preset}:</span>}
-      {effective(rule, kind).map((id) => (
+      {effective(rule).map((id) => (
         <PermBadge key={id} id={id} />
       ))}
     </div>
@@ -125,7 +161,7 @@ export function RulePerms({ world, rule }: { world: World; rule: Rule }) {
 export function RuleSummary({ world, rule, reach = false }: { world: World; rule: Rule; reach?: boolean }) {
   return (
     <div className="access-rule__main">
-      <RulePerms world={world} rule={rule} />
+      <RulePerms rule={rule} />
       <RuleWhere world={world} rule={rule} />
       {reach ? <p className="access-rule__reach">{reachText(reachOf(world, rule))}</p> : null}
     </div>

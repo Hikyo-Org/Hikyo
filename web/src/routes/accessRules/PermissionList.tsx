@@ -4,55 +4,44 @@ import { Checkbox } from '../../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../../ui/ChoiceGroup.tsx';
 import { cx } from '../../ui/cx.ts';
 import { Glyph } from '../../ui/Glyph.tsx';
-import { label, MACHINE_FORBIDDEN, PERM_GROUPS, PERMS, requirement, type MemberKind, type Perm, type PermId } from './model.ts';
-
-/** "Pin, Manage access or Manage projects". */
-function listed(ids: readonly PermId[]): string {
-  const names = ids.map(label);
-  const last = names.pop() ?? '';
-  return names.length === 0 ? last : `${names.join(', ')} or ${last}`;
-}
+import { NOT_ON_RULES, PERM_GROUPS, PERMS, requirement, type Perm, type PermId } from './model.ts';
 
 /**
  * The permission vocabulary as the rule editor's checklist, grouped Values /
  * Secrets / Administration, each permission with what it lets you do.
  *
- * What the member can NEVER hold (a machine's forbidden permissions) is not
- * listed at all; one muted line under Administration names it. What depends
- * on the rule's Where stays listed: its condition sits on its own line under
- * the description, always, and `blocked` only turns on the cross glyph (in a
- * reserved slot) and disables the box. A standing hint that Where never
- * blocks (a machine's Reveal opt-in) has no glyph slot. Changing Where therefore never
- * changes a row's height. The live reason is in the accessible description.
+ * What a rule can NEVER carry is not listed at all; one muted line under
+ * Administration names it. What depends on the rule's Where stays listed: its
+ * condition sits on its own line under the description, always, and `blocked`
+ * only turns on the cross glyph (in a reserved slot) and disables the box.
+ * Changing Where therefore never changes a row's height. The live reason is
+ * in the accessible description.
  */
 export function PermissionList({
-  kind = 'person',
   selected,
   onChange,
   blocked,
 }: {
-  kind?: MemberKind;
   selected: readonly PermId[];
   onChange: (ids: PermId[]) => void;
   /** Why this permission cannot be picked with the current Where, or undefined when it can. */
   blocked: (id: PermId) => string | undefined;
 }) {
-  const hidden = kind === 'machine' ? MACHINE_FORBIDDEN : [];
   return (
     <div className="access-perm-list">
       {PERM_GROUPS.map((group) => (
         <ChoiceGroup key={group} legend={group}>
-          {PERMS.filter((p) => p.group === group && !hidden.includes(p.id)).map((p) => (
+          {PERMS.filter((p) => p.group === group).map((p) => (
             <PermRow
               key={p.id}
               perm={p}
-              note={requirement(p.id, kind)}
+              note={requirement(p.id)}
               why={blocked(p.id)}
               checked={selected.includes(p.id)}
               onChange={(on) => onChange(on ? [...selected, p.id] : selected.filter((x) => x !== p.id))}
             />
           ))}
-          {group === 'Administration' && hidden.length > 0 ? <p className="access-perm__never">Machines cannot hold {listed(hidden)}.</p> : null}
+          {group === 'Administration' ? <p className="access-perm__never">{NOT_ON_RULES}</p> : null}
         </ChoiceGroup>
       ))}
     </div>

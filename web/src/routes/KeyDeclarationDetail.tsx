@@ -39,6 +39,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
 import { selectOption } from './selectOption.ts';
@@ -349,7 +350,12 @@ function KeyDeclarationBody({
 
       {editable ? (
         <>
-          <MetadataEditor refData={refData} keyId={keyId} record={record} />
+          <MetadataEditor
+            refData={refData}
+            keyId={keyId}
+            record={record}
+            environmentName={environmentName}
+          />
           <DeclarationEditor
             refData={refData}
             keyId={keyId}
@@ -511,10 +517,12 @@ function MetadataEditor({
   refData,
   keyId,
   record,
+  environmentName,
 }: {
   refData: MatrixRef;
   keyId: string;
   record: MatrixKey;
+  environmentName: (id: string) => string;
 }) {
   const update = useUpdateKeyMetadata(refData, keyId);
   const [folderPath, setFolderPath] = useState(record.folder_path);
@@ -527,6 +535,15 @@ function MetadataEditor({
   const [scanBlock, setScanBlock] = useState<{
     readonly findings: readonly RefusalFinding[];
     readonly onOverride: ((tokens: readonly string[]) => Promise<void>) | null;
+  } | null>(null);
+  // A folder move that widens access through member access rules (ADR D9):
+  // the refusal, the move in words, and the confirm that resends the same
+  // write naming the people who gain. `failure` is a refused confirm.
+  const [widening, setWidening] = useState<{
+    readonly refusal: WideningRefusal;
+    readonly change: string;
+    readonly confirm: (principals: readonly string[]) => void;
+    readonly failure: string | null;
   } | null>(null);
 
   // Reload the fields when the underlying record changes (a concurrent edit
@@ -559,16 +576,57 @@ function MetadataEditor({
     // The mutation is callback-shaped; wrap one attempt as a promise so the
     // block dialog's override can await the resubmit and surface the server's
     // named refusal on rejection.
-    const attempt = (acknowledgements: readonly string[]): Promise<void> =>
+    const attempt = (
+      acknowledgements: readonly string[],
+      confirmWidening: readonly string[] = [],
+    ): Promise<void> =>
       new Promise((resolve, reject) => {
         update.mutate(
-          { ...changed, ...(acknowledgements.length === 0 ? {} : { acknowledgements }) },
+          {
+            ...changed,
+            ...(acknowledgements.length === 0 ? {} : { acknowledgements }),
+            ...(confirmWidening.length === 0 ? {} : { confirmWidening }),
+          },
           { onSuccess: () => resolve(), onError: (error) => reject(error) },
         );
       });
+    const change = `Move ${record.name} from ${folderLabel(record.folder_path)} to ${folderLabel(folderPath)}`;
+    // A widening refusal opens the move confirmation, wherever it arrives (the
+    // first save or a scanner override); confirming resends the same write,
+    // with the same acknowledgements, naming the people who gain. Returns
+    // false for any other refusal.
+    const widened = (error: unknown, acknowledgements: readonly string[]): boolean => {
+      if (!(error instanceof ApiError) || error.status !== 409 || error.widening === undefined) {
+        return false;
+      }
+      const refusal = error.widening;
+      setScanBlock(null);
+      setWidening({
+        refusal,
+        change,
+        failure: null,
+        confirm: (principals) => {
+          setWidening((current) => (current === null ? null : { ...current, failure: null }));
+          void attempt(acknowledgements, principals)
+            .then(() => {
+              setWidening(null);
+              setDone(true);
+            })
+            .catch((retryError: unknown) => {
+              if (widened(retryError, acknowledgements)) return;
+              const text = keyMetadataRefusalText(
+                retryError instanceof Error ? retryError : new Error('save failed'),
+              );
+              setWidening((current) => (current === null ? null : { ...current, failure: text }));
+            });
+        },
+      });
+      return true;
+    };
     void attempt([])
       .then(() => setDone(true))
       .catch((error: unknown) => {
+        if (widened(error, [])) return;
         // A scanner block carries findings; route them to the block dialog,
         // which shows ONLY the redacted rule id + locator and offers an audited
         // override. Any other refusal stays inline in its own words. A 404 is
@@ -581,10 +639,14 @@ function MetadataEditor({
             findings,
             onOverride: findings.every((finding) => finding.acknowledgement !== undefined)
               ? (tokens) =>
-                  attempt(tokens).then(() => {
-                    setDone(true);
-                    setScanBlock(null);
-                  })
+                  attempt(tokens)
+                    .then(() => {
+                      setDone(true);
+                      setScanBlock(null);
+                    })
+                    .catch((overrideError: unknown) => {
+                      if (!widened(overrideError, tokens)) throw overrideError;
+                    })
               : null,
           });
           return;
@@ -644,8 +706,25 @@ function MetadataEditor({
           onClose={() => setScanBlock(null)}
         />
       )}
+
+      {widening === null ? null : (
+        <KeyMoveConfirmDialog
+          widening={widening.refusal}
+          change={widening.change}
+          envName={environmentName}
+          busy={update.isPending}
+          failure={widening.failure}
+          onCancel={() => setWidening(null)}
+          onConfirm={widening.confirm}
+        />
+      )}
     </form>
   );
+}
+
+/** A folder path as a move names it: "db/", or "(no folder)" for the root. */
+function folderLabel(path: string): string {
+  return path === '' ? '(no folder)' : `${path}/`;
 }
 
 type ScanBlockState = {

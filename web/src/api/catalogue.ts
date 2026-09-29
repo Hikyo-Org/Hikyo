@@ -1,4 +1,4 @@
-import type { KeyDeclaration, KeyPresenceRules } from '@hikyo/client';
+import type { KeyDeclaration, KeyPresenceRules, WideningRefusal } from '@hikyo/client';
 import {
   createFolderOp,
   createKeyGroupOp,
@@ -138,9 +138,24 @@ export function useUpdateKeyDeclaration(ref: MatrixRef, key: string) {
   });
 }
 
-/** `id` is the key's immutable id (the PATCH target); `name` is for messages. */
-export type FolderMove = { readonly id: string; readonly name: string; readonly folder: string };
-export type FolderMoveOutcome = { readonly id: string; readonly error: string | null };
+/**
+ * `id` is the key's immutable id (the PATCH target); `name` is for messages.
+ * `confirmWidening` resends a move the server refused as widening access
+ * (ADR D9), naming exactly the people that refusal named.
+ */
+export type FolderMove = {
+  readonly id: string;
+  readonly name: string;
+  readonly folder: string;
+  readonly confirmWidening?: readonly string[];
+};
+/** `widening` rides a move refused because it gives people new access
+ *  through their access rules, so the caller can confirm that key alone. */
+export type FolderMoveOutcome = {
+  readonly id: string;
+  readonly error: string | null;
+  readonly widening?: WideningRefusal;
+};
 
 /**
  * useMoveKeysToFolders is the write behind the matrix "Cleanup" dry run: it
@@ -153,7 +168,9 @@ export type FolderMoveOutcome = { readonly id: string; readonly error: string | 
  * stops at the first 429 and reports the rest as not attempted rather than
  * burning the budget on requests that will fail the same way. Any other
  * refusal is recorded for that key and the loop goes on: a folder move is
- * metadata, reversible, and one bad key must not block the others.
+ * metadata, reversible, and one bad key must not block the others. A move
+ * that widens access is recorded with its widening so the caller can confirm
+ * that key and resend it with `confirmWidening`.
  *
  * ponytail: one revision per key caps a cleanup at the hourly budget (60);
  * a server-side bulk move (one revision for N keys) is the upgrade path.
@@ -186,7 +203,12 @@ export function useMoveKeysToFolders(ref: MatrixRef) {
         try {
           await parsed(updateKeyMetadataOp, {
             path: { ...ref, key: move.id },
-            body: { folder_path: move.folder },
+            body: {
+              folder_path: move.folder,
+              ...(move.confirmWidening === undefined || move.confirmWidening.length === 0
+                ? {}
+                : { confirm_widening: [...move.confirmWidening] }),
+            },
             ...transport,
           });
           outcomes.push({ id: move.id, error: null });
@@ -196,6 +218,10 @@ export function useMoveKeysToFolders(ref: MatrixRef) {
           if (error instanceof ApiError && error.status === 429) {
             exhausted = REVISION_BUDGET_REFUSAL;
             outcomes.push({ id: move.id, error: exhausted });
+            continue;
+          }
+          if (error instanceof ApiError && error.status === 409 && error.widening !== undefined) {
+            outcomes.push({ id: move.id, error: WIDENING_REFUSAL, widening: error.widening });
             continue;
           }
           outcomes.push({
@@ -214,6 +240,8 @@ export function useMoveKeysToFolders(ref: MatrixRef) {
       ]),
   });
 }
+
+const WIDENING_REFUSAL = 'Not moved: this move gives people new access through their access rules.';
 
 const REVISION_BUDGET_REFUSAL =
   'Not moved: the project\'s hourly schema-revision budget is used up. Run Cleanup again later for the remaining keys.';
