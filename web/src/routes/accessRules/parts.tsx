@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 import { Badge } from '../../ui/Badge.tsx';
 import { Glyph } from '../../ui/Glyph.tsx';
-import { effective, envById, itemLabel, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
+import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
 
 /** A permission as a badge: Secrets carry the lock and the danger tone, Administration the slate one. */
 export function PermBadge({ id }: { id: PermId }) {
@@ -29,24 +29,23 @@ export function Lock({ word }: { word: 'protected' | 'secret' }) {
   );
 }
 
-/** Environment items by name: same-named environments of several projects read as one. */
-function envNames(world: World, items: readonly EnvItem[]): { name: string; protected: boolean }[] {
-  const out = new Map<string, boolean>();
-  for (const item of items) {
-    const env = envById(world, item.environment);
-    const name = env?.name ?? item.environment;
-    out.set(name, (out.get(name) ?? false) || env?.protected === true);
-  }
-  return [...out.entries()].map(([name, isProtected]) => ({ name, protected: isProtected }));
-}
+const ruleProjectIds = (world: World, rule: Rule) => (rule.projects === '*' ? world.projects.map((p) => p.id) : rule.projects);
 
-function EnvList({ world, items }: { world: World; items: readonly EnvItem[] }) {
+function EnvList({ world, rule, items }: { world: World; rule: Rule; items: readonly EnvItem[] }) {
+  const labels = mergeByName(
+    items.map((item) => {
+      const env = envById(world, item.environment);
+      return { project: item.project, name: env?.name ?? item.environment, flag: env?.protected === true };
+    }),
+    ruleProjectIds(world, rule),
+    (id) => projectName(world, id),
+  );
   return joined(
-    envNames(world, items).map((env) => (
-      <span key={env.name}>
-        {env.name}
-        {env.protected ? <Lock word="protected" /> : null}
-      </span>
+    labels.map((env) => (
+      <Fragment key={env.label}>
+        {env.label}
+        {env.flag ? <Lock word="protected" /> : null}
+      </Fragment>
     )),
   );
 }
@@ -61,18 +60,23 @@ export function KeyLabel({ world, item }: { world: World; item: KeyItem }) {
   );
 }
 
-const keyOf = (item: KeyItem) => `${item.project}|${'folder' in item ? `f:${item.folder}` : `k:${item.key}`}`;
-
-function KeyList({ world, items }: { world: World; items: readonly KeyItem[] }) {
-  // A folder picked in several projects reads once.
-  const seen = new Set<string>();
-  const unique = items.filter((item) => {
-    const text = itemLabel(world, item).text;
-    if (seen.has(text)) return false;
-    seen.add(text);
-    return true;
-  });
-  return joined(unique.map((item) => <KeyLabel key={keyOf(item)} world={world} item={item} />));
+function KeyList({ world, rule, items }: { world: World; rule: Rule; items: readonly KeyItem[] }) {
+  const labels = mergeByName(
+    items.map((item) => {
+      const { text, secret } = itemLabel(world, item);
+      return { project: item.project, name: text, flag: secret };
+    }),
+    ruleProjectIds(world, rule),
+    (id) => projectName(world, id),
+  );
+  return joined(
+    labels.map((key) => (
+      <Fragment key={key.label}>
+        {key.label}
+        {key.flag ? <Lock word="secret" /> : null}
+      </Fragment>
+    )),
+  );
 }
 
 const joined = (nodes: ReactNode[]) => <>{nodes.map((node, i) => (i === 0 ? node : [', ', node]))}</>;
@@ -113,12 +117,12 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
             all{envs.items.length > 0 ? ' ' : null}
             {envs.items.length > 0 ? (
               <Except>
-                <EnvList world={world} items={envs.items} />
+                <EnvList world={world} rule={rule} items={envs.items} />
               </Except>
             ) : null}
           </>
         ) : (
-          <EnvList world={world} items={envs.items} />
+          <EnvList world={world} rule={rule} items={envs.items} />
         )}
       </WherePart>
       <WherePart label="Keys">
@@ -127,13 +131,13 @@ export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
             all{keys.items.length > 0 ? ' ' : null}
             {keys.items.length > 0 ? (
               <Except>
-                <KeyList world={world} items={keys.items} />
+                <KeyList world={world} rule={rule} items={keys.items} />
               </Except>
             ) : null}
           </>
         ) : (
           <>
-            only <KeyList world={world} items={keys.items} />
+            only <KeyList world={world} rule={rule} items={keys.items} />
           </>
         )}
       </WherePart>

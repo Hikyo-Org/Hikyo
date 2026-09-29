@@ -136,9 +136,9 @@ running product.
   (`web/src/routes/accessRules/model.ts`) groups server rules by principal and
   Where (one capability per server row), maps legacy grants into the same
   evaluation, and ports `domain.Rule.Reaches` (folder excepts cover
-  subfolders, only-picks exact, See and Pin never key-narrowed, Manage access
-  inert on rules, Define keys at project level, key-narrowed rules count only
-  for reveal, edit, publish and definitions-edit asked about one key); its
+  subfolders, only-picks exact, See, Pin and Publish never key-narrowed,
+  Manage access inert on rules, Define keys at project level, key-narrowed
+  rules count only for reveal, edit and definitions-edit asked about one key); its
   unit tests pin that parity. An edit diffs the old rule: same Where moves
   only changed permissions, a new Where creates the new rows first and
   revokes the old ones after, and a refused create rolls back what it made.
@@ -148,13 +148,10 @@ running product.
   field, Matrix Cleanup, definitions apply) answers the 409 `widening` with
   `KeyMoveConfirmDialog` and resends with `confirm_widening`; a count-only
   refusal offers no confirm. Parity rows flipped to `webui: members`.
-- **Publish, reconciled:** the ADR slice says a key-narrowed rule never
-  satisfies publish; that holds for revision publish, rollback and apply
-  (no key is named), but `value.set` authorizes edit and publish against one
-  key, so a key-narrowed Publish rule does let its holder set that key's
-  value. The web model counts it for a Who can...? question about one key
-  (over-reporting is the safe direction for that question); no server test
-  pins either reading yet.
+- **Publish, reconciled:** Publish is environment-wide in this slice. The
+  server refuses a rule that carries Publish with any key narrowing, and the
+  web treats Publish as needing all keys of an environment, so neither the
+  editor nor Who can...? can present a key-narrowed Publish.
 - **Still open after stage C:** a person with neither a grant nor a rule is
   not listed on Members, so the first access for an invitee comes from the
   invite template or a grant; a server-side resolver operation (ADR

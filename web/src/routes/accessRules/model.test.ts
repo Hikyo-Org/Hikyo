@@ -5,6 +5,7 @@ import { grantRows, IDS, makeWorld, PAYMENTS_KEYS } from './fixture.ts';
 import {
   ALL,
   allowed,
+  mergeByName,
   availability,
   createBody,
   effective,
@@ -249,5 +250,27 @@ describe('reach and saving', () => {
         keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }, { project: PAY, key: IDS.stripeSecret }] },
       },
     });
+  });
+});
+
+describe('where labels', () => {
+  const label = (id: string) => ({ p1: 'payments', p2: 'web' })[id] ?? id;
+  it('a name picked in every project of the rule reads once, keeping any flag', () => {
+    expect(
+      mergeByName(
+        [
+          { project: 'p1', name: 'prod', flag: true },
+          { project: 'p2', name: 'prod', flag: false },
+        ],
+        ['p1', 'p2'],
+        label,
+      ),
+    ).toEqual([{ label: 'prod', flag: true }]);
+  });
+  it('a name picked in only some projects is qualified by project', () => {
+    expect(mergeByName([{ project: 'p1', name: 'prod', flag: true }], ['p1', 'p2'], label)).toEqual([{ label: 'payments/prod', flag: true }]);
+  });
+  it('a one-project rule never qualifies', () => {
+    expect(mergeByName([{ project: 'p1', name: 'db/', flag: false }], ['p1'], label)).toEqual([{ label: 'db/', flag: false }]);
   });
 });

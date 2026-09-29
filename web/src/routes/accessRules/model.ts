@@ -141,6 +141,41 @@ export type World = {
 export const kindOfId = (id: string): MemberKind => (id.startsWith('mch_') ? 'machine' : 'person');
 
 export const personName = (world: World, id: string) => world.people.find((p) => p.id === id)?.name ?? id;
+/**
+ * Where-item labels for a summary. A name picked in every one of the rule's
+ * projects reads once, bare; a name picked in only some of them is qualified
+ * by project, so "except prod" never stands for one project's prod alone. The
+ * flag (protected, secret) is kept if any contributing item carries it.
+ */
+export function mergeByName(
+  entries: readonly { project: string; name: string; flag: boolean }[],
+  ruleProjects: readonly string[],
+  projectLabel: (id: string) => string,
+): { label: string; flag: boolean }[] {
+  const byName = new Map<string, { projects: Set<string>; flag: boolean }>();
+  for (const e of entries) {
+    const at = byName.get(e.name) ?? { projects: new Set<string>(), flag: false };
+    at.projects.add(e.project);
+    at.flag ||= e.flag;
+    byName.set(e.name, at);
+  }
+  const out: { label: string; flag: boolean }[] = [];
+  for (const [name, at] of byName) {
+    if (ruleProjects.length <= 1 || ruleProjects.every((p) => at.projects.has(p))) {
+      out.push({ label: name, flag: at.flag });
+      continue;
+    }
+    for (const e of entries) {
+      if (e.name !== name) continue;
+      const label = `${projectLabel(e.project)}/${name}`;
+      const seen = out.find((o) => o.label === label);
+      if (seen === undefined) out.push({ label, flag: e.flag });
+      else seen.flag ||= e.flag;
+    }
+  }
+  return out;
+}
+
 export const projectById = (world: World, id: string) => world.projects.find((p) => p.id === id);
 export const projectName = (world: World, id: string) => projectById(world, id)?.name ?? id;
 const projectsOf = (world: World, rule: Pick<Rule, 'projects'>): readonly string[] =>
