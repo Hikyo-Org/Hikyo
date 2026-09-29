@@ -35,7 +35,9 @@ import (
 // `grant_origins` joins `grants` (#55): releasing the last origin deletes the
 // grant row, so an origin write is a grant write with one more step, and the
 // same serialization obligation binds it.
-var grantTables = map[string]bool{"grants": true, "grant_origins": true}
+// The member access rule tables join them (member-access-rules ADR): a rule is
+// standing authority read by authorize(), so its writers serialize the same way.
+var grantTables = map[string]bool{"grants": true, "grant_origins": true, "rules": true, "rule_items": true}
 
 // lockName is the lock taken before a grant write.
 const lockName = "LockPrincipalRow"

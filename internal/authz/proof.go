@@ -50,6 +50,20 @@ type proof struct {
 	site  SystemSite   // kindSystem only
 	chain domain.Scope // tenant proofs and scoped system proofs: resolved chain, never caller input
 	tok   *TxToken
+	// key is set when a member access rule was consulted for a key-aware
+	// authorization: the proof then vouches for that one key (resolved from
+	// the database) and nothing wider. Nil on every other proof.
+	key *domain.RuleKey
+}
+
+// BoundKey reports the key a proof was minted for when member access rules
+// decided it. A service holding such a proof must act on that key alone.
+func BoundKey(p Proof) (domain.RuleKey, bool) {
+	v, ok := p.(*proof)
+	if !ok || v == nil || v.key == nil {
+		return domain.RuleKey{}, false
+	}
+	return *v.key, true
 }
 
 // deadcode reports this marker as unreachable by design. Its signature closes

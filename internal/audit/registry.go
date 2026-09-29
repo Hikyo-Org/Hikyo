@@ -211,6 +211,14 @@ const (
 	EventGrantModified        EventType = "grant.modified"
 	EventGrantRevoked         EventType = "grant.revoked"
 	EventGrantTemplateApplied EventType = "grant.template_applied"
+	// Member access rules (member-access-rules ADR). A rule is created and
+	// revoked whole (an edit is revoke plus create). rule.revoked also records a
+	// deletion path removing a rule whose only-list lost its last item.
+	// rule.move_widening_confirmed records the confirmed set of principals a
+	// key's folder move admitted through their rules (D9).
+	EventRuleCreated               EventType = "rule.created"
+	EventRuleRevoked               EventType = "rule.revoked"
+	EventRuleMoveWideningConfirmed EventType = "rule.move_widening_confirmed"
 	// grant.membership_read is the membership surface's read event. It is not
 	// `audited: none`: that permit covers tenant-class bare-`read` operations,
 	// and "who can reveal production secrets" is administrative information
@@ -1882,6 +1890,36 @@ var registry = map[EventType]TypeSpec{
 			"origins_remaining": {Kind: KindInt, Required: true},
 			"sessions_revoked":  {Kind: KindBool, Required: true},
 		}),
+	},
+	EventRuleCreated: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: merged(ruleSchema, Schema{
+			"unheld": {Kind: KindBool, Required: true},
+		}),
+	},
+	EventRuleRevoked: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: merged(ruleSchema, Schema{
+			"cause": {Kind: KindString, Required: true, Enum: []string{"revoked", "emptied-by-deletion", "scope-deleted"}},
+		}),
+	},
+	EventRuleMoveWideningConfirmed: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"key_id":      {Kind: KindString, Required: true},
+			"from_folder": {Kind: KindFreeText, Required: true},
+			"to_folder":   {Kind: KindFreeText, Required: true},
+			"principals":  {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+		},
 	},
 	EventMemberInvited: {
 		SchemaVersion: 1,
@@ -3687,6 +3725,18 @@ func adapterLifecycleEvent(schema Schema) TypeSpec {
 // scope is a rendered string rather than three chain columns because the
 // event's own chain columns already carry the tenant address; this field
 // answers "at which level was it granted", which the chain cannot.
+// ruleSchema is the common payload of the rule lifecycle events: who holds
+// what where. The Where is rendered as stable ids, never names.
+var ruleSchema = Schema{
+	"target_principal": {Kind: KindString, Required: true},
+	"capability":       {Kind: KindString, Required: true},
+	"projects":         {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+	"env_mode":         {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"envs":             {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 256},
+	"key_mode":         {Kind: KindString, Required: true, Enum: []string{"all", "only"}},
+	"keys":             {Kind: KindStringList, Required: true, MaxLen: 1000, MaxBytes: 1024},
+}
+
 var grantSchema = Schema{
 	"target_principal": {Kind: KindString, Required: true},
 	"capability":       {Kind: KindString, Required: true},

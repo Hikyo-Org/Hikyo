@@ -1115,8 +1115,10 @@ export function useKey(ref: MatrixRef, key: string) {
  * (folder, description, deprecation), the smallest complete write of the
  * shared declaration editor foundation (#491). It carries `acknowledgements`
  * so a Surface-2 scanning block on a free-text field can be deliberately
- * overridden once the caller owns the finding. Both the single-key detail and
- * the project key list are invalidated so the matrix reflects the edit.
+ * overridden once the caller owns the finding, and `confirmWidening` so a
+ * folder move that widens access through member access rules (ADR D9) is
+ * confirmed by naming exactly the people the refusal named. Both the
+ * single-key detail and the project key list are invalidated so the matrix reflects the edit.
  */
 export function useUpdateKeyMetadata(ref: MatrixRef, key: string) {
   const queries = useQueryClient();
@@ -1128,6 +1130,7 @@ export function useUpdateKeyMetadata(ref: MatrixRef, key: string) {
       readonly deprecated?: boolean;
       readonly deprecationNote?: string;
       readonly acknowledgements?: readonly string[];
+      readonly confirmWidening?: readonly string[];
     }) =>
       parsed(updateKeyMetadataOp, {
           path: { ...ref, key },
@@ -1141,6 +1144,9 @@ export function useUpdateKeyMetadata(ref: MatrixRef, key: string) {
             ...(input.acknowledgements === undefined || input.acknowledgements.length === 0
               ? {}
               : { acknowledgements: [...input.acknowledgements] }),
+            ...(input.confirmWidening === undefined || input.confirmWidening.length === 0
+              ? {}
+              : { confirm_widening: [...input.confirmWidening] }),
           },
           ...transport,
         }),

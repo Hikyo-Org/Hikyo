@@ -451,6 +451,10 @@ func (s *Orgs) Delete(ctx context.Context, actor Actor, org domain.OrgID) error 
 				return err
 			}
 		}
+		// Every member access rule lives in exactly one org and goes with it.
+		if err := releaseOrgRules(ctx, r, az, p, caller.Principal, org); err != nil {
+			return err
+		}
 		if err := r.Orgs().Delete(ctx, p); err != nil {
 			return err
 		}
@@ -624,6 +628,9 @@ func (s *Projects) Delete(ctx context.Context, actor Actor, scope domain.Scope) 
 		if err != nil {
 			return err
 		}
+		if err := releaseProjectRules(ctx, r, az, p, caller.Principal, scope); err != nil {
+			return err
+		}
 		if err := r.Projects().Delete(ctx, p); err != nil {
 			return err
 		}
@@ -734,7 +741,7 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 	// pre-flight authorizes and scans in a read transaction, refuses before any
 	// mint, and returns the acknowledged overrides to emit with the write (ADR
 	// §7; see scanSurface2Preflight).
-	overrides, err := scanSurface2Preflight(ctx, s.DB, s.Keyring, s.Scan, actor, authz.OpEnvCreate, scope,
+	overrides, err := scanSurface2Preflight(ctx, s.DB, s.Keyring, s.Scan, actor, authz.OpEnvCreate, scope, nil,
 		nonEmptyLeaf(locEnvironmentName, name), acks, ingressEdit)
 	if err != nil {
 		return Environment{}, CloneResult{}, err

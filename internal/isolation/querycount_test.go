@@ -25,8 +25,10 @@ import (
 // missing — at any level — because chain resolution is a single statement
 // and the grant lookup is skipped on a miss. A per-level walk would show 1
 // query for a missing org and 3 for a missing environment: a probe-visible
-// oracle. Denials against existing objects issue exactly two (chain +
-// grants), independent of why the denial happened.
+// oracle. Denials against existing objects issue exactly three (chain +
+// grants + member access rules) for an operation a rule could satisfy,
+// independent of why the denial happened; an authorization the grants alone
+// satisfy stays at two.
 
 type countingSqliteTx struct {
 	tx *sql.Tx
@@ -157,8 +159,13 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 		if !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("outcome = %v, want ErrNotFound", err)
 		}
-		if n != 2 {
-			t.Fatalf("denial on existing object issued %d queries, want 2 (chain + grants)", n)
+		// Member access rules (member-access-rules ADR) deliberately moved
+		// this from 2 to 3: environment.read is `read@environment`, an atom a
+		// rule can satisfy, so a denial reads the principal's rules after the
+		// grants fail. The count is still fixed per operation and independent
+		// of why the denial happened or which rules exist.
+		if n != 3 {
+			t.Fatalf("denial on existing object issued %d queries, want 3 (chain + grants + rules)", n)
 		}
 	})
 	t.Run("authorized", func(t *testing.T) {

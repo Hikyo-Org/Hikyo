@@ -4,7 +4,7 @@ import {
 } from '@hikyo/operations';
 import { assertSessionEpoch, captureSessionEpoch, checkSessionRefusal, reconcileSessionResponse, sessionEpochSignal } from './sessionEpoch.ts';
 
-import type { ScanFinding } from '@hikyo/client';
+import type { ScanFinding, WideningRefusal } from '@hikyo/client';
 import type { BodylessOperation, BodyOperation, Options, TDataShape } from '@hikyo/operations';
 import { client } from '@hikyo/runtime';
 import { zError, zLoginResult, zRecoveryCodesResult } from '@hikyo/zod';
@@ -127,6 +127,12 @@ export class ApiError extends Error {
    * the block dialog renders, the contract keeps them free of matched text.
    */
   readonly findings: readonly RefusalFinding[];
+  /**
+   * The key folder move widening a 409 carries (member-access-rules ADR D9):
+   * how many people gain access through their rules, and who, when the
+   * caller manages access on the project. Undefined for every other refusal.
+   */
+  readonly widening: WideningRefusal | undefined;
 
   constructor(
     status: number,
@@ -134,6 +140,7 @@ export class ApiError extends Error {
     detail?: string,
     retryAfterMs?: number,
     findings: readonly RefusalFinding[] = [],
+    widening?: WideningRefusal,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -141,6 +148,7 @@ export class ApiError extends Error {
     this.detail = detail;
     this.retryAfterMs = retryAfterMs;
     this.findings = findings;
+    this.widening = widening;
   }
 }
 
@@ -195,6 +203,7 @@ function refusal(response: Response, error: unknown): ApiError {
     parsed.success ? parsed.data.error.detail ?? undefined : undefined,
     retryAfterMilliseconds(response),
     parsed.success ? parsed.data.error.findings ?? [] : [],
+    parsed.success && response.status === 409 ? parsed.data.error.widening : undefined,
   );
 }
 

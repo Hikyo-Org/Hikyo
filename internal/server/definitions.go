@@ -77,6 +77,7 @@ func (a *API) ApplyDefinitionsPlan(ctx context.Context, req apigen.ApplyDefiniti
 		Ref:              deref(req.Body.Ref),
 		Actor:            deref(req.Body.Actor),
 		Acknowledgements: acks,
+		ConfirmWidening:  confirmWidening(req.Body.ConfirmWidening),
 	})
 	if err != nil {
 		return nil, err

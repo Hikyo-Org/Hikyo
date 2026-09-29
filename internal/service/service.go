@@ -226,6 +226,19 @@ func authorize(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op auth
 	return
 }
 
+// authorizeKey is authorize for an operation acting on exactly one key: the
+// key lets a key-narrowed member access rule take part (member-access-rules
+// ADR). The formula and every other rule of authorize() are unchanged.
+func authorizeKey(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op authz.Operation, scope domain.Scope, key authz.KeyTarget, now time.Time) (caller authz.Identity, proof authz.Proof, err error) {
+	caller, err = actor.resolve(ctx, az, now)
+	if err != nil {
+		return
+	}
+	az.SetClock(now)
+	proof, err = az.AuthorizeKey(ctx, caller, op, scope, key)
+	return
+}
+
 // resolveSelf is resolve for the SELF-SCOPED surface (the caller's own session
 // listing and revoke). AuthenticateSelfSurface resolves every HTTP bearer class
 // and applies the request's OpenAPI artifact declaration before narrowing the

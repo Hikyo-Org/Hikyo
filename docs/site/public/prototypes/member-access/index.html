@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Member access granularity: iterations</title>
+<style>
+  :root{
+    --bg:oklch(0.19 0.012 220);--bg2:oklch(0.225 0.014 220);--line:oklch(0.34 0.016 220);
+    --tx:oklch(0.93 0.008 200);--tx-dim:oklch(0.76 0.01 210);--tx-faint:oklch(0.6 0.012 215);
+    --accent:oklch(0.82 0.09 195);--on-accent:oklch(0.2 0.02 220);--mono:ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;
+    min-height:100vh;padding:clamp(24px,6vw,72px) clamp(18px,6vw,72px)}
+  .back{font-size:12px;color:var(--tx-dim);text-decoration:none;display:inline-block;margin-bottom:18px}
+  .back:hover{color:var(--tx)}
+  h1{font-size:clamp(20px,4vw,28px);font-weight:700}
+  h1 span{color:var(--accent)}
+  .q{font-size:13px;color:var(--tx-dim);margin:10px 0 30px;max-width:60ch;line-height:1.6}
+  ul{list-style:none;display:grid;gap:10px;max-width:680px}
+  li a{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;text-decoration:none;color:inherit;
+    padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+  li a:hover{border-color:var(--accent)}
+  .num{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  .name{font-size:15.5px;font-weight:600}
+  .latest{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--on-accent);
+    background:var(--accent);border-radius:999px;padding:2px 9px}
+  .desc{flex-basis:100%;font-size:12.5px;color:var(--tx-dim);line-height:1.5;margin-top:2px}
+  footer{margin-top:34px;font-family:var(--mono);font-size:11px;color:var(--tx-faint);line-height:1.8}
+</style>
+</head>
+<body>
+  <a class="back" href="../">‹ all prototypes</a>
+  <h1>member access <span>&amp;</span> granularity</h1>
+  <p class="q">Members want access finer than scope level: only some keys, folders or key groups, per capability. Where does that grain live, and on which page is it authored and read back, without the Members page drowning? Explores an amendment: key and folder grants are "deferred (fog)" in the locked permission ADR.</p>
+  <ul>
+    <li><a href="6/">
+      <span class="num">6</span><span class="name">Widening moves need confirmation</span>
+      <span class="desc">Verdict on 5: option A. Moving a key so that someone's except no longer covers it opens a confirmation naming who gains and who loses access; cancel keeps it where it was. Narrowing moves, renames and adds save directly.</span>
+    </a></li>
+    <li><a href="5/">
+      <span class="num">5</span><span class="name">Decisions applied, keys that move</span>
+      <span class="desc">Verdict on 4: permissions stay independent (1B), Admin preset leaves secrets unticked (2B), folder admins create keys inside their folder (3). Folder picks follow the folder, single-key picks follow the key id through rename and move. Reveal still needs See. Who can...? gains a definitions-change simulator listing who gains and loses access.</span>
+    </a></li>
+    <li><a href="4/">
+      <span class="num">4</span><span class="name">One vocabulary, tickable permissions, glossary</span>
+      <span class="desc">Verdict on 3: level words and Who can...? words disagreed; Admin was opaque; wants several permissions at once. Now every permission has one name used everywhere (See, Edit, Publish, Pin, Reveal, Reveal history, Define keys, Manage access, Manage machines, Manage deploys, Change settings, Manage projects), ticked independently; Viewer / Editor / Publisher / Admin are presets that only tick boxes. Permissions a narrow rule cannot carry are disabled with the reason. New Glossary page.</span>
+    </a></li>
+    <li><a href="3/">
+      <span class="num">3</span><span class="name">Three axes, folder-scoped Admin</span>
+      <span class="desc">Verdict on 2: needs e.g. Admin on one folder in some environments. Where becomes projects › environments › keys, each "all, except" or "only", so db/ in staging + prod is three taps. Admin on a folder keeps publish, definitions and delegation inside the folder; the editor lists which project-wide powers (settings, machine access, adapters, pins) drop out and why.</span>
+    </a></li>
+    <li><a href="2/">
+      <span class="num">2</span><span class="name">Access as rules, with except</span>
+      <span class="desc">One design instead of three layouts. Each member's access reads as lines: level (View / Edit / Publish / Admin, a display reading of the atoms), secret flags kept separate, where, and except. One include / except tree replaces the scope select, the key picker and the negative permission. An except narrows only its own rule; Who can...? shows when another rule still reaches.</span>
+    </a></li>
+    <li><a href="1/?variant=a">
+      <span class="num">1a</span><span class="name">Inline chips</span>
+      <span class="desc">Members table unchanged; a limited grant carries a "stripe/ · 3/8 keys" badge. Grant dialog gains an Applies to step with a folder, group and key picker. Cheapest change; density grows with every limit. Verdict (1a to 1c): none clearer; negative permissions requested.</span>
+    </a></li>
+    <li><a href="1/?variant=b">
+      <span class="num">1b</span><span class="name">On the key</span>
+      <span class="desc">Members stays scope-only. Definitions gains Key access: per folder, a capability by environment grid where each cell is "all holders" or an allowlist over current holders. Answers "only these people touch db/", cannot answer "Chen only touches stripe/".</span>
+    </a></li>
+    <li><a href="1/?variant=c">
+      <span class="num">1c</span><span class="name">Member profile</span>
+      <span class="desc">Members becomes a roster (seeded-from, reach, production-secret flag, limit count). Each member gets a page: access map of scope tree by capability, click a mark to limit it to keys, plus effective access per key. List size stays constant however detailed access gets.</span>
+    </a></li>
+  </ul>
+  <footer>shared by every iteration: Who can...? with a key picker · limits only narrow, never grant · excepts narrow only their own rule<br>iteration 1 only: selectors expanded to per-key entries at write time; iterations 2 to 6 use live selectors (see the member-access-rules ADR)<br>every change is a new numbered iteration, published ones never mutate · <a href="/prototypes/">all prototypes</a></footer>
+</body>
+</html>
+

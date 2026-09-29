@@ -85,6 +85,10 @@ type KeyMetadataUpdate struct {
 	Description     *string
 	Deprecated      *bool
 	DeprecationNote *string
+	// ConfirmWidening names the people a folder move gives access to through
+	// their member access rules (ADR D9). A widening move commits only when it
+	// names exactly that set; a move that widens nothing ignores it.
+	ConfirmWidening []domain.PrincipalID
 }
 
 // KeyDeclarationUpdate is the semantic update: the value-dependent rules and
@@ -157,7 +161,14 @@ type schemaPublisher struct {
 // behind for an arbitrary (org, project).
 func prepareSchemaPublish(ctx context.Context, db *store.DB, keyring *crypto.Keyring, advisory *Advisory,
 	actor Actor, op authz.Operation, scope domain.Scope) (*schemaPublisher, error) {
-	sealer, err := sealerFor(ctx, db, keyring, actor, op, scope)
+	return prepareSchemaPublishKey(ctx, db, keyring, advisory, actor, op, scope, nil)
+}
+
+// prepareSchemaPublishKey is prepareSchemaPublish for an operation on exactly
+// one key, authorized with that key like the operation's own transaction.
+func prepareSchemaPublishKey(ctx context.Context, db *store.DB, keyring *crypto.Keyring, advisory *Advisory,
+	actor Actor, op authz.Operation, scope domain.Scope, key *authz.KeyTarget) (*schemaPublisher, error) {
+	sealer, err := sealerForKey(ctx, db, keyring, actor, op, scope, key)
 	if err != nil {
 		return nil, err
 	}
@@ -561,17 +572,20 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 	// would leave the wrapped-key row behind on a block. The pre-flight refuses
 	// before any mint and returns the acknowledged overrides to emit with the
 	// write (ADR §7; see scanSurface2Preflight).
-	overrides, err := scanSurface2Preflight(ctx, s.DB, s.Keyring, s.Scan, actor, authz.OpKeyCreate, scope, leaves, acks, ingressEdit)
+	// A create addresses one key by its destination folder, so a
+	// folder-narrowed member access rule may admit it.
+	keyTarget := authz.KeyToCreate(spec.FolderPath)
+	overrides, err := scanSurface2Preflight(ctx, s.DB, s.Keyring, s.Scan, actor, authz.OpKeyCreate, scope, &keyTarget, leaves, acks, ingressEdit)
 	if err != nil {
 		return Key{}, err
 	}
-	publisher, err := prepareSchemaPublish(ctx, s.DB, s.Keyring, s.Advisory, actor, authz.OpKeyCreate, scope)
+	publisher, err := prepareSchemaPublishKey(ctx, s.DB, s.Keyring, s.Advisory, actor, authz.OpKeyCreate, scope, &keyTarget)
 	if err != nil {
 		return Key{}, err
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpKeyCreate, scope, time.Now().UTC())
+		caller, p, err := authorizeKey(ctx, az, actor, authz.OpKeyCreate, scope, keyTarget, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -592,7 +606,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 			return fmt.Errorf("%w: a project declares at most %d keys",
 				domain.ErrLimitExceeded, schema.MaxKeysPerProject)
 		}
-		if err := checkGroupMembership(ctx, r, p, spec.GroupID, id, spec.Presence); err != nil {
+		if err := concealBeyondRule(p, checkGroupMembership(ctx, r, p, spec.GroupID, id, spec.Presence)); err != nil {
 			return err
 		}
 		// Surface-2 acknowledged overrides (#74): the block verdict was reached in
@@ -605,7 +619,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 		// Name uniqueness among LIVE keys is the table's constraint, not a
 		// read-then-write here: a pre-check would be a race, and the UNIQUE
 		// index is the only answer that cannot be interleaved past.
-		if err := r.Catalogue().Create(ctx, p, row); err != nil {
+		if err := concealBeyondRule(p, r.Catalogue().Create(ctx, p, row)); err != nil {
 			return err
 		}
 		if err := r.Catalogue().ReplacePresence(ctx, p, id, presenceRows(spec.Presence)); err != nil {
@@ -660,6 +674,20 @@ func checkGroupMembership(ctx context.Context, r store.Repos, p authz.Proof, gro
 		return err
 	}
 	return index.validateStaticMembership(groupID, selfID, presence)
+}
+
+// concealBeyondRule keeps a rule-decided proof from disclosing objects
+// outside its rule: a name clash with a key in another folder, or a group
+// refusal naming other keys, answers as the uniform not-found. A caller
+// authorized by grants reads the catalogue anyway and keeps the precise error.
+func concealBeyondRule(p authz.Proof, err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ruled := authz.BoundKey(p); ruled && (errors.Is(err, domain.ErrConflict) || errors.Is(err, domain.ErrInvalid)) {
+		return domain.ErrNotFound
+	}
+	return err
 }
 
 // Get reads one key with its presence rules.
@@ -735,14 +763,18 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 	// ForProject re-reads the wrapped-key row, mints nothing, and a Surface-2
 	// block below leaves no orphan row — the in-transaction scan is safe here. If
 	// key creation ever stops minting the DEK, move to scanSurface2Preflight.
-	publisher, err := prepareSchemaPublish(ctx, s.DB, s.Keyring, s.Advisory, actor, authz.OpKeyRename, scope)
+	keyTarget := authz.KeyByID(id)
+	publisher, err := prepareSchemaPublishKey(ctx, s.DB, s.Keyring, s.Advisory, actor, authz.OpKeyRename, scope, &keyTarget)
 	if err != nil {
 		return Key{}, err
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpKeyRename, scope, time.Now().UTC())
+		caller, p, err := authorizeKey(ctx, az, actor, authz.OpKeyRename, scope, keyTarget, time.Now().UTC())
 		if err != nil {
+			return err
+		}
+		if err := requireBoundKey(p, id); err != nil {
 			return err
 		}
 		if err := r.Projects().Lock(ctx, p); err != nil {
@@ -763,7 +795,7 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 			nonEmptyLeaf(locKeyName, name), newAckSet(acks), ingressEdit); err != nil {
 			return err
 		}
-		if err := r.Catalogue().Rename(ctx, p, id, name); err != nil {
+		if err := concealBeyondRule(p, r.Catalogue().Rename(ctx, p, id, name)); err != nil {
 			return err
 		}
 		// § 151 schema-revision rate (see Keys.UpdateMetadata).
@@ -820,9 +852,19 @@ func (s *Keys) UpdateMetadata(ctx context.Context, actor Actor, scope domain.Sco
 	var out Key
 	var rateCharged bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpKeyUpdateMetadata, scope, time.Now().UTC())
+		caller, p, err := authorizeKey(ctx, az, actor, authz.OpKeyUpdateMetadata, scope, authz.KeyByID(id), time.Now().UTC())
 		if err != nil {
 			return err
+		}
+		if err := requireBoundKey(p, id); err != nil {
+			return err
+		}
+		// A move is authorized on BOTH ends: the caller must reach the key
+		// where it is and where it would land.
+		if m.FolderPath != nil {
+			if _, err := az.AuthorizeKey(ctx, caller, authz.OpKeyUpdateMetadata, scope, authz.KeyMovedTo(id, *m.FolderPath)); err != nil {
+				return err
+			}
 		}
 		if err := r.Projects().Lock(ctx, p); err != nil {
 			return err
@@ -850,6 +892,25 @@ func (s *Keys) UpdateMetadata(ctx context.Context, actor Actor, scope domain.Sco
 			merged.Deprecated == before.Deprecated && merged.DeprecationNote == before.DeprecationNote {
 			out, err = readKey(ctx, r, p, before)
 			return err
+		}
+		// ADR D9: a move that gives anyone access through their rules needs a
+		// confirmation naming exactly them, computed in this transaction.
+		if merged.FolderPath != before.FolderPath {
+			envs, err := r.Environments().List(ctx, p)
+			if err != nil {
+				return err
+			}
+			envIDs := make([]string, 0, len(envs))
+			for _, e := range envs {
+				envIDs = append(envIDs, e.ID)
+			}
+			gains, err := moveWidening(ctx, az, scope, envIDs, id, before.FolderPath, merged.FolderPath)
+			if err != nil {
+				return err
+			}
+			if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, id, before.FolderPath, merged.FolderPath, gains, m.ConfirmWidening); err != nil {
+				return err
+			}
 		}
 		if err := r.Catalogue().UpdateMetadata(ctx, p, id, merged); err != nil {
 			return err
@@ -1383,14 +1444,18 @@ func (s *Keys) SetGroup(ctx context.Context, actor Actor, scope domain.Scope, id
 // Delete removes a key from the catalogue. Its explicit presence rows go with
 // it and it drops out of its group; the group itself survives, possibly inert.
 func (s *Keys) Delete(ctx context.Context, actor Actor, scope domain.Scope, id string) error {
-	publisher, err := prepareSchemaPublish(ctx, s.DB, s.Keyring, s.Advisory, actor, authz.OpKeyDelete, scope)
+	keyTarget := authz.KeyByID(id)
+	publisher, err := prepareSchemaPublishKey(ctx, s.DB, s.Keyring, s.Advisory, actor, authz.OpKeyDelete, scope, &keyTarget)
 	if err != nil {
 		return err
 	}
 	var rateCharged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpKeyDelete, scope, time.Now().UTC())
+		caller, p, err := authorizeKey(ctx, az, actor, authz.OpKeyDelete, scope, keyTarget, time.Now().UTC())
 		if err != nil {
+			return err
+		}
+		if err := requireBoundKey(p, id); err != nil {
 			return err
 		}
 		if err := r.Projects().Lock(ctx, p); err != nil {
@@ -1437,6 +1502,11 @@ func (s *Keys) Delete(ctx context.Context, actor Actor, scope domain.Scope, id s
 		// the key row: otherwise the FK refuses the delete of any key that ever
 		// carried a warn-then-dismiss, which is a handled case, not an error.
 		if _, err := r.ScanningDismissals().DeleteByKey(ctx, p, id); err != nil {
+			return err
+		}
+		// Member access rules naming this key by id lose that item; a rule
+		// left with nothing to reach is revoked.
+		if err := releaseKeyRules(ctx, r, az, p, caller.Principal, scope, id); err != nil {
 			return err
 		}
 		if err := r.Catalogue().Delete(ctx, p, id); err != nil {

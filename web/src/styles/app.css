@@ -3088,6 +3088,31 @@ fieldset.field > legend {
   align-items: center;
 }
 
+/* Pinned actions (Dialog `pinActions`): the dialog stops scrolling as a whole
+   and only its body does, between the title and the action row. The body is
+   pulled out by exactly one focus ring (width plus offset) and padded back
+   in, so a ring on a control at the body's edge is not clipped by the scroll
+   box, whatever padding the dialog has at this width. */
+.dialog--pinned {
+  overflow: hidden;
+}
+
+.dialog--pinned .dialog__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  margin: 0 calc(-1 * (var(--ring-width) + var(--ring-offset)));
+  padding: var(--space-1) calc(var(--ring-width) + var(--ring-offset));
+  overflow: auto;
+}
+
+.dialog--pinned .dialog__actions {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--panel-line);
+}
+
 /* --- Machine access (#67, locked prototype #31 iteration 3) ---------------
  *
  * Nothing here carries state by colour: an expiry is a sentence, a journey
@@ -6786,4 +6811,464 @@ label.chk:has(input:disabled) {
 
 .instance-org-filter {
   max-width: 24rem;
+}
+
+/* --- Disclosure (ui/Disclosure) ----------------------------------------------
+ *
+ * A text-style toggle: no border, no fill, a chevron that turns from right to
+ * down (instantly: no motion to reduce). A control by height and focus ring. */
+.disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.disclosure__toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.disclosure__toggle:hover {
+  color: var(--tx);
+}
+
+.disclosure__toggle[aria-expanded='true'] .disclosure__chevron {
+  transform: rotate(90deg);
+}
+
+/* The content may carry a caller's layout class that sets `display`. */
+.disclosure__content[hidden] {
+  display: none;
+}
+
+/* --- Toggle chip (ui/ToggleChip) ---------------------------------------------
+ *
+ * A pick-set item as a pressable chip: badge radius, control height. The
+ * state is carried by the glyph and the accessible name; the tone only
+ * echoes it. Include mode: `+` off, check and accent fill when pressed.
+ * Exclude mode: a dashed accent hairline while in, the danger tone and a
+ * strike-through once left out. */
+.toggle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-badge);
+  background: var(--bg-panel);
+  color: var(--tx);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.toggle-chip.mono {
+  font-size: var(--fs-mono);
+}
+
+.toggle-chip:hover {
+  background: color-mix(in oklch, var(--bg-panel), var(--tx) 8%);
+}
+
+.toggle-chip[data-state='off'] {
+  color: var(--tx-dim);
+}
+
+.toggle-chip[data-state='included'] {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
+}
+
+.toggle-chip[data-state='implied'] {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.toggle-chip[data-state='excluded'] {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.toggle-chip[data-state='excluded'] .toggle-chip__label {
+  text-decoration: line-through;
+}
+
+.toggle-chip:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.toggle-chip__mark {
+  flex: none;
+  width: 1em;
+  text-align: center;
+}
+
+/* --- Member access rules (routes/accessRules, mounted on Members) -----------
+ *
+ * From docs/site/public/prototypes/member-access/6. State is never
+ * colour-only: an except carries a cross and the word, a secret a lock and
+ * the word. Tokens only. */
+.access-people p,
+.access-table p,
+.access-gloss-parts p,
+.access-dialog p {
+  margin: 0;
+}
+
+/* The page is a grid; without this its panels would take the answer tables'
+   minimum width and widen the page on a phone instead of letting the table
+   wrapper scroll. */
+.page--members > * {
+  min-width: 0;
+}
+
+.access-gloss-parts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.access-hint,
+.access-rule__reach {
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-rule__reach {
+  color: var(--tx-faint);
+}
+
+.access-people,
+.access-rule-list,
+.access-diff ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.access-person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.access-person:last-child {
+  border-bottom: 0;
+}
+
+.access-person__who,
+.access-person__rules,
+.access-rule-list,
+.access-rule__main,
+.access-editor__section,
+.access-perm-list,
+.access-axis,
+.access-summary,
+.access-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.access-person__who {
+  align-items: flex-start;
+  gap: var(--space-1);
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-person__who strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--tx);
+  font-size: var(--fs-md);
+}
+
+.access-person__action {
+  align-self: flex-start;
+}
+
+.access-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+  background: var(--bg);
+}
+
+.access-rule__main {
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.access-rule__perms,
+.access-where,
+.access-presets,
+.access-picks,
+.access-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.access-where {
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+  overflow-wrap: anywhere;
+}
+
+.access-where__part {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+
+.access-where__label {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--tx-faint);
+}
+
+.access-where__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+}
+
+.access-except {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--danger);
+}
+
+.access-filter > .field {
+  flex: 1 1 var(--width-dialog);
+  min-width: 0;
+}
+
+.access-editor__section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: var(--space-3);
+}
+
+.access-editor__section > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+
+.access-editor__remove {
+  margin-right: auto;
+}
+
+.access-perm__desc {
+  padding-left: calc(var(--chk-box) + var(--chk-gap));
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.access-perm__note,
+.access-perm__never {
+  color: var(--tx-faint);
+  font-size: var(--fs-sm);
+}
+
+.access-perm__note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding-left: calc(var(--chk-box) + var(--chk-gap));
+}
+
+.access-perm--blocked .access-perm__note {
+  color: var(--tx-dim);
+}
+
+/* The note is always on the row; only this glyph and the control's disabled
+   state change when Where blocks the permission, so the row keeps its height. */
+.access-perm__mark {
+  visibility: hidden;
+  fill: var(--danger);
+}
+
+.access-perm--blocked .access-perm__mark {
+  visibility: visible;
+}
+
+.access-axis {
+  padding: var(--space-3);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+}
+
+.access-axis h3 {
+  margin: 0;
+}
+
+.access-summary,
+.access-diff {
+  padding: var(--space-3);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-container);
+  background: var(--bg);
+  font-size: var(--fs-sm);
+}
+
+.access-diff--gain {
+  border-color: var(--danger);
+}
+
+.access-diff ul {
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+
+.access-answer__glyph--yes {
+  fill: var(--accent);
+}
+
+.access-answer__glyph--except {
+  fill: var(--danger);
+}
+
+.access-answer__glyph--warn {
+  fill: var(--changed);
+}
+
+.access-gloss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.access-gloss > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  gap: var(--space-4);
+}
+
+.access-gloss dt {
+  font-weight: 700;
+  font-size: var(--fs-md);
+}
+
+.access-gloss dd {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+.access-gloss dd code {
+  color: var(--tx);
+}
+
+@media (max-width: 800px) {
+  .access-person,
+  .access-gloss > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+}
+
+.access-summary h3 {
+  margin: 0;
+}
+
+.access-summary__empty {
+  color: var(--tx-dim);
+}
+
+/* Who can...?: four fields in one row on desktop, stacked on a phone. */
+.access-ask {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-3) var(--space-4);
+}
+
+.access-ask select {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 800px) {
+  .access-ask {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.access-answer__question {
+  margin-bottom: var(--space-2);
+}
+
+/* Answer tables reuse the Members page's `.grants` anatomy; the wrapper owns
+   the sideways scroll so a phone never scrolls the page. */
+.access-table {
+  position: relative; /* contains the visually-hidden action text, so it scrolls with the table instead of widening the page */
+  margin-top: var(--space-3);
+  overflow-x: auto;
+}
+
+.access-table .grants {
+  min-width: var(--width-dialog);
+}
+
+.access-table .grants th,
+.access-table .grants td {
+  border-color: var(--panel-line);
+}
+
+.access-table__caption {
+  padding-bottom: var(--space-2);
+  color: var(--tx);
+  font-weight: 700;
+  text-align: left;
+}
+
+.access-table .grants th[scope='row'] {
+  color: var(--tx);
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.access-table__member {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.access-table__note {
+  margin-top: var(--space-1);
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
 }

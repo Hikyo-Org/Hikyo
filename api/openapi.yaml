@@ -2310,6 +2310,123 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/rules:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: listOrgRules
+      tags: [access]
+      summary: List the organisation's member access rules.
+      description: |
+        Every member access rule in the org (member-access-rules ADR), the
+        rules half of the membership surface. Environments and keys are named
+        by id and folders by path; their names are read through the
+        `read`-gated catalogue routes.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.list-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 8
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The organisation's rules.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: createRule
+      tags: [access]
+      summary: Create one member access rule.
+      description: |
+        One capability for one person, with a `where` of projects,
+        environments and keys. The caller needs `manage-members` held as a
+        grant on every project the rule names; a project-scope member manager
+        may only grant a capability it holds as a grant on each of those whole
+        projects. Rules are for people: a machine principal is refused. An
+        edit is a revoke plus a create.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.create
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 8
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRuleRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "201":
+          description: The rule as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/rules/{rule}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/RuleID"
+    delete:
+      operationId: revokeRule
+      tags: [access]
+      summary: Revoke one member access rule.
+      description: |
+        Removes the rule whole and ends its holder's sessions. The caller needs
+        `manage-members` held as a grant on every project the rule names; a
+        rule it cannot reach answers exactly like one that does not exist.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.revoke
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 8
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Revoked.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/grants/template:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -2636,6 +2753,43 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/rules:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: listProjectRules
+      tags: [access]
+      summary: List the member access rules naming a project.
+      description: |
+        Every rule naming this project, with only this project's part of its
+        `where`. `other_projects` marks a rule that also names projects this
+        listing does not show; revoking it needs `manage-members` on those too.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.list-project
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 8
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project's rules.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -13703,6 +13857,13 @@ components:
       description: Machine-credential identifier.
       schema:
         $ref: "#/components/schemas/ID"
+    RuleID:
+      name: rule
+      in: path
+      required: true
+      description: Member access rule identifier.
+      schema:
+        $ref: "#/components/schemas/ID"
     GrantPrincipal:
       name: principal
       in: query
@@ -15650,8 +15811,11 @@ components:
               description: |
                 Present on `bad_request` and `unprocessable`, where it names
                 the offending request member, and on a `conflict` whose refusal
-                names the caller's own state. `null` and absent are
+                names the caller's own state or, for a key folder move that
+                widens access, what `widening` carries. `null` and absent are
                 equivalent; every other error code omits the member entirely.
+            widening:
+              $ref: "#/components/schemas/WideningRefusal"
             findings:
               type: array
               description: |
@@ -18208,6 +18372,7 @@ components:
         ref: {type: string, maxLength: 256}
         actor: {type: string, maxLength: 256}
         acknowledgements: {$ref: "#/components/schemas/Acknowledgements"}
+        confirm_widening: {$ref: "#/components/schemas/ConfirmWidening"}
 
     ApplyDefinitionsPlanResult:
       type: object
@@ -19418,6 +19583,194 @@ components:
         capability:
           $ref: "#/components/schemas/Capability"
 
+    CreateRuleRequest:
+      type: object
+      additionalProperties: false
+      required: [principal, capability, where]
+      properties:
+        principal:
+          $ref: "#/components/schemas/ID"
+        capability:
+          $ref: "#/components/schemas/RuleCapability"
+        where:
+          $ref: "#/components/schemas/RuleWhere"
+
+    RuleCapability:
+      type: string
+      description: |
+        The capabilities a member access rule may carry (member-access-rules
+        ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+        `manage-identities`, `manage-adapters` and `project-settings` need a
+        whole project. `manage-members` is stored but grants nothing until
+        delegation containment exists.
+      enum: [read, edit, publish, pin, reveal, reveal-history, definitions-edit, manage-members, manage-identities, manage-adapters, project-settings]
+
+    RuleAxisMode:
+      type: string
+      description: "`all` reads the axis's items as exceptions, `only` as the complete list."
+      enum: [all, only]
+
+    RuleWhere:
+      type: object
+      additionalProperties: false
+      required: [projects, environments, keys]
+      description: |
+        Where a rule reaches: projects, then environments, then keys. Every
+        environment and key item names the project it belongs to, which must be
+        one of `projects`. A rule names at most 500 projects, environments and
+        keys together.
+      properties:
+        projects:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ID"
+        environments:
+          $ref: "#/components/schemas/RuleEnvironmentAxis"
+        keys:
+          $ref: "#/components/schemas/RuleKeyAxis"
+
+    RuleEnvironmentAxis:
+      type: object
+      additionalProperties: false
+      required: [mode, items]
+      properties:
+        mode:
+          $ref: "#/components/schemas/RuleAxisMode"
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/RuleEnvironmentItem"
+
+    RuleEnvironmentItem:
+      type: object
+      additionalProperties: false
+      required: [project, environment]
+      properties:
+        project:
+          $ref: "#/components/schemas/ID"
+        environment:
+          $ref: "#/components/schemas/ID"
+
+    RuleKeyAxis:
+      type: object
+      additionalProperties: false
+      required: [mode, items]
+      properties:
+        mode:
+          $ref: "#/components/schemas/RuleAxisMode"
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/RuleKeyItem"
+
+    RuleKeyItem:
+      type: object
+      additionalProperties: false
+      required: [project]
+      description: |
+        Exactly one of `folder` (a folder path, empty for the catalogue root;
+        an except also covers its subfolders, an only-pick is exact) or `key`
+        (a key id, which survives renames and moves).
+      properties:
+        project:
+          $ref: "#/components/schemas/ID"
+        folder:
+          $ref: "#/components/schemas/KeyFolderPath"
+        key:
+          $ref: "#/components/schemas/ID"
+
+    Rule:
+      type: object
+      additionalProperties: false
+      required: [id, principal_id, capability, where, other_projects, created_by, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        principal_id:
+          $ref: "#/components/schemas/ID"
+        principal_name:
+          type: string
+          description: Current display name or username of the person holding the rule; not an identifier.
+        capability:
+          $ref: "#/components/schemas/RuleCapability"
+        where:
+          $ref: "#/components/schemas/RuleWhere"
+        other_projects:
+          type: boolean
+          description: |
+            On a project listing, true when the rule also names projects the
+            listing does not show. Always false on the org listing.
+        created_by:
+          $ref: "#/components/schemas/ID"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    RuleList:
+      type: object
+      additionalProperties: false
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rule"
+        count:
+          type: integer
+          minimum: 0
+          description: Total rows matching, which for an unpaged list equals `items` length.
+
+    WideningRefusal:
+      type: object
+      additionalProperties: false
+      required: [count]
+      description: |
+        A key folder move that gives people access through their member access
+        rules (member-access-rules ADR D9). `count` is always present; the
+        people and what they gain are named only to a caller holding
+        `manage-members` on the project, who confirms by resending the request
+        with `confirm_widening` listing exactly those principal ids.
+      properties:
+        count:
+          type: integer
+          minimum: 1
+        gainers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WideningGainer"
+
+    WideningGainer:
+      type: object
+      additionalProperties: false
+      required: [principal_id, capability, environments]
+      properties:
+        principal_id:
+          $ref: "#/components/schemas/ID"
+        principal_name:
+          type: string
+        capability:
+          $ref: "#/components/schemas/RuleCapability"
+        environments:
+          type: array
+          description: The environment ids newly reached; empty for a project-wide capability only.
+          items:
+            $ref: "#/components/schemas/ID"
+
+    ConfirmWidening:
+      type: array
+      maxItems: 1000
+      uniqueItems: true
+      description: |
+        The principal ids a key folder move gives access through their member
+        access rules, confirming it (member-access-rules ADR D9). It must name
+        exactly the people the refusal's `widening` names.
+      items:
+        $ref: "#/components/schemas/ID"
+
     ApplyTemplateRequest:
       type: object
       additionalProperties: false
@@ -19990,6 +20343,8 @@ components:
           $ref: "#/components/schemas/KeyClassification"
         acknowledgements:
           $ref: "#/components/schemas/Acknowledgements"
+        confirm_widening:
+          $ref: "#/components/schemas/ConfirmWidening"
 
     RenameKeyRequest:
       type: object

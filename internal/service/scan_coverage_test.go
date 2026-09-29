@@ -35,6 +35,8 @@ var excludedContentFields = map[string]string{
 	"Presence.Environments": "environment references: direct-edit values are server-issued ids; bundle env-name references are scanned " +
 		"at their declaration site in the same bundle and dangling references are refused",
 	"Rule.Type": "closed type enum, a fixed schema keyword",
+	"KeyMetadataUpdate.ConfirmWidening": "principal ids confirming a folder move (member-access-rules ADR D9), compared to the " +
+		"server-computed set and never persisted as declaration text",
 	// --- definitions bundle model ---
 	"Key.ID":             "server-generated key identifier, not composed content",
 	"Key.Classification": "closed enum secret|config, not author free-text",

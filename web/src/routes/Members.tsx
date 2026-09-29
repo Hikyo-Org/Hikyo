@@ -42,8 +42,25 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Select } from '../ui/Select.tsx';
+import { AccessGlossary } from './accessRules/AccessGlossary.tsx';
+import {
+  kindOfId,
+  newRule,
+  permOf,
+  reach,
+  rulesFromGrants,
+  rulesFromServer,
+  savePlan,
+  type Person,
+  type Rule,
+  type World,
+} from './accessRules/model.ts';
+import { RuleEditorDialog } from './accessRules/RuleEditorDialog.tsx';
+import { RulesPanel } from './accessRules/RulesPanel.tsx';
+import { WhoCan } from './accessRules/WhoCan.tsx';
 
 /**
  * wideningEnvironment reads the environment a reauth-required grant refusal
@@ -58,6 +75,14 @@ function wideningEnvironment(error: unknown): string | null {
   const match = /reauthenticate over the environments this operation makes reachable, then retry \((env_[^)]+)\)/.exec(error.detail);
   return match?.[1] ?? null;
 }
+import {
+  ruleFailureText,
+  RuleSaveFailure,
+  rulesListingText,
+  useKeyCatalogues,
+  useRuleMutations,
+  useRules,
+} from '../api/rules.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
@@ -144,6 +169,19 @@ export function Members({ scope }: { scope: MembersScope }) {
   const instanceGrants = useInstanceGrants(instance);
   const grants = instance ? instanceGrants : orgGrants;
   const topology = useOrgTopology(org);
+  // Access rules (member-access-rules ADR): read only once the grant listing
+  // has admitted this caller, since both need manage-members at this depth.
+  const rules = useRules(org, projectId, !instance && grants.isSuccess);
+  const ruleMutations = useRuleMutations(org);
+  const askable = instance
+    ? []
+    : projectId === ''
+      ? topology.projects.map((p) => p.id)
+      : topology.projects.filter((p) => p.id === projectId).map((p) => p.id);
+  const catalogues = useKeyCatalogues(org, askable);
+  const [find, setFind] = useState('');
+  const [editing, setEditing] = useState<{ readonly before: Rule | null; readonly draft: Rule } | null>(null);
+  const [editorFailure, setEditorFailure] = useState<string | null>(null);
   const auth = useAuth();
   const revoke = useRevokeGrant();
   const feedback = useFeedback(membersFailureText);
@@ -225,6 +263,39 @@ export function Members({ scope }: { scope: MembersScope }) {
       });
   const rows = membershipRows(visibleLines, names);
   const me = auth.identity?.principal.id ?? '';
+  const ruleItems = rules.isError ? [] : (rules.data?.items ?? []);
+  const memberName = (id: string) =>
+    lines.find((line) => line.principal_id === id)?.principal_name ??
+    ruleItems.find((rule) => rule.principal_id === id)?.principal_name ??
+    principalLabel(id, lines);
+  const principals = [...new Set([...lines.map((line) => line.principal_id), ...ruleItems.map((rule) => rule.principal_id)])];
+  // The rules and the grants as one model: grants join the evaluation as rules
+  // with no key limits, so Who can...? answers over both.
+  const world: World = {
+    people: principals.map((id): Person => ({ id, kind: kindOfId(id), name: memberName(id) })),
+    projects: topology.projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      envs: p.environments.map((e) => ({ id: e.id, name: e.name, protected: e.isProtected })),
+      keys: catalogues.keys.get(p.id) ?? null,
+    })),
+    rules: [...rulesFromServer(ruleItems), ...rulesFromGrants(lines)],
+  };
+  // Search (DESIGN.md review rule 14) narrows the grant lines and the rules by member.
+  const needle = find.trim().toLocaleLowerCase();
+  const matchesFind = (id: string) =>
+    needle === '' || id.toLocaleLowerCase().includes(needle) || memberName(id).toLocaleLowerCase().includes(needle);
+  const shownRows = rows.filter((row) => matchesFind(row.principal));
+  const rulePeople = world.people.filter(
+    (person) =>
+      person.kind === 'person' &&
+      matchesFind(person.id) &&
+      (projectId === '' ||
+        visibleLines.some((line) => line.principal_id === person.id) ||
+        ruleItems.some((rule) => rule.principal_id === person.id)),
+  );
+  const rulesPanelVisible = !instance && grants.isSuccess;
+  const canEditRules = rulesPanelVisible && rules.isSuccess && topologyReady;
   // The prototype's compact project presentation never applies at instance
   // scope: there is no project to be compact about.
   const compactPresentation = projectId !== '' || (prototypeMode && !instance);
@@ -289,6 +360,12 @@ export function Members({ scope }: { scope: MembersScope }) {
     );
   };
 
+  const openEditor = (before: Rule | null, member = '') => {
+    feedback.clear();
+    setEditorFailure(null);
+    setEditing({ before, draft: before ?? newRule(member) });
+  };
+
   const onReset = async (principal: string) => {
     feedback.clear();
     setResetPending(principal);
@@ -313,8 +390,15 @@ export function Members({ scope }: { scope: MembersScope }) {
       <JumpIndex
         sections={[
           { id: 'members-inspect', label: 'Who can…?' },
+          ...(rulesPanelVisible ? [{ id: 'members-whocan', label: 'Who can reach one key?' }] : []),
           ...(registrationVisible ? [{ id: 'members-registration', label: 'Open registration' }] : []),
           { id: 'members-list', label: 'Members' },
+          ...(rulesPanelVisible
+            ? [
+                { id: 'members-rules', label: 'Access rules' },
+                { id: 'members-glossary', label: 'Glossary' },
+              ]
+            : []),
         ]}
       />
 
@@ -346,7 +430,28 @@ export function Members({ scope }: { scope: MembersScope }) {
         grantsSucceeded={grants.isSuccess}
         projectContext={compactPresentation}
         level={instance ? 'instance' : 'org'}
+        ruleHolders={(capability, option) => ruleHolders(world, capability, option)}
       />
+
+      {rulesPanelVisible ? (
+        <Panel id="members-whocan" title="Who can reach one key?">
+          <p>
+            Answered over the grants and the access rules on this page. Grants reach every key of
+            their scope; a rule can leave keys, folders or environments out.
+          </p>
+          {rules.isError ? (
+            <Alert>{rulesListingText(rules.error)}</Alert>
+          ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
+            <p role="status">Loading the grants, rules, topology and key names before answering…</p>
+          ) : (
+            <WhoCan
+              world={world}
+              projects={askable}
+              onEditRule={canEditRules ? (rule) => openEditor(rule) : undefined}
+            />
+          )}
+        </Panel>
+      ) : null}
 
       {/* Open registration (#606, #579 d10): beside invite, at organisation
           and instance scope only (a project has no sign-up of its own), and
@@ -364,6 +469,16 @@ export function Members({ scope }: { scope: MembersScope }) {
           }}
         />
       ) : null}
+
+      <div className="access-filter">
+        <Input
+          label="Find a member"
+          type="search"
+          hint="By name or id. Narrows the grant lines and the access rules."
+          value={find}
+          onChange={(event) => setFind(event.target.value)}
+        />
+      </div>
 
       <Panel id="members-list" title="Members">
         {instance ? (
@@ -393,7 +508,11 @@ export function Members({ scope }: { scope: MembersScope }) {
           </p>
         ) : null}
 
-        {rows.length === 0 ? null : (
+        {rows.length !== 0 && shownRows.length === 0 ? (
+          <p role="status">No member matches “{find.trim()}”.</p>
+        ) : null}
+
+        {shownRows.length === 0 ? null : (
           <table className="grants">
             <caption className="visually-hidden">
               Members of {scopeName}, one row per principal and scope
@@ -406,7 +525,7 @@ export function Members({ scope }: { scope: MembersScope }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => {
+              {shownRows.map((row, index) => {
                 const protectedScope = row.grants.some((grant) => {
                   const scope = scopeOf(grant);
                   return scope.kind === 'environment' && project?.environments.some(
@@ -433,7 +552,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                       {!compactPresentation &&
                       !row.principal.startsWith('mch_') &&
                       row.principal !== me &&
-                      rows.findIndex((candidate) => candidate.principal === row.principal) === index ? (
+                      shownRows.findIndex((candidate) => candidate.principal === row.principal) === index ? (
                         <Button
                           type="button"
                           variant="quiet"
@@ -566,6 +685,85 @@ export function Members({ scope }: { scope: MembersScope }) {
         )}
       </Panel>
 
+      {rulesPanelVisible ? (
+        <Panel id="members-rules" title="Access rules">
+          <p>
+            A rule gives a person permissions on some projects, environments, folders or keys. Rules
+            add up with each other and with the grants above; an except narrows only its own rule.
+            Machines keep their grants.
+          </p>
+          {rules.isError ? (
+            <p role="status">{rulesListingText(rules.error)}</p>
+          ) : !rules.isSuccess ? (
+            <p role="status">Loading access rules…</p>
+          ) : rulePeople.length === 0 ? (
+            <p role="status">{needle === '' ? 'No people here yet.' : `No member matches “${find.trim()}”.`}</p>
+          ) : (
+            <RulesPanel
+              world={world}
+              people={rulePeople}
+              you={me}
+              canEdit={canEditRules}
+              onEdit={(rule) => openEditor(rule)}
+              onAdd={(person) => openEditor(null, person)}
+            />
+          )}
+        </Panel>
+      ) : null}
+
+      {rulesPanelVisible ? (
+        <Panel id="members-glossary" title="Glossary">
+          <AccessGlossary />
+        </Panel>
+      ) : null}
+
+      {editing === null ? null : (
+        <RuleEditorDialog
+          world={world}
+          rule={editing.draft}
+          projects={askable}
+          busy={ruleMutations.save.isPending || ruleMutations.remove.isPending}
+          failure={editorFailure}
+          onCancel={() => setEditing(null)}
+          onRemove={(rule) => {
+            setEditorFailure(null);
+            ruleMutations.remove.mutate(rule, {
+              onSuccess: () => {
+                setEditing(null);
+                feedback.ok(`Removed the rule from ${memberName(rule.member)}. Removing a rule ends their sessions.`);
+              },
+              onError: (error) => setEditorFailure(ruleFailureText(error)),
+            });
+          }}
+          onSave={(draft) => {
+            setEditorFailure(null);
+            const before = editing.before;
+            const revokes = savePlan(before, draft).revoke.length > 0;
+            ruleMutations.save.mutate(
+              { before, draft },
+              {
+                onSuccess: () => {
+                  setEditing(null);
+                  feedback.ok(
+                    `${before === null ? 'Added a rule for' : 'Saved the rule of'} ${memberName(draft.member)}.${revokes ? ' Replacing a rule ends their sessions.' : ''}`,
+                  );
+                },
+                onError: (error) => {
+                  // Half an edit stands: close the editor and say so on the page,
+                  // since saving the same draft again would not be the same act.
+                  if (error instanceof RuleSaveFailure && error.stage !== 'create') {
+                    setEditing(null);
+                    feedback.report(new RuleRefusal(error));
+                    return;
+                  }
+                  setEditorFailure(ruleFailureText(error));
+                },
+              },
+            );
+          }}
+        />
+      )}
+
       {modal === 'invite' ? (
         <InviteDialog
           scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
@@ -631,6 +829,7 @@ function Inspect({
   grantsSucceeded,
   projectContext,
   level,
+  ruleHolders,
 }: {
   options: readonly ScopeOption[];
   grants: readonly Grant[];
@@ -639,6 +838,8 @@ function Inspect({
   grantsSucceeded: boolean;
   projectContext: boolean;
   level: 'org' | 'instance';
+  /** Members an access rule gives this capability on the whole scope. */
+  ruleHolders: (capability: string, option: ScopeOption) => readonly string[];
 }) {
   const capabilityId = useId();
   const scopeId = useId();
@@ -650,6 +851,7 @@ function Inspect({
     : options[0];
   const chosen = optionByValue(options, scope) ?? fallback;
   const answer = chosen === undefined ? [] : whoCan(grants, capability, chosen.scope);
+  const byRule = chosen === undefined ? [] : ruleHolders(capability, chosen);
   const capabilityOptions = projectContext
     ? projectInspectorCapabilities.flatMap((id) =>
         capabilitiesAt('org').filter((atom) => atom.id === id),
@@ -753,8 +955,40 @@ function Inspect({
         )}
         </p>
       )}
+      {grantsSucceeded && byRule.length > 0 ? (
+        <p className="chrome-meta">
+          Also through access rules, on the whole scope: {byRule.join(', ')}. Rules that reach only
+          some keys are answered below, one key at a time.
+        </p>
+      ) : null}
     </Panel>
   );
+}
+
+/**
+ * ruleHolders is the scope inspector's rule half: who an access rule gives
+ * this capability on the WHOLE scope picked (every environment of a project,
+ * or the one environment), so the grant answer above it does not under-report.
+ * No rule names all projects, so an organisation scope has none.
+ */
+function ruleHolders(world: World, capability: string, option: ScopeOption): string[] {
+  const id = permOf(capability);
+  const scope = option.scope;
+  if (id === undefined || (scope.kind !== 'project' && scope.kind !== 'environment')) return [];
+  const envs =
+    scope.kind === 'environment'
+      ? [scope.environment]
+      : (world.projects.find((p) => p.id === scope.project)?.envs.map((e) => e.id) ?? []);
+  const holders = world.rules.filter(
+    (rule) =>
+      rule.source.kind === 'rule' &&
+      envs.length > 0 &&
+      envs.every((env) => {
+        const r = reach(world, rule, id, scope.project, env, undefined);
+        return r.hit && r.ok;
+      }),
+  );
+  return [...new Set(holders.map((rule) => world.people.find((p) => p.id === rule.member)?.name ?? rule.member))];
 }
 
 function compactScopeLabel(option: ScopeOption): string {
@@ -810,8 +1044,16 @@ class ResetRefusal extends Error {
   }
 }
 
+/** RuleRefusal carries a rule save that half-landed through the same feedback slot. */
+class RuleRefusal extends Error {
+  constructor(cause: unknown) {
+    super(ruleFailureText(cause), { cause });
+    this.name = 'RuleRefusal';
+  }
+}
+
 function membersFailureText(error: unknown): string {
-  return error instanceof ResetRefusal ? error.message : grantFailureText(error);
+  return error instanceof ResetRefusal || error instanceof RuleRefusal ? error.message : grantFailureText(error);
 }
 
 function principalLabel(principal: string, grants: readonly Grant[]): string {

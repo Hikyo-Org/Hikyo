@@ -451,6 +451,24 @@
   },
   {
     "engine": "postgres",
+    "name": "DeleteRuleItem",
+    "annotation": "authn-resolution",
+    "hash": "153a970ca280983901c881a5d0818423de9ad32635de55a5544f67d8b8261531"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRuleItems",
+    "annotation": "authn-resolution",
+    "hash": "97f343b1704efa99c19701ca7d12021d115aadf54107d5328e5bf1668c71a440"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRuleRow",
+    "annotation": "authn-resolution",
+    "hash": "55aa028066941f24e63330930e25a450755d9632cfc65ca231a594e0187fcc51"
+  },
+  {
+    "engine": "postgres",
     "name": "DeleteSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "d01b50344ff24566f970b6bb1a73ca733a62bab2eeacae3973263db07de7356e"
@@ -823,6 +841,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetRule",
+    "annotation": "authn-resolution",
+    "hash": "67b8c7e2cb430b7e417d6baf68ed71740a47c9a7650053814467b27c0bcbce98"
+  },
+  {
+    "engine": "postgres",
     "name": "GetSAMLProviderBySlug",
     "annotation": "authn-resolution",
     "hash": "c8ab42a4a029f2d425b3769ae74e7ba96cb0e4d62237e36cde35f4755a8cc439"
@@ -1096,6 +1120,18 @@
     "name": "InsertRegistrationSignup",
     "annotation": "authn-resolution",
     "hash": "009abfdf722a083dffc07f9d013f7b0327790f908f5f398d0711514a075f8cf0"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRule",
+    "annotation": "authn-resolution",
+    "hash": "b272fe58b908f8fd65814b188d831c8cdd09aefd9cb27b2a7203a5d298928b96"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRuleItem",
+    "annotation": "authn-resolution",
+    "hash": "bba5fdb1d4320bde6c80d6e7d4986ff6da282266ae94736a6499e4bc3440eeb3"
   },
   {
     "engine": "postgres",
@@ -1423,6 +1459,54 @@
   },
   {
     "engine": "postgres",
+    "name": "ListRuleIDsForEnvironment",
+    "annotation": "authn-resolution",
+    "hash": "df16f8ef32e7d0fa517641601bbf718d0ac30f82e8736ff563a76f4102ff8f5f"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleIDsForKey",
+    "annotation": "authn-resolution",
+    "hash": "124a7c22be74151ed6f4e0aec2ac5a9bf21650fa5e15c8f4b5449e81870bb227"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleIDsForOrg",
+    "annotation": "authn-resolution",
+    "hash": "2230c45f90f15b5f8ad0f0fa6ba3772055ca481684e6eca11dbd8d934996fc79"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleIDsForProject",
+    "annotation": "authn-resolution",
+    "hash": "8d4d792ec1656982768384afd0afe04caefcac50b503be24fbd904fada7bdaa4"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleLinesInOrg",
+    "annotation": "authn-resolution",
+    "hash": "2c8223177c240320342cf043350de309400276cd306c75438d5091c1ce5efe91"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleLinesInProject",
+    "annotation": "authn-resolution",
+    "hash": "fbb168ff53754466cd588db559f44d9fc6f309036d3522e022c6ca1b179fa257"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRulesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRulesForProject",
+    "annotation": "authn-resolution",
+    "hash": "8aa560265efb552e536f94368e27c092e7fa8f44dafa05d19302690f777f73f0"
+  },
+  {
+    "engine": "postgres",
     "name": "ListSAMLProviders",
     "annotation": "authn-resolution",
     "hash": "77b9bcf7312b4be8cee4a7786f88b899e8c858451c43f18e679faf1c47594564"
@@ -1699,6 +1783,18 @@
   },
   {
     "engine": "postgres",
+    "name": "PrivacyEraseRuleItems",
+    "annotation": "authn-resolution",
+    "hash": "214c934ff6af12b05582c97d51eb43f13bb3e68c965e56b50acd827518b2b5f4"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseRules",
+    "annotation": "authn-resolution",
+    "hash": "abb2476e9d2d03cb4207a09c70e7aa6e4fc6fe9fc9f9e410f1700db05c21a55e"
+  },
+  {
+    "engine": "postgres",
     "name": "PrivacyEraseSAMLTransactions",
     "annotation": "authn-resolution",
     "hash": "088df52e28c5af84deb0a960c5b0ffda84cd90a5bac47cb2eb30906d413b99ed"
@@ -1900,6 +1996,18 @@
     "name": "ResolveEnvChain",
     "annotation": "authn-resolution",
     "hash": "5943f4da693ec42590ca76214112c8f8088d47f1175824e9c2a03d5a933ed199"
+  },
+  {
+    "engine": "postgres",
+    "name": "ResolveKeyByID",
+    "annotation": "authn-resolution",
+    "hash": "0ee8c39995b2839026c4b25aeb834f2381ff332c945c0179c568e1fbf3459f25"
+  },
+  {
+    "engine": "postgres",
+    "name": "ResolveKeyByName",
+    "annotation": "authn-resolution",
+    "hash": "d27875a2c21fc377cf75a6d49797264a66488dd89c4bdc236f818eb2d9cfc836"
   },
   {
     "engine": "postgres",
@@ -2635,6 +2743,24 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeleteRuleItem",
+    "annotation": "authn-resolution",
+    "hash": "153a970ca280983901c881a5d0818423de9ad32635de55a5544f67d8b8261531"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRuleItems",
+    "annotation": "authn-resolution",
+    "hash": "97f343b1704efa99c19701ca7d12021d115aadf54107d5328e5bf1668c71a440"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRuleRow",
+    "annotation": "authn-resolution",
+    "hash": "55aa028066941f24e63330930e25a450755d9632cfc65ca231a594e0187fcc51"
+  },
+  {
+    "engine": "sqlite",
     "name": "DeleteSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "b7770091c2529fbce9b91be2aa7735f8618ab43de5eb4c03772c950a7653c43e"
@@ -3007,6 +3133,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetRule",
+    "annotation": "authn-resolution",
+    "hash": "67b8c7e2cb430b7e417d6baf68ed71740a47c9a7650053814467b27c0bcbce98"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetSAMLProviderBySlug",
     "annotation": "authn-resolution",
     "hash": "bb80f0a1bdc320ddbc66f3a11e1241379b4add95f4508fde1d0147f3369a628c"
@@ -3280,6 +3412,18 @@
     "name": "InsertRegistrationSignup",
     "annotation": "authn-resolution",
     "hash": "3d9bd59b88a0ab04ffe54c75c5f6757f81ed0339a92acbdaf3446f892cece361"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRule",
+    "annotation": "authn-resolution",
+    "hash": "b272fe58b908f8fd65814b188d831c8cdd09aefd9cb27b2a7203a5d298928b96"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRuleItem",
+    "annotation": "authn-resolution",
+    "hash": "bba5fdb1d4320bde6c80d6e7d4986ff6da282266ae94736a6499e4bc3440eeb3"
   },
   {
     "engine": "sqlite",
@@ -3607,6 +3751,54 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListRuleIDsForEnvironment",
+    "annotation": "authn-resolution",
+    "hash": "df16f8ef32e7d0fa517641601bbf718d0ac30f82e8736ff563a76f4102ff8f5f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleIDsForKey",
+    "annotation": "authn-resolution",
+    "hash": "124a7c22be74151ed6f4e0aec2ac5a9bf21650fa5e15c8f4b5449e81870bb227"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleIDsForOrg",
+    "annotation": "authn-resolution",
+    "hash": "2230c45f90f15b5f8ad0f0fa6ba3772055ca481684e6eca11dbd8d934996fc79"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleIDsForProject",
+    "annotation": "authn-resolution",
+    "hash": "8d4d792ec1656982768384afd0afe04caefcac50b503be24fbd904fada7bdaa4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleLinesInOrg",
+    "annotation": "authn-resolution",
+    "hash": "2c8223177c240320342cf043350de309400276cd306c75438d5091c1ce5efe91"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleLinesInProject",
+    "annotation": "authn-resolution",
+    "hash": "fbb168ff53754466cd588db559f44d9fc6f309036d3522e022c6ca1b179fa257"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRulesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRulesForProject",
+    "annotation": "authn-resolution",
+    "hash": "8aa560265efb552e536f94368e27c092e7fa8f44dafa05d19302690f777f73f0"
+  },
+  {
+    "engine": "sqlite",
     "name": "ListSAMLProviders",
     "annotation": "authn-resolution",
     "hash": "77b9bcf7312b4be8cee4a7786f88b899e8c858451c43f18e679faf1c47594564"
@@ -3883,6 +4075,18 @@
   },
   {
     "engine": "sqlite",
+    "name": "PrivacyEraseRuleItems",
+    "annotation": "authn-resolution",
+    "hash": "214c934ff6af12b05582c97d51eb43f13bb3e68c965e56b50acd827518b2b5f4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseRules",
+    "annotation": "authn-resolution",
+    "hash": "abb2476e9d2d03cb4207a09c70e7aa6e4fc6fe9fc9f9e410f1700db05c21a55e"
+  },
+  {
+    "engine": "sqlite",
     "name": "PrivacyEraseSAMLTransactions",
     "annotation": "authn-resolution",
     "hash": "088df52e28c5af84deb0a960c5b0ffda84cd90a5bac47cb2eb30906d413b99ed"
@@ -4084,6 +4288,18 @@
     "name": "ResolveEnvChain",
     "annotation": "authn-resolution",
     "hash": "0ade92c799a3de304a066e75e4a999229c9f4f7605f734525f7a3aea44dff4c9"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ResolveKeyByID",
+    "annotation": "authn-resolution",
+    "hash": "0ee8c39995b2839026c4b25aeb834f2381ff332c945c0179c568e1fbf3459f25"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ResolveKeyByName",
+    "annotation": "authn-resolution",
+    "hash": "d27875a2c21fc377cf75a6d49797264a66488dd89c4bdc236f818eb2d9cfc836"
   },
   {
     "engine": "sqlite",

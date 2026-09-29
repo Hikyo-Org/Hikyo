@@ -1598,6 +1598,38 @@
     ]
   },
   {
+    "operation": "rule.create",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "rule.list-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "rule.list-project",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "rule.revoke",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
     "operation": "saml-provider.delete",
     "class": "instance",
     "level": "instance",

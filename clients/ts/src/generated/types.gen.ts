@@ -1047,11 +1047,13 @@ export type Error = {
         /**
          * Present on `bad_request` and `unprocessable`, where it names
          * the offending request member, and on a `conflict` whose refusal
-         * names the caller's own state. `null` and absent are
+         * names the caller's own state or, for a key folder move that
+         * widens access, what `widening` carries. `null` and absent are
          * equivalent; every other error code omits the member entirely.
          *
          */
         detail?: string | null;
+        widening?: WideningRefusal;
         /**
          * Secret-scanning refusal detail (#74, Surface 2). Present only on
          * a `bad_request` that a declaration ingress refused because an
@@ -2885,6 +2887,7 @@ export type ApplyDefinitionsPlanRequest = {
     ref?: string;
     actor?: string;
     acknowledgements?: Acknowledgements;
+    confirm_widening?: ConfirmWidening;
 };
 
 export type ApplyDefinitionsPlanResult = {
@@ -3793,6 +3796,125 @@ export type CreateGrantRequest = {
     capability: Capability;
 };
 
+export type CreateRuleRequest = {
+    principal: Id;
+    capability: RuleCapability;
+    where: RuleWhere;
+};
+
+/**
+ * The capabilities a member access rule may carry (member-access-rules
+ * ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+ * `manage-identities`, `manage-adapters` and `project-settings` need a
+ * whole project. `manage-members` is stored but grants nothing until
+ * delegation containment exists.
+ *
+ */
+export type RuleCapability = 'read' | 'edit' | 'publish' | 'pin' | 'reveal' | 'reveal-history' | 'definitions-edit' | 'manage-members' | 'manage-identities' | 'manage-adapters' | 'project-settings';
+
+/**
+ * `all` reads the axis's items as exceptions, `only` as the complete list.
+ */
+export type RuleAxisMode = 'all' | 'only';
+
+/**
+ * Where a rule reaches: projects, then environments, then keys. Every
+ * environment and key item names the project it belongs to, which must be
+ * one of `projects`. A rule names at most 500 projects, environments and
+ * keys together.
+ *
+ */
+export type RuleWhere = {
+    projects: Array<Id>;
+    environments: RuleEnvironmentAxis;
+    keys: RuleKeyAxis;
+};
+
+export type RuleEnvironmentAxis = {
+    mode: RuleAxisMode;
+    items: Array<RuleEnvironmentItem>;
+};
+
+export type RuleEnvironmentItem = {
+    project: Id;
+    environment: Id;
+};
+
+export type RuleKeyAxis = {
+    mode: RuleAxisMode;
+    items: Array<RuleKeyItem>;
+};
+
+/**
+ * Exactly one of `folder` (a folder path, empty for the catalogue root;
+ * an except also covers its subfolders, an only-pick is exact) or `key`
+ * (a key id, which survives renames and moves).
+ *
+ */
+export type RuleKeyItem = {
+    project: Id;
+    folder?: KeyFolderPath;
+    key?: Id;
+};
+
+export type Rule = {
+    id: Id;
+    principal_id: Id;
+    /**
+     * Current display name or username of the person holding the rule; not an identifier.
+     */
+    principal_name?: string;
+    capability: RuleCapability;
+    where: RuleWhere;
+    /**
+     * On a project listing, true when the rule also names projects the
+     * listing does not show. Always false on the org listing.
+     *
+     */
+    other_projects: boolean;
+    created_by: Id;
+    created_at: Timestamp;
+};
+
+export type RuleList = {
+    items: Array<Rule>;
+    /**
+     * Total rows matching, which for an unpaged list equals `items` length.
+     */
+    count: number;
+};
+
+/**
+ * A key folder move that gives people access through their member access
+ * rules (member-access-rules ADR D9). `count` is always present; the
+ * people and what they gain are named only to a caller holding
+ * `manage-members` on the project, who confirms by resending the request
+ * with `confirm_widening` listing exactly those principal ids.
+ *
+ */
+export type WideningRefusal = {
+    count: number;
+    gainers?: Array<WideningGainer>;
+};
+
+export type WideningGainer = {
+    principal_id: Id;
+    principal_name?: string;
+    capability: RuleCapability;
+    /**
+     * The environment ids newly reached; empty for a project-wide capability only.
+     */
+    environments: Array<Id>;
+};
+
+/**
+ * The principal ids a key folder move gives access through their member
+ * access rules, confirming it (member-access-rules ADR D9). It must name
+ * exactly the people the refusal's `widening` names.
+ *
+ */
+export type ConfirmWidening = Array<Id>;
+
 export type ApplyTemplateRequest = {
     principal: Id;
     template: RoleTemplate;
@@ -4197,6 +4319,7 @@ export type UpdateKeyMetadataRequest = {
     deprecation_note?: string;
     classification?: KeyClassification;
     acknowledgements?: Acknowledgements;
+    confirm_widening?: ConfirmWidening;
 };
 
 export type RenameKeyRequest = {
@@ -5869,6 +5992,14 @@ export type AccessQueueWritable = {
     items: Array<AccessRequestWritable>;
 };
 
+/**
+ * The principal ids a key folder move gives access through their member
+ * access rules, confirming it (member-access-rules ADR D9). It must name
+ * exactly the people the refusal's `widening` names.
+ *
+ */
+export type ConfirmWideningWritable = Array<Id>;
+
 export type PkiIssuerName = PkiName;
 
 export type PkiIssuerVersion = number;
@@ -5931,6 +6062,11 @@ export type ServiceAccountId = Id;
  * Machine-credential identifier.
  */
 export type CredentialId = Id;
+
+/**
+ * Member access rule identifier.
+ */
+export type RuleId = Id;
 
 /**
  * The principal whose grant is being revoked.
@@ -9976,6 +10112,243 @@ export type CreateOrgGrantResponses = {
 
 export type CreateOrgGrantResponse = CreateOrgGrantResponses[keyof CreateOrgGrantResponses];
 
+export type ListOrgRulesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/rules';
+};
+
+export type ListOrgRulesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListOrgRulesError = ListOrgRulesErrors[keyof ListOrgRulesErrors];
+
+export type ListOrgRulesResponses = {
+    /**
+     * The organisation's rules.
+     */
+    200: RuleList;
+};
+
+export type ListOrgRulesResponse = ListOrgRulesResponses[keyof ListOrgRulesResponses];
+
+export type CreateRuleData = {
+    body: CreateRuleRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/rules';
+};
+
+export type CreateRuleErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateRuleError = CreateRuleErrors[keyof CreateRuleErrors];
+
+export type CreateRuleResponses = {
+    /**
+     * The rule as stored.
+     */
+    201: Rule;
+};
+
+export type CreateRuleResponse = CreateRuleResponses[keyof CreateRuleResponses];
+
+export type RevokeRuleData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Member access rule identifier.
+         */
+        rule: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/rules/{rule}';
+};
+
+export type RevokeRuleErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeRuleError = RevokeRuleErrors[keyof RevokeRuleErrors];
+
+export type RevokeRuleResponses = {
+    /**
+     * Revoked.
+     */
+    204: void;
+};
+
+export type RevokeRuleResponse = RevokeRuleResponses[keyof RevokeRuleResponses];
+
 export type ApplyOrgTemplateData = {
     body: ApplyTemplateRequest;
     path: {
@@ -10634,6 +11007,80 @@ export type CreateProjectGrantResponses = {
 };
 
 export type CreateProjectGrantResponse = CreateProjectGrantResponses[keyof CreateProjectGrantResponses];
+
+export type ListProjectRulesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/rules';
+};
+
+export type ListProjectRulesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListProjectRulesError = ListProjectRulesErrors[keyof ListProjectRulesErrors];
+
+export type ListProjectRulesResponses = {
+    /**
+     * The project's rules.
+     */
+    200: RuleList;
+};
+
+export type ListProjectRulesResponse = ListProjectRulesResponses[keyof ListProjectRulesResponses];
 
 export type ApplyProjectTemplateData = {
     body: ApplyTemplateRequest;

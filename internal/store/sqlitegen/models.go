@@ -1205,6 +1205,28 @@ type RevisionPin struct {
 	SchemaOverride       int64
 }
 
+type Rule struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	EnvMode     string
+	KeyMode     string
+	CreatedBy   string
+	CreatedAt   string
+}
+
+type RuleItem struct {
+	ID         string
+	RuleID     string
+	OrgID      string
+	Axis       string
+	ProjectID  string
+	EnvID      sql.NullString
+	KeyID      sql.NullString
+	FolderPath sql.NullString
+}
+
 type SamlProvider struct {
 	ID                              string
 	Slug                            string

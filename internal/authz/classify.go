@@ -475,6 +475,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/grants":          {Class: ClassTenant, Ops: []Operation{OpGrantCreateOrg}},
 	"http:DELETE /api/v1/orgs/{org}/grants":        {Class: ClassTenant, Ops: []Operation{OpGrantRevokeOrg}},
 	"http:POST /api/v1/orgs/{org}/grants/template": {Class: ClassTenant, Ops: []Operation{OpTemplateApplyOrg}},
+	// Member access rules: the org route carries the rule's projects in the
+	// body and the service authorizes project-depth manage-members on each.
+	"http:GET /api/v1/orgs/{org}/rules":                    {Class: ClassTenant, Ops: []Operation{OpRuleListOrg}},
+	"http:POST /api/v1/orgs/{org}/rules":                   {Class: ClassTenant, Ops: []Operation{OpRuleCreate}},
+	"http:DELETE /api/v1/orgs/{org}/rules/{rule}":          {Class: ClassTenant, Ops: []Operation{OpRuleRevoke}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/rules": {Class: ClassTenant, Ops: []Operation{OpRuleListProject}},
 	// Member invitation (#568): one route per depth, like grant.create.
 	"http:POST /api/v1/orgs/{org}/invitations":           {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
 	"http:POST /api/v1/instance/invitations":             {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},

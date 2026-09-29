@@ -135,6 +135,10 @@ operations:
   listOrgGrants:               {webui: members}
   createOrgGrant:              {webui: members}
   revokeOrgGrant:              {webui: members}
+  listOrgRules:                {webui: members}
+  createRule:                  {webui: members}
+  revokeRule:                  {webui: members}
+  listProjectRules:            {webui: members}
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}

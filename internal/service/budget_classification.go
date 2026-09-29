@@ -170,6 +170,9 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpGrantCreateEnv, authz.OpGrantCreateProject, authz.OpGrantCreateOrg, authz.OpGrantCreateInstance,
 		authz.OpGrantListProject, authz.OpGrantListOrg, authz.OpGrantListInstance,
 		authz.OpGrantRevokeEnv, authz.OpGrantRevokeProject, authz.OpGrantRevokeOrg, authz.OpGrantRevokeInstance,
+		// member access rules: one rule row per create or revoke, bounded by
+		// MaxRuleItems and MaxRulesPerOrg
+		authz.OpRuleCreate, authz.OpRuleRevoke, authz.OpRuleListOrg, authz.OpRuleListProject,
 		// machine identities / credentials / bindings / service accounts
 		authz.OpServiceAccountCreate, authz.OpServiceAccountList, authz.OpServiceAccountDelete,
 		authz.OpCredentialMint, authz.OpCredentialList, authz.OpCredentialRevoke,

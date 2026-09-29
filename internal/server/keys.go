@@ -107,6 +107,7 @@ func (a *API) UpdateKeyMetadata(ctx context.Context, req apigen.UpdateKeyMetadat
 			Description:     req.Body.Description,
 			Deprecated:      req.Body.Deprecated,
 			DeprecationNote: req.Body.DeprecationNote,
+			ConfirmWidening: confirmWidening(req.Body.ConfirmWidening),
 		}, derefAcks(req.Body.Acknowledgements))
 	if err != nil {
 		return nil, err

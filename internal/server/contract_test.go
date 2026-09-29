@@ -1590,6 +1590,7 @@ const (
 	testKeyGroupID = "kgr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f88"
 	// The grant target for the access-surface uniformity routes (#55).
 	testPrincipalID = "usr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f99"
+	testRuleID      = "rul_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f98"
 	// The SCIM administration uniformity routes (#73).
 	testBindingID   = "scb_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f88"
 	testSCIMGroupID = "scg_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f99"
@@ -1660,6 +1661,20 @@ func (s stubSCIM) DirectoryGroups(context.Context, service.Actor, domain.OrgID, 
 // stubGrants and stubSettings are the access surface's uniformity fixtures
 // (#55). Like the hierarchy stubs they answer one outcome for everything, so
 // the uniformity tests differ ONLY in which sentinel the service returned.
+type stubRules struct{ stubHierarchy }
+
+func (s stubRules) Create(context.Context, service.Actor, service.RuleSpec) (service.RuleView, error) {
+	return service.RuleView{}, s.outcome()
+}
+
+func (s stubRules) Revoke(context.Context, service.Actor, domain.OrgID, string) error {
+	return s.outcome()
+}
+
+func (s stubRules) List(context.Context, service.Actor, domain.Scope) ([]service.RuleView, error) {
+	return nil, s.outcome()
+}
+
 type stubGrants struct{ stubHierarchy }
 
 func (s stubGrants) Create(context.Context, service.Actor, service.GrantSpec) (service.GrantResult, error) {
@@ -1847,6 +1862,7 @@ func hierarchyServer(t *testing.T, outcome error) *httptest.Server {
 		Keys:         stubKeys{stubHierarchy{err: outcome}},
 		KeyGroups:    stubKeyGroups{stubHierarchy{err: outcome}},
 		Grants:       stubGrants{stubHierarchy{err: outcome}},
+		Rules:        stubRules{stubHierarchy{err: outcome}},
 		Settings:     stubSettings{stubHierarchy{err: outcome}},
 		SCIM:         stubSCIM{stubHierarchy{err: outcome}},
 		Revisions:    stubRevisions{stubHierarchy{err: outcome}},
@@ -1869,6 +1885,11 @@ func hierarchyRoutes() []struct {
 	rename := apigen.RenameRequest{Name: "renamed"}
 	grantBody := apigen.CreateGrantRequest{Principal: testPrincipalID, Capability: "read"}
 	templateBody := apigen.ApplyTemplateRequest{Principal: testPrincipalID, Template: apigen.Viewer}
+	ruleBody := apigen.CreateRuleRequest{Principal: testPrincipalID, Capability: apigen.RuleCapabilityEdit, Where: apigen.RuleWhere{
+		Projects:     []apigen.ID{testProjectID},
+		Environments: apigen.RuleEnvironmentAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleEnvironmentItem{}},
+		Keys:         apigen.RuleKeyAxis{Mode: apigen.RuleAxisModeAll, Items: []apigen.RuleKeyItem{}},
+	}}
 	inviteBody := apigen.InviteMemberRequest{Username: "dana"}
 	registrationBody := apigen.RegistrationPolicyPutRequest{
 		External: []apigen.RegistrationExternalEntry{{Provider: apigen.ProviderRef{Kind: "oidc", Slug: "corp"}}},
@@ -1913,6 +1934,11 @@ func hierarchyRoutes() []struct {
 		{http.MethodPost, base + "/grants", grantBody},
 		{http.MethodDelete, base + "/grants?principal=" + testPrincipalID + "&capability=read", nil},
 		{http.MethodPost, base + "/grants/template", templateBody},
+		// Member access rules: the same uniform refusal as the grant routes.
+		{http.MethodGet, base + "/rules", nil},
+		{http.MethodPost, base + "/rules", ruleBody},
+		{http.MethodDelete, base + "/rules/" + testRuleID, nil},
+		{http.MethodGet, project + "/rules", nil},
 		// Member invitation (#568): a refused invitation is the uniform 404,
 		// never a 409 that would confirm the username or the organisation.
 		{http.MethodPost, base + "/invitations", inviteBody},
@@ -2059,6 +2085,8 @@ func TestRefusedListingLeaksNoCount(t *testing.T) {
 	for _, path := range []string{
 		base + "/grants",
 		base + "/projects/" + testProjectID + "/grants",
+		base + "/rules",
+		base + "/projects/" + testProjectID + "/rules",
 		base + "/projects",
 		base + "/projects/" + testProjectID + "/environments",
 	} {

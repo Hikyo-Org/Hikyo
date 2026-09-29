@@ -274,12 +274,24 @@ func firstDuplicate(names []string) (string, bool) {
 // this is not the cross-transaction composition #49 argued against.
 func sealerFor(ctx context.Context, db *store.DB, kr *crypto.Keyring, actor Actor,
 	op authz.Operation, scope domain.Scope) (*crypto.ProjectSealer, error) {
+	return sealerForKey(ctx, db, kr, actor, op, scope, nil)
+}
+
+// sealerForKey is sealerFor for an operation on exactly one key: the same key
+// the operation's own transaction will authorize, so a key-narrowed rule that
+// admits the operation also admits resolving its sealer.
+func sealerForKey(ctx context.Context, db *store.DB, kr *crypto.Keyring, actor Actor,
+	op authz.Operation, scope domain.Scope, key *authz.KeyTarget) (*crypto.ProjectSealer, error) {
 	if kr == nil {
 		return nil, errors.New("service: value operations require a keyring")
 	}
 	err := tx.Read(ctx, db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, time.Now().UTC())
 		if err != nil {
+			return err
+		}
+		if key != nil {
+			_, err = az.AuthorizeKey(ctx, caller, op, scope, *key)
 			return err
 		}
 		_, err = az.Authorize(ctx, caller, op, scope)
@@ -300,6 +312,16 @@ func valueAAD(e store.ValueEntry) crypto.ValueAAD {
 		OrgID: e.OrgID, ProjectID: e.ProjectID, EnvID: e.EnvironmentID,
 		KeyID: e.KeyID, RowID: e.ID, FieldTag: valueFieldTag,
 	}
+}
+
+// requireBoundKey refuses to act on any key other than the one a
+// rule-decided proof was minted for. A proof no rule decided binds nothing.
+// The refusal is the uniform nonexistent outcome.
+func requireBoundKey(p authz.Proof, keyID string) error {
+	if bk, ok := authz.BoundKey(p); ok && bk.ID != keyID {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // findKey resolves a key by NAME within the proof's project. The CLI and API
@@ -507,7 +529,10 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 	if scope.Env == "" {
 		return StagedChange{}, fmt.Errorf("%w: a value addresses an environment", domain.ErrInvalid)
 	}
-	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValueStage, scope)
+	// A draft addresses exactly one key, so a key-narrowed member access rule
+	// may admit it.
+	keyTarget := authz.KeyByName(keyName)
+	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, authz.OpValueStage, scope, &keyTarget)
 	if err != nil {
 		return StagedChange{}, err
 	}
@@ -516,7 +541,7 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		if err != nil {
 			return stageWriteResult{}, err
 		}
-		p, err := az.Authorize(ctx, caller, authz.OpValueStage, scope)
+		p, err := az.AuthorizeKey(ctx, caller, authz.OpValueStage, scope, keyTarget)
 		if err != nil {
 			return stageWriteResult{}, err
 		}
@@ -528,6 +553,9 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		}
 		key, err := findKey(ctx, r.Catalogue(), p, keyName)
 		if err != nil {
+			return stageWriteResult{}, err
+		}
+		if err := requireBoundKey(p, key.ID); err != nil {
 			return stageWriteResult{}, err
 		}
 		// The per-project pending cap (ops-spec § 8: ≤ 100 pending versions per
@@ -667,7 +695,12 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 	// Gated on the FIRST destination: a caller who cannot write there cannot
 	// write anywhere in this call, because the whole declare is all-or-nothing.
 	first := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envIDs[0])}
-	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValueSet, first)
+	// One key per call: a key-narrowed member access rule may admit the write
+	// itself. The materializing publish below is authorized without naming a
+	// key, so a key-narrowed publish rule never satisfies it: such a rule alone
+	// never completes a declare, though publish itself may be key-narrowed.
+	keyTarget := authz.KeyByName(keyName)
+	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, authz.OpValueSet, first, &keyTarget)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -680,7 +713,7 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 		}
 		for _, envID := range envIDs {
 			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
-			p, err := az.Authorize(ctx, caller, authz.OpValueSet, envScope)
+			p, err := az.AuthorizeKey(ctx, caller, authz.OpValueSet, envScope, keyTarget)
 			if err != nil {
 				return declareWriteResult{}, err
 			}
@@ -692,6 +725,9 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 			}
 			key, err := findKey(ctx, r.Catalogue(), p, keyName)
 			if err != nil {
+				return declareWriteResult{}, err
+			}
+			if err := requireBoundKey(p, key.ID); err != nil {
 				return declareWriteResult{}, err
 			}
 			rows, err := r.Catalogue().ListPresence(ctx, p)
@@ -794,7 +830,14 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 	case keyName != "":
 		op = authz.OpValueRead
 	}
-	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, op, scope)
+	// A single-cell reveal addresses exactly one key, so a key-narrowed member
+	// access rule may admit it. A bulk reveal names no key and never can.
+	var keyTarget *authz.KeyTarget
+	if reveal && keyName != "" {
+		k := authz.KeyByName(keyName)
+		keyTarget = &k
+	}
+	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, op, scope, keyTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -805,7 +848,12 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 			if err != nil {
 				return nil, err
 			}
-			p, err := az.Authorize(ctx, caller, op, scope)
+			var p authz.Proof
+			if keyTarget != nil {
+				p, err = az.AuthorizeKey(ctx, caller, op, scope, *keyTarget)
+			} else {
+				p, err = az.Authorize(ctx, caller, op, scope)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -863,6 +911,16 @@ func readCells(ctx context.Context, cat store.CatalogueReader, vals store.ValueR
 			return nil, err
 		}
 		keys = []store.CatalogueKey{key}
+	}
+	// A proof a key-narrowed rule decided vouches for one key: decrypt that
+	// key and nothing else, never the catalogue.
+	if _, bound := authz.BoundKey(p); bound {
+		if len(keys) != 1 {
+			return nil, domain.ErrNotFound
+		}
+		if err := requireBoundKey(p, keys[0].ID); err != nil {
+			return nil, err
+		}
 	}
 	entries := map[string]store.ValueEntry{}
 	if keyName == "" {

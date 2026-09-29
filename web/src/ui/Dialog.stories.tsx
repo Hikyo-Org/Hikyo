@@ -80,6 +80,48 @@ export const MustAcknowledge: Story = {
   },
 };
 
+const longBody = (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+    {Array.from({ length: 30 }, (_, i) => (
+      <Checkbox key={i} label={`Environment ${i + 1}`} />
+    ))}
+  </div>
+);
+
+/** An editor longer than the viewport: the body scrolls, the title and the action row stay in view. */
+export const PinnedActions: Story = {
+  args: {
+    size: 'wide',
+    pinActions: true,
+    title: 'Edit rule',
+    lede: 'Only the body scrolls; Cancel and Save are always reachable.',
+    children: longBody,
+    actions: (
+      <>
+        <Button type="button">Cancel</Button>
+        <Button variant="primary" type="button">
+          Save
+        </Button>
+      </>
+    ),
+  },
+  play: async ({ canvas }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Edit rule' });
+    const body = dialog.querySelector('.dialog__body');
+    if (!(body instanceof HTMLElement)) throw new Error('no dialog body');
+    // The body is the scroller, not the dialog.
+    await expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
+    await expect(dialog.scrollHeight).toBe(dialog.clientHeight);
+    // Save sits inside the dialog's box without scrolling anything.
+    const save = canvas.getByRole('button', { name: 'Save' }).getBoundingClientRect();
+    await expect(save.bottom).toBeLessThanOrEqual(dialog.getBoundingClientRect().bottom);
+    // Opening focuses the first control, not the scroll box around it.
+    await expect(canvas.getByRole('checkbox', { name: 'Environment 1' })).toHaveFocus();
+    body.scrollTop = body.scrollHeight;
+    await expect(canvas.getByRole('heading', { name: 'Edit rule' }).getBoundingClientRect().top).toBeGreaterThanOrEqual(dialog.getBoundingClientRect().top);
+  },
+};
+
 /** Both sizes on one page. Each is its own modal, so the second one inerts the first; use the docs frame. */
 export const AllStates: Story = {
   render: (args) => (

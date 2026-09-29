@@ -138,6 +138,20 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 	// alongside the bad_request code: each blocked field's locator, rule id and a
 	// fresh content-bound acknowledgement token. It is machine-consumable and
 	// frozen; never the matched text.
+	// A folder move that widens access through member access rules (ADR D9)
+	// carries the count, and for a member manager who gains what, alongside
+	// its conflict code. Decided after authorization.
+	var wide interface {
+		Widening() (int, []service.WideningGain)
+	}
+	if errors.As(err, &wide) && policy.code == apigen.ErrorCodeConflict {
+		body := policy.body(err)
+		body.Error.Widening = wireWidening(wide.Widening())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(policy.status)
+		_ = json.NewEncoder(w).Encode(body)
+		return
+	}
 	var sf interface{ Findings() []service.Finding }
 	if errors.As(err, &sf) {
 		body := policy.body(err)

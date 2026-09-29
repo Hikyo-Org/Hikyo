@@ -136,6 +136,7 @@ export async function applyBundle(
   transport: TransportOptions,
   signal: AbortSignal,
   acknowledgements: readonly string[] = [],
+  confirmWidening: readonly string[] = [],
 ) {
   // Recheck policy after impact review. The server intentionally allows CLI
   // apply in Git mode; the browser must preserve its read-only governance.
@@ -158,6 +159,9 @@ export async function applyBundle(
       digest: plan.digest,
       allow_delete: allowDelete,
       acknowledgements: [...acknowledgements],
+      // A plan whose key folder moves widen access through member access
+      // rules (ADR D9) is refused until resent naming exactly who gains.
+      ...(confirmWidening.length === 0 ? {} : { confirm_widening: [...confirmWidening] }),
     },
   });
 }

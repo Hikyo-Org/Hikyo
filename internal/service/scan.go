@@ -992,7 +992,7 @@ func applyDeclarationScan(ctx context.Context, r store.Repos, p authz.Proof, az 
 // the key's create already minted the DEK — and so keep the in-transaction
 // applyDeclarationScan; nothing they can block mints a new row.
 func scanSurface2Preflight(ctx context.Context, db *store.DB, kr *crypto.Keyring, rs *scanning.Ruleset,
-	actor Actor, op authz.Operation, scope domain.Scope, leaves []scanLeaf, acks []string, ingress string) ([]overrideAck, error) {
+	actor Actor, op authz.Operation, scope domain.Scope, key *authz.KeyTarget, leaves []scanLeaf, acks []string, ingress string) ([]overrideAck, error) {
 	if rs == nil {
 		// Scanning off (pre-#74 test); a booted server always wires the ruleset.
 		return nil, nil
@@ -1003,7 +1003,11 @@ func scanSurface2Preflight(ctx context.Context, db *store.DB, kr *crypto.Keyring
 		if err != nil {
 			return err
 		}
-		if _, err := az.Authorize(ctx, caller, op, scope); err != nil {
+		if key != nil {
+			if _, err := az.AuthorizeKey(ctx, caller, op, scope, *key); err != nil {
+				return err
+			}
+		} else if _, err := az.Authorize(ctx, caller, op, scope); err != nil {
 			return err
 		}
 		res, err := scanDeclaration(ctx, kr, rs, leaves, newAckSet(acks), time.Now(), ingress)

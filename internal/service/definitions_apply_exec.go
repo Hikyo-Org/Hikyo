@@ -117,6 +117,9 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 			return err
 		}
 
+		if err := s.confirmMoves(ctx, r, az, caller, p, scope, res, opts.ConfirmWidening); err != nil {
+			return err
+		}
 		if err := s.executeResolution(ctx, r, az, caller, p, scope, res, cur, compiledBundle, cur.SchemaRevision+1); err != nil {
 			return err
 		}
@@ -454,6 +457,9 @@ func (s *Definitions) executeResolution(ctx context.Context, r store.Repos, az *
 		if _, err := r.ScanningDismissals().DeleteByKey(ctx, p, del.ID); err != nil {
 			return err
 		}
+		if err := releaseKeyRules(ctx, r, az, p, caller.Principal, scope, del.ID); err != nil {
+			return err
+		}
 		if err := r.Catalogue().Delete(ctx, p, del.ID); err != nil {
 			return err
 		}
@@ -603,6 +609,71 @@ func insertDefinitionEvent(ctx context.Context, r store.Repos, p authz.Proof, ca
 		return err
 	}
 	return r.Audit().InsertTenant(ctx, p, event)
+}
+
+// confirmMoves is ADR D9 for the git flow: every key whose folder the plan
+// moves is checked for people it newly admits through their rules. The
+// confirmation must name exactly the union across all moved keys; each moved
+// key that widens is then audited with its own set.
+func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
+	p authz.Proof, scope domain.Scope, res definitions.Resolution, confirmed []domain.PrincipalID) error {
+	type move struct {
+		id, from, to string
+		gains        []WideningGain
+	}
+	var moves []move
+	var union []WideningGain
+	var envIDs []string
+	for _, upd := range res.KeyUpdates {
+		if !upd.MetaChanged {
+			continue
+		}
+		before, err := r.Catalogue().Get(ctx, p, upd.ID)
+		if err != nil {
+			return err
+		}
+		if before.FolderPath == upd.Desired.FolderPath {
+			continue
+		}
+		if envIDs == nil {
+			envs, err := r.Environments().List(ctx, p)
+			if err != nil {
+				return err
+			}
+			envIDs = []string{}
+			for _, e := range envs {
+				envIDs = append(envIDs, e.ID)
+			}
+		}
+		gains, err := moveWidening(ctx, az, scope, envIDs, upd.ID, before.FolderPath, upd.Desired.FolderPath)
+		if err != nil {
+			return err
+		}
+		if len(gains) == 0 {
+			continue
+		}
+		moves = append(moves, move{id: upd.ID, from: before.FolderPath, to: upd.Desired.FolderPath, gains: gains})
+		union = mergeGains(union, gains)
+	}
+	if len(union) == 0 {
+		return nil
+	}
+	want := slices.Clone(confirmed)
+	slices.Sort(want)
+	if !slices.Equal(slices.Compact(want), gainedPrincipals(union)) {
+		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
+	}
+	if ok, err := mayConfirmWidening(ctx, az, caller.Principal, scope); err != nil {
+		return err
+	} else if !ok {
+		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
+	}
+	for _, m := range moves {
+		if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, m.id, m.from, m.to, m.gains, gainedPrincipals(m.gains)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // deleteEnvironment authorizes an env-scoped OpEnvDelete and cascades the

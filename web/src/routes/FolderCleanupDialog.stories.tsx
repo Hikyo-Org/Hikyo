@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
-import type { FolderMoveOutcome } from '../api/catalogue.ts';
+import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { FolderCleanupDialog } from './FolderCleanupDialog.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
 
@@ -24,6 +24,7 @@ const meta = {
     proposals,
     existingFolders: ['Legacy'],
     busy: false,
+    envName: (id: string) => (id === 'env_01989abc-def0-7123-8123-00000000000b' ? 'production' : id),
     onApply: fn(async () => outcomes),
     onClose: fn(),
   },
@@ -40,6 +41,39 @@ export const Default: Story = {
     await expect(canvas.getByLabelText('Move HIKYO_ARGON2_TIME')).toBeChecked();
     await expect(canvas.getByLabelText('Move HIKYO_EXTERNAL_ORIGIN')).not.toBeChecked();
     await expect(canvas.getByRole('button', { name: /move 2 key\(s\)/i })).toBeEnabled();
+  },
+};
+
+/** A move that gives someone new access through their access rules stays
+ *  with a review action; the confirmation names who gains what. */
+export const WideningRefused: Story = {
+  args: {
+    onApply: fn(async (moves: readonly FolderMove[]): Promise<readonly FolderMoveOutcome[]> =>
+      moves.map((move) =>
+        move.name === 'HIKYO_ARGON2_TIME' && move.confirmWidening === undefined
+          ? {
+              id: move.id,
+              error: 'Not moved: this move gives people new access through their access rules.',
+              widening: {
+                count: 1,
+                gainers: [
+                  {
+                    principal_id: 'usr_01989abc-def0-7123-8123-00000000000a',
+                    principal_name: 'Dana Ruiz',
+                    capability: 'reveal',
+                    environments: ['env_01989abc-def0-7123-8123-00000000000b'],
+                  },
+                ],
+              },
+            }
+          : { id: move.id, error: null },
+      ),
+    ),
+  },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: /move 2 key\(s\)/i }));
+    await userEvent.click(await canvas.findByRole('button', { name: /review access for HIKYO_ARGON2_TIME/i }));
+    await expect(await canvas.findByText('Dana Ruiz: Reveal (production)')).toBeVisible();
   },
 };
 

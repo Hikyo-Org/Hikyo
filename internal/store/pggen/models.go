@@ -1207,6 +1207,28 @@ type RevisionPin struct {
 	SchemaOverride       bool
 }
 
+type Rule struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	EnvMode     string
+	KeyMode     string
+	CreatedBy   string
+	CreatedAt   pgtype.Timestamptz
+}
+
+type RuleItem struct {
+	ID         string
+	RuleID     string
+	OrgID      string
+	Axis       string
+	ProjectID  string
+	EnvID      pgtype.Text
+	KeyID      pgtype.Text
+	FolderPath pgtype.Text
+}
+
 type SamlProvider struct {
 	ID                              string
 	Slug                            string

@@ -4,9 +4,14 @@ import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
 
-type Row = FolderProposal & { readonly include: boolean; readonly error: string | null };
+type Row = FolderProposal & {
+  readonly include: boolean;
+  readonly error: string | null;
+  readonly widening: WideningRefusal | null;
+};
 
 /**
  * FolderCleanupDialog is the dry run behind the matrix "Cleanup" button: one
@@ -18,27 +23,34 @@ type Row = FolderProposal & { readonly include: boolean; readonly error: string 
  * After a run, moved keys leave the list and refused keys stay with their
  * refusal beside them, so a partial run (a revision budget that ran out, a
  * folder the scanner blocked) is retried from where it stopped, not from
- * scratch.
+ * scratch. A key whose move would give people new access through their
+ * access rules (ADR D9) stays with a "Review access" action that confirms
+ * that one move, naming who gains, and resends it alone.
  */
 export function FolderCleanupDialog({
   proposals,
   existingFolders,
   busy,
+  envName,
   onApply,
   onClose,
 }: {
   proposals: readonly FolderProposal[];
   existingFolders: readonly string[];
   busy: boolean;
+  /** Resolves an environment id to its name for the widening confirmation. */
+  envName: (id: string) => string;
   onApply: (moves: readonly FolderMove[]) => Promise<readonly FolderMoveOutcome[]>;
   onClose: () => void;
 }) {
   const listId = useId();
   const [rows, setRows] = useState<readonly Row[]>(() =>
-    proposals.map((proposal) => ({ ...proposal, include: proposal.folder !== '', error: null })),
+    proposals.map((proposal) => ({ ...proposal, include: proposal.folder !== '', error: null, widening: null })),
   );
   const [moved, setMoved] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
+  // The widened key under review, and a refused confirm of it.
+  const [reviewing, setReviewing] = useState<{ readonly id: string; readonly failure: string | null } | null>(null);
 
   const update = (id: string, patch: Partial<Row>): void =>
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -51,24 +63,44 @@ export function FolderCleanupDialog({
     .filter((folder) => folder !== '')
     .sort();
 
+  // Moved keys leave the list; refused ones keep their refusal (and widening).
+  // Rows the run did not touch keep what they had.
+  const settle = (outcomes: readonly FolderMoveOutcome[]): void => {
+    const byId = new Map(outcomes.map((outcome) => [outcome.id, outcome]));
+    setMoved((count) => count + outcomes.filter((outcome) => outcome.error === null).length);
+    setRows((current) =>
+      current
+        .filter((row) => byId.get(row.id)?.error !== null)
+        .map((row) => {
+          const outcome = byId.get(row.id);
+          return outcome === undefined ? row : { ...row, error: outcome.error, widening: outcome.widening ?? null };
+        }),
+    );
+  };
+
   const apply = (): void => {
     setFailure(null);
     void onApply(moves)
       .then((outcomes) => {
-        const byId = new Map(outcomes.map((outcome) => [outcome.id, outcome.error]));
-        const done = outcomes.filter((outcome) => outcome.error === null).length;
-        setMoved((count) => count + done);
-        setRows((current) =>
-          current
-            .filter((row) => byId.get(row.id) !== null)
-            .map((row) => ({ ...row, error: byId.get(row.id) ?? null })),
-        );
+        settle(outcomes);
         if (outcomes.length > 0 && outcomes.every((outcome) => outcome.error === null)) {
           onClose();
         }
       })
       .catch(() => setFailure('The cleanup could not run. Try again.'));
   };
+
+  const confirmMove = (row: Row, principals: readonly string[]): void => {
+    setReviewing({ id: row.id, failure: null });
+    void onApply([{ id: row.id, name: row.name, folder: row.folder.trim(), confirmWidening: principals }])
+      .then((outcomes) => {
+        settle(outcomes);
+        const error = outcomes.find((outcome) => outcome.id === row.id)?.error ?? null;
+        setReviewing(error === null ? null : { id: row.id, failure: error });
+      })
+      .catch(() => setReviewing({ id: row.id, failure: 'The move could not run. Try again.' }));
+  };
+  const reviewed = reviewing === null ? undefined : rows.find((row) => row.id === reviewing.id);
 
   return (
     <Dialog
@@ -129,6 +161,11 @@ export function FolderCleanupDialog({
               {row.error === null ? null : (
                 <Alert>{row.error}</Alert>
               )}
+              {row.widening === null ? null : (
+                <Button type="button" disabled={busy} onClick={() => setReviewing({ id: row.id, failure: null })}>
+                  {`Review access for ${row.name}`}
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -141,6 +178,18 @@ export function FolderCleanupDialog({
 
       {failure === null ? null : (
         <Alert>{failure}</Alert>
+      )}
+
+      {reviewing === null || reviewed === undefined || reviewed.widening === null ? null : (
+        <KeyMoveConfirmDialog
+          widening={reviewed.widening}
+          change={`Move ${reviewed.name} from (no folder) to ${reviewed.folder.trim()}/`}
+          envName={envName}
+          busy={busy}
+          failure={reviewing.failure}
+          onCancel={() => setReviewing(null)}
+          onConfirm={(principals) => confirmMove(reviewed, principals)}
+        />
       )}
 
     </Dialog>

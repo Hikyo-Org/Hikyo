@@ -71,6 +71,7 @@ remain immutable evidence.
 
 | Feature | What works now | Needed for complete implementation |
 | --- | --- | --- |
+| [`CAP-MEMBER-ACCESS-RULES`](./docs/status/README.md#cap-member-access-rules) Member access rules | Rules with project, environment and key or folder scope evaluated at the authorization chokepoint, folder-move widening confirmation, and rule list, create and revoke from API and CLI | Members and Who can...? WebUI surfaces, and the amendment's cross-provider review before it is operative |
 | [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) Public release and distribution | Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification | Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) |
 
 </details>

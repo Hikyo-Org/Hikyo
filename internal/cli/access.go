@@ -47,16 +47,18 @@ import (
 // for an instance-wide grant, since "no org resolved" must never silently mean
 // "grant it to the whole instance".
 
-// runAccess dispatches grant, member, registration, policy, and request commands,
+// runAccess dispatches grant, rule, member, registration, policy, and request commands,
 // returning syntax errors or the selected command's error.
 func runAccess(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("access", args, "grant", "member", "registration", "policy", "request")
+	sub, rest, err := subverb("access", args, "grant", "rule", "member", "registration", "policy", "request")
 	if err != nil {
 		return err
 	}
 	switch sub {
 	case "grant":
 		return runAccessGrant(ctx, ios, rest)
+	case "rule":
+		return runAccessRule(ctx, ios, rest)
 	case "policy":
 		return runAccessPolicy(ctx, ios, rest)
 	case "request":

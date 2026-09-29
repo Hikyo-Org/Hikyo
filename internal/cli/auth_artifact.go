@@ -83,6 +83,7 @@ var authRuleRows = []authRuleRow{
 		"rotate-token-key", "rotate-scanning-key", "rotate-dek", "rotate-master-key",
 		"rotate-root-key", "reencrypt", "doctor",
 		"access grant list", "access grant add", "access grant remove", "access grant template",
+		"access rule list", "access rule add", "access rule remove",
 		"access policy list", "access policy create", "access policy update", "access policy delete",
 		"access request list", "access request create", "access request approve", "access request reject",
 		"access request cancel", "access request revoke", "access request emergency",

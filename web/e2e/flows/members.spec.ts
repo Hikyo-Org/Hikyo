@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import {
   zAuthMethods,
+  zInvitationResult,
   zRegistrationPolicy,
   zScimBinding,
   zScimBindingList,
@@ -122,7 +123,8 @@ test.describe('members and grants', () => {
   });
 
   test('lists one line per capability with its origin chips', async ({ page }) => {
-    const table = page.getByRole('table');
+    // The membership table, not the Who can...? answer tables beside it.
+    const table = page.locator('#members-list').getByRole('table');
     // The fixture's workload holds `read` on development, granted through the
     // API, so its origin is `manual`, not the break-glass kind the seeding
     // CLI writes at instance scope.
@@ -439,6 +441,44 @@ test.describe('members and grants', () => {
     } finally {
       await revokeAll(page, principal, ['read', 'edit']);
     }
+  });
+
+  // Member access rules (member-access-rules ADR): a person gets a rule from
+  // the Rules panel, Who can reach one key? answers through it, and removing
+  // it takes the answer away again. The person is invited with the viewer
+  // template so they appear on the page (people with neither a grant nor a
+  // rule are not listed); a rule for anyone else would end a shared session.
+  test('adds a rule that Who can reach one key answers through, then removes it', async ({ page }) => {
+    const username = `rule-${Date.now().toString(36)}`;
+    await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/invitations`, zInvitationResult, {
+      username,
+      template: 'viewer',
+    });
+    await page.reload();
+    const rules = page.locator('#members-rules');
+    await rules.getByRole('button', { name: `+ Add rule for ${username}` }).click();
+    const dialog = page.getByRole('dialog', { name: `New rule · ${username}` });
+    await dialog.getByRole('button', { name: /^payments/ }).first().click();
+    const envs = dialog.getByRole('group', { name: 'Environments' });
+    await envs.getByRole('radio', { name: 'Only…' }).check();
+    await envs.getByRole('button', { name: /^development/ }).click();
+    await dialog.getByRole('button', { name: 'Editor' }).click();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(page.locator('.notice').filter({ hasText: `Added a rule for ${username}` })).toBeVisible();
+    await expect(rules.getByRole('button', { name: `Edit rule 1 of ${username}` })).toBeVisible();
+
+    const ask = page.locator('#members-whocan');
+    await ask.getByLabel('Permission').selectOption('edit');
+    await ask.getByLabel('Project').selectOption(seed.project);
+    await ask.getByLabel('Environment').selectOption(seed.dev);
+    await expect(ask.getByRole('rowheader', { name: username })).toBeVisible();
+    await ask.getByLabel('Environment').selectOption(seed.prod);
+    await expect(ask.getByRole('rowheader', { name: username })).toHaveCount(0);
+
+    await rules.getByRole('button', { name: `Edit rule 1 of ${username}` }).click();
+    await page.getByRole('dialog', { name: `Edit rule · ${username}` }).getByRole('button', { name: 'Remove rule' }).click();
+    await expect(page.locator('.notice').filter({ hasText: `Removed the rule from ${username}` })).toBeVisible();
+    await expect(rules.getByRole('button', { name: `Edit rule 1 of ${username}` })).toHaveCount(0);
   });
 
   // Member invitation (#568): the human-auth ADR's account-creation path,

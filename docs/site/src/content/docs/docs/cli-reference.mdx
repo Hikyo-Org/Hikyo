@@ -312,7 +312,7 @@ hikyo definitions scaffold --from <.env>
 hikyo definitions export [--portable] [--output-file PATH]
 hikyo definitions check --file PATH [-o table|json]
 hikyo definitions plan --file PATH [-o table|json]
-hikyo definitions apply --plan ID [--file PATH] [--allow-delete]
+hikyo definitions apply --plan ID [--file PATH] [--allow-delete] [--confirm-widening <principal>]...
 ```
 
 `scaffold` is a pure offline transform: it reads only the named `.env`, contacts

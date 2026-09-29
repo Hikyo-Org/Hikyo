@@ -153,7 +153,14 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// principal-row lock like every grant writer.
 	"CreateAccessGrant":            true,
 	"DeleteAccessGrantsForRequest": true,
-	"CreateCredentialAuthority":    true,
+	// Member access rules (member-access-rules ADR): read by authorize(), so
+	// written on the resolution surface after the rule service proved its own
+	// chokepoint operation (or a deletion path proved its own), under the
+	// principal-row lock like every grant writer.
+	"CreateRule":                true,
+	"DeleteRule":                true,
+	"DeleteRuleItem":            true,
+	"CreateCredentialAuthority": true,
 	// Credential establishment and the local floor (#47). None of these can
 	// hold a proof: the first has no session by design, the rest are the
 	// session's own lifecycle.

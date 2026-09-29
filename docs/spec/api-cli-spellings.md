@@ -503,6 +503,46 @@ decisions address one environment. Every verb is human-session only.
 - `access request revoke <request>`: end granted access now (holder, approver or member manager).
 - `access request emergency --capability C --reason R [--duration 30m]`: emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
 
+## Member access rules ([member-access-rules.md](../adr/member-access-rules.md), proposed amendment)
+
+The ADR leaves the spelling of `where` to this document. A rule is one
+capability for one person; every verb is human-session only and needs
+`manage-members` held as a grant on every project the rule names.
+
+### HTTP
+
+- `GET /orgs/{org}/rules` (`rule.list-org`, `manage-members@org`) and
+  `GET /orgs/{org}/projects/{project}/rules` (`rule.list-project`,
+  `manage-members@project`): the project listing reads and returns only that
+  project's part of each rule and marks one that names other projects with
+  `other_projects`. Environments and keys are ids, folders paths.
+- `POST /orgs/{org}/rules` (`rule.create`) with
+  `{principal, capability, where: {projects[], environments: {mode, items[{project, environment}]}, keys: {mode, items[{project, folder} | {project, key}]}}}`;
+  `mode` is `all` (items are exceptions) or `only` (items are the list).
+- `DELETE /orgs/{org}/rules/{rule}` (`rule.revoke`). There is no PATCH: an
+  edit is a revoke plus a create.
+- A key folder move that gives people access through their rules answers
+  `409 conflict` with `error.widening = {count, gainers?}`; `gainers`
+  (principal, capability, environments) is present only for a caller holding
+  `manage-members` on the project. `confirm_widening: [principal ids]` on the
+  key metadata update and on definitions apply confirms it and must name
+  exactly that set.
+
+### Verbs and flags
+
+- `access rule list [--org O] [--project P]`: the org's rules, or the rules
+  naming the resolved project.
+- `access rule add --principal ID --capability C [--in-project P]... [--only-env E | --except-env E]... [--only-folder F | --only-key K]... | [--except-folder F | --except-key K]...`:
+  `--org/--project/--env` stay the shared scope flags, so the rule's axes take
+  distinct names. `--in-project` is repeatable and defaults to the resolved
+  project. An environment or key id is qualified `PROJECT:ID` when the rule
+  names several projects; a folder applies to every project unless qualified
+  the same way. One axis takes only-items or except-items, never both.
+- `access rule remove <rule>`.
+- `key update <key> --folder P --confirm-widening <principal>...` and
+  `definitions apply --plan ID --confirm-widening <principal>...` confirm a
+  widening move.
+
 ## Local repository and CI secret scanning ([secret-scanning.md](../adr/secret-scanning.md) and [api-cli-surface.md](../adr/api-cli-surface.md) amendments 2026-09-26, [#153](https://github.com/Hikyo-Org/Hikyo/issues/153))
 
 ```

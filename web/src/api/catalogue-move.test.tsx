@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
+import type { WideningRefusal } from '@hikyo/client';
+
 import { useMoveKeysToFolders, type FolderMove, type FolderMoveOutcome } from './catalogue.ts';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -190,5 +192,52 @@ describe('useMoveKeysToFolders', () => {
     );
     expect(outcomes.map((outcome) => outcome.error === null)).toEqual([true, false, true]);
     expect(outcomes[1]?.error).toContain('permission');
+  });
+
+  it('carries a widening refusal on that key, continues, and resends a confirmed move with confirm_widening', async () => {
+    const widening: WideningRefusal = {
+      count: 1,
+      gainers: [
+        {
+          principal_id: 'usr_01989abc-def0-7123-8123-00000000000a',
+          principal_name: 'Dana Ruiz',
+          capability: 'reveal',
+          environments: ['env_01989abc-def0-7123-8123-00000000000b'],
+        },
+      ],
+    };
+    const refused = await run(
+      (call) => {
+        if (call.method === 'PATCH') {
+          return call.path.endsWith(ids.memory)
+            ? json(409, { error: { code: 'conflict', message: 'widens access', widening } })
+            : json(200, keyRecord(call.path.slice(call.path.lastIndexOf('/') + 1), 'Argon2'));
+        }
+        return json(200, { items: [], count: 0 });
+      },
+      { moves, existingFolders: ['Argon2', 'Backup'] },
+    );
+    expect(refused.outcomes.map((outcome) => outcome.error === null)).toEqual([true, false, true]);
+    expect(refused.outcomes[1]?.widening).toEqual(widening);
+    expect(refused.outcomes[1]?.error).toContain('new access');
+
+    const confirmed = await run(
+      (call) => json(200, keyRecord(call.path.slice(call.path.lastIndexOf('/') + 1), 'Argon2')),
+      {
+        moves: [
+          {
+            id: ids.memory,
+            name: 'HIKYO_ARGON2_MEMORY_KIB',
+            folder: 'Argon2',
+            confirmWidening: ['usr_01989abc-def0-7123-8123-00000000000a'],
+          },
+        ],
+        existingFolders: ['Argon2'],
+      },
+    );
+    expect(confirmed.outcomes).toEqual([{ id: ids.memory, error: null }]);
+    expect(confirmed.calls.filter((call) => call.method === 'PATCH').map((call) => call.body)).toEqual([
+      JSON.stringify({ folder_path: 'Argon2', confirm_widening: ['usr_01989abc-def0-7123-8123-00000000000a'] }),
+    ]);
   });
 });
