@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderForm } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
 
-const mocks = vi.hoisted(() => ({ source: 'db' as 'db' | 'git', groupId: '', folder: 'app' }));
+const mocks = vi.hoisted(() => ({
+  source: 'db' as 'db' | 'git',
+  canDeclare: true,
+  canEdit: true,
+  groupId: '',
+  folder: 'app',
+}));
 
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count }: { readonly count: number }) => ({
@@ -26,7 +32,9 @@ vi.mock('../api/definitions.ts', async (importActual) => {
   const actual = await importActual<typeof import('../api/definitions.ts')>();
   return {
     ...actual,
-    useDefinitionsSettings: () => ({ data: { definitions_source: mocks.source } }),
+    useDefinitionsSettings: () => ({
+      data: { definitions_source: mocks.source, can_declare_keys: mocks.canDeclare, can_edit_definitions: mocks.canEdit },
+    }),
   };
 });
 
@@ -103,6 +111,8 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
 
 afterEach(() => {
   mocks.source = 'db';
+  mocks.canDeclare = true;
+  mocks.canEdit = true;
   mocks.groupId = '';
   mocks.folder = 'app';
 });
@@ -146,6 +156,28 @@ describe('Matrix declaration availability by definitions source', () => {
     const locked = await render();
     expect(hasButton(locked.container, 'Cleanup')).toBe(false);
     await locked.unmount();
+  });
+
+  it('withdraws every declare action from a caller who may not declare', async () => {
+    mocks.canDeclare = false;
+    mocks.canEdit = false;
+    mocks.folder = '';
+    const view = await render();
+    expect(hasButton(view.container, '+ New key')).toBe(false);
+    expect(hasButton(view.container, '+ Key')).toBe(false);
+    expect(hasButton(view.container, 'Cleanup')).toBe(false);
+    // Not a Git project, so the Git explanation would be a lie.
+    expect(view.container.textContent ?? '').not.toContain('managed in Git');
+    await view.unmount();
+  });
+
+  it('keeps Cleanup for a caller who may edit definitions but not republish', async () => {
+    mocks.canDeclare = false;
+    mocks.folder = '';
+    const view = await render();
+    expect(hasButton(view.container, '+ New key')).toBe(false);
+    expect(hasButton(view.container, 'Cleanup')).toBe(true);
+    await view.unmount();
   });
 
   it('withdraws every declare action and explains why when git-managed', async () => {

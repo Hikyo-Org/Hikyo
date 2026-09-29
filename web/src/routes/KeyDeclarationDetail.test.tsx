@@ -140,7 +140,7 @@ beforeEach(() => {
 /** The db-managed, editable source mode the lifecycle actions require. */
 function dbMode() {
   mocks.definitions.mockReturnValue({
-    data: { definitions_source: 'db' },
+    data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true },
     isSuccess: true,
     isError: false,
     isRefetchError: false,
@@ -180,9 +180,35 @@ function dialogButton(container: HTMLElement, text: string): HTMLButtonElement {
 }
 
 describe('KeyDeclarationDetail', () => {
+  it('withholds every editor from a caller who may not edit declarations', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: false }, isSuccess: true, isError: false, isRefetchError: false });
+
+    const view = await render();
+
+    expect(view.container.querySelector('form')).toBeNull();
+    expect(textOf(view.container)).toContain(
+      'You do not have permission to edit declarations in this project.',
+    );
+    await view.unmount();
+  });
+
+  it('keeps the metadata editor alone for a caller who may edit but not republish', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: false, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
+
+    const view = await render();
+    const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent ?? '');
+
+    expect(buttons.some((label) => label.includes('Save declaration'))).toBe(true);
+    expect(buttons.some((label) => label.includes('Save value rules'))).toBe(false);
+    expect(textOf(view.container)).toContain('republishes every environment');
+    await view.unmount();
+  });
+
   it('renders every declaration field and, in db mode, the editor', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const text = textOf(view.container);
@@ -262,7 +288,7 @@ describe('KeyDeclarationDetail', () => {
       isError: true,
       error: new ApiError(404, 'not found'),
     });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const text = textOf(view.container);
@@ -277,7 +303,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('surfaces a refusal from a rejected metadata edit', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
     mocks.mutate.mockImplementation(
       (
         _input: unknown,
@@ -303,7 +329,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('sends only the changed field on save', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
     mocks.mutate.mockImplementation(
       (_input: unknown, callbacks: { onSuccess: () => void }) => callbacks.onSuccess(),
     );
@@ -387,7 +413,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('keeps the save disabled until a field changes', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const save = [...view.container.querySelectorAll('button')].find((b) =>
@@ -421,7 +447,7 @@ describe('KeyDeclarationDetail', () => {
     // `isError` stays false while `isRefetchError` is true, the editor must
     // still not appear on a source we can no longer trust as current.
     mocks.definitions.mockReturnValue({
-      data: { definitions_source: 'db' },
+      data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true },
       isSuccess: true,
       isError: false,
       isRefetchError: true,
@@ -440,7 +466,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('routes a scanner refusal to the block dialog and overrides with the tokens', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
     const finding: RefusalFinding = {
       rule_id: 'aws-access-key',
       surface: 'edit',
@@ -504,7 +530,7 @@ describe('KeyDeclarationDetail', () => {
 
   it('offers no override in the block dialog when a finding carries no token', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
     const hardBlock: RefusalFinding = { rule_id: 'high-entropy', surface: 'edit', locator: 'key.description' };
     mocks.mutate.mockImplementation(
       (
@@ -790,7 +816,7 @@ describe('KeyDeclarationDetail', () => {
       },
     };
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: jsonKey });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     const text = textOf(view.container);
@@ -809,7 +835,7 @@ describe('KeyDeclarationDetail', () => {
       presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } },
     };
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: boundedKey });
-    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db' }, isSuccess: true, isError: false, isRefetchError: false });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
 
     const view = await render();
     expect(textOf(view.container)).toContain('Edit value rules & presence');

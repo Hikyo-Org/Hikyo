@@ -61,7 +61,8 @@ export function ScanWarnDialog({
    * token was stale. The dialog trusts that answer rather than assuming.
    */
   onDismiss: (item: ScanWarnItem) => Promise<readonly ScanWarnItem[]>;
-  onReclassify: () => Promise<void>;
+  /** Absent when the caller may not edit declarations: the action is not offered. */
+  onReclassify?: () => Promise<void>;
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<readonly ScanWarnItem[]>(items);
@@ -89,6 +90,7 @@ export function ScanWarnDialog({
   };
 
   const reclassify = (): void => {
+    if (onReclassify === undefined) return;
     setBusy('reclassify');
     setError(null);
     void onReclassify()
@@ -111,14 +113,16 @@ export function ScanWarnDialog({
           <Button type="button" disabled={busy !== null} onClick={onClose}>
             Close
           </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={busy !== null}
-            onClick={reclassify}
-          >
-            {busy === 'reclassify' ? 'Reclassifying…' : `Reclassify ${keyName} as secret`}
-          </Button>
+          {onReclassify === undefined ? null : (
+            <Button
+              type="button"
+              variant="primary"
+              disabled={busy !== null}
+              onClick={reclassify}
+            >
+              {busy === 'reclassify' ? 'Reclassifying…' : `Reclassify ${keyName} as secret`}
+            </Button>
+          )}
         </>
       }
     >

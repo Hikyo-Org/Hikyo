@@ -154,6 +154,37 @@ type LastApply struct {
 type DefinitionsSettings struct {
 	Source    string
 	LastApply *LastApply
+	// CanDeclareKeys is the caller's own affordance, set on reads only: see
+	// callerCanDeclareKeys.
+	CanDeclareKeys *bool
+	// CanEditDefinitions is the narrower affordance: `definitions-edit` alone,
+	// which the edits that republish nothing need (folders, key metadata).
+	CanEditDefinitions *bool
+}
+
+// callerCanDeclareKeys answers what a key declaration would: the
+// operation's own formula, then `publish` on every environment the schema
+// fan-out republishes (fanOutSchemaPublish). Offering the action on the first
+// half alone hands a refusal to a principal who holds `definitions-edit` but
+// not `publish` everywhere.
+func callerCanDeclareKeys(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer,
+	caller authz.Identity, p authz.Proof, scope domain.Scope) (bool, error) {
+	holds, err := az.CallerHolds(ctx, caller, authz.OpKeyCreate, scope)
+	if err != nil || !holds {
+		return false, err
+	}
+	environments, err := r.Environments().List(ctx, p)
+	if err != nil {
+		return false, err
+	}
+	for _, env := range environments {
+		envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(env.ID)}
+		holds, err := az.CallerHolds(ctx, caller, authz.OpValuePublish, envScope)
+		if err != nil || !holds {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // Export renders the project's canonical definitions bundle. --portable strips
@@ -239,7 +270,7 @@ func (s *Definitions) Check(ctx context.Context, actor Actor, scope domain.Scope
 func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain.Scope) (DefinitionsSettings, error) {
 	var out DefinitionsSettings
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		_, p, err := authorize(ctx, az, actor, authz.OpDefinitionsSettingsGet, scope, s.now())
+		caller, p, err := authorize(ctx, az, actor, authz.OpDefinitionsSettingsGet, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -248,6 +279,15 @@ func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.Source = proj.DefinitionsSource
+		canDeclare, err := callerCanDeclareKeys(ctx, r, az, caller, p, scope)
+		if err != nil {
+			return err
+		}
+		canEdit, err := az.CallerHolds(ctx, caller, authz.OpKeyUpdateMetadata, scope)
+		if err != nil {
+			return err
+		}
+		out.CanDeclareKeys, out.CanEditDefinitions = &canDeclare, &canEdit
 		last, err := r.Definitions().LatestAppliedPlan(ctx, p)
 		if errors.Is(err, store.ErrNotFound) {
 			return nil

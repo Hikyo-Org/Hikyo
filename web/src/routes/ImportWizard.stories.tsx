@@ -115,7 +115,7 @@ const reachReview = async (canvas: Canvas) => {
 const meta = {
   component: ImportWizard,
   tags: ['ai-generated'],
-  args: { matrixRef: { org: ORG, project: PRJ }, environments, gitManaged: false, onClose: fn() },
+  args: { matrixRef: { org: ORG, project: PRJ }, environments, gitManaged: false, canDeclareKeys: true, onClose: fn() },
   parameters: { ...topLayerDocs, ...app() },
 } satisfies Meta<typeof ImportWizard>;
 
@@ -219,7 +219,7 @@ export const ReviewFailed: Story = {
 
 // A Git-managed project: new keys cannot be declared here and are named as skipped.
 export const GitManaged: Story = {
-  args: { gitManaged: true },
+  args: { gitManaged: true, canDeclareKeys: false },
   play: async ({ canvas }) => {
     await pickDotenv(canvas);
     await chooseFile(canvas, FILE, /app\.env: 4 values read/);

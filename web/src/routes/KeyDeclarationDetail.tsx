@@ -161,7 +161,14 @@ export function KeyDeclarationDetail({
   const sourceUntrusted = definitions.isError || definitions.isRefetchError;
   const system = useSelfConfig();
   const systemManaged = system.data?.binding?.org_id === refData.org && system.data.binding.project_id === refData.project;
-  const editable = definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged;
+  // The same read carries the caller's own permission, because a refused
+  // write is an unexplained 404. Metadata republishes nothing and needs
+  // `definitions-edit` alone; every other editor republishes each environment.
+  const permitted = definitions.data?.can_declare_keys === true;
+  const dbManaged =
+    definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged;
+  const editable = dbManaged && permitted;
+  const metadataEditable = dbManaged && definitions.data?.can_edit_definitions === true;
   const gitManaged = source === 'git';
 
   return (
@@ -205,8 +212,10 @@ export function KeyDeclarationDetail({
           impact={impact}
           impactReady={impactReady}
           editable={editable}
+          metadataEditable={metadataEditable}
           gitManaged={gitManaged}
           sourceResolved={definitions.isSuccess}
+          permitted={permitted}
           sourceFailed={sourceUntrusted}
           gitProvenance={definitions.data?.last_apply}
           historyPath={historyPath}
@@ -251,8 +260,10 @@ function KeyDeclarationBody({
   impact,
   impactReady,
   editable,
+  metadataEditable,
   gitManaged,
   sourceResolved,
+  permitted,
   sourceFailed,
   gitProvenance,
   historyPath,
@@ -265,8 +276,10 @@ function KeyDeclarationBody({
   impact: KeyImpact;
   impactReady: boolean;
   editable: boolean;
+  metadataEditable: boolean;
   gitManaged: boolean;
   sourceResolved: boolean;
+  permitted: boolean;
   sourceFailed: boolean;
   gitProvenance:
     | { commit?: string; ref?: string; actor?: string; applied_by: string }
@@ -348,14 +361,16 @@ function KeyDeclarationBody({
         </Link>
       </p>
 
+      {metadataEditable ? (
+        <MetadataEditor
+          refData={refData}
+          keyId={keyId}
+          record={record}
+          environmentName={environmentName}
+        />
+      ) : null}
       {editable ? (
         <>
-          <MetadataEditor
-            refData={refData}
-            keyId={keyId}
-            record={record}
-            environmentName={environmentName}
-          />
           <DeclarationEditor
             refData={refData}
             keyId={keyId}
@@ -408,9 +423,13 @@ function KeyDeclarationBody({
             </Alert>
           ) : (
             <p className="key-detail__state" role="status">
-              {sourceResolved
-                ? 'Declaration editing is unavailable for this project.'
-                : 'Checking whether declarations can be edited…'}
+              {!sourceResolved
+                ? 'Checking whether declarations can be edited…'
+                : permitted
+                  ? 'Declaration editing is unavailable for this project.'
+                  : metadataEditable
+                    ? 'Renaming, reclassifying, deleting or changing the rules of a key republishes every environment, and you do not have permission to publish to all of them.'
+                    : 'You do not have permission to edit declarations in this project.'}
             </p>
           )}
         </section>

@@ -76,7 +76,7 @@ const groups = {
   ],
 } satisfies z.input<typeof zKeyGroupList>;
 
-const db = { definitions_source: 'db' } satisfies z.input<typeof zDefinitionsSettings>;
+const db = { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true } satisfies z.input<typeof zDefinitionsSettings>;
 const git = {
   definitions_source: 'git',
   last_apply: {

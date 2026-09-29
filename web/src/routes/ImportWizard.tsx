@@ -138,11 +138,14 @@ export function ImportWizard({
   matrixRef,
   environments,
   gitManaged,
+  canDeclareKeys,
   onClose,
 }: {
   matrixRef: MatrixRef;
   environments: readonly WizardEnvironment[];
   gitManaged: boolean;
+  /** The caller may declare keys here; false skips new keys exactly as Git mode does. */
+  canDeclareKeys: boolean;
   onClose: () => void;
 }) {
   // Two independent counters guard file reads, and they must not be conflated.
@@ -235,7 +238,7 @@ export function ImportWizard({
   // Git-managed projects declare keys only through `definitions apply`; new keys
   // cannot be declared here and are dropped from the import (their values would
   // be rejected by name). Already-declared keys still import their values.
-  const excluded = useMemo(() => new Set(gitManaged ? newKeys : []), [gitManaged, newKeys]);
+  const excluded = useMemo(() => new Set(canDeclareKeys ? [] : newKeys), [canDeclareKeys, newKeys]);
   const importableEntries = useMemo(
     () => entries.filter((entry) => !excluded.has(entry.key)),
     [entries, excluded],
@@ -304,12 +307,12 @@ export function ImportWizard({
 
   const runImport = async () => {
     setError(null);
-    // Declare new keys first (skipped entirely on a git-managed project). A
+    // Declare new keys first (skipped entirely where the caller cannot declare). A
     // declaration failure drops that key from the import rather than failing the
     // whole batch by name at phase 2. Each new key carries its connector folder.
     const declared: string[] = [];
     const declareFailures: string[] = [];
-    if (!gitManaged) {
+    if (canDeclareKeys) {
       for (const name of newKeys) {
         const declaration = declarations.get(name) ?? { classification: 'secret', type: 'string' };
         try {
@@ -777,13 +780,15 @@ export function ImportWizard({
   function renderClassify() {
     return (
       <>
-        {gitManaged && newKeys.length > 0 ? (
+        {!canDeclareKeys && newKeys.length > 0 ? (
           <>
-            <Alert>{GIT_DEFINITIONS_NOTICE}</Alert>
+            {gitManaged ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
             <Alert tone="info">
               {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
                 `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import. ` +
-                'Declare the missing keys with definitions plan / definitions apply, then import again.'}
+                (gitManaged
+                  ? 'Declare the missing keys with definitions plan / definitions apply, then import again.'
+                  : 'You do not have permission to declare keys in this project.')}
             </Alert>
           </>
         ) : null}
@@ -804,7 +809,7 @@ export function ImportWizard({
             Every key is already declared, so no classification is needed.
           </p>
         ) : (
-          <fieldset disabled={gitManaged}>
+          <fieldset disabled={!canDeclareKeys}>
             <legend>Classify new keys</legend>
             {newKeys.map((name) => {
               const values = entries

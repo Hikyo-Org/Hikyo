@@ -10,6 +10,7 @@ import {
   zApprovalRequestSummary,
   zEnvironmentList,
   zGrantResult,
+  zGrantResultList,
   zInvitationResult,
   zLoginChallenge,
   zLoginResult,
@@ -28,6 +29,7 @@ import {
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { enrolledAccount, signInAs, withSharedAdmin } from '../fixtures/accounts.ts';
 import { test } from '../fixtures/passkey.ts';
 import { totpCode } from '../fixtures/seed.ts';
 import { surfacesForFlow } from '../registry.ts';
@@ -647,6 +649,98 @@ test.describe('environment matrix', () => {
     // contributed, the earlier "popover overhang" reading was wrong.)
     expect(scroll.contentOverflow).toBe(0);
   });
+});
+
+/**
+ * Flow: the key-declaration permission gate (registry flow `declare-gate`).
+ *
+ * Declaring a key needs `definitions-edit` on the project and `publish` on
+ * every environment; the settings read answers that as `can_declare_keys`. A
+ * caller without it used to be offered "+ New key" and met a 404 on create.
+ * The restricted caller here holds the `publisher` template at project scope:
+ * read, edit, publish and pin, so `definitions-edit` is the ONLY thing missing
+ * and the absence cannot be explained by a caller who simply sees nothing.
+ *
+ * Read-only against the catalogue, and the template's grants are released in
+ * `finally`, so the flows around it see the instance they expect.
+ */
+test.describe('key declaration gate', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  const templatePath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/grants/template`;
+  const grantsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/grants`;
+  // The seeded key's development cell: the grid has rendered its rows, so a
+  // missing button below is a decision the page made, not a page still loading.
+  const loaded = (page: Page): Locator => page.getByRole('button', { name: /LOG_LEVEL in development:/ });
+
+  test('offers key declaration only to a caller who may declare', async ({ browser, page }, testInfo) => {
+    const account = await enrolledAccount(browser, `declare-gate-${testInfo.project.name}`, 'org');
+    const granted = await withSharedAdmin(browser, (admin) =>
+      browserApi(admin, 'POST', templatePath, zGrantResultList, {
+        principal: account.principal,
+        template: 'publisher',
+      }),
+    );
+    try {
+      expect(granted.items.map((grant) => grant.capability)).not.toContain('definitions-edit');
+      await signInAs(page, account);
+      await page.goto(MATRIX_PATH);
+      await expect(loaded(page)).toBeVisible();
+      await expect(page.getByRole('button', { name: '+ New key' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '+ Key', exact: true })).toHaveCount(0);
+
+      await withSharedAdmin(browser, async (admin) => {
+        await admin.goto(MATRIX_PATH);
+        await expect(loaded(admin)).toBeVisible();
+        await expect(admin.getByRole('button', { name: '+ New key' })).toBeVisible();
+      });
+    } finally {
+      await withSharedAdmin(browser, async (admin) => {
+        for (const grant of granted.items) {
+          const query = `principal=${encodeURIComponent(account.principal)}&capability=${encodeURIComponent(grant.capability)}`;
+          // A missing grant (404) is already clean; any other cleanup failure is
+          // recorded rather than thrown from finally, where it would mask the body.
+          await browserApi(admin, 'DELETE', `${grantsPath}?${query}`, z.null()).catch((error: unknown) => {
+            if (!(error instanceof BrowserApiError) || error.status !== 404) {
+              testInfo.annotations.push({ type: 'cleanup', description: String(error) });
+            }
+          });
+        }
+      });
+    }
+  });
+
+  for (const scheme of SCHEMES) {
+    for (const surface of surfacesForFlow('declare-gate')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(MATRIX_PATH);
+          const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
+          const newKey = page.getByRole('button', { name: '+ New key' });
+          const key = page.locator('.matrix__key').first();
+          await expect(newKey).toBeVisible();
+          await expectPinnedAssertionSet(page, {
+            flow: 'declare-gate',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading, key],
+            radii: [[newKey, 'control']],
+            fonts: [
+              [heading, 'ui'],
+              [key, 'mono'],
+            ],
+            colours: [[heading, 'color', '--tx']],
+            hairlines: [],
+            density: [],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
 });
 
 /**

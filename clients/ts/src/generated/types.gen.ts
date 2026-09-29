@@ -2909,6 +2909,25 @@ export type DefinitionsLastApply = {
 export type DefinitionsSettings = {
     definitions_source: 'db' | 'git';
     last_apply?: DefinitionsLastApply;
+    /**
+     * Whether THE CALLER would pass a key declaration in this project
+     * right now: `definitions-edit` on the project AND `publish` on every
+     * one of its environments, because a declaration fans a schema
+     * publish out to each. A UI affordance, never an authorization
+     * decision: a refused declaration is still 404.
+     * Independent of `definitions_source`.
+     *
+     */
+    can_declare_keys?: boolean;
+    /**
+     * Whether THE CALLER holds `definitions-edit` on this project: enough
+     * for the edits that republish nothing (folders, linked-key set
+     * create and rename, key metadata). Every edit that republishes
+     * needs `can_declare_keys` instead. A UI affordance, never an
+     * authorization decision. Independent of `definitions_source`.
+     *
+     */
+    can_edit_definitions?: boolean;
 };
 
 export type SetDefinitionsSettingsRequest = {

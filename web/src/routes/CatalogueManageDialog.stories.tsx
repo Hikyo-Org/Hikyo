@@ -50,7 +50,7 @@ const empty = { items: [], count: 0 };
 
 const definitions = (source: 'db' | 'git'): MockRoute => ({
   url: `${PROJECT_URL}/definitions/settings`,
-  body: { definitions_source: source } satisfies z.input<typeof zDefinitionsSettings>,
+  body: { definitions_source: source, can_declare_keys: true, can_edit_definitions: true } satisfies z.input<typeof zDefinitionsSettings>,
 });
 
 type Answer = Omit<MockRoute, 'url'>;

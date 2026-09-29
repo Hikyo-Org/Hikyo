@@ -6112,8 +6112,22 @@ type DefinitionsRename struct {
 
 // DefinitionsSettings defines model for DefinitionsSettings.
 type DefinitionsSettings struct {
-	DefinitionsSource DefinitionsSettingsDefinitionsSource `json:"definitions_source"`
-	LastApply         *DefinitionsLastApply                `json:"last_apply,omitempty"`
+	// CanDeclareKeys Whether THE CALLER would pass a key declaration in this project
+	// right now: `definitions-edit` on the project AND `publish` on every
+	// one of its environments, because a declaration fans a schema
+	// publish out to each. A UI affordance, never an authorization
+	// decision: a refused declaration is still 404.
+	// Independent of `definitions_source`.
+	CanDeclareKeys *bool `json:"can_declare_keys,omitempty"`
+
+	// CanEditDefinitions Whether THE CALLER holds `definitions-edit` on this project: enough
+	// for the edits that republish nothing (folders, linked-key set
+	// create and rename, key metadata). Every edit that republishes
+	// needs `can_declare_keys` instead. A UI affordance, never an
+	// authorization decision. Independent of `definitions_source`.
+	CanEditDefinitions *bool                                `json:"can_edit_definitions,omitempty"`
+	DefinitionsSource  DefinitionsSettingsDefinitionsSource `json:"definitions_source"`
+	LastApply          *DefinitionsLastApply                `json:"last_apply,omitempty"`
 }
 
 // DefinitionsSettingsDefinitionsSource defines model for DefinitionsSettings.DefinitionsSource.

@@ -61,7 +61,11 @@ export function CatalogueManageDialog({
   const folders = useFolders(refData);
   const groups = useKeyGroups(refData);
   const definitions = useDefinitionsSettings(refData.org, refData.project);
-  const readOnly = definitions.data?.definitions_source === 'git';
+  const gitManaged = definitions.data?.definitions_source === 'git';
+  // Folders and linked-key set create/rename republish nothing, so they need
+  // `definitions-edit` alone. Deleting a set republishes every environment.
+  const readOnly = gitManaged || definitions.data?.can_edit_definitions !== true;
+  const canDeleteGroup = !readOnly && definitions.data?.can_declare_keys === true;
 
   return (
     <Dialog
@@ -79,7 +83,7 @@ export function CatalogueManageDialog({
       }
     >
 
-      {readOnly ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
+      {gitManaged ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
 
       <section className="catalogue-manage__section" aria-labelledby="catalogue-folders">
         <h3 id="catalogue-folders">Folders</h3>
@@ -111,7 +115,7 @@ export function CatalogueManageDialog({
         ) : null}
         <ul className="catalogue-manage__list">
           {(groups.data?.items ?? []).map((group) => (
-            <GroupRow key={group.id} refData={refData} group={group} readOnly={readOnly} />
+            <GroupRow key={group.id} refData={refData} group={group} readOnly={readOnly} canDelete={canDeleteGroup} />
           ))}
         </ul>
         {readOnly ? null : <CreateKeyGroup refData={refData} />}
@@ -248,7 +252,8 @@ function FolderRow({
         >
           Rename
         </Button>
-        {confirming ? (
+        {/* A gate that closes mid-confirmation withdraws the confirmation too. */}
+        {confirming && !readOnly ? (
           <Button
             type="button"
             variant="danger"
@@ -344,10 +349,12 @@ function GroupRow({
   refData,
   group,
   readOnly,
+  canDelete,
 }: {
   refData: MatrixRef;
   group: KeyGroup;
   readOnly: boolean;
+  canDelete: boolean;
 }) {
   const rename = useRenameKeyGroup(refData, group.id);
   const remove = useDeleteKeyGroup(refData, group.id);
@@ -388,7 +395,7 @@ function GroupRow({
         >
           Rename
         </Button>
-        {confirming ? (
+        {confirming && canDelete ? (
           <Button
             type="button"
             variant="danger"
@@ -405,7 +412,7 @@ function GroupRow({
         ) : (
           <Button
             type="button"
-            disabled={readOnly || busy}
+            disabled={!canDelete || busy}
             onClick={() => setConfirming(true)}
           >
             Delete

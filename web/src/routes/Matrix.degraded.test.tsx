@@ -9,7 +9,7 @@ import { Matrix } from './Matrix.tsx';
 
 vi.mock('../api/definitions.ts', async (importActual) => {
   const actual = await importActual<typeof import('../api/definitions.ts')>();
-  return { ...actual, useDefinitionsSettings: () => ({ data: { definitions_source: 'db' } }) };
+  return { ...actual, useDefinitionsSettings: () => ({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true } }) };
 });
 
 const holder = vi.hoisted(() => ({ project: undefined as unknown }));

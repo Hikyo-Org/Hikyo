@@ -136,13 +136,20 @@ export function Matrix({
   const createKey = useCreateKey(ref);
   // Git-managed projects declare keys only through `definitions apply`; the SPA
   // keeps every value action but explains why declaration is unavailable (#492
-  // AC4). A failed/absent settings read never fabricates 'git', declaration
-  // stays available and any real refusal surfaces at the write.
+  // AC4). A failed/absent settings read never fabricates 'git', so the Git
+  // notice is never shown on a guess. Permission is the opposite default: the
+  // declare actions are offered only when the server said the caller may
+  // declare, because a refused declaration is an unexplained 404.
   const definitionsSettings = useDefinitionsSettings(ref.org, ref.project);
   const gitManaged = definitionsSettings.data?.definitions_source === 'git';
   const selfConfig = useSelfConfig();
   const systemManaged = selfConfig.data?.binding?.org_id === ref.org && selfConfig.data.binding.project_id === ref.project;
-  const declarationsLocked = gitManaged || systemManaged;
+  const canDeclareKeys = definitionsSettings.data?.can_declare_keys === true;
+  const declarationsLocked = gitManaged || systemManaged || !canDeclareKeys;
+  // Cleanup only moves keys between folders, which republishes nothing and so
+  // needs `definitions-edit` alone.
+  const foldersLocked =
+    gitManaged || systemManaged || definitionsSettings.data?.can_edit_definitions !== true;
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
@@ -938,7 +945,7 @@ export function Matrix({
         {systemManaged ? null : <Button type="button" className="matrix__manage" onClick={() => setManageOpen(true)}>
           Folders &amp; linked keys
         </Button>}
-        {declarationsLocked || keys.every((key) => key.folder_path !== '') ? null : (
+        {foldersLocked || keys.every((key) => key.folder_path !== '') ? null : (
           <Button type="button" className="matrix__cleanup" onClick={() => setCleanupOpen(true)}>
             Cleanup
           </Button>
@@ -1037,16 +1044,18 @@ export function Matrix({
                 <p role="status">{GIT_DEFINITIONS_NOTICE}</p>
               ) : (
                 <div className="matrix__empty-actions">
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={() => {
-                      setCreateError(null);
-                      setCreate({ folder: null });
-                    }}
-                  >
-                    Declare first key
-                  </Button>
+                  {declarationsLocked ? null : (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={() => {
+                        setCreateError(null);
+                        setCreate({ folder: null });
+                      }}
+                    >
+                      Declare first key
+                    </Button>
+                  )}
                   <Button type="button" onClick={() => setManageOpen(true)}>
                     Folders &amp; linked keys
                   </Button>
@@ -1490,6 +1499,7 @@ export function Matrix({
               name: environment.name,
             }))}
           gitManaged={gitManaged}
+          canDeclareKeys={!declarationsLocked}
           onClose={() => setImportOpen(false)}
         />
       )}
@@ -1498,7 +1508,7 @@ export function Matrix({
         <CatalogueManageDialog refData={ref} onClose={() => setManageOpen(false)} />
       )}
 
-      {!cleanupOpen || declarationsLocked ? null : (
+      {!cleanupOpen || foldersLocked ? null : (
         <FolderCleanupDialog
           proposals={proposeFolders(keys)}
           existingFolders={[
@@ -1534,9 +1544,13 @@ export function Matrix({
           keyName={warn.keyName}
           items={warn.items}
           onClose={() => setWarn(null)}
-          onReclassify={async () => {
-            await reclassify.mutateAsync({ key: warn.keyId, classification: 'secret' });
-          }}
+          onReclassify={
+            declarationsLocked
+              ? undefined
+              : async () => {
+                  await reclassify.mutateAsync({ key: warn.keyId, classification: 'secret' });
+                }
+          }
           onDismiss={async (item) => {
             const staged = await stage.mutateAsync({
               environment: item.environmentId,
