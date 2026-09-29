@@ -1,22 +1,62 @@
-# Handoff: member access rules (prototype, proposed ADR amendment, Storybook)
+# Handoff: member access rules
 
-Design work only: nothing here changes the running product. It records how the
-Members surface should present finer-than-scope access, the decisions the
-owner took, and what is owed before any of it becomes operative.
+Finer-than-scope member access (rules with a Where of projects, environments
+and keys, rule-local excepts), from prototype to a working, deliberately
+fail-closed first slice. Normative contract:
+[member-access-rules.md](../adr/member-access-rules.md), especially
+*First implementation slice*.
 
-## What shipped in this PR
+## What shipped in this PR (#838)
 
-- **Prototype, iterations 1 to 6**, at
-  `docs/site/public/prototypes/member-access/` (published under `/prototypes/`).
-  Each iteration is frozen; `member-access/index.html` lists them with the
-  verdict that led to the next. **Iteration 6 is the reference.**
-- **Proposed ADR amendment** [member-access-rules.md](../adr/member-access-rules.md),
-  with a pointer banner on [permission-model.md](../adr/permission-model.md)
-  and a row in the ADR index. Status: proposed, not operative.
-- **Storybook port of iteration 6** under *Prototypes/Member access*
-  (`web/src/routes/accessRules/`): a framework-free model with unit tests, a
-  fixture, the components, and stories with play assertions. Fixture data only;
-  no API calls.
+- **Prototypes, iterations 1 to 6**, at `docs/site/public/prototypes/member-access/`
+  (published under `/prototypes/`); `member-access/index.html` lists each
+  verdict. Iteration 6 is the design reference.
+- **ADR:** [member-access-rules.md](../adr/member-access-rules.md) (declared
+  amendment, operative with this PR by owner direction) with a banner on
+  [permission-model.md](../adr/permission-model.md); **DESIGN.md** gains the
+  *Review rules* distilled from the owner's feedback.
+- **Backend (stage A):** migration 00070 (`rules`, `rule_items`); rules read only
+  inside the authorization chokepoint, humans only; key-aware authorization for
+  single-value reveal, staging a value, key create, rename, delete and move
+  (both folders); proofs from key-narrowed rules bound to their key; deletion
+  paths prune rule items; audit events `rule.created`, `rule.revoked`,
+  `rule.move_widening_confirmed`.
+- **API and CLI (stage B):** `GET /orgs/{org}/rules`,
+  `GET /orgs/{org}/projects/{project}/rules`, `POST /orgs/{org}/rules`,
+  `DELETE /orgs/{org}/rules/{rule}`; `confirm_widening` on key metadata update
+  and definitions apply with a 409 `WideningRefusal`; `hikyo access rule
+  list|add|remove`; regenerated clients; docs pages and ledger entry
+  `CAP-MEMBER-ACCESS-RULES`.
+- **Web (stage C):** on Members, an *Access rules* panel (editor, search),
+  *Who can reach one key?* over grants and rules, a glossary; the key folder
+  move paths show the widening confirmation. Stories under *Members/Access
+  rules*; new atoms `ToggleChip`, `Disclosure`, Dialog `pinActions`.
+
+## Conservative decisions taken overnight (owner asleep, "trust your judgement")
+
+Each is the fail-closed reading; widen only by owner decision.
+
+- **Humans only:** rules for machines are refused (the machine widening gate
+  counts per environment and would undercount a key-narrowed machine reveal).
+- **Publish cannot be key-narrowed:** publishing is environment-wide, so a
+  key-narrowed publish could never take effect.
+- **See cannot be key-narrowed** on a rule (refused rather than widened).
+- **Manage access on a rule is inert** until delegation containment exists;
+  creating and revoking rules needs legacy manage-members on every named project.
+- **No "all projects"** on rules.
+- **Only project member managers may confirm a widening key move**, and only
+  they are told who gains; a machine plan can never commit one.
+- **Folder excepts cover subfolders; only-picks match exactly.**
+
+## Reviews
+
+- Two same-provider (Claude) adversarial security reviews: stage A (five
+  findings, all fixed with tests) and stage B (one finding: a count-only caller
+  could confirm a widening move; fixed, mutation-checked). Stage C was reviewed
+  by the orchestrator (sensitive inventory note, 409 parsing through zod,
+  partial-edit failure messages).
+- **Cross-provider adversarial review: skipped (Codex quota below threshold), owed.**
+  Not CLEAN.
 
 ## Decision trail (owner, 2026-09-28)
 
@@ -30,7 +70,7 @@ owner took, and what is owed before any of it becomes operative.
 | 6 | Widening move confirmation | Final. Except stays rule-local (no global deny) |
 | Storybook review | Editor, Members, Who can...? | Where before permissions; search on Members; Members lists people only, machines' rules move to Machine access (D11); Who can...? form ordered Permission, Project, Environment, Key with descriptions; simulator dropped, key-move confirmation kept as its own component |
 
-## Owed before the amendment is operative
+## Owed
 
 1. **Reopen #15** and record the amendment there, per the
    [oss-mechanics.md](../adr/oss-mechanics.md) locked-decision procedure.
@@ -39,9 +79,14 @@ owner took, and what is owed before any of it becomes operative.
    `where`), D4 (rule-local except as the only negative), D8 (live folder
    selectors), D9 (widening-move confirmation as the only guard against folder
    laundering).
-3. **Open points** listed in the ADR: machine principals and key-narrowed
-   rules; folder selectors bound by path or by folder id; the API / CLI
-   spelling of `where`; MVP-boundary scheduling.
+3. **Open points** listed in the ADR: machine rules; folder selectors bound by
+   path or by folder id; the API / CLI spelling of `where` beyond this slice;
+   MVP-boundary scheduling.
+4. **Widening the slice** (each needs its own review): delegation containment
+   for rule-based Manage access; key-aware publish (enumerate draft keys before
+   the proof); key-aware update-declaration, reclassify and set-group; "all
+   projects" rules; rules visible to navigation (`OrgsForPrincipal`,
+   `project.list`); a server-side resolver operation.
 
 ## Implementation notes for the next ticket
 
