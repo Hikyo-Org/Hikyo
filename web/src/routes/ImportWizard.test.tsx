@@ -70,6 +70,7 @@ async function render(gitManaged = false) {
         matrixRef={{ org: 'acme', project: 'app' }}
         environments={environments}
         gitManaged={gitManaged}
+        canDeclareKeys={!gitManaged}
         onClose={onClose}
       />,
     );

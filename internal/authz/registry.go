@@ -2505,6 +2505,9 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
 			StoreProjectsGet: true, StoreDefinitionsLatestAppliedPlan: true,
+			// The caller's `can_declare_keys` affordance asks about `publish`
+			// on each environment a declaration would fan out to.
+			StoreEnvironmentsList: true,
 		},
 		auditedNone: true,
 	},

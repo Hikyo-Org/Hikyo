@@ -61,7 +61,11 @@ export function CatalogueManageDialog({
   const folders = useFolders(refData);
   const groups = useKeyGroups(refData);
   const definitions = useDefinitionsSettings(refData.org, refData.project);
-  const readOnly = definitions.data?.definitions_source === 'git';
+  const gitManaged = definitions.data?.definitions_source === 'git';
+  // ponytail: folder edits need only `definitions-edit`, so this also withholds
+  // them from a caller who holds it without `publish` on every environment.
+  // Add a second flag if that split ever matters.
+  const readOnly = gitManaged || definitions.data?.can_declare_keys !== true;
 
   return (
     <Dialog
@@ -79,7 +83,7 @@ export function CatalogueManageDialog({
       }
     >
 
-      {readOnly ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
+      {gitManaged ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
 
       <section className="catalogue-manage__section" aria-labelledby="catalogue-folders">
         <h3 id="catalogue-folders">Folders</h3>

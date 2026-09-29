@@ -142,7 +142,10 @@ func wireDefinitionsPlan(p service.PlanView) apigen.DefinitionsPlan {
 }
 
 func wireDefinitionsSettings(s service.DefinitionsSettings) apigen.DefinitionsSettings {
-	out := apigen.DefinitionsSettings{DefinitionsSource: apigen.DefinitionsSettingsDefinitionsSource(s.Source)}
+	out := apigen.DefinitionsSettings{
+		DefinitionsSource: apigen.DefinitionsSettingsDefinitionsSource(s.Source),
+		CanDeclareKeys:    s.CanDeclareKeys,
+	}
 	if s.LastApply != nil {
 		out.LastApply = &apigen.DefinitionsLastApply{
 			PlanId: s.LastApply.PlanID, AppliedAt: s.LastApply.AppliedAt, AppliedBy: s.LastApply.AppliedBy,

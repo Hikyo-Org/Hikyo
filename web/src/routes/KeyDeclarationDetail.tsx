@@ -161,7 +161,11 @@ export function KeyDeclarationDetail({
   const sourceUntrusted = definitions.isError || definitions.isRefetchError;
   const system = useSelfConfig();
   const systemManaged = system.data?.binding?.org_id === refData.org && system.data.binding.project_id === refData.project;
-  const editable = definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged;
+  // The same read carries the caller's own permission: every editor below
+  // needs `definitions-edit`, and a refused write is an unexplained 404.
+  const permitted = definitions.data?.can_declare_keys === true;
+  const editable =
+    definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged && permitted;
   const gitManaged = source === 'git';
 
   return (
@@ -207,6 +211,7 @@ export function KeyDeclarationDetail({
           editable={editable}
           gitManaged={gitManaged}
           sourceResolved={definitions.isSuccess}
+          permitted={permitted}
           sourceFailed={sourceUntrusted}
           gitProvenance={definitions.data?.last_apply}
           historyPath={historyPath}
@@ -253,6 +258,7 @@ function KeyDeclarationBody({
   editable,
   gitManaged,
   sourceResolved,
+  permitted,
   sourceFailed,
   gitProvenance,
   historyPath,
@@ -267,6 +273,7 @@ function KeyDeclarationBody({
   editable: boolean;
   gitManaged: boolean;
   sourceResolved: boolean;
+  permitted: boolean;
   sourceFailed: boolean;
   gitProvenance:
     | { commit?: string; ref?: string; actor?: string; applied_by: string }
@@ -408,9 +415,11 @@ function KeyDeclarationBody({
             </Alert>
           ) : (
             <p className="key-detail__state" role="status">
-              {sourceResolved
-                ? 'Declaration editing is unavailable for this project.'
-                : 'Checking whether declarations can be edited…'}
+              {!sourceResolved
+                ? 'Checking whether declarations can be edited…'
+                : permitted
+                  ? 'Declaration editing is unavailable for this project.'
+                  : 'You do not have permission to edit declarations in this project.'}
             </p>
           )}
         </section>

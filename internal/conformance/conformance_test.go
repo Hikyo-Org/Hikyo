@@ -91,6 +91,7 @@ var corpus = []scenario{
 	{"declaration_fixtures_per_type", scenarioDeclarationFixtures},
 	{"declaration_rejections_by_name", scenarioDeclarationRejections},
 	{"secret_rule_change_needs_reveal", scenarioSecretRuleChangeNeedsReveal},
+	{"can_declare_keys_mirrors_key_create", scenarioCanDeclareKeys},
 	{"presence_rules_and_environment_cascade", scenarioPresenceRules},
 	{"key_groups_declaration_side", scenarioKeyGroups},
 	{"group_membership_rebuilds_publish_index", scenarioGroupMembershipRebuildsPublishIndex},

@@ -336,6 +336,76 @@ func scenarioDeclarationRejections(t *testing.T, db *store.DB) {
 	}
 }
 
+// scenarioCanDeclareKeys pins the `can_declare_keys` affordance to the write it
+// describes. A declaration needs `definitions-edit` on the project AND
+// `publish` on every environment the schema fan-out republishes; a flag that
+// read only the first half would offer an action the server then refuses.
+func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
+	kr := sharedKeyring(t, db)
+	keys := &service.Keys{DB: db, Keyring: kr}
+	envs := &service.Environments{DB: db, Keyring: kr}
+	defs := &service.Definitions{DB: db, Keyring: kr}
+	owner, scope := tenantFixture(t, db, "candeclare")
+	var envIDs []string
+	for _, name := range []string{"dev", "prod"} {
+		env, err := envs.Create(t.Context(), service.LocalPrincipal(owner), scope, name, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		envIDs = append(envIDs, env.ID)
+	}
+
+	// Each principal holds project-wide `read`; what varies is the declaring half.
+	principal := func(label string, projectCaps []string, publishEnvs []string) service.Actor {
+		id := "usr_candeclare_" + label
+		stmts := []string{
+			`INSERT INTO principals (id, kind, created_at) VALUES ('` + id + `', 'human', '2026-01-01T00:00:00Z')`,
+		}
+		for i, capability := range append([]string{"read"}, projectCaps...) {
+			stmts = append(stmts, fmt.Sprintf(
+				`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at)
+				 VALUES ('grt_candeclare_%s_%d', '%s', '%s', '%s', '%s', NULL, '2026-01-01T00:00:00Z')`,
+				label, i, id, capability, scope.Org, scope.Project))
+		}
+		for i, env := range publishEnvs {
+			stmts = append(stmts, fmt.Sprintf(
+				`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at)
+				 VALUES ('grt_candeclare_%s_p%d', '%s', 'publish', '%s', '%s', '%s', '2026-01-01T00:00:00Z')`,
+				label, i, id, scope.Org, scope.Project, env))
+		}
+		seed(t, db, stmts)
+		return service.LocalPrincipal(domain.PrincipalID(id))
+	}
+
+	for _, tc := range []struct {
+		label string
+		actor service.Actor
+		want  bool
+	}{
+		{"reader", principal("reader", nil, nil), false},
+		{"publisher", principal("publisher", nil, envIDs), false},
+		{"partial", principal("partial", []string{"definitions-edit"}, envIDs[:1]), false},
+		{"maintainer", principal("maintainer", []string{"definitions-edit"}, envIDs), true},
+	} {
+		settings, err := defs.GetSettings(t.Context(), tc.actor, scope)
+		if err != nil {
+			t.Fatalf("%s: settings read: %v", tc.label, err)
+		}
+		if settings.CanDeclareKeys == nil || *settings.CanDeclareKeys != tc.want {
+			t.Fatalf("%s: can_declare_keys = %v, want %v", tc.label, settings.CanDeclareKeys, tc.want)
+		}
+		// The flag and the write must agree, and a refusal is the uniform nonexistent.
+		_, err = keys.Create(t.Context(), tc.actor, scope,
+			keySpec("KEY_"+strings.ToUpper(tc.label), string(schema.Config), decl(schema.Rule{Type: schema.TypeString})), nil)
+		if tc.want && err != nil {
+			t.Fatalf("%s: offered the declaration, then refused it: %v", tc.label, err)
+		}
+		if !tc.want && !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("%s: withheld the declaration, but the write answered %v", tc.label, err)
+		}
+	}
+}
+
 // scenarioSecretRuleChangeNeedsReveal is C3's load-bearing security rule.
 //
 // Two principals over ONE key: one holds definitions-edit alone, the other
