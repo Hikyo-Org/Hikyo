@@ -12,6 +12,7 @@ import {
   remarkNpm,
   remarkStructure,
 } from 'fumadocs-core/mdx-plugins';
+import { remarkLLMs } from 'fumadocs-core/mdx-plugins/remark-llms';
 
 // PostHog is the only third party the site talks to, and only after opt-in. Its
 // origin has to reach the Content-Security-Policy so `array.js` (script-src) and
@@ -63,6 +64,10 @@ const remarkPlugins = [
   remarkCodeTab,
   remarkNpm,
   [remarkStructure, { exportAs: 'structuredData' }],
+  // Exports each page's Markdown as `_markdown` for /llms-full.txt and the
+  // per-page .md routes. Fumadocs' `## Title [#id]` heading-id syntax is off:
+  // it means nothing to a generic Markdown reader.
+  [remarkLLMs, { headingIds: false }],
 ];
 
 const rehypePlugins = [rehypeCode];
