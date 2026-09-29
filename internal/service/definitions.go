@@ -157,6 +157,9 @@ type DefinitionsSettings struct {
 	// CanDeclareKeys is the caller's own affordance, set on reads only: see
 	// callerCanDeclareKeys.
 	CanDeclareKeys *bool
+	// CanEditDefinitions is the narrower affordance: `definitions-edit` alone,
+	// which the edits that republish nothing need (folders, key metadata).
+	CanEditDefinitions *bool
 }
 
 // callerCanDeclareKeys answers what a key or key-group declaration would: the
@@ -280,7 +283,11 @@ func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain
 		if err != nil {
 			return err
 		}
-		out.CanDeclareKeys = &canDeclare
+		canEdit, err := az.CallerHolds(ctx, caller, authz.OpKeyUpdateMetadata, scope)
+		if err != nil {
+			return err
+		}
+		out.CanDeclareKeys, out.CanEditDefinitions = &canDeclare, &canEdit
 		last, err := r.Definitions().LatestAppliedPlan(ctx, p)
 		if errors.Is(err, store.ErrNotFound) {
 			return nil

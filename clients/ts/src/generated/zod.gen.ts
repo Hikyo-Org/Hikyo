@@ -1882,7 +1882,8 @@ export const zDefinitionsLastApply = z.object({
 export const zDefinitionsSettings = z.object({
     definitions_source: z.enum(['db', 'git']),
     last_apply: zDefinitionsLastApply.optional(),
-    can_declare_keys: z.boolean().optional()
+    can_declare_keys: z.boolean().optional(),
+    can_edit_definitions: z.boolean().optional()
 });
 
 export const zSetDefinitionsSettingsRequest = z.object({

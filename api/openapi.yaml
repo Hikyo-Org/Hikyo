@@ -18412,6 +18412,14 @@ components:
             schema publish out to each. A UI affordance, never an
             authorization decision: a refused declaration is still 404.
             Independent of `definitions_source`.
+        can_edit_definitions:
+          type: boolean
+          description: |
+            Whether THE CALLER holds `definitions-edit` on this project: enough
+            for the edits that republish nothing (folders, linked-key set
+            create and rename, key metadata). Every edit that republishes
+            needs `can_declare_keys` instead. A UI affordance, never an
+            authorization decision. Independent of `definitions_source`.
 
     SetDefinitionsSettingsRequest:
       type: object

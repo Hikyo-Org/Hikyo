@@ -146,6 +146,10 @@ export function Matrix({
   const systemManaged = selfConfig.data?.binding?.org_id === ref.org && selfConfig.data.binding.project_id === ref.project;
   const canDeclareKeys = definitionsSettings.data?.can_declare_keys === true;
   const declarationsLocked = gitManaged || systemManaged || !canDeclareKeys;
+  // Cleanup only moves keys between folders, which republishes nothing and so
+  // needs `definitions-edit` alone.
+  const foldersLocked =
+    gitManaged || systemManaged || definitionsSettings.data?.can_edit_definitions !== true;
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
@@ -941,7 +945,7 @@ export function Matrix({
         {systemManaged ? null : <Button type="button" className="matrix__manage" onClick={() => setManageOpen(true)}>
           Folders &amp; linked keys
         </Button>}
-        {declarationsLocked || keys.every((key) => key.folder_path !== '') ? null : (
+        {foldersLocked || keys.every((key) => key.folder_path !== '') ? null : (
           <Button type="button" className="matrix__cleanup" onClick={() => setCleanupOpen(true)}>
             Cleanup
           </Button>
@@ -1504,7 +1508,7 @@ export function Matrix({
         <CatalogueManageDialog refData={ref} onClose={() => setManageOpen(false)} />
       )}
 
-      {!cleanupOpen || declarationsLocked ? null : (
+      {!cleanupOpen || foldersLocked ? null : (
         <FolderCleanupDialog
           proposals={proposeFolders(keys)}
           existingFolders={[

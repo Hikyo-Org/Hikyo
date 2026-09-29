@@ -2919,6 +2919,15 @@ export type DefinitionsSettings = {
      *
      */
     can_declare_keys?: boolean;
+    /**
+     * Whether THE CALLER holds `definitions-edit` on this project: enough
+     * for the edits that republish nothing (folders, linked-key set
+     * create and rename, key metadata). Every edit that republishes
+     * needs `can_declare_keys` instead. A UI affordance, never an
+     * authorization decision. Independent of `definitions_source`.
+     *
+     */
+    can_edit_definitions?: boolean;
 };
 
 export type SetDefinitionsSettingsRequest = {

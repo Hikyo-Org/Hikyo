@@ -336,8 +336,8 @@ func scenarioDeclarationRejections(t *testing.T, db *store.DB) {
 	}
 }
 
-// scenarioCanDeclareKeys pins the `can_declare_keys` affordance to the write it
-// describes. A declaration needs `definitions-edit` on the project AND
+// scenarioCanDeclareKeys pins the `can_declare_keys` and `can_edit_definitions`
+// affordances to the writes they describe. A declaration needs `definitions-edit` on the project AND
 // `publish` on every environment the schema fan-out republishes; a flag that
 // read only the first half would offer an action the server then refuses.
 func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
@@ -345,6 +345,7 @@ func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 	keys := &service.Keys{DB: db, Keyring: kr}
 	envs := &service.Environments{DB: db, Keyring: kr}
 	defs := &service.Definitions{DB: db, Keyring: kr}
+	folders := &service.Folders{DB: db}
 	owner, scope := tenantFixture(t, db, "candeclare")
 	var envIDs []string
 	for _, name := range []string{"dev", "prod"} {
@@ -378,14 +379,15 @@ func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 	}
 
 	for _, tc := range []struct {
-		label string
-		actor service.Actor
-		want  bool
+		label    string
+		actor    service.Actor
+		want     bool
+		wantEdit bool
 	}{
-		{"reader", principal("reader", nil, nil), false},
-		{"publisher", principal("publisher", nil, envIDs), false},
-		{"partial", principal("partial", []string{"definitions-edit"}, envIDs[:1]), false},
-		{"maintainer", principal("maintainer", []string{"definitions-edit"}, envIDs), true},
+		{"reader", principal("reader", nil, nil), false, false},
+		{"publisher", principal("publisher", nil, envIDs), false, false},
+		{"partial", principal("partial", []string{"definitions-edit"}, envIDs[:1]), false, true},
+		{"maintainer", principal("maintainer", []string{"definitions-edit"}, envIDs), true, true},
 	} {
 		settings, err := defs.GetSettings(t.Context(), tc.actor, scope)
 		if err != nil {
@@ -393,6 +395,17 @@ func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 		}
 		if settings.CanDeclareKeys == nil || *settings.CanDeclareKeys != tc.want {
 			t.Fatalf("%s: can_declare_keys = %v, want %v", tc.label, settings.CanDeclareKeys, tc.want)
+		}
+		if settings.CanEditDefinitions == nil || *settings.CanEditDefinitions != tc.wantEdit {
+			t.Fatalf("%s: can_edit_definitions = %v, want %v", tc.label, settings.CanEditDefinitions, tc.wantEdit)
+		}
+		// A folder republishes nothing, so `definitions-edit` alone declares one.
+		_, err = folders.Create(t.Context(), tc.actor, scope, "f_"+tc.label, nil)
+		if tc.wantEdit && err != nil {
+			t.Fatalf("%s: offered the folder edit, then refused it: %v", tc.label, err)
+		}
+		if !tc.wantEdit && !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("%s: withheld the folder edit, but the write answered %v", tc.label, err)
 		}
 		// The flag and the write must agree, and a refusal is the uniform nonexistent.
 		_, err = keys.Create(t.Context(), tc.actor, scope,

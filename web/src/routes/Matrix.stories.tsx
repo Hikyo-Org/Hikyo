@@ -254,7 +254,7 @@ const failedRows = (env: string, status: number) => {
 
 const definitions = (source: 'db' | 'git') => ({
   url: `${PROJECT_URL}/definitions/settings`,
-  body: { definitions_source: source, can_declare_keys: true } satisfies z.input<typeof zDefinitionsSettings>,
+  body: { definitions_source: source, can_declare_keys: true, can_edit_definitions: true } satisfies z.input<typeof zDefinitionsSettings>,
 });
 
 // The reads every matrix story shares: no system-project binding (a non-operator

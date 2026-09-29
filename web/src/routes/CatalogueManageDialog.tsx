@@ -62,10 +62,10 @@ export function CatalogueManageDialog({
   const groups = useKeyGroups(refData);
   const definitions = useDefinitionsSettings(refData.org, refData.project);
   const gitManaged = definitions.data?.definitions_source === 'git';
-  // ponytail: folder edits need only `definitions-edit`, so this also withholds
-  // them from a caller who holds it without `publish` on every environment.
-  // Add a second flag if that split ever matters.
-  const readOnly = gitManaged || definitions.data?.can_declare_keys !== true;
+  // Folders and linked-key set create/rename republish nothing, so they need
+  // `definitions-edit` alone. Deleting a set republishes every environment.
+  const readOnly = gitManaged || definitions.data?.can_edit_definitions !== true;
+  const canDeleteGroup = !readOnly && definitions.data?.can_declare_keys === true;
 
   return (
     <Dialog
@@ -115,7 +115,7 @@ export function CatalogueManageDialog({
         ) : null}
         <ul className="catalogue-manage__list">
           {(groups.data?.items ?? []).map((group) => (
-            <GroupRow key={group.id} refData={refData} group={group} readOnly={readOnly} />
+            <GroupRow key={group.id} refData={refData} group={group} readOnly={readOnly} canDelete={canDeleteGroup} />
           ))}
         </ul>
         {readOnly ? null : <CreateKeyGroup refData={refData} />}
@@ -348,10 +348,12 @@ function GroupRow({
   refData,
   group,
   readOnly,
+  canDelete,
 }: {
   refData: MatrixRef;
   group: KeyGroup;
   readOnly: boolean;
+  canDelete: boolean;
 }) {
   const rename = useRenameKeyGroup(refData, group.id);
   const remove = useDeleteKeyGroup(refData, group.id);
@@ -409,7 +411,7 @@ function GroupRow({
         ) : (
           <Button
             type="button"
-            disabled={readOnly || busy}
+            disabled={!canDelete || busy}
             onClick={() => setConfirming(true)}
           >
             Delete

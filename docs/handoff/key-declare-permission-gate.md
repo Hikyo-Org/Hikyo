@@ -26,12 +26,23 @@ nonexistent outcome (`internal/authz/authorize.go`, locked by
 
 ## The fix
 
-The definitions settings read now carries the caller's own affordance:
+The definitions settings read now carries two affordances about the caller:
 
-- `api/openapi.yaml`: `DefinitionsSettings.can_declare_keys` (optional boolean).
-- `internal/service/definitions.go`: `callerCanDeclareKeys` evaluates
-  `CallerHolds(OpKeyCreate)` and then `CallerHolds(OpValuePublish)` for each
-  environment, the same two halves the write evaluates. Set on `GetSettings` only.
+- `can_declare_keys`: `definitions-edit` on the project AND `publish` on every
+  environment. `callerCanDeclareKeys` in `internal/service/definitions.go`
+  evaluates `CallerHolds(OpKeyCreate)` and then `CallerHolds(OpValuePublish)`
+  for each environment, the same two halves the write evaluates.
+- `can_edit_definitions`: `definitions-edit` alone
+  (`CallerHolds(OpKeyUpdateMetadata)`).
+
+Which edit needs which flag follows from whether the service call ends in
+`publisher.fanOut` (`internal/service/keys.go`):
+
+| Republishes, needs `can_declare_keys` | Republishes nothing, needs `can_edit_definitions` |
+|---|---|
+| key create, rename, value rules and presence, reclassify, set linked-key set, delete; linked-key set delete | folder create, rename, delete; linked-key set create and rename; key metadata (folder, description, deprecation) |
+
+Both are set on `GetSettings` only.
 - `internal/authz/registry.go`: `OpDefinitionsSettingsGet` gained
   `StoreEnvironmentsList` for that enumeration.
 - Generated code refreshed: `api/apigen`, `clients/ts/src/generated`.
@@ -44,11 +55,11 @@ Surfaces gated on the flag:
 
 | Surface | File | Withheld when the flag is not `true` |
 |---|---|---|
-| Matrix header, group header, empty state | `web/src/routes/Matrix.tsx` | "+ New key", "+ Key", "Declare first key", "Cleanup" |
+| Matrix header, group header, empty state | `web/src/routes/Matrix.tsx` | "+ New key", "+ Key", "Declare first key"; "Cleanup" follows `can_edit_definitions` |
 | Scan warning | `web/src/routes/ScanWarnDialog.tsx` | "Reclassify as secret" |
 | Import wizard | `web/src/routes/ImportWizard.tsx` | new keys are skipped and named, as in Git mode |
-| Folders and linked keys | `web/src/routes/CatalogueManageDialog.tsx` | create, rename, delete |
-| Key declaration detail | `web/src/routes/KeyDeclarationDetail.tsx` | every editor; the panel says the caller lacks permission |
+| Folders and linked keys | `web/src/routes/CatalogueManageDialog.tsx` | linked-key set delete; everything else follows `can_edit_definitions` |
+| Key declaration detail | `web/src/routes/KeyDeclarationDetail.tsx` | every editor except metadata, which follows `can_edit_definitions`; the panel says which permission is missing |
 
 ## Behaviour change to know about
 
@@ -56,13 +67,6 @@ An absent or failed settings read used to leave declaration AVAILABLE, so that a
 failed read never fabricated Git mode. The Git notice still follows that rule.
 The declare actions now follow the opposite default: they appear only once the
 server has said the caller may declare.
-
-## Known ceiling
-
-One flag covers every declaration edit. Folder edits, rename and metadata edits
-need only `definitions-edit`, so a caller who holds it without `publish` on every
-environment is also refused those in the UI, though the server would allow them.
-Split the flag if that combination turns out to matter.
 
 ## Sensitivity inventory
 
@@ -74,8 +78,8 @@ no mutation surface, cache boundary or plaintext ownership changed.
 
 - `internal/conformance/catalogue_test.go`, `scenarioCanDeclareKeys`: reader,
   publisher, maintainer missing `publish` on one environment, and full
-  maintainer. Asserts the flag AND that the create agrees with it (refusals are
-  `ErrNotFound`).
+  maintainer. Asserts both flags AND that a key create and a folder create
+  agree with them (refusals are `ErrNotFound`).
 - `web/src/routes/Matrix.git-managed.test.tsx`: declare actions withdrawn when
   the flag is false, without the Git notice.
 - `web/src/routes/KeyDeclarationDetail.test.tsx`: editors withheld and the
