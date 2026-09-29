@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -276,6 +277,14 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		if widening.Count != 2 || widening.Principals != nil || strings.Contains(widening.SafeDetail(), string(carol)) {
 			t.Fatalf("a non-member-manager was told %+v (%q), want only the count 2", widening, widening.SafeDetail())
 		}
+		// Resending the exact set learned elsewhere does not let a
+		// non-member-manager confirm: only the count comes back.
+		if err := move(carol, erin); !errors.As(err, &widening) || widening.Principals != nil {
+			t.Fatalf("a non-member-manager confirmed a widening move: %v", err)
+		}
+		if _, err := f.values.Get(t.Context(), service.LocalPrincipal(carol), dev, "STRIPE_KEY", true); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("a non-member-manager's confirmation still widened: %v", err)
+		}
 		// With manage-members on the project the same refusal names them.
 		grantCustodianMemberManagement(t, db)
 		if err := move(); !errors.As(err, &widening) || !errors.Is(err, domain.ErrConflict) {
@@ -401,9 +410,18 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 			t.Fatalf("apply refusal told a non-member-manager %+v, want only the count 1", widening)
 		}
 		before := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.move_widening_confirmed'")
+		// alice was told only the count: the exact set, learned elsewhere,
+		// does not let her confirm.
+		if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), df.scope(), plan.ID,
+			service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{grantee}}); !errors.As(err, &widening) || widening.Principals != nil {
+			t.Fatalf("a non-member-manager confirmed a widening apply: %v", err)
+		}
+		// With legacy manage-members on the project she may confirm.
+		execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm_move', '%s', 'manage-members', 'org_a', '%s', NULL, %s)", alice, df.project, ts))
+		seedOrigins(t, db)
 		if _, err := svc.Apply(t.Context(), service.LocalPrincipal(alice), df.scope(), plan.ID,
 			service.ApplyOptions{ConfirmWidening: []domain.PrincipalID{grantee}}); err != nil {
-			t.Fatalf("confirmed apply: %v", err)
+			t.Fatalf("confirmed apply by a member manager: %v", err)
 		}
 		if after := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'rule.move_widening_confirmed'"); after != before+1 {
 			t.Fatalf("apply confirmation audited %d times, want 1", after-before)

@@ -663,6 +663,11 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 	if !slices.Equal(slices.Compact(want), gainedPrincipals(union)) {
 		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
 	}
+	if ok, err := mayConfirmWidening(ctx, az, caller.Principal, scope); err != nil {
+		return err
+	} else if !ok {
+		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
+	}
 	for _, m := range moves {
 		if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, m.id, m.from, m.to, m.gains, gainedPrincipals(m.gains)); err != nil {
 			return err

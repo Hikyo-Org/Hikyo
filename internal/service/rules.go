@@ -105,6 +105,18 @@ func moveWideningError(ctx context.Context, az *authz.TxAuthorizer, caller domai
 	return e
 }
 
+// mayConfirmWidening reports whether caller may confirm a widening move in
+// scope's project: only a holder of legacy manage-members on the project, the
+// same people the refusal names the gainers to. Anyone else learns only the
+// count and cannot confirm, even by resending ids learned elsewhere.
+func mayConfirmWidening(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, scope domain.Scope) (bool, error) {
+	rows, err := az.GrantRowsForPrincipal(ctx, caller)
+	if err != nil {
+		return false, err
+	}
+	return holds(rows, domain.CapManageMembers, domain.Scope{Org: scope.Org, Project: scope.Project}), nil
+}
+
 // gainedPrincipals is the sorted set of people gains name.
 func gainedPrincipals(gains []WideningGain) []domain.PrincipalID {
 	var out []domain.PrincipalID
@@ -668,6 +680,11 @@ func confirmMoveWidening(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	slices.Sort(want)
 	want = slices.Compact(want)
 	if !slices.Equal(want, gained) {
+		return moveWideningError(ctx, az, actor, scope, keyID, gains)
+	}
+	if ok, err := mayConfirmWidening(ctx, az, actor, scope); err != nil {
+		return err
+	} else if !ok {
 		return moveWideningError(ctx, az, actor, scope, keyID, gains)
 	}
 	names := make([]string, 0, len(gained))

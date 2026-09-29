@@ -204,6 +204,9 @@ this slice is narrower than D1 to D11:
 - **No "all projects" on rules** in this slice; a rule names its projects.
 - **The move-widening confirmation (D9)** counts gains through rules only (legacy grants are
   folder-blind), so it may name someone who already had access through a grant, never fewer people.
+  Only a holder of legacy `manage-members` on the project is told who gains and may confirm; anyone
+  else learns the count and cannot confirm, even with the exact set. A machine plan therefore cannot
+  commit a widening move; a member manager has to.
 - **Resolver (D10)** answers in the web client over the org's grants, rules and key catalogue; a
   server-side resolver operation is owed.
 
