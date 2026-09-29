@@ -252,7 +252,8 @@ function FolderRow({
         >
           Rename
         </Button>
-        {confirming ? (
+        {/* A gate that closes mid-confirmation withdraws the confirmation too. */}
+        {confirming && !readOnly ? (
           <Button
             type="button"
             variant="danger"
@@ -394,7 +395,7 @@ function GroupRow({
         >
           Rename
         </Button>
-        {confirming ? (
+        {confirming && canDelete ? (
           <Button
             type="button"
             variant="danger"
