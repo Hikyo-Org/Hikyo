@@ -90,9 +90,9 @@ export function ScanWarnDialog({
   };
 
   const reclassify = (): void => {
+    if (onReclassify === undefined) return;
     setBusy('reclassify');
     setError(null);
-    if (onReclassify === undefined) return;
     void onReclassify()
       .then(() => onClose())
       .catch(() => setError('Reclassifying this key as secret failed. Try again.'))

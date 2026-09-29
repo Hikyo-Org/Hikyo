@@ -52,4 +52,23 @@ describe('ScanWarnDialog', () => {
     expect(labels).toEqual(['Keep as config', 'Close', 'Reclassify API_KEY as secret']);
     await act(async () => root.unmount());
   });
+
+  it('offers no reclassify action to a caller who may not edit declarations', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <ScanWarnDialog
+          keyName="API_KEY"
+          items={[item]}
+          onDismiss={vi.fn().mockResolvedValue([])}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+    const labels = [...container.querySelectorAll('button')].map((node) => node.textContent);
+    expect(labels).toEqual(['Keep as config', 'Close']);
+    await act(async () => root.unmount());
+  });
 });

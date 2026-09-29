@@ -59,7 +59,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-async function render(gitManaged = false) {
+async function render(gitManaged = false, canDeclareKeys = !gitManaged) {
   const onClose = vi.fn();
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -70,7 +70,7 @@ async function render(gitManaged = false) {
         matrixRef={{ org: 'acme', project: 'app' }}
         environments={environments}
         gitManaged={gitManaged}
-        canDeclareKeys={!gitManaged}
+        canDeclareKeys={canDeclareKeys}
         onClose={onClose}
       />,
     );
@@ -237,6 +237,26 @@ describe('ImportWizard refusals', () => {
     await reachReview(container);
     await click(button(container, 'Import'));
     expect(container.textContent).toContain('moved before this import ran');
+  });
+});
+
+describe('ImportWizard without permission to declare', () => {
+  it('skips new-key declaration, says why, and never blames Git', async () => {
+    importValues.mockResolvedValue({ imported: ['EXISTING'], skipped: [] });
+    const { container } = await render(false, false);
+    await pickDotenv(container);
+    await selectFile(container, FILE);
+    await click(button(container, 'Review'));
+    expect(container.textContent).toContain('cannot be declared here');
+    expect(container.textContent).toContain(
+      'You do not have permission to declare keys in this project.',
+    );
+    expect(container.textContent).not.toContain('managed in Git');
+    await click(button(container, 'Review changes'));
+    await click(button(container, 'Import'));
+    expect(createKey).not.toHaveBeenCalled();
+    const sent = importValues.mock.calls[0]?.[0];
+    expect(sent.entries.map((entry: { key: string }) => entry.key)).toEqual(['EXISTING']);
   });
 });
 

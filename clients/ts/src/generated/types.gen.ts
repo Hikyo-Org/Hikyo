@@ -2910,11 +2910,11 @@ export type DefinitionsSettings = {
     definitions_source: 'db' | 'git';
     last_apply?: DefinitionsLastApply;
     /**
-     * Whether THE CALLER would pass a key or key-group declaration in this
-     * project right now: `definitions-edit` on the project AND `publish`
-     * on every one of its environments, because a declaration fans a
-     * schema publish out to each. A UI affordance, never an
-     * authorization decision: a refused declaration is still 404.
+     * Whether THE CALLER would pass a key declaration in this project
+     * right now: `definitions-edit` on the project AND `publish` on every
+     * one of its environments, because a declaration fans a schema
+     * publish out to each. A UI affordance, never an authorization
+     * decision: a refused declaration is still 404.
      * Independent of `definitions_source`.
      *
      */

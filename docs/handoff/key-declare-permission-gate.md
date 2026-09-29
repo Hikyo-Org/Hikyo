@@ -43,6 +43,9 @@ Which edit needs which flag follows from whether the service call ends in
 | key create, rename, value rules and presence, reclassify, set linked-key set, delete; linked-key set delete | folder create, rename, delete; linked-key set create and rename; key metadata (folder, description, deprecation) |
 
 Both are set on `GetSettings` only.
+
+Supporting changes:
+
 - `internal/authz/registry.go`: `OpDefinitionsSettingsGet` gained
   `StoreEnvironmentsList` for that enumeration.
 - Generated code refreshed: `api/apigen`, `clients/ts/src/generated`.
@@ -83,4 +86,27 @@ no mutation surface, cache boundary or plaintext ownership changed.
 - `web/src/routes/Matrix.git-managed.test.tsx`: declare actions withdrawn when
   the flag is false, without the Git notice.
 - `web/src/routes/KeyDeclarationDetail.test.tsx`: editors withheld and the
-  permission sentence shown.
+  permission sentence shown; metadata editor kept for `can_edit_definitions`.
+- `web/src/routes/ImportWizard.test.tsx`: new keys skipped with the permission
+  sentence and no Git notice.
+- `web/src/routes/ScanWarnDialog.test.tsx`: no reclassify action without the
+  callback.
+- `web/src/routes/CatalogueManageDialog.test.tsx`: a pending folder or
+  linked-key set delete confirmation is withdrawn when its gate closes.
+
+## Review record
+
+- CodeRabbit: three findings over three rounds (username in this document,
+  one flag over-hiding folder edits, confirmation outliving its gate), all
+  fixed; approved on the fixed head.
+- Cross-provider adversarial review: skipped by owner decision. Not run, so
+  not CLEAN.
+- Browser verification: there is no per-PR preview environment, so the check
+  is the Playwright flow `declare-gate` in `web/e2e/flows/matrix.spec.ts`,
+  run against the real binary on desktop and mobile. A user holding the
+  `publisher` template sees the matrix without "+ New key" and "+ Key"; the
+  administrator sees both. The flow fails when the gate is removed from
+  `Matrix.tsx`.
+- Readiness probe (advisory): nearly ready, risk area authorization. Its
+  untested-logic signal was real and is closed by the import wizard and scan
+  warning tests.

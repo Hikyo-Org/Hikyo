@@ -162,7 +162,7 @@ type DefinitionsSettings struct {
 	CanEditDefinitions *bool
 }
 
-// callerCanDeclareKeys answers what a key or key-group declaration would: the
+// callerCanDeclareKeys answers what a key declaration would: the
 // operation's own formula, then `publish` on every environment the schema
 // fan-out republishes (fanOutSchemaPublish). Offering the action on the first
 // half alone hands a refusal to a principal who holds `definitions-edit` but

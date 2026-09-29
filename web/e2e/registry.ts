@@ -87,6 +87,10 @@ export const FLOWS: readonly Flow[] = [
   // reaches the DOM or the console. It claims `matrix` too: a surface may carry
   // more than one flow, and the run log holds each flow's claim independently.
   { id: 'scanning', spec: 'flows/scanning.spec.ts', surfaces: ['matrix'] },
+  // The key-declaration permission gate (can_declare_keys) rides the matrix
+  // spec for the same base-branch `ci.yml` reason as the entries around it, and
+  // claims `matrix`, the surface whose declare affordances it gates.
+  { id: 'declare-gate', spec: 'flows/matrix.spec.ts', surfaces: ['matrix'] },
   { id: 'history', spec: 'flows/history.spec.ts', surfaces: ['history'] },
   // The catalogue declaration detail (#491) rides the matrix spec. It is a new
   // SURFACE, so the S3 closure demands a flow, but it cannot get its own spec
