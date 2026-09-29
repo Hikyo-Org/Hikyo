@@ -598,6 +598,10 @@ func runRuleAuditLifecycle(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	open := "open"
+	// Only a member manager may confirm a widening move: alice gets legacy
+	// manage-members on the project for this step.
+	execRaw(t, db, fmt.Sprintf("INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_alice_mm_audit', '%s', 'manage-members', 'org_a', '%s', NULL, %s)", alice, prjA2, ts))
+	seedOrigins(t, db)
 	if _, err := keys.UpdateMetadata(t.Context(), service.LocalPrincipal(alice), project, key.ID,
 		service.KeyMetadataUpdate{FolderPath: &open, ConfirmWidening: []domain.PrincipalID{grantee}}, nil); err != nil {
 		t.Fatal(err)
