@@ -5804,7 +5804,7 @@ type CreateProjectRequest struct {
 // CreateRuleRequest defines model for CreateRuleRequest.
 type CreateRuleRequest struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
-	// ADR D2). `read` and `pin` cannot be narrowed by keys;
+	// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
 	// `manage-identities`, `manage-adapters` and `project-settings` need a
 	// whole project. `manage-members` is stored but grants nothing until
 	// delegation containment exists.
@@ -9265,7 +9265,7 @@ type RotateSSHCARequest struct {
 // Rule defines model for Rule.
 type Rule struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
-	// ADR D2). `read` and `pin` cannot be narrowed by keys;
+	// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
 	// `manage-identities`, `manage-adapters` and `project-settings` need a
 	// whole project. `manage-members` is stored but grants nothing until
 	// delegation containment exists.
@@ -9301,7 +9301,7 @@ type Rule struct {
 type RuleAxisMode string
 
 // RuleCapability The capabilities a member access rule may carry (member-access-rules
-// ADR D2). `read` and `pin` cannot be narrowed by keys;
+// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
 // `manage-identities`, `manage-adapters` and `project-settings` need a
 // whole project. `manage-members` is stored but grants nothing until
 // delegation containment exists.
@@ -11010,7 +11010,7 @@ type WhoAmI struct {
 // WideningGainer defines model for WideningGainer.
 type WideningGainer struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
-	// ADR D2). `read` and `pin` cannot be narrowed by keys;
+	// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
 	// `manage-identities`, `manage-adapters` and `project-settings` need a
 	// whole project. `manage-members` is stored but grants nothing until
 	// delegation containment exists.

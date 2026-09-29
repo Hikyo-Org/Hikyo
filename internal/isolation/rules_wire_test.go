@@ -59,7 +59,7 @@ func runRuleWire(t *testing.T, db *store.DB) {
 
 	// Revoke works: a second rule created and revoked leaves the first alone.
 	second := body
-	second.Capability = apigen.RuleCapabilityPublish
+	second.Capability = apigen.RuleCapabilityRevealHistory
 	code, raw = e.call(t, http.MethodPost, org+"/rules", second)
 	var doomed apigen.Rule
 	if code != http.StatusCreated || json.Unmarshal(raw, &doomed) != nil {

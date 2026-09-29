@@ -114,7 +114,7 @@ export function ruleRows(): RuleRow[] {
   const all = () => ({ mode: 'all' as const, items: [] });
   return [
     ...rule(IDS.alice, ['read', 'edit', 'publish', 'pin'], { projects: [pay], environments: all(), keys: all() }),
-    ...rule(IDS.alice, ['edit', 'publish', 'reveal', 'definitions-edit', 'manage-members'], {
+    ...rule(IDS.alice, ['edit', 'reveal', 'definitions-edit', 'manage-members'], {
       projects: [pay],
       environments: { mode: 'only', items: [env(pay, IDS.payStaging), env(pay, IDS.payProd)] },
       keys: { mode: 'only', items: [{ project: pay, folder: 'db' }] },

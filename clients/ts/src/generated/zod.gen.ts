@@ -2474,7 +2474,7 @@ export const zCreateGrantRequest = z.object({
 
 /**
  * The capabilities a member access rule may carry (member-access-rules
- * ADR D2). `read` and `pin` cannot be narrowed by keys;
+ * ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
  * `manage-identities`, `manage-adapters` and `project-settings` need a
  * whole project. `manage-members` is stored but grants nothing until
  * delegation containment exists.

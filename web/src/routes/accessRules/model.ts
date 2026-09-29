@@ -41,7 +41,7 @@ export type Perm = {
 export const PERMS: readonly Perm[] = [
   { id: 'read', label: 'See', desc: 'Key names, descriptions, schemas, validation, and config (non-secret) values. Secret values stay masked.', group: 'Values', shape: 'env' },
   { id: 'edit', label: 'Edit', desc: 'Change values as a draft. A draft does nothing until someone publishes it.', group: 'Values', shape: 'key' },
-  { id: 'publish', label: 'Publish', desc: 'Make drafts live, and roll back to an earlier revision.', group: 'Values', shape: 'key' },
+  { id: 'publish', label: 'Publish', desc: 'Make drafts live, and roll back to an earlier revision.', group: 'Values', shape: 'env' },
   { id: 'pin', label: 'Pin', desc: 'Hold workloads on a specific revision of an environment.', group: 'Values', shape: 'env' },
   { id: 'reveal', label: 'Reveal', desc: 'Show current secret values. Asks you to confirm it is you first. Needs See as well.', group: 'Secrets', shape: 'key' },
   { id: 'reveal-history', label: 'Reveal history', desc: 'Show old (replaced) secret values. Needs See as well.', group: 'Secrets', shape: 'key' },
@@ -201,12 +201,12 @@ export function presetOf(rule: Pick<Rule, 'perms' | 'envs' | 'keys'>): string | 
 /**
  * The permissions some operation checks against ONE key, so a key-narrowed rule
  * can satisfy them: single-value reveal (read and reveal, but read is never
- * key-narrowed), staging and setting one value (edit, publish) and key create,
- * rename, move and delete (definitions-edit). Everything else (bulk reveal,
- * history, pins, publish of a revision) names no key and is out of a
- * key-narrowed rule's reach.
+ * key-narrowed), staging one value (edit) and key create, rename, move and
+ * delete (definitions-edit). Everything else (bulk reveal, history, pins, and
+ * publishing, which is environment-wide in this slice) names no key and is out
+ * of a key-narrowed rule's reach.
  */
-const KEY_AWARE: ReadonlySet<PermId> = new Set(['reveal', 'edit', 'publish', 'definitions-edit']);
+const KEY_AWARE: ReadonlySet<PermId> = new Set(['reveal', 'edit', 'definitions-edit']);
 
 /** The level the server evaluates a permission at: key operations need the whole project for Define keys. */
 const atProject = (id: PermId) => id === 'definitions-edit' || perm(id).shape === 'project';

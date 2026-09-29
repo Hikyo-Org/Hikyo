@@ -480,7 +480,7 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 		onlyKey := f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapEdit, Org: orgA,
 			Where: whereIn(domain.AxisAll, nil, domain.AxisOnly, domain.RuleKeyItem{KeyID: tmp.ID})})
-		exceptKey := f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapPublish, Org: orgA,
+		exceptKey := f.create(t, orgAdmin, service.RuleSpec{Target: gina, Capability: domain.CapRevealHistory, Org: orgA,
 			Where: whereIn(domain.AxisAll, nil, domain.AxisAll, domain.RuleKeyItem{KeyID: tmp.ID}, folderItem("db"))})
 		if err := f.keys.Delete(t.Context(), service.LocalPrincipal(custodian), project, tmp.ID); err != nil {
 			t.Fatalf("delete key: %v", err)

@@ -56,7 +56,11 @@ describe('the vocabulary', () => {
     expect(admin?.perms.some((id) => perm(id).group === 'Secrets')).toBe(false);
   });
 
-  it('holds exactly the shapes the server refuses: See and Pin need all keys, three need a whole project', () => {
+  it('Publish needs all keys: publishing is environment-wide in this slice, so a key-narrowed Publish could never take effect', () => {
+    expect(perm('publish').shape).toBe('env');
+  });
+
+  it('holds the shapes the server refuses, plus Publish: See, Pin and Publish need all keys, three need a whole project', () => {
     const keyNarrowed = { envs: ALL, keys: { mode: 'only' as const, items: [{ project: PAY, folder: 'db' }] } };
     const envNarrowed = { envs: { mode: 'only' as const, items: [{ project: PAY, environment: PROD }] }, keys: ALL };
     for (const p of PERMS) {
@@ -78,7 +82,7 @@ describe('from the listings', () => {
     const alice = rulesOf(world, IDS.alice);
     expect(alice.map((r) => r.perms)).toEqual([
       ['read', 'edit', 'publish', 'pin'],
-      ['edit', 'publish', 'reveal', 'definitions-edit', 'manage-members'],
+      ['edit', 'reveal', 'definitions-edit', 'manage-members'],
     ]);
     const [first] = alice;
     expect(first?.source.kind === 'rule' ? first.source.parts.length : 0).toBe(4);

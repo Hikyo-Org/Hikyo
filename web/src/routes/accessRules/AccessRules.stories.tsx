@@ -124,7 +124,7 @@ export const EditorFolderRule: Story = {
     await expect(dialog.getAllByText(/Manage projects needs all projects/).length).toBeGreaterThan(0);
     // Manage access is kept, and says it gives nothing yet.
     await expect(dialog.getByRole('checkbox', { name: 'Manage access' })).toHaveAccessibleDescription(/gives nothing yet/);
-    await expect(dialog.getByText(/Left out until Where is wider: See, Pin, Manage machines/)).toBeVisible();
+    await expect(dialog.getByText(/Left out until Where is wider: See, Publish, Pin, Manage machines/)).toBeVisible();
     const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
     await expect(saves.getByText('Define keys')).toBeVisible();
     await expect(saves.getByText(/only db\//)).toBeVisible();

@@ -198,7 +198,7 @@ this slice is narrower than D1 to D11:
   created later are included. **Folders bind by path:** an "Only…" folder pick matches keys in exactly
   that folder, while an except covers the folder and every folder below it (both directions fail
   closed). A folder rename therefore narrows folder picks (the open point below).
-- **Publishing stays environment-wide:** a key-narrowed rule never satisfies publish, and a folder-scoped
+- **Publishing stays environment-wide:** a rule carrying Publish cannot be narrowed by keys (refused on write), and a folder-scoped
   Define keys rule cannot yet create or delete keys in a project that has environments unless publish is
   held environment-wide.
 - **No "all projects" on rules** in this slice; a rule names its projects.

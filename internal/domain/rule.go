@@ -88,7 +88,7 @@ const (
 var ruleShapes = map[Capability]RuleShape{
 	CapRead:             ShapeEnv,
 	CapEdit:             ShapeKey,
-	CapPublish:          ShapeKey,
+	CapPublish:          ShapeEnv, // publishing is environment-wide; a key-narrowed publish could never take effect
 	CapPin:              ShapeEnv,
 	CapReveal:           ShapeKey,
 	CapRevealHistory:    ShapeKey,
