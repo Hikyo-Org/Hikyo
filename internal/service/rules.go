@@ -38,13 +38,24 @@ var (
 // (ADR D9). It is a conflict: the caller is authorized, the resulting state
 // needs their consent.
 //
-// Who gains is administrative information: Principals is set only when the
-// caller holds legacy manage-members on the project (the audience of the rule
-// listing). Anyone else learns only Count, and cannot confirm the move.
+// Who gains is administrative information: Principals and Gains are set only
+// when the caller holds legacy manage-members on the project (the audience of
+// the rule listing). Anyone else learns only Count, and cannot confirm the
+// move.
 type MoveWideningError struct {
 	KeyID      string
 	Count      int
 	Principals []domain.PrincipalID
+	Gains      []WideningGain
+}
+
+// WideningGain is one capability a person gains on the moved key, with the
+// environments it newly reaches (empty for a project-wide atom only).
+type WideningGain struct {
+	Principal  domain.PrincipalID
+	Name       string
+	Capability domain.Capability
+	Envs       []domain.EnvID
 }
 
 func (e *MoveWideningError) Error() string {
@@ -65,20 +76,70 @@ func (e *MoveWideningError) SafeDetail() string {
 	return fmt.Sprintf("moving key %s widens access for %s; confirm naming exactly them", e.KeyID, strings.Join(ids, ", "))
 }
 
-// moveWideningError builds the refusal for gained, naming them only to a
+// Widening is the structured half of the refusal the transport renders; nil
+// unless the gainers were disclosed.
+func (e *MoveWideningError) Widening() (count int, gains []WideningGain) { return e.Count, e.Gains }
+
+// moveWideningError builds the refusal for gains, naming the people only to a
 // caller holding legacy manage-members on the project. The grant read happens
 // only on this refusal path.
 func moveWideningError(ctx context.Context, az *authz.TxAuthorizer, caller domain.PrincipalID, scope domain.Scope,
-	keyID string, gained []domain.PrincipalID) error {
+	keyID string, gains []WideningGain) error {
 	rows, err := az.GrantRowsForPrincipal(ctx, caller)
 	if err != nil {
 		return err
 	}
+	gained := gainedPrincipals(gains)
 	e := &MoveWideningError{KeyID: keyID, Count: len(gained)}
-	if holds(rows, domain.CapManageMembers, domain.Scope{Org: scope.Org, Project: scope.Project}) {
-		e.Principals = gained
+	if !holds(rows, domain.CapManageMembers, domain.Scope{Org: scope.Org, Project: scope.Project}) {
+		return e
+	}
+	names := newPrincipalNames()
+	e.Principals = gained
+	for _, g := range gains {
+		if g.Name, err = names.get(ctx, az, g.Principal); err != nil {
+			return err
+		}
+		e.Gains = append(e.Gains, g)
 	}
 	return e
+}
+
+// gainedPrincipals is the sorted set of people gains name.
+func gainedPrincipals(gains []WideningGain) []domain.PrincipalID {
+	var out []domain.PrincipalID
+	for _, g := range gains {
+		if !slices.Contains(out, g.Principal) {
+			out = append(out, g.Principal)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// mergeGains unions b into a per (principal, capability), keeping the order
+// moveWidening produces.
+func mergeGains(a, b []WideningGain) []WideningGain {
+	for _, g := range b {
+		i := slices.IndexFunc(a, func(x WideningGain) bool { return x.Principal == g.Principal && x.Capability == g.Capability })
+		if i < 0 {
+			a = append(a, WideningGain{Principal: g.Principal, Capability: g.Capability, Envs: slices.Clone(g.Envs)})
+			continue
+		}
+		for _, env := range g.Envs {
+			if !slices.Contains(a[i].Envs, env) {
+				a[i].Envs = append(a[i].Envs, env)
+			}
+		}
+		slices.Sort(a[i].Envs)
+	}
+	slices.SortFunc(a, func(x, y WideningGain) int {
+		if c := strings.Compare(string(x.Principal), string(y.Principal)); c != 0 {
+			return c
+		}
+		return strings.Compare(string(x.Capability), string(y.Capability))
+	})
+	return a
 }
 
 // MaxRulesPerOrg is the loud sanity cap on rule rows per organization,
@@ -106,21 +167,21 @@ type RuleSpec struct {
 // a capability it holds (as a grant) on each of those whole projects. Rules
 // never satisfy manage-members, so rule-based member management grants
 // nothing and never counts in the lockout census.
-func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (string, error) {
+func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleView, error) {
 	rule := domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
 	if err := rule.Validate(); err != nil {
-		return "", err
+		return RuleView{}, err
 	}
 	for _, items := range spec.Where.Keys {
 		for _, it := range items {
 			if it.IsFolder {
 				if err := checkKeyFolderPath(it.Folder); err != nil {
-					return "", err
+					return RuleView{}, err
 				}
 			}
 		}
 	}
-	var out string
+	var out RuleView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		first := domain.Scope{Org: spec.Org, Project: spec.Where.Projects[0]}
@@ -195,8 +256,88 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (string,
 		if err != nil {
 			return err
 		}
-		out = id
+		name, err := newPrincipalNames().get(ctx, az, spec.Target)
+		if err != nil {
+			return err
+		}
+		out = RuleView{ID: id, Principal: spec.Target, PrincipalName: name, Capability: spec.Capability,
+			Org: spec.Org, Where: rule.Where, CreatedBy: caller.Principal, CreatedAt: now}
 		return r.Audit().InsertTenant(ctx, p, ev)
+	})
+	return out, err
+}
+
+// RuleView is one rule on the listing surface. On a project listing Where
+// holds only the addressed project's part and OtherProjects reports that the
+// rule also names projects the listing does not show. Environments and keys
+// are ids (and folder paths): their names need `read`, which a member manager
+// may not hold.
+type RuleView struct {
+	ID            string
+	Principal     domain.PrincipalID
+	PrincipalName string
+	Capability    domain.Capability
+	Org           domain.OrgID
+	Where         domain.Where
+	OtherProjects bool
+	CreatedBy     domain.PrincipalID
+	CreatedAt     time.Time
+}
+
+// ruleListOps is the rule listing's operation per addressed depth, mirroring
+// the grant listing.
+var ruleListOps = map[domain.Level]authz.Operation{
+	domain.LevelOrg:     authz.OpRuleListOrg,
+	domain.LevelProject: authz.OpRuleListProject,
+}
+
+// List returns the rules in the addressed org, or those naming the addressed
+// project (reading only that project's items), audited as a membership read
+// like the grant listing.
+func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]RuleView, error) {
+	level, err := scope.Level()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalid, err)
+	}
+	op, ok := ruleListOps[level]
+	if !ok {
+		return nil, fmt.Errorf("%w: rules are listed at org or project scope", domain.ErrInvalid)
+	}
+	var out []RuleView
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		caller, p, err := authorize(ctx, az, actor, op, scope, s.now())
+		if err != nil {
+			return err
+		}
+		var lines []authz.RuleLine
+		if level == domain.LevelProject {
+			lines, err = az.RuleLinesInProject(ctx, scope)
+		} else {
+			lines, err = az.RuleLinesInOrg(ctx, scope.Org)
+		}
+		if err != nil {
+			return err
+		}
+		names := newPrincipalNames()
+		out = make([]RuleView, 0, len(lines))
+		for _, line := range lines {
+			name, err := names.get(ctx, az, line.Principal)
+			if err != nil {
+				return err
+			}
+			where := whereFromItems(line.Items)
+			where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
+			out = append(out, RuleView{
+				ID: line.ID, Principal: line.Principal, PrincipalName: name, Capability: line.Capability,
+				Org: scope.Org, Where: where, OtherProjects: line.OtherProjects,
+				CreatedBy: line.CreatedBy, CreatedAt: line.CreatedAt,
+			})
+		}
+		return insertGrantEvent(ctx, r, p, caller.Principal, level, grantEventInput{
+			typ:     audit.EventGrantMembershipRead,
+			object:  audit.Object{Type: "scope", ID: renderScope(scope)},
+			payload: audit.Payload{"scope": renderScope(scope), "row_count": len(out)},
+		})
 	})
 	return out, err
 }
@@ -465,11 +606,11 @@ var moveWideningCaps = []domain.Capability{
 	domain.CapEdit, domain.CapPublish, domain.CapReveal, domain.CapRevealHistory, domain.CapDefinitionsEdit,
 }
 
-// moveWidening computes, inside the moving transaction, the principals who
-// gain any capability on the key in any environment through their RULES when
-// it moves from one folder to another (ADR D9). Legacy grants are folder-blind
-// and cannot change with a move, so only rules are consulted.
-func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scope, envIDs []string, keyID, from, to string) ([]domain.PrincipalID, error) {
+// moveWidening computes, inside the moving transaction, what people gain on
+// the key through their RULES when it moves from one folder to another (ADR
+// D9): each capability with the environments it newly reaches. Legacy grants
+// are folder-blind and cannot change with a move, so only rules are consulted.
+func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scope, envIDs []string, keyID, from, to string) ([]WideningGain, error) {
 	if from == to {
 		return nil, nil
 	}
@@ -477,18 +618,23 @@ func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scop
 	if err != nil {
 		return nil, err
 	}
-	reach := func(folder string) map[string]bool {
-		out := map[string]bool{}
+	type atom struct {
+		principal  domain.PrincipalID
+		capability domain.Capability
+		env        domain.EnvID // "" for the project-wide atom
+	}
+	reach := func(folder string) map[atom]bool {
+		out := map[atom]bool{}
 		key := &domain.RuleKey{ID: keyID, Folder: folder}
 		for _, rule := range rules {
 			for _, c := range moveWideningCaps {
 				if rule.Reaches(c, domain.LevelProject, domain.Scope{Org: scope.Org, Project: scope.Project}, key) {
-					out[string(rule.Principal)+"|"+string(c)+"|*"] = true
+					out[atom{rule.Principal, c, ""}] = true
 				}
 				for _, env := range envIDs {
 					s := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(env)}
 					if rule.Reaches(c, domain.LevelEnv, s, key) {
-						out[string(rule.Principal)+"|"+string(c)+"|"+env] = true
+						out[atom{rule.Principal, c, domain.EnvID(env)}] = true
 					}
 				}
 			}
@@ -496,24 +642,25 @@ func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scop
 		return out
 	}
 	before, after := reach(from), reach(to)
-	var gained []domain.PrincipalID
-	for entry := range after {
-		if before[entry] {
+	var gains []WideningGain
+	for a := range after {
+		if before[a] {
 			continue
 		}
-		p := domain.PrincipalID(strings.SplitN(entry, "|", 2)[0])
-		if !slices.Contains(gained, p) {
-			gained = append(gained, p)
+		g := WideningGain{Principal: a.principal, Capability: a.capability}
+		if a.env != "" {
+			g.Envs = []domain.EnvID{a.env}
 		}
+		gains = mergeGains(gains, []WideningGain{g})
 	}
-	slices.Sort(gained)
-	return gained, nil
+	return gains, nil
 }
 
 // confirmMoveWidening refuses a widening move unless the confirmation names
 // exactly the gaining set, and records the confirmed set when it does.
 func confirmMoveWidening(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, actor domain.PrincipalID,
-	scope domain.Scope, keyID, from, to string, gained, confirmed []domain.PrincipalID) error {
+	scope domain.Scope, keyID, from, to string, gains []WideningGain, confirmed []domain.PrincipalID) error {
+	gained := gainedPrincipals(gains)
 	if len(gained) == 0 {
 		return nil
 	}
@@ -521,7 +668,7 @@ func confirmMoveWidening(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	slices.Sort(want)
 	want = slices.Compact(want)
 	if !slices.Equal(want, gained) {
-		return moveWideningError(ctx, az, actor, scope, keyID, gained)
+		return moveWideningError(ctx, az, actor, scope, keyID, gains)
 	}
 	names := make([]string, 0, len(gained))
 	for _, g := range gained {

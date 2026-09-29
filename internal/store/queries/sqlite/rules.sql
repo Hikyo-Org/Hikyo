@@ -129,3 +129,34 @@ WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) AND id = s
 -- name: ResolveKeyByName :one
 SELECT id, folder_path FROM keys
 WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id) AND name = sqlc.arg(name);
+
+-- The rule listing (the rules half of the membership surface), ungated like
+-- the grant listing: a member manager sees every stored rule in the org.
+-- hikyo:authn-resolution
+-- name: ListRuleLinesInOrg :many
+SELECT r.id, r.principal_id, r.capability, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  i.axis, i.project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = sqlc.arg(org_id)
+ORDER BY r.id, i.id;
+
+-- The project rule listing. A project member manager authorizes for ONE
+-- project, so only that project's items are read (never a sibling project's
+-- environments, keys or folders); other_items counts, without naming, the
+-- items a rule holds elsewhere so the listing can say the rule spans more.
+-- hikyo:authn-resolution
+-- name: ListRuleLinesInProject :many
+SELECT r.id, r.principal_id, r.capability, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  i.axis, i.project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path,
+  (SELECT COUNT(*) FROM rule_items AS o WHERE o.rule_id = r.id AND o.project_id <> sqlc.arg(project_id)) AS other_items
+FROM rules AS r
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = sqlc.arg(org_id) AND i.org_id = sqlc.arg(org_id) AND i.project_id = sqlc.arg(project_id)
+ORDER BY r.id, i.id;

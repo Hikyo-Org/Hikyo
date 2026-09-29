@@ -161,6 +161,8 @@ type API struct {
 	Reveal       RevealService
 	KeyGroups    KeyGroupService
 	Grants       GrantService
+	// Rules is the member access rule surface (member-access-rules ADR).
+	Rules RuleService
 	// Registration is the registration policy surface (#606) and the public
 	// sign-up door `/auth/methods` renders.
 	Registration    RegistrationService

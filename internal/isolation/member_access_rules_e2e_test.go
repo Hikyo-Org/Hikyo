@@ -77,11 +77,11 @@ func onlyEnvs(envs ...domain.EnvID) (domain.AxisMode, map[domain.ProjectID][]dom
 
 func (f rulesFixture) create(t *testing.T, by domain.PrincipalID, spec service.RuleSpec) string {
 	t.Helper()
-	id, err := f.rules.Create(t.Context(), service.LocalPrincipal(by), spec)
+	view, err := f.rules.Create(t.Context(), service.LocalPrincipal(by), spec)
 	if err != nil {
 		t.Fatalf("create rule %+v: %v", spec, err)
 	}
-	return id
+	return view.ID
 }
 
 func whereIn(envMode domain.AxisMode, envs map[domain.ProjectID][]domain.EnvID, keyMode domain.AxisMode, keys ...domain.RuleKeyItem) domain.Where {
@@ -571,7 +571,7 @@ func runRuleAuditLifecycle(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), service.RuleSpec{
+	created, err := rules.Create(t.Context(), service.LocalPrincipal(orgAdmin), service.RuleSpec{
 		Target: grantee, Capability: domain.CapEdit, Org: orgA,
 		Where: domain.Where{Projects: []domain.ProjectID{prjA2}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll,
 			Keys: map[domain.ProjectID][]domain.RuleKeyItem{prjA2: {folderItem("fenced")}}},
@@ -584,7 +584,7 @@ func runRuleAuditLifecycle(t *testing.T, db *store.DB) {
 		service.KeyMetadataUpdate{FolderPath: &open, ConfirmWidening: []domain.PrincipalID{grantee}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, id); err != nil {
+	if err := rules.Revoke(t.Context(), service.LocalPrincipal(orgAdmin), orgA, created.ID); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -56,6 +56,7 @@ func asSilentExit(err error, out **silentExit) bool {
 func runDefinitionsVerb(ctx context.Context, ios IO, sub string, args []string) (returnErr error) {
 	var format, file, outputFile, planID, commit, ref, actor, acknowledge string
 	var portable, allowDelete bool
+	var confirmWidening stringList
 	st, flags, err := parseCommon("definitions "+sub, ios, args, func(fs *flag.FlagSet) {
 		if sub == "check" || sub == "plan" || sub == "apply" {
 			fs.StringVar(&format, "o", "table", "output format: table or json")
@@ -78,6 +79,8 @@ func runDefinitionsVerb(ctx context.Context, ios IO, sub string, args []string) 
 			fs.StringVar(&commit, "commit", "", "source commit label")
 			fs.StringVar(&ref, "ref", "", "source ref label")
 			fs.StringVar(&actor, "actor", "", "source automation actor label")
+			fs.Var(&confirmWidening, "confirm-widening",
+				"repeatable: a principal id the plan's folder moves give access through their access rules; name exactly the refusal's set")
 		}
 	})
 	if err != nil {
@@ -185,6 +188,10 @@ func runDefinitionsVerb(ctx context.Context, ios IO, sub string, args []string) 
 		body := apigen.ApplyDefinitionsPlanRequest{AllowDelete: allowDelete}
 		body.Commit, body.Ref, body.Actor = optional(commit), optional(ref), optional(actor)
 		body.Acknowledgements = acksPtr(acknowledge)
+		if len(confirmWidening) > 0 {
+			confirm := apigen.ConfirmWidening(confirmWidening)
+			body.ConfirmWidening = &confirm
+		}
 		if file != "" {
 			_, digest, err := readDefinitionsBundle(file)
 			if err != nil {

@@ -380,3 +380,107 @@ func (r *Resolver) ResolveRuleKey(ctx context.Context, org, project, id, name st
 	}
 	return got, nil
 }
+
+// RuleLine is one rule on the listing surface, as stored and never evaluated:
+// a listing renders what a manager may revoke, so it neither validates nor
+// drops. Items holds only the addressed project's items on a project listing,
+// where OtherProjects reports that the rule also names projects the listing
+// does not show.
+type RuleLine struct {
+	ID            string
+	Principal     domain.PrincipalID
+	Capability    domain.Capability
+	EnvMode       domain.AxisMode
+	KeyMode       domain.AxisMode
+	CreatedBy     domain.PrincipalID
+	CreatedAt     time.Time
+	Items         []StoredRuleItem
+	OtherProjects bool
+}
+
+type ruleLineRow struct {
+	id, principal, capability, envMode, keyMode, createdBy string
+	at                                                     time.Time
+	other                                                  bool
+	item                                                   StoredRuleItem
+}
+
+// foldRuleLines groups rows (ordered by rule id) into lines.
+func foldRuleLines(rows []ruleLineRow) []RuleLine {
+	var out []RuleLine
+	for _, row := range rows {
+		if len(out) == 0 || out[len(out)-1].ID != row.id {
+			out = append(out, RuleLine{
+				ID: row.id, Principal: domain.PrincipalID(row.principal), Capability: domain.Capability(row.capability),
+				EnvMode: domain.AxisMode(row.envMode), KeyMode: domain.AxisMode(row.keyMode),
+				CreatedBy: domain.PrincipalID(row.createdBy), CreatedAt: row.at, OtherProjects: row.other,
+			})
+		}
+		last := &out[len(out)-1]
+		last.Items = append(last.Items, row.item)
+	}
+	return out
+}
+
+// RuleLinesInOrg lists every stored rule in one org.
+func (r *Resolver) RuleLinesInOrg(ctx context.Context, org string) ([]RuleLine, error) {
+	var rows []ruleLineRow
+	if r.sq != nil {
+		got, err := r.sq.ListRuleLinesInOrg(ctx, org)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range got {
+			at, err := decodeTime(g.CreatedAt)
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
+				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: at,
+				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
+		}
+	} else {
+		got, err := r.pg.ListRuleLinesInOrg(ctx, org)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range got {
+			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
+				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: g.CreatedAt.Time,
+				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
+		}
+	}
+	return foldRuleLines(rows), nil
+}
+
+// RuleLinesInProject lists every stored rule naming one project, with only
+// that project's items.
+func (r *Resolver) RuleLinesInProject(ctx context.Context, org, project string) ([]RuleLine, error) {
+	var rows []ruleLineRow
+	if r.sq != nil {
+		got, err := r.sq.ListRuleLinesInProject(ctx, sqlitegen.ListRuleLinesInProjectParams{OrgID: org, ProjectID: project})
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range got {
+			at, err := decodeTime(g.CreatedAt)
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
+				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: at, other: g.OtherItems > 0,
+				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
+		}
+	} else {
+		got, err := r.pg.ListRuleLinesInProject(ctx, pggen.ListRuleLinesInProjectParams{OrgID: org, ProjectID: project})
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range got {
+			rows = append(rows, ruleLineRow{id: g.ID, principal: g.PrincipalID, capability: g.Capability,
+				envMode: g.EnvMode, keyMode: g.KeyMode, createdBy: g.CreatedBy, at: g.CreatedAt.Time, other: g.OtherItems > 0,
+				item: StoredRuleItem{Axis: g.Axis, Project: domain.ProjectID(g.ProjectID), Env: domain.EnvID(g.EnvID), KeyID: g.KeyID, Folder: g.FolderPath}})
+		}
+	}
+	return foldRuleLines(rows), nil
+}

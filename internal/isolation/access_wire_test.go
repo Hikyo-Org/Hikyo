@@ -113,6 +113,7 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 		Environments: &service.Environments{DB: db, Keyring: probeKeyring(t, db)},
 		Folders:      &service.Folders{DB: db},
 		Grants:       &service.Grants{DB: db},
+		Rules:        &service.Rules{DB: db},
 		Settings:     &service.ProjectSettings{DB: db, Auth: auth},
 		Delivery:     &service.Delivery{DB: db, Keyring: auth.Keyring},
 		SCIMWire:     &service.SCIM{DB: db},

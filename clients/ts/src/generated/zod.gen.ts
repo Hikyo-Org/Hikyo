@@ -932,15 +932,6 @@ export const zErrorCode = z.enum([
     'internal'
 ]);
 
-export const zError = z.object({
-    error: z.object({
-        code: zErrorCode,
-        message: z.string(),
-        detail: z.string().nullish(),
-        findings: z.array(zScanFinding).optional()
-    })
-});
-
 /**
  * OPEN enum: an instance may advertise a flow this client has never
  * heard of, and every generated consumer must preserve and tolerate the
@@ -1872,15 +1863,6 @@ export const zDefinitionsPlanResponse = z.object({
     plan: zDefinitionsPlan
 });
 
-export const zApplyDefinitionsPlanRequest = z.object({
-    allow_delete: z.boolean(),
-    digest: z.string().max(64).optional(),
-    commit: z.string().max(256).optional(),
-    ref: z.string().max(256).optional(),
-    actor: z.string().max(256).optional(),
-    acknowledgements: zAcknowledgements.optional()
-});
-
 export const zApplyDefinitionsPlanResult = z.object({
     revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     published: z.array(z.string()),
@@ -2490,6 +2472,91 @@ export const zCreateGrantRequest = z.object({
     capability: zCapability
 });
 
+/**
+ * The capabilities a member access rule may carry (member-access-rules
+ * ADR D2). `read` and `pin` cannot be narrowed by keys;
+ * `manage-identities`, `manage-adapters` and `project-settings` need a
+ * whole project. `manage-members` is stored but grants nothing until
+ * delegation containment exists.
+ *
+ */
+export const zRuleCapability = z.enum([
+    'read',
+    'edit',
+    'publish',
+    'pin',
+    'reveal',
+    'reveal-history',
+    'definitions-edit',
+    'manage-members',
+    'manage-identities',
+    'manage-adapters',
+    'project-settings'
+]);
+
+/**
+ * `all` reads the axis's items as exceptions, `only` as the complete list.
+ */
+export const zRuleAxisMode = z.enum(['all', 'only']);
+
+export const zRuleEnvironmentItem = z.object({
+    project: zId,
+    environment: zId
+});
+
+export const zRuleEnvironmentAxis = z.object({
+    mode: zRuleAxisMode,
+    items: z.array(zRuleEnvironmentItem).max(500)
+});
+
+export const zWideningGainer = z.object({
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    capability: zRuleCapability,
+    environments: z.array(zId)
+});
+
+/**
+ * A key folder move that gives people access through their member access
+ * rules (member-access-rules ADR D9). `count` is always present; the
+ * people and what they gain are named only to a caller holding
+ * `manage-members` on the project, who confirms by resending the request
+ * with `confirm_widening` listing exactly those principal ids.
+ *
+ */
+export const zWideningRefusal = z.object({
+    count: z.int().gte(1),
+    gainers: z.array(zWideningGainer).optional()
+});
+
+export const zError = z.object({
+    error: z.object({
+        code: zErrorCode,
+        message: z.string(),
+        detail: z.string().nullish(),
+        widening: zWideningRefusal.optional(),
+        findings: z.array(zScanFinding).optional()
+    })
+});
+
+/**
+ * The principal ids a key folder move gives access through their member
+ * access rules, confirming it (member-access-rules ADR D9). It must name
+ * exactly the people the refusal's `widening` names.
+ *
+ */
+export const zConfirmWidening = z.array(zId).max(1000);
+
+export const zApplyDefinitionsPlanRequest = z.object({
+    allow_delete: z.boolean(),
+    digest: z.string().max(64).optional(),
+    commit: z.string().max(256).optional(),
+    ref: z.string().max(256).optional(),
+    actor: z.string().max(256).optional(),
+    acknowledgements: zAcknowledgements.optional(),
+    confirm_widening: zConfirmWidening.optional()
+});
+
 export const zApplyTemplateRequest = z.object({
     principal: zId,
     template: zRoleTemplate
@@ -3049,6 +3116,58 @@ export const zReconcileOfflineRecordsRequest = z.object({
 export const zKeyFolderPath = z.string().max(256);
 
 /**
+ * Exactly one of `folder` (a folder path, empty for the catalogue root;
+ * an except also covers its subfolders, an only-pick is exact) or `key`
+ * (a key id, which survives renames and moves).
+ *
+ */
+export const zRuleKeyItem = z.object({
+    project: zId,
+    folder: zKeyFolderPath.optional(),
+    key: zId.optional()
+});
+
+export const zRuleKeyAxis = z.object({
+    mode: zRuleAxisMode,
+    items: z.array(zRuleKeyItem).max(500)
+});
+
+/**
+ * Where a rule reaches: projects, then environments, then keys. Every
+ * environment and key item names the project it belongs to, which must be
+ * one of `projects`. A rule names at most 500 projects, environments and
+ * keys together.
+ *
+ */
+export const zRuleWhere = z.object({
+    projects: z.array(zId).min(1).max(500),
+    environments: zRuleEnvironmentAxis,
+    keys: zRuleKeyAxis
+});
+
+export const zCreateRuleRequest = z.object({
+    principal: zId,
+    capability: zRuleCapability,
+    where: zRuleWhere
+});
+
+export const zRule = z.object({
+    id: zId,
+    principal_id: zId,
+    principal_name: z.string().optional(),
+    capability: zRuleCapability,
+    where: zRuleWhere,
+    other_projects: z.boolean(),
+    created_by: zId,
+    created_at: zTimestamp
+});
+
+export const zRuleList = z.object({
+    items: z.array(zRule),
+    count: z.int().gte(0)
+});
+
+/**
  * One primitive type declaration with its constraints. Each constraint
  * belongs to exactly one type, and a constraint declared on the wrong
  * type is REFUSED rather than ignored: a silently ignored `pattern` on an
@@ -3181,7 +3300,8 @@ export const zUpdateKeyMetadataRequest = z.object({
     deprecated: z.boolean().optional(),
     deprecation_note: z.string().max(4096).optional(),
     classification: zKeyClassification.optional(),
-    acknowledgements: zAcknowledgements.optional()
+    acknowledgements: zAcknowledgements.optional(),
+    confirm_widening: zConfirmWidening.optional()
 });
 
 export const zRenameKeyRequest = z.object({
@@ -4463,6 +4583,14 @@ export const zAccessQueueWritable = z.object({
     items: z.array(zAccessRequestWritable)
 });
 
+/**
+ * The principal ids a key folder move gives access through their member
+ * access rules, confirming it (member-access-rules ADR D9). It must name
+ * exactly the people the refusal's `widening` names.
+ *
+ */
+export const zConfirmWideningWritable = z.array(zId).max(1000);
+
 export const zPkiIssuerName = zPkiName;
 
 export const zPkiIssuerVersion = z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
@@ -4525,6 +4653,11 @@ export const zServiceAccountId = zId;
  * Machine-credential identifier.
  */
 export const zCredentialId = zId;
+
+/**
+ * Member access rule identifier.
+ */
+export const zRuleId = zId;
 
 /**
  * The principal whose grant is being revoked.
@@ -5374,6 +5507,36 @@ export const zCreateOrgGrantPath = z.object({
  */
 export const zCreateOrgGrantResponse = zGrantResult;
 
+export const zListOrgRulesPath = z.object({
+    org: zId
+});
+
+/**
+ * The organisation's rules.
+ */
+export const zListOrgRulesResponse = zRuleList;
+
+export const zCreateRuleBody = zCreateRuleRequest;
+
+export const zCreateRulePath = z.object({
+    org: zId
+});
+
+/**
+ * The rule as stored.
+ */
+export const zCreateRuleResponse = zRule;
+
+export const zRevokeRulePath = z.object({
+    org: zId,
+    rule: zId
+});
+
+/**
+ * Revoked.
+ */
+export const zRevokeRuleResponse = z.void();
+
 export const zApplyOrgTemplateBody = zApplyTemplateRequest;
 
 export const zApplyOrgTemplatePath = z.object({
@@ -5463,6 +5626,16 @@ export const zCreateProjectGrantPath = z.object({
  * The grant mutation result, including an idempotent repeat.
  */
 export const zCreateProjectGrantResponse = zGrantResult;
+
+export const zListProjectRulesPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project's rules.
+ */
+export const zListProjectRulesResponse = zRuleList;
 
 export const zApplyProjectTemplateBody = zApplyTemplateRequest;
 

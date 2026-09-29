@@ -394,8 +394,12 @@ const (
 	// these address PROJECT depth. The atom is legacy `manage-members`: rules
 	// themselves never satisfy it (it is inert on rules until delegation
 	// containment exists), so only a grant-holding member manager edits rules.
-	OpRuleCreate          Operation = "rule.create"
-	OpRuleRevoke          Operation = "rule.revoke"
+	OpRuleCreate Operation = "rule.create"
+	OpRuleRevoke Operation = "rule.revoke"
+	// The rule listing mirrors the grant listing: one operation per addressed
+	// depth, legacy `manage-members` at that depth.
+	OpRuleListOrg         Operation = "rule.list-org"
+	OpRuleListProject     Operation = "rule.list-project"
 	OpGrantRevokeEnv      Operation = "grant.revoke-env"
 	OpGrantRevokeInstance Operation = "grant.revoke-instance"
 
@@ -3713,6 +3717,22 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventRuleRevoked},
+	},
+	// Listing rules is the membership surface's other half and is audited
+	// like the grant listing, with the membership read event.
+	OpRuleListOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	OpRuleListProject: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
 	},
 	OpGrantRevokeProject: {
 		class:    ClassTenant,

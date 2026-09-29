@@ -2672,6 +2672,69 @@ func (e RotateRootKeyRequestPhase) Valid() bool {
 	}
 }
 
+// Defines values for RuleAxisMode.
+const (
+	RuleAxisModeAll  RuleAxisMode = "all"
+	RuleAxisModeOnly RuleAxisMode = "only"
+)
+
+// Valid indicates whether the value is a known member of the RuleAxisMode enum.
+func (e RuleAxisMode) Valid() bool {
+	switch e {
+	case RuleAxisModeAll:
+		return true
+	case RuleAxisModeOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuleCapability.
+const (
+	RuleCapabilityDefinitionsEdit  RuleCapability = "definitions-edit"
+	RuleCapabilityEdit             RuleCapability = "edit"
+	RuleCapabilityManageAdapters   RuleCapability = "manage-adapters"
+	RuleCapabilityManageIdentities RuleCapability = "manage-identities"
+	RuleCapabilityManageMembers    RuleCapability = "manage-members"
+	RuleCapabilityPin              RuleCapability = "pin"
+	RuleCapabilityProjectSettings  RuleCapability = "project-settings"
+	RuleCapabilityPublish          RuleCapability = "publish"
+	RuleCapabilityRead             RuleCapability = "read"
+	RuleCapabilityReveal           RuleCapability = "reveal"
+	RuleCapabilityRevealHistory    RuleCapability = "reveal-history"
+)
+
+// Valid indicates whether the value is a known member of the RuleCapability enum.
+func (e RuleCapability) Valid() bool {
+	switch e {
+	case RuleCapabilityDefinitionsEdit:
+		return true
+	case RuleCapabilityEdit:
+		return true
+	case RuleCapabilityManageAdapters:
+		return true
+	case RuleCapabilityManageIdentities:
+		return true
+	case RuleCapabilityManageMembers:
+		return true
+	case RuleCapabilityPin:
+		return true
+	case RuleCapabilityProjectSettings:
+		return true
+	case RuleCapabilityPublish:
+		return true
+	case RuleCapabilityRead:
+		return true
+	case RuleCapabilityReveal:
+		return true
+	case RuleCapabilityRevealHistory:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RuntimeStatusPhase.
 const (
 	RuntimeStatusPhaseBackup       RuntimeStatusPhase = "backup"
@@ -4714,8 +4777,13 @@ type ApplyDefinitionsPlanRequest struct {
 	Actor            *string           `json:"actor,omitempty"`
 	AllowDelete      bool              `json:"allow_delete"`
 	Commit           *string           `json:"commit,omitempty"`
-	Digest           *string           `json:"digest,omitempty"`
-	Ref              *string           `json:"ref,omitempty"`
+
+	// ConfirmWidening The principal ids a key folder move gives access through their member
+	// access rules, confirming it (member-access-rules ADR D9). It must name
+	// exactly the people the refusal's `widening` names.
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitempty"`
+	Digest          *string          `json:"digest,omitempty"`
+	Ref             *string          `json:"ref,omitempty"`
 }
 
 // ApplyDefinitionsPlanResult defines model for ApplyDefinitionsPlanResult.
@@ -5405,6 +5473,11 @@ type ConfigureTransitKeyRequest struct {
 	RotationPeriodSeconds *int64           `json:"rotation_period_seconds,omitempty"`
 }
 
+// ConfirmWidening The principal ids a key folder move gives access through their member
+// access rules, confirming it (member-access-rules ADR D9). It must name
+// exactly the people the refusal's `widening` names.
+type ConfirmWidening = []ID
+
 // CopyValuesRequest defines model for CopyValuesRequest.
 type CopyValuesRequest struct {
 	// ConfirmProtected The protected-environment confirmation. A protected destination
@@ -5726,6 +5799,25 @@ type CreateProjectRequest struct {
 	// and is still refused by the server with `bad_request`. Clients that want
 	// to pre-validate must measure the UTF-8 encoding, not the string length.
 	Name EntityName `json:"name"`
+}
+
+// CreateRuleRequest defines model for CreateRuleRequest.
+type CreateRuleRequest struct {
+	// Capability The capabilities a member access rule may carry (member-access-rules
+	// ADR D2). `read` and `pin` cannot be narrowed by keys;
+	// `manage-identities`, `manage-adapters` and `project-settings` need a
+	// whole project. `manage-members` is stored but grants nothing until
+	// delegation containment exists.
+	Capability RuleCapability `json:"capability"`
+
+	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
+	Principal ID `json:"principal"`
+
+	// Where Where a rule reaches: projects, then environments, then keys. Every
+	// environment and key item names the project it belongs to, which must be
+	// one of `projects`. A rule names at most 500 projects, environments and
+	// keys together.
+	Where RuleWhere `json:"where"`
 }
 
 // CreateSSHCARequest defines model for CreateSSHCARequest.
@@ -6513,6 +6605,13 @@ type Error struct {
 		// Message Fixed per code. Never derived from the request, so two
 		// refusals of the same class are byte-identical.
 		Message string `json:"message"`
+
+		// Widening A key folder move that gives people access through their member access
+		// rules (member-access-rules ADR D9). `count` is always present; the
+		// people and what they gain are named only to a caller holding
+		// `manage-members` on the project, who confirms by resending the request
+		// with `confirm_widening` listing exactly those principal ids.
+		Widening *WideningRefusal `json:"widening,omitempty"`
 	} `json:"error"`
 }
 
@@ -9162,6 +9261,109 @@ type RotateSSHCARequest struct {
 	PrivateKey *string `json:"private_key,omitempty"`
 }
 
+// Rule defines model for Rule.
+type Rule struct {
+	// Capability The capabilities a member access rule may carry (member-access-rules
+	// ADR D2). `read` and `pin` cannot be narrowed by keys;
+	// `manage-identities`, `manage-adapters` and `project-settings` need a
+	// whole project. `manage-members` is stored but grants nothing until
+	// delegation containment exists.
+	Capability RuleCapability `json:"capability"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// CreatedBy A prefixed UUIDv7, e.g. `org_0198…`.
+	CreatedBy ID `json:"created_by"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// OtherProjects On a project listing, true when the rule also names projects the
+	// listing does not show. Always false on the org listing.
+	OtherProjects bool `json:"other_projects"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Current display name or username of the person holding the rule; not an identifier.
+	PrincipalName *string `json:"principal_name,omitempty"`
+
+	// Where Where a rule reaches: projects, then environments, then keys. Every
+	// environment and key item names the project it belongs to, which must be
+	// one of `projects`. A rule names at most 500 projects, environments and
+	// keys together.
+	Where RuleWhere `json:"where"`
+}
+
+// RuleAxisMode `all` reads the axis's items as exceptions, `only` as the complete list.
+type RuleAxisMode string
+
+// RuleCapability The capabilities a member access rule may carry (member-access-rules
+// ADR D2). `read` and `pin` cannot be narrowed by keys;
+// `manage-identities`, `manage-adapters` and `project-settings` need a
+// whole project. `manage-members` is stored but grants nothing until
+// delegation containment exists.
+type RuleCapability string
+
+// RuleEnvironmentAxis defines model for RuleEnvironmentAxis.
+type RuleEnvironmentAxis struct {
+	Items []RuleEnvironmentItem `json:"items"`
+
+	// Mode `all` reads the axis's items as exceptions, `only` as the complete list.
+	Mode RuleAxisMode `json:"mode"`
+}
+
+// RuleEnvironmentItem defines model for RuleEnvironmentItem.
+type RuleEnvironmentItem struct {
+	// Environment A prefixed UUIDv7, e.g. `org_0198…`.
+	Environment ID `json:"environment"`
+
+	// Project A prefixed UUIDv7, e.g. `org_0198…`.
+	Project ID `json:"project"`
+}
+
+// RuleKeyAxis defines model for RuleKeyAxis.
+type RuleKeyAxis struct {
+	Items []RuleKeyItem `json:"items"`
+
+	// Mode `all` reads the axis's items as exceptions, `only` as the complete list.
+	Mode RuleAxisMode `json:"mode"`
+}
+
+// RuleKeyItem Exactly one of `folder` (a folder path, empty for the catalogue root;
+// an except also covers its subfolders, an only-pick is exact) or `key`
+// (a key id, which survives renames and moves).
+type RuleKeyItem struct {
+	// Folder The key's namespace within the project. Organizational only: a plain
+	// slash-separated path, empty for the catalogue root. It is a PATH, not a
+	// folder reference - no folder row need exist for it.
+	Folder *KeyFolderPath `json:"folder,omitempty"`
+
+	// Key A prefixed UUIDv7, e.g. `org_0198…`.
+	Key *ID `json:"key,omitempty"`
+
+	// Project A prefixed UUIDv7, e.g. `org_0198…`.
+	Project ID `json:"project"`
+}
+
+// RuleList defines model for RuleList.
+type RuleList struct {
+	// Count Total rows matching, which for an unpaged list equals `items` length.
+	Count int    `json:"count"`
+	Items []Rule `json:"items"`
+}
+
+// RuleWhere Where a rule reaches: projects, then environments, then keys. Every
+// environment and key item names the project it belongs to, which must be
+// one of `projects`. A rule names at most 500 projects, environments and
+// keys together.
+type RuleWhere struct {
+	Environments RuleEnvironmentAxis `json:"environments"`
+	Keys         RuleKeyAxis         `json:"keys"`
+	Projects     []ID                `json:"projects"`
+}
+
 // RuntimeStatus defines model for RuntimeStatus.
 type RuntimeStatus struct {
 	Phase *RuntimeStatusPhase `json:"phase"`
@@ -10500,10 +10702,15 @@ type UpdateKeyMetadataRequest struct {
 	// secret or config; it changes only through the reclassification
 	// ceremony. Closed, deliberately: a third value would be a third
 	// disclosure regime.
-	Classification  *KeyClassification `json:"classification,omitempty"`
-	Deprecated      *bool              `json:"deprecated,omitempty"`
-	DeprecationNote *string            `json:"deprecation_note,omitempty"`
-	Description     *string            `json:"description,omitempty"`
+	Classification *KeyClassification `json:"classification,omitempty"`
+
+	// ConfirmWidening The principal ids a key folder move gives access through their member
+	// access rules, confirming it (member-access-rules ADR D9). It must name
+	// exactly the people the refusal's `widening` names.
+	ConfirmWidening *ConfirmWidening `json:"confirm_widening,omitempty"`
+	Deprecated      *bool            `json:"deprecated,omitempty"`
+	DeprecationNote *string          `json:"deprecation_note,omitempty"`
+	Description     *string          `json:"description,omitempty"`
 
 	// FolderPath The key's namespace within the project. Organizational only: a plain
 	// slash-separated path, empty for the catalogue root. It is a PATH, not a
@@ -10797,6 +11004,33 @@ type WhoAmI struct {
 	EnrolmentRequired *bool     `json:"enrolment_required,omitempty"`
 	Principal         Principal `json:"principal"`
 	Session           Session   `json:"session"`
+}
+
+// WideningGainer defines model for WideningGainer.
+type WideningGainer struct {
+	// Capability The capabilities a member access rule may carry (member-access-rules
+	// ADR D2). `read` and `pin` cannot be narrowed by keys;
+	// `manage-identities`, `manage-adapters` and `project-settings` need a
+	// whole project. `manage-members` is stored but grants nothing until
+	// delegation containment exists.
+	Capability RuleCapability `json:"capability"`
+
+	// Environments The environment ids newly reached; empty for a project-wide capability only.
+	Environments []ID `json:"environments"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId   ID      `json:"principal_id"`
+	PrincipalName *string `json:"principal_name,omitempty"`
+}
+
+// WideningRefusal A key folder move that gives people access through their member access
+// rules (member-access-rules ADR D9). `count` is always present; the
+// people and what they gain are named only to a caller holding
+// `manage-members` on the project, who confirms by resending the request
+// with `confirm_widening` listing exactly those principal ids.
+type WideningRefusal struct {
+	Count   int               `json:"count"`
+	Gainers *[]WideningGainer `json:"gainers,omitempty"`
 }
 
 // WorkspaceHandoffApproved defines model for WorkspaceHandoffApproved.
@@ -11093,6 +11327,9 @@ type RevisionBefore = int64
 
 // RevisionLimit defines model for RevisionLimit.
 type RevisionLimit = int
+
+// RuleID A prefixed UUIDv7, e.g. `org_0198…`.
+type RuleID = ID
 
 // SSHCAID A prefixed UUIDv7, e.g. `org_0198…`.
 type SSHCAID = ID
@@ -12253,6 +12490,9 @@ type PutOrgRegistrationPolicyJSONRequestBody = RegistrationPolicyPutRequest
 
 // SetOrgRetentionJSONRequestBody defines body for SetOrgRetention for application/json ContentType.
 type SetOrgRetentionJSONRequestBody = RetentionPolicy
+
+// CreateRuleJSONRequestBody defines body for CreateRule for application/json ContentType.
+type CreateRuleJSONRequestBody = CreateRuleRequest
 
 // CreateScimBindingJSONRequestBody defines body for CreateScimBinding for application/json ContentType.
 type CreateScimBindingJSONRequestBody = CreateScimBindingRequest
@@ -13520,6 +13760,9 @@ type ServerInterface interface {
 	// SetProjectRetention Set or clear the project's bounded retention override.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/retention)
 	SetProjectRetention(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ListProjectRules List the member access rules naming a project.
+	// (GET /api/v1/orgs/{org}/projects/{project}/rules)
+	ListProjectRules(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
 	// ListServiceAccounts List the project's service accounts.
 	// (GET /api/v1/orgs/{org}/projects/{project}/service-accounts)
 	ListServiceAccounts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -13568,6 +13811,15 @@ type ServerInterface interface {
 	// SetOrgRetention Set the organisation retention cap.
 	// (PUT /api/v1/orgs/{org}/retention)
 	SetOrgRetention(w http.ResponseWriter, r *http.Request, org OrgID)
+	// ListOrgRules List the organisation's member access rules.
+	// (GET /api/v1/orgs/{org}/rules)
+	ListOrgRules(w http.ResponseWriter, r *http.Request, org OrgID)
+	// CreateRule Create one member access rule.
+	// (POST /api/v1/orgs/{org}/rules)
+	CreateRule(w http.ResponseWriter, r *http.Request, org OrgID)
+	// RevokeRule Revoke one member access rule.
+	// (DELETE /api/v1/orgs/{org}/rules/{rule})
+	RevokeRule(w http.ResponseWriter, r *http.Request, org OrgID, rule RuleID)
 	// ListScimBindings List this organisation's SCIM bindings.
 	// (GET /api/v1/orgs/{org}/scim-bindings)
 	ListScimBindings(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -15560,6 +15812,12 @@ func (_ Unimplemented) SetProjectRetention(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListProjectRules List the member access rules naming a project.
+// (GET /api/v1/orgs/{org}/projects/{project}/rules)
+func (_ Unimplemented) ListProjectRules(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListServiceAccounts List the project's service accounts.
 // (GET /api/v1/orgs/{org}/projects/{project}/service-accounts)
 func (_ Unimplemented) ListServiceAccounts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
@@ -15653,6 +15911,24 @@ func (_ Unimplemented) GetOrgRetention(w http.ResponseWriter, r *http.Request, o
 // SetOrgRetention Set the organisation retention cap.
 // (PUT /api/v1/orgs/{org}/retention)
 func (_ Unimplemented) SetOrgRetention(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListOrgRules List the organisation's member access rules.
+// (GET /api/v1/orgs/{org}/rules)
+func (_ Unimplemented) ListOrgRules(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateRule Create one member access rule.
+// (POST /api/v1/orgs/{org}/rules)
+func (_ Unimplemented) CreateRule(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeRule Revoke one member access rule.
+// (DELETE /api/v1/orgs/{org}/rules/{rule})
+func (_ Unimplemented) RevokeRule(w http.ResponseWriter, r *http.Request, org OrgID, rule RuleID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -27724,6 +28000,41 @@ func (siw *ServerInterfaceWrapper) SetProjectRetention(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListProjectRules operation middleware
+func (siw *ServerInterfaceWrapper) ListProjectRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjectRules(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListServiceAccounts operation middleware
 func (siw *ServerInterfaceWrapper) ListServiceAccounts(w http.ResponseWriter, r *http.Request) {
 
@@ -28313,6 +28624,93 @@ func (siw *ServerInterfaceWrapper) SetOrgRetention(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetOrgRetention(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrgRules operation middleware
+func (siw *ServerInterfaceWrapper) ListOrgRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrgRules(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRule(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeRule operation middleware
+func (siw *ServerInterfaceWrapper) RevokeRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rule" -------------
+	var rule RuleID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rule", chi.URLParam(r, "rule"), &rule, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rule", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeRule(w, r, org, rule)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -30029,6 +30427,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.CreateOrgGrant)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.ListOrgRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.CreateRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/rules/{rule}", wrapper.RevokeRule)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/grants/template", wrapper.ApplyOrgTemplate)
 	})
 	r.Group(func(r chi.Router) {
@@ -30051,6 +30458,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.CreateProjectGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/rules", wrapper.ListProjectRules)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants/template", wrapper.ApplyProjectTemplate)
@@ -65961,6 +66371,115 @@ func (response SetProjectRetention503JSONResponse) VisitSetProjectRetentionRespo
 	return err
 }
 
+type ListProjectRulesRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListProjectRulesResponseObject interface {
+	VisitListProjectRulesResponse(w http.ResponseWriter) error
+}
+
+type ListProjectRules200JSONResponse RuleList
+
+func (response ListProjectRules200JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectRules401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListProjectRules401JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectRules403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListProjectRules403JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectRules404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListProjectRules404JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectRules429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListProjectRules429JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectRules500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListProjectRules500JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectRules503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListProjectRules503JSONResponse) VisitListProjectRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListServiceAccountsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -67770,6 +68289,368 @@ func (response SetOrgRetention500JSONResponse) VisitSetOrgRetentionResponse(w ht
 type SetOrgRetention503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response SetOrgRetention503JSONResponse) VisitSetOrgRetentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRulesRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type ListOrgRulesResponseObject interface {
+	VisitListOrgRulesResponse(w http.ResponseWriter) error
+}
+
+type ListOrgRules200JSONResponse RuleList
+
+func (response ListOrgRules200JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRules401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListOrgRules401JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRules403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListOrgRules403JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRules404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListOrgRules404JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRules429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListOrgRules429JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRules500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListOrgRules500JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgRules503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOrgRules503JSONResponse) VisitListOrgRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRuleRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *CreateRuleJSONRequestBody
+}
+
+type CreateRuleResponseObject interface {
+	VisitCreateRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateRule201JSONResponse Rule
+
+func (response CreateRule201JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRule400JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateRule401JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateRule403JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateRule404JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateRule409JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateRule429JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateRule500JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRule503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateRule503JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRuleRequestObject struct {
+	Org  OrgID  `json:"org"`
+	Rule RuleID `json:"rule"`
+}
+
+type RevokeRuleResponseObject interface {
+	VisitRevokeRuleResponse(w http.ResponseWriter) error
+}
+
+type RevokeRule204Response struct {
+}
+
+func (response RevokeRule204Response) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeRule400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeRule400JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRule401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeRule401JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRule403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeRule403JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRule404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeRule404JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRule429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeRule429JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRule500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeRule500JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRule503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeRule503JSONResponse) VisitRevokeRuleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -72597,6 +73478,9 @@ type StrictServerInterface interface {
 	// SetProjectRetention Set or clear the project's bounded retention override.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/retention)
 	SetProjectRetention(ctx context.Context, request SetProjectRetentionRequestObject) (SetProjectRetentionResponseObject, error)
+	// ListProjectRules List the member access rules naming a project.
+	// (GET /api/v1/orgs/{org}/projects/{project}/rules)
+	ListProjectRules(ctx context.Context, request ListProjectRulesRequestObject) (ListProjectRulesResponseObject, error)
 	// ListServiceAccounts List the project's service accounts.
 	// (GET /api/v1/orgs/{org}/projects/{project}/service-accounts)
 	ListServiceAccounts(ctx context.Context, request ListServiceAccountsRequestObject) (ListServiceAccountsResponseObject, error)
@@ -72645,6 +73529,15 @@ type StrictServerInterface interface {
 	// SetOrgRetention Set the organisation retention cap.
 	// (PUT /api/v1/orgs/{org}/retention)
 	SetOrgRetention(ctx context.Context, request SetOrgRetentionRequestObject) (SetOrgRetentionResponseObject, error)
+	// ListOrgRules List the organisation's member access rules.
+	// (GET /api/v1/orgs/{org}/rules)
+	ListOrgRules(ctx context.Context, request ListOrgRulesRequestObject) (ListOrgRulesResponseObject, error)
+	// CreateRule Create one member access rule.
+	// (POST /api/v1/orgs/{org}/rules)
+	CreateRule(ctx context.Context, request CreateRuleRequestObject) (CreateRuleResponseObject, error)
+	// RevokeRule Revoke one member access rule.
+	// (DELETE /api/v1/orgs/{org}/rules/{rule})
+	RevokeRule(ctx context.Context, request RevokeRuleRequestObject) (RevokeRuleResponseObject, error)
 	// ListScimBindings List this organisation's SCIM bindings.
 	// (GET /api/v1/orgs/{org}/scim-bindings)
 	ListScimBindings(ctx context.Context, request ListScimBindingsRequestObject) (ListScimBindingsResponseObject, error)
@@ -82207,6 +83100,33 @@ func (sh *strictHandler) SetProjectRetention(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// ListProjectRules operation middleware
+func (sh *strictHandler) ListProjectRules(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListProjectRulesRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProjectRules(ctx, request.(ListProjectRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProjectRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProjectRulesResponseObject); ok {
+		if err := validResponse.VisitListProjectRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListServiceAccounts operation middleware
 func (sh *strictHandler) ListServiceAccounts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	var request ListServiceAccountsRequestObject
@@ -82697,6 +83617,92 @@ func (sh *strictHandler) SetOrgRetention(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetOrgRetentionResponseObject); ok {
 		if err := validResponse.VisitSetOrgRetentionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrgRules operation middleware
+func (sh *strictHandler) ListOrgRules(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request ListOrgRulesRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrgRules(ctx, request.(ListOrgRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrgRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrgRulesResponseObject); ok {
+		if err := validResponse.VisitListOrgRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRule operation middleware
+func (sh *strictHandler) CreateRule(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request CreateRuleRequestObject
+
+	request.Org = org
+
+	var body CreateRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRule(ctx, request.(CreateRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRuleResponseObject); ok {
+		if err := validResponse.VisitCreateRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeRule operation middleware
+func (sh *strictHandler) RevokeRule(w http.ResponseWriter, r *http.Request, org OrgID, rule RuleID) {
+	var request RevokeRuleRequestObject
+
+	request.Org = org
+	request.Rule = rule
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeRule(ctx, request.(RevokeRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeRuleResponseObject); ok {
+		if err := validResponse.VisitRevokeRuleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

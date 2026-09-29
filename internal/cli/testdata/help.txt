@@ -67,6 +67,7 @@ hierarchy:
       [--required-in all|none|<ids>] [--forbidden-in all|none|<ids>] [--group G]
       [--folder P] [--description D] [--deprecated] [--deprecation-note N]
   hikyo key update <key> [--folder P] [--description D] [--deprecated] [--deprecation-note N]
+      [--confirm-widening <principal>]...
   hikyo key declare <key> --declaration <json> [--required-in all|none|<ids>]
       [--forbidden-in all|none|<ids>]
   hikyo key reclassify <key> --classification secret|config    the ceremony, never update
@@ -121,7 +122,7 @@ definitions:                                       reviewable Git-managed catalo
   hikyo definitions check --file PATH [-o table|json]
       exits 0 when equal, 1 when different, 2 on error
   hikyo definitions plan --file PATH [-o table|json]
-  hikyo definitions apply --plan ID [--file PATH] [--allow-delete]
+  hikyo definitions apply --plan ID [--file PATH] [--allow-delete] [--confirm-widening <principal>]...
       [--commit C] [--ref R] [--actor A] [-o table|json]
 
 secret scanning:                                   local only: nothing is sent to any server
@@ -415,6 +416,11 @@ access:
   hikyo access grant add --principal <id> --capability <atom>
   hikyo access grant remove --principal <id> --capability <atom>
   hikyo access grant template --principal <id> --template <name>
+  hikyo access rule list [--org O] [--project P] [-o table|json]
+  hikyo access rule add --principal <id> --capability <atom> [--in-project P]...
+      [--only-env E | --except-env E]... [--only-folder F | --only-key K]...
+      [--except-folder F | --except-key K]...   (items: [PROJECT:]ID or [PROJECT:]PATH)
+  hikyo access rule remove <rule>
   hikyo access member list [--org O] [--project P] [-o table|json]
   hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]
   hikyo access member remove --principal <id>

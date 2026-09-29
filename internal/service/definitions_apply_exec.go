@@ -619,10 +619,10 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 	p authz.Proof, scope domain.Scope, res definitions.Resolution, confirmed []domain.PrincipalID) error {
 	type move struct {
 		id, from, to string
-		gained       []domain.PrincipalID
+		gains        []WideningGain
 	}
 	var moves []move
-	var union []domain.PrincipalID
+	var union []WideningGain
 	var envIDs []string
 	for _, upd := range res.KeyUpdates {
 		if !upd.MetaChanged {
@@ -645,31 +645,26 @@ func (s *Definitions) confirmMoves(ctx context.Context, r store.Repos, az *authz
 				envIDs = append(envIDs, e.ID)
 			}
 		}
-		gained, err := moveWidening(ctx, az, scope, envIDs, upd.ID, before.FolderPath, upd.Desired.FolderPath)
+		gains, err := moveWidening(ctx, az, scope, envIDs, upd.ID, before.FolderPath, upd.Desired.FolderPath)
 		if err != nil {
 			return err
 		}
-		if len(gained) == 0 {
+		if len(gains) == 0 {
 			continue
 		}
-		moves = append(moves, move{id: upd.ID, from: before.FolderPath, to: upd.Desired.FolderPath, gained: gained})
-		for _, g := range gained {
-			if !slices.Contains(union, g) {
-				union = append(union, g)
-			}
-		}
+		moves = append(moves, move{id: upd.ID, from: before.FolderPath, to: upd.Desired.FolderPath, gains: gains})
+		union = mergeGains(union, gains)
 	}
 	if len(union) == 0 {
 		return nil
 	}
-	slices.Sort(union)
 	want := slices.Clone(confirmed)
 	slices.Sort(want)
-	if !slices.Equal(slices.Compact(want), union) {
+	if !slices.Equal(slices.Compact(want), gainedPrincipals(union)) {
 		return moveWideningError(ctx, az, caller.Principal, scope, moves[0].id, union)
 	}
 	for _, m := range moves {
-		if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, m.id, m.from, m.to, m.gained, m.gained); err != nil {
+		if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, m.id, m.from, m.to, m.gains, gainedPrincipals(m.gains)); err != nil {
 			return err
 		}
 	}

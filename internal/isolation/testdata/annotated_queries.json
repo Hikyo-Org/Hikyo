@@ -1483,6 +1483,18 @@
   },
   {
     "engine": "postgres",
+    "name": "ListRuleLinesInOrg",
+    "annotation": "authn-resolution",
+    "hash": "2c8223177c240320342cf043350de309400276cd306c75438d5091c1ce5efe91"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRuleLinesInProject",
+    "annotation": "authn-resolution",
+    "hash": "fbb168ff53754466cd588db559f44d9fc6f309036d3522e022c6ca1b179fa257"
+  },
+  {
+    "engine": "postgres",
     "name": "ListRulesForPrincipal",
     "annotation": "authn-resolution",
     "hash": "2127849caa50fff001f220725a98b442f6ec1e3778a365c618a51c213088d927"
@@ -3760,6 +3772,18 @@
     "name": "ListRuleIDsForProject",
     "annotation": "authn-resolution",
     "hash": "8d4d792ec1656982768384afd0afe04caefcac50b503be24fbd904fada7bdaa4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleLinesInOrg",
+    "annotation": "authn-resolution",
+    "hash": "2c8223177c240320342cf043350de309400276cd306c75438d5091c1ce5efe91"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRuleLinesInProject",
+    "annotation": "authn-resolution",
+    "hash": "fbb168ff53754466cd588db559f44d9fc6f309036d3522e022c6ca1b179fa257"
   },
   {
     "engine": "sqlite",

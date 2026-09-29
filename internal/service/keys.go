@@ -904,11 +904,11 @@ func (s *Keys) UpdateMetadata(ctx context.Context, actor Actor, scope domain.Sco
 			for _, e := range envs {
 				envIDs = append(envIDs, e.ID)
 			}
-			gained, err := moveWidening(ctx, az, scope, envIDs, id, before.FolderPath, merged.FolderPath)
+			gains, err := moveWidening(ctx, az, scope, envIDs, id, before.FolderPath, merged.FolderPath)
 			if err != nil {
 				return err
 			}
-			if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, id, before.FolderPath, merged.FolderPath, gained, m.ConfirmWidening); err != nil {
+			if err := confirmMoveWidening(ctx, r, az, p, caller.Principal, scope, id, before.FolderPath, merged.FolderPath, gains, m.ConfirmWidening); err != nil {
 				return err
 			}
 		}

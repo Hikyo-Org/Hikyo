@@ -205,3 +205,17 @@ func (a *TxAuthorizer) RuleKeyExists(ctx context.Context, s domain.Scope, keyID 
 	_, err := a.r.ResolveRuleKey(ctx, string(s.Org), string(s.Project), keyID, "")
 	return err
 }
+
+// RuleLine is re-exported for the service layer's rule listing.
+type RuleLine = authn.RuleLine
+
+// RuleLinesInOrg lists the rule surface for one org.
+func (a *TxAuthorizer) RuleLinesInOrg(ctx context.Context, org domain.OrgID) ([]RuleLine, error) {
+	return a.r.RuleLinesInOrg(ctx, string(org))
+}
+
+// RuleLinesInProject lists the rule surface for one project, reading only
+// that project's items.
+func (a *TxAuthorizer) RuleLinesInProject(ctx context.Context, s domain.Scope) ([]RuleLine, error) {
+	return a.r.RuleLinesInProject(ctx, string(s.Org), string(s.Project))
+}

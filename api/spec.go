@@ -59,6 +59,9 @@ var SpecYAML []byte
 // profiles, and environment-scoped certificate issuance.
 // Revision 7 adds generic file destinations (#164): file-target operations,
 // the bound client's report and the delivery `target` parameter.
+// Revision 7 adds member access rules: rule list, create and revoke, and the
+// folder-move widening confirmation on key metadata updates and definitions
+// apply.
 const Revision = 7
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1

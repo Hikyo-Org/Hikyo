@@ -107,6 +107,7 @@ import {
   createProject,
   createProjectGrant,
   createRevisionPin,
+  createRule,
   createScimBinding,
   createScimMapping,
   createServiceAccount,
@@ -220,12 +221,14 @@ import {
   listMySessions,
   listOidcProviders,
   listOrgGrants,
+  listOrgRules,
   listOrgs,
   listPasskeys,
   listPendingDrafts,
   listPkiIssuers,
   listPkiProfiles,
   listProjectGrants,
+  listProjectRules,
   listProjects,
   listRemotes,
   listRevisionPins,
@@ -325,6 +328,7 @@ import {
   revokeOrgGrant,
   revokePkiIssuer,
   revokeProjectGrant,
+  revokeRule,
   revokeScimCredential,
   revokeSshCertificate,
   rollbackRevision,
@@ -469,6 +473,7 @@ import type {
   CreateProjectData,
   CreateProjectGrantData,
   CreateRevisionPinData,
+  CreateRuleData,
   CreateScimBindingData,
   CreateScimMappingData,
   CreateServiceAccountData,
@@ -582,12 +587,14 @@ import type {
   ListMySessionsData,
   ListOidcProvidersData,
   ListOrgGrantsData,
+  ListOrgRulesData,
   ListOrgsData,
   ListPasskeysData,
   ListPendingDraftsData,
   ListPkiIssuersData,
   ListPkiProfilesData,
   ListProjectGrantsData,
+  ListProjectRulesData,
   ListProjectsData,
   ListRemotesData,
   ListRevisionPinsData,
@@ -687,6 +694,7 @@ import type {
   RevokeOrgGrantData,
   RevokePkiIssuerData,
   RevokeProjectGrantData,
+  RevokeRuleData,
   RevokeScimCredentialData,
   RevokeSshCertificateData,
   RollbackRevisionData,
@@ -830,6 +838,7 @@ import {
   zCreateProjectGrantResponse,
   zCreateProjectResponse,
   zCreateRevisionPinResponse,
+  zCreateRuleResponse,
   zCreateScimBindingResponse,
   zCreateScimMappingResponse,
   zCreateServiceAccountResponse,
@@ -924,12 +933,14 @@ import {
   zListMySessionsResponse,
   zListOidcProvidersResponse,
   zListOrgGrantsResponse,
+  zListOrgRulesResponse,
   zListOrgsResponse,
   zListPasskeysResponse,
   zListPendingDraftsResponse,
   zListPkiIssuersResponse,
   zListPkiProfilesResponse,
   zListProjectGrantsResponse,
+  zListProjectRulesResponse,
   zListProjectsResponse,
   zListRemotesResponse,
   zListRevisionPinsResponse,
@@ -1152,6 +1163,7 @@ export const createPkiProfileOp: BodyOperation<CreatePkiProfileData, typeof zCre
 export const createProjectOp: BodyOperation<CreateProjectData, typeof zCreateProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createProject, [201], zCreateProjectResponse);
 export const createProjectGrantOp: BodyOperation<CreateProjectGrantData, typeof zCreateProjectGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createProjectGrant, [200], zCreateProjectGrantResponse);
 export const createRevisionPinOp: BodyOperation<CreateRevisionPinData, typeof zCreateRevisionPinResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRevisionPin, [200], zCreateRevisionPinResponse);
+export const createRuleOp: BodyOperation<CreateRuleData, typeof zCreateRuleResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRule, [201], zCreateRuleResponse);
 export const createScimBindingOp: BodyOperation<CreateScimBindingData, typeof zCreateScimBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createScimBinding, [200], zCreateScimBindingResponse);
 export const createScimMappingOp: BodyOperation<CreateScimMappingData, typeof zCreateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createScimMapping, [200], zCreateScimMappingResponse);
 export const createServiceAccountOp: BodyOperation<CreateServiceAccountData, typeof zCreateServiceAccountResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createServiceAccount, [201], zCreateServiceAccountResponse);
@@ -1246,12 +1258,14 @@ export const listMyOrgsOp: BodyOperation<ListMyOrgsData, typeof zListMyOrgsRespo
 export const listMySessionsOp: BodyOperation<ListMySessionsData, typeof zListMySessionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMySessions, [200], zListMySessionsResponse);
 export const listOidcProvidersOp: BodyOperation<ListOidcProvidersData, typeof zListOidcProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOidcProviders, [200], zListOidcProvidersResponse);
 export const listOrgGrantsOp: BodyOperation<ListOrgGrantsData, typeof zListOrgGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgGrants, [200], zListOrgGrantsResponse);
+export const listOrgRulesOp: BodyOperation<ListOrgRulesData, typeof zListOrgRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgRules, [200], zListOrgRulesResponse);
 export const listOrgsOp: BodyOperation<ListOrgsData, typeof zListOrgsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgs, [200], zListOrgsResponse);
 export const listPasskeysOp: BodyOperation<ListPasskeysData, typeof zListPasskeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPasskeys, [200], zListPasskeysResponse);
 export const listPendingDraftsOp: BodyOperation<ListPendingDraftsData, typeof zListPendingDraftsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPendingDrafts, [200], zListPendingDraftsResponse);
 export const listPkiIssuersOp: BodyOperation<ListPkiIssuersData, typeof zListPkiIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPkiIssuers, [200], zListPkiIssuersResponse);
 export const listPkiProfilesOp: BodyOperation<ListPkiProfilesData, typeof zListPkiProfilesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPkiProfiles, [200], zListPkiProfilesResponse);
 export const listProjectGrantsOp: BodyOperation<ListProjectGrantsData, typeof zListProjectGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjectGrants, [200], zListProjectGrantsResponse);
+export const listProjectRulesOp: BodyOperation<ListProjectRulesData, typeof zListProjectRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjectRules, [200], zListProjectRulesResponse);
 export const listProjectsOp: BodyOperation<ListProjectsData, typeof zListProjectsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjects, [200], zListProjectsResponse);
 export const listRemotesOp: BodyOperation<ListRemotesData, typeof zListRemotesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRemotes, [200], zListRemotesResponse);
 export const listRevisionPinsOp: BodyOperation<ListRevisionPinsData, typeof zListRevisionPinsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listRevisionPins, [200], zListRevisionPinsResponse);
@@ -1458,6 +1472,7 @@ export const revokeMachineCredentialOp: BodylessOperation<RevokeMachineCredentia
 export const revokeMySessionOp: BodylessOperation<RevokeMySessionData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMySession, [204]);
 export const revokeOrgGrantOp: BodylessOperation<RevokeOrgGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeOrgGrant, [204]);
 export const revokeProjectGrantOp: BodylessOperation<RevokeProjectGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeProjectGrant, [204]);
+export const revokeRuleOp: BodylessOperation<RevokeRuleData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeRule, [204]);
 export const revokeScimCredentialOp: BodylessOperation<RevokeScimCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeScimCredential, [204]);
 export const scimDeleteGroupOp: BodylessOperation<ScimDeleteGroupData> = /* @__PURE__ */ new GeneratedBodylessOperation(scimDeleteGroup, [204]);
 export const scimDeleteUserOp: BodylessOperation<ScimDeleteUserData> = /* @__PURE__ */ new GeneratedBodylessOperation(scimDeleteUser, [204]);

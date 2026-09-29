@@ -287,6 +287,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// carries is the SAME window machinery human disclosure consumes, so
 		// they cannot come from two configurations.
 		Grants:       &service.Grants{DB: db, Auth: authSvc},
+		Rules:        &service.Rules{DB: db},
 		Registration: registrationSvc,
 		Identities:   &service.Identities{DB: db, Auth: authSvc},
 		// One Federation across the issuer surface and the delivery surface, and

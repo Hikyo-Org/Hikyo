@@ -58,6 +58,7 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 	// SET, which is the only reliable way to tell "" from "not given".
 	set := map[string]bool{}
 	var fset *flag.FlagSet
+	var confirmWidening stringList
 	st, flags, err := parseCommon("key "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fset = fs
 		fs.StringVar(&format, "o", "table", "output format: table or json")
@@ -79,6 +80,10 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&description, "description", "", "free-text description; may hold a URL")
 			fs.BoolVar(&deprecated, "deprecated", false, "mark the key deprecated")
 			fs.StringVar(&deprecationNote, "deprecation-note", "", "why the key is deprecated, and what replaces it")
+		}
+		if sub == "update" {
+			fs.Var(&confirmWidening, "confirm-widening",
+				"repeatable: a principal id a folder move gives access through their access rules; name exactly the refusal's set")
 		}
 		if sub == "reclassify" {
 			fs.StringVar(&classification, "classification", "", "secret or config")
@@ -240,6 +245,10 @@ func runKey(ctx context.Context, ios IO, args []string) error {
 			body.DeprecationNote = &deprecationNote
 		}
 		body.Acknowledgements = acksPtr(acknowledge)
+		if len(confirmWidening) > 0 {
+			confirm := apigen.ConfirmWidening(confirmWidening)
+			body.ConfirmWidening = &confirm
+		}
 		var key apigen.Key
 		if err := client.Do(ctx, http.MethodPatch, target, body, &key); err != nil {
 			return err

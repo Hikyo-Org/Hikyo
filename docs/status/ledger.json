@@ -48,6 +48,18 @@
       ]
     },
     {
+      "id": "CAP-MEMBER-ACCESS-RULES",
+      "kind": "capability",
+      "title": "Member access rules",
+      "status": "partial",
+      "implemented": "Rules with project, environment and key or folder scope evaluated at the authorization chokepoint, folder-move widening confirmation, and rule list, create and revoke from API and CLI",
+      "remaining": "Members and Who can...? WebUI surfaces, and the amendment's cross-provider review before it is operative",
+      "evidence": [
+        { "label": "Member access rules ADR", "path": "docs/adr/member-access-rules.md" },
+        { "label": "Member access rules handoff", "path": "docs/handoff/member-access-rules.md" }
+      ]
+    },
+    {
       "id": "CAP-PRIVACY-OPERATIONS",
       "kind": "capability",
       "title": "Self-hosted privacy operations",

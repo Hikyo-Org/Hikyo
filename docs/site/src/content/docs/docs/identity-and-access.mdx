@@ -35,6 +35,33 @@ hikyo access grant add \
 Use `access grant list` before and after a change. Use a named grant template
 when the built-in role exactly matches the job.
 
+## Access rules
+
+An access rule gives one person one capability on a narrower *where* than a
+grant can: a list of projects, then every environment except some (or only
+some), then every key except some folders or keys (or only those). An
+exception narrows only its own rule; access is the union of everything a
+person's grants and rules reach, and there are no deny rules. Rules are for
+people; machines keep their grants.
+
+```bash
+hikyo access rule add --project <project-id> \
+  --principal <principal-id> --capability reveal \
+  --except-env <prod-env-id> --only-folder db
+hikyo access rule list --project <project-id>
+hikyo access rule remove <rule-id>
+```
+
+`read` and `pin` cannot be narrowed by keys, and machine, deploy and settings
+administration need a whole project. An except of a folder also covers its
+subfolders; an only-pick of a folder is exact. Edit a rule by removing it and
+adding the new one.
+
+Moving a key to another folder can give people access through their rules.
+Such a move is refused until it is confirmed with `--confirm-widening`
+naming exactly those people; only a member manager of the project is told who
+they are.
+
 ## Human sessions
 
 The local CLI login prompts on the controlling terminal. Passwords never cross

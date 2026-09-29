@@ -325,6 +325,148 @@ func (q *Queries) ListRuleIDsForProject(ctx context.Context, arg ListRuleIDsForP
 	return items, nil
 }
 
+const listRuleLinesInOrg = `-- name: ListRuleLinesInOrg :many
+SELECT r.id, r.principal_id, r.capability, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  i.axis, i.project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path
+FROM rules AS r
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = ?1
+ORDER BY r.id, i.id
+`
+
+type ListRuleLinesInOrgRow struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	EnvMode     string
+	KeyMode     string
+	CreatedBy   string
+	CreatedAt   string
+	Axis        string
+	ProjectID   string
+	EnvID       string
+	KeyID       string
+	FolderPath  string
+}
+
+// The rule listing (the rules half of the membership surface), ungated like
+// the grant listing: a member manager sees every stored rule in the org.
+// hikyo:authn-resolution
+func (q *Queries) ListRuleLinesInOrg(ctx context.Context, orgID string) ([]ListRuleLinesInOrgRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRuleLinesInOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRuleLinesInOrgRow
+	for rows.Next() {
+		var i ListRuleLinesInOrgRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.Capability,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuleLinesInProject = `-- name: ListRuleLinesInProject :many
+SELECT r.id, r.principal_id, r.capability, r.env_mode, r.key_mode, r.created_by, r.created_at,
+  i.axis, i.project_id,
+  CAST(COALESCE(i.env_id, '') AS TEXT) AS env_id,
+  CAST(COALESCE(i.key_id, '') AS TEXT) AS key_id,
+  CAST(COALESCE(i.folder_path, '') AS TEXT) AS folder_path,
+  (SELECT COUNT(*) FROM rule_items AS o WHERE o.rule_id = r.id AND o.project_id <> ?1) AS other_items
+FROM rules AS r
+JOIN rule_items AS i ON i.rule_id = r.id
+WHERE r.org_id = ?2 AND i.org_id = ?2 AND i.project_id = ?1
+ORDER BY r.id, i.id
+`
+
+type ListRuleLinesInProjectParams struct {
+	ProjectID string
+	OrgID     string
+}
+
+type ListRuleLinesInProjectRow struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	EnvMode     string
+	KeyMode     string
+	CreatedBy   string
+	CreatedAt   string
+	Axis        string
+	ProjectID   string
+	EnvID       string
+	KeyID       string
+	FolderPath  string
+	OtherItems  int64
+}
+
+// The project rule listing. A project member manager authorizes for ONE
+// project, so only that project's items are read (never a sibling project's
+// environments, keys or folders); other_items counts, without naming, the
+// items a rule holds elsewhere so the listing can say the rule spans more.
+// hikyo:authn-resolution
+func (q *Queries) ListRuleLinesInProject(ctx context.Context, arg ListRuleLinesInProjectParams) ([]ListRuleLinesInProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRuleLinesInProject, arg.ProjectID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRuleLinesInProjectRow
+	for rows.Next() {
+		var i ListRuleLinesInProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PrincipalID,
+			&i.Capability,
+			&i.EnvMode,
+			&i.KeyMode,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.Axis,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.KeyID,
+			&i.FolderPath,
+			&i.OtherItems,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRulesForPrincipal = `-- name: ListRulesForPrincipal :many
 
 SELECT r.id, r.capability, r.org_id, r.env_mode, r.key_mode,
