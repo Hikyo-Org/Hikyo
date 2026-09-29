@@ -165,8 +165,17 @@ func ruleRequest(principal, capability string, projects []string, envs, folders,
 	for _, v := range folderItems {
 		targets := projects
 		path := v
-		if i := strings.Index(v, ":"); i > 0 && slices.Contains(projects, v[:i]) {
-			targets, path = []string{v[:i]}, v[i+1:]
+		if i := strings.Index(v, ":"); i > 0 {
+			switch {
+			case slices.Contains(projects, v[:i]):
+				targets, path = []string{v[:i]}, v[i+1:]
+			case strings.HasPrefix(v[:i], "prj_"):
+				// A mistyped or uncovered project qualifier must not become a
+				// literal folder name: under --except-folder that would match
+				// nothing and silently leave the folder reachable.
+				return apigen.CreateRuleRequest{}, failf(ExitUsage,
+					"hikyo access rule add: --only-folder/--except-folder %q names project %q, which the rule does not cover", v, v[:i])
+			}
 		}
 		for _, project := range targets {
 			folder := path

@@ -68,7 +68,7 @@
       <span class="desc">Members becomes a roster (seeded-from, reach, production-secret flag, limit count). Each member gets a page: access map of scope tree by capability, click a mark to limit it to keys, plus effective access per key. List size stays constant however detailed access gets.</span>
     </a></li>
   </ul>
-  <footer>shared in every variant: Who can...? with a key picker · limits only narrow, never grant · selectors expand to per-key entries at write time · read and pin are never narrowable<br>every change is a new numbered iteration, published ones never mutate · <a href="/prototypes/">all prototypes</a></footer>
+  <footer>shared by every iteration: Who can...? with a key picker · limits only narrow, never grant · excepts narrow only their own rule<br>iteration 1 only: selectors expanded to per-key entries at write time; iterations 2 to 6 use live selectors (see the member-access-rules ADR)<br>every change is a new numbered iteration, published ones never mutate · <a href="/prototypes/">all prototypes</a></footer>
 </body>
 </html>
 

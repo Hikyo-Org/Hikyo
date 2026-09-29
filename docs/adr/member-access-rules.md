@@ -132,7 +132,11 @@ resolver reports "has Reveal but not See" rather than a false yes.
   evaluated: a key added to the folder joins, a key moved out leaves, a key
   renamed inside it is unaffected.
 - A **single-key** selector binds to the key's stable id: it survives renames
-  and moves; a deleted key drops out.
+  and moves; a deleted key drops out. Deleting a key and creating a new one with
+  the same name makes a new key, which an except naming the old key's id does
+  not cover (an "all, except" rule includes keys added later). Exclusions meant
+  to outlast the key belong on a folder. Creating that key already needs Define
+  keys, and a folder rename does not move keys (their folder path is unchanged).
 
 ### D9. A move that widens access needs confirmation
 

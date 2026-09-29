@@ -2326,7 +2326,7 @@ paths:
       x-hikyo-operation: rule.list-org
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 7
+      x-hikyo-min-revision: 8
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -2361,7 +2361,7 @@ paths:
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 7
+      x-hikyo-min-revision: 8
       requestBody:
         required: true
         content:
@@ -2408,7 +2408,7 @@ paths:
       x-hikyo-operation: rule.revoke
       x-hikyo-formula: [manage-members@project]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 7
+      x-hikyo-min-revision: 8
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -2774,7 +2774,7 @@ paths:
       x-hikyo-operation: rule.list-project
       x-hikyo-formula: [manage-members@project]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 7
+      x-hikyo-min-revision: 8
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"

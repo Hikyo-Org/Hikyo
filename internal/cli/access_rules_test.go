@@ -56,6 +56,9 @@ func TestRuleRequestBindsItemsToProjects(t *testing.T) {
 	if _, err := ruleRequest("usr_x", "edit", one, ruleAxisFlags{}, ruleAxisFlags{}, ruleAxisFlags{only: stringList{"prj_z:key_1"}}); err == nil {
 		t.Fatal("a key qualified with a project outside the rule was accepted")
 	}
+	if _, err := ruleRequest("usr_x", "edit", one, ruleAxisFlags{}, ruleAxisFlags{except: stringList{"prj_typo:secrets"}}, ruleAxisFlags{}); err == nil {
+		t.Fatal("an except folder qualified with a project outside the rule was accepted as a literal folder")
+	}
 }
 
 func TestAccessRuleVerbs(t *testing.T) {
