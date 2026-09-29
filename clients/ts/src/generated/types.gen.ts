@@ -1047,7 +1047,8 @@ export type Error = {
         /**
          * Present on `bad_request` and `unprocessable`, where it names
          * the offending request member, and on a `conflict` whose refusal
-         * names the caller's own state. `null` and absent are
+         * names the caller's own state or, for a key folder move that
+         * widens access, what `widening` carries. `null` and absent are
          * equivalent; every other error code omits the member entirely.
          *
          */

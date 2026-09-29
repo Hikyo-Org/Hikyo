@@ -59,3 +59,30 @@ owner took, and what is owed before any of it becomes operative.
 - Prototype: `python3 -m http.server -d docs/site/public/prototypes` then open
   `/member-access/6/` (or `/member-access/` for all iterations).
 - Storybook: `pnpm --dir web run storybook`, group *Prototypes/Member access*.
+
+## Implementation (stages A and B, branch feat/member-access-rules)
+
+The first line above predates the implementation: stages A and B change the
+running product.
+
+- **Stage A** (f119e733, 431a6205): rule tables (migration 00070), evaluation
+  inside `authorize()` only, key-aware authorization, deletion pruning, the D9
+  folder-move confirmation. **Review fixes** (d5dd971c): folder excepts cover
+  subfolders, the D9 census ignores privacy gates, rule-decided key writes
+  conceal out-of-rule objects, gainers are named only to member managers, a
+  missing rule revokes exactly like an unreachable one.
+- **Stage B** (feat commit after d5dd971c): `GET/POST /orgs/{org}/rules`,
+  `DELETE /orgs/{org}/rules/{rule}`, `GET /orgs/{org}/projects/{project}/rules`,
+  `confirm_widening` on key metadata update and definitions apply, the 409
+  `error.widening` member, `hikyo access rule list|add|remove`,
+  `--confirm-widening`, regenerated clients. Spellings in
+  [api-cli-spellings.md](../spec/api-cli-spellings.md).
+- **Deviations from the brief:** listings carry environment and key ids and
+  folder paths, not names (names need `read`, which a member manager may
+  lack); the project listing shows only its own project's part of a rule.
+- **Owed by stage C:** the Members and Who can...? WebUI on these routes
+  (names through the `read`-gated catalogue routes), and flipping the four
+  `issue: 838` rows in `api/parity.yaml` to `webui`. 838 is this PR, so
+  `scripts/ci/check-parity-issues.sh` fails until then (or until a real
+  implementation issue replaces it).
+
