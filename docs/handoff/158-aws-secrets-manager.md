@@ -147,14 +147,26 @@ with the same (empty) prefix in one account are allowed.
   with `scripts/ci/start-aws-emulator.sh`, digest-pinned, only in the isolation
   shard that owns the test, with `HIKYO_TEST_AWS_EMULATOR_REQUIRED=1`), and
   `TestAWSSecretsManagerRealSmoke` gated on `HIKYO_TEST_AWS_REAL_*` (sandbox
-  account; not wired into CI because no credentials exist yet). Both force-delete
-  their run-scoped names in cleanup; only this test code can read values.
+  account; not wired into CI because no credentials exist yet). Both end by
+  recreating a torn-down secret inside its recovery window (restore, then
+  write), the delete and recreate case the Floci spike required live. Both
+  force-delete their run-scoped names in cleanup; only this test code can read
+  values.
 
 ## Open items
 
 - Cross-model review of the ADR amendment (governance procedure).
-- A sandbox AWS account and CI secret for the real smoke; the Floci spike noted
-  real deletion/recreate lifecycle must be covered live.
+- A sandbox AWS account for the real smoke. It has not been run: no AWS
+  credentials exist on the maintainer workstation or in repository secrets.
+  With a sandbox IAM key holding the permissions listed in
+  `aws_external_e2e_test.go`:
+
+  ```sh
+  HIKYO_TEST_AWS_REAL_REQUIRED=1 HIKYO_TEST_AWS_REAL_ACCOUNT=... \
+  HIKYO_TEST_AWS_REAL_REGION=... HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID=... \
+  HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY=... \
+    go test ./internal/isolation -run '^TestAWSSecretsManagerRealSmoke$' -count=1 -v
+  ```
 - The dev fake provider (`internal/app/adapter_fake_dev.go`) treats AWS kinds
   generically; browser flows for AWS are not in the Playwright registry yet.
 - `ListSecrets` cannot be resource-scoped in IAM; per-key planning and

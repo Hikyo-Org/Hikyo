@@ -946,9 +946,11 @@ jobs:
   # internal/isolation package runs on three independent PostgreSQL runners.
   # Cross-platform proof for local repository scanning (#153): the scanner
   # engine's path, CRLF, symlink, budget and git-fixture tests on the two
-  # non-Linux client platforms (Linux runs them in test_core). Indirect:
-  # test_core needs it, so a failure here skips test_core and ci-required
-  # reports the mismatch.
+  # non-Linux client platforms (Linux runs them in test_core). The macOS leg
+  # also carries generic file synchronization (#164): the destination
+  # publisher, the client, and the SQLite end-to-end run (Windows
+  # destinations are out of scope). Indirect: test_core needs it, so a
+  # failure here skips test_core and ci-required reports the mismatch.
   scan-xplat:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
@@ -968,6 +970,12 @@ jobs:
           cache: false
       - name: Scanner tests
         run: go test -count=1 ./internal/scanning/... ./internal/repscan
+      - name: File synchronization tests
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          go test -count=1 ./internal/filesync
+          go test -count=1 -run FileSync ./internal/cli
+          go test -count=1 -run '^TestFileSyncCLISQLite$' ./internal/isolation
 
   test_core:
     needs: [changes, scan-xplat]

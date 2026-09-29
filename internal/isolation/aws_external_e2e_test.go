@@ -213,6 +213,28 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 			t.Fatalf("%s after teardown: deleted=%v err=%v, want scheduled deletion", name, meta.Deleted, err)
 		}
 	}
+	// Recreate inside the recovery window: the name still exists, scheduled
+	// for deletion and tagged for this target, so the next job must restore it
+	// rather than create it. Emulators diverge from AWS here, which is why the
+	// real smoke shares this step.
+	recreated := "recreated after teardown " + run
+	manifest[0].Value = recreated
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: targets[1], Manifest: manifest, JobID: "job_e2e_recreate_" + run}, newForgejoLifecycleJournal()); err != nil {
+		t.Fatalf("recreate %s: %v", targets[1].ID, err)
+	}
+	meta, err := client.DescribeSecret(t.Context(), owned[1])
+	if err != nil || meta.Deleted || meta.Tags[adapter.SentinelName] != targets[1].ID {
+		t.Fatalf("%s after recreate: deleted=%v tags=%v err=%v, want restored and owned", owned[1], meta.Deleted, meta.Tags, err)
+	}
+	var restored struct {
+		SecretString string `json:"SecretString"`
+	}
+	if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": owned[1]}, &restored); err != nil {
+		t.Fatalf("oracle read after recreate: %v", err)
+	}
+	if err := json.Unmarshal([]byte(restored.SecretString), &document); err != nil || document["TOKEN"] != recreated {
+		t.Fatalf("recreated document = %q (%v)", restored.SecretString, err)
+	}
 }
 
 // externalAWSCall is the test-only oracle and cleanup path. It signs any
