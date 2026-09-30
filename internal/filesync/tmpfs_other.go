@@ -2,9 +2,10 @@
 
 package filesync
 
-import "fmt"
-
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // isTmpfs cannot be answered off Linux: the Compose helper reports true there
 // so its doctor check stays quiet, but require_tmpfs is a refusal, and a

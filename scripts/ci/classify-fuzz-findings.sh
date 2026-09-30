@@ -98,7 +98,7 @@ while IFS= read -r path; do
 		printf '%s\n' "$path" >>"$related_paths"
 		printf 'fuzz classification: %s passes on base; PR-related\n' "$path" >&2
 	elif "$JQ_BIN" -e --arg test "$target_and_hash" \
-		'select(.Action == "fail" and .Test == $test)' "$replay" >/dev/null; then
+		"select(.Action == \"fail\" and .Test == \$test)" "$replay" >/dev/null; then
 		printf '%s\n' "$path" >>"$unrelated_paths"
 		printf 'fuzz classification: %s named subtest also fails on base; independent issue\n' "$path" >&2
 	else

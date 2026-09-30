@@ -535,15 +535,7 @@ function ValuesSurface({
 
       {refusal !== null ? <Alert>{refusal}</Alert> : null}
 
-      {notice !== null ? (
-        <p className="notice" role="status">
-          {/* markup-check: copy receipt, not feedback */}
-          <span className="alert__glyph" aria-hidden="true">
-            ⧉
-          </span>
-          <span>{notice}</span>
-        </p>
-      ) : null}
+      {notice !== null ? <Alert tone="done">{notice}</Alert> : null}
 
       <p className="values__reveal-announcement visually-hidden" role="status">
         {revealAnnouncement === null ? null : (

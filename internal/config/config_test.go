@@ -148,9 +148,12 @@ func TestPostgresRemoteCAOnlyTLSRefused(t *testing.T) {
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",              // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",     // empty authority + host param
-		"postgres:///hikyo",                                      // no host at all (implicit PGHOST)
+		// libpq-style host param
+		"postgres:///hikyo?host=remote.example.com",
+		// empty authority + host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",
+		// no host at all (implicit PGHOST)
+		"postgres:///hikyo",
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {

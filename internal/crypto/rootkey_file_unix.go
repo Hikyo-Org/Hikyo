@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -16,7 +17,14 @@ import (
 const rootKeyFileLimit = 4096
 
 func readRootKeyFile(path string) ([]byte, error) {
-	file, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+	flags := os.O_RDONLY | unix.O_NOFOLLOW | unix.O_NONBLOCK
+	if isProcSelfFD(path) {
+		// An inherited memfd is exposed through this kernel-owned alias. Opening
+		// the exact numeric alias creates an independent file description for
+		// repeated child reads; every ordinary filesystem path stays no-follow.
+		flags &^= unix.O_NOFOLLOW
+	}
+	file, err := os.OpenFile(path, flags, 0)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("%w (file %s does not exist)", ErrNoRootKey, path)
@@ -47,4 +55,17 @@ func readRootKeyFile(path string) ([]byte, error) {
 		return nil, ErrRootKeyFormat
 	}
 	return raw, nil
+}
+
+func isProcSelfFD(path string) bool {
+	descriptor, ok := strings.CutPrefix(path, "/proc/self/fd/")
+	if !ok || descriptor == "" {
+		return false
+	}
+	for _, digit := range descriptor {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }

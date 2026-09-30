@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha1" // #nosec G505 -- APK-TOOLS defines this checksum metadata format.
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -213,7 +215,7 @@ func verifyDeb(filename string, id identity) (payload, error) {
 		return payload{}, fmt.Errorf("read Debian data archive: %w", err)
 	}
 	inspection := newTarInspection()
-	if err := inspectTar(tar.NewReader(bytes.NewReader(dataTar)), inspection, nil); err != nil {
+	if err := inspectTar(tar.NewReader(bytes.NewReader(dataTar)), inspection, nil, false); err != nil {
 		return payload{}, err
 	}
 	return finishPayload(inspection)
@@ -226,7 +228,7 @@ func verifyAPK(filename string, id identity) (payload, error) {
 	}
 	defer f.Close()
 	inspection := newTarInspection()
-	if err := inspectGzipTarMembers(f, inspection, map[string]bool{".PKGINFO": true}); err != nil {
+	if err := inspectGzipTarMembers(f, inspection, map[string]bool{".PKGINFO": true}, true); err != nil {
 		return payload{}, err
 	}
 	pkginfo, ok := inspection.metadata[".PKGINFO"]
@@ -252,7 +254,7 @@ func verifyArch(filename string, id identity) (payload, error) {
 	}
 	defer zr.Close()
 	inspection := newTarInspection()
-	if err := inspectTar(tar.NewReader(zr), inspection, map[string]bool{".PKGINFO": true, ".MTREE": true}); err != nil {
+	if err := inspectTar(tar.NewReader(zr), inspection, map[string]bool{".PKGINFO": true, ".MTREE": true}, false); err != nil {
 		return payload{}, err
 	}
 	pkginfo, ok := inspection.metadata[".PKGINFO"]
@@ -438,7 +440,7 @@ func inspectDebControl(tr *tar.Reader) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := validateTarMetadata(hdr, entry); err != nil {
+		if err := validateTarMetadata(hdr, entry, false); err != nil {
 			return nil, err
 		}
 		if hdr.Typeflag == tar.TypeDir {
@@ -471,7 +473,7 @@ func inspectDebControl(tr *tar.Reader) ([]byte, error) {
 	return control, nil
 }
 
-func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[string]bool) error {
+func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[string]bool, allowAPKChecksum bool) error {
 	buffered := bufio.NewReader(r)
 	members := 0
 	for {
@@ -485,7 +487,7 @@ func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[
 			return fmt.Errorf("open APK gzip member %d: %w", members+1, err)
 		}
 		zr.Multistream(false)
-		if err := inspectTar(tar.NewReader(zr), inspection, metadata); err != nil {
+		if err := inspectTar(tar.NewReader(zr), inspection, metadata, allowAPKChecksum); err != nil {
 			zr.Close()
 			return err
 		}
@@ -508,7 +510,7 @@ func newTarInspection() *tarInspection {
 	return &tarInspection{metadata: make(map[string][]byte), files: make(map[string]bool), dirs: make(map[string]bool)}
 }
 
-func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]bool) error {
+func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]bool, allowAPKChecksum bool) error {
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -521,10 +523,13 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 		if err != nil {
 			return err
 		}
-		if err := validateTarMetadata(hdr, entry); err != nil {
+		if err := validateTarMetadata(hdr, entry, allowAPKChecksum); err != nil {
 			return err
 		}
 		if hdr.Typeflag == tar.TypeDir {
+			if len(hdr.PAXRecords) != 0 {
+				return fmt.Errorf("package directory %q contains forbidden extended metadata", entry)
+			}
 			if !allowedPayloadDirectory(entry) {
 				return fmt.Errorf("unexpected package directory %q", entry)
 			}
@@ -544,6 +549,9 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 		if err != nil {
 			return err
 		}
+		if err := validateAPKChecksum(hdr, entry, content); err != nil {
+			return err
+		}
 		if metadata != nil && metadata[entry] {
 			if _, exists := inspection.metadata[entry]; exists {
 				return fmt.Errorf("duplicate package metadata %q", entry)
@@ -560,12 +568,36 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 	}
 }
 
-func validateTarMetadata(hdr *tar.Header, entry string) error {
+const apkChecksumPAXKey = "APK-TOOLS.checksum.SHA1"
+
+func validateTarMetadata(hdr *tar.Header, entry string, allowAPKChecksum bool) error {
 	if hdr.Uid != 0 || hdr.Gid != 0 || hdr.Uname != "" && hdr.Uname != "root" || hdr.Gname != "" && hdr.Gname != "root" {
 		return fmt.Errorf("package entry %q must be owned by root:root", entry)
 	}
-	if len(hdr.PAXRecords) != 0 || len(hdr.Xattrs) != 0 {
+	if len(hdr.Xattrs) != 0 {
 		return fmt.Errorf("package entry %q contains forbidden extended metadata", entry)
+	}
+	if len(hdr.PAXRecords) == 0 {
+		return nil
+	}
+	checksum, ok := hdr.PAXRecords[apkChecksumPAXKey]
+	if !allowAPKChecksum || len(hdr.PAXRecords) != 1 || !ok || len(checksum) != sha1.Size*2 {
+		return fmt.Errorf("package entry %q contains forbidden extended metadata", entry)
+	}
+	if _, err := hex.DecodeString(checksum); err != nil {
+		return fmt.Errorf("package entry %q has malformed APK checksum metadata", entry)
+	}
+	return nil
+}
+
+func validateAPKChecksum(hdr *tar.Header, entry string, content []byte) error {
+	want, ok := hdr.PAXRecords[apkChecksumPAXKey]
+	if !ok {
+		return nil
+	}
+	got := sha1.Sum(content) // #nosec G401 -- verify the checksum format emitted by APK-TOOLS.
+	if hex.EncodeToString(got[:]) != strings.ToLower(want) {
+		return fmt.Errorf("package entry %q APK checksum does not match its content", entry)
 	}
 	return nil
 }

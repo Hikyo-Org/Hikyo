@@ -29,21 +29,22 @@ import (
 
 func main() {
 	origin := flag.String("origin", "", "owned chart loopback port-forward origin")
+	spkiPin := flag.String("spki-pin", "", "base64 SHA-256 pin for the chart TLS certificate")
 	privateDir := flag.String("private-dir", "", "private fixture custody directory")
 	binary := flag.String("binary", "", "same-source native CLI binary")
 	flag.Parse()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	if err := run(ctx, *origin, *privateDir, *binary); err != nil {
+	if err := run(ctx, *origin, *spkiPin, *privateDir, *binary); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, origin, privateDir, binary string) error {
+func run(ctx context.Context, origin, spkiPin, privateDir, binary string) error {
 	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-		return errors.New("chartdoctor requires the owned loopback port-forward origin")
+	if err != nil || u.Scheme != "https" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || spkiPin == "" {
+		return errors.New("chartdoctor requires the owned pinned-TLS loopback port-forward origin")
 	}
 	info, err := os.Lstat(privateDir)
 	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
@@ -61,7 +62,7 @@ func run(ctx context.Context, origin, privateDir, binary string) error {
 	if err := privateWrite(filepath.Join(privateDir, "password"), []byte(password)); err != nil {
 		return err
 	}
-	trust := cli.TrustEntry{Name: "chart", Origin: origin}
+	trust := cli.TrustEntry{Name: "chart", Origin: origin, SPKIPin: spkiPin}
 	client, err := cli.NewClient(trust, "")
 	if err != nil {
 		return errors.New("chartdoctor could not construct the loopback client")

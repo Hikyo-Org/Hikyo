@@ -119,7 +119,7 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
+	client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, STSAllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

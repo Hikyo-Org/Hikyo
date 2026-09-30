@@ -18,14 +18,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
-	"github.com/jackc/pgx/v5/pgconn"
-	"modernc.org/sqlite"
 )
 
 // RestoreState is the instance's restore posture.
@@ -174,42 +171,71 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 // InvalidateRestoredExternalCredentials destroys every restored credential
 // whose verifier lives outside this instance's epoch boundary.
 func (r *Resolver) InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error {
+	tables, err := r.restoredExternalCredentialTables(ctx)
+	if err != nil {
+		return fmt.Errorf("authn: probe restored external credential tables: %w", err)
+	}
 	if r.sq != nil {
 		at := encodeTime(now)
-		if err := r.sq.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oidc_providers") {
-			return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+		if tables.oidc {
+			if err := r.sq.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil {
+				return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+			}
 		}
-		if err := r.sq.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oauth2_providers") {
-			return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+		if tables.oauth2 {
+			if err := r.sq.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil {
+				return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+			}
 		}
-		if err := r.sq.DeleteRestoredRemotes(ctx); err != nil && !missingRestoreTable(err, "remotes") {
-			return fmt.Errorf("authn: delete restored remotes: %w", err)
+		if tables.remotes {
+			if err := r.sq.DeleteRestoredRemotes(ctx); err != nil {
+				return fmt.Errorf("authn: delete restored remotes: %w", err)
+			}
 		}
 		return nil
 	}
 	at := pgTimestamp(now)
-	if err := r.pg.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oidc_providers") {
-		return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+	if tables.oidc {
+		if err := r.pg.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil {
+			return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+		}
 	}
-	if err := r.pg.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oauth2_providers") {
-		return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+	if tables.oauth2 {
+		if err := r.pg.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil {
+			return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+		}
 	}
-	if err := r.pg.DeleteRestoredRemotes(ctx); err != nil && !missingRestoreTable(err, "remotes") {
-		return fmt.Errorf("authn: delete restored remotes: %w", err)
+	if tables.remotes {
+		if err := r.pg.DeleteRestoredRemotes(ctx); err != nil {
+			return fmt.Errorf("authn: delete restored remotes: %w", err)
+		}
 	}
 	return nil
 }
 
-// missingRestoreTable accepts only an absent table while reconciling an older
-// archive before its migrations run. An archive predating a table cannot carry
-// credentials in it; every other datastore error remains fatal.
-func missingRestoreTable(err error, table string) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "42P01" && (pgErr.TableName == table || strings.Contains(pgErr.Message, `relation "`+table+`" does not exist`))
+type restoredExternalTables struct {
+	oidc    bool
+	oauth2  bool
+	remotes bool
+}
+
+// restoredExternalCredentialTables probes before issuing writes. PostgreSQL
+// aborts a transaction after an undefined-table error, so catching that error
+// after a write is too late for older archives whose migrations have not run.
+func (r *Resolver) restoredExternalCredentialTables(ctx context.Context) (restoredExternalTables, error) {
+	var tables restoredExternalTables
+	if r.sq != nil {
+		err := r.sqdb.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oidc_providers'),
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth2_providers'),
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'remotes')`).Scan(&tables.oidc, &tables.oauth2, &tables.remotes)
+		return tables, err
 	}
-	var sqliteErr *sqlite.Error
-	return errors.As(err, &sqliteErr) && strings.Contains(sqliteErr.Error(), "no such table: "+table)
+	err := r.pgdb.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('oidc_providers')),
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('oauth2_providers')),
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('remotes'))`).Scan(&tables.oidc, &tables.oauth2, &tables.remotes)
+	return tables, err
 }
 
 // HoldRestoredPKIIssuers suspends minting on every restored CA issuer (#154,
