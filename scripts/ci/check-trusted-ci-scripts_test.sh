@@ -69,7 +69,7 @@ if ! grep -F 'pull_request_target:' "$controller" >/dev/null ||
 	exit 1
 fi
 
-# Fork PRs (#813): validation runs untrusted under pull_request in ci-fork.yml,
+# All PRs (#813): validation runs untrusted under pull_request in ci-fork.yml,
 # never under pull_request_target, and the base-controlled gate decides.
 fork_workflow="$script_dir/../../.github/workflows/ci-fork.yml"
 if ! grep -Eq '^  pull_request:' "$fork_workflow" ||
@@ -91,7 +91,18 @@ require_line "$fork_workflow" 'run-name: "fork-ci #${{ github.event.pull_request
 # shellcheck disable=SC2016
 require_line "$script_dir/check-fork-validation.sh" 'select(.display_title == \"fork-ci #$PR_NUMBER\")'
 
-require_line "$controller" "if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository"
+# The controller must execute the reusable validation graph only for a merge
+# group. Every pull request, including same-repository branches, is checked by
+# the PR-scoped workflow and the base-controlled gate below.
+if [ "$(grep -Fc "if: github.event_name == 'merge_group'" "$controller")" -ne 2 ]; then
+	printf 'trusted CI scripts fixture failed: trusted validation can run outside the merge queue\n' >&2
+	exit 1
+fi
+require_line "$controller" '- name: Require PR-scoped validation'
+if [ "$(grep -Fxc "        if: github.event_name == 'pull_request_target'" "$controller")" -ne 2 ]; then
+	printf 'trusted CI scripts fixture failed: PR-scoped validation gate is incomplete\n' >&2
+	exit 1
+fi
 # The merge queue (#813) validates the exact merge result with the full suite.
 # The fork path must never run for a merge group (it has no pull_request), and
 # groups must not share, and so cancel, one concurrency slot.

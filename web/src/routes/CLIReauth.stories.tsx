@@ -123,7 +123,7 @@ export const Disclosure: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/the terminal asks to/i)).toBeVisible();
     await expect(canvas.getByText(/passkey required/)).toBeVisible();
-    await expect(canvas.getByText(/TOTP required/)).toBeVisible();
+    await expect(canvas.getByText(/passkey or authenticator code/)).toBeVisible();
     await expect(
       await canvas.findByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
     ).toBeVisible();
@@ -144,15 +144,17 @@ export const DisclosureOIDC: Story = {
   },
 };
 
-// An adapter operation over a sliding environment: the code is required, so
-// the authorize button waits for it.
+// An adapter operation over a sliding environment: the operator can use the
+// enrolled authenticator or leave the code empty to use a passkey.
 export const Adapter: Story = {
   beforeEach: withSearchParams({ transaction: STATE }),
   parameters: { app: app(authenticatedIdentity, transaction({ body: adapter })) },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText('adapter.configure')).toBeVisible();
-    await expect(canvas.getByLabelText('Authenticator code')).toBeRequired();
-    await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeDisabled();
+    await expect(
+      canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
+    ).toBeRequired();
+    await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
   },
 };
 
