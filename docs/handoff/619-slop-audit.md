@@ -44,14 +44,15 @@ merged. The September audit is evidence to recheck, not a current deletion list.
 
 | Remaining item | Current evidence | Disposition |
 | --- | --- | --- |
-| Hand SQL versus system-architecture ADR | 284 `.SQL(...)` call sites in non-test `internal/store` files; count is call sites, not estimated LOC | Owner selects sqlc migration or documented dialect/analyzer policy |
-| Resolver forwarding surface | 221 simple `TxAuthorizer` methods delegate to `a.r`; excludes methods with real policy | Owner selects explicit set, generation, or embedding after trusted-set analysis |
-| Authz/OpenAPI registry ownership | Existing registry still explicitly links route, operation and audit events | Owner selects canonical derivation direction; no boundary widened here |
-| MachineAccess decomposition | `web/src/routes/MachineAccess.tsx`: 3,943 lines | Owner-approved split remains held |
+| Hand SQL versus system-architecture ADR | All 359 baseline selectors retired; 385 new paired queries plus 9 PostgreSQL-only; 89 exact engine-protocol owners retained | sqlc migration implemented; general raw execution rejected in CI |
+| Resolver forwarding surface | 212 delegates generated; 37 transformed/policy methods retained; public surface unchanged | Explicit private allowlist implemented |
+| Authz/OpenAPI registry ownership | All 431 ordered wire entries preserved in generated static metadata | OpenAPI-derived metadata implemented; invalid inputs fail generation/CI |
+| MachineAccess decomposition | Route reduced from 3,943 to 1,011 lines plus 8 feature modules | Feature-family split implemented; org/project/session confirmation reset covered |
 
-The four holds above are preserved from the accepted audit disposition. They
-are not counted as safe deletions, and this pass does not claim the repository
-has zero duplication or close #619.
+These were the four holds at the start of the mechanical cleanup. Their owner
+selections and subsequent implementation are recorded below. They are not
+counted as safe deletions, and this pass does not claim the repository has zero
+duplication or close #619.
 
 Formerly flagged items intentionally retained after source verification:
 
@@ -66,7 +67,75 @@ Formerly flagged items intentionally retained after source verification:
   remain intentional. No schema migration, feature removal or authorization
   widening occurs in this pass.
 
-### Validation and review
+### Architecture decision session, 2026-09-30
+
+The owner selected **SQL option A: migrate the remaining inline store queries
+to sqlc**, retaining the existing SQLite/PostgreSQL contract checks, transaction
+boundaries and dual-engine behavior. PR #634 already enforces contracts for
+generated queries; it does not cover the inline `.SQL(...)` surface. The
+system-architecture ADR already chooses sqlc, so this selection implements that
+decision rather than reopening the ORM choice. The owner also selected named,
+CI-enumerated engine-protocol exceptions for operations sqlc cannot represent:
+PRAGMA/VACUUM, COPY, migration DDL and historical-schema catalog inspection.
+Ordinary runtime/data queries still migrate; general raw-SQL access is prohibited.
+For complex tenant-scoped queries beyond the bounded analyzer, the owner selected
+exact SQL/API/authority pins with both-engine valid-access and cross-scope refusal
+tests. These queries remain tenant-scoped; they are not instance exemptions.
+The owner selected **resolver option B: generate explicit forwarding wrappers
+from a reviewed allowlist**. Keep the concrete resolver private, preserve the
+current exported method surface and renames, and leave policy-bearing methods
+handwritten. Adding a resolver method must not automatically expose it to
+service callers. Embedding is rejected because it promotes currently hidden
+methods and exposes the resolver pointer.
+
+The owner selected **wire-registry option A: OpenAPI owns HTTP class and
+single-operation linkage**, with invalid declarations, conflicting exceptions
+and stale generated output rejected in **CI**, not by a new startup check.
+Generate static Go HTTP metadata from the contract. Keep direct audit events,
+multi-operation exceptions and non-contract surfaces explicit; retain
+independent router coverage, authorization and audit invariants. This decision
+does not remove existing startup safety checks elsewhere in the application.
+
+The owner selected **MachineAccess option B: split by feature family**. Keep
+route composition, tab selection, project/session boundary resets and
+display-once lifecycles together. Move cohesive panels and dialogs without
+changing URLs or behavior. Replace the mirrored reset-test host with actual
+route coverage for dialog closure and secret clearing across project/session
+changes.
+
+All selections are recorded in `docs/adr/generated-boundaries.md` and implemented
+locally on the same PR. All 359 original inline store selectors are removed;
+store-wide `.SQL`, `.SQLPerEngine` and `.Placeholders` call counts are zero.
+Retired dialect, placeholder-rewrite and raw adapter bridges are removed. The
+final query inventory is 1,045 named SQLite queries across 50 source files and
+1,054 named PostgreSQL queries across 51 files. Engine protocols retain named
+CI-checked owners (89); complex scoped queries retain 66 exact SQL/API/authority
+records covering 33 query names per engine and direct positive/refusal tests.
+
+Resolver forwarding now generates 212 explicit delegates; the static wire table
+contains 431 entries. Two actual runs of each sqlc/authz generator leave all 108
+generated files byte-identical, including their file inventory. Focused core
+scope/roundtrip, SSH lifecycle and Dynamic fencing/subsecond checks pass against
+both engines after bridge removal (39.162 seconds). Full Store Adapter and
+both-engine GitLab/Adapter checks pass after the runtime migration (51.009
+seconds); direct move/config controls and refusal checks also pass on both
+engines. Resolver, wire metadata and MachineAccess focused checks pass locally.
+Web typecheck, lint and 1,321 unit tests pass after the organization-only
+boundary regression was added. The renewed provider sensitivity review matches
+its pinned source hash. PKI and transit direct foreign-write regressions pass on
+both engines, with zero-row/typed refusals and unchanged durable state. The full
+lint suite and fast preflight (format/import/build/vet/API/client/web) pass.
+Direct generated-query evidence is separate from supplementary service flows;
+flow-only references cannot satisfy the direct-proof check. Native Opus
+implementation R2 verified all behavior fixes and requested one negative
+regression for that evidence distinction; it now passes. Final native Opus implementation R3 is CLEAN and architecture R3 is SOUND.
+The canonical core-package script passes with the digest-pinned PostgreSQL
+target. Latent generic-helper and build-context guard notes have local fixes
+and regression coverage. The separate guard code loop remains capped at R3
+CHANGES with its prescribed fixes verified locally, not a fourth CLEAN pass.
+Exact-head remote CI remains pending; this is not merge or deployment evidence.
+
+### Validation and review of the initial mechanical cleanup
 
 Local checks: TypeScript typecheck, full web lint, all 1,272 unit tests (148
 files), and production build pass. All 23 migrated route-test files also pass
@@ -128,10 +197,12 @@ the native variant. The disposable database is owned by this task.
 7. `scripts/ci/analysis-shards_test.sh` referenced only itself and never ran.
    Wired in the CI PR.
 
-## Deliberately not done (owner decisions, ADR-locked)
+## Historical architecture holds, superseded on 2026-09-30
 
-These are architecture calls that Marc's own rules say get grilled and locked,
-not changed under "trust your judgement". Options with verdicts are in #619.
+The original series left these four decisions for the owner. All four directions
+are now selected in [generated-boundaries](../adr/generated-boundaries.md),
+with implementation and verification continuing in PR #843. This list records
+the earlier audit; it is not a current exclusion.
 
 1. `internal/store` hand SQL over a home-made dialect shim (~5,400 LOC) against
    the ADR that rejected hand SQL; invisible to the tenant-isolation analyzer.

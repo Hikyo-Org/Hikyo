@@ -3,7 +3,7 @@ import { act, useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle } from '../testkit/renderForm.tsx';
-import { MintDialog } from './MachineAccess.tsx';
+import { MintDialog } from './machineAccess/Credentials.tsx';
 import {
   transitionMintLifecycle,
   type MintLifecycle,

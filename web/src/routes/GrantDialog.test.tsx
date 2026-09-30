@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MachineEnvScope, ServiceAccount } from '../api/identities.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
-import { GrantDialog } from './MachineAccess.tsx';
+import { GrantDialog } from './machineAccess/EnvironmentGrants.tsx';
 
 const ACCOUNT: ServiceAccount = {
   id: 'svc_a',

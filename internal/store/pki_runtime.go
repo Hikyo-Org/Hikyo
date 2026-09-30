@@ -45,21 +45,6 @@ type pkiSweptRow struct {
 	id, org, project, env, serial, principal, issuerName, renewedFrom string
 }
 
-func scanSweptRows(rows adapterRows) ([]pkiSweptRow, error) {
-	defer closeRows(rows)
-	var out []pkiSweptRow
-	for rows.Next() {
-		var row pkiSweptRow
-		if err := rows.Scan(&row.id, &row.org, &row.project, &row.env, &row.serial, &row.principal, &row.issuerName, &row.renewedFrom); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
-const pkiSweepColumns = `c.id,c.org_id,c.project_id,c.environment_id,c.serial,c.principal_id,i.name,COALESCE(c.renewed_from,'')`
-
 // SweepStaleIssuing moves `issuing` rows whose deadline passed to `unknown`:
 // the process died, or its outcome transaction failed, between reserving the
 // serial and recording the signed leaf. Hikyo cannot prove the leaf never
@@ -69,32 +54,26 @@ const pkiSweepColumns = `c.id,c.org_id,c.project_id,c.environment_id,c.serial,c.
 func (r *PKIRuntime) SweepStaleIssuing(ctx context.Context, now time.Time, limit int) (int, error) {
 	moved := 0
 	err := dbTransaction(ctx, r.db, func(tx adapterDBTX) error {
-		query := tx.SQLPerEngine(
-			`SELECT `+pkiSweepColumns+` FROM pki_certificates c JOIN pki_issuers i ON i.id=c.issuer_id WHERE c.state='issuing' AND c.issuing_deadline<? ORDER BY c.issuing_deadline LIMIT ?`,
-			`SELECT `+pkiSweepColumns+` FROM pki_certificates c JOIN pki_issuers i ON i.id=c.issuer_id WHERE c.state='issuing' AND c.issuing_deadline<$1 ORDER BY c.issuing_deadline LIMIT $2 FOR UPDATE OF c SKIP LOCKED`)
-		rows, err := tx.Query(ctx, query, tx.Stamp(now), limit)
-		if err != nil {
-			return err
-		}
-		due, err := scanSweptRows(rows)
+		q := tx.pkiStoreQueries()
+		due, err := q.runtimePKIStaleIssuing(ctx, now, limit)
 		if err != nil {
 			return err
 		}
 		for _, row := range due {
-			changed, err := tx.Exec(ctx, tx.SQL(`UPDATE pki_certificates SET state='unknown', row_version=row_version+1, updated_at=? WHERE id=? AND org_id=? AND state='issuing'`), tx.Stamp(now), row.id, row.org)
+			changed, err := q.runtimePKIMarkUnknown(ctx, row, now)
 			if err != nil {
 				return err
 			}
 			if changed != 1 {
 				continue
 			}
-			if _, err := tx.Exec(ctx, tx.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=(SELECT issuer_id FROM pki_certificates WHERE id=?)`), row.id); err != nil {
+			if err := q.pkiBumpCertificateRevocation(ctx, row.id); err != nil {
 				return err
 			}
 			kind := "issue"
 			if row.renewedFrom != "" {
 				kind = "renew"
-				if _, err := tx.Exec(ctx, tx.SQL(`UPDATE pki_certificates SET renewed_by=NULL, updated_at=? WHERE id=? AND org_id=? AND renewed_by=?`), tx.Stamp(now), row.renewedFrom, row.org, row.id); err != nil {
+				if err := q.runtimePKIReleaseRenewal(ctx, row, now); err != nil {
 					return err
 				}
 			}
@@ -112,26 +91,21 @@ func (r *PKIRuntime) SweepStaleIssuing(ctx context.Context, now time.Time, limit
 func (r *PKIRuntime) ExpireDue(ctx context.Context, now time.Time, limit int) (int, error) {
 	moved := 0
 	err := dbTransaction(ctx, r.db, func(tx adapterDBTX) error {
-		query := tx.SQLPerEngine(
-			`SELECT `+pkiSweepColumns+` FROM pki_certificates c JOIN pki_issuers i ON i.id=c.issuer_id WHERE c.state IN ('issued','renewed') AND c.not_after<=? ORDER BY c.not_after LIMIT ?`,
-			`SELECT `+pkiSweepColumns+` FROM pki_certificates c JOIN pki_issuers i ON i.id=c.issuer_id WHERE c.state IN ('issued','renewed') AND c.not_after<=$1 ORDER BY c.not_after LIMIT $2 FOR UPDATE OF c SKIP LOCKED`)
-		rows, err := tx.Query(ctx, query, tx.Stamp(now), limit)
-		if err != nil {
-			return err
-		}
-		due, err := scanSweptRows(rows)
+		q := tx.pkiStoreQueries()
+		due, err := q.runtimePKIExpired(ctx, now, limit)
 		if err != nil {
 			return err
 		}
 		for _, row := range due {
-			changed, err := tx.Exec(ctx, tx.SQL(`UPDATE pki_certificates SET state='expired', row_version=row_version+1, updated_at=? WHERE id=? AND org_id=? AND state IN ('issued','renewed')`), tx.Stamp(now), row.id, row.org)
+			changed, err := q.runtimePKIMarkExpired(ctx, row, now)
 			if err != nil {
 				return err
 			}
 			if changed != 1 {
 				continue
 			}
-			if err := insertPKITenantAudit(ctx, tx, row, "success", now, pkiTransitionPayload{Kind: "expire", Serial: row.serial, Issuer: row.issuerName, State: "expired"}); err != nil {
+			kind := "expire"
+			if err := insertPKITenantAudit(ctx, tx, row, "success", now, pkiTransitionPayload{Kind: kind, Serial: row.serial, Issuer: row.issuerName, State: "expired"}); err != nil {
 				return err
 			}
 			moved++
@@ -146,12 +120,7 @@ func insertPKITenantAudit(ctx context.Context, tx adapterDBTX, row pkiSweptRow, 
 	if err != nil {
 		return err
 	}
-	query := tx.SQLPerEngine(
-		`INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES (?,'pki.certificate_transition_outcome',1,?,0,?,NULL,'system',?,'env',?,?,?,'pki-certificate',?,?,?,'system',?)`,
-		`INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES ($1,'pki.certificate_transition_outcome',1,$2,false,$3,NULL,'system',$4,'env',$5,$6,$7,'pki-certificate',$8,$9,$10,'system',$11)`)
-	stamp := tx.Stamp(at)
-	_, err = tx.Exec(ctx, query, "pau_"+uuid.Must(uuid.NewV7()).String(), stamp, stamp, row.principal, row.org, row.project, row.env, row.id, outcome, row.id, string(body))
-	return err
+	return tx.pkiStoreQueries().runtimePKITransitionAudit(ctx, row, "pau_"+uuid.Must(uuid.NewV7()).String(), outcome, string(body), at)
 }
 
 // DueCRLs lists issuer versions whose CRL must be (re)published. Retired and
@@ -159,24 +128,7 @@ func insertPKITenantAudit(ctx context.Context, tx adapterDBTX, row pkiSweptRow, 
 // is independent of clock skew and keeps revocations racing publication due.
 func (r *PKIRuntime) DueCRLs(ctx context.Context, now time.Time) ([]PKICRLCandidate, error) {
 	return dbReadResult(ctx, r.db, func(db adapterDB) ([]PKICRLCandidate, error) {
-		query := db.SQL(`SELECT i.id,i.name,i.version,i.certificate_der,i.encrypted_private_key,i.dek_version,i.crl_number,i.revocation_seq FROM pki_issuers i WHERE i.state IN ('active','retiring') AND i.encrypted_private_key IS NOT NULL AND i.dek_version IS NOT NULL AND i.certificate_der IS NOT NULL AND (i.crl_der IS NULL OR i.crl_next_update<=? OR i.revocation_seq>i.crl_revocation_seq) ORDER BY i.id`)
-		halfLife := now.Add(12 * time.Hour)
-		rows, err := db.Query(ctx, query, db.Stamp(halfLife))
-		if err != nil {
-			return nil, err
-		}
-		defer closeRows(rows)
-		var out []PKICRLCandidate
-		for rows.Next() {
-			var c PKICRLCandidate
-			var dek int64
-			if err := rows.Scan(&c.IssuerID, &c.Name, &c.Version, &c.CertificateDER, &c.EncryptedPrivateKey, &dek, &c.CRLNumber, &c.RevocationSeq); err != nil {
-				return nil, err
-			}
-			c.DEKVersion = uint32(dek)
-			out = append(out, c)
-		}
-		return out, rows.Err()
+		return db.pkiStoreQueries().runtimePKIDueCRLs(ctx, now.Add(12*time.Hour))
 	})
 }
 
@@ -202,12 +154,7 @@ func (r *PKIRuntime) PublishCRL(ctx context.Context, candidate PKICRLCandidate, 
 		if err != nil {
 			return err
 		}
-		query := tx.SQLPerEngine(
-			`INSERT INTO audit_instance_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES (?,'pki.crl_published',1,?,0,?,NULL,'system',NULL,'pki-issuer',?,'success',NULL,'system',?)`,
-			`INSERT INTO audit_instance_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES ($1,'pki.crl_published',1,$2,false,$3,NULL,'system',NULL,'pki-issuer',$4,'success',NULL,'system',$5)`)
-		stamp := tx.Stamp(thisUpdate)
-		_, err = tx.Exec(ctx, query, "pau_"+uuid.Must(uuid.NewV7()).String(), stamp, stamp, candidate.IssuerID, string(body))
-		return err
+		return tx.pkiStoreQueries().runtimePKIPublishedAudit(ctx, "pau_"+uuid.Must(uuid.NewV7()).String(), candidate.IssuerID, string(body), thisUpdate)
 	})
 	return published, err
 }
@@ -222,14 +169,18 @@ type PKIGauges struct {
 // Gauges is a proof-free scrape-time system read, like DynamicRuntime.Gauges.
 func (r *PKIRuntime) Gauges(ctx context.Context, now time.Time) (PKIGauges, error) {
 	return dbReadResult(ctx, r.db, func(db adapterDB) (PKIGauges, error) {
+		q := db.pkiStoreQueries()
 		var out PKIGauges
-		if err := db.QueryRow(ctx, db.SQL(`SELECT COUNT(*) FROM pki_certificates WHERE state IN ('issued','renewed') AND not_after>?`), db.Stamp(now)).Scan(&out.LiveCertificates); err != nil {
+		var err error
+		out.LiveCertificates, err = q.runtimePKICountLive(ctx, now)
+		if err != nil {
 			return out, err
 		}
-		if err := db.QueryRow(ctx, db.SQL(`SELECT COUNT(*) FROM pki_certificates WHERE state='unknown' AND not_after>?`), db.Stamp(now)).Scan(&out.UnknownCertificates); err != nil {
+		out.UnknownCertificates, err = q.runtimePKICountUnknown(ctx, now)
+		if err != nil {
 			return out, err
 		}
-		err := db.QueryRow(ctx, `SELECT COUNT(*) FROM pki_issuers WHERE restore_hold=1 AND state IN ('pending','active','retiring')`).Scan(&out.HeldIssuers)
+		out.HeldIssuers, err = q.runtimePKICountHeld(ctx)
 		return out, err
 	})
 }

@@ -4,7 +4,7 @@ import { expect, fn, userEvent } from 'storybook/test';
 
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { dynamicProvider as provider } from '../testkit/machineAccess.ts';
-import { LeaseMintDialog } from './MachineAccess.tsx';
+import { LeaseMintDialog } from './machineAccess/DynamicLeases.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
@@ -157,24 +156,6 @@ type (
 	StoredRule     = authn.StoredRule
 	StoredRuleItem = authn.StoredRuleItem
 )
-
-func (a *TxAuthorizer) CreateRule(ctx context.Context, rule domain.Rule, createdBy domain.PrincipalID, at time.Time, newItemID func() (string, error)) error {
-	return a.r.CreateRule(ctx, rule, createdBy, at, newItemID)
-}
-
-func (a *TxAuthorizer) DeleteRule(ctx context.Context, id string, p domain.PrincipalID) (bool, error) {
-	return a.r.DeleteRule(ctx, id, p)
-}
-
-func (a *TxAuthorizer) DeleteRuleItem(ctx context.Context, ruleID, itemID string, p domain.PrincipalID) error {
-	return a.r.DeleteRuleItem(ctx, ruleID, itemID, p)
-}
-
-// GetRule reads one stored rule, ungated; valid is false for a stored rule
-// that no longer validates (the caller should delete it).
-func (a *TxAuthorizer) GetRule(ctx context.Context, id string) (StoredRule, bool, error) {
-	return a.r.GetRule(ctx, id)
-}
 
 // RulesForProject is the folder-move widening census: every rule of a human
 // principal naming this project, a superset of what the chokepoint honours

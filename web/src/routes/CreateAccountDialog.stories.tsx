@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
 import { ORG, PRJ } from '../testkit/ids.ts';
-import { CreateAccountDialog } from './MachineAccess.tsx';
+import { CreateAccountDialog } from './machineAccess/AccountDialogs.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 

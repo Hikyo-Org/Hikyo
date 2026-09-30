@@ -1,0 +1,582 @@
+{
+  "postgres": {
+    "AdapterConfigAWSConfiguredNames": {
+      "api_hash": "e4a22f375a610aa1e4a594cfde4823f571de23bb46c81dbc4ba2f01a7ee6355e",
+      "authority": "Verified adapter-configure project chain bounds active targets and candidate adapter owner joins. Target-key environment and project-key ownership remain composite. Candidate provider origin and AWS account bound per-key/JSON-object namespace; the caller checks exact effective-name intersections while preserving the admitted configuration snapshot.",
+      "sql_hash": "4e6b00d1964def11d433bdf326c6c5bdec8e8f007791b28ce153499563e0c849",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigAWSPendingNames": {
+      "api_hash": "474f3786b39882de2cd9f1b9be42858c0d613c9a7e5906503d10c3156a509a26",
+      "authority": "Verified adapter-configure project chain bounds pending claims and candidate adapter parent owner. Provider origin and AWS account restrict pending per-key/JSON-object names, excluding the current target. No pending names from another org/project are available to configuration collision checks.",
+      "sql_hash": "907f544f96e713b184647e00c36eab9149f3780a3e45e6e4ec3c13d6db4688e0",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigConfiguredNames": {
+      "api_hash": "d6a2f26e005fc23680d83452e43b46c5425faf13792dbce610c08412ac8bcad2",
+      "authority": "Verified adapter-configure project chain supplies org/project and candidate adapter ID. Active target and adapter owners join on id/org/project; membership additionally matches environment and keys match project ownership. Same provider origin/destination/scope and excluded target preserve the configured name namespace in the admitted configuration transaction.",
+      "sql_hash": "f9d5603e6af62504f076af7835033e955fcd3f6f4204ad46a971bf8cc7717905",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigFindings": {
+      "api_hash": "faac8f1326b185d9de3bf07887ddf0a7f5bbb67650e601e5737d703f671ad369",
+      "authority": "Verified adapter-inspect project chain plus the fetched target ID/environment/generation bounds effect rows. Outbox joins match job id/org/project/environment; only completed outcomes from that generation rank by surface/case-folded name and completion time/id. Reads names/findings only, preserving latest-success clearing and project isolation.",
+      "sql_hash": "95c66f989e8935698bb0c9c5538a27a2a1aea0f95bd54edfb9920626398083a4",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigPendingNames": {
+      "api_hash": "9e5e83455843182811e68b88dbce86fe5c56dbb506c5ad911b6f96b13a67fb8b",
+      "authority": "Verified adapter-configure project chain supplies both claim org/project and candidate adapter parent join. Pending claims match candidate provider origin and full destination kind/owner/name/environment/scope, excluding the current target. Reads only names already reserved by pending moves in that authorized project transaction.",
+      "sql_hash": "b07ad157518394a107d476f1bfec5e725c2eeb1767b0b7816c2b839fa1a23d81",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConflicts": {
+      "api_hash": "acf55ef67e23c220c662dbba0e3f30799b48f6db5eb0063cd144892b03b2e449",
+      "authority": "Conflicts verifies StoreAdaptersConflicts and passes its derived org/project unchanged. Conflict rows bind target ID and proof chain; the target join matches ID/org/project, and generation equality admits only artifacts for the live target generation. No tenant from another org/project can contribute rows.",
+      "sql_hash": "44f6247064680ac9439489e3514032404f3e68e3d28c1991688ed3661adca779",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterEraseUnusedCredential": {
+      "api_hash": "3d12d0d12442834aeeedb0591d2390b4468f6c5d950e5b784aead3d9efdab042",
+      "authority": "TeardownAdapter verifies StoreAdaptersTeardownAdapter, locks the owning adapter, processes its bound targets and marks the adapter tombstoned in the same transaction. This UPDATE binds that adapter ID and verified org/project. The two NOT EXISTS checks use the globally unique adapter ID; scrub jobs join targets by ID/org/project/environment. Foreign org/project affects no credential row; owning positive control erases only after targets are tombstoned.",
+      "sql_hash": "732debf3106b8dd499aed199726cd22e11ea1a4c448d43aeec31217a67e5f802",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreCredentialEraseRefusesForeignScope"
+      ]
+    },
+    "AdapterGetActiveTargetForUpdate": {
+      "api_hash": "413c1823521aa661b386012344895ab465f099c21d9fb7442c12dcf03c0459de",
+      "authority": "UpdateTarget verifies StoreAdaptersUpdateTarget before updateTargetConfig. The helper passes unchanged derived org/project and requested target ID. Owning adapter joins target by ID/org/project; active job joins by ID/org/project/environment. Active state remains required. PostgreSQL locks only the target row before generation and immutable destination/environment checks.",
+      "sql_hash": "a30d6d64d95da50d87c30da1116c15bb40d8b6e3c339557472bd6c04c85763b3",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterGetTarget": {
+      "api_hash": "413c1823521aa661b386012344895ab465f099c21d9fb7442c12dcf03c0459de",
+      "authority": "Target verifies StoreAdaptersTarget and PlanMaterial verifies StoreAdaptersPlanMaterial before passing derived org/project and target ID. Target and owning adapter join by ID/org/project; nullable active job additionally matches target environment. Target environment is returned from the bound parent, never from an unverified caller chain.",
+      "sql_hash": "bdc6295ce010657c0ef20dc1c4187a4536d6a8f1d4486998d6ed98a5e65cbe04",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterListTargets": {
+      "api_hash": "f5e0f5456bee3b2385436be400c690b84a8f504ace3d0ebc5c7329dcac07de4f",
+      "authority": "ListTargets verifies StoreAdaptersListTargets and supplies unchanged proof org/project and adapter ID. Only active targets of that adapter are returned; owning adapter matches ID/org/project and nullable active job matches ID/org/project/environment. Project authority intentionally permits the returned target environments.",
+      "sql_hash": "27a4e2bf4ce2051e62150b5de9f55e9feabab32164ca31729bfdbe6b98ac5bcf",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMapping": {
+      "api_hash": "b3ca59fca59a865fe7b5d7bf4cea64724ffa1873cbfe89b13c8561288d0ebf0f",
+      "authority": "Mapping verifies StoreAdaptersMapping. Target/membership/snapshot-entry joins preserve ID/org/project/environment; outer target binds verified org/project and requested target ID. The latest payload snapshot scalar correlates org/project/environment to that bound target. The positive fixture includes a higher-revision snapshot from another environment and must still return only the owning manifest.",
+      "sql_hash": "0362deec1cf04c63e077d3acac93b6ec7f1c0fc3dbb286e6648a5786284aa8ee",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveAWSConfiguredNames": {
+      "api_hash": "349333118961050b875316b57833e56fe14b516cd2613050701468f4ee8be937",
+      "authority": "Verified pending-move project chain bounds active AWS namespace target/adapter rows. Composite target-key environment and project-key joins retain ownership; proposed provider origin/account and per-key/JSON-object kinds limit name comparison, excluding the moving target. Reads names only within the transaction that reserves pending claims.",
+      "sql_hash": "a39cd2efadbe9f46294ec7f4d3652de1e9e22a6be4e137ba2d8b4a9e53cdbd73",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginOriginAdapter": {
+      "api_hash": "aac1e5af1db2102d5b4db590f758a3f8be82ae770d6a7e5475cd32123f8f5fee",
+      "authority": "Verified origin-move project chain restricts the active adapter parent by id/org/project. Busy-lease count correlates each active target to that same adapter and org/project and compares the unchanged admitted observed clock. PostgreSQL locks the adapter row; SQLite uses its existing write transaction.",
+      "sql_hash": "2af3a41551d1fed5eb09b587c498c42f992c999c5bba6c59aa96590add325d46",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginOriginCollisions": {
+      "api_hash": "f6c2e4948e0dba9e60554df5ce4fa75159675b7140bba318daaae63ea37ec4ce",
+      "authority": "Verified origin-move org/project scopes both non-tombstoned configured adapters and unfinished pending-origin move arms; duplicate scope inputs are the same admitted chain. Current adapter excluded. Only configured or pending use of the proposed origin in that project can block the origin transition.",
+      "sql_hash": "770e8a9667b98926ce1f258edf56671154d59d61d50104b63a3e4071870b4cd6",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginOriginTargets": {
+      "api_hash": "b5157a38611bfae3642060b611a0c5dcd67ca9c9a30a2ba9904d06f6c36b07f0",
+      "authority": "Verified origin-move chain restricts active target rows by adapter/org/project. Nested owned/dispatched ledger aggregation correlates target ID and full org/project/environment to each target. Selected repositories, orphaned names, generations and active-job state stay in the same admitted snapshot; PostgreSQL row locking and target-ID order are preserved.",
+      "sql_hash": "56dcc83d275fa3318d31aef46d4218845380ca1c36fbf813c3a6b35caa8ae576",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginTarget": {
+      "api_hash": "79a27f571f2cd784a2dd110196eb7f41689b609ba79909870944f8094e18911c",
+      "authority": "Verified target-move project chain restricts the active target and matching active adapter composite owner join. Busy lease uses the unchanged observed clock; orphaned-name ledger aggregation correlates target ID/org/project/environment. The caller binds the already-authorized target ID and preserves the generation/state transition snapshot.",
+      "sql_hash": "3c73752bfcbdd112d54cbe7f5f06b4a4816d410d82e59e659502cb982a77018a",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveConfiguredCollision": {
+      "api_hash": "4f2e2151976b56b8337c75b9daba412b3db1be6ab1511953459a6e6ad24ada05",
+      "authority": "Verified pending-move project chain bounds active target/adapter rows. Target-key joins include org/project/environment and key joins include org/project; proposed provider origin and full destination scope plus provider-specific key surface/effective-name comparisons preserve the configured slot namespace. Current target excluded before claims are inserted in the same transaction.",
+      "sql_hash": "52b5c9af6f127b9790240cd3fb9fe5d5057fbcf6ac3eb5b8cc3291932167f831",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveReplaceOriginCollisions": {
+      "api_hash": "f7ca7828fada1a59823a86b4c2fd56506495bd5e51357f5964b5aea764697309",
+      "authority": "Verified move-replacement org/project scopes both configured-adapter and pending-origin move count arms; duplicate scope inputs carry the same proof-derived chain. The existing move adapter/current move IDs are excluded, and tombstoned/completed/canceled rows excluded as before. Runs after the matching move parent read inside the same replacement transaction.",
+      "sql_hash": "d91467d77f59ea2f27d35d58ea185ca357e65067e36667b815212c11fb4c03d5",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterPlanManifest": {
+      "api_hash": "a79501ec6caa782ac69dfa881368bfaacb6dceb797f9407e0f9715ed5c051f38",
+      "authority": "PlanMaterial verifies StoreAdaptersPlanMaterial and first fetches the owning target via AdapterGetTarget. Verify-derived org/project plus that immutable target environment bind both latest payload snapshot and entries. Membership joins entry by key/org/project/environment and binds the same target ID. A forged org/project/environment returns no manifest; higher revision in another environment cannot replace the owning snapshot.",
+      "sql_hash": "37b5e595d91782f3a4311c65fc3cfba23a4d9d6d291ad261bec03ad573940a9c",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterReplaceCredentialTarget": {
+      "api_hash": "a11fc01a369cc4990201d328dc0201e08b2d905ad671d0078a46daf042a9f6c9",
+      "authority": "ReplaceCredential verifies StoreAdaptersReplaceCredential before replaceAdapterCredential. Outer adapter binds verified org/project, adapter ID and active state under the original PostgreSQL row lock. Both scalar target counts correlate adapter ID/org/project and active state; busy count retains the existing provider lease deadline. Returned count drives the same-transaction generation bump cardinality refusal.",
+      "sql_hash": "6200e32aa5bd942459218ff32d26eb54e709d662bddcd8027ae62fcf82a4e5ae",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterRevokeCredentialTarget": {
+      "api_hash": "2320121ce0e6d88a78d25cd38a5df7936895db84a8e85698ec85106c96fd790b",
+      "authority": "RevokeCredential verifies StoreAdaptersRevokeCredential before revokeAdapterCredential. Outer adapter binds verified org/project, adapter ID and active state under the original PostgreSQL row lock. Scalar active-target count correlates adapter ID/org/project. Returned count drives the same-transaction generation bump cardinality check without exposing another tenant count.",
+      "sql_hash": "69ffee7df6613caf2673a9bc249202acf5c1ceb58269e37929d4ebbbfe60018b",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterWorkerActivateCollisionQuery": {
+      "api_hash": "2e9c185d9529c69d0c1880ae299796cde6d8cc229e21a22a0966ffa149735e7a",
+      "authority": "Shared provider namespace count intentionally has no tenant-coordinate inputs. Activate supplies durable move/target IDs only after exact leased activation job, full current org/project/environment, move, generation and owner validation in its transaction. Direct foreign IDs prove absent move-target membership; shared destination positives and foreign ledger custody checks prove collision semantics. Cross-scope refusal occurs in the actual worker activation flow before this read, not in this count query.",
+      "sql_hash": "b76fdb55ade6ccbb71c83d78c730b98bc2a4670b48eaaba5c58d1382e2fcd7eb",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedActivationScopeAndEnvironmentBridge"
+      ]
+    },
+    "AdapterWorkerActivateLookup": {
+      "api_hash": "7cda3d611a37b3add6bc824ee1e314c1df85ac6cb0da4865f89f15bd32675cbd",
+      "authority": "exact full current chain, target generation and same org/project move-target identity delimit the pending route; unequal pending/current environment is refused before custody writes.",
+      "sql_hash": "bab5b01da07372df9eef4d99945ae6994675ce12dd2611795c94c82a5506f86f",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedActivationScopeAndEnvironmentBridge"
+      ]
+    },
+    "AdapterWorkerCloseIndeterminateEffectsQuery": {
+      "api_hash": "d452f00a73ba9e9807ece1a3e41114e8745d179f4303b845aca14a28389c3d88",
+      "authority": "Claimed persisted adapter job supplies target/org/project/environment inside the existing runtime transaction. Effects join outbox on job ID and full owner chain; unfinished outcomes only. Correlated target lease excludes an effect with live provider custody at the supplied runtime clock. Direct generated tests bind each scope axis, check ordered unfinished/unheld effects, preserve live lease, and admit the held effect only after expiry.",
+      "sql_hash": "8c0c16c1457825d22c924fb6edb10941cada2a80983566117146e0084f9b7c16",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedIndeterminateEffectsPreserveLiveCustody"
+      ]
+    },
+    "AdapterWorkerFinishDeadCredentialScrubErase": {
+      "api_hash": "2f93c4e517b4df15cf3fec13bbcfe9bc8a07c51bade9e522ea63ccbe2b58a553",
+      "authority": "Dead-credential scrub finalization obtains adapter ID from the same job target lookup scoped by org/project/environment and generation-fences target retirement in the existing transaction. This erase additionally matches adapter ID/org/project and tombstoned state; refuses any retained non-tombstoned target or queued/running scrub belonging to that adapter. Direct generated tests independently isolate adapter state, target retention and queued/running custody, then reject each wrong org/project while otherwise eligible and erase exactly the settled owning credential.",
+      "sql_hash": "cb7cd6c3452de73e2594070c06306cf728b3fcadee3a40eac91bd4e558738de4",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody"
+      ]
+    },
+    "AdapterWorkerFinishJobErase": {
+      "api_hash": "2f93c4e517b4df15cf3fec13bbcfe9bc8a07c51bade9e522ea63ccbe2b58a553",
+      "authority": "Successful terminal scrub finalization obtains adapter ID from its job target scoped by org/project/environment, retires that target with its generation fence, then performs credential erasure in the same runtime transaction. Erase requires adapter ID/org/project/tombstone and no retained target or queued/running scrub under that adapter. Direct generated tests independently isolate all retention guards, reject wrong org/project after those guards become eligible, and prove owning settled credential erasure.",
+      "sql_hash": "cb7cd6c3452de73e2594070c06306cf728b3fcadee3a40eac91bd4e558738de4",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody"
+      ]
+    },
+    "AdapterWorkerFinishJobMarkTargets": {
+      "api_hash": "4ec4999bf72fa2337128dd0e6e0aa836794604b02bf2dfd714cf2a3d7c2154bf",
+      "authority": "Failed activation completion carries the persisted job org/project/route-move ID and marks the activating move attention-required before this statement. Both target outer mutation and move-target membership subquery bind that same org/project and exact move; only moving targets fail and lose their active job. Direct generated tests reject org/project and absent move with complete target-state snapshots unchanged, then mark exactly one owning member and preserve a moving member of another actual move.",
+      "sql_hash": "8e0db5a9233eb58b2bd9ad66411e3c7f0505a34db5c8cf57c988314468dd6436",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedFinishJobMarksOnlyScopedMoveTargets"
+      ]
+    },
+    "AdapterWorkerFinishUpdate": {
+      "api_hash": "d892f9feba2b786ecbb63ea4816f16e107b4ec006f601aac1c70a1fb8139f3cb",
+      "authority": "successful Prepare establishes journal effect custody; scoped job outcome and exact provider fence settlement share transaction with a full-chain target/name ledger update that preserves released custody.",
+      "sql_hash": "bb6f0f556fed6fc6f63363bb555002d7900e45584ea37f0065864d68271431ab",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerLoadExecutionEntryQuery": {
+      "api_hash": "00c5acd63f9d0e7de713dcf7052a9ece6b569b5aae193c0a7be1ab7909e96923",
+      "authority": "validated leased execution metadata and full-chain latest snapshot select only same-chain snapshot entries whose keys are configured on the target; plaintext is not queried here.",
+      "sql_hash": "67c9616cc28474ec544f34dffa19e3f66eeaf960805818022b9d88ea4066ba7b",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerLoadExecutionQuery": {
+      "api_hash": "93ecec98c9dcc19dce4e49f0a33ca873f0a446dd31a36f72da2997d040687cfd",
+      "authority": "immutable target/adapters/outbox joins bind every alias through same-column full chain equality; target and job identities, target generation, running state and lease owner all match claimed job. Read follows Gate; credential stays sealed. Snapshot entry membership is additionally bound to target key membership and same tenant chain.",
+      "sql_hash": "17889967f8c8f013a8af765db2dad1955a7f663b0da00d4051658e48d7fd5d89",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerReleaseReservationRemove": {
+      "api_hash": "e7633604586c0ad9beca42acfdc6bc73d4fd5f8d6ac19d360ec3fee74cf42125",
+      "authority": "ledger row uses complete job chain, target, surface/name and reserved state; nested target/outbox membership repeats full chain, generation, running owner and unexpired lease before deletion. Failure is superseded and rolls back.",
+      "sql_hash": "e42d91bc97d57a72cb889c30c69f2a992e1ecaf55080a8770313d90ab8462864",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerReservePendingQuery": {
+      "api_hash": "9f62c1da813307de20eaaeb50bc302ddaedb31c22a3fb97ab7f7f38437a4523e",
+      "authority": "reads full scoped current target + owning adapter, then checks pending route claims in the global provider destination namespace (origin, destination kind/owner/name/environment, surface, normalized name), excluding current target. Claims may belong to another tenant because the remote namespace is shared. Returns only count; conflict refuses before reservation. Subsequent ledger writes use complete claimed job chain.",
+      "sql_hash": "a05b5782b4dadd76dde3b6bc2ce2604e2770629e474d6d2257aae6c7e39c939a",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "RetireSCIMConnectionPrincipal": {
+      "api_hash": "137642547001d00093a4d785a43ec40e9cc7121e4900a056de80160cafb4a8f5",
+      "authority": "Tenant OpSCIMBindingDelete alone exposes StoreSCIMRetireConnection. Service captures connection_principal_id from its proof-scoped binding and, within the same teardown transaction, releases structural grant origins and deletes that binding before passing the captured ID to final retirement. SQL cannot bind an org after the binding row is gone: machine plus provisioning-connection class and NOT EXISTS over every binding permit only ownerless provisioning principals, protecting any live owner in any org. Direct generated tests prove owner/class constraints; actual valid-proof foreign binding lookup and wrong-scoped service teardown refusal prove captured-ID provenance. This is reviewed tenant teardown cleanup, not instance maintenance; no instance annotation added.",
+      "sql_hash": "329ada61000070f41d55312f61a8d25e76dbf147a7ed9eb9ced7504d03173fb2",
+      "tests": [
+        "internal/isolation/scim_retirement_generated_scope_test.go:TestSCIMGeneratedConnectionRetirementPreservesLiveOwners"
+      ],
+      "flow_tests": [
+        "internal/isolation/scim_retirement_generated_scope_test.go:TestSCIMRetirementUsesProofScopedBindingPrincipal"
+      ]
+    }
+  },
+  "sqlite": {
+    "AdapterConfigAWSConfiguredNames": {
+      "api_hash": "e4a22f375a610aa1e4a594cfde4823f571de23bb46c81dbc4ba2f01a7ee6355e",
+      "authority": "Verified adapter-configure project chain bounds active targets and candidate adapter owner joins. Target-key environment and project-key ownership remain composite. Candidate provider origin and AWS account bound per-key/JSON-object namespace; the caller checks exact effective-name intersections while preserving the admitted configuration snapshot.",
+      "sql_hash": "cc441f90433be634108fbb3d06eb1064c27e80d6abbd6495dd73052fc5c83c94",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigAWSPendingNames": {
+      "api_hash": "474f3786b39882de2cd9f1b9be42858c0d613c9a7e5906503d10c3156a509a26",
+      "authority": "Verified adapter-configure project chain bounds pending claims and candidate adapter parent owner. Provider origin and AWS account restrict pending per-key/JSON-object names, excluding the current target. No pending names from another org/project are available to configuration collision checks.",
+      "sql_hash": "80afb4608cfffc4fecbe34fe0b26a993b217c9d0f25628c2a60102a43344eef2",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigConfiguredNames": {
+      "api_hash": "d6a2f26e005fc23680d83452e43b46c5425faf13792dbce610c08412ac8bcad2",
+      "authority": "Verified adapter-configure project chain supplies org/project and candidate adapter ID. Active target and adapter owners join on id/org/project; membership additionally matches environment and keys match project ownership. Same provider origin/destination/scope and excluded target preserve the configured name namespace in the admitted configuration transaction.",
+      "sql_hash": "a6e44d41bd17ddf1de4a712624a43415605a1466255e454317bfc10684a611d0",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigFindings": {
+      "api_hash": "faac8f1326b185d9de3bf07887ddf0a7f5bbb67650e601e5737d703f671ad369",
+      "authority": "Verified adapter-inspect project chain plus the fetched target ID/environment/generation bounds effect rows. Outbox joins match job id/org/project/environment; only completed outcomes from that generation rank by surface/case-folded name and completion time/id. Reads names/findings only, preserving latest-success clearing and project isolation.",
+      "sql_hash": "f5782cf15eb36746842497cede921d2baa116382a47ddc99f3cf1cd05be0f738",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConfigPendingNames": {
+      "api_hash": "9e5e83455843182811e68b88dbce86fe5c56dbb506c5ad911b6f96b13a67fb8b",
+      "authority": "Verified adapter-configure project chain supplies both claim org/project and candidate adapter parent join. Pending claims match candidate provider origin and full destination kind/owner/name/environment/scope, excluding the current target. Reads only names already reserved by pending moves in that authorized project transaction.",
+      "sql_hash": "032f77303619500b25f0bd397443c7af855cbf610db2e8b76d445bf7943b325e",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterConflicts": {
+      "api_hash": "0aaec156b5b2da07b3d888caf8559b0459a1fc3789592c0ad4f305b9cb6069aa",
+      "authority": "Conflicts verifies StoreAdaptersConflicts and passes its derived org/project unchanged. Conflict rows bind target ID and proof chain; the target join matches ID/org/project, and generation equality admits only artifacts for the live target generation. No tenant from another org/project can contribute rows.",
+      "sql_hash": "44f6247064680ac9439489e3514032404f3e68e3d28c1991688ed3661adca779",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterEraseUnusedCredential": {
+      "api_hash": "3d12d0d12442834aeeedb0591d2390b4468f6c5d950e5b784aead3d9efdab042",
+      "authority": "TeardownAdapter verifies StoreAdaptersTeardownAdapter, locks the owning adapter, processes its bound targets and marks the adapter tombstoned in the same transaction. This UPDATE binds that adapter ID and verified org/project. The two NOT EXISTS checks use the globally unique adapter ID; scrub jobs join targets by ID/org/project/environment. Foreign org/project affects no credential row; owning positive control erases only after targets are tombstoned.",
+      "sql_hash": "732debf3106b8dd499aed199726cd22e11ea1a4c448d43aeec31217a67e5f802",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreCredentialEraseRefusesForeignScope"
+      ]
+    },
+    "AdapterGetActiveTargetForUpdate": {
+      "api_hash": "406ebddb68a95ce671e6a118b2e0ffe2fdebc6942f85a95e582d2e5e171c504d",
+      "authority": "UpdateTarget verifies StoreAdaptersUpdateTarget before updateTargetConfig. The helper passes unchanged derived org/project and requested target ID. Owning adapter joins target by ID/org/project; active job joins by ID/org/project/environment. Active state remains required. PostgreSQL locks only the target row before generation and immutable destination/environment checks.",
+      "sql_hash": "04abceb68991b860b7dd600e1ae2cfbe043a89e7f94b54ee06f1c7c12c12fb52",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterGetTarget": {
+      "api_hash": "406ebddb68a95ce671e6a118b2e0ffe2fdebc6942f85a95e582d2e5e171c504d",
+      "authority": "Target verifies StoreAdaptersTarget and PlanMaterial verifies StoreAdaptersPlanMaterial before passing derived org/project and target ID. Target and owning adapter join by ID/org/project; nullable active job additionally matches target environment. Target environment is returned from the bound parent, never from an unverified caller chain.",
+      "sql_hash": "3c3e59768ecfaade65ca0bf1e4a01f9daab6ccfda3590bfef5aa17fd62164e9f",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterListTargets": {
+      "api_hash": "ddeb8c90cba31ac1082c10ccf4d23bd2bc7bd3d8c0546f6451d0e92d89fa8adc",
+      "authority": "ListTargets verifies StoreAdaptersListTargets and supplies unchanged proof org/project and adapter ID. Only active targets of that adapter are returned; owning adapter matches ID/org/project and nullable active job matches ID/org/project/environment. Project authority intentionally permits the returned target environments.",
+      "sql_hash": "7ad7a5608758e5ec50585cb1aa067cab024e3dc6ce05f57aea2579f797be731c",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMapping": {
+      "api_hash": "b3ca59fca59a865fe7b5d7bf4cea64724ffa1873cbfe89b13c8561288d0ebf0f",
+      "authority": "Mapping verifies StoreAdaptersMapping. Target/membership/snapshot-entry joins preserve ID/org/project/environment; outer target binds verified org/project and requested target ID. The latest payload snapshot scalar correlates org/project/environment to that bound target. The positive fixture includes a higher-revision snapshot from another environment and must still return only the owning manifest.",
+      "sql_hash": "bf621471893b85d42d2719296ccc3dc665acbf1b233edd1b772b414992628a0b",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveAWSConfiguredNames": {
+      "api_hash": "349333118961050b875316b57833e56fe14b516cd2613050701468f4ee8be937",
+      "authority": "Verified pending-move project chain bounds active AWS namespace target/adapter rows. Composite target-key environment and project-key joins retain ownership; proposed provider origin/account and per-key/JSON-object kinds limit name comparison, excluding the moving target. Reads names only within the transaction that reserves pending claims.",
+      "sql_hash": "e42b8efdb5d39ed254cc90f61c5c66c20a8963728b15a4caf03cc39deac530b7",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginOriginAdapter": {
+      "api_hash": "e875a35fbfbcf91e3d2259a7dd39a10c242cb7b24ddf493bb0378a66f8f67ac1",
+      "authority": "Verified origin-move project chain restricts the active adapter parent by id/org/project. Busy-lease count correlates each active target to that same adapter and org/project and compares the unchanged admitted observed clock. PostgreSQL locks the adapter row; SQLite uses its existing write transaction.",
+      "sql_hash": "f2b7f7d73b62cdc9ec995200cd3b0842b8eaca1d4c94c8dc3a1f1b4d5b1e20a7",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginOriginCollisions": {
+      "api_hash": "fcaebf298a0d6bfe2efb97780b81186cfcbcdb95c6cb19ffa58476095aa443f3",
+      "authority": "Verified origin-move org/project scopes both non-tombstoned configured adapters and unfinished pending-origin move arms; duplicate scope inputs are the same admitted chain. Current adapter excluded. Only configured or pending use of the proposed origin in that project can block the origin transition.",
+      "sql_hash": "bd842aad5f91fceda3b54c847cf624c9b2adc5b2bdd4f3e63ccf66632808cc6f",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginOriginTargets": {
+      "api_hash": "3f065e249ffe75e61b5d81638c193f2df43ede58995849f7e3e4c18f9d8b2312",
+      "authority": "Verified origin-move chain restricts active target rows by adapter/org/project. Nested owned/dispatched ledger aggregation correlates target ID and full org/project/environment to each target. Selected repositories, orphaned names, generations and active-job state stay in the same admitted snapshot; PostgreSQL row locking and target-ID order are preserved.",
+      "sql_hash": "a263e4fcb88fe769525abba12c06667441e109c2b5394424865fe264b3ae2138",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveBeginTarget": {
+      "api_hash": "1ac20010113e1eaabedcfe7554d9f6069ce188050c49087e2ab02a72dce59a2b",
+      "authority": "Verified target-move project chain restricts the active target and matching active adapter composite owner join. Busy lease uses the unchanged observed clock; orphaned-name ledger aggregation correlates target ID/org/project/environment. The caller binds the already-authorized target ID and preserves the generation/state transition snapshot.",
+      "sql_hash": "0bfc54129c60452ffde89bb77e2997deb33dd5068bd1ffb7adbeeedee29d1129",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveConfiguredCollision": {
+      "api_hash": "4f2e2151976b56b8337c75b9daba412b3db1be6ab1511953459a6e6ad24ada05",
+      "authority": "Verified pending-move project chain bounds active target/adapter rows. Target-key joins include org/project/environment and key joins include org/project; proposed provider origin and full destination scope plus provider-specific key surface/effective-name comparisons preserve the configured slot namespace. Current target excluded before claims are inserted in the same transaction.",
+      "sql_hash": "bf1e23791928239e0a04fa31489289018aef7d344140110a090161fe74f71e86",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterMoveReplaceOriginCollisions": {
+      "api_hash": "6d9a7b095179333bb9974e10330e6c2ca91e7b7471073632a7d8b54d327a0c0b",
+      "authority": "Verified move-replacement org/project scopes both configured-adapter and pending-origin move count arms; duplicate scope inputs carry the same proof-derived chain. The existing move adapter/current move IDs are excluded, and tombstoned/completed/canceled rows excluded as before. Runs after the matching move parent read inside the same replacement transaction.",
+      "sql_hash": "45aff16493793cdb6c0c2d53f2ee0b2cf3e94d3d2293acac9a38299e67a0367f",
+      "tests": [
+        "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterPlanManifest": {
+      "api_hash": "a79501ec6caa782ac69dfa881368bfaacb6dceb797f9407e0f9715ed5c051f38",
+      "authority": "PlanMaterial verifies StoreAdaptersPlanMaterial and first fetches the owning target via AdapterGetTarget. Verify-derived org/project plus that immutable target environment bind both latest payload snapshot and entries. Membership joins entry by key/org/project/environment and binds the same target ID. A forged org/project/environment returns no manifest; higher revision in another environment cannot replace the owning snapshot.",
+      "sql_hash": "5445ba2eeaef7d17e4ef90b16c22c9b3b7c3a13ce0ed93b85b1de42e119136b6",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterReplaceCredentialTarget": {
+      "api_hash": "910916616ba47127aefba7289a5cea0c8e90a2fe1be6139a4227a80f7e20b88f",
+      "authority": "ReplaceCredential verifies StoreAdaptersReplaceCredential before replaceAdapterCredential. Outer adapter binds verified org/project, adapter ID and active state under the original PostgreSQL row lock. Both scalar target counts correlate adapter ID/org/project and active state; busy count retains the existing provider lease deadline. Returned count drives the same-transaction generation bump cardinality refusal.",
+      "sql_hash": "dbfe57fa6768eecc65b414cd17ed00b03f1675eb08f93a7db12e9506fb388e9c",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterRevokeCredentialTarget": {
+      "api_hash": "2320121ce0e6d88a78d25cd38a5df7936895db84a8e85698ec85106c96fd790b",
+      "authority": "RevokeCredential verifies StoreAdaptersRevokeCredential before revokeAdapterCredential. Outer adapter binds verified org/project, adapter ID and active state under the original PostgreSQL row lock. Scalar active-target count correlates adapter ID/org/project. Returned count drives the same-transaction generation bump cardinality check without exposing another tenant count.",
+      "sql_hash": "628fe649f5074e714ec30fd89cf4fa438c5316962064cc55fbd4616b35c1c5a1",
+      "tests": [
+        "internal/isolation/adapter_core_scope_test.go:TestAdapterCoreGeneratedQueriesBindOwningChain"
+      ]
+    },
+    "AdapterWorkerActivateCollisionQuery": {
+      "api_hash": "1e370dc55bd4d9e389efb6525709e9664658554064fc1189466f771818f32143",
+      "authority": "Shared provider namespace count intentionally has no tenant-coordinate inputs. Activate supplies durable move/target IDs only after exact leased activation job, full current org/project/environment, move, generation and owner validation in its transaction. Direct foreign IDs prove absent move-target membership; shared destination positives and foreign ledger custody checks prove collision semantics. Cross-scope refusal occurs in the actual worker activation flow before this read, not in this count query.",
+      "sql_hash": "b76fdb55ade6ccbb71c83d78c730b98bc2a4670b48eaaba5c58d1382e2fcd7eb",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedActivationScopeAndEnvironmentBridge"
+      ]
+    },
+    "AdapterWorkerActivateLookup": {
+      "api_hash": "b07164d9eb3d99653e1159d36a99132587fe58f770c08703fe4f1c058b5052a7",
+      "authority": "exact full current chain, target generation and same org/project move-target identity delimit the pending route; unequal pending/current environment is refused before custody writes.",
+      "sql_hash": "42333c90e94d1565951ba692d7246c2d70eb16cc768b7b7f862bf731e598138a",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedActivationScopeAndEnvironmentBridge"
+      ]
+    },
+    "AdapterWorkerCloseIndeterminateEffectsQuery": {
+      "api_hash": "2c3413333621153cc8c4696383123b5099dd002d0b3352c1ecdf2692a76ea311",
+      "authority": "Claimed persisted adapter job supplies target/org/project/environment inside the existing runtime transaction. Effects join outbox on job ID and full owner chain; unfinished outcomes only. Correlated target lease excludes an effect with live provider custody at the supplied runtime clock. Direct generated tests bind each scope axis, check ordered unfinished/unheld effects, preserve live lease, and admit the held effect only after expiry.",
+      "sql_hash": "8c0c16c1457825d22c924fb6edb10941cada2a80983566117146e0084f9b7c16",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedIndeterminateEffectsPreserveLiveCustody"
+      ]
+    },
+    "AdapterWorkerFinishDeadCredentialScrubErase": {
+      "api_hash": "2f93c4e517b4df15cf3fec13bbcfe9bc8a07c51bade9e522ea63ccbe2b58a553",
+      "authority": "Dead-credential scrub finalization obtains adapter ID from the same job target lookup scoped by org/project/environment and generation-fences target retirement in the existing transaction. This erase additionally matches adapter ID/org/project and tombstoned state; refuses any retained non-tombstoned target or queued/running scrub belonging to that adapter. Direct generated tests independently isolate adapter state, target retention and queued/running custody, then reject each wrong org/project while otherwise eligible and erase exactly the settled owning credential.",
+      "sql_hash": "cb7cd6c3452de73e2594070c06306cf728b3fcadee3a40eac91bd4e558738de4",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody"
+      ]
+    },
+    "AdapterWorkerFinishJobErase": {
+      "api_hash": "2f93c4e517b4df15cf3fec13bbcfe9bc8a07c51bade9e522ea63ccbe2b58a553",
+      "authority": "Successful terminal scrub finalization obtains adapter ID from its job target scoped by org/project/environment, retires that target with its generation fence, then performs credential erasure in the same runtime transaction. Erase requires adapter ID/org/project/tombstone and no retained target or queued/running scrub under that adapter. Direct generated tests independently isolate all retention guards, reject wrong org/project after those guards become eligible, and prove owning settled credential erasure.",
+      "sql_hash": "cb7cd6c3452de73e2594070c06306cf728b3fcadee3a40eac91bd4e558738de4",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody"
+      ]
+    },
+    "AdapterWorkerFinishJobMarkTargets": {
+      "api_hash": "4ec4999bf72fa2337128dd0e6e0aa836794604b02bf2dfd714cf2a3d7c2154bf",
+      "authority": "Failed activation completion carries the persisted job org/project/route-move ID and marks the activating move attention-required before this statement. Both target outer mutation and move-target membership subquery bind that same org/project and exact move; only moving targets fail and lose their active job. Direct generated tests reject org/project and absent move with complete target-state snapshots unchanged, then mark exactly one owning member and preserve a moving member of another actual move.",
+      "sql_hash": "467d4c6c2166c1037f340a3c9e3bc3e97221d364a6463ff1b0aaee0c78bcc431",
+      "tests": [
+        "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedFinishJobMarksOnlyScopedMoveTargets"
+      ]
+    },
+    "AdapterWorkerFinishUpdate": {
+      "api_hash": "79c715b69619ea161694608ae375e475d3d9e98c136d631096a6c1b3b1a0b5c0",
+      "authority": "successful Prepare establishes journal effect custody; scoped job outcome and exact provider fence settlement share transaction with a full-chain target/name ledger update that preserves released custody.",
+      "sql_hash": "bb6f0f556fed6fc6f63363bb555002d7900e45584ea37f0065864d68271431ab",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerLoadExecutionEntryQuery": {
+      "api_hash": "00c5acd63f9d0e7de713dcf7052a9ece6b569b5aae193c0a7be1ab7909e96923",
+      "authority": "validated leased execution metadata and full-chain latest snapshot select only same-chain snapshot entries whose keys are configured on the target; plaintext is not queried here.",
+      "sql_hash": "67c9616cc28474ec544f34dffa19e3f66eeaf960805818022b9d88ea4066ba7b",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerLoadExecutionQuery": {
+      "api_hash": "562748d025f81eb6eec4d08dbc953db3174b1a715f34bd0d2bab7688a58ce2c5",
+      "authority": "immutable target/adapters/outbox joins bind every alias through same-column full chain equality; target and job identities, target generation, running state and lease owner all match claimed job. Read follows Gate; credential stays sealed. Snapshot entry membership is additionally bound to target key membership and same tenant chain.",
+      "sql_hash": "17889967f8c8f013a8af765db2dad1955a7f663b0da00d4051658e48d7fd5d89",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerReleaseReservationRemove": {
+      "api_hash": "8f7dc1a301921f6d35e428254d8940b6633f516d3573d9601bde5c058fbd67e9",
+      "authority": "ledger row uses complete job chain, target, surface/name and reserved state; nested target/outbox membership repeats full chain, generation, running owner and unexpired lease before deletion. Failure is superseded and rolls back.",
+      "sql_hash": "e42d91bc97d57a72cb889c30c69f2a992e1ecaf55080a8770313d90ab8462864",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerReservePendingQuery": {
+      "api_hash": "9f62c1da813307de20eaaeb50bc302ddaedb31c22a3fb97ab7f7f38437a4523e",
+      "authority": "reads full scoped current target + owning adapter, then checks pending route claims in the global provider destination namespace (origin, destination kind/owner/name/environment, surface, normalized name), excluding current target. Claims may belong to another tenant because the remote namespace is shared. Returns only count; conflict refuses before reservation. Subsequent ledger writes use complete claimed job chain.",
+      "sql_hash": "a05b5782b4dadd76dde3b6bc2ce2604e2770629e474d6d2257aae6c7e39c939a",
+      "tests": [
+        "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "RetireSCIMConnectionPrincipal": {
+      "api_hash": "137642547001d00093a4d785a43ec40e9cc7121e4900a056de80160cafb4a8f5",
+      "authority": "Tenant OpSCIMBindingDelete alone exposes StoreSCIMRetireConnection. Service captures connection_principal_id from its proof-scoped binding and, within the same teardown transaction, releases structural grant origins and deletes that binding before passing the captured ID to final retirement. SQL cannot bind an org after the binding row is gone: machine plus provisioning-connection class and NOT EXISTS over every binding permit only ownerless provisioning principals, protecting any live owner in any org. Direct generated tests prove owner/class constraints; actual valid-proof foreign binding lookup and wrong-scoped service teardown refusal prove captured-ID provenance. This is reviewed tenant teardown cleanup, not instance maintenance; no instance annotation added.",
+      "sql_hash": "68f0bb930d95e054c4d155f97f17a244c804bd88960d42484dccc4b1c1cd7325",
+      "tests": [
+        "internal/isolation/scim_retirement_generated_scope_test.go:TestSCIMGeneratedConnectionRetirementPreservesLiveOwners"
+      ],
+      "flow_tests": [
+        "internal/isolation/scim_retirement_generated_scope_test.go:TestSCIMRetirementUsesProofScopedBindingPrincipal"
+      ]
+    }
+  }
+}

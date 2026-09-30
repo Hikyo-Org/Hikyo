@@ -1,0 +1,1723 @@
+{
+  "internal/dynamic/postgres/postgres.go:Provider.CreateRole": {
+    "hash": "74e6046307f79fbad05496a167126ba198fd8f595897fc92a19ba47e3d5bd9b1",
+    "reason": "External PostgreSQL role-DDL protocol; validates generated role/password, sanitizes role identifiers and sets engine-enforced login expiry under policy-approved verify-full connection. No Hikyo application table is queried.",
+    "dependencies": {
+      "internal/dynamic/dynamic.go:ValidPassword": "caad23287733d1854f8bdb04688f3c081ac46e1427e0c491a2ef60e5cb3e9c93",
+      "internal/dynamic/dynamic.go:ValidRoleName": "b3f6b1df5288df43a6578a3bbd80eb7af091fc77c129e95b27a47de33b0e356e",
+      "internal/dynamic/dynamic.go:inAlphabet": "1de2dc30f219b6ce33ca59905216f0723e8e9dbc9d2ba9acf9933f9668b03cd2",
+      "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
+      "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
+      "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61",
+      "internal/dynamic/postgres/postgres.go:createRoleSQL": "708c40acb8c646cf4d968032edec98c943fd61d883a971328419e7bfc113916e",
+      "internal/dynamic/postgres/postgres.go:quoteLiteral": "ec67b02af82349faed72c0df3aa275378a2bb33ffc4ca41eec2072e7aa5593a7"
+    }
+  },
+  "internal/dynamic/postgres/postgres.go:Provider.DropRole": {
+    "hash": "0948908b2497800490c09719c3c0974c02f6ce97c237afe026e7c6bb12a1e122",
+    "reason": "External PostgreSQL idempotent DROP ROLE protocol; admits valid generated role identifiers and policy-approved verify-full connection, preserving engine ownership/active-session refusal semantics.",
+    "dependencies": {
+      "internal/dynamic/dynamic.go:ValidRoleName": "b3f6b1df5288df43a6578a3bbd80eb7af091fc77c129e95b27a47de33b0e356e",
+      "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
+      "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
+      "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61",
+      "internal/dynamic/postgres/postgres.go:dropRoleSQL": "b88fc8c188d8fce4c1c30c3a20ae8864837bdb37c77205de277b9c5e3d4c4ce1"
+    }
+  },
+  "internal/dynamic/postgres/postgres.go:Provider.ExtendRole": {
+    "hash": "2de6314153ffa96ad74baf28e7cfcd9ff9f2866d0bd94a5d53045d90412dc650",
+    "reason": "External PostgreSQL ALTER ROLE expiry protocol; admits only valid generated role identifiers, bounded deadline and policy-approved verify-full connection. This engine DDL has no sqlc schema model.",
+    "dependencies": {
+      "internal/dynamic/dynamic.go:ValidRoleName": "b3f6b1df5288df43a6578a3bbd80eb7af091fc77c129e95b27a47de33b0e356e",
+      "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
+      "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
+      "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61",
+      "internal/dynamic/postgres/postgres.go:extendRoleSQL": "49bbdc39f38fc8dc2e18362b983d3a6dc06b616000ad301fde561df6e5e1ea94",
+      "internal/dynamic/postgres/postgres.go:quoteLiteral": "ec67b02af82349faed72c0df3aa275378a2bb33ffc4ca41eec2072e7aa5593a7"
+    }
+  },
+  "internal/dynamic/postgres/postgres.go:Provider.RoleStatus": {
+    "hash": "e13a9584fcf9090ae3fa81bf5e75df303935d86468e6701bde4c7ff7c5cbed3a",
+    "reason": "External PostgreSQL pg_roles catalog inspection; binds one admitted generated role name and reads only existence/login expiry under verify-full egress policy for reconciliation, not application tenant data.",
+    "dependencies": {
+      "internal/dynamic/dynamic.go:ValidRoleName": "b3f6b1df5288df43a6578a3bbd80eb7af091fc77c129e95b27a47de33b0e356e",
+      "internal/dynamic/dynamic.go:inRoleAlphabet": "86d562ef415150399f7c4d89b83f3b653479f1b5333f4e8fd96ce68649f885dc",
+      "internal/dynamic/postgres/postgres.go:Provider.connect": "5da80205a17e200685d9a71e89aa157f3fc3bbed023db72eeeb54c8da4bfee8a",
+      "internal/dynamic/postgres/postgres.go:classifyExec": "81f67cfb50638588f34f2d8c580370989c15ba2fb112c640e8fc2b6200033b61"
+    }
+  },
+  "internal/store/admission.go:DB.beginPostgresOn": {
+    "hash": "a50a8f25e3e84b3f0c1d52c64060707381a2fcf4cf74758d224839e58b97cb72",
+    "reason": "PostgreSQL transaction protocol changes to READ ONLY only after writer-mode authority admission; moving it before the custody guard would prevent that guard from establishing its fence.",
+    "dependencies": {
+      "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d"
+    }
+  },
+  "internal/store/admission.go:PostgresTransaction.Exec": {
+    "hash": "39c1d8b506bda51c9864fd269821a03b9167ea789e60dd2dd6c13ae276af4dd7",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/admission.go:PostgresTransaction.Query": {
+    "hash": "97c94eaffc1db66826937a27372c75e076b73ca94aa8750362f77f45ac1675be",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/admission.go:PostgresTransaction.QueryRow": {
+    "hash": "367ed585cc1672fdaec6b3f36af99fc8582fde7527c9ea586447c10b459ee357",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/admission.go:SQLiteTransaction.ExecContext": {
+    "hash": "b02678a233811a22fb5ac068d1eb2638ac7c4862391955bf2e0ca1e93125d4e6",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
+    "dependencies": {
+      "internal/store/sqlitegen/snapshot_statements.go:SnapshotInsertSlot": "cc921f9eff01a60fedb875f0a219b9ce511f5d8a4ad706a3723e7fb4649a582c"
+    }
+  },
+  "internal/store/admission.go:SQLiteTransaction.PrepareContext": {
+    "hash": "335f461419b6e0e0ff8f08bfd325651e2c90513223d77fe47693483693561af4",
+    "reason": "Driver-only sqlc prepared-statement bridge on the already admitted transaction or observed resolution executor; delegates the generated statement without constructing application queries. CI rejects handwritten callers outside named protocols."
+  },
+  "internal/store/admission.go:SQLiteTransaction.QueryContext": {
+    "hash": "7d3be6b21a8c8eb3e6e2d8e2e97da8f8f1698427561f3eaab786ddfb27587dd5",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/admission.go:SQLiteTransaction.QueryRowContext": {
+    "hash": "3e6c3b8e2ba1cc4533e90c58b038080250c8e31672c58dd7e4b2b0739eed7c36",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/authn.go:observedPG.Exec": {
+    "hash": "b387db842ed82aaba4352063ac990e642a9c9fa081401d9dabc139e5eb798f97",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/authn.go:observedPG.Query": {
+    "hash": "a6ed2ad63e6cf43530afd12e7fd4b65fa23d665cda8402b2fb22a86dfc39bc79",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/authn.go:observedPG.QueryRow": {
+    "hash": "b695198ccf590e4461c39395a06db4bfc6e65d28698c6374dfa915f1ed6e3c3d",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/authn.go:observedSQLite.ExecContext": {
+    "hash": "688b83478e7bcbb7ad6d24acf8a36682cb6d44d2402e62df97418b65351e8ed3",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/authn.go:observedSQLite.PrepareContext": {
+    "hash": "c38a8535e32620f13cb4636e2874bb2915e2621fe1984d6df4d6c514945da004",
+    "reason": "Driver-only sqlc prepared-statement bridge on the already admitted transaction or observed resolution executor; delegates the generated statement without constructing application queries. CI rejects handwritten callers outside named protocols."
+  },
+  "internal/store/authn/authn.go:observedSQLite.QueryContext": {
+    "hash": "02839262d84df40f83771a7b9f9d12fa72f78715d0679c194d99acd71f41556f",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/authn.go:observedSQLite.QueryRowContext": {
+    "hash": "7d2788ff12d92a4e142665b0da8fc1995223129d35d8687bfd8166de7fa26b89",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/authn/restore.go:Resolver.HoldRestoredPKIIssuers": {
+    "hash": "f5ec9c16a1d8252354e2deb4832e4dd0849ff3d33932abde80ca0eff063642a3",
+    "reason": "Historical authenticated-archive catalog probe accepts pre-migration-00064 archives without pki_issuers; existing issuer data update remains a generated query."
+  },
+  "internal/store/authn/restore.go:Resolver.restoredPostLegacyTables": {
+    "hash": "e70c0575bc767604314ce19c8ba5feef7813396d49c9a38c2989b8228a40b496",
+    "reason": "Historical restored-schema catalog counts the two optional post-legacy credential tables before selecting the appropriate existing generated epoch query; no tenant rows are read by this probe."
+  },
+  "internal/store/backup.go:assertOnlyMigrationSeeds": {
+    "hash": "74b3e5c01408a18eaee290c571703acbfb0e8e8b11240730a0017922b4ccf325",
+    "reason": "Archive restoration checks dynamically discovered historical target tables for non-seed rows under held table locks. The current static ops_diagnostics seed check was migrated separately to RestoreDiagnosticsSeedOccupied.",
+    "callers": {
+      "internal/store/backup.go:restorePostgresChecked": "1954740e74271a27e48720a18be7ec6551d8be88206df1167581c1e830f3f12c"
+    },
+    "dependencies": {
+      "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef"
+    }
+  },
+  "internal/store/backup.go:copyMembersIn": {
+    "hash": "cc1332ad39eec406f7a5e9c4db6c9e65f24922c6904ad1d0d93723eb265997f1",
+    "reason": "Restore-owned COPY FROM STDIN admits only manifest-listed archive member names, quotes each identifier internally, and retains COPY framing inside the restore transaction.",
+    "callers": {
+      "internal/store/backup.go:restorePostgresChecked": "1954740e74271a27e48720a18be7ec6551d8be88206df1167581c1e830f3f12c"
+    },
+    "dependencies": {
+      "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef"
+    }
+  },
+  "internal/store/backup.go:exportPostgres": {
+    "hash": "34118449c64cc2b6fa30abfcb852661ad931591e7abdad1f49dac769777fcef6",
+    "reason": "Authenticated backup snapshot uses READ ONLY transaction protocol and COPY TO STDOUT over structurally discovered archive tables, which can differ from the current runtime schema.",
+    "dependencies": {
+      "internal/backupreceipt/artifacts.go:Nonce.Validate": "cea9b41ccf95bcc96442ff2762ca65824a61b831e8cbff429f2ce27cda6ac83f",
+      "internal/backupreceipt/artifacts.go:Snapshot.Validate": "81806e67c35bcabe614f8e43743207cbd1d5700e109734026f5d743d82639684",
+      "internal/backupreceipt/artifacts.go:canonicalTime": "248c8b4488d10f364ae4a219d361b099d590d66a0d58444c82dc454fe902484b",
+      "internal/backupreceipt/artifacts.go:validGeneration": "c21b29892c1caaf76f4273bd1eee640602a914699e506d0b2995175a292d1505",
+      "internal/backupreceipt/operator.go:LegacyProposal.Validate": "77ed3b36a6554fd2ee2b426b4796e206ac67e67cf3995c7056613d6bccd755eb",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/backup.go:isMissingGooseTable": "1281c742cb5d6fe8f7b608f0ff0ff450b5188394bd4e1e7043f991d55d74fd04",
+      "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef",
+      "internal/store/backup.go:schemaVersionResult": "9f167bfcf31686969db027a9b8edf202a5505778ac941338d8132d49fefa0755",
+      "internal/store/backup.go:writeFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
+      "internal/store/backup.go:writeManifest": "68dc0c48e2ef8d96bcae5efb8bab7e62edef4e21a46afa0b029ee192857fb245",
+      "internal/store/backup_upgrade.go:UpgradeExportRequest.bind": "7ccd3c6770a31f070a24cdf4b3d94805dd1ece9d23195104974bb8115ae6fa11",
+      "internal/store/backup_upgrade.go:UpgradeExportRequest.bindPostgres": "7fb1400ca76c108232a43b012d5e607f05f32556837e9abe7a18a9622664c54d",
+      "internal/store/store.go:postgresPool.Acquire": "f9d5d3bd3a2f69add5517483604feb8d18cec186247ef1eea613779d896b2ebf",
+      "internal/store/store.go:postgresPool.pin": "23d9b2d9a56f6182ffc77e519a7789969aeda4e8d94d86c6ba491eaf88cdd23c",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/upgradecompat/plan.go:Plan.Digest": "46cc9927bebbc8ba589ac9f26c73542e60345a9dbab94d0cb03f8f48237b6c61",
+      "internal/upgradecompat/plan.go:Plan.Source": "cc222770d35e15779a36d117d27e8977edaee083d5ce2e0cd454904217c7c42e",
+      "internal/upgradecompat/plan.go:Plan.SourceManifest": "b8fd3ec9402f5c880680ad398be372659cae03e38434e3316c89a7c061a5144e",
+      "internal/upgradecompat/plan.go:Plan.SourceSchemaDigest": "3a2b4959e2e0aea84a4821324f3c67f76f3b090abe845db43e8846abda1550cf",
+      "internal/upgradecompat/plan.go:Plan.Target": "36c1ff6cf1ca3e7a8a6f98940cd2ae850311419211a1032e2b198c49080dae38"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/pathutil/contain.go:Within": "be35236d6adb2c5a5694c34f76021b8c8052a85a4c173fe9aa7a164136eb7eeb"
+      },
+      "default": {
+        "internal/pathutil/contain.go:Within": "be35236d6adb2c5a5694c34f76021b8c8052a85a4c173fe9aa7a164136eb7eeb"
+      },
+      "ui": {
+        "internal/pathutil/contain.go:Within": "be35236d6adb2c5a5694c34f76021b8c8052a85a4c173fe9aa7a164136eb7eeb"
+      },
+      "windows": {
+        "internal/pathutil/contain.go:Within": "6a0888bc03ef1735122c13649979d0a3165265eb8a03dfc123d4e694c7cfb107"
+      }
+    }
+  },
+  "internal/store/backup.go:exportSQLite": {
+    "hash": "3a0882821bf8ca6d01caecaea2512cffd0530288078f0c07f14aba93e2bd1593",
+    "reason": "SQLite VACUUM INTO is the engine snapshot protocol used to publish a consistent owned backup file; no ordinary runtime table query.",
+    "dependencies": {
+      "internal/backupreceipt/artifacts.go:Nonce.Validate": "cea9b41ccf95bcc96442ff2762ca65824a61b831e8cbff429f2ce27cda6ac83f",
+      "internal/backupreceipt/artifacts.go:Snapshot.Validate": "81806e67c35bcabe614f8e43743207cbd1d5700e109734026f5d743d82639684",
+      "internal/backupreceipt/artifacts.go:canonicalTime": "248c8b4488d10f364ae4a219d361b099d590d66a0d58444c82dc454fe902484b",
+      "internal/backupreceipt/artifacts.go:validGeneration": "c21b29892c1caaf76f4273bd1eee640602a914699e506d0b2995175a292d1505",
+      "internal/backupreceipt/operator.go:LegacyProposal.Validate": "77ed3b36a6554fd2ee2b426b4796e206ac67e67cf3995c7056613d6bccd755eb",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/backup.go:isMissingGooseTable": "1281c742cb5d6fe8f7b608f0ff0ff450b5188394bd4e1e7043f991d55d74fd04",
+      "internal/store/backup.go:schemaVersionResult": "9f167bfcf31686969db027a9b8edf202a5505778ac941338d8132d49fefa0755",
+      "internal/store/backup.go:writeFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
+      "internal/store/backup.go:writeManifest": "68dc0c48e2ef8d96bcae5efb8bab7e62edef4e21a46afa0b029ee192857fb245",
+      "internal/store/backup_upgrade.go:UpgradeExportRequest.bind": "7ccd3c6770a31f070a24cdf4b3d94805dd1ece9d23195104974bb8115ae6fa11",
+      "internal/store/backup_upgrade.go:UpgradeExportRequest.bindSQLite": "d34e6f251c6c47cb1e7a6ef0726410bfb6351750b192b4ff548734d8210e9e68",
+      "internal/store/upgrade/admission.go:Admission.CheckTarget": "44cf9f112831d34ab6a76149f7a02031df842785b935f834a9d8df4fc838fa5f",
+      "internal/store/upgrade/admission.go:Admission.LockSQLite": "1ade230167630084b38e202e998653bfa96e3f9809ef20c9371146b09c8cf99b",
+      "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d",
+      "internal/store/upgrade/admission.go:SQLiteGuard.Close": "24331efb62f1939a9aa3f09f936f7308f3999b8e6fd9f03af7130177e5f384f8",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/upgradecompat/plan.go:Plan.Digest": "46cc9927bebbc8ba589ac9f26c73542e60345a9dbab94d0cb03f8f48237b6c61",
+      "internal/upgradecompat/plan.go:Plan.Source": "cc222770d35e15779a36d117d27e8977edaee083d5ce2e0cd454904217c7c42e",
+      "internal/upgradecompat/plan.go:Plan.SourceManifest": "b8fd3ec9402f5c880680ad398be372659cae03e38434e3316c89a7c061a5144e",
+      "internal/upgradecompat/plan.go:Plan.SourceSchemaDigest": "3a2b4959e2e0aea84a4821324f3c67f76f3b090abe845db43e8846abda1550cf",
+      "internal/upgradecompat/plan.go:Plan.Target": "36c1ff6cf1ca3e7a8a6f98940cd2ae850311419211a1032e2b198c49080dae38"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/backup.go:pgSequencePositions": {
+    "hash": "fa0d2aec9ab3664d9d10e8a30716fc1e88d3b88d92f37c43d973d6a700ccad33",
+    "reason": "Archive format captures catalog-enumerated sequence positions for the historical snapshot schema, rather than current typed runtime data."
+  },
+  "internal/store/backup.go:pgTableOrder": {
+    "hash": "6c045cd6f1918f39f6ee53cdef922588b695502d7930436ab5640ffdaca9ce7c",
+    "reason": "Archive format discovers actual historical snapshot tables and foreign-key dependency edges from pg_catalog; current migration table inventory would incorrectly omit or add archive members.",
+    "dependencies": {
+      "internal/store/backup.go:topoSort": "d705562d3a08af977ee82a0f055f653959956650ad4d26dfb6098ea0f5c96bd7"
+    }
+  },
+  "internal/store/backup.go:restorePostgresChecked": {
+    "hash": "1954740e74271a27e48720a18be7ec6551d8be88206df1167581c1e830f3f12c",
+    "reason": "Authenticated archive restore dynamically truncates checked historical tables, imports COPY members and resets named sequence positions; runtime generated table statements cannot represent arbitrary accepted archive schemas.",
+    "dependencies": {
+      "internal/backupreceipt/artifacts.go:Nonce.Validate": "cea9b41ccf95bcc96442ff2762ca65824a61b831e8cbff429f2ce27cda6ac83f",
+      "internal/backupreceipt/artifacts.go:Snapshot.Validate": "81806e67c35bcabe614f8e43743207cbd1d5700e109734026f5d743d82639684",
+      "internal/backupreceipt/artifacts.go:canonicalTime": "248c8b4488d10f364ae4a219d361b099d590d66a0d58444c82dc454fe902484b",
+      "internal/backupreceipt/artifacts.go:validGeneration": "c21b29892c1caaf76f4273bd1eee640602a914699e506d0b2995175a292d1505",
+      "internal/definitions/jsonstrict.go:DecodeStrict": "a02727c9b2d25de0250f9f67843946e8a0076a9d78a2545e21e1b048d402b1e2",
+      "internal/definitions/jsonstrict.go:RejectDuplicateMembers": "d39f79bcf381a5583257a93bd957bee70c4d655edb3908a1ea6af4c90af60ac7",
+      "internal/definitions/jsonstrict.go:foldJSONMember": "7390d54f3ff88455f1ac66c6c0a447d894f4bdc01d1854a0c15f9bafa3a2d98f",
+      "internal/definitions/jsonstrict.go:unknownField": "98d4ad83684dfbf2291291ac823422a519709ec098832ebd486c68fd6db5e23d",
+      "internal/definitions/jsonstrict.go:walkJSONValue": "9b82a9971d9cb3538f9948d7f24b24d1f6081bfbbf45f9296277fb9aec559a85",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/backup.go:openArchive": "6ac827716511836815ebf834947eaa935229cf24f667766beb92d7679393524f",
+      "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef",
+      "internal/store/backup_upgrade_restore.go:matchRestoredUpgradeSnapshot": "16e2035cd4726f22ba1fef62a6e7e2009af6a7090e882bbd162cd7acec9d7600",
+      "internal/store/backup_upgrade_restore.go:matchUpgradePlan": "8088976d6e852ff94c31e03a7fdfff307b484cf42d4f1b8c882f5b557ce62926",
+      "internal/store/store.go:postgresPool.Acquire": "f9d5d3bd3a2f69add5517483604feb8d18cec186247ef1eea613779d896b2ebf",
+      "internal/store/store.go:postgresPool.pin": "23d9b2d9a56f6182ffc77e519a7789969aeda4e8d94d86c6ba491eaf88cdd23c",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/upgradecompat/plan.go:Plan.Source": "cc222770d35e15779a36d117d27e8977edaee083d5ce2e0cd454904217c7c42e",
+      "internal/upgradecompat/plan.go:Plan.SourceManifest": "b8fd3ec9402f5c880680ad398be372659cae03e38434e3316c89a7c061a5144e",
+      "internal/upgradecompat/plan.go:Plan.SourceSchemaDigest": "3a2b4959e2e0aea84a4821324f3c67f76f3b090abe845db43e8846abda1550cf",
+      "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d"
+    }
+  },
+  "internal/store/backup.go:setUserTriggers": {
+    "hash": "2ffb05468daa5e86c6d445899b50640cfd4a6edb9f826f491ce421f6d59c468d",
+    "reason": "Archive restore DDL toggles USER triggers on validated, quoted dynamic historical table names while preserving foreign-key enforcement.",
+    "callers": {
+      "internal/store/backup.go:restorePostgresChecked": "1954740e74271a27e48720a18be7ec6551d8be88206df1167581c1e830f3f12c"
+    },
+    "dependencies": {
+      "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef"
+    }
+  },
+  "internal/store/migrate/migrate.go:Check": {
+    "hash": "5a5b328963525c0f87f345327fcffb07d24e267db5c2bf857ffbcf3631dd4f32",
+    "reason": "Migration history protocol reads the goose bookkeeping table to verify the exact embedded migration lineage before current runtime schema admission.",
+    "dependencies": {
+      "internal/store/migrate/migrate.go:withProvider": "36eef91b430bcd394ca77794628027a2090b731650cd12da29a638960c6f3fd5",
+      "internal/store/store.go:SQLiteDSN": "dec351809224219ad6c364efc304f4ee2e6f965c8408d3c7e2af548d0b66aa51"
+    }
+  },
+  "internal/store/recovery.go:RecoveryDB.BeginPostgres": {
+    "hash": "c755ac546cd894ab725a3f382cfdd8df49a77365e8a091f40323e576e99ecd95",
+    "reason": "PostgreSQL transaction protocol changes to READ ONLY only after writer-mode authority admission; moving it before the custody guard would prevent that guard from establishing its fence.",
+    "dependencies": {
+      "internal/backupreceipt/archive.go:AuthenticatedArchive.Valid": "af92c7c60d258070651f96a7e754520dccc3a68183c479c31b75805e7328d452",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/store/preparation.go:upgradeConfig": "5839d281290ead85c6b9dda89de1b38c052469b17333c1627f56b5385188eb8e",
+      "internal/store/recovery.go:RecoveryDB.Engine": "3ce2266b37a91e0c33fab6bcf52e6ec1ccb042f138d575c6c9ebf41c44bc5c81",
+      "internal/store/store.go:postgresPool.BeginTx": "25818c2f59be0b411fa1ffe1a42a388d56f55d48709fcb9ca26eea37a9677638",
+      "internal/store/store.go:postgresPool.pin": "23d9b2d9a56f6182ffc77e519a7789969aeda4e8d94d86c6ba491eaf88cdd23c",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Check": "46fdb52d340a24bee92dd228855be7f13bbc5035c9bf6a3431b8d2e853d3a137",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.CheckOwner": "551cd7795d57e4588548a5fee2dcb2239ca4b73e018a80d31cc5a3f737c55262",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Valid": "46be22a6320dad35f082fbe0a9704f6003e7d251c151f12ec6f2ab0da23cbc19"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/recovery.go:RecoveryPostgresTransaction.Exec": {
+    "hash": "39c1d8b506bda51c9864fd269821a03b9167ea789e60dd2dd6c13ae276af4dd7",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/recovery.go:RecoveryPostgresTransaction.Query": {
+    "hash": "97c94eaffc1db66826937a27372c75e076b73ca94aa8750362f77f45ac1675be",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/recovery.go:RecoveryPostgresTransaction.QueryRow": {
+    "hash": "367ed585cc1672fdaec6b3f36af99fc8582fde7527c9ea586447c10b459ee357",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/recovery.go:RecoverySQLiteTransaction.ExecContext": {
+    "hash": "bb928582a5298295a8cc3dceb90ce2f247221b7904071cdd2c776c9982753afd",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/recovery.go:RecoverySQLiteTransaction.PrepareContext": {
+    "hash": "335f461419b6e0e0ff8f08bfd325651e2c90513223d77fe47693483693561af4",
+    "reason": "Driver-only sqlc prepared-statement bridge on the already admitted transaction or observed resolution executor; delegates the generated statement without constructing application queries. CI rejects handwritten callers outside named protocols."
+  },
+  "internal/store/recovery.go:RecoverySQLiteTransaction.QueryContext": {
+    "hash": "7d3be6b21a8c8eb3e6e2d8e2e97da8f8f1698427561f3eaab786ddfb27587dd5",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/recovery.go:RecoverySQLiteTransaction.QueryRowContext": {
+    "hash": "3e6c3b8e2ba1cc4533e90c58b038080250c8e31672c58dd7e4b2b0739eed7c36",
+    "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+  },
+  "internal/store/store.go:DB.checkPostgresPool": {
+    "hash": "b8f6bbe1faea87c5f8025290ee928b54b4c320e56455fde7e777a8aa9a88e9d1",
+    "reason": "Pool custody protocol reads database/schema identity inside the replacement admission transaction before a candidate pool may become the runtime owner.",
+    "dependencies": {
+      "internal/store/admission.go:PostgresTransaction.Commit": "5134f26cd32f5fe723c48ac67819a8084ad07ed78f229730690b9bcba15e88b2",
+      "internal/store/admission.go:PostgresTransaction.Rollback": "68dd19ecf7e4a3d5540ad2db933cf1eda9ad4b4218a1ff6f21afed4253a404c4",
+      "internal/store/admission.go:PostgresTransaction.closeOwner": "4823c0cec4e1c619e15cd7ba234c660d3e9f4c1a341ceb23df854511e8a9fa36"
+    }
+  },
+  "internal/store/store.go:DB.provePostgresSource": {
+    "hash": "10a0cd158a9ab39174df14cd68dea8676557558f38e5f45215210409f81a11b3",
+    "reason": "Pool replacement source-identity protocol reads database/schema names and tries mutually exclusive source/candidate advisory transaction locks to prove distinct owners refer to the same datastore.",
+    "dependencies": {
+      "internal/store/admission.go:DB.BeginPostgres": "2d578b409ceb664137581740d654cee047fe23959090ee44eea9493b02e41845",
+      "internal/store/admission.go:PostgresTransaction.Rollback": "68dd19ecf7e4a3d5540ad2db933cf1eda9ad4b4218a1ff6f21afed4253a404c4",
+      "internal/store/admission.go:PostgresTransaction.closeOwner": "4823c0cec4e1c619e15cd7ba234c660d3e9f4c1a341ceb23df854511e8a9fa36",
+      "internal/store/store.go:rollbackPostgresSourceProof": "b205da554b3350237751826e7871f89f4cd21199737916e052ad03814b6641f6"
+    }
+  },
+  "internal/store/store.go:PreparedPostgresPool.Activate": {
+    "hash": "c641b81cc8c332c9821e1252d2531ae245b74dacd3714564d7091fdad3c53968",
+    "reason": "Pool custody protocol reads database/schema identity inside the replacement admission transaction before a candidate pool may become the runtime owner.",
+    "dependencies": {
+      "internal/store/admission.go:DB.BeginPostgres": "2d578b409ceb664137581740d654cee047fe23959090ee44eea9493b02e41845",
+      "internal/store/admission.go:DB.BeginSQLite": "10d854d281716969b5e65597469683b0dd58d21cb1b4e9eb6f981ddcc6719865",
+      "internal/store/admission.go:DB.CheckAdmission": "3c4e56a02d3ffa03d9cbcc930c976a378fc6bdca854cf6d9a92823670863483a",
+      "internal/store/admission.go:PostgresTransaction.Commit": "5134f26cd32f5fe723c48ac67819a8084ad07ed78f229730690b9bcba15e88b2",
+      "internal/store/admission.go:PostgresTransaction.Rollback": "68dd19ecf7e4a3d5540ad2db933cf1eda9ad4b4218a1ff6f21afed4253a404c4",
+      "internal/store/admission.go:PostgresTransaction.closeOwner": "4823c0cec4e1c619e15cd7ba234c660d3e9f4c1a341ceb23df854511e8a9fa36",
+      "internal/store/admission.go:SQLiteTransaction.Commit": "065491353e792db8ef2df9931c3ee75d9d861fea451fd2323dde5562276e3092",
+      "internal/store/store.go:postgresPool.pin": "23d9b2d9a56f6182ffc77e519a7789969aeda4e8d94d86c6ba491eaf88cdd23c",
+      "internal/store/store.go:postgresPool.retireLocked": "3b233cad77cb5026127b7a76055e8367f7c251296c7be5da7b206c660ef04414",
+      "internal/store/upgrade/admission.go:Admission.CheckTarget": "44cf9f112831d34ab6a76149f7a02031df842785b935f834a9d8df4fc838fa5f",
+      "internal/store/upgrade/admission.go:Admission.LockSQLite": "1ade230167630084b38e202e998653bfa96e3f9809ef20c9371146b09c8cf99b",
+      "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d",
+      "internal/store/upgrade/admission.go:SQLiteGuard.Close": "24331efb62f1939a9aa3f09f936f7308f3999b8e6fd9f03af7130177e5f384f8",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/store.go:openSQLite": {
+    "hash": "e95ddebc39e1e1795abe4ca8381e179e2b90d42701b57ef18abc3d1f17607ed0",
+    "reason": "Connection bootstrap verifies PRAGMA query_only on the read pool before admitting it as a read-only runtime driver.",
+    "dependencies": {
+      "internal/store/store.go:DB.Close": "2adabeab5b29dbba1f6d5f93f178c14a9b9894bd845b9d3e3685c3cfdfeb5097",
+      "internal/store/store.go:PreparedPostgresPool.Close": "019b6c0981ea5d0eb22fcf1a0e04cde790cf9862e767aec81883b033b60d72fc",
+      "internal/store/store.go:SQLiteDSN": "dec351809224219ad6c364efc304f4ee2e6f965c8408d3c7e2af548d0b66aa51",
+      "internal/store/store.go:postgresPool.Close": "c8cae8c4aeda4414771661ffc72b18ea9d8bd0e7cac7323f8ec0ff482816d3ce",
+      "internal/store/store.go:postgresPool.retireLocked": "3b233cad77cb5026127b7a76055e8367f7c251296c7be5da7b206c660ef04414",
+      "internal/store/store.go:sqliteReadDSN": "acc83922e07014cade2291fa1400ce7e2a5ef32321de9e82f15e0c65546f3acc"
+    }
+  },
+  "internal/store/store.go:verifyPGDurability": {
+    "hash": "949be900316e810c91b45adbf2168a2515fd5c094470c2eff9e51afecae1be00",
+    "reason": "PostgreSQL bootstrap verifies server durability settings before runtime admission; server configuration metadata is not tenant data."
+  },
+  "internal/store/store.go:verifyPostgresRuntimePrivileges": {
+    "hash": "e773ff0f928085e4ba89a5a1e67335d475c9ef11b3e903bd466f8b5e87772fe5",
+    "reason": "Pool replacement custody compares actual catalog objects and privileges of the source/candidate role before admitting replacement; dynamic privilege functions apply to OIDs from that source catalog."
+  },
+  "internal/store/store.go:verifySQLitePragmas": {
+    "hash": "35e271f8564bb90effe505b55fa898447a11fe33d93ae6cc696fbbba961f8027",
+    "reason": "Connection bootstrap verifies engine PRAGMA durability/isolation policy before runtime admission; these engine directives have no typed table-query counterpart."
+  },
+  "internal/store/upgrade/acceptance.go:Session.accept": {
+    "hash": "51f39c8bd70a746b28fee429f756565ac08f44106ffc04d3d2557729690ea18e",
+    "reason": "Upgrade trust-control protocol records verified nonce/floor evidence using the owning exclusion connection and engine clock before updating durable control authority; upgrade control tables are separate from current runtime migration schema.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Advance": "6ec49ef4659b7e734ed896d5ae5e862a2e1a38c0e56a4744ceece2b2bcb3d940",
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    }
+  },
+  "internal/store/upgrade/admission.go:Admission.GuardPostgres": {
+    "hash": "5c05748b6605aff2c99f7c26deba8c3ddb05b245c39614a0f838273952e238f0",
+    "reason": "Upgrade custody protocol checks exact durable control identity, incarnation, generation and maintenance state before runtime admission, retaining the PostgreSQL control-row/advisory locks or SQLite host exclusion.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d",
+      "internal/store/upgrade/admission.go:Admission.matches": "ead2dac036eee8f3cb89d1b7bf222d8a82d1cf61043b8162aed2f9f4e233f7a2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/admission.go:SQLiteGuard.Check": {
+    "hash": "e6efe1883aec737ddb5fcd430f5da67dafbcaa3d5208d05314a564c7f86e2a85",
+    "reason": "Upgrade custody protocol checks exact durable control identity, incarnation, generation and maintenance state before runtime admission, retaining the PostgreSQL control-row/advisory locks or SQLite host exclusion.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/admission.go:Admission.CheckTarget": "44cf9f112831d34ab6a76149f7a02031df842785b935f834a9d8df4fc838fa5f",
+      "internal/store/upgrade/admission.go:Admission.Valid": "58082f20394b138763d955fb5f86d3d4ebd4034d14cfe17e5ff31719b63e787d",
+      "internal/store/upgrade/admission.go:Admission.matches": "ead2dac036eee8f3cb89d1b7bf222d8a82d1cf61043b8162aed2f9f4e233f7a2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/admission.go:Session.Admit": {
+    "hash": "2cc5c5eb682cc533b65020c64a5ff6b69e78601df127389f3c8ada5bb402cba2",
+    "reason": "Upgrade custody protocol checks exact durable control identity, incarnation, generation and maintenance state before runtime admission, retaining the PostgreSQL control-row/advisory locks or SQLite host exclusion.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/releasetrust/release.go:VerifiedRelease.Identity": "19cbd759e2711523af924639524842ab67c2b2e0157c2e0e44ff25efe9c3ac4f",
+      "internal/releasetrust/release.go:VerifiedRelease.Valid": "a8d77d22c174df82b168e113855acb99ace2110eecb8ecc7be9cf3947ead4c66",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+      "internal/upgradecompat/declaration.go:Declaration.Manifest": "a9c5b8dbd1ff196382e7f64d948fc7ce2218fd834101137e6a0513ccc672e863",
+      "internal/upgradecompat/declaration.go:VerifiedNode.Identity": "ae9725e2167239a5faf2dd48414e20bbd6b9b93d87a7c89366e7811b94216326",
+      "internal/upgradecompat/declaration.go:VerifiedNode.Manifest": "fa02836f860815ccc7314a9be8dd8db22f14dad03ea8bdc68ba03b4928537297",
+      "internal/upgradecompat/declaration.go:VerifiedNode.SchemaDigest": "d6a3a33e8dcf68b6b5343d4733164ab5150a5f1628b9c72e8ebf30060f759ef1",
+      "internal/upgradecompat/declaration.go:VerifiedNode.Valid": "5add7191220098cea3fa0035b8051257652653eafb62c34e3192d4297faa8e34"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/candidate_initialize.go:Session.InitializeFreshHierarchy": {
+    "hash": "d3a0dc19f1ef91421a64e676734e1fa748f28c2774edb9a9270151d7d7dccff7",
+    "reason": "Candidate initialization under migration exclusion first verifies the exact schema-applied candidate and fresh hierarchy/epochs; the source can have no prior adopted runtime authority.",
+    "dependencies": {
+      "internal/crypto/aad.go:appendAAD": "411bc106bd7d8f14565105d6722ee97f7e3816b16ad3f8d2348e6128120eefe0",
+      "internal/crypto/aad.go:appendLP": "6263230e492d8f96bc08b30737a984c9c2f8d03945bbddfb21e6b6b0a0035a32",
+      "internal/crypto/aad.go:be32": "7f4a4e545e5d4d3dd5d4e1b263ce3cf4ecc3f7edef1c40906d0301a331098a4b",
+      "internal/crypto/crypto.go:Zero": "c5657ac84f4f0e582a98b55723b6f85d1ce57ddc6ccf92c274c8f1f3b57394ae",
+      "internal/crypto/envelope.go:appendHeader": "4ed1341dfab132f2173eec62f4f3bf6c625ed88eb69811e731a0851613d438c6",
+      "internal/crypto/envelope.go:open": "ee47a038fad4afd591445fa0598203a865146e3d1f1874a85591be99ae8220a8",
+      "internal/crypto/envelope.go:parseHeader": "66134cd3d1e52f0ad4a98d01e1cf65467e166e43a496584f836a88fad263e6ce",
+      "internal/crypto/envelope.go:readLP": "d65098bfa6abfbcfdebcfc294fabc1d21ee7a9d74b50e821167a48a8213a436d",
+      "internal/crypto/envelope.go:seal": "c72ad09a44c9c7040aa0dc30e42bbcd9f27c5cd1700404068eda25141df39649",
+      "internal/crypto/initialize_fresh.go:InitializeFreshHierarchy": "de7549fce53f864dc98442239cfb2d2b8657b3c8e4916225804aa9ed19f41590",
+      "internal/crypto/keyring.go:Keyring.buildVersionSet": "383e2fac43c3acd9af7150ef71cd128bdd1af7ddf47bbde1d1a9756927e47c9a",
+      "internal/crypto/keyring.go:Keyring.loadOrMintScanning": "902cf6bb24deb1e27ca1db33e94e1cfe24b6098ab978652c8993b363b6845290",
+      "internal/crypto/keyring.go:Keyring.loadTier3": "766122f77610bbd39ebd6a19ff6cf9366888913f77f57603acd1e355adc81d7a",
+      "internal/crypto/keyring.go:Keyring.loadTier3Versions": "a6f4248ee84812287ff7105285dae3191eddb0016b74bdd3cb0844fde6bb914c",
+      "internal/crypto/keyring.go:Keyring.mintHierarchy": "cd42f9506ce2f04b8e5a59e261c0df7416808422d805e938f3c747e274729353",
+      "internal/crypto/keyring.go:Keyring.mintTier3": "0e7224276d40f7a4a50a05a3a5d8921f0778763474e8a57288848f1694c9e5bb",
+      "internal/crypto/keyring.go:Keyring.mintTier3At": "7656c985f78f5a28fd05204b28d482a88fd1f42c049e768b2cbb93b02a6eeb59",
+      "internal/crypto/keyring.go:Keyring.newKey": "044b2e7f30d88d6282207cc111c5d39b4d7985b7a523748ed5ef266b96742075",
+      "internal/crypto/keyring.go:Keyring.unwrapMaster": "510cb7d4a6dc535f78ad6c8e889aa4a9a83483835e3c97e6a7e8c26a7bcf2538",
+      "internal/crypto/keyring.go:Keyring.unwrapTier3": "b1b5edbe19ad571595c38481ef87de8180ef16ac6bd47925b7ceef7a5a1487c6",
+      "internal/crypto/keyring.go:LoadKeyring": "3b8e98167757ea0dddd55523de5be516685fc1eadb92645fc1aa86d390f36d0c",
+      "internal/crypto/keyring.go:masterSet.activeKey": "a1a7934546feee9e8e9eb3a9f075298cddb408fb3961262c515e52eb0a1d7201",
+      "internal/crypto/keyring.go:masterSet.activeVersion": "ebd8f3dfa3475380162c045ce40148755574b5faec0cb46080f76e45ac129058",
+      "internal/crypto/keyring.go:masterSet.at": "1abf4b064d1fa2834540a1a643f65a2f879e76af4ad7f25b0a91d09db6051ef9",
+      "internal/crypto/keyring.go:singleMaster": "2cadff302081aad69286c32abd6f800f0c9358272ffabc8131dd28d1954bfeab",
+      "internal/crypto/keyring.go:swapHandle.adopt": "de2cdd6a9aa4f04cbe0b8d430a21557d7766c06de27118cacc029e7902a30bbf",
+      "internal/crypto/keyring.go:tier3AAD": "981222f16e0cbfc00c5379372dc874ca70277187b716234d813e1b16fb2c7bff",
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/candidate_keys.go:candidateKeys.ActiveProjectVersion": {
+    "hash": "d421addd97c3aae46a7e0e67793b4af2e0b11957f5d42aee0f03d86d6d22d640",
+    "reason": "Pre-runtime encrypted-key custody protocol selects an existing active project wrapper after the exact phase/generation/session recheck, allowing schema-applied candidates or frozen source inventories without granting runtime tenant access.",
+    "dependencies": {
+      "internal/store/upgrade/candidate_keys.go:candidateKeys.check": "2918aeee5433c048386b641cccaf92c94e431da7568d8d6f5749247e8bdcaa8e",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/candidate_keys.go:candidateKeys.Configuration": {
+    "hash": "181813a580a98e6f64e0d51ec6627f1253daa7310c9c73c2cbc2658ffb02d29f",
+    "reason": "Pre-runtime migration/frozen-source configuration inventory checks historical feature-table presence then reconstructs the exact encrypted saved snapshot under session/phase fencing; old snapshots can use historical schema rather than current runtime shape.",
+    "dependencies": {
+      "internal/store/upgrade/candidate_keys.go:candidateKeys.check": "2918aeee5433c048386b641cccaf92c94e431da7568d8d6f5749247e8bdcaa8e",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/configuration_migrate.go:Session.MigrateConfiguration": {
+    "hash": "3c2254790fd8980bb54411e75e2bf4e63d67913cd97ac44c96ab0363bc335b5a",
+    "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
+    "dependencies": {
+      "internal/audit/audit.go:NewEventID": "bc4a2d8b1969be909dcfcb73fc5b4b75e6161fa8d2358cc7546212781dcc1a20",
+      "internal/audit/audit.go:Validate": "4517bfa4685572a7b84ae852a56d35dc4eea7c4f3a64337d9741ab2e1c82168f",
+      "internal/audit/sanitize.go:SanitizeFreeText": "b47e32976e66a058d830146f2bbce42c9b057bf9401c3b454a7684bd272b3207",
+      "internal/audit/sanitize.go:checkSanitized": "2d9f318da587f3b0ddffd1a2fea2be9229e2521e9709bb4caf55e00c5ec3d32c",
+      "internal/audit/schema.go:Schema.validate": "61e7022c6a604225b84d425e7356eb2877f912a9419fff7cd218ee33f240dcd8",
+      "internal/audit/schema.go:checkConstraints": "0299a8fb2abf6ab691b62773b49b76d8527605cca94ab65624cf547b239a92b7",
+      "internal/audit/schema.go:checkInt": "e92863c80707f3cd507551a591efc38e7835ceb5dae1853d286cb573d73da6e2",
+      "internal/audit/schema.go:checkKind": "185a35388bf04a97c4d8b651c7d7304fbe17fc23da75d9fc4091665ae5ab2668",
+      "internal/audit/schema.go:objectPayload": "abc557ec194bfe03867f2cb19a22fae14af2d1add318b55523aabc653ccb6ed9",
+      "internal/config/managed_owner.go:ManagedOwnerKeys": "fe1cb26be03fe65e2128857846e9a50f83dc95521ce1f3185dc3cdf7ae059515",
+      "internal/config/variables.go:VariableInventory": "fb0048ba9804f4881f726b90a0147817ca72b5d7b15fa37404c1b503d8b5ffdb",
+      "internal/crypto/aad.go:appendAAD": "411bc106bd7d8f14565105d6722ee97f7e3816b16ad3f8d2348e6128120eefe0",
+      "internal/crypto/aad.go:appendLP": "6263230e492d8f96bc08b30737a984c9c2f8d03945bbddfb21e6b6b0a0035a32",
+      "internal/crypto/aad.go:be32": "7f4a4e545e5d4d3dd5d4e1b263ce3cf4ecc3f7edef1c40906d0301a331098a4b",
+      "internal/crypto/crypto.go:Zero": "c5657ac84f4f0e582a98b55723b6f85d1ce57ddc6ccf92c274c8f1f3b57394ae",
+      "internal/crypto/envelope.go:appendHeader": "4ed1341dfab132f2173eec62f4f3bf6c625ed88eb69811e731a0851613d438c6",
+      "internal/crypto/envelope.go:open": "ee47a038fad4afd591445fa0598203a865146e3d1f1874a85591be99ae8220a8",
+      "internal/crypto/envelope.go:parseHeader": "66134cd3d1e52f0ad4a98d01e1cf65467e166e43a496584f836a88fad263e6ce",
+      "internal/crypto/envelope.go:readLP": "d65098bfa6abfbcfdebcfc294fabc1d21ee7a9d74b50e821167a48a8213a436d",
+      "internal/crypto/envelope.go:seal": "c72ad09a44c9c7040aa0dc30e42bbcd9f27c5cd1700404068eda25141df39649",
+      "internal/crypto/existing_project_fields.go:OpenExistingProjectFields": "c3c3c4a4291a2869b309c43439b133a33f65aae1b52e172e67fb4681b5c300e2",
+      "internal/crypto/existing_project_fields.go:WithExistingProjectSealer": "ea82295e2271a78e4d357d1250a2b54915f44758f0eee8fb40dcf0089d45131b",
+      "internal/crypto/existing_project_fields.go:withExistingProjectSealer": "10d97f98a8a98e81fa95d634d9f2f5f06060078f5b597629d25d8f41056979f0",
+      "internal/crypto/keyring.go:Keyring.unwrapMaster": "510cb7d4a6dc535f78ad6c8e889aa4a9a83483835e3c97e6a7e8c26a7bcf2538",
+      "internal/crypto/keyring.go:Keyring.unwrapTier3": "b1b5edbe19ad571595c38481ef87de8180ef16ac6bd47925b7ceef7a5a1487c6",
+      "internal/crypto/keyring.go:ProjectSealer.OpenField": "eb80811c171a1ab6e6c285ea3a02112270b3a96059d04c639eb6e6202686c7f1",
+      "internal/crypto/keyring.go:ProjectSealer.SealField": "5b0f5931ded305290b0b571ba90df686b142cf0a3b70baed6659a436a664fffa",
+      "internal/crypto/keyring.go:ProjectSealer.SealValue": "5b0f5931ded305290b0b571ba90df686b142cf0a3b70baed6659a436a664fffa",
+      "internal/crypto/keyring.go:ProjectSealer.checkScope": "054bf36963b9da26f73d861c25ddbf6174577f1cad3a5a9925422ce63c7aeed7",
+      "internal/crypto/keyring.go:ProjectSealer.openVersioned": "c9de5a987522980d1e9308e87a245b7dd03546ba1830a1838de9cce7ac48b4ac",
+      "internal/crypto/keyring.go:masterSet.at": "1abf4b064d1fa2834540a1a643f65a2f879e76af4ad7f25b0a91d09db6051ef9",
+      "internal/crypto/keyring.go:singleMaster": "2cadff302081aad69286c32abd6f800f0c9358272ffabc8131dd28d1954bfeab",
+      "internal/crypto/keyring.go:tier3AAD": "981222f16e0cbfc00c5379372dc874ca70277187b716234d813e1b16fb2c7bff",
+      "internal/crypto/keyring.go:versionSet.activeHandle": "6684969f5986052a44109a8e5ced15ec5ab1f7a41f95efb2de9742863ed0b037",
+      "internal/crypto/keyring.go:versionSet.at": "d1d1c26ace18fda7b903bd74a6c315c6dd555cf2e8abdce8da748254eb7c9a04",
+      "internal/domain/domain.go:Scope.Level": "14193bca88168f4528fcd55c5621d3264a696ee88d95326dfa036a913944078c",
+      "internal/freetext/sanitize.go:RedactTokens": "37b500c450d366e200f05e0a5e9cd6237a68944200c6977907873524aff4b61f",
+      "internal/freetext/sanitize.go:SanitizeFreeText": "90852a3f5bb27bad809bc80a020013398bd261d821f1ec719786e022543abfca",
+      "internal/runtimeconfig/catalogue.go:Catalogue": "f82b66d00058f06bc193c0d3db1871fbf978c94d5ca4c4653b2f1d6afbea76e8",
+      "internal/runtimeconfig/migrations.go:Migrations": "a221405f8522855529c4f9b73eeb27730491a506903d089f41d399f115c5b91d",
+      "internal/schema/classification.go:checkDeclarationClassification": "b8b13609049eb9aa5d5405af74cc68bdad1cba7433d15c7d7988f08441668be0",
+      "internal/schema/classification.go:valueLiteralKeyword": "f56c5cd43145ac755965fc51625be15877f7afb31db54d05f020af6e67138e9b",
+      "internal/schema/declare.go:CompileClassified": "57dfbfeec95d5e83910b312aae3f90c9e94a9ada8e454068c3fb74260ccb0aa4",
+      "internal/schema/declare.go:Compiled.Canonical": "919a61697ae2e6e5e2beec68d9c4ae3d888efb5d9cef8714dd39cc88d5373787",
+      "internal/schema/declare.go:checkEnumMembers": "cdf37c795766b36024bac557d2b22979250f437845366725306c187d28426323",
+      "internal/schema/declare.go:checkNoDuplicateKeys": "14eb72b2658f11cf155df27300ecefc786eaf4ae033edf75b2443cd01b89a747",
+      "internal/schema/declare.go:checkSchemes": "634d60b9fcdaef27dd53c8ed78e92bbd8d02e1d7e1b1f17db6c77b6f8d49271c",
+      "internal/schema/declare.go:compileNormalized": "0911109e5b124121bf2c0964e2f4cfc59e72715747f1005a39b885dd2d307219",
+      "internal/schema/declare.go:compilePattern": "80a2e7a52a74d944ac9038f79fd1dbe21b62eb539f08b314b4de2d98a94b4ef0",
+      "internal/schema/declare.go:compileRule": "bb0e297cd66f7e136ce1bbc8cda85a5876a3eefc5494fff926166e0bfca93f86",
+      "internal/schema/declare.go:normalizeForCompilation": "9a34d9898d161fad9068c104e232c5f8b50567fbbd331339e614082275edf93a",
+      "internal/schema/declare.go:normalizeForCompile": "b3633c9d75b8da5fb5e82ea5ca8a0407336968723f1e4305fe9d22dc0be8ef15",
+      "internal/schema/declare.go:strictJSON": "9c6e73f9bb2170a21ff8b03c5cd521808d39446314195911e520691098c52f3a",
+      "internal/schema/jsonschema.go:checkProfile": "9a5dda5c0b561d343f47a63bf71bce5505191f0fe4773297be7a267dec628aa8",
+      "internal/schema/jsonschema.go:compileJSONSchema": "1371f5a4feea5f71e1b11ee65015033d77f03698648d7c2efad00f11a40f1b86",
+      "internal/schema/jsonschema.go:escapePointer": "791fe23391c2a9ec60a34a89833b3735ce5478bfdb1952a4ae4a075fca8ab246",
+      "internal/schema/jsonschema.go:pointerName": "8816dc68c2a58ccd090228ca1b8a20b9ae34e8bab5a79ae391806c64ad30dee6",
+      "internal/schema/jsonschema.go:profileWalk.checkAcyclic": "3392e94d1e2dcfa35676b96b114411a4944ba032cb6b1aa548a704410bac237d",
+      "internal/schema/jsonschema.go:profileWalk.checkWorkBudget": "6640611022c1ed860298aae08dd5de27df566e10b211c8b85a75cf6c3733eb6c",
+      "internal/schema/jsonschema.go:profileWalk.dataKeyword": "f12ee01073c17a2903de8deb250f8dbf24cf7b06ba4fad67f1ab497d8c890623",
+      "internal/schema/jsonschema.go:profileWalk.expandedPaths": "8d9d75613bb6b608a3406c82e7cf3b840e134168d2825dc283d9594baa60f46f",
+      "internal/schema/jsonschema.go:profileWalk.schema": "f09b59ab194501f0b39c969cb2f8e072dd9a4fc2809cf8900452ee0b42c321a2",
+      "internal/schema/jsonschema.go:unescapeRefTarget": "e814cb923de5142e42cec374cea2497918ac546e3175d126883b565e1d2735a4",
+      "internal/schema/schema.go:Classification.Valid": "08737c3d644d4b64db7275ed02d8bbc09f72057f210d1c9dededc925d161a2a7",
+      "internal/schema/schema.go:Declaration.alternatives": "8e56fad3446ce9a7ae85debb47bdee21e4be0841517d491f43533cdf5daa19fe",
+      "internal/schema/schema.go:clonePointer": "b6c529f2648156043a809db53c8ba83e824d2474046e88ea0b930013046d889d",
+      "internal/schema/schema.go:cloneRule": "472c44479043740aca09c3fc24815a9d00d2700a55590d90c3b48e6c0ac39894",
+      "internal/schema/schema.go:declErr": "8bbf2dc59cd9b30d8c2fdf0370f3549b9388cbccdc7273787ccac20eb7ae57ec",
+      "internal/schema/schema.go:normalize": "13b88b8820348ec5f544624fe0c7fd4e5eb972e44d7e8a64afca85d9b9f5cf8a",
+      "internal/schema/validate.go:Compiled.Validate": "275f37840a36896804b8123e6d74a0b24308c89298d5a35cbc883dbe360ffad9",
+      "internal/schema/validate.go:Normalize": "071a36dad1cb8c12544f3d8b9fe3421de47b2b2f72c45a379e0f51053d2cf0fc",
+      "internal/schema/validate.go:Verdict.fail": "79a88ab528a22d647f6c0d14e13a1cd4ae43ff2c31b6900e136cc9919b4c0362",
+      "internal/schema/validate.go:canonicalInteger": "fb88e71edf8651239fe02f860fe8783fda35f26dd25a3bebd8f90ca66522c70c",
+      "internal/schema/validate.go:capFailures": "848aa782f5fc8042f5f6b98d8dc641c5e2a2dd2a2a52d2dcc55c5e78e74c2b57",
+      "internal/schema/validate.go:compiledRule.validate": "82a44db12e1f8b17f873eacdc62d709365016d2b68c6f50c85838ff0a31740f4",
+      "internal/schema/validate.go:encodedSize": "4724b71784feb325507928dbfb1fab220c43fed84b8f65de6c5f66dcb5dcb554",
+      "internal/schema/validate.go:flattenValidationError": "96ef31699585ad463f7508e74bd7a32a93f2178b663b631a5c6627c032fcbf0b",
+      "internal/schema/validate.go:instancePointer": "03b9e767074717bec0b02c9eef70f1c01c6473f7560208e9860e87d122196ace",
+      "internal/schema/validate.go:jsonSchemaFailures": "1c517424bd627955e00049b53f64413ead69b4a108893b87c3a62edda3e24353",
+      "internal/schema/validate.go:keywordSuffix": "ed198a9bb295cd71e94fe9f95d23bca9257cb589a18bb99d14eedf0953b0e133",
+      "internal/schema/validate.go:runWithDeadline": "59a62c676a253b6d1322b79083d6c82d4b7bf476e81950ae0d5b30406649ff4a",
+      "internal/schema/validate.go:schemaLocation": "60bff19e71a1cec552a4efaf18c5bcd68b47493fa135431f6dfaef73263dc77a",
+      "internal/schema/validate.go:trimRunes": "dee7829513b28c677bf890abfa73a583c105720d4575dd9113a7429bee0be096",
+      "internal/schema/validate.go:truncateFailure": "9d5bf53aa8af06a2c6a4576ae984d551a1f9f33077feaf02ad10fb00a65af236",
+      "internal/store/upgrade/candidate_keys.go:Session.CandidateKeys": "63a6c8bf787439d2d220763aa0f796bbc4aedb89857c1f552e0d72afdb79bd48",
+      "internal/store/upgrade/candidate_keys.go:Session.existingKeys": "876f6796e3cdf48ae4fc8701b7d973296fb7a8b8309a1eb14f29fdab5e75522d",
+      "internal/store/upgrade/candidate_keys.go:candidateKeys.check": "2918aeee5433c048386b641cccaf92c94e431da7568d8d6f5749247e8bdcaa8e",
+      "internal/store/upgrade/configuration_migrate.go:configurationID": "de8c3eacfbd8e674bd079ac773feaad59d96ede8ff7c83809f324bc345ef0f51",
+      "internal/store/upgrade/configuration_migrate.go:configurationOneRow": "deab83c007cbea3468ddd4ce45d31ce18e8119e01d1966db7404afcdee096e50",
+      "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrations": "04042a7e2c360acbaae2197943e3b9aef61de5fe5c4c8143be624a00bc3e79ff",
+      "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "5505210b0c779cfed2161aef848e22705761aa1613b2cc6906c3c8c5204718d1",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/configuration_migrate.go:Session.configurationVersionCAS": {
+    "hash": "28b14458e9231561ef55c4af3440b1340a7a8a59462997448acc7e166efe5e9d",
+    "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
+    "dependencies": {
+      "internal/store/upgrade/configuration_migrate.go:configurationOneRow": "deab83c007cbea3468ddd4ce45d31ce18e8119e01d1966db7404afcdee096e50"
+    }
+  },
+  "internal/store/upgrade/domain_catalog.go:DomainCatalogPostgres": {
+    "hash": "7e51e6c45041d1296f4e129995d05dae15a970912937d02901f19842cdd19b40",
+    "reason": "Upgrade schema identity protocol inventories the actual historical source catalog and migration lineage; typed queries tied to current runtime schema cannot establish source drift or feature absence.",
+    "dependencies": {
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
+      "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "6ea65ca7eb20076ebd3579dcb853aabe55bfd1a624f4bc0aa545bf54fbb555af",
+      "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937"
+    }
+  },
+  "internal/store/upgrade/fresh_instance.go:Session.ReconcileFreshInstance": {
+    "hash": "bca33b298011e0dba0e75f3555fcfe0e6764cab91f90a57325cb9f6d8551c976",
+    "reason": "Fresh-genesis adoption protocol checks empty source hierarchy and credential epochs then reconciles singleton instance identity under exclusion; it precedes runtime datastore/key initialization.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:Session.Resume": "9be9f350663ca94f9e4ebacf1b8da7b3d2aa3a5fbc699a23e90d3d0b49eb45e4",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/genesis.go:Inspect": {
+    "hash": "f3043737253ab1dcc2530a1f214567aa4fa66e6ca7c2677bf73eec24b0e192eb",
+    "reason": "Upgrade genesis/bootstrap protocol inspects historical catalog and source identity/epoch before adopting an external proposal; it must support pre-ledger schemas and never creates a runtime capability from old observed authority.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/genesis.go:Session.Bootstrap": {
+    "hash": "63b4e8d6c2d415366aadfa43b739a89eebcd83e2109cef36e2a3e92f45b9adf8",
+    "reason": "Upgrade genesis/bootstrap protocol inspects historical catalog and source identity/epoch before adopting an external proposal; it must support pre-ledger schemas and never creates a runtime capability from old observed authority.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/state.go:newIncarnation": "8b94f32c879e509ded0dbb482e83a4b244f6ea3c6f1533d8c00c59c2920f44e6"
+    }
+  },
+  "internal/store/upgrade/inspect_control.go:InspectControl": {
+    "hash": "33f72f5c42393d5d9227811d82850d0c890998903f19ab1b10c660f612a78933",
+    "reason": "Read-only upgrade source/control inspection operates on one existing historical snapshot and hashes actual schema/lineage; no current runtime schema is assumed and no tenant payload is exposed.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516",
+      "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "6ea65ca7eb20076ebd3579dcb853aabe55bfd1a624f4bc0aa545bf54fbb555af"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/inspection.go:InspectInstalled": {
+    "hash": "3a58697946b2adc8623d333941838e0015c772600e11491978b45552e1fa0ffa",
+    "reason": "Read-only upgrade source/control inspection operates on one existing historical snapshot and hashes actual schema/lineage; no current runtime schema is assumed and no tenant payload is exposed.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/inspection.go:InspectPostgresSource": {
+    "hash": "37fc7b019e9fc9104efaaf58235f7690a7f5858482bae49ab47704ff3313e38d",
+    "reason": "Read-only upgrade source/control inspection operates on one existing historical snapshot and hashes actual schema/lineage; no current runtime schema is assumed and no tenant payload is exposed.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
+      "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "6ea65ca7eb20076ebd3579dcb853aabe55bfd1a624f4bc0aa545bf54fbb555af",
+      "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/inspection.go:InspectSQLiteSource": {
+    "hash": "3881071ec503c774fb5c16b95e91b786f25478a0bee76ed3dc1801227934018d",
+    "reason": "Read-only upgrade source/control inspection operates on one existing historical snapshot and hashes actual schema/lineage; no current runtime schema is assumed and no tenant payload is exposed.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/lock.go:Session.checkPostgresOwner": {
+    "hash": "e55314cb26fb68773421e4e319d4a2d604fa499fbb44f783ea7164acfbc542d0",
+    "reason": "Migration exclusion custody checks pg_locks for the exact session-owned advisory lock; session metadata is the authority being verified, not an ordinary runtime resource.",
+    "dependencies": {
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/lock.go:Session.guardPostgresOperator": {
+    "hash": "7c326493d4200f9d8502ed750215ea8b6860e6ae6927036d24ad5c542766176c",
+    "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions."
+  },
+  "internal/store/upgrade/lock.go:WithLock": {
+    "hash": "c26d7dd4d4d3d7902ea061bdfec33038d5f9def003c5baed9e018ed59cdf39a6",
+    "reason": "Upgrade exclusion protocol owns PostgreSQL session locks/shared runtime-drain locks or SQLite process exclusion on its dedicated database/sql connection; lock settlement must preserve that connection identity across historical schema transitions.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/maintenance_leases.go:Session.revokeSingletonLeases": {
+    "hash": "cc9210c57f3164639effffdfc1e557d51bd37ecbd0b2e1d8a290ee339b9c86d6",
+    "reason": "Historical source/archive maintenance transition atomically checks fence overflow then increments every singleton fence and expires all leases inside the owning control/pending transaction; this intentionally precedes current runtime schema admission and is never a runtime sweeping query."
+  },
+  "internal/store/upgrade/migration_history.go:Session.checkMigrationHistory": {
+    "hash": "641b4a3b61bd1e8f226eb41127f7b99fa30bd03d9f61eddf44977e6977497dc2",
+    "reason": "Upgrade lineage protocol reads actual historical goose migration history before accepting the release manifest; current generated runtime queries do not establish archive/source migration identity.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199"
+    }
+  },
+  "internal/store/upgrade/operator_rotation.go:Session.applyOperatorRotation": {
+    "hash": "3ec7d0243be8494d39535a206e1290527633d878f9d91dcd9b04514610a41790",
+    "reason": "Operator-root recovery protocol rechecks strongest historical credential stamps and durable authority under exclusion, then atomically advances credential epoch/control incarnation with externally journaled recovery custody.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/authn/authn.go:NewPG": "11bc99db0a27fc5d40e2c550367eb473c6e69bfd97a59e705956a0aa17ceebeb",
+      "internal/store/authn/authn.go:NewSQLite": "406d62ab022033051b0bbcf969dadadc471f90e099ae0e981e4b968de37e3a40",
+      "internal/store/authn/human.go:canon": "fc223a200f1a9880e85c01ead3889a66a34a616c779588b70a57c1735ae97260",
+      "internal/store/authn/human.go:encodeTime": "06cc0fc636e36926e2ce7c1c715a58f0adfaa117dba698b20b68dfa8638893db",
+      "internal/store/authn/human.go:pgTimestamp": "40fe3a7f81fcd765d5877f3e446391b70d49bcd90a0832990c6e33a910fa7b19",
+      "internal/store/authn/restore.go:Resolver.AdvanceRestoreEpoch": "3a95e507484a14152d7b3631abdba81dd5962870672aa90422234d60c9efa91b",
+      "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "bfe63f0a1c371f3210d8c2152ac7ff93578286df56c69fabd070ff36c5e55c1e",
+      "internal/store/authn/restore.go:nextEpoch": "79b068b0a5ca75782267913fe318b89d2eae303c07bd8a26205760ce848e28aa",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/operator_rotation.go:Session.OperatorCredentialEpoch": "810ce5a96a5a50da46ab3229c178aba40e0738fe5f14a621a05fd1ecd697920f",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:Session.Read": "7c32470f811b8666614716837bdac58c80479cdbef2b606088636671668f5410",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/preparation.go:PreparationAdmission.Check": {
+    "hash": "dc0edef1db5a98d90980b7a1d63019b0ff4f4b443f3956c564aefde3532a4278",
+    "reason": "Prepared backup/source capability protocol rechecks exact source schema/lineage/control generation and retains source locks before archive export; it admits historical/frozen sources without granting ordinary runtime access.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:canonicalSQLite": "f89b56750e0b6cff94f8060893f1f2dc69eaf3290d0be240bd671e6f7f72e7ee",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92",
+      "internal/upgradecompat/plan.go:Plan.SourceManifest": "b8fd3ec9402f5c880680ad398be372659cae03e38434e3316c89a7c061a5144e"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/preparation.go:PreparationAdmission.GuardPostgres": {
+    "hash": "490be8cb3478b72ea30090ce417cc25e0ab2ca98f1db19132b01d52ebddf8381",
+    "reason": "Prepared backup/source capability protocol rechecks exact source schema/lineage/control generation and retains source locks before archive export; it admits historical/frozen sources without granting ordinary runtime access.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/preparation.go:Session.PrepareExport": {
+    "hash": "c88a446fdc0b460fbae5eb7fc5432228784d2a9de6bfe152395c713278507bc1",
+    "reason": "Prepared backup/source capability protocol rechecks exact source schema/lineage/control generation and retains source locks before archive export; it admits historical/frozen sources without granting ordinary runtime access.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Clone": "aa11dc8aad5354f6df8ff33e7432565ad0c84a4917ec4d9d6fd255cc58ae4bee",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/inspection.go:inspectSource": "23497cabcb5d1cb20342915677c0864b7d94d8227647ef06dd7e5e51b8533ffd",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92",
+      "internal/upgradecompat/plan.go:Plan.Digest": "46cc9927bebbc8ba589ac9f26c73542e60345a9dbab94d0cb03f8f48237b6c61",
+      "internal/upgradecompat/plan.go:Plan.Source": "cc222770d35e15779a36d117d27e8977edaee083d5ce2e0cd454904217c7c42e",
+      "internal/upgradecompat/plan.go:Plan.SourceManifest": "b8fd3ec9402f5c880680ad398be372659cae03e38434e3316c89a7c061a5144e",
+      "internal/upgradecompat/plan.go:Plan.SourceSchemaDigest": "3a2b4959e2e0aea84a4821324f3c67f76f3b090abe845db43e8846abda1550cf",
+      "internal/upgradecompat/plan.go:Plan.Target": "36c1ff6cf1ca3e7a8a6f98940cd2ae850311419211a1032e2b198c49080dae38",
+      "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.GuardPostgres": {
+    "hash": "d0f057fc45526c01f30dfa4b8cd329f13d2f8f15cb555fa8dce0a5571d940abe",
+    "reason": "Authenticated historical-archive recovery custody checks matched credential/restore epochs and the exact exclusion-session/archive authority on the same restored transaction; this cannot grant runtime serving authority.",
+    "dependencies": {
+      "internal/backupreceipt/archive.go:AuthenticatedArchive.Valid": "af92c7c60d258070651f96a7e754520dccc3a68183c479c31b75805e7328d452",
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.CheckOwner": "551cd7795d57e4588548a5fee2dcb2239ca4b73e018a80d31cc5a3f737c55262",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Valid": "46be22a6320dad35f082fbe0a9704f6003e7d251c151f12ec6f2ab0da23cbc19",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.checkRows": "633c45be26d761b381f78da585c185c9cc091c4b80d0297cf4695f2a3f8aa7d3",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.GuardSQLite": {
+    "hash": "c17b833016361d7a1e7a795668a04066fd0778801a1d25f11c33f62161b1d469",
+    "reason": "Authenticated historical-archive recovery custody checks matched credential/restore epochs and the exact exclusion-session/archive authority on the same restored transaction; this cannot grant runtime serving authority.",
+    "dependencies": {
+      "internal/backupreceipt/archive.go:AuthenticatedArchive.Valid": "af92c7c60d258070651f96a7e754520dccc3a68183c479c31b75805e7328d452",
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/preparation.go:PreparationAdmission.Valid": "1a969335e21e3be6e90af3da2f02aaf65906009f684027eb9c64a92e610337a9",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.CheckOwner": "551cd7795d57e4588548a5fee2dcb2239ca4b73e018a80d31cc5a3f737c55262",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.Valid": "46be22a6320dad35f082fbe0a9704f6003e7d251c151f12ec6f2ab0da23cbc19",
+      "internal/store/upgrade/recovery_admission.go:RecoveryAdmission.checkRows": "633c45be26d761b381f78da585c185c9cc091c4b80d0297cf4695f2a3f8aa7d3",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/recovery_admission.go:Session.DataRecoveryAdmission": {
+    "hash": "fbe0491f46807f1707c053af10ceb55c442733ba37dab8af0dc7420167234cfa",
+    "reason": "Authenticated historical-archive recovery custody checks matched credential/restore epochs and the exact exclusion-session/archive authority on the same restored transaction; this cannot grant runtime serving authority."
+  },
+  "internal/store/upgrade/recovery_admission.go:Session.ScratchAdmission": {
+    "hash": "1ba8cf1386a4185bead8e197b4a3765abf20fb6d69081463ddc629ca791e2b03",
+    "reason": "Authenticated historical-archive recovery custody checks matched credential/restore epochs and the exact exclusion-session/archive authority on the same restored transaction; this cannot grant runtime serving authority.",
+    "dependencies": {
+      "internal/backupreceipt/archive.go:AuthenticatedArchive.PlanDigest": "4ebdb9a3e1de9149abde08ecef3f7a641ad72c0d82631119bbf97a34d320e847",
+      "internal/backupreceipt/archive.go:AuthenticatedArchive.Snapshot": "4e097ffc6a21d914ffbe9c81ed691a8091f71f2d76a4527eb03e552e269b5883",
+      "internal/backupreceipt/archive.go:AuthenticatedArchive.Valid": "af92c7c60d258070651f96a7e754520dccc3a68183c479c31b75805e7328d452",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/upgradecompat/plan.go:Plan.Digest": "46cc9927bebbc8ba589ac9f26c73542e60345a9dbab94d0cb03f8f48237b6c61",
+      "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d"
+    }
+  },
+  "internal/store/upgrade/recovery_operation.go:Session.ValidateRecoverySchema": {
+    "hash": "85c6740b775cf97eae453ce6f0abf7306e42a7ccc29746a6c56327bfd5132625",
+    "reason": "Restore recovery protocol validates actual historical restored schema against authenticated release/operation evidence under exclusion, before current runtime schema admission.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/inspection.go:checkInstanceEpoch": "ce55c1472fa43f9442bcc361904c10befcced6aad88d64af55e1e42e966dfee0",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/restore.go:ReconcilePostgresRestore": {
+    "hash": "2c4fa68707d2aa9bb5610e00434cbfe6bfc49dc46a00f10375b4ea99792fe703",
+    "reason": "Authenticated archive reconciliation rewrites recovery control identity for the restored historical snapshot while retaining its owning transaction; missing historical control records and old format are explicitly handled.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/restore.go:reconcileRestore": "f2b1b7269251540b7955077a30159f90356e8ba93cc3a3b157d0597490b792ef",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/state.go:nextGeneration": "b5ef1f231c7227a1f96317f3a209c2f75cead461ce9899c58265271230150eda",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/restore.go:ReconcilePostgresRestoreIfPresent": {
+    "hash": "f4473a2e21f4c4d0df1218146ed8f0590e86e1f72a74e67a2d96ffdaf27c2368",
+    "reason": "Authenticated archive reconciliation rewrites recovery control identity for the restored historical snapshot while retaining its owning transaction; missing historical control records and old format are explicitly handled.",
+    "dependencies": {
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
+      "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "6ea65ca7eb20076ebd3579dcb853aabe55bfd1a624f4bc0aa545bf54fbb555af",
+      "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937"
+    }
+  },
+  "internal/store/upgrade/restore.go:ReconcileSQLiteRestore": {
+    "hash": "c3204750d62476bc06bcb57b380999cb90a0a9b6c8bbf32dddc9e4afc63182ba",
+    "reason": "Authenticated archive reconciliation rewrites recovery control identity for the restored historical snapshot while retaining its owning transaction; missing historical control records and old format are explicitly handled.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/restore.go:reconcileRestore": "f2b1b7269251540b7955077a30159f90356e8ba93cc3a3b157d0597490b792ef",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/state.go:nextGeneration": "b5ef1f231c7227a1f96317f3a209c2f75cead461ce9899c58265271230150eda",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/restore_schema.go:PreparePostgresRestoreControlSchema": {
+    "hash": "a45c76ea36b893bddcb6f2086f8ce444ff847404578137378ccb9f402918e396",
+    "reason": "Recovery control-schema DDL prepares exactly empty upgrade authority tables inside the caller-owned restore transaction; it cannot assume they existed in the historical archive.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/restore_schema.go:prepareRestoreSchema": "ef32c202ae0f3d7689fcd0e014569b031a12f6553bb42736649c1ce9726a6816",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
+      "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "6ea65ca7eb20076ebd3579dcb853aabe55bfd1a624f4bc0aa545bf54fbb555af",
+      "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937"
+    }
+  },
+  "internal/store/upgrade/restore_schema.go:PrepareSQLiteRestoreControlSchema": {
+    "hash": "2147e28513970aa1f5eba515bf0b8ee2652549fb2c3bcf68f855ab6dc75796bd",
+    "reason": "Recovery control-schema DDL prepares exactly empty upgrade authority tables inside the caller-owned restore transaction; it cannot assume they existed in the historical archive.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/inspection.go:appliedMatches": "830fce9eaf4d69b2e06211b31463ad499c4e452b1c5030ef3723231f0e9f2ce2",
+      "internal/store/upgrade/restore_schema.go:prepareRestoreSchema": "ef32c202ae0f3d7689fcd0e014569b031a12f6553bb42736649c1ce9726a6816",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19"
+    }
+  },
+  "internal/store/upgrade/runtime_snapshot.go:ReadPostgresSnapshot": {
+    "hash": "548295dc1a16edb084ee9bbdce0c793a671aca537cd0dc06b73d9f039c140ff7",
+    "reason": "Upgrade control snapshot protocol reads the existing durable authority record on the caller-owned transaction, preserving the complete archive snapshot and supporting control records outside current runtime migrations.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/schema.go:inspectCatalog": {
+    "hash": "396326f6f38147ec9e2f3bd4537b49c62bdfa28b5ff5c37ba2d7896c030c458c",
+    "reason": "Upgrade schema identity protocol inventories the actual historical source catalog and migration lineage; typed queries tied to current runtime schema cannot establish source drift or feature absence.",
+    "dependencies": {
+      "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
+      "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "6ea65ca7eb20076ebd3579dcb853aabe55bfd1a624f4bc0aa545bf54fbb555af",
+      "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937"
+    }
+  },
+  "internal/store/upgrade/scratch_reset.go:SeparatePostgresScratch": {
+    "hash": "b8851b8f37658aff60858602f17c02930faf8261b3e8f282d8a4919ef92286fb",
+    "reason": "Scratch-recovery identity protocol verifies the actual candidate database name before accepting physical separation from source; no ordinary data query.",
+    "dependencies": {
+      "internal/store/upgrade/lock.go:open": "14627d65f77b206adfab245cf59e0eade3df578b4c1c94a09802424032d43516"
+    }
+  },
+  "internal/store/upgrade/scratch_reset.go:Session.ResetOwnedScratch": {
+    "hash": "16fedfbc2091b2b9285cd9ca8f8f93a8ebc12937124051fabc539f70fe2f7611",
+    "reason": "Explicit owned scratch reset uses exclusion-checked schema DDL or SQLite file replacement; it is recovery lifecycle protocol, never a runtime database reset.",
+    "dependencies": {
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/storage.go:ReadSQLiteSnapshot": {
+    "hash": "c4174298936063c5405b75be0f7b806ca576fa8247d6b33e8ea416a5a794daea",
+    "reason": "Upgrade control snapshot protocol reads the existing durable authority record on the caller-owned transaction, preserving the complete archive snapshot and supporting control records outside current runtime migrations.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/storage.go:Session.compare": {
+    "hash": "d338a955a9aeb28890a32548b936a3ea6966b93db356d8722f3ca134689acebb",
+    "reason": "Durable upgrade control CAS/transaction protocol operates on the exact exclusion-owning database/sql connection, using control/pending tables independent of runtime migration lineage and retaining SQLite IMMEDIATE/PostgreSQL control row locks.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2",
+      "internal/store/upgrade/storage.go:decode": "70217b7e96490c2d561009ea7094818b3edf74f0aff63254b2329b2e452942e5",
+      "internal/store/upgrade/storage.go:equalRecord": "88b8060422c46ea834fb8f50ad10eb191fc27b2883399e48711536c25e2f3a50",
+      "internal/store/upgrade/storage.go:scanState": "aad9d794f531023df967841ae05fc6825102ef05a0223d7dedfbf291e02fad92"
+    }
+  },
+  "internal/store/upgrade/storage.go:Session.persist": {
+    "hash": "013e59c52775db7658d64906ae1896937d00773d2a4376b5a337af21b2802a2f",
+    "reason": "Durable upgrade control CAS/transaction protocol operates on the exact exclusion-owning database/sql connection, using control/pending tables independent of runtime migration lineage and retaining SQLite IMMEDIATE/PostgreSQL control row locks.",
+    "dependencies": {
+      "internal/releaseidentity/floor.go:SnapshotFloor.Validate": "3aec819d70924f49b86f3fe49d612885d07d5c9390ca17c7dcac6cb31bc4d755",
+      "internal/releaseidentity/identity.go:Digest.Validate": "6d5359fa11b501186a5903f260949c3857d886548f975ebc3a467f150f4bee67",
+      "internal/releaseidentity/identity.go:Engine.Validate": "7be1e96be3d451ac40a3fd75352cddeb97d6667a22679ec6938f5abfbecb3dd9",
+      "internal/releaseidentity/identity.go:Hash": "bb50ce528570f1033a1428f34eb463e56d3b9da9db39103e19305810657eee92",
+      "internal/releaseidentity/identity.go:Identity.Validate": "542f1606ca7dd008c03c251ec33e8fb3c6a6cad6fab9a52812bf85c4c4a9d244",
+      "internal/releaseidentity/identity.go:MigrationManifest.Digest": "621cb9aa46dab9b3291134403e5c0e777648ca363e97a1d7dede8718859bfe87",
+      "internal/releaseidentity/identity.go:MigrationManifest.Validate": "341459ad8f6676c457bdea241d464242400b04444e11a837e8fe75933b72f174",
+      "internal/releaseidentity/identity.go:Profile.Validate": "80d97ab9e2da0b7f94d97acfe8f25a353da05a8bdc7d562755fd9be7582c678d",
+      "internal/releaseidentity/identity.go:Source.IsRelease": "e0305cc66e3b090530bb9e56c0ab57ff3cb8c903afbabc303ecf970f97a98b99",
+      "internal/releaseidentity/identity.go:Source.Validate": "48dd5a3c58e7648d3a4246adca2801b92f0095f39af29c11263472d561e22949",
+      "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
+      "internal/store/upgrade/acceptance.go:Acceptance.Validate": "01436164aa207bf59865589f762c71b55465b3f0ae4891d32a8644984a2dbbc6",
+      "internal/store/upgrade/acceptance.go:encodeFloor": "dd9bfb5086f15540900ccbeb9c1727ea7805872a9b8a86ef712b7099966dc5ce",
+      "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
+      "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
+      "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",
+      "internal/store/upgrade/domain_catalog.go:domainCatalog": "fb56444533d6dd7f50259f8ebbfd01279ae7f9bfcf47bbb73453ffa17f5f680c",
+      "internal/store/upgrade/genesis.go:legacyDeclaration": "7b3b6a8f04871faceb35242bf76c9c70df95d9379dea9964555b039a5c868f23",
+      "internal/store/upgrade/genesis.go:validateGenesis": "b8927edbcc6bef8940e1b6d642a2b36c770246d3f68066238f5787e3f55fd9f8",
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d",
+      "internal/store/upgrade/maintenance_leases.go:Session.invalidateSingletonLeases": "a5e73031022d0cc51faeed7cd4199b75ba333c44f755f71e5304d7b37f71f3ed",
+      "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
+      "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
+      "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
+      "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",
+      "internal/store/upgrade/state.go:TrustDomain.Validate": "5be99a95b2ce028418319558c80c158abd65370660d852a37521095e2e62ffe2"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  },
+  "internal/store/upgrade/storage.go:Session.transaction": {
+    "hash": "81892deb096ccd2b6f969c7fac678208b3b81682c22a3be016a534fb35ebb3f9",
+    "reason": "Durable upgrade control CAS/transaction protocol operates on the exact exclusion-owning database/sql connection, using control/pending tables independent of runtime migration lineage and retaining SQLite IMMEDIATE/PostgreSQL control row locks.",
+    "dependencies": {
+      "internal/store/upgrade/lock.go:Session.check": "4b3f595627bcc99e409018f55af7ce053424f1dec3d1d39224626c58e6b898b3",
+      "internal/store/upgrade/lock.go:checkedFile": "0b8e2d8751857941c700e20949bb5f6232ae3d92c5a678da89b38e3edcf5c54d"
+    },
+    "build_dependencies": {
+      "darwin": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "default": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "ui": {
+        "internal/store/upgrade/identity_unix.go:requireSingleLink": "c9a88a94e61afa55a30db4896b0a19fd5916a75e44a98619f5787d96261c94c3"
+      },
+      "windows": {
+        "internal/store/upgrade/identity_windows.go:requireSingleLink": "e682b41187656eb3ef853a5dd430630b079cb8a229c60556297f7bb0b15d94d2"
+      }
+    }
+  }
+}

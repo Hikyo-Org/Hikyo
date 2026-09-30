@@ -1,6 +1,76 @@
 [
   {
     "engine": "postgres",
+    "name": "AdapterHealthCounts",
+    "annotation": "instance-scoped",
+    "hash": "7b84ab938fe6a57a870c5112f2686d7ffc0b2a7e328ae12425417eeec0717a9d",
+    "reason": "Verified instance HealthCounts authority reads only aggregate target/outbox counts for operator gauges; no tenant rows or writes are returned."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerCheckProviderSwitchQuery",
+    "annotation": "instance-scoped",
+    "hash": "b47e4b0ddb1d793caefcf5fa3558f828d65a3cc853fb1a5b3124ee27aba5a61a",
+    "reason": "Closed host-only provider-switch authority rejects network operation contexts and returns only whether any retained adapter configuration or configuration fence exists, to refuse an unsafe provider change."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerClaimDueSelectQuery",
+    "annotation": "instance-scoped",
+    "hash": "af2d8d3906ff1c2c47a022c230322575ff8fc166d2c98f620b95142ea76a195c",
+    "reason": "Closed adapter worker claim authority selects one due or expired leased job installation-wide, enforcing per-org concurrency and same-target exclusion under the PostgreSQL row lock; the claimed row supplies the downstream tenant chain."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerClaimDueUpdate",
+    "annotation": "instance-scoped",
+    "hash": "4a0603a1afdd49ecd5d9f32bb0a6e5f77597e4514cf718f6b3ed632bc366a964",
+    "reason": "Closed adapter worker claim transaction updates only the globally unique outbox row selected and locked immediately above, setting its incremented attempt and new owner/deadline before scoped effect settlement."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerFinishJobQuery",
+    "annotation": "instance-scoped",
+    "hash": "8b9e47bde6b1d9d0d4590628d4d9e80ff3c7477d610370a4dd3185be864937f6",
+    "reason": "Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerFinishJobQuery2",
+    "annotation": "instance-scoped",
+    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
+    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerFinishUpdateEffect",
+    "annotation": "instance-scoped",
+    "hash": "899e26d84f63d6e3895dc31478b9a5751f0f776aec8457ae44a68dc0a664bdfe",
+    "reason": "Closed adapter journal completion settles only the globally unique effect id retained after successful Prepare; the enclosing transaction inserts its job-chain outcome and requires the matching scoped target/effect provider fence before commit."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdapterWorkerPrepareLease",
+    "annotation": "instance-scoped",
+    "hash": "76baa8ac40d10daa01f759b73de2b84402fec409a02777041670f2e5ccc8142e",
+    "reason": "Closed adapter effect preparation extends only the leased job identified by its globally unique id and current running owner after obtaining the scoped target provider fence in this transaction; a zero-row match rolls back preparation."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdmissionSerializedLock",
+    "annotation": "instance-scoped",
+    "hash": "33d6f9da36ab8ff5ddb218f33499145cebf3167b5c01f567053ba5c29bba593e",
+    "reason": "Runtime admission takes the caller-selected installation session lock on one held connection before its serializable transaction; no tenant data is read."
+  },
+  {
+    "engine": "postgres",
+    "name": "AdmissionSerializedUnlock",
+    "annotation": "instance-scoped",
+    "hash": "70182cb2f3ab58bb53ed13f842e92efaf0bdc968b92ac4a7f3784426928f62bd",
+    "reason": "Runtime admission releases that exact connection's session lock once; an unconfirmed unlock discards the owner rather than returning it to the pool."
+  },
+  {
+    "engine": "postgres",
     "name": "AdvancePrincipalGeneration",
     "annotation": "authn-resolution",
     "hash": "b47a8093534021af496a3f9c90a7096a29d1509c0636c21a422b093fc33d4cd4"
@@ -34,6 +104,20 @@
     "name": "ApproveWorkspaceHandoff",
     "annotation": "authn-resolution",
     "hash": "ad4872d3fadaa4c2a23c7ac0072990497795187a6c6ab6995d34ca32cb94c24c"
+  },
+  {
+    "engine": "postgres",
+    "name": "AuditExportSnapshotClock",
+    "annotation": "instance-scoped",
+    "hash": "66383dcd4f1e9be8090ef915102d0a5aa18dd1aa58fe5edd17e401719feb5524",
+    "reason": "Admitted audit-export transaction captures the live database event clock under the writer gate; clock_timestamp intentionally differs from coordination now()."
+  },
+  {
+    "engine": "postgres",
+    "name": "AuditExportWriterBarrier",
+    "annotation": "instance-scoped",
+    "hash": "fb0cdec712116c045b15025529be09eee2f87369a254bf5cd9d6c8c1cdf96e4f",
+    "reason": "Admitted audit-export transaction takes the exclusive installation writer/pruner gate through cutoff capture or final-page completion; no tenant payload is read."
   },
   {
     "engine": "postgres",
@@ -148,6 +232,202 @@
     "name": "ConsumeWorkspaceHandoff",
     "annotation": "authn-resolution",
     "hash": "8d39738c4dc843ac59a99d86f6d465761458c8abac9149908a5368877d98b4e3"
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationAccountFailureState",
+    "annotation": "instance-scoped",
+    "hash": "d6cbf3e3d9d9f155f9be8087d5f977e651f9549369622b7455240a7d91ad3a16",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationBumpWindow",
+    "annotation": "instance-scoped",
+    "hash": "02ab92cbdd2465f5e83abd82a512b05e999e04d6fbe1896cf9c9bd68ebe34e87",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationClaimLease",
+    "annotation": "instance-scoped",
+    "hash": "a50e7270b83216c05e439f9d779e0b976cf4cd5a78dbcb51dfeebef60f725455",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationClearAccount",
+    "annotation": "instance-scoped",
+    "hash": "f982176fc69e2435e346bf29745dfecafc87841c55f11d267cb9cb0bdbb4f3b2",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationCountForeignNodes",
+    "annotation": "instance-scoped",
+    "hash": "383b35abcaa55caf6502b988ff9c139855cb394eb8671d11f0d88b1e7d5dbc36",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationCountLiveNodes",
+    "annotation": "instance-scoped",
+    "hash": "241d25f4ad656004367aadb443bb0768e6908e78da804a20b52eba613052f4ad",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationCountMCPClaims",
+    "annotation": "instance-scoped",
+    "hash": "0a1ccfbd84337816926bbeb56df6d28f05b3bbc61464f46443557e668ce1085e",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationCurrentTopology",
+    "annotation": "instance-scoped",
+    "hash": "2135e12d46536b59fc2560d3d6f6f9d2e90387aca4a37e23f87992c1331cba56",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationForeignRootKeyFingerprints",
+    "annotation": "instance-scoped",
+    "hash": "97725ffa1a3a58176d45807891d7e6516e64a2b59e6bc9cb73ee4ca97c0bacca",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationInsertMCPClaim",
+    "annotation": "instance-scoped",
+    "hash": "a21e83f11ad036ec64fdfae5b915caf90210945208b62bf3dc16ebb479a93ca5",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationLatestRollout",
+    "annotation": "instance-scoped",
+    "hash": "5ea79b1d451eda4d77d0d2d0037a0bea9355673f7c7b93aa495e0540c53ad032",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationLeaseHolder",
+    "annotation": "instance-scoped",
+    "hash": "4958ba488ce24da0a46358d97b58638571bb0e1629f943a22eaa4cc3e90bc555",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationLock",
+    "annotation": "instance-scoped",
+    "hash": "76c47d0f18ea1de0b58c7dff0f6d0afea6ea3290da1c582b25a1a03c740d122a",
+    "reason": "Installation datastore clock or transaction advisory lock. Coordination admitted datastore transaction; no tenant payload. Namespace 1464159830, classes 87 membership/register and 88 MCP admission remain unchanged; now() frozen per transaction is preserved."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationLockTopology",
+    "annotation": "instance-scoped",
+    "hash": "da22cc26bf2bc6c1a311dcd6db8d1741095982f1d9be1666d9d25d5d6d20ffbe",
+    "reason": "Installation datastore clock or transaction advisory lock. Coordination admitted datastore transaction; no tenant payload. Namespace 1464159830, classes 87 membership/register and 88 MCP admission remain unchanged; now() frozen per transaction is preserved."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationMCPRateBucket",
+    "annotation": "instance-scoped",
+    "hash": "66d86b90e02e14d8ac4e2ba86d69ec571ceaf182430b371f013d785fd058a063",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationNow",
+    "annotation": "instance-scoped",
+    "hash": "f41f2b329e378b56be73251aed2731dec46c35b83cd0932f11566ea292753a51",
+    "reason": "Installation datastore clock or transaction advisory lock. Coordination admitted datastore transaction; no tenant payload. Namespace 1464159830, classes 87 membership/register and 88 MCP admission remain unchanged; now() frozen per transaction is preserved."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationPruneAccountBackoff",
+    "annotation": "instance-scoped",
+    "hash": "5d7947dd9b38e4aa53d4a551f501c6a6f8ede239b9c9c5d10017e3381c09b87b",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationPruneAdmissionWindows",
+    "annotation": "instance-scoped",
+    "hash": "49203a9d16a2743b282a733460da19d027d194542fdd7354c40c08f864642783",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationPruneMCPClaims",
+    "annotation": "instance-scoped",
+    "hash": "10705f053c742b6b71a979d961e6052e5bdd12ce211d650b9ac2230d1536998a",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationPruneNodes",
+    "annotation": "instance-scoped",
+    "hash": "efd5c0c02556d182c54fc3b3bd011d14fda49b2fbc3890013a54b4377ed4fc08",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationRecordAccountFailure",
+    "annotation": "instance-scoped",
+    "hash": "3e5c05be273163c49d89511c1fcc8888ad04775269a120da32a28b70c84e4664",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationReleaseLease",
+    "annotation": "instance-scoped",
+    "hash": "4c3459224bc97e32462e7643aa917a2ccd4076faf6339d6afd3d96ff238415cc",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationReleaseMCP",
+    "annotation": "instance-scoped",
+    "hash": "a515558c6a7fc65ed145dda20000aa944525e780b2a31ff8ec5c4eec690fdf95",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationRenewLease",
+    "annotation": "instance-scoped",
+    "hash": "6f27710268d734007ed4db44cace821a7c8d5ddc420be673f0a09eed47187696",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationSelfConfigGeneration",
+    "annotation": "instance-scoped",
+    "hash": "c17a4f06a894772f93387ccb7b9909292b8f1fd9a05fdd09978356d45e7afda4",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationSelfConfigSeedAttest",
+    "annotation": "instance-scoped",
+    "hash": "f6538fa1358e3cbc97c336c9c3fe27b59a4757e7f1d6a49d7072159aa66b2539",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationSetMCPRateBucket",
+    "annotation": "instance-scoped",
+    "hash": "e6aa94ab9a0c4dc8808539b7834148c12bdffebaba4a7743c4cbb71107d6b293",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "postgres",
+    "name": "CoordinationUpsertNode",
+    "annotation": "instance-scoped",
+    "hash": "b6bc557dc401fe4db3b1b56726086f84500654f39e337e61c2f7db946ddca40f",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
   },
   {
     "engine": "postgres",
@@ -991,6 +1271,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GuardSingletonLease",
+    "annotation": "instance-scoped",
+    "hash": "3b8f2911cea002e0f3884cf19b0c99cba9654f5351394af0adc0598b0b6647ca",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "postgres",
     "name": "HoldRestoredPKIIssuers",
     "annotation": "authn-resolution",
     "hash": "fd13729c16a828f1f75a5490917c88c0abdcd00d60326ba1732b0a8563eeef1f"
@@ -1693,6 +1980,202 @@
   },
   {
     "engine": "postgres",
+    "name": "PKIActiveIssuer",
+    "annotation": "instance-scoped",
+    "hash": "69a3dfa8ab1e939527eeedfea8da04406e60a93fbfb2a62ccdc2d1cef65cbdef",
+    "reason": "StorePKIIssuersActivePublic permits the existing instance-wide active CA projection for a verified environment operation; sealed keys are excluded."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIBumpCertificateRevocation",
+    "annotation": "instance-scoped",
+    "hash": "c4d99dc01187d615df7f2ab18c0de05bfd7e4c35c4f1a226c22b03731cd4863e",
+    "reason": "Called only after a proof-scoped certificate revoke CAS or closed PKIRuntime unknown-state CAS succeeds in the same transaction; bumps that certificate issuer CRL sequence."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIBumpIssuerRevocation",
+    "annotation": "instance-scoped",
+    "hash": "f255db3db7694046da3cc6ed7ce4fae200afe72078d41b7989e068030a58ad98",
+    "reason": "Called only after successful StorePKICertificatesRevokeLive changes in the same transaction; global CA sequence forces CRL refresh for those leaves."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKICountLiveCertificates",
+    "annotation": "instance-scoped",
+    "hash": "8044b6c33de9e24bac86f875f5d73ea51995516096c75c99969e7cdbc305f9d8",
+    "reason": "StorePKICertificatesCountLive verifies instance-config authority; retiring a global CA must count all dependent unexpired tenant leaves and child CAs."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKICreateBinding",
+    "annotation": "instance-scoped",
+    "hash": "7a4b17bb969108293bd6074d6bedc528f3532baf6a1ce5164c7e202ce5166e2a",
+    "reason": "StorePKIBindingsCreate verifies instance-config authority; operator explicitly names a policy reach, with existing tenant foreign-key and duplicate constraints."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKICreateIssuer",
+    "annotation": "instance-scoped",
+    "hash": "d53c77ee7e32f1fa978b53c4df48e3c3d771db6673a0622b428e303b2e14fb2a",
+    "reason": "StorePKIIssuersCreate verifies instance-config authority before creating an instance-wide CA key version."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKICreateProfile",
+    "annotation": "instance-scoped",
+    "hash": "e75f0b6185d4760cff3c9520cd2e7433fdb5f373992ef184e0b5966cec560ca1",
+    "reason": "StorePKIProfilesCreate verifies instance-config authority before creating a global certificate policy definition."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIDeleteBinding",
+    "annotation": "instance-scoped",
+    "hash": "d1f4b8b1b94da30563cdbd001ae7d35821df1fbe64b891208c52fd718d111e3c",
+    "reason": "StorePKIBindingsDelete verifies instance-config authority; operator deletes only the named binding belonging to the named global policy."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIDeleteProfile",
+    "annotation": "instance-scoped",
+    "hash": "1914c6c5f05606e095ddbec1eb61001084493eeda19ffb7fe04c456197886f64",
+    "reason": "StorePKIProfilesDelete verifies instance-config authority; deletes the global policy after its bindings are removed in the same transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIDeleteProfileBindings",
+    "annotation": "instance-scoped",
+    "hash": "a36858c847eabae7721d28d36a44e3d93064a0a9c81ebf92d57612e94f3c1974",
+    "reason": "StorePKIProfilesDelete verifies instance-config authority; removes an operator-owned global policy reach before deleting that policy in the same transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIDestroyIssuerKey",
+    "annotation": "instance-scoped",
+    "hash": "0857b6e0c483ff7c833edc4be811560cd57ceb3eec979e283a0207ba19b41f1a",
+    "reason": "StorePKIIssuersDestroyKey verifies instance-config authority; terminal CA transition destroys the sealed key under state/version CAS."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIFenceIssuance",
+    "annotation": "instance-scoped",
+    "hash": "8189bf428c01351be3f625633720c85c2739c81b9d7530c499446e8dae17076b",
+    "reason": "StorePKIIssuersFence verifies issuance authority; writes the global CA counter only while active and not held, preserving the cross-node signing fence."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIGetIssuer",
+    "annotation": "instance-scoped",
+    "hash": "c2e85ea22e6992209a38c5ddd17237ac079b91052365a54e8377ab953faf55c5",
+    "reason": "StorePKIIssuersGet verifies instance-config, or StorePKIIssuersPublic permits the existing global public CA projection; this query excludes sealed keys."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIGetProfile",
+    "annotation": "instance-scoped",
+    "hash": "9330278fa910aa9c01accf55ac2b56ce98123ad38b265bdb560983a1b6c4a828",
+    "reason": "StorePKIProfilesGet verifies instance-config authority; resolves an instance-wide policy definition by name."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIInstallIssuer",
+    "annotation": "instance-scoped",
+    "hash": "ca0d7b8b0bb95632f2e851ded1e1f5e9ce7654602fb411cfc0d33b94fd939496",
+    "reason": "StorePKIIssuersInstall verifies instance-config authority; pending CA activation retains the original state and row-version CAS."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIIssuerKey",
+    "annotation": "instance-scoped",
+    "hash": "5fce299ab272ae8035626f7e2666725e47ed5e233d962187ae8dcdd6d6a106f5",
+    "reason": "StorePKIIssuersKey or StorePKIIssuersSigning verifies the closed in-process signer capability before reading sealed CA key material."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIListBindings",
+    "annotation": "instance-scoped",
+    "hash": "28942a92536d2b445000702c46562f9abaf1c894f49569b8aadd0501c933d34a",
+    "reason": "StorePKIBindingsList verifies instance-config authority; operator reads explicit tenant reaches of one global policy."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIListIssuers",
+    "annotation": "instance-scoped",
+    "hash": "6550786aaafe79a34999ddc0ace5ca7e10eee784f0177b93f0c8606a9b8d8bf1",
+    "reason": "StorePKIIssuersList verifies instance-config authority; CA issuer versions are instance-wide public metadata ordered by name/version."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIListProfiles",
+    "annotation": "instance-scoped",
+    "hash": "efac92c462ea6ca89b6bebe948c1d6335cd18e8a27886db298db0ef02821d83d",
+    "reason": "StorePKIProfilesList verifies instance-config authority; certificate policy definitions are instance-wide and contain no tenant certificate rows."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIPublishCRL",
+    "annotation": "instance-scoped",
+    "hash": "142be08f1ba6ba03e7e5f8d017adf988135f1052a61724b4e4804d233034908e",
+    "reason": "StorePKIIssuersPublishCRL verifies instance-config, or closed PKIRuntime publishes a signed global CA CRL; original active/retiring state and prior-number CAS remain."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIRevokeLiveCertificates",
+    "annotation": "instance-scoped",
+    "hash": "6b4c45601a942142188ac73ca1a2dbf7dae5ce95ef85a69f81f0c003645a7444",
+    "reason": "StorePKICertificatesRevokeLive verifies instance-config authority; compromised global CA revocation must cover all dependent tenant leaves."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIRevokeParent",
+    "annotation": "instance-scoped",
+    "hash": "17a8e983f4d4695927a8b1c81f59e78da087c6bd23ef9e4d9c0da45616325895",
+    "reason": "Called only after successful StorePKIIssuersDestroyKey revocation CAS in the same transaction; the global parent CA revocation sequence covers the revoked child."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIRevokedChildren",
+    "annotation": "instance-scoped",
+    "hash": "2d30857c7b766f22cec739dc296fbf54931c0c5d238d688e8e42125af4609c16",
+    "reason": "Same verified instance-config or closed PKIRuntime CRL assembly authority; a global parent CRL must include revoked child CA certificates."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIRevokedEntries",
+    "annotation": "instance-scoped",
+    "hash": "de3c74ac175370ab5f75be5f7f7fd42c16ad6df726f9dcf539d29a365612cb73",
+    "reason": "StorePKICertificatesRevokedEntries verifies instance-config, or closed PKIRuntime CRL assembly reads all unexpired revoked/unknown leaves for one global CA."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKISetIssuerHold",
+    "annotation": "instance-scoped",
+    "hash": "d21f84e4603f7224bcef2afce37704d91195f6a0a708910bb21f3ae80f974a07",
+    "reason": "StorePKIIssuersHold verifies instance-config authority; global CA restore hold requires the original row-version CAS."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKISigningIssuer",
+    "annotation": "instance-scoped",
+    "hash": "fc52aca5bb1f5b12c65cbd200fa9fff05ca6962bf079b98e66daa642ba0d8599",
+    "reason": "StorePKIIssuersSigning verifies signing authority before reading the active global CA public row; issuer fencing remains required before issuance."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKITransitionIssuer",
+    "annotation": "instance-scoped",
+    "hash": "ae627298780320c91e84b6417c2c27c58f6caf1fa14bcbd98e1815cd55216b58",
+    "reason": "StorePKIIssuersTransition verifies instance-config authority; global CA transition requires prior state and row-version CAS."
+  },
+  {
+    "engine": "postgres",
+    "name": "PKIUpdateProfile",
+    "annotation": "instance-scoped",
+    "hash": "73ad4ea6d84e53282f544b8fc582447159fcbcd2adba8fefdfd1cb967a4bc5a3",
+    "reason": "StorePKIProfilesUpdate verifies instance-config authority; global policy update retains its row-version CAS and service narrowing checks."
+  },
+  {
+    "engine": "postgres",
     "name": "PostLegacyMaxCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc0e657b407efb67ecc1393a4c8f63563f391fe5cd5b7433acd3b2ddc0341c32"
@@ -2023,6 +2506,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RestoreDiagnosticsSeedOccupied",
+    "annotation": "instance-scoped",
+    "hash": "f78f0144731f528697caf0db8aaf22f3e438890855725571354b8d3bfc701810",
+    "reason": "Recovery-authorized restore transaction checks only installation diagnostics against migration seed defaults under target table locks, refusing non-seed metadata before replacement."
+  },
+  {
+    "engine": "postgres",
     "name": "RevokeAllMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "caa27a4da41e88e24ebcb130419569168a4173c8f5155ed772bbd85a4d9d3801"
@@ -2056,6 +2546,125 @@
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
     "hash": "fd146bb87047fd21ef8aa065b02e48c5b1f19b4e0ffd5394a026b1528279dadf"
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimeDynamicClaimDueLease",
+    "annotation": "instance-scoped",
+    "hash": "29acf34d40a14f9adc61eab1f35f124425ee2a97d76e2f98823cbf49cf072670",
+    "reason": "DynamicRuntime closed scheduler claims one due lease across tenants under the per-org concurrency cap; writes bind the selected immutable chain and crash-fence token."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimeDynamicCountActiveLeases",
+    "annotation": "instance-scoped",
+    "hash": "f593f03c17ccfebaf06ce1ba5c4e858449f57cf5f951961cda8d4ee108fd4824",
+    "reason": "DynamicRuntime metrics scrape returns only the instance-wide count of active leases through the closed runtime boundary."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimeDynamicCountUnknownEffects",
+    "annotation": "instance-scoped",
+    "hash": "fd1370a62834bfd885d6e8932761cdbffc416931aba6d2f03fd34d19411096f0",
+    "reason": "DynamicRuntime metrics scrape returns only the instance-wide count of unknown effects through the closed runtime boundary."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKICountHeld",
+    "annotation": "instance-scoped",
+    "hash": "5fef52153d4c9f965c071815b7241f2d52d2841be8884347e24467942c1126dd",
+    "reason": "Closed PKIRuntime scrape authority returns only the label-free global count of held pending/active/retiring CAs."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKICountLive",
+    "annotation": "instance-scoped",
+    "hash": "eddbf2d3b3c1bc5b91517be823f2ff2e040fea3ac150ea912a979fa92143b701",
+    "reason": "Closed PKIRuntime scrape authority returns only the label-free global count of unexpired issued/renewed certificates."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKICountUnknown",
+    "annotation": "instance-scoped",
+    "hash": "4e822f3b9197331ece317664c869e8c76b1bef21afe32b374aa4ded523be5ea3",
+    "reason": "Closed PKIRuntime scrape authority returns only the label-free global count of unexpired unknown certificates."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIDueCRLs",
+    "annotation": "instance-scoped",
+    "hash": "f7588f2cb3f4eb53929308e384b0c8b9cdae5dbbbba3f9947be2732745647481",
+    "reason": "Closed PKIRuntime selects global active/retiring CAs with signing keys whose CRLs are missing, half-life due or behind committed revocation sequences."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIExpired",
+    "annotation": "instance-scoped",
+    "hash": "e6610c501c845f1a58137bcdcb892d78b6301f8f17c17699dfa467054b74db68",
+    "reason": "Closed PKIRuntime sweep authority selects globally expired issued/renewed leaves; PostgreSQL retains FOR UPDATE OF c SKIP LOCKED and writes require state CAS."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIMarkExpired",
+    "annotation": "instance-scoped",
+    "hash": "4d5aff55d0d1f7f5a6c9edf963041e4819dda54915d09ad18b1c449ec5543020",
+    "reason": "Closed PKIRuntime expiry sweep writes only a selected certificate id/org still issued/renewed; transition and tenant audit share the transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIMarkUnknown",
+    "annotation": "instance-scoped",
+    "hash": "f68066077cd6971c9ce9d2a98c8645105dab2c6d66678c30e29cba9dc518d17f",
+    "reason": "Closed PKIRuntime stale-issuing sweep writes only a selected certificate id/org still issuing; fail-closed unknown transition and audit share the transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIPublishedAudit",
+    "annotation": "instance-scoped",
+    "hash": "d61156278a9b72ccf588887411b1cb26ca6d293a276dd7fdd5ae93265cc109b9",
+    "reason": "Closed PKIRuntime appends the global CA publication audit only after successful prior-CRL-number CAS in the same transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIReleaseRenewal",
+    "annotation": "instance-scoped",
+    "hash": "b9251429104f98ae96c9915346a62ff7aa960ff2c90303e36fdc5476de4932da",
+    "reason": "Closed PKIRuntime releases only the matching predecessor id/org/successor claim after its issuing successor becomes unknown in the same transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKIStaleIssuing",
+    "annotation": "instance-scoped",
+    "hash": "9ca9ec395498b8e32e1903738c44c45f744d32d0f95cbe6dde55e6ed14340a33",
+    "reason": "Closed PKIRuntime sweep authority selects globally overdue issuing rows; PostgreSQL retains FOR UPDATE OF c SKIP LOCKED and writes require state CAS."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimePKITransitionAudit",
+    "annotation": "instance-scoped",
+    "hash": "4b23cb5f4f92fc4b298310dea4c16c2df05ab1adaa4e3187b847b955df23668c",
+    "reason": "Closed PKIRuntime appends the original system transition outcome using the selected certificate tenant chain, principal and correlation id in the same state-CAS transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimeSSHCountActive",
+    "annotation": "instance-scoped",
+    "hash": "808357a8fb83af689b1c186433c9a329768fe2e5ba2861c1e54999e5947a3e8c",
+    "reason": "SSHRuntime metrics scrape returns only the instance-wide count of issued unexpired certificates through the closed runtime boundary."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimeSSHCountKRLEntries",
+    "annotation": "instance-scoped",
+    "hash": "96101437daea4bf69269afcb1017e8ed063a84654802b87a399c092e226cbba3",
+    "reason": "SSHRuntime metrics scrape returns only the instance-wide count of revoked unexpired certificates under still-trusted CA keys through the closed runtime boundary."
+  },
+  {
+    "engine": "postgres",
+    "name": "RuntimeSSHListLiveCertificates",
+    "annotation": "instance-scoped",
+    "hash": "7e43a1e2b921e1aa80962f057d75e17173ef92d96114ad6abc3238b19d3cd24a",
+    "reason": "SSHRuntime closed sweeper pages live certificate authority facts across tenants; each candidate is reauthorized before its immutable chain can be revoked."
   },
   {
     "engine": "postgres",
@@ -2215,6 +2824,41 @@
   },
   {
     "engine": "postgres",
+    "name": "TransitCountLive",
+    "annotation": "instance-scoped",
+    "hash": "dbbc10eeb116ccabc5d9bfc76e95b8229d173c424b34eb3fb820ab2134c8bdad",
+    "reason": "Closed TransitRuntime scrape authority returns only the installation-wide label-free live-key count, never key content or material."
+  },
+  {
+    "engine": "postgres",
+    "name": "TransitCountPendingDeletion",
+    "annotation": "instance-scoped",
+    "hash": "225b4862abd4944982043442e5d660429d78b554dea870c22198cb1d10260bae",
+    "reason": "Closed TransitRuntime scrape authority returns only the installation-wide label-free pending-deletion count, never key content or material."
+  },
+  {
+    "engine": "postgres",
+    "name": "TransitGaugeRotationCandidates",
+    "annotation": "instance-scoped",
+    "hash": "27a2b937684e28fc9dd1d52e519af1f0c0a0ccb8624369b313a4068e21ee49dd",
+    "reason": "Closed TransitRuntime scrape authority reads only period/latest-created timestamps to compute the existing label-free rotation-due count; material and identities are excluded."
+  },
+  {
+    "engine": "postgres",
+    "name": "TransitSelectDeletionDue",
+    "annotation": "instance-scoped",
+    "hash": "93f6d4b7f682ce9bbd1ffb4439a6c9005a26411e7f392e026ace5b3af13afab8",
+    "reason": "StoreTransitSelectDeletionDue verifies the existing closed system scheduler authority; globally lists due pending-deletion keys so each subsequent purge resolves its own tenant chain in a transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "TransitSelectRotationDue",
+    "annotation": "instance-scoped",
+    "hash": "4f74fedc46b7ec9217199f6d54ec4338c603b0d542b94e11c2a79d918070981f",
+    "reason": "StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization."
+  },
+  {
+    "engine": "postgres",
     "name": "UpdateAccountProfile",
     "annotation": "authn-resolution",
     "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
@@ -2290,6 +2934,62 @@
     "name": "WriteRemoteSnapshot",
     "annotation": "instance-scoped",
     "hash": "eff2f29e0a490916d816fefa45b29199539f99d21bf953a59e55ab5259230817"
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterHealthCounts",
+    "annotation": "instance-scoped",
+    "hash": "fd9faf12ae48595310b4d3ee915a25ad565514b1a6b622984585664ee095393e",
+    "reason": "Verified instance HealthCounts authority reads only aggregate target/outbox counts for operator gauges; no tenant rows or writes are returned."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerCheckProviderSwitchQuery",
+    "annotation": "instance-scoped",
+    "hash": "b47e4b0ddb1d793caefcf5fa3558f828d65a3cc853fb1a5b3124ee27aba5a61a",
+    "reason": "Closed host-only provider-switch authority rejects network operation contexts and returns only whether any retained adapter configuration or configuration fence exists, to refuse an unsafe provider change."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerClaimDueSelectQuery",
+    "annotation": "instance-scoped",
+    "hash": "b843e82c2d371b392ed442ee97f8c16cfa94016cdfb4ecf12a5d136c640f36fe",
+    "reason": "Closed adapter worker claim authority selects one due or expired leased job installation-wide, enforcing per-org concurrency and same-target exclusion under the PostgreSQL row lock; the claimed row supplies the downstream tenant chain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerClaimDueUpdate",
+    "annotation": "instance-scoped",
+    "hash": "4a0603a1afdd49ecd5d9f32bb0a6e5f77597e4514cf718f6b3ed632bc366a964",
+    "reason": "Closed adapter worker claim transaction updates only the globally unique outbox row selected and locked immediately above, setting its incremented attempt and new owner/deadline before scoped effect settlement."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerFinishJobQuery",
+    "annotation": "instance-scoped",
+    "hash": "8b9e47bde6b1d9d0d4590628d4d9e80ff3c7477d610370a4dd3185be864937f6",
+    "reason": "Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerFinishJobQuery2",
+    "annotation": "instance-scoped",
+    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
+    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerFinishUpdateEffect",
+    "annotation": "instance-scoped",
+    "hash": "899e26d84f63d6e3895dc31478b9a5751f0f776aec8457ae44a68dc0a664bdfe",
+    "reason": "Closed adapter journal completion settles only the globally unique effect id retained after successful Prepare; the enclosing transaction inserts its job-chain outcome and requires the matching scoped target/effect provider fence before commit."
+  },
+  {
+    "engine": "sqlite",
+    "name": "AdapterWorkerPrepareLease",
+    "annotation": "instance-scoped",
+    "hash": "76baa8ac40d10daa01f759b73de2b84402fec409a02777041670f2e5ccc8142e",
+    "reason": "Closed adapter effect preparation extends only the leased job identified by its globally unique id and current running owner after obtaining the scoped target provider fence in this transaction; a zero-row match rolls back preparation."
   },
   {
     "engine": "sqlite",
@@ -2440,6 +3140,174 @@
     "name": "ConsumeWorkspaceHandoff",
     "annotation": "authn-resolution",
     "hash": "f0f129d9436bb726bb5daa4ad83f638ce51d30a5d971c36953d8732e888a5b5f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationAccountFailureState",
+    "annotation": "instance-scoped",
+    "hash": "6efd19559e08b879d2f565da24e1d71084087a713b3726e1c8d16160b4084dc6",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationBumpWindow",
+    "annotation": "instance-scoped",
+    "hash": "02ab92cbdd2465f5e83abd82a512b05e999e04d6fbe1896cf9c9bd68ebe34e87",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationClaimLease",
+    "annotation": "instance-scoped",
+    "hash": "f9a31822c1ce7d52520b031a5cbf80d21573ac7120a771a75bd99146002e2af4",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationClearAccount",
+    "annotation": "instance-scoped",
+    "hash": "f982176fc69e2435e346bf29745dfecafc87841c55f11d267cb9cb0bdbb4f3b2",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationCountLiveNodes",
+    "annotation": "instance-scoped",
+    "hash": "241d25f4ad656004367aadb443bb0768e6908e78da804a20b52eba613052f4ad",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationCountMCPClaims",
+    "annotation": "instance-scoped",
+    "hash": "2f533f87b41d5f06015490f78543d34040fcfc7c72b09d008069ff209856cf6a",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationCurrentTopology",
+    "annotation": "instance-scoped",
+    "hash": "f6bb795ab6c2fc472a0b60402bc28201f479b8418f62341360203644ada50a8d",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationForeignRootKeyFingerprints",
+    "annotation": "instance-scoped",
+    "hash": "97725ffa1a3a58176d45807891d7e6516e64a2b59e6bc9cb73ee4ca97c0bacca",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationInsertMCPClaim",
+    "annotation": "instance-scoped",
+    "hash": "a21e83f11ad036ec64fdfae5b915caf90210945208b62bf3dc16ebb479a93ca5",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationLatestRollout",
+    "annotation": "instance-scoped",
+    "hash": "5ea79b1d451eda4d77d0d2d0037a0bea9355673f7c7b93aa495e0540c53ad032",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationLeaseHolder",
+    "annotation": "instance-scoped",
+    "hash": "4958ba488ce24da0a46358d97b58638571bb0e1629f943a22eaa4cc3e90bc555",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationMCPRateBucket",
+    "annotation": "instance-scoped",
+    "hash": "b35cf2ea399c544bac5af0a97cad04e1469d46725a859a51e0928b358d2f5e36",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationPruneAccountBackoff",
+    "annotation": "instance-scoped",
+    "hash": "5d7947dd9b38e4aa53d4a551f501c6a6f8ede239b9c9c5d10017e3381c09b87b",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationPruneAdmissionWindows",
+    "annotation": "instance-scoped",
+    "hash": "49203a9d16a2743b282a733460da19d027d194542fdd7354c40c08f864642783",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationPruneMCPClaims",
+    "annotation": "instance-scoped",
+    "hash": "10705f053c742b6b71a979d961e6052e5bdd12ce211d650b9ac2230d1536998a",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationPruneNodes",
+    "annotation": "instance-scoped",
+    "hash": "efd5c0c02556d182c54fc3b3bd011d14fda49b2fbc3890013a54b4377ed4fc08",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationRecordAccountFailure",
+    "annotation": "instance-scoped",
+    "hash": "e971614140141685f15552578052893c2ac4a4a61ddc57860aa932266b9a123c",
+    "reason": "Shared pre-authentication admission counter/backoff infrastructure. Coordination admitted datastore transaction; bucket/subject keys carry uniform refusal state, not tenant resources. Atomic upserts and fixed account sentinel preserved; Postgres failure stamps use now() and monotonic GREATEST."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationReleaseLease",
+    "annotation": "instance-scoped",
+    "hash": "4c3459224bc97e32462e7643aa917a2ccd4076faf6339d6afd3d96ff238415cc",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationReleaseMCP",
+    "annotation": "instance-scoped",
+    "hash": "a515558c6a7fc65ed145dda20000aa944525e780b2a31ff8ec5c4eec690fdf95",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationRenewLease",
+    "annotation": "instance-scoped",
+    "hash": "6f27710268d734007ed4db44cace821a7c8d5ddc420be673f0a09eed47187696",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationSelfConfigGeneration",
+    "annotation": "instance-scoped",
+    "hash": "b9407e9c415caf4a5aec9bfaefea177019a6150074c9ec96f8af1e7ef913f6a5",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationSelfConfigSeedAttest",
+    "annotation": "instance-scoped",
+    "hash": "f6538fa1358e3cbc97c336c9c3fe27b59a4757e7f1d6a49d7072159aa66b2539",
+    "reason": "Instance-owned self-configuration rollout/seed admission metadata. Coordination admitted datastore transaction; singleton binding owner/incarnation/generation restricts rollout correspondence. Runtime process identity/template stamp checked by topologyLeaseAllowed, coordinated with final Apply membership lock; no tenant data access."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationSetMCPRateBucket",
+    "annotation": "instance-scoped",
+    "hash": "1b7b9b2e462169f882e87bd44ee6cac082a13dfeb8ac38e79037fe221a23c203",
+    "reason": "Installation-wide authenticated MCP rate/concurrency admission. Coordination admitted datastore transaction; principal/org IDs are counter dimensions, not grants to tenant data. Class88 advisory lock encloses prune/count/rate-lock/update/claim; global count intentionally enforces instance capacity alongside per-principal/org limits."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CoordinationUpsertNode",
+    "annotation": "instance-scoped",
+    "hash": "a63fa2cd9d4207de38d34da6561b3486ab5b31102cbc9a672cec127cb38d5ec5",
+    "reason": "Installation HA registry and mixed-root-key boot admission. Coordination admitted datastore transaction; rows are replica identity/version/fingerprint/heartbeat, no tenant chain. RegisterNodeChecked retains membership advisory lock before foreign-live-fingerprint check and upsert."
   },
   {
     "engine": "sqlite",
@@ -3283,6 +4151,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "GuardSingletonLease",
+    "annotation": "instance-scoped",
+    "hash": "f7765bb47baec68d6275f3c86dc0f744a6f8cd111cdfd8dd57d04894ffafbd06",
+    "reason": "Installation singleton leader fencing. Coordination admitted datastore transaction; no tenant row or tenant payload; preserves exact owner/name/fence and expiry predicates. GuardSingletonLease is root-owned scheduler transaction admission and retains database/process clocks."
+  },
+  {
+    "engine": "sqlite",
     "name": "HoldRestoredPKIIssuers",
     "annotation": "authn-resolution",
     "hash": "fd13729c16a828f1f75a5490917c88c0abdcd00d60326ba1732b0a8563eeef1f"
@@ -3985,6 +4860,202 @@
   },
   {
     "engine": "sqlite",
+    "name": "PKIActiveIssuer",
+    "annotation": "instance-scoped",
+    "hash": "69a3dfa8ab1e939527eeedfea8da04406e60a93fbfb2a62ccdc2d1cef65cbdef",
+    "reason": "StorePKIIssuersActivePublic permits the existing instance-wide active CA projection for a verified environment operation; sealed keys are excluded."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIBumpCertificateRevocation",
+    "annotation": "instance-scoped",
+    "hash": "c4d99dc01187d615df7f2ab18c0de05bfd7e4c35c4f1a226c22b03731cd4863e",
+    "reason": "Called only after a proof-scoped certificate revoke CAS or closed PKIRuntime unknown-state CAS succeeds in the same transaction; bumps that certificate issuer CRL sequence."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIBumpIssuerRevocation",
+    "annotation": "instance-scoped",
+    "hash": "f255db3db7694046da3cc6ed7ce4fae200afe72078d41b7989e068030a58ad98",
+    "reason": "Called only after successful StorePKICertificatesRevokeLive changes in the same transaction; global CA sequence forces CRL refresh for those leaves."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKICountLiveCertificates",
+    "annotation": "instance-scoped",
+    "hash": "8044b6c33de9e24bac86f875f5d73ea51995516096c75c99969e7cdbc305f9d8",
+    "reason": "StorePKICertificatesCountLive verifies instance-config authority; retiring a global CA must count all dependent unexpired tenant leaves and child CAs."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKICreateBinding",
+    "annotation": "instance-scoped",
+    "hash": "7a4b17bb969108293bd6074d6bedc528f3532baf6a1ce5164c7e202ce5166e2a",
+    "reason": "StorePKIBindingsCreate verifies instance-config authority; operator explicitly names a policy reach, with existing tenant foreign-key and duplicate constraints."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKICreateIssuer",
+    "annotation": "instance-scoped",
+    "hash": "d53c77ee7e32f1fa978b53c4df48e3c3d771db6673a0622b428e303b2e14fb2a",
+    "reason": "StorePKIIssuersCreate verifies instance-config authority before creating an instance-wide CA key version."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKICreateProfile",
+    "annotation": "instance-scoped",
+    "hash": "e75f0b6185d4760cff3c9520cd2e7433fdb5f373992ef184e0b5966cec560ca1",
+    "reason": "StorePKIProfilesCreate verifies instance-config authority before creating a global certificate policy definition."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIDeleteBinding",
+    "annotation": "instance-scoped",
+    "hash": "d1f4b8b1b94da30563cdbd001ae7d35821df1fbe64b891208c52fd718d111e3c",
+    "reason": "StorePKIBindingsDelete verifies instance-config authority; operator deletes only the named binding belonging to the named global policy."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIDeleteProfile",
+    "annotation": "instance-scoped",
+    "hash": "1914c6c5f05606e095ddbec1eb61001084493eeda19ffb7fe04c456197886f64",
+    "reason": "StorePKIProfilesDelete verifies instance-config authority; deletes the global policy after its bindings are removed in the same transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIDeleteProfileBindings",
+    "annotation": "instance-scoped",
+    "hash": "a36858c847eabae7721d28d36a44e3d93064a0a9c81ebf92d57612e94f3c1974",
+    "reason": "StorePKIProfilesDelete verifies instance-config authority; removes an operator-owned global policy reach before deleting that policy in the same transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIDestroyIssuerKey",
+    "annotation": "instance-scoped",
+    "hash": "0857b6e0c483ff7c833edc4be811560cd57ceb3eec979e283a0207ba19b41f1a",
+    "reason": "StorePKIIssuersDestroyKey verifies instance-config authority; terminal CA transition destroys the sealed key under state/version CAS."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIFenceIssuance",
+    "annotation": "instance-scoped",
+    "hash": "8189bf428c01351be3f625633720c85c2739c81b9d7530c499446e8dae17076b",
+    "reason": "StorePKIIssuersFence verifies issuance authority; writes the global CA counter only while active and not held, preserving the cross-node signing fence."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIGetIssuer",
+    "annotation": "instance-scoped",
+    "hash": "c2e85ea22e6992209a38c5ddd17237ac079b91052365a54e8377ab953faf55c5",
+    "reason": "StorePKIIssuersGet verifies instance-config, or StorePKIIssuersPublic permits the existing global public CA projection; this query excludes sealed keys."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIGetProfile",
+    "annotation": "instance-scoped",
+    "hash": "9330278fa910aa9c01accf55ac2b56ce98123ad38b265bdb560983a1b6c4a828",
+    "reason": "StorePKIProfilesGet verifies instance-config authority; resolves an instance-wide policy definition by name."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIInstallIssuer",
+    "annotation": "instance-scoped",
+    "hash": "ca0d7b8b0bb95632f2e851ded1e1f5e9ce7654602fb411cfc0d33b94fd939496",
+    "reason": "StorePKIIssuersInstall verifies instance-config authority; pending CA activation retains the original state and row-version CAS."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIIssuerKey",
+    "annotation": "instance-scoped",
+    "hash": "5fce299ab272ae8035626f7e2666725e47ed5e233d962187ae8dcdd6d6a106f5",
+    "reason": "StorePKIIssuersKey or StorePKIIssuersSigning verifies the closed in-process signer capability before reading sealed CA key material."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIListBindings",
+    "annotation": "instance-scoped",
+    "hash": "28942a92536d2b445000702c46562f9abaf1c894f49569b8aadd0501c933d34a",
+    "reason": "StorePKIBindingsList verifies instance-config authority; operator reads explicit tenant reaches of one global policy."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIListIssuers",
+    "annotation": "instance-scoped",
+    "hash": "6550786aaafe79a34999ddc0ace5ca7e10eee784f0177b93f0c8606a9b8d8bf1",
+    "reason": "StorePKIIssuersList verifies instance-config authority; CA issuer versions are instance-wide public metadata ordered by name/version."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIListProfiles",
+    "annotation": "instance-scoped",
+    "hash": "efac92c462ea6ca89b6bebe948c1d6335cd18e8a27886db298db0ef02821d83d",
+    "reason": "StorePKIProfilesList verifies instance-config authority; certificate policy definitions are instance-wide and contain no tenant certificate rows."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIPublishCRL",
+    "annotation": "instance-scoped",
+    "hash": "142be08f1ba6ba03e7e5f8d017adf988135f1052a61724b4e4804d233034908e",
+    "reason": "StorePKIIssuersPublishCRL verifies instance-config, or closed PKIRuntime publishes a signed global CA CRL; original active/retiring state and prior-number CAS remain."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIRevokeLiveCertificates",
+    "annotation": "instance-scoped",
+    "hash": "6b4c45601a942142188ac73ca1a2dbf7dae5ce95ef85a69f81f0c003645a7444",
+    "reason": "StorePKICertificatesRevokeLive verifies instance-config authority; compromised global CA revocation must cover all dependent tenant leaves."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIRevokeParent",
+    "annotation": "instance-scoped",
+    "hash": "17a8e983f4d4695927a8b1c81f59e78da087c6bd23ef9e4d9c0da45616325895",
+    "reason": "Called only after successful StorePKIIssuersDestroyKey revocation CAS in the same transaction; the global parent CA revocation sequence covers the revoked child."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIRevokedChildren",
+    "annotation": "instance-scoped",
+    "hash": "2d30857c7b766f22cec739dc296fbf54931c0c5d238d688e8e42125af4609c16",
+    "reason": "Same verified instance-config or closed PKIRuntime CRL assembly authority; a global parent CRL must include revoked child CA certificates."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIRevokedEntries",
+    "annotation": "instance-scoped",
+    "hash": "de3c74ac175370ab5f75be5f7f7fd42c16ad6df726f9dcf539d29a365612cb73",
+    "reason": "StorePKICertificatesRevokedEntries verifies instance-config, or closed PKIRuntime CRL assembly reads all unexpired revoked/unknown leaves for one global CA."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKISetIssuerHold",
+    "annotation": "instance-scoped",
+    "hash": "d21f84e4603f7224bcef2afce37704d91195f6a0a708910bb21f3ae80f974a07",
+    "reason": "StorePKIIssuersHold verifies instance-config authority; global CA restore hold requires the original row-version CAS."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKISigningIssuer",
+    "annotation": "instance-scoped",
+    "hash": "fc52aca5bb1f5b12c65cbd200fa9fff05ca6962bf079b98e66daa642ba0d8599",
+    "reason": "StorePKIIssuersSigning verifies signing authority before reading the active global CA public row; issuer fencing remains required before issuance."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKITransitionIssuer",
+    "annotation": "instance-scoped",
+    "hash": "ae627298780320c91e84b6417c2c27c58f6caf1fa14bcbd98e1815cd55216b58",
+    "reason": "StorePKIIssuersTransition verifies instance-config authority; global CA transition requires prior state and row-version CAS."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PKIUpdateProfile",
+    "annotation": "instance-scoped",
+    "hash": "73ad4ea6d84e53282f544b8fc582447159fcbcd2adba8fefdfd1cb967a4bc5a3",
+    "reason": "StorePKIProfilesUpdate verifies instance-config authority; global policy update retains its row-version CAS and service narrowing checks."
+  },
+  {
+    "engine": "sqlite",
     "name": "PostLegacyMaxCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "0126ad2a2d9c54a32eb996497128454cb28e26b80187585c3533e1cc81f5f01b"
@@ -4351,6 +5422,125 @@
   },
   {
     "engine": "sqlite",
+    "name": "RuntimeDynamicClaimDueLease",
+    "annotation": "instance-scoped",
+    "hash": "a3ec69ad8017dc0f7eff8a09cdc0c4f6653403a76cbf39d6e67cde26e69c1ff3",
+    "reason": "DynamicRuntime closed scheduler claims one due lease across tenants under the per-org concurrency cap; writes bind the selected immutable chain and crash-fence token."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimeDynamicCountActiveLeases",
+    "annotation": "instance-scoped",
+    "hash": "f593f03c17ccfebaf06ce1ba5c4e858449f57cf5f951961cda8d4ee108fd4824",
+    "reason": "DynamicRuntime metrics scrape returns only the instance-wide count of active leases through the closed runtime boundary."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimeDynamicCountUnknownEffects",
+    "annotation": "instance-scoped",
+    "hash": "fd1370a62834bfd885d6e8932761cdbffc416931aba6d2f03fd34d19411096f0",
+    "reason": "DynamicRuntime metrics scrape returns only the instance-wide count of unknown effects through the closed runtime boundary."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKICountHeld",
+    "annotation": "instance-scoped",
+    "hash": "5fef52153d4c9f965c071815b7241f2d52d2841be8884347e24467942c1126dd",
+    "reason": "Closed PKIRuntime scrape authority returns only the label-free global count of held pending/active/retiring CAs."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKICountLive",
+    "annotation": "instance-scoped",
+    "hash": "eddbf2d3b3c1bc5b91517be823f2ff2e040fea3ac150ea912a979fa92143b701",
+    "reason": "Closed PKIRuntime scrape authority returns only the label-free global count of unexpired issued/renewed certificates."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKICountUnknown",
+    "annotation": "instance-scoped",
+    "hash": "4e822f3b9197331ece317664c869e8c76b1bef21afe32b374aa4ded523be5ea3",
+    "reason": "Closed PKIRuntime scrape authority returns only the label-free global count of unexpired unknown certificates."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIDueCRLs",
+    "annotation": "instance-scoped",
+    "hash": "f7588f2cb3f4eb53929308e384b0c8b9cdae5dbbbba3f9947be2732745647481",
+    "reason": "Closed PKIRuntime selects global active/retiring CAs with signing keys whose CRLs are missing, half-life due or behind committed revocation sequences."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIExpired",
+    "annotation": "instance-scoped",
+    "hash": "5af87369b6bff66aed4e5aed24df776f6441a1f696e2c80ecdae2eae30963dff",
+    "reason": "Closed PKIRuntime sweep authority selects globally expired issued/renewed leaves; PostgreSQL retains FOR UPDATE OF c SKIP LOCKED and writes require state CAS."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIMarkExpired",
+    "annotation": "instance-scoped",
+    "hash": "4d5aff55d0d1f7f5a6c9edf963041e4819dda54915d09ad18b1c449ec5543020",
+    "reason": "Closed PKIRuntime expiry sweep writes only a selected certificate id/org still issued/renewed; transition and tenant audit share the transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIMarkUnknown",
+    "annotation": "instance-scoped",
+    "hash": "f68066077cd6971c9ce9d2a98c8645105dab2c6d66678c30e29cba9dc518d17f",
+    "reason": "Closed PKIRuntime stale-issuing sweep writes only a selected certificate id/org still issuing; fail-closed unknown transition and audit share the transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIPublishedAudit",
+    "annotation": "instance-scoped",
+    "hash": "d89f5daae85778487ba4264405cdde3769b8cb7c58bb3f3c25c7ef0a5082cacc",
+    "reason": "Closed PKIRuntime appends the global CA publication audit only after successful prior-CRL-number CAS in the same transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIReleaseRenewal",
+    "annotation": "instance-scoped",
+    "hash": "b9251429104f98ae96c9915346a62ff7aa960ff2c90303e36fdc5476de4932da",
+    "reason": "Closed PKIRuntime releases only the matching predecessor id/org/successor claim after its issuing successor becomes unknown in the same transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKIStaleIssuing",
+    "annotation": "instance-scoped",
+    "hash": "0470b9902a6a3520f2868f300fb1c4497121200dbc4d7dd98b5241c734e38806",
+    "reason": "Closed PKIRuntime sweep authority selects globally overdue issuing rows; PostgreSQL retains FOR UPDATE OF c SKIP LOCKED and writes require state CAS."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimePKITransitionAudit",
+    "annotation": "instance-scoped",
+    "hash": "7f785168c158a7a5e3cff7d81cdd44e9ffabe1d9693fe2ce8fa40d8fe78d5a47",
+    "reason": "Closed PKIRuntime appends the original system transition outcome using the selected certificate tenant chain, principal and correlation id in the same state-CAS transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimeSSHCountActive",
+    "annotation": "instance-scoped",
+    "hash": "808357a8fb83af689b1c186433c9a329768fe2e5ba2861c1e54999e5947a3e8c",
+    "reason": "SSHRuntime metrics scrape returns only the instance-wide count of issued unexpired certificates through the closed runtime boundary."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimeSSHCountKRLEntries",
+    "annotation": "instance-scoped",
+    "hash": "96101437daea4bf69269afcb1017e8ed063a84654802b87a399c092e226cbba3",
+    "reason": "SSHRuntime metrics scrape returns only the instance-wide count of revoked unexpired certificates under still-trusted CA keys through the closed runtime boundary."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RuntimeSSHListLiveCertificates",
+    "annotation": "instance-scoped",
+    "hash": "d900879b09ac1f7e89bf084af7f7603f4d632b8c2c4fef1cec4b220a8e49ff7f",
+    "reason": "SSHRuntime closed sweeper pages live certificate authority facts across tenants; each candidate is reauthorized before its immutable chain can be revoked."
+  },
+  {
+    "engine": "sqlite",
     "name": "SampleSecretValueEntry",
     "annotation": "instance-scoped",
     "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
@@ -4504,6 +5694,41 @@
     "name": "TouchSession",
     "annotation": "authn-resolution",
     "hash": "dc82c58a0bdd5b936cbd194f398a94c000bf292f6cbba03c61df86c159a85769"
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitCountLive",
+    "annotation": "instance-scoped",
+    "hash": "dbbc10eeb116ccabc5d9bfc76e95b8229d173c424b34eb3fb820ab2134c8bdad",
+    "reason": "Closed TransitRuntime scrape authority returns only the installation-wide label-free live-key count, never key content or material."
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitCountPendingDeletion",
+    "annotation": "instance-scoped",
+    "hash": "225b4862abd4944982043442e5d660429d78b554dea870c22198cb1d10260bae",
+    "reason": "Closed TransitRuntime scrape authority returns only the installation-wide label-free pending-deletion count, never key content or material."
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitGaugeRotationCandidates",
+    "annotation": "instance-scoped",
+    "hash": "27a2b937684e28fc9dd1d52e519af1f0c0a0ccb8624369b313a4068e21ee49dd",
+    "reason": "Closed TransitRuntime scrape authority reads only period/latest-created timestamps to compute the existing label-free rotation-due count; material and identities are excluded."
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitSelectDeletionDue",
+    "annotation": "instance-scoped",
+    "hash": "65a4ea91ec1463c822d315ee5fa87daa96d589a1be686c2ea12c222d94cb09c8",
+    "reason": "StoreTransitSelectDeletionDue verifies the existing closed system scheduler authority; globally lists due pending-deletion keys so each subsequent purge resolves its own tenant chain in a transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "TransitSelectRotationDue",
+    "annotation": "instance-scoped",
+    "hash": "377501dbe3aa69522f4b7811f1533fe4cd4e3b50afbf7ffe654eb5f857f2e5e9",
+    "reason": "StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization."
   },
   {
     "engine": "sqlite",

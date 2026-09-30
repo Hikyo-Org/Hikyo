@@ -122,6 +122,16 @@ func runCoordinationInvariants(t *testing.T, db *store.DB) {
 		if last2.IsZero() || dbNow.IsZero() {
 			t.Fatal("last-failure or dbNow unset")
 		}
+		// A delayed failure must increment the counter without moving its
+		// timestamp backwards. SQLite compares the inserted stamp in the
+		// atomic upsert; PostgreSQL deliberately ignores the process stamp.
+		if f, err := c.RecordAccountFailure(ctx, "acct", recNow.Add(-time.Hour)); err != nil || f != 3 {
+			t.Fatalf("delayed failure = %d err=%v", f, err)
+		}
+		_, delayedLast, _, _, err := c.AccountFailureState(ctx, "acct")
+		if err != nil || delayedLast.Before(last2) {
+			t.Fatalf("delayed failure moved timestamp backwards: %v -> %v err=%v", last2, delayedLast, err)
+		}
 		// A cutoff before the failure never sweeps a fresh row.
 		if err := c.PruneAccountBackoff(ctx, dbNow.Add(-time.Hour)); err != nil {
 			t.Fatalf("prune fresh: %v", err)

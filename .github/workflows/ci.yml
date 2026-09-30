@@ -504,9 +504,10 @@ jobs:
           go tool sqlc generate
           go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml
           go run ./internal/scanning/gen
-          git diff --exit-code -- internal/store/sqlitegen internal/store/pggen api/apigen internal/scanning/rules_gen.go
+          go run ./internal/authz/gen
+          git diff --exit-code -- internal/store/sqlitegen internal/store/pggen api/apigen internal/scanning/rules_gen.go internal/authz/forwarders_gen.go internal/authz/wire_registry_gen.go
           # git diff misses newly generated untracked files
-          test -z "$(git status --porcelain --untracked-files=all -- internal/store/sqlitegen internal/store/pggen api/apigen internal/scanning/rules_gen.go)"
+          test -z "$(git status --porcelain --untracked-files=all -- internal/store/sqlitegen internal/store/pggen api/apigen internal/scanning/rules_gen.go internal/authz/forwarders_gen.go internal/authz/wire_registry_gen.go)"
       - name: Operator CRDs and deepcopy are fresh
         if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).generated }}
         run: |

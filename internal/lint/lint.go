@@ -49,6 +49,7 @@ type BuildContext struct {
 var Contexts = []BuildContext{
 	{Name: "default"},
 	{Name: "ui", BuildFlags: []string{"-tags=ui"}},
+	{Name: "darwin", GOOS: "darwin", ProductionOnly: true},
 	{Name: "windows", GOOS: "windows", ProductionOnly: true},
 }
 

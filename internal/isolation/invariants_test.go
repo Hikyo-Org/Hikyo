@@ -575,6 +575,7 @@ func TestInvariant13AllowlistPinning(t *testing.T) {
 		Name       string `json:"name"`
 		Annotation string `json:"annotation"`
 		Hash       string `json:"hash"`
+		Reason     string `json:"reason,omitempty"`
 	}
 	var current []pin
 	for _, engine := range []string{"sqlite", "postgres"} {
@@ -587,7 +588,7 @@ func TestInvariant13AllowlistPinning(t *testing.T) {
 			if q.Annotation == "" {
 				continue
 			}
-			current = append(current, pin{Engine: engine, Name: q.Name, Annotation: q.Annotation, Hash: q.Hash()})
+			current = append(current, pin{Engine: engine, Name: q.Name, Annotation: q.Annotation, Hash: q.Hash(), Reason: q.Reason})
 		}
 	}
 	sort.Slice(current, func(i, j int) bool {

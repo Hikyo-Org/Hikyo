@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
-import { carriedClaims, presetForBinding, seedClaims, tabLabel } from './MachineAccess.tsx';
+import { carriedClaims, presetForBinding, seedClaims } from './machineAccess/FederationBindings.tsx';
+import { tabLabel } from './MachineAccess.tsx';
 
 /**
  * The replace form's seeding. A replacement inherits the predecessor's platform

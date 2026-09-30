@@ -3,7 +3,7 @@ import { expect, fn, userEvent } from 'storybook/test';
 
 import type { MachineCredential, ServiceAccount } from '../api/identities.ts';
 import { ORG, PRJ } from '../testkit/ids.ts';
-import { BindingDialog } from './MachineAccess.tsx';
+import { BindingDialog } from './machineAccess/FederationBindings.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 

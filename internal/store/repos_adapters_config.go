@@ -14,27 +14,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
-func scanAdapterRecord(row interface{ Scan(...any) error }) (AdapterRecord, error) {
-	var out AdapterRecord
-	var credential, allowPersonal int
-	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
-	err := row.Scan(&out.ID, &out.Provider, &out.Origin, &credential, &credentialSetAt, &credentialExpiresAt, &out.AuthorityPrincipalID, &out.State, &createdAt, &out.SPKIPin, &out.CABundlePEM, &allowPersonal)
-	if isNoRows(err) {
-		return AdapterRecord{}, ErrNotFound
-	}
-	if err != nil {
-		return AdapterRecord{}, err
-	}
-	out.CredentialPresent = credential == 1
-	out.AllowPersonalToken = allowPersonal == 1
-	out.CredentialSetAt = credentialSetAt.value
-	out.CredentialExpiresAt = credentialExpiresAt.value
-	out.CreatedAt = createdAt.value
-	return out, nil
-}
-
-const adapterRecordColumns = `id,provider,origin,CASE WHEN credential_ciphertext IS NULL THEN 0 ELSE 1 END,credential_set_at,credential_expires_at,authority_principal_id,state,created_at,spki_pin,ca_bundle_pem,CASE WHEN allow_personal_token THEN 1 ELSE 0 END`
-
 type adapterStoredTime struct{ value string }
 
 // Time returns the stored instant, or nil for an absent one.
@@ -81,9 +60,7 @@ func (r adapterQueries) Get(ctx context.Context, p authz.Proof, adapterID string
 	if err != nil {
 		return AdapterRecord{}, err
 	}
-	return scanAdapterRecord(r.db.QueryRow(ctx, r.db.SQLPerEngine(
-		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`,
-		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`), adapterID, chain.Org, chain.Project))
+	return r.db.adapterStoreQueries().adapterGet(ctx, chain, adapterID)
 }
 
 func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
@@ -91,43 +68,7 @@ func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapte
 	if err != nil {
 		return AdapterRecord{}, nil, err
 	}
-	var record AdapterRecord
-	var credential []byte
-	var present, allowPersonal int
-	var credentialSetAt, credentialExpiresAt, createdAt adapterStoredTime
-	err = r.db.QueryRow(ctx, r.db.SQLPerEngine(
-		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state<>'tombstoned'`,
-		`SELECT `+adapterRecordColumns+`,credential_ciphertext FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state<>'tombstoned'`), adapterID, chain.Org, chain.Project).Scan(&record.ID, &record.Provider, &record.Origin, &present, &credentialSetAt, &credentialExpiresAt, &record.AuthorityPrincipalID, &record.State, &createdAt, &record.SPKIPin, &record.CABundlePEM, &allowPersonal, &credential)
-	if isNoRows(err) {
-		return AdapterRecord{}, nil, ErrNotFound
-	}
-	if err != nil {
-		return AdapterRecord{}, nil, err
-	}
-	record.CredentialPresent = present == 1
-	record.AllowPersonalToken = allowPersonal == 1
-	record.CredentialSetAt = credentialSetAt.value
-	record.CredentialExpiresAt = credentialExpiresAt.value
-	record.CreatedAt = createdAt.value
-	return record, credential, nil
-}
-
-type adapterRecordRows interface {
-	Next() bool
-	Scan(...any) error
-	Err() error
-}
-
-func collectAdapterRecords(rows adapterRecordRows) ([]AdapterRecord, error) {
-	var out []AdapterRecord
-	for rows.Next() {
-		record, err := scanAdapterRecord(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, record)
-	}
-	return out, rows.Err()
+	return r.db.adapterStoreQueries().adapterConfiguration(ctx, chain, adapterID)
 }
 
 func (r adapterQueries) List(ctx context.Context, p authz.Proof) ([]AdapterRecord, error) {
@@ -135,61 +76,16 @@ func (r adapterQueries) List(ctx context.Context, p authz.Proof) ([]AdapterRecor
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, r.db.SQLPerEngine(
-		`SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=? AND project_id=? AND state<>'tombstoned' ORDER BY id`,
-		`SELECT `+adapterRecordColumns+` FROM adapters WHERE org_id=$1 AND project_id=$2 AND state<>'tombstoned' ORDER BY id`), chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	return collectAdapterRecords(rows)
+	return r.db.adapterStoreQueries().adapterList(ctx, chain)
 }
-
-type adapterTargetRows interface {
-	Next() bool
-	Scan(...any) error
-	Err() error
-}
-
-func collectAdapterTargets(rows adapterTargetRows) ([]AdapterTarget, error) {
-	var out []AdapterTarget
-	for rows.Next() {
-		target, err := scanAdapterTarget(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, target)
-	}
-	return out, rows.Err()
-}
-
-const adapterTargetColumns = `t.id,t.adapter_id,t.environment_id,a.provider,a.origin,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,t.state,t.sync_status,t.converged_revision,t.failure_names,t.warnings,a.authority_principal_id,t.paused_at,t.last_attempted_revision,t.last_attempted_at,t.last_error_class,t.drift_attention,COALESCE(j.state,''),j.next_attempt_at,COALESCE(j.attempt_count,0),t.destination_scope,CASE WHEN t.variable_protected THEN 1 ELSE 0 END,CASE WHEN t.variable_hidden THEN 1 ELSE 0 END,CASE WHEN t.variable_expand THEN 1 ELSE 0 END`
-
-// adapterTargetFrom is the FROM clause every adapterTargetColumns read uses:
-// the owning adapter for provider/origin/authority, and the target's active
-// outbox job for the pending-versus-running signal and the retry time. The
-// job join is outer: a target between jobs has none. Postgres callers that
-// lock must name the target (`FOR UPDATE OF t`); an outer-joined row cannot
-// be locked.
-const adapterTargetFrom = ` FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id LEFT JOIN adapter_outbox j ON j.id=t.active_job_id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id`
 
 func (r adapterQueries) ListTargets(ctx context.Context, p authz.Proof, adapterID string) ([]AdapterTarget, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersListTargets, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, r.db.SQLPerEngine(
-		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=? AND t.org_id=? AND t.project_id=? AND t.state='active' ORDER BY t.id`,
-		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id`), adapterID, chain.Org, chain.Project)
+	targets, err := r.db.adapterStoreQueries().adapterListTargets(ctx, chain, adapterID)
 	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	targets, err := collectAdapterTargets(rows)
-	if err != nil {
-		return nil, err
-	}
-	if err := closeAdapterRows(rows); err != nil {
 		return nil, err
 	}
 	for i := range targets {
@@ -222,14 +118,7 @@ func (r adapterQueries) TargetKeyIDs(ctx context.Context, p authz.Proof, targetI
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, r.db.SQL(
-		`SELECT key_id FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? ORDER BY key_id`,
-	), targetID, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	return collectStrings(rows)
+	return r.db.adapterStoreQueries().adapterTargetKeyIDs(ctx, chain, targetID)
 }
 
 // TargetKeys is the target's explicit subset by name and classification. It
@@ -240,23 +129,7 @@ func (r adapterQueries) TargetKeys(ctx context.Context, p authz.Proof, targetID 
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(
-		`SELECT k.id,k.name,k.classification FROM adapter_target_keys tk JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE tk.target_id=? AND tk.org_id=? AND tk.project_id=? ORDER BY k.name`,
-	)
-	rows, err := r.db.Query(ctx, query, targetID, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	out := []AdapterTargetKey{}
-	for rows.Next() {
-		var key AdapterTargetKey
-		if err := rows.Scan(&key.ID, &key.Name, &key.Classification); err != nil {
-			return nil, err
-		}
-		out = append(out, key)
-	}
-	return out, rows.Err()
+	return r.db.adapterStoreQueries().adapterTargetKeys(ctx, chain, targetID)
 }
 
 func validateTargetMutation(m AdapterTargetMutation) error {
@@ -360,28 +233,7 @@ func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m Ada
 }
 
 func adapterProvider(ctx context.Context, db adapterDB, chain domain.Scope, adapterID string) (string, error) {
-	providerQuery := db.SQL(
-		`SELECT provider FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
-	)
-	providerRows, err := db.Query(ctx, providerQuery, adapterID, chain.Org, chain.Project)
-	if err != nil {
-		return "", err
-	}
-	defer closeAdapterRows(providerRows)
-	var provider string
-	if !providerRows.Next() {
-		if err := providerRows.Err(); err != nil {
-			return "", err
-		}
-		return "", ErrNotFound
-	}
-	if err := providerRows.Scan(&provider); err != nil {
-		return "", err
-	}
-	if providerRows.Next() {
-		return "", fmt.Errorf("store: adapter provider lookup was not unique")
-	}
-	return provider, providerRows.Err()
+	return db.adapterStoreQueries().adapterProvider(ctx, chain, adapterID)
 }
 
 // targetProviderManifest loads the owning adapter's provider and the target's
@@ -396,29 +248,8 @@ func targetProviderManifest(ctx context.Context, db adapterDB, chain domain.Scop
 	if cloudflareKind != (provider == string(adapter.CloudflareProvider)) {
 		return "", nil, fmt.Errorf("%w: destination kind %q is not supported by provider %q", domain.ErrInvalid, m.DestinationKind, provider)
 	}
-	args := []any{chain.Org, chain.Project}
-	for _, id := range m.KeyIDs {
-		args = append(args, id)
-	}
-	q := db.SQLPerEngine(
-		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`,
-		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(m.KeyIDs), 3)+`) ORDER BY id`)
-	rows, err := db.Query(ctx, q, args...)
+	manifest, err := db.adapterStoreQueries().manifestKeys(ctx, chain, m.KeyIDs)
 	if err != nil {
-		return "", nil, err
-	}
-	defer closeAdapterRows(rows)
-	var manifest []adapter.ManifestEntry
-	for rows.Next() {
-		var row adapter.ManifestEntry
-		var classification string
-		if err := rows.Scan(&row.KeyID, &row.CanonicalName, &classification); err != nil {
-			return "", nil, err
-		}
-		row.Classification = adapter.Classification(classification)
-		manifest = append(manifest, row)
-	}
-	if err := rows.Err(); err != nil {
 		return "", nil, err
 	}
 	if len(manifest) != len(m.KeyIDs) {
@@ -438,33 +269,14 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 	for _, entry := range manifest {
 		desired[m.NamePrefix+entry.CanonicalName] = struct{}{}
 	}
-	q := db.SQLPerEngine(`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
-		FROM adapter_targets t
-		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
-		JOIN adapters candidate ON candidate.id=? AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
-		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
-		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
-		WHERE t.org_id=? AND t.project_id=? AND t.state='active' AND a.state='active'
-		AND a.origin=candidate.origin AND t.destination_kind=? AND t.destination_id=? AND t.destination_scope=? AND t.id<>?
-		ORDER BY t.id,k.name`,
-		`SELECT t.id,t.name_prefix,COALESCE(k.name,'')
-			FROM adapter_targets t
-			JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
-			JOIN adapters candidate ON candidate.id=$1 AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
-			LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
-			LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
-			WHERE t.org_id=$2 AND t.project_id=$3 AND t.state='active' AND a.state='active'
-			AND a.origin=candidate.origin AND t.destination_kind=$4 AND t.destination_id=$5 AND t.destination_scope=$6 AND t.id<>$7
-			ORDER BY t.id,k.name`)
-	rows, err := db.Query(ctx, q, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationID, m.DestinationScope, excludeTargetID)
+
+	rows, err := db.adapterConfigQueries().configuredNames(ctx, chain, m, excludeTargetID)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
+	for _, configuredNamesRow := range rows {
 		var targetID, prefix, canonicalName string
-		if err := rows.Scan(&targetID, &prefix, &canonicalName); err != nil {
-			return err
-		}
+		targetID, prefix, canonicalName = configuredNamesRow.TargetID, configuredNamesRow.Prefix, configuredNamesRow.CanonicalName
 		if _, found := desired[prefix+adapter.SentinelName]; found {
 			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, prefix+adapter.SentinelName, targetID)
 		}
@@ -474,26 +286,19 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	pendingQuery := db.SQL(
-		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.destination_scope=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
-	)
-	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationScope, excludeTargetID)
+
+	pendingRows, err := db.adapterConfigQueries().pendingNames(ctx, chain, m, excludeTargetID)
 	if err != nil {
 		return err
 	}
-	for pendingRows.Next() {
+	for _, pendingNamesRow := range pendingRows {
 		var targetID, effectiveName string
-		if err := pendingRows.Scan(&targetID, &effectiveName); err != nil {
-			return err
-		}
+		targetID, effectiveName = pendingNamesRow.TargetID, pendingNamesRow.EffectiveName
 		if _, found := desired[effectiveName]; found {
 			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effectiveName, targetID)
 		}
 	}
-	return pendingRows.Err()
+	return nil
 }
 
 // refuseAWSNameCollision is the AWS form of the configured-name check. One AWS
@@ -505,25 +310,14 @@ func refuseAWSNameCollision(ctx context.Context, db adapterDB, chain domain.Scop
 	for _, claim := range adapter.ClaimedNames(string(adapter.AWSSecretsManagerProvider), targetDestination(m), m.NamePrefix, manifest) {
 		desired[strings.ToUpper(claim.EffectiveName)] = true
 	}
-	q := db.SQL(`SELECT t.id,t.destination_kind,t.destination_name,t.name_prefix,COALESCE(k.name,'')
-		FROM adapter_targets t
-		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
-		JOIN adapters candidate ON candidate.id=? AND candidate.org_id=t.org_id AND candidate.project_id=t.project_id
-		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
-		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
-		WHERE t.org_id=? AND t.project_id=? AND t.state='active' AND a.state='active'
-		AND a.origin=candidate.origin AND t.destination_kind IN ('json-object','per-key') AND t.destination_owner=? AND t.id<>?
-		ORDER BY t.id,k.name`)
-	rows, err := db.Query(ctx, q, m.AdapterID, chain.Org, chain.Project, m.DestinationOwner, excludeTargetID)
+
+	rows, err := db.adapterConfigQueries().awsConfiguredNames(ctx, chain, m, excludeTargetID)
 	if err != nil {
 		return err
 	}
-	defer closeAdapterRows(rows)
-	for rows.Next() {
+	for _, awsConfiguredNamesRow := range rows {
 		var targetID, kind, name, prefix, keyName string
-		if err := rows.Scan(&targetID, &kind, &name, &prefix, &keyName); err != nil {
-			return err
-		}
+		targetID, kind, name, prefix, keyName = awsConfiguredNamesRow.TargetID, awsConfiguredNamesRow.Kind, awsConfiguredNamesRow.Name, awsConfiguredNamesRow.Prefix, awsConfiguredNamesRow.KeyName
 		claimed := name
 		if kind == string(adapter.PerKey) {
 			if keyName == "" {
@@ -535,25 +329,19 @@ func refuseAWSNameCollision(ctx context.Context, db adapterDB, chain domain.Scop
 			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, claimed, targetID)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	pending := db.SQL(`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind IN ('json-object','per-key') AND c.destination_owner=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`)
-	pendingRows, err := db.Query(ctx, pending, m.AdapterID, chain.Org, chain.Project, m.DestinationOwner, excludeTargetID)
+
+	pendingRows, err := db.adapterConfigQueries().awsPendingNames(ctx, chain, m, excludeTargetID)
 	if err != nil {
 		return err
 	}
-	defer closeAdapterRows(pendingRows)
-	for pendingRows.Next() {
+	for _, awsPendingNamesRow := range pendingRows {
 		var targetID, effectiveName string
-		if err := pendingRows.Scan(&targetID, &effectiveName); err != nil {
-			return err
-		}
+		targetID, effectiveName = awsPendingNamesRow.TargetID, awsPendingNamesRow.EffectiveName
 		if desired[strings.ToUpper(effectiveName)] {
 			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effectiveName, targetID)
 		}
 	}
-	return pendingRows.Err()
+	return nil
 }
 
 func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation, at time.Time) error {
@@ -568,17 +356,11 @@ func insertTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err != nil {
 		return err
 	}
-	q := db.SQL(
-		`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_environment,destination_id,repository_id,visibility,selected_repository_ids,name_prefix,generation,state,sync_status,created_at,destination_scope,variable_protected,variable_hidden,variable_expand) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'active','never',?,?,?,?,?)`,
-	)
-	if _, err := db.Exec(ctx, q, m.ID, chain.Org, chain.Project, m.EnvironmentID, m.AdapterID, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationID, m.RepositoryID, m.Visibility, selected, m.NamePrefix, db.Stamp(at), m.DestinationScope, m.VariableProtected, m.VariableHidden, m.VariableExpand); err != nil {
+	if err := db.adapterStoreQueries().insertTarget(ctx, chain, m, at, selected); err != nil {
 		return constraint(err)
 	}
 	for _, keyID := range m.KeyIDs {
-		q = db.SQL(
-			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`,
-		)
-		if _, err := db.Exec(ctx, q, chain.Org, chain.Project, m.EnvironmentID, m.ID, m.AdapterID, keyID); err != nil {
+		if err := db.adapterStoreQueries().insertTargetKey(ctx, chain, m, keyID); err != nil {
 			return constraint(err)
 		}
 	}
@@ -600,15 +382,7 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
 	at := CanonTime(m.At)
-	stamp := r.db.Stamp(at)
-	var expires any
-	if !m.CredentialExpiresAt.IsZero() {
-		expires = r.db.Stamp(m.CredentialExpiresAt)
-	}
-	if _, err := r.db.Exec(ctx, r.db.SQL(
-		`INSERT INTO adapters (id,org_id,project_id,provider,origin,credential_ciphertext,credential_set_at,credential_expires_at,authority_principal_id,state,created_at,spki_pin,ca_bundle_pem,allow_personal_token) VALUES (?,?,?,?,?,?,?,?,?,'active',?,?,?,?)`,
-	),
-		m.ID, chain.Org, chain.Project, m.Provider, m.Origin, m.CredentialCiphertext, stamp, expires, m.AuthorityPrincipalID, stamp, m.SPKIPin, m.CABundlePEM, m.AllowPersonalToken); err != nil {
+	if err := r.db.adapterStoreQueries().createAdapter(ctx, chain, m, at); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, constraint(err)
 	}
 	if err := insertTargetConfig(ctx, r.db, chain, m.Target, at); err != nil {
@@ -634,9 +408,7 @@ func (r adapterQueries) AddTarget(ctx context.Context, p authz.Proof, m AdapterT
 	if err := validateTargetMutation(m.Target); err != nil {
 		return AdapterTargetAddResult{}, err
 	}
-	record, err := scanAdapterRecord(r.db.QueryRow(ctx, r.db.SQLPerEngine(
-		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-		`SELECT `+adapterRecordColumns+` FROM adapters WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state='active' FOR UPDATE`), m.Target.AdapterID, chain.Org, chain.Project))
+	record, err := r.db.adapterStoreQueries().adapterActiveForUpdate(ctx, chain, m.Target.AdapterID)
 	if err != nil {
 		return AdapterTargetAddResult{}, err
 	}
@@ -648,14 +420,7 @@ func (r adapterQueries) AddTarget(ctx context.Context, p authz.Proof, m AdapterT
 	if err := insertTargetConfig(ctx, r.db, chain, m.Target, at); err != nil {
 		return AdapterTargetAddResult{}, err
 	}
-	var expires any
-	if !m.CredentialExpiresAt.IsZero() {
-		expires = r.db.Stamp(m.CredentialExpiresAt)
-	}
-	if rows, err := r.db.Exec(ctx, r.db.SQL(
-		`UPDATE adapters SET authority_principal_id=?,credential_expires_at=COALESCE(?,credential_expires_at) WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	),
-		m.AuthorityPrincipalID, expires, m.Target.AdapterID, chain.Org, chain.Project); err != nil || rows != 1 {
+	if rows, err := r.db.adapterStoreQueries().updateAuthorityExpiry(ctx, chain, m.Target.AdapterID, m.AuthorityPrincipalID, m.CredentialExpiresAt); err != nil || rows != 1 {
 		return AdapterTargetAddResult{}, errors.Join(err, ErrNotFound)
 	}
 	record.AuthorityPrincipalID = m.AuthorityPrincipalID
@@ -673,10 +438,7 @@ func (r adapterQueries) RecordCredentialExpiry(ctx context.Context, p authz.Proo
 	if adapterID == "" || expiresAt.IsZero() {
 		return fmt.Errorf("%w: credential expiry requires adapter and timestamp", domain.ErrInvalid)
 	}
-	rows, err := r.db.Exec(ctx, r.db.SQL(
-		`UPDATE adapters SET credential_expires_at=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	),
-		r.db.Stamp(expiresAt), adapterID, chain.Org, chain.Project)
+	rows, err := r.db.adapterStoreQueries().recordCredentialExpiry(ctx, chain, adapterID, expiresAt)
 	if err != nil || rows != 1 {
 		return errors.Join(err, ErrNotFound)
 	}
@@ -698,10 +460,7 @@ func (r adapterQueries) BeginConfigureEffect(ctx context.Context, p authz.Proof,
 	if err := validateAdapterConfigureFence(fence); err != nil {
 		return err
 	}
-	_, err = r.db.Exec(ctx, r.db.SQL(
-		`INSERT INTO adapter_configure_fences (target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'leased',?)`,
-	),
-		fence.TargetID, chain.Org, chain.Project, fence.EnvironmentID, fence.DestinationKind, fence.DestinationOwner, fence.DestinationName, fence.DestinationEnvironment, fence.Generation, fence.EffectID, r.db.Stamp(fence.LeaseExpiresAt), r.db.Stamp(fence.At))
+	err = r.db.adapterStoreQueries().beginConfigureEffect(ctx, chain, fence)
 	return constraint(err)
 }
 
@@ -720,10 +479,7 @@ func (r adapterQueries) FinishConfigureEffect(ctx context.Context, p authz.Proof
 	if err := validateAdapterConfigureOutcome(targetID, effectID, outcome, at); err != nil {
 		return err
 	}
-	rows, err := r.db.Exec(ctx, r.db.SQL(
-		`UPDATE adapter_configure_fences SET state=?,completed_at=? WHERE target_id=? AND effect_id=? AND org_id=? AND project_id=? AND state='leased'`,
-	),
-		outcome, r.db.Stamp(at), targetID, effectID, chain.Org, chain.Project)
+	rows, err := r.db.adapterStoreQueries().finishConfigureEffect(ctx, chain, targetID, effectID, outcome, at)
 	if err != nil {
 		return constraint(err)
 	}
@@ -755,19 +511,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err := refuseDestinationNameCollision(ctx, db, chain, m.Target, manifest, m.Target.ID); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	lookup := db.SQLPerEngine(
-		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=? AND t.org_id=? AND t.project_id=? AND t.state='active'`,
-		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' FOR UPDATE OF t`)
-	rows, err := db.Query(ctx, lookup, m.Target.ID, chain.Org, chain.Project)
-	if err != nil {
-		return AdapterTargetUpdateResult{}, err
-	}
-	if !rows.Next() {
-		return AdapterTargetUpdateResult{}, ErrNotFound
-	}
-	current, err := scanAdapterTarget(rows)
-	for rows.Next() {
-	}
+	current, err := db.adapterStoreQueries().adapterActiveTargetForUpdate(ctx, chain, m.Target.ID)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
@@ -783,24 +527,15 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 		// orphan them. Remove the target (retain or prune) and add a new one.
 		return AdapterTargetUpdateResult{}, fmt.Errorf("%w: a GitLab environment scope is immutable; remove the target and add a new one", domain.ErrConflict)
 	}
-	var activeJob string
-	activeQuery := db.SQL(
-		`SELECT COALESCE(active_job_id,'') FROM adapter_targets WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
-	)
-	if err := db.QueryRow(ctx, activeQuery, m.Target.ID, chain.Org, chain.Project, m.Target.EnvironmentID).Scan(&activeJob); err != nil {
+	activeJob, err := db.adapterStoreQueries().targetActiveJob(ctx, chain, m.Target.ID, m.Target.EnvironmentID)
+	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	q := db.SQL(
-		`DELETE FROM adapter_target_keys WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=?`,
-	)
-	if _, err := db.Exec(ctx, q, m.Target.ID, chain.Org, chain.Project, m.Target.EnvironmentID); err != nil {
+	if err := db.adapterStoreQueries().deleteTargetKeys(ctx, chain, m.Target.ID, m.Target.EnvironmentID); err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
 	for _, keyID := range m.Target.KeyIDs {
-		q = db.SQL(
-			`INSERT INTO adapter_target_keys (org_id,project_id,environment_id,target_id,adapter_id,key_id) VALUES (?,?,?,?,?,?)`,
-		)
-		if _, err := db.Exec(ctx, q, chain.Org, chain.Project, m.Target.EnvironmentID, m.Target.ID, m.Target.AdapterID, keyID); err != nil {
+		if err := db.adapterStoreQueries().insertTargetKey(ctx, chain, m.Target, keyID); err != nil {
 			return AdapterTargetUpdateResult{}, constraint(err)
 		}
 	}
@@ -808,10 +543,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	q = db.SQL(
-		`UPDATE adapter_targets SET visibility=?,selected_repository_ids=?,name_prefix=?,variable_protected=?,variable_hidden=?,variable_expand=? WHERE id=? AND org_id=? AND project_id=? AND generation=? AND state='active' AND provider_lease_job_id IS NULL`,
-	)
-	n, err := db.Exec(ctx, q, m.Target.Visibility, selectedJSON, m.Target.NamePrefix, m.Target.VariableProtected, m.Target.VariableHidden, m.Target.VariableExpand, m.Target.ID, chain.Org, chain.Project, m.ExpectedGeneration)
+	n, err := db.adapterStoreQueries().updateTargetConfig(ctx, chain, m, selectedJSON)
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
@@ -825,10 +557,7 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 	if err != nil {
 		return AdapterTargetUpdateResult{}, err
 	}
-	q = db.SQL(
-		`UPDATE adapters SET authority_principal_id=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	)
-	if n, err = db.Exec(ctx, q, m.AuthorityPrincipalID, m.Target.AdapterID, chain.Org, chain.Project); err != nil || n != 1 {
+	if n, err = db.adapterStoreQueries().updateActiveAuthority(ctx, chain, m.Target.AdapterID, m.AuthorityPrincipalID); err != nil || n != 1 {
 		return AdapterTargetUpdateResult{}, errors.Join(err, ErrNotFound)
 	}
 	current.NamePrefix = m.Target.NamePrefix
@@ -847,22 +576,5 @@ func updateTargetConfig(ctx context.Context, db adapterDB, chain domain.Scope, m
 // generation. A later successful effect clears its finding; older generations
 // cannot describe a reconfigured destination. Values and audit payloads are never read.
 func (r adapterQueries) targetFindings(ctx context.Context, chain domain.Scope, target AdapterTarget) ([]AdapterFinding, error) {
-	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT surface,effective_name,finding FROM (
- SELECT e.surface,e.effective_name,e.finding,ROW_NUMBER() OVER (PARTITION BY e.surface,UPPER(e.effective_name) ORDER BY e.finished_at DESC,e.id DESC) AS ordinal
- FROM adapter_effects e JOIN adapter_outbox o ON o.id=e.job_id AND o.org_id=e.org_id AND o.project_id=e.project_id AND o.environment_id=e.environment_id
- WHERE e.target_id=? AND e.org_id=? AND e.project_id=? AND e.environment_id=? AND o.generation=? AND e.outcome IS NOT NULL
- ) ranked WHERE ordinal=1 AND finding<>'' ORDER BY surface,effective_name`), target.ID, chain.Org, chain.Project, target.EnvironmentID, target.Generation)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	out := []AdapterFinding{}
-	for rows.Next() {
-		var finding AdapterFinding
-		if err := rows.Scan(&finding.Surface, &finding.EffectiveName, &finding.Finding); err != nil {
-			return nil, err
-		}
-		out = append(out, finding)
-	}
-	return out, rows.Err()
+	return r.db.adapterConfigQueries().findings(ctx, chain, target)
 }
