@@ -227,26 +227,26 @@ func Usage(w io.Writer) {
 const usageText = `hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> --local [--as USER] [--name REF] [--trust-file PATH]
+  hikyo login <instance-url> --local [--as USER] [--name REF] [--socket PATH] [--trust-file PATH]
                                                  terminal-native local login
   hikyo login <instance-url> --device              refused by name until the browser login lands
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 
 accounts:
-  hikyo account establish-credential --instance <url|ref> [--as USER] [--trust-file PATH]
+  hikyo account establish-credential --instance <url|ref> [--as USER] [--socket PATH] [--trust-file PATH]
   hikyo account factor enrol-totp [--output-file PATH | --dangerously-print]
   hikyo account factor confirm-totp
   hikyo account factor step-up
   hikyo account passkey enrol|list|remove          browser-only; refused on the terminal
   hikyo account recovery-codes regenerate [--output-file PATH | --dangerously-print]
-  hikyo account recovery begin --instance <url|ref> --as USER [--trust-file PATH]
+  hikyo account recovery begin --instance <url|ref> --as USER [--socket PATH] [--trust-file PATH]
       [--output-file PATH | --dangerously-print]
   hikyo account reset-credential <principal> [--output-file PATH | --dangerously-print]
 
 contexts:
   hikyo context create <name> --instance <url|ref> [--org O] [--project P] [--env E]
-      [--trust-file PATH]                          the trust bundle a CI runner was provisioned with
+      [--socket PATH] [--trust-file PATH]          authenticated local transport or provisioned trust
   hikyo context list [-o table|json]
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
@@ -765,6 +765,7 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	device := fs.Bool("device", false, "RFC 8628 device-code flow")
 	as := fs.String("as", "", "username to log in as")
 	name := fs.String("name", "", "local reference to record this instance under (default: its host)")
+	socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
 	trustFile := fs.String("trust-file", "", "provisioned trust bundle (the CI path)")
 	positional, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -797,7 +798,7 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	}
 	target := positional[0]
 
-	entry, err := establish(ios, st, target, *name, *trustFile)
+	entry, err := establish(ios, st, target, *name, *trustFile, *socket)
 	if err != nil {
 		return err
 	}
@@ -863,7 +864,7 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 
 // establish records an instance in the trust store by one of the two
 // permitted acts, and only those two.
-func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, error) {
+func establish(ios IO, st *State, target, name, trustFile, socket string) (TrustEntry, error) {
 	store := st.Trust()
 
 	// Provisioned establishment: trust arrives through the same protected
@@ -883,9 +884,15 @@ func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, e
 		if err != nil {
 			return TrustEntry{}, err
 		}
-		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin}
+		if socket != "" && socket != bundle.CLISocket {
+			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match the provisioned trust bundle")
+		}
+		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, CLISocket: bundle.CLISocket}
 		if entry.Name == "" {
 			return TrustEntry{}, failf(ExitRefused, "trust bundle %s names no instance reference", bundlePath)
+		}
+		if err := validateCredentialTransport(entry); err != nil {
+			return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
 		}
 		// If the caller named an explicit URL, the bundle must agree with it.
 		// Silently using the bundle's origin instead would let a provisioned
@@ -906,7 +913,11 @@ func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, e
 	// not in the local store the CLI refuses and names the missing
 	// provisioning step. It does not prompt-to-trust mid-command.
 	if !strings.Contains(target, "://") {
-		return store.Lookup(target)
+		entry, err := store.Lookup(target)
+		if err == nil && socket != "" && socket != entry.CLISocket {
+			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match established instance %q", target)
+		}
+		return entry, err
 	}
 
 	origin, err := CanonicalOrigin(target)
@@ -921,6 +932,9 @@ func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, e
 		if oerr := requireSameOrigin(target, entry.Origin); oerr != nil {
 			return TrustEntry{}, oerr
 		}
+		if socket != "" && socket != entry.CLISocket {
+			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match the established instance")
+		}
 		return entry, nil
 	}
 
@@ -931,10 +945,20 @@ func establish(ios IO, st *State, target, name, trustFile string) (TrustEntry, e
 	if err != nil {
 		return TrustEntry{}, err
 	}
-	entry := TrustEntry{Name: originReference(origin, name), Origin: origin, SPKIPin: pin}
+	entry := TrustEntry{Name: originReference(origin, name), Origin: origin, SPKIPin: pin, CLISocket: socket}
+	if err := validateTrustEntry(entry.Name, entry); err != nil {
+		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
+	}
+	if err := validateCredentialTransport(entry); err != nil {
+		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
+	}
+	identityLabel, identity := "certificate", shortPin(pin)
+	if socket != "" {
+		identityLabel, identity = "local socket", socket+" (same uid required)"
+	}
 	prompt := fmt.Sprintf(
-		"Establish trust for a new instance?\n\n    origin:      %s\n    certificate: %s\n\nRecord it",
-		origin, shortPin(pin))
+		"Establish trust for a new instance?\n\n    origin:       %s\n    %-13s %s\n\nRecord it",
+		origin, identityLabel+":", identity)
 	session, err := ios.terminalSession()
 	if err != nil {
 		return TrustEntry{}, failf(ExitRefused,
@@ -1152,10 +1176,12 @@ func runEstablishCredential(ctx context.Context, ios IO, args []string) error {
 	var (
 		as        string
 		trustFile string
+		socket    string
 	)
 	st, flags, err := parseCommon("account establish-credential", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&as, "as", "", "the username the authority was minted for (display only)")
 		fs.StringVar(&trustFile, "trust-file", "", "provisioned trust bundle")
+		fs.StringVar(&socket, "socket", "", "same-user local CLI socket for a loopback HTTP instance")
 	})
 	if err != nil {
 		return err
@@ -1167,7 +1193,7 @@ func runEstablishCredential(ctx context.Context, ios IO, args []string) error {
 	if target == "" {
 		return failf(ExitUsage, "--instance <url|ref> is required")
 	}
-	entry, err := establish(ios, st, target, "", trustFile)
+	entry, err := establish(ios, st, target, "", trustFile, socket)
 	if err != nil {
 		return err
 	}
@@ -1398,12 +1424,14 @@ func runRecovery(ctx context.Context, ios IO, args []string) (returnErr error) {
 	var (
 		as         string
 		trustFile  string
+		socket     string
 		outputFile string
 		dangerous  bool
 	)
 	st, flags, err := parseCommon("account recovery begin", ios, args[1:], func(fs *flag.FlagSet) {
 		fs.StringVar(&as, "as", "", "the username to recover")
 		fs.StringVar(&trustFile, "trust-file", "", "provisioned trust bundle")
+		fs.StringVar(&socket, "socket", "", "same-user local CLI socket for a loopback HTTP instance")
 		fs.StringVar(&outputFile, "output-file", "", "write the authority to a file this command creates (0600)")
 		fs.BoolVar(&dangerous, "dangerously-print", false, "print the authority to stdout")
 	})
@@ -1426,7 +1454,7 @@ func runRecovery(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return failf(ExitRefused, "the authority has nowhere to go: %v", err)
 	}
 	defer sink.AbortOnReturn(&returnErr)
-	entry, err := establish(ios, st, target, "", trustFile)
+	entry, err := establish(ios, st, target, "", trustFile, socket)
 	if err != nil {
 		return err
 	}
@@ -1501,6 +1529,7 @@ func runContext(_ context.Context, ios IO, args []string) error {
 		project := fs.String("project", "", "project")
 		environment := fs.String("env", "", "environment")
 		trustFile := fs.String("trust-file", "", "provisioned trust bundle")
+		socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
 		positional, err := parseInterspersed(fs, rest)
 		if err != nil {
 			return err
@@ -1509,7 +1538,7 @@ func runContext(_ context.Context, ios IO, args []string) error {
 		if name == "" || *instance == "" {
 			return failf(ExitUsage, "usage: hikyo context create <name> --instance <url|ref>")
 		}
-		entry, err := establish(ios, st, *instance, "", *trustFile)
+		entry, err := establish(ios, st, *instance, "", *trustFile, *socket)
 		if err != nil {
 			return err
 		}

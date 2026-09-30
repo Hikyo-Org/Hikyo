@@ -522,7 +522,7 @@ func printPending(w io.Writer, status service.Status) {
 	}
 	fmt.Fprintf(w, "%d principal(s) awaiting reconciliation; their grants do not authorize until each is committed:\n", len(status.Pending))
 	for _, p := range status.Pending {
-		fmt.Fprintf(w, "  %s (%s)\n", p.ID, p.Kind)
+		fmt.Fprintf(w, "  %q (%q)\n", p.ID, p.Kind)
 	}
 	fmt.Fprintln(w, "reconcile one at a time: hikyo restore reconcile --principal ID")
 }

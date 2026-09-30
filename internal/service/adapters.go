@@ -347,6 +347,33 @@ func (s *Adapters) gate(actor Actor, op authz.Operation, scope domain.Scope) fun
 	}
 }
 
+func (s *Adapters) enterProviderBudget(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) (func(), error) {
+	var principal domain.PrincipalID
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, s.now())
+		if err != nil {
+			return err
+		}
+		if _, err := az.Authorize(ctx, caller, op, scope); err != nil {
+			return err
+		}
+		principal = caller.Principal
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	release, err := s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
+	if err != nil {
+		return nil, err
+	}
+	charged := false
+	if err := s.Budget.chargeOnce(&charged, budgetAdapterRate, budgetKeys{Principal: principal}); err != nil {
+		release()
+		return nil, err
+	}
+	return release, nil
+}
+
 func (s *Adapters) requireAdapterCeremony(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, projectScope domain.Scope, environmentIDs []string, operation authz.Operation, now time.Time) error {
 	intent, err := newReauthIntentForAdapterOperation(operation, environmentIDs)
 	if err != nil {
@@ -422,6 +449,11 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err := normalizeTargetInput(request.Provider, &request.Target); err != nil {
 		return AdapterView{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterConfigure, scope)
+	if err != nil {
+		return AdapterView{}, err
+	}
+	defer release()
 	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
 		return AdapterView{}, err
 	}
@@ -580,6 +612,11 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	if err := requireProjectScope(scope, "target add requires adapter, environment, destination, and keys", adapterID, input.EnvironmentID); err != nil {
 		return store.AdapterTarget{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterConfigure, scope)
+	if err != nil {
+		return store.AdapterTarget{}, err
+	}
+	defer release()
 	if err := s.resolveTargetKeys(ctx, actor, scope, &input); err != nil {
 		return store.AdapterTarget{}, err
 	}
@@ -590,7 +627,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	var ciphertext []byte
 	var authorizedEnvironments []string
 	now := store.CanonTime(s.now())
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
@@ -1477,6 +1514,11 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 	if err := requireProjectScope(scope, "adapter connection test requires project scope and target id", targetID); err != nil {
 		return adapter.Connection{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterTest, scope)
+	if err != nil {
+		return adapter.Connection{}, err
+	}
+	defer release()
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterTest, scope)
 	if err != nil {
 		return adapter.Connection{}, err
@@ -1711,6 +1753,11 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	if err := requireProjectScope(scope, "adapter plan requires project scope and target id", targetID); err != nil {
 		return AdapterPlanResult{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterPlan, scope)
+	if err != nil {
+		return AdapterPlanResult{}, err
+	}
+	defer release()
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterPlan, scope)
 	if err != nil {
 		return AdapterPlanResult{}, err

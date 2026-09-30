@@ -568,7 +568,7 @@ func Test404Scrubs(t *testing.T) {
 		makeOptedInDeployment("web", testTarget), // opted in
 		makeOptedInDeployment("db"),              // not opted in
 		cr)
-	h.stub.set(404, "")
+	h.stub.set(404, `{"error":{"code":"not_found"}}`)
 
 	if _, err := h.reconcile("app"); err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -618,7 +618,7 @@ func TestScrubPatchFailureRetriesWithBackoff(t *testing.T) {
 	h := newHarness(t, interceptors,
 		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true),
 		makeOptedInDeployment("web", testTarget), owned, cr)
-	h.stub.set(404, "")
+	h.stub.set(404, `{"error":{"code":"not_found"}}`)
 
 	// A scrub whose workload patch fails must surface an error (backoff), not a
 	// quiet resync — the workload has not rolled into the scrubbed state.

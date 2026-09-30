@@ -394,6 +394,10 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		return adapter.SyncResult{}, err
 	}
 	rows := desiredRows(req.Target.NamePrefix, req.Manifest, !req.Teardown)
+	desiredPaths := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		desiredPaths[strings.ToUpper(row.EffectiveName)] = true
+	}
 	completed := adapter.CompletedNames(req.Completed)
 	result := adapter.SyncResult{}
 	for _, row := range rows {
@@ -417,6 +421,16 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		result.Changes = append(result.Changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete})
 	}
 	for _, row := range prunes {
+		if desiredPaths[strings.ToUpper(row.EffectiveName)] {
+			// Vault classifications share one physical path. A reclassification
+			// can temporarily leave the prior surface claim beside the adopted
+			// new one. Retire only the stale claim; deleting the path here would
+			// delete the value written by the desired claim above.
+			if err := m.releaseWithoutRequest(ctx, row, journal); err != nil {
+				return result, err
+			}
+			continue
+		}
 		if row.Surface == adapter.Variable && strings.EqualFold(row.EffectiveName, req.Target.NamePrefix+adapter.SentinelName) {
 			// Never written by this provider; drop any stray claim without a
 			// provider request.

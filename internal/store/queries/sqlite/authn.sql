@@ -664,6 +664,24 @@ UPDATE adapters SET credential_ciphertext = NULL, credential_set_at = NULL;
 -- name: InvalidateRestoredDynamicProviderCredentials :exec
 UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL;
 
+-- Restored human-login provider secrets and remote-instance credentials also
+-- authenticate to systems outside Hikyo's credential epoch. Disable providers,
+-- destroy their secret ciphertext, and remove remotes so no restored material
+-- can be presented to an archive-controlled endpoint.
+-- hikyo:authn-resolution
+-- name: InvalidateRestoredOIDCProviderCredentials :exec
+UPDATE oidc_providers
+SET client_secret = X'', enabled = 0, row_version = row_version + 1, updated_at = ?;
+
+-- hikyo:authn-resolution
+-- name: InvalidateRestoredOAuth2ProviderCredentials :exec
+UPDATE oauth2_providers
+SET client_secret = X'', enabled = 0, row_version = row_version + 1, updated_at = ?;
+
+-- hikyo:authn-resolution
+-- name: DeleteRestoredRemotes :exec
+DELETE FROM remotes;
+
 -- A restore can resurrect certificates revoked after the backup was taken, so
 -- every restored CA issuer is held (no minting) until an operator releases
 -- the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.

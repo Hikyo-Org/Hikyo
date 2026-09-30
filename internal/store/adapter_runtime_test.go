@@ -847,6 +847,35 @@ func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) 
 	}
 }
 
+func TestAdapterScrubLoadsLastTrustedSourceRevision(t *testing.T) {
+	db := adapterRuntimeDB(t)
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=X'01' WHERE id='adp_1'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_targets SET converged_revision=7,last_attempted_revision=9 WHERE id='tgt_1'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_outbox SET kind='scrub' WHERE id='job_1'`); err != nil {
+		t.Fatal(err)
+	}
+	runtime := store.NewAdapterRuntime(db, nil)
+	now := time.Now().UTC()
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", now, now.Add(adapter.LeaseTime))
+	if err != nil || !ok {
+		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
+	}
+	execution, err := runtime.LoadExecution(t.Context(), job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Revision != 9 {
+		t.Fatalf("scrub revision = %d, want latest trusted attempt 9", execution.Revision)
+	}
+	if len(execution.Entries) != 0 {
+		t.Fatalf("scrub loaded plaintext-bearing snapshot entries: %+v", execution.Entries)
+	}
+}
+
 func TestAdapterSuccessPersistsProviderWarnings(t *testing.T) {
 	db := adapterRuntimeDB(t)
 	runtime := store.NewAdapterRuntime(db, nil)

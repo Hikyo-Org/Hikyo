@@ -282,6 +282,16 @@ describe('restoreCeremonyUnit', () => {
     ).toEqual([{ id: 'k_secret', name: 'DB_PASSWORD' }]);
   });
 
+  it('includes config-classified occurrences with sticky historical secrecy', () => {
+    expect(
+      restoreCeremonyUnit({
+        revisionKeys: [{ keyId: 'k_sticky', name: 'OLD_SECRET', classification: 'config', sensitive: true }],
+        currentCells: [],
+        keyId: null,
+      }),
+    ).toEqual([{ id: 'k_sticky', name: 'OLD_SECRET' }]);
+  });
+
   it('adds a key whose CURRENT value is a set secret, because the comparison opens it', () => {
     expect(
       restoreCeremonyUnit({
@@ -328,6 +338,7 @@ describe('pinCeremonyUnit', () => {
           { keyId: 'k_secret_then_config', name: 'OLD_SECRET', classification: 'secret' },
           { keyId: 'k_config_then_secret', name: 'NEW_SECRET', classification: 'config' },
           { keyId: 'k_config', name: 'CONFIG', classification: 'config' },
+          { keyId: 'k_sticky', name: 'STICKY', classification: 'config', sensitive: true },
         ],
         [
           { keyId: 'k_secret_then_config', classification: 'config', set: true },
@@ -338,6 +349,7 @@ describe('pinCeremonyUnit', () => {
     ).toEqual([
       { id: 'k_secret_then_config', name: 'OLD_SECRET' },
       { id: 'k_config_then_secret', name: 'NEW_SECRET' },
+      { id: 'k_sticky', name: 'STICKY' },
     ]);
   });
 });

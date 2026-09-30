@@ -244,7 +244,9 @@ export function watchProjectAdvisoryStream(
       while (!controller.signal.aborted) {
         handlers.onState('connecting');
         try {
-          const result = await watchProjectEventsOp.call({
+          // The generated operation type omits the runtime's advanced SSE
+          // controls, but the client forwards them to createSseClient.
+          const streamOptions = {
             path: { org: ref.org, project: ref.project },
             signal: controller.signal,
             onSseEvent: () => handlers.onState('healthy'),
@@ -252,7 +254,9 @@ export function watchProjectAdvisoryStream(
             sseDefaultRetryDelay: ADVISORY_RECONNECT_BASE_MS,
             sseMaxRetryDelay: ADVISORY_RECONNECT_MAX_MS,
             ...transport,
-          });
+            sseSleepFn: (ms: number) => sleep(ms, controller.signal),
+          };
+          const result = await watchProjectEventsOp.call(streamOptions);
           for await (const data of result.stream) {
             handlers.onState('healthy');
             const event = parseAdvisoryEvent(data);

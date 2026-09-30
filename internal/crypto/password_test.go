@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -92,6 +93,20 @@ func TestBootFloorRefusesEachShortParameter(t *testing.T) {
 	stronger := PasswordParams{MemoryKiB: 128 * 1024, Time: 4, Parallelism: 4}
 	if err := stronger.CheckFloor(); err != nil {
 		t.Fatalf("stronger-than-floor parameters refused: %v", err)
+	}
+}
+
+func TestBootValidationRefusesUnverifiableParameters(t *testing.T) {
+	for name, params := range map[string]PasswordParams{
+		"memory":      {MemoryKiB: MaxPasswordMemoryKiB + 1, Time: PasswordFloor.Time, Parallelism: PasswordFloor.Parallelism},
+		"time":        {MemoryKiB: PasswordFloor.MemoryKiB, Time: MaxPasswordTime + 1, Parallelism: PasswordFloor.Parallelism},
+		"parallelism": {MemoryKiB: PasswordFloor.MemoryKiB, Time: PasswordFloor.Time, Parallelism: MaxPasswordParallelism + 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := params.CheckFloor(); !errors.Is(err, ErrAboveCeiling) {
+				t.Fatalf("CheckFloor() = %v, want safety-ceiling refusal", err)
+			}
+		})
 	}
 }
 

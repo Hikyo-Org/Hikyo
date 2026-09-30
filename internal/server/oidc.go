@@ -307,7 +307,7 @@ func providerViewWire(v service.ProviderView) apigen.OidcProvider {
 	return apigen.OidcProvider{
 		Slug: v.Slug, DisplayName: v.DisplayName, Issuer: v.Issuer, ClientId: v.ClientID,
 		Scopes: v.Scopes, RedirectUri: v.RedirectURI,
-		AssurancePolicy: v.AssurancePolicy, Enabled: v.Enabled,
+		AssurancePolicy: v.AssurancePolicy, Enabled: v.Enabled, RowVersion: v.RowVersion,
 	}
 }
 
@@ -339,6 +339,7 @@ func (a *API) PutOidcProvider(ctx context.Context, req apigen.PutOidcProviderReq
 		DisplayName: req.Body.DisplayName, Issuer: req.Body.Issuer, ClientID: req.Body.ClientId,
 		ClientSecret: req.Body.ClientSecret, Scopes: req.Body.Scopes,
 		AssurancePolicy: req.Body.AssurancePolicy, Enabled: req.Body.Enabled,
+		CreateOnly: req.Body.RowVersion == nil, ExpectedRowVersion: req.Body.RowVersion,
 	}
 	v, err := a.Providers.Put(ctx, service.Bearer(bearer(ctx)), string(req.Slug), in)
 	if err != nil {

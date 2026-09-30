@@ -65,7 +65,7 @@ func TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(t *testing.
 
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: server.URL}); err != nil {
+	if err := st.Trust().Put(pinnedTestEntry("local", server)); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: server.URL, Token: oldBearer, SessionID: "ses_old", Principal: "usr_one", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
@@ -148,7 +148,7 @@ func TestAdapterTargetNarrowingSkipsCeremonyAndUsesSynchronousTargetResponse(t *
 
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: server.URL}); err != nil {
+	if err := st.Trust().Put(pinnedTestEntry("local", server)); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: server.URL, Token: bearer, SessionID: "ses_one", Principal: "usr_one", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
@@ -228,7 +228,7 @@ func TestAdapterTargetMutationCLIAPIParity(t *testing.T) {
 
 			stateDir := t.TempDir()
 			st := &State{dir: stateDir}
-			if err := st.Trust().Put(TrustEntry{Name: "local", Origin: server.URL}); err != nil {
+			if err := st.Trust().Put(pinnedTestEntry("local", server)); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.PutSession(SessionArtifact{Instance: "local", Origin: server.URL, Token: "session-secret", SessionID: "ses_one", Principal: "usr_one", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
@@ -300,7 +300,7 @@ func TestRunCLIAdapterReauthBindsExactLoopbackStateAndSilentlyRotatesBearer(t *t
 	if err := state.PutSession(artifact); err != nil {
 		t.Fatal(err)
 	}
-	client, err := NewClient(TrustEntry{Name: "local", Origin: server.URL}, oldBearer)
+	client, err := NewClient(pinnedTestEntry("local", server), oldBearer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestRedeemCLIReauthSilentlyReplacesStoredBearer(t *testing.T) {
 	if err := state.PutSession(artifact); err != nil {
 		t.Fatal(err)
 	}
-	client, err := NewClient(TrustEntry{Name: "local", Origin: server.URL}, oldBearer)
+	client, err := NewClient(pinnedTestEntry("local", server), oldBearer)
 	if err != nil {
 		t.Fatal(err)
 	}

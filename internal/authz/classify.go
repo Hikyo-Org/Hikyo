@@ -106,6 +106,15 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"mcp:ping":                                    {Class: ClassUnauthenticated},
 	"mcp:notifications/initialized":               {Class: ClassUnauthenticated},
 	"mcp:notifications/cancelled":                 {Class: ClassUnauthenticated},
+	"job:converge": {Class: ClassSystem, Ops: []Operation{OpAdapterPush}, Events: []audit.EventType{
+		audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome, audit.EventAdapterKeyDelivered, audit.EventAdapterAbort,
+	}},
+	"job:scrub": {Class: ClassSystem, Ops: []Operation{OpAdapterPush}, Events: []audit.EventType{
+		audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome, audit.EventAdapterScrub,
+	}},
+	"job:activate": {Class: ClassSystem, Ops: []Operation{OpAdapterConfigure}, Events: []audit.EventType{
+		audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome,
+	}},
 
 	// The contract surface (#47). Every entry below exists in
 	// api/openapi.yaml and carries the same class there under

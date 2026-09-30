@@ -1070,7 +1070,7 @@ func TestPinReleasePrintsServerRetentionConsequence(t *testing.T) {
 
 func definitionsTestIO(t *testing.T, handler http.Handler) (cli.IO, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
@@ -1084,7 +1084,7 @@ func definitionsTestIO(t *testing.T, handler http.Handler) (cli.IO, *bytes.Buffe
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := state.Trust().Put(cli.TrustEntry{Name: "local", Origin: server.URL}); err != nil {
+	if err := state.Trust().Put(cli.TrustEntry{Name: "local", Origin: server.URL, SPKIPin: cli.SPKIFingerprint(server.Certificate())}); err != nil {
 		t.Fatal(err)
 	}
 	if err := state.PutSession(cli.SessionArtifact{

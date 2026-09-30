@@ -1879,8 +1879,11 @@ export const listValueOccurrences = <ThrowOnError extends boolean = false>(optio
  * import run manifest. When present, the server re-evaluates phase 1's
  * read formula - `read@project AND read@environment` for every environment
  * the manifest names - inside this same transaction and ON TOP of this
- * verb's own formula, and only then compares the definitions revision and
- * each written key's occurrence token. A caller lacking either read atom receives the plain
+ * verb's own formula, and only then compares each written key's
+ * occurrence token. The recorded definitions revision is informational:
+ * applying the reviewed definitions bundle advances it before phase 2,
+ * while each token binds that key's exact declaration and value state.
+ * A caller lacking either read atom receives the plain
  * authorization failure and no precondition result: the precondition is
  * not an oracle. Any movement rejects those keys by name and writes
  * nothing.
@@ -2218,11 +2221,7 @@ export const enrolPasskeyFinish = <ThrowOnError extends boolean = false>(options
  * accounts or credentials exist.
  *
  */
-export const passkeyLoginStart = <ThrowOnError extends boolean = false>(options?: Options<PasskeyLoginStartData, ThrowOnError>) => (options?.client ?? client).post<PasskeyLoginStartResponses, PasskeyLoginStartErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/auth/webauthn/login/start',
-    ...options
-});
+export const passkeyLoginStart = <ThrowOnError extends boolean = false>(options?: Options<PasskeyLoginStartData, ThrowOnError>) => (options?.client ?? client).post<PasskeyLoginStartResponses, PasskeyLoginStartErrors, ThrowOnError>({ url: '/api/v1/auth/webauthn/login/start', ...options });
 
 /**
  * Complete a passkey login from the assertion response.
@@ -2234,7 +2233,6 @@ export const passkeyLoginStart = <ThrowOnError extends boolean = false>(options?
  *
  */
 export const passkeyLoginFinish = <ThrowOnError extends boolean = false>(options: Options<PasskeyLoginFinishData, ThrowOnError>) => (options.client ?? client).post<PasskeyLoginFinishResponses, PasskeyLoginFinishErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/auth/webauthn/login/finish',
     ...options,
     headers: {

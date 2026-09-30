@@ -3155,7 +3155,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true, StoreCatalogueList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValuesExported},
 	},
@@ -3168,7 +3169,8 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true, StoreCatalogueList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueRevealed, audit.EventValuesExported},
 	},
@@ -3181,7 +3183,8 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true, StoreCatalogueList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueRevealed, audit.EventValuesExported},
 	},
@@ -3331,6 +3334,7 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
 			StoreSnapshotsEntries: true, StoreSnapshotsChanges: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true,
 		},
 		auditedNone: true,
 	},

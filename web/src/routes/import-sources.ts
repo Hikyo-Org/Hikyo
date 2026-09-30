@@ -1,4 +1,4 @@
-import { parseAllDocuments } from 'yaml';
+import { Lexer, parseAllDocuments } from 'yaml';
 
 /**
  * Pure, React-free connector layer for the browser import wizard (#496).
@@ -44,6 +44,7 @@ export type FileConnector = 'k8s' | 'infisical' | 'vault';
 export const MAX_FILE_BYTES = 10 << 20;
 const MAX_DECODED_BYTES = 50 << 20;
 const MAX_RECORDS = 50000;
+const MAX_PARSE_NODES = 50000;
 const MAX_VALUE_BYTES = 65536;
 const MAX_KEY_NAME_BYTES = 128;
 const MAX_DEPTH = 32;
@@ -264,6 +265,7 @@ function parseJsonLossless(text: string): JsonValue {
 class JsonParser {
   private i = 0;
   private depth = 0;
+  private nodes = 0;
   constructor(private readonly s: string) {}
 
   atEnd(): boolean {
@@ -278,6 +280,7 @@ class JsonParser {
 
   parseValue(): JsonValue {
     this.skipWhitespace();
+    this.chargeNode();
     const char = this.s[this.i];
     // Bound nesting the way `importer.normalizeTree` does (depth 32). Without
     // this a deeply nested leaf would recurse until the JS stack overflows, an
@@ -323,7 +326,8 @@ class JsonParser {
       this.skipWhitespace();
       if (this.s[this.i] !== '"') refuse('the JSON object is malformed');
       const key = this.parseString();
-      const folded = key.toLowerCase();
+      this.chargeNode();
+      const folded = foldJSONMember(key);
       if (seen.has(folded)) {
         refuse(`a JSON object declares the member ${safeName(key)} more than once`);
       }
@@ -436,6 +440,31 @@ class JsonParser {
     }
     return new JsonNumber(literal);
   }
+
+  private chargeNode(): void {
+    this.nodes += 1;
+    if (this.nodes > MAX_PARSE_NODES) {
+      refuse(`the JSON holds more than the ${MAX_PARSE_NODES}-node parser bound`);
+    }
+  }
+}
+
+// Go's unicode.SimpleFold has a small set of multi-member cycles that Unicode
+// lowercase alone does not collapse. This table is generated from the pinned
+// Go toolchain's fold table and keeps browser duplicate handling byte-for-byte
+// aligned with the CLI importer.
+const simpleFoldExtras: Readonly<Record<string, string>> = Object.freeze({
+  s: 'S', 'ſ': 'S', 'µ': 'µ', 'ͅ': 'ͅ', 'ΐ': 'ΐ', 'σ': 'Σ', 'ΰ': 'ΰ',
+  'β': 'Β', 'ε': 'Ε', 'θ': 'Θ', 'ι': 'ͅ', 'κ': 'Κ', 'μ': 'µ', 'π': 'Π',
+  'ρ': 'Ρ', 'ς': 'Σ', 'φ': 'Φ', 'ϐ': 'Β', 'ϑ': 'Θ', 'ϕ': 'Φ', 'ϖ': 'Π',
+  'ϰ': 'Κ', 'ϱ': 'Ρ', 'ϵ': 'Ε', 'в': 'В', 'д': 'Д', 'о': 'О', 'с': 'С',
+  'т': 'Т', 'ъ': 'Ъ', 'ѣ': 'Ѣ', 'ᲀ': 'В', 'ᲁ': 'Д', 'ᲂ': 'О', 'ᲃ': 'С',
+  'ᲄ': 'Т', 'ᲅ': 'Т', 'ᲆ': 'Ъ', 'ᲇ': 'Ѣ', 'ᲈ': 'ᲈ', 'ṡ': 'Ṡ', 'ẛ': 'Ṡ',
+  'ι': 'ͅ', 'ΐ': 'ΐ', 'ΰ': 'ΰ', 'ꙋ': 'ᲈ', 'ﬅ': 'ﬅ', 'ﬆ': 'ﬅ',
+});
+
+function foldJSONMember(value: string): string {
+  return Array.from(value.toLowerCase(), (char) => simpleFoldExtras[char] ?? char).join('');
 }
 
 /**
@@ -496,6 +525,7 @@ function compareCodePoints(a: string, b: string): number {
  * decoded value's UTF-8/NUL and size checks run uniformly afterwards.
  */
 function readK8s(text: string, budget: Budget): SourceRecord[] {
+  assertYAMLLexerBudget(text);
   // `uniqueKeys` refuses a mapping that declares a key twice; the lib's default
   // `maxAliasCount` (100) caps YAML alias expansion so a billion-laughs bomb
   // fails loud rather than in the allocator.
@@ -515,6 +545,7 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
       }
       refuse(`the ${where} is not parseable as YAML or JSON`);
     }
+    assertYAMLNodeBudget(doc.contents, where);
     let object: unknown;
     try {
       object = doc.toJS();
@@ -588,6 +619,35 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
     refuse('the file holds no Kubernetes Secret manifest with any entry');
   }
   return records;
+}
+
+function assertYAMLLexerBudget(text: string): void {
+  let tokens = 0;
+  for (const _token of new Lexer().lex(text)) {
+    tokens += 1;
+    if (tokens > MAX_PARSE_NODES) {
+      refuse(`the YAML holds more than the ${MAX_PARSE_NODES}-token parser bound`);
+    }
+  }
+}
+
+function assertYAMLNodeBudget(root: unknown, where: string): void {
+  const stack: unknown[] = [root];
+  const seen = new WeakSet<object>();
+  let nodes = 0;
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (typeof node !== 'object' || node === null || seen.has(node)) continue;
+    seen.add(node);
+    nodes += 1;
+    if (nodes > MAX_PARSE_NODES) {
+      refuse(`the ${where} holds more than the ${MAX_PARSE_NODES}-node parser bound`);
+    }
+    const candidate = node as { items?: unknown; key?: unknown; value?: unknown };
+    if (Array.isArray(candidate.items)) stack.push(...candidate.items);
+    if (candidate.key !== undefined) stack.push(candidate.key);
+    if (candidate.value !== undefined) stack.push(candidate.value);
+  }
 }
 
 /** Decodes one `data` value from base64 and classifies its bytes. A K8s Secret

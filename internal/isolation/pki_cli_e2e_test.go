@@ -84,7 +84,7 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	// The workload runs from its own state directory, provisioned with the
 	// instance's trust entry the way a deployment would ship it.
 	humanState, machineState := stateDir, t.TempDir()
-	writeTrustStore(t, machineState, origin)
+	writeTrustStore(t, machineState, origin, cfg.CLISocket)
 	prompts := map[string]string{"authority": boot.Authority, "New password": password, "Repeat": password}
 	ios := func() cli.IO {
 		var terminal fakeTerminal
@@ -123,7 +123,7 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 		return stdout.String()
 	}
 
-	runCLI(cli.ExitOK, "account", "establish-credential", "--instance", origin, "--as", "pki-admin")
+	runCLI(cli.ExitOK, "account", "establish-credential", "--instance", origin, "--socket", cfg.CLISocket, "--as", "pki-admin")
 	clear(prompts)
 	prompts["Password for pki-admin"] = password
 	runCLI(cli.ExitOK, "login", origin, "--local", "--as", "pki-admin")

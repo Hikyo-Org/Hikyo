@@ -186,7 +186,7 @@ export function WorkspaceApprove() {
   // No session on THIS instance: authenticate here, on this origin, with this
   // instance's own ceremonies. The URL, and with it the state, survives.
   if (auth.state.status === 'anonymous') {
-    return <Login />;
+    return <Login returnTo={`/workspace/approve?state=${encodeURIComponent(state)}`} />;
   }
 
   if (

@@ -392,6 +392,16 @@ func (q *Queries) DeleteReauthWindowsForEnvironment(ctx context.Context, environ
 	return result.RowsAffected(), nil
 }
 
+const deleteRestoredRemotes = `-- name: DeleteRestoredRemotes :exec
+DELETE FROM remotes
+`
+
+// hikyo:authn-resolution
+func (q *Queries) DeleteRestoredRemotes(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteRestoredRemotes)
+	return err
+}
+
 const deleteSession = `-- name: DeleteSession :exec
 DELETE FROM sessions WHERE id = $1
 `
@@ -1806,6 +1816,32 @@ UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_
 // hikyo:authn-resolution
 func (q *Queries) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, invalidateRestoredDynamicProviderCredentials)
+	return err
+}
+
+const invalidateRestoredOAuth2ProviderCredentials = `-- name: InvalidateRestoredOAuth2ProviderCredentials :exec
+UPDATE oauth2_providers
+SET client_secret = decode('', 'hex'), enabled = 0, row_version = row_version + 1, updated_at = $1
+`
+
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredOAuth2ProviderCredentials(ctx context.Context, updatedAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, invalidateRestoredOAuth2ProviderCredentials, updatedAt)
+	return err
+}
+
+const invalidateRestoredOIDCProviderCredentials = `-- name: InvalidateRestoredOIDCProviderCredentials :exec
+UPDATE oidc_providers
+SET client_secret = decode('', 'hex'), enabled = 0, row_version = row_version + 1, updated_at = $1
+`
+
+// Restored human-login provider secrets and remote-instance credentials also
+// authenticate to systems outside Hikyo's credential epoch. Disable providers,
+// destroy their secret ciphertext, and remove remotes so no restored material
+// can be presented to an archive-controlled endpoint.
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredOIDCProviderCredentials(ctx context.Context, updatedAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, invalidateRestoredOIDCProviderCredentials, updatedAt)
 	return err
 }
 

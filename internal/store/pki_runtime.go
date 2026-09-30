@@ -154,12 +154,12 @@ func insertPKITenantAudit(ctx context.Context, tx adapterDBTX, row pkiSweptRow, 
 	return err
 }
 
-// DueCRLs lists issuer versions whose CRL must be (re)published. Retired and
-// revoked versions have no key and are never candidates. Sequence comparison
+// DueCRLs lists unheld issuer versions whose CRL must be (re)published. Retired
+// and revoked versions have no key and are never candidates. Sequence comparison
 // is independent of clock skew and keeps revocations racing publication due.
 func (r *PKIRuntime) DueCRLs(ctx context.Context, now time.Time) ([]PKICRLCandidate, error) {
 	return dbReadResult(ctx, r.db, func(db adapterDB) ([]PKICRLCandidate, error) {
-		query := db.SQL(`SELECT i.id,i.name,i.version,i.certificate_der,i.encrypted_private_key,i.dek_version,i.crl_number,i.revocation_seq FROM pki_issuers i WHERE i.state IN ('active','retiring') AND i.encrypted_private_key IS NOT NULL AND i.dek_version IS NOT NULL AND i.certificate_der IS NOT NULL AND (i.crl_der IS NULL OR i.crl_next_update<=? OR i.revocation_seq>i.crl_revocation_seq) ORDER BY i.id`)
+		query := db.SQL(`SELECT i.id,i.name,i.version,i.certificate_der,i.encrypted_private_key,i.dek_version,i.crl_number,i.revocation_seq FROM pki_issuers i WHERE i.state IN ('active','retiring') AND i.restore_hold=0 AND i.encrypted_private_key IS NOT NULL AND i.dek_version IS NOT NULL AND i.certificate_der IS NOT NULL AND (i.crl_der IS NULL OR i.crl_next_update<=? OR i.revocation_seq>i.crl_revocation_seq) ORDER BY i.id`)
 		halfLife := now.Add(12 * time.Hour)
 		rows, err := db.Query(ctx, query, db.Stamp(halfLife))
 		if err != nil {

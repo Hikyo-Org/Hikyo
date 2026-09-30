@@ -94,6 +94,14 @@ INSERT INTO webauthn_ceremonies
      expires_at, consumed_at, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, $10, NULL, $11);
 
+-- Expired, unconsumed challenges have no provenance value and cannot be
+-- referenced by a session or reauthentication window. Remove them before
+-- creating the next ceremony so sustained starts cannot grow storage forever.
+-- hikyo:authn-resolution
+-- name: DeleteExpiredUnconsumedWebAuthnCeremonies :execrows
+DELETE FROM webauthn_ceremonies
+WHERE consumed_at IS NULL AND expires_at <= $1;
+
 -- hikyo:authn-resolution
 -- name: GetWebAuthnCeremonyByChallenge :one
 SELECT id, challenge_verifier, session_data, account_id, session_id, purpose,

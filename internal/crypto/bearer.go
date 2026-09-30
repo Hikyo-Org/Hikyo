@@ -107,6 +107,10 @@ const artifactFormatVersion = "1"
 // unsalted SHA-256 verifier safe and brute force infeasible.
 const bodyBytes = 32
 
+// maxBodyChars is the largest base62 representation of a 256-bit value.
+// Checking it before big.Int decoding keeps malformed bearer work bounded.
+const maxBodyChars = 43
+
 const base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // checksumChars is the fixed width of the base62 CRC-32 suffix.
@@ -171,6 +175,9 @@ func ParseArtifact(value string, want ArtifactType) error {
 		return ErrMalformedArtifact
 	}
 	body, sum := payload[:len(payload)-checksumChars], payload[len(payload)-checksumChars:]
+	if len(body) > maxBodyChars {
+		return ErrMalformedArtifact
+	}
 
 	// The accepted grammar must be EXACTLY what NewArtifact can produce, and a
 	// character-count bound is not exact: leading zero bytes shorten the body,

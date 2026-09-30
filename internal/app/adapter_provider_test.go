@@ -76,7 +76,7 @@ func TestAWSWorkloadIdentityFollowsNodePolicy(t *testing.T) {
 	if !errors.Is(err, awssm.ErrWorkloadIdentityDisabled) || !errors.Is(err, domain.ErrInvalid) || !errors.Is(err, adapter.ErrProviderAuth) {
 		t.Fatalf("ambient without node opt-in = %v", err)
 	}
-	_, err = newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.AWSSecretsManagerProvider, origin, `{"mode":"static","access_key_id":"short"}`)
+	_, err = newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.AWSSecretsManagerProvider, origin, `{"mode":"static","access_key_id":"short","secret_access_key":"fixture","region":"eu-west-1"}`)
 	var detail interface{ SafeDetail() string }
 	if !errors.Is(err, domain.ErrInvalid) || errors.Is(err, adapter.ErrProviderAuth) || !errors.As(err, &detail) || detail.SafeDetail() == "" {
 		t.Fatalf("bad descriptor = %v", err)
@@ -88,12 +88,40 @@ func TestAWSWorkloadIdentityFollowsNodePolicy(t *testing.T) {
 	lease.Release()
 }
 
+func TestAWSSTSUsesItsOwnExactOriginEgressPolicy(t *testing.T) {
+	secretsPrefix := netip.MustParsePrefix("10.42.0.0/16")
+	stsPrefix := netip.MustParsePrefix("10.84.0.0/16")
+	var gotSecrets, gotSTS []netip.Prefix
+	factory := &adapterModuleFactory{
+		egressPolicy: map[string][]netip.Prefix{
+			"https://secrets.internal.example": {secretsPrefix},
+			"https://sts.internal.example":     {stsPrefix},
+		},
+		providers: map[adapter.Provider]providerConstructor{
+			adapter.AWSSecretsManagerProvider: func(_ adapter.Config, _ string, allowed, stsAllowed []netip.Prefix) (adapter.Module, func(), error) {
+				gotSecrets = append([]netip.Prefix(nil), allowed...)
+				gotSTS = append([]netip.Prefix(nil), stsAllowed...)
+				return stubProviderModule{}, nil, nil
+			},
+		},
+	}
+	descriptor := `{"mode":"static","region":"eu-west-1","sts_origin":"https://sts.internal.example","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"fixture"}`
+	lease, err := factory.Build(adapter.AWSSecretsManagerProvider, adapter.Config{Origin: "https://secrets.internal.example"}, descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease.Release()
+	if len(gotSecrets) != 1 || gotSecrets[0] != secretsPrefix || len(gotSTS) != 1 || gotSTS[0] != stsPrefix {
+		t.Fatalf("secrets policy=%v STS policy=%v", gotSecrets, gotSTS)
+	}
+}
+
 func TestAdapterModuleFactoryReleasesPartialConstructionOnce(t *testing.T) {
 	wantErr := errors.New("partial construction")
 	releases := 0
 	factory := &adapterModuleFactory{
 		providers: map[adapter.Provider]providerConstructor{
-			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix) (adapter.Module, func(), error) {
+			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(), error) {
 				return nil, func() { releases++ }, wantErr
 			},
 		},
@@ -110,7 +138,7 @@ func TestAdapterModuleLeaseReleasesSuccessOnce(t *testing.T) {
 	releases := 0
 	factory := &adapterModuleFactory{
 		providers: map[adapter.Provider]providerConstructor{
-			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix) (adapter.Module, func(), error) {
+			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(), error) {
 				return stubProviderModule{}, func() { releases++ }, nil
 			},
 		},

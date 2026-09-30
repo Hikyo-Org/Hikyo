@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 )
 
 func testLogger() *slog.Logger {
@@ -144,6 +146,49 @@ func TestServeCancellationStopsBothListeners(t *testing.T) {
 			conn.Close()
 			t.Errorf("listener %s still accepts after shutdown", address)
 		}
+	}
+}
+
+func TestLocalCLISocketServesPublicAPIAndIsRemovedOnShutdown(t *testing.T) {
+	directory, err := os.MkdirTemp("", "hks-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := devConfig(t)
+	cfg.CLISocket = filepath.Join(directory, "cli.sock")
+	srv, err := Boot(t.Context(), cfg, testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- srv.ServeWithReady(ctx, nil) }()
+
+	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return localsocket.DialContext(ctx, cfg.CLISocket)
+	}}
+	client := &http.Client{Transport: transport, Timeout: time.Second}
+	response, err := client.Get("http://127.0.0.1/api/v1/meta")
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("local CLI meta = %d, want 200", response.StatusCode)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	transport.CloseIdleConnections()
+	if _, err := os.Lstat(cfg.CLISocket); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("socket remains after shutdown: %v", err)
 	}
 }
 

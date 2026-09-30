@@ -17,6 +17,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -96,9 +97,12 @@ func GenerateKey(alg Algorithm) (crypto.Signer, error) {
 func algorithmOfPrivate(key any) (crypto.Signer, Algorithm, error) {
 	switch k := key.(type) {
 	case ed25519.PrivateKey:
-		return k, AlgorithmEd25519, nil
+		return canonicalEd25519(k)
 	case *ed25519.PrivateKey:
-		return *k, AlgorithmEd25519, nil
+		if k == nil {
+			return nil, "", ErrUnsupportedKey
+		}
+		return canonicalEd25519(*k)
 	case *ecdsa.PrivateKey:
 		if k.Curve != elliptic.P256() {
 			return nil, "", fmt.Errorf("%w: only the P-256 curve is accepted", ErrUnsupportedKey)
@@ -112,6 +116,17 @@ func algorithmOfPrivate(key any) (crypto.Signer, Algorithm, error) {
 	default:
 		return nil, "", ErrUnsupportedKey
 	}
+}
+
+func canonicalEd25519(key ed25519.PrivateKey) (crypto.Signer, Algorithm, error) {
+	if len(key) != ed25519.PrivateKeySize {
+		return nil, "", ErrUnsupportedKey
+	}
+	canonical := ed25519.NewKeyFromSeed(key.Seed())
+	if subtle.ConstantTimeCompare(key, canonical) != 1 {
+		return nil, "", fmt.Errorf("%w: Ed25519 public key does not match its private seed", ErrUnsupportedKey)
+	}
+	return canonical, AlgorithmEd25519, nil
 }
 
 // AlgorithmOf classifies an SSH public key into the closed set. Certificates,

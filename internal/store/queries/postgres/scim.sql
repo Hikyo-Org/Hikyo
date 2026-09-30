@@ -239,12 +239,13 @@ WHERE org_id = sqlc.arg(chain_org_id) AND binding_id = sqlc.arg(binding_id)
 DELETE FROM scim_group_members
 WHERE org_id = sqlc.arg(chain_org_id) AND binding_id = sqlc.arg(binding_id);
 
--- name: EnterSCIMAttention :exec
+-- name: EnterSCIMAttention :execrows
 INSERT INTO scim_attention (id, org_id, binding_id, state, subject_ref, cause, entered_at)
 VALUES (
     sqlc.arg(id), sqlc.arg(chain_org_id), sqlc.arg(binding_id), sqlc.arg(state),
     sqlc.arg(subject_ref), sqlc.arg(cause), sqlc.arg(entered_at)
-);
+)
+ON CONFLICT (binding_id, state, subject_ref) DO NOTHING;
 
 -- name: ListSCIMAttention :many
 SELECT id, org_id, binding_id, state, subject_ref, cause, entered_at

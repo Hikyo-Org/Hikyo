@@ -871,12 +871,12 @@ func (a *API) scimBodyIsOneValue(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	// One byte past the bound: a short read proves it fits.
-	raw, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, api.SCIMBodyBound+1))
 	if err != nil {
 		a.writeSCIMRequestError(w, r, scimproto.ErrInvalidSyntax("The request body could not be read."))
 		return false
 	}
-	if int64(len(raw)) > MaxRequestBytes {
+	if int64(len(raw)) > api.SCIMBodyBound {
 		// An over-bound body is an ADMISSION decision (§9), not an invalid
 		// resource: one status, 413, with the ADR's own named refusal.
 		a.writeSCIMRequestError(w, r, scimproto.ErrBodyTooLarge)

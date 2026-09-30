@@ -206,7 +206,7 @@ func (s *Access) CreatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return err
 		}
-		if err := validatePolicyEnvironment(ctx, az, input.EnvironmentID); err != nil {
+		if err := validatePolicyEnvironment(ctx, az, scope, input.EnvironmentID); err != nil {
 			return err
 		}
 		if input.Enabled && len(input.Bypassers) > 0 {
@@ -232,7 +232,7 @@ func (s *Access) CreatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err := recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "created", input.EnvironmentID, caps, input, len(input.Approvers), len(input.Bypassers)); err != nil {
 			return err
 		}
-		view, err = loadAccessPolicyView(ctx, r, az, p, id)
+		view, err = loadAccessPolicyView(ctx, r, az, p, scope, id)
 		return err
 	})
 	return view, err
@@ -303,7 +303,7 @@ func (s *Access) UpdatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err := recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "updated", input.EnvironmentID, caps, input, len(input.Approvers), len(input.Bypassers)); err != nil {
 			return err
 		}
-		view, err = loadAccessPolicyView(ctx, r, az, p, id)
+		view, err = loadAccessPolicyView(ctx, r, az, p, scope, id)
 		return err
 	})
 	return view, err
@@ -364,7 +364,7 @@ func (s *Access) ListPolicies(ctx context.Context, actor Actor, scope domain.Sco
 		}
 		out = make([]AccessPolicyView, 0, len(policies))
 		for _, policy := range policies {
-			view, err := accessPolicyViewWithMembers(ctx, r, az, p, policy)
+			view, err := accessPolicyViewWithMembers(ctx, r, az, p, scope, policy)
 			if err != nil {
 				return err
 			}
@@ -1291,7 +1291,7 @@ func mayRevokeAccess(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 // accessPolicyViewWithMembers adds approver and emergency-access rosters and
 // available principal names to a policy view. Member and name lookup errors
 // are propagated; principals without a name are omitted from PrincipalNames.
-func accessPolicyViewWithMembers(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, policy store.AccessPolicy) (AccessPolicyView, error) {
+func accessPolicyViewWithMembers(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, scope domain.Scope, policy store.AccessPolicy) (AccessPolicyView, error) {
 	approvers, err := r.Access().ListApprovers(ctx, p, policy.ID)
 	if err != nil {
 		return AccessPolicyView{}, err
@@ -1320,6 +1320,13 @@ func accessPolicyViewWithMembers(ctx context.Context, r store.Repos, az *authz.T
 		ids = append(ids, b.PrincipalID)
 	}
 	for _, id := range ids {
+		visible, err := names.visibleInProject(ctx, az, domain.PrincipalID(id), scope)
+		if err != nil {
+			return AccessPolicyView{}, err
+		}
+		if !visible {
+			continue
+		}
 		name, err := names.get(ctx, az, domain.PrincipalID(id))
 		if err != nil {
 			return AccessPolicyView{}, err
@@ -1333,12 +1340,12 @@ func accessPolicyViewWithMembers(ctx context.Context, r store.Repos, az *authz.T
 
 // loadAccessPolicyView loads a policy and its member view, propagating missing
 // policy, member, and principal-name lookup errors.
-func loadAccessPolicyView(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, id string) (AccessPolicyView, error) {
+func loadAccessPolicyView(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, p authz.Proof, scope domain.Scope, id string) (AccessPolicyView, error) {
 	policy, err := r.Access().GetPolicy(ctx, p, id)
 	if err != nil {
 		return AccessPolicyView{}, err
 	}
-	return accessPolicyViewWithMembers(ctx, r, az, p, policy)
+	return accessPolicyViewWithMembers(ctx, r, az, p, scope, policy)
 }
 
 // accessRequestView copies stored request fields and capabilities into a view

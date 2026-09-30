@@ -4321,8 +4321,11 @@ paths:
         import run manifest. When present, the server re-evaluates phase 1's
         read formula - `read@project AND read@environment` for every environment
         the manifest names - inside this same transaction and ON TOP of this
-        verb's own formula, and only then compares the definitions revision and
-        each written key's occurrence token. A caller lacking either read atom receives the plain
+        verb's own formula, and only then compares each written key's
+        occurrence token. The recorded definitions revision is informational:
+        applying the reviewed definitions bundle advances it before phase 2,
+        while each token binds that key's exact declaration and value state.
+        A caller lacking either read atom receives the plain
         authorization failure and no precondition result: the precondition is
         not an oracle. Any movement rejects those keys by name and writes
         nothing.
@@ -5104,6 +5107,7 @@ paths:
 
   /api/v1/auth/webauthn/login/start:
     post:
+      security: []
       operationId: passkeyLoginStart
       tags: [auth]
       summary: Begin a discoverable-credential passkey login.
@@ -5112,7 +5116,7 @@ paths:
         returns the opaque request options. Discloses nothing about which
         accounts or credentials exist.
       x-hikyo-class: unauthenticated
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -5136,6 +5140,7 @@ paths:
 
   /api/v1/auth/webauthn/login/finish:
     post:
+      security: []
       operationId: passkeyLoginFinish
       tags: [auth]
       summary: Complete a passkey login from the assertion response.
@@ -5145,7 +5150,7 @@ paths:
         `__Host-hikyo` cookie. A signature-count regression disables the cloned
         credential (audited) and refuses.
       x-hikyo-class: unauthenticated
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -10973,6 +10978,7 @@ paths:
               schema: {$ref: "#/components/schemas/AuditPage"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
@@ -11024,6 +11030,7 @@ paths:
               schema: {type: string}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
@@ -11068,6 +11075,7 @@ paths:
               schema: {$ref: "#/components/schemas/AuditPage"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
@@ -11109,6 +11117,7 @@ paths:
               schema: {type: string}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
@@ -11154,6 +11163,7 @@ paths:
               schema: {$ref: "#/components/schemas/AuditPage"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
@@ -11196,6 +11206,7 @@ paths:
               schema: {type: string}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
@@ -17603,7 +17614,7 @@ components:
             $ref: "#/components/schemas/SnapshotKey"
     SnapshotKey:
       type: object
-      required: [key_id, name, classification]
+      required: [key_id, name, classification, sensitive]
       additionalProperties: false
       properties:
         key_id:
@@ -17612,6 +17623,9 @@ components:
           $ref: "#/components/schemas/KeyName"
         classification:
           $ref: "#/components/schemas/KeyClassification"
+        sensitive:
+          type: boolean
+          description: True when this value occurrence is secret-classified or carries sticky historical secrecy.
     EnvironmentSignals:
       type: object
       required: [environment_id, revision, cells]
@@ -18062,8 +18076,10 @@ components:
           format: int64
           description: |
             The project's key-catalogue revision as phase 1 observed it. The
-            run manifest pins it, and phase 2 refuses a run whose declarations
-            moved.
+            run manifest records it for operator evidence. Phase 2 does not
+            compare it globally because applying the reviewed definitions
+            bundle advances the revision; per-key occurrence tokens enforce
+            declaration and value freshness instead.
         items:
           type: array
           items:
@@ -18116,6 +18132,9 @@ components:
         definitions_revision:
           type: integer
           format: int64
+          description: |
+            Informational project revision recorded by phase 1. Freshness is
+            enforced by the occurrence token for every written key.
         environment_ids:
           type: array
           minItems: 1
@@ -18724,6 +18743,7 @@ components:
         lifetime_seconds:
           type: integer
           minimum: 1
+          maximum: 315360000
           description: Requested finite lifetime; absent means the instance default.
 
     MintCredentialResult:
@@ -18990,6 +19010,7 @@ components:
         lifetime_seconds:
           type: integer
           minimum: 1
+          maximum: 315360000
         replaces:
           allOf:
             - $ref: "#/components/schemas/ID"
@@ -19182,7 +19203,7 @@ components:
         records:
           type: array
           minItems: 1
-          maxItems: 1000
+          maxItems: 60
           items:
             $ref: "#/components/schemas/OfflineDeliveryRecord"
 
@@ -19506,6 +19527,7 @@ components:
         max_finite_lifetime_seconds:
           type: integer
           minimum: 1
+          maximum: 315360000
         allow_indefinite:
           type: boolean
         max_live_credentials:
@@ -19524,6 +19546,7 @@ components:
         max_finite_lifetime_seconds:
           type: integer
           minimum: 1
+          maximum: 315360000
         allow_indefinite:
           type: boolean
         max_live_credentials:
@@ -19921,6 +19944,9 @@ components:
             it inherits the instance default - which is NOT the same statement
             as 0, and 0 is a legal value meaning every disclosure
             reauthenticates.
+        expected_protected:
+          type: boolean
+          description: Optional compare-and-set precondition; a changed protection flag returns 409.
 
     MachineRevealSettings:
       type: object
@@ -20855,11 +20881,16 @@ components:
           description: JSON `{acr_values[], amr_sets[][]}`; absent means single-factor.
         enabled:
           type: boolean
+        row_version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
 
     OidcProvider:
       type: object
       additionalProperties: false
-      required: [slug, display_name, issuer, client_id, scopes, redirect_uri, enabled]
+      required: [slug, display_name, issuer, client_id, scopes, redirect_uri, enabled, row_version]
       properties:
         slug:
           type: string
@@ -20877,6 +20908,10 @@ components:
           type: [string, "null"]
         enabled:
           type: boolean
+        row_version:
+          type: integer
+          format: int64
+          minimum: 1
 
     OidcProviderList:
       type: object
@@ -21166,6 +21201,8 @@ components:
         - endpoints_removed
         - certs_added_fps
         - certs_removed_fps
+        - metadata_certs_added_fps
+        - metadata_certs_removed_fps
       properties:
         endpoints_added:
           type: array
@@ -21179,6 +21216,14 @@ components:
         certs_removed_fps:
           type: array
           items: { type: string }
+        metadata_certs_added_fps:
+          type: array
+          items: { type: string }
+          description: Metadata-signature certificate fingerprints newly trusted by this change.
+        metadata_certs_removed_fps:
+          type: array
+          items: { type: string }
+          description: Metadata-signature certificate fingerprints retired by this change.
         valid_until:
           oneOf:
             - $ref: "#/components/schemas/Timestamp"
@@ -22082,6 +22127,7 @@ components:
         lifetime_seconds:
           type: integer
           minimum: 1
+          maximum: 315360000
           description: |
             Clamped to the instance ceiling, and the response says so. Omit for
             the default; naming both this and `indefinite` is a refusal, never a

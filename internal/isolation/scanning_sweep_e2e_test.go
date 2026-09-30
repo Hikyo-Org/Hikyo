@@ -393,9 +393,10 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 		Version:      "sweep",
 	}, nil))
 	t.Cleanup(srv.Close)
+	cliSocket := serveLocalCLI(t, srv.Config.Handler)
 
 	stateDir := t.TempDir()
-	writeTrustStore(t, stateDir, srv.URL)
+	writeTrustStore(t, stateDir, srv.URL, cliSocket)
 
 	return sweepEnv{
 		srv: srv, token: token, admin: administrator.boot.PrincipalID,

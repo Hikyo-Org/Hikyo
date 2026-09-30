@@ -2125,10 +2125,19 @@ func TestAdapterPlanPersistsProviderConflictArtifactAndInspectReturnsIt(t *testi
 	}
 }
 
-func TestCompleteRestoreClearsRestoredAdapterCredential(t *testing.T) {
+func TestCompleteRestoreClearsEveryRestoredOutboundCredential(t *testing.T) {
 	db := adapterServiceDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=X'010203',credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`); err != nil {
 		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO oidc_providers (id,slug,display_name,kind,issuer,client_id,client_secret,scopes,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('oidc_restore','oidc-restore','OIDC Restore','oidc','https://oidc.attacker','client',X'010203','openid','https://hikyo.example/callback',1,1,1,'2026-08-17T00:00:00Z','2026-08-17T00:00:00Z')`,
+		`INSERT INTO oauth2_providers (id,slug,display_name,kind,profile,issuer,client_id,client_secret,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('oauth_restore','oauth-restore','OAuth Restore','oauth2','github','https://oauth.attacker','client',X'040506','https://hikyo.example/callback',1,1,1,'2026-08-17T00:00:00Z','2026-08-17T00:00:00Z')`,
+		`INSERT INTO remotes (id,name,url,spki_pin,credential_sealed,created_at,created_by) VALUES ('remote_restore','restored','https://remote.attacker','pin',X'070809','2026-08-17T00:00:00Z','usr_adapter')`,
+	} {
+		if _, err := db.SQLiteWrite().ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
 	}
 	complete := CompleteRestore(time.Now().UTC(), store.Manifest{Engine: store.EngineSQLite, SchemaVersion: 24})
 	if err := storetx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error { return complete(ctx, az) }); err != nil {
@@ -2140,6 +2149,23 @@ func TestCompleteRestoreClearsRestoredAdapterCredential(t *testing.T) {
 	}
 	if credential != nil || setAt != nil {
 		t.Fatalf("restored adapter credential survived: credential=%v set_at=%v", credential, setAt)
+	}
+	for _, table := range []string{"oidc_providers", "oauth2_providers"} {
+		var secret []byte
+		var enabled int
+		if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT client_secret,enabled FROM `+table+` WHERE id LIKE '%_restore'`).Scan(&secret, &enabled); err != nil {
+			t.Fatal(err)
+		}
+		if len(secret) != 0 || enabled != 0 {
+			t.Fatalf("restored %s credential survived: secret=%x enabled=%d", table, secret, enabled)
+		}
+	}
+	var remotes int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM remotes WHERE id='remote_restore'`).Scan(&remotes); err != nil {
+		t.Fatal(err)
+	}
+	if remotes != 0 {
+		t.Fatal("restored remote credential survived")
 	}
 }
 

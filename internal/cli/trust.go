@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+	"unicode"
 
+	"github.com/Hikyo-Org/hikyo/internal/localsocket"
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
@@ -45,18 +51,23 @@ type TrustEntry struct {
 	// only to this origin, and a redirect off it is never followed with one.
 	Origin string `json:"origin"`
 	// SPKIPin is base64(sha256(SubjectPublicKeyInfo)) of the certificate
-	// identity seen at establishment. Empty only for a loopback http origin,
-	// where there is no certificate and no network to intercept.
+	// identity seen at establishment. Empty only for a loopback HTTP origin
+	// carried over the same-user Unix socket recorded below.
 	SPKIPin string `json:"spki_pin,omitempty"`
+	// CLISocket carries loopback HTTP without putting credentials on an
+	// identity-free TCP listener. Its directory and socket are euid-owned 0700
+	// and 0600, and both peers verify the other's kernel-reported UID.
+	CLISocket string `json:"cli_socket,omitempty"`
 }
 
 // TrustBundle is the provisioned-establishment file: the CI path's import
 // format. It is deliberately the same shape as a store entry — trust material
 // is not a secret, it is a binding.
 type TrustBundle struct {
-	Name    string `json:"name"`
-	Origin  string `json:"origin"`
-	SPKIPin string `json:"spki_pin,omitempty"`
+	Name      string `json:"name"`
+	Origin    string `json:"origin"`
+	SPKIPin   string `json:"spki_pin,omitempty"`
+	CLISocket string `json:"cli_socket,omitempty"`
 }
 
 // ErrUntrusted reports an instance reference that is not in the local store.
@@ -74,7 +85,7 @@ func (s *TrustStore) path() string { return filepath.Join(s.dir, "trust.json") }
 
 // Load reads the store, returning an empty one when it does not exist yet.
 func (s *TrustStore) Load() (map[string]TrustEntry, error) {
-	raw, err := os.ReadFile(s.path())
+	raw, err := readTrustFile(s.dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]TrustEntry{}, nil
 	}
@@ -88,7 +99,62 @@ func (s *TrustStore) Load() (map[string]TrustEntry, error) {
 	if entries == nil {
 		entries = map[string]TrustEntry{}
 	}
+	for name, entry := range entries {
+		if err := validateTrustEntry(name, entry); err != nil {
+			return nil, fmt.Errorf("trust store at %s contains an invalid entry %q: %w", s.path(), name, err)
+		}
+	}
 	return entries, nil
+}
+
+func validateTrustEntry(name string, entry TrustEntry) error {
+	if name == "" || entry.Name != name || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return errors.New("entry name must be nonempty, control-free, and match its map key")
+	}
+	origin, err := CanonicalOrigin(entry.Origin)
+	if err != nil || origin != entry.Origin {
+		return errors.New("origin must be canonical")
+	}
+	if strings.HasPrefix(origin, "https://") {
+		if entry.CLISocket != "" {
+			return errors.New("https trust cannot carry a local CLI socket")
+		}
+		decoded, err := base64.StdEncoding.DecodeString(entry.SPKIPin)
+		if err != nil || len(decoded) != 32 {
+			return errors.New("https origin requires a base64 SHA-256 SPKI pin")
+		}
+		return nil
+	}
+	if !isLoopbackOrigin(origin) || entry.SPKIPin != "" {
+		return errors.New("http trust is allowed only for loopback and cannot carry an SPKI pin")
+	}
+	// Legacy loopback entries remain readable so an upgrade can name the
+	// remediation instead of making the whole trust store unreadable. NewClient
+	// still refuses to carry credentials until a socket is established.
+	if entry.CLISocket != "" {
+		if err := localsocket.ValidatePath(entry.CLISocket); err != nil {
+			return fmt.Errorf("local CLI socket: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateCredentialTransport(entry TrustEntry) error {
+	if isLoopbackOrigin(entry.Origin) && entry.CLISocket == "" {
+		return errors.New("loopback http trust requires an authenticated local CLI socket")
+	}
+	if entry.CLISocket != "" {
+		if err := localsocket.ValidatePath(entry.CLISocket); err != nil {
+			return fmt.Errorf("local CLI socket: %w", err)
+		}
+	}
+	if strings.HasPrefix(entry.Origin, "https://") && entry.CLISocket != "" {
+		return errors.New("https trust cannot carry a local CLI socket")
+	}
+	if !strings.HasPrefix(entry.Origin, "https://") && !isLoopbackOrigin(entry.Origin) {
+		return errors.New("plaintext http is allowed only for loopback over an authenticated local CLI socket")
+	}
+	return nil
 }
 
 // Lookup resolves a reference. A missing reference is ErrUntrusted, never a
@@ -115,12 +181,20 @@ func (s *TrustStore) Lookup(name string) (TrustEntry, error) {
 // silent re-pin is indistinguishable from the attack the pin exists to stop,
 // so changing one is a delete-then-establish, done deliberately.
 func (s *TrustStore) Put(e TrustEntry) error {
+	if err := validateTrustEntry(e.Name, e); err != nil {
+		return failf(ExitRefused, "invalid trust entry %q: %v", e.Name, err)
+	}
+	unlock, err := lockStateDir(s.dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	entries, err := s.Load()
 	if err != nil {
 		return err
 	}
 	if prior, ok := entries[e.Name]; ok {
-		if prior.Origin != e.Origin || prior.SPKIPin != e.SPKIPin {
+		if prior.Origin != e.Origin || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket {
 			return failf(ExitRefused,
 				"instance %q is already established with a different identity\n"+
 					"  recorded: %s (pin %s)\n"+
@@ -137,6 +211,11 @@ func (s *TrustStore) Put(e TrustEntry) error {
 
 // Delete removes an entry.
 func (s *TrustStore) Delete(name string) error {
+	unlock, err := lockStateDir(s.dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	entries, err := s.Load()
 	if err != nil {
 		return err
@@ -149,18 +228,14 @@ func (s *TrustStore) Delete(name string) error {
 }
 
 func (s *TrustStore) write(entries map[string]TrustEntry) error {
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+	if err := ensureTrustStateDir(s.dir); err != nil {
 		return err
 	}
 	raw, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := s.path() + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path())
+	return securefile.WriteAtomic(s.path(), append(raw, '\n'), 0o600)
 }
 
 // CanonicalOrigin reduces a URL to scheme://host[:port], rejecting anything
@@ -208,6 +283,10 @@ func SPKIFingerprint(cert *x509.Certificate) string {
 // result of this call — the human's confirmation is what records the pin, and
 // every later connection verifies against that recorded pin.
 func FetchIdentity(origin string) (string, error) {
+	return fetchIdentity(context.Background(), origin, 10*time.Second)
+}
+
+func fetchIdentity(parent context.Context, origin string, timeout time.Duration) (string, error) {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return "", err
@@ -222,7 +301,13 @@ func FetchIdentity(origin string) (string, error) {
 	if port == "" {
 		port = "443"
 	}
-	conn, err := tls.Dial("tcp", net.JoinHostPort(u.Hostname(), port), &tls.Config{
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	rawConn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(u.Hostname(), port))
+	if err != nil {
+		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
+	}
+	conn := tls.Client(rawConn, &tls.Config{
 		// This first-contact ceremony cannot verify an identity it has not yet
 		// shown the operator. It returns only the fingerprint; no credential or
 		// application request crosses this connection.
@@ -231,7 +316,8 @@ func FetchIdentity(origin string) (string, error) {
 		ServerName:         u.Hostname(),
 		MinVersion:         tls.VersionTLS12,
 	})
-	if err != nil {
+	if err := conn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
 		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
 	}
 	defer conn.Close()
@@ -244,7 +330,7 @@ func FetchIdentity(origin string) (string, error) {
 
 func shortPin(pin string) string {
 	if pin == "" {
-		return "none (loopback http)"
+		return "none (same-user local socket)"
 	}
 	if len(pin) <= 16 {
 		return pin

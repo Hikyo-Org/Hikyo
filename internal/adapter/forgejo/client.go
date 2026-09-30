@@ -26,6 +26,8 @@ const (
 	responseCap             = 1 << 20
 	providerPageLimit       = 50
 	providerSecretNameLimit = 10_000
+	providerNameByteLimit   = 255
+	providerListByteLimit   = 4 << 20
 )
 
 var ErrSecretListLimit = errors.New("forgejo: secret name listing reached the 10000-name safety limit before exhaustion")
@@ -68,9 +70,10 @@ type ClientConfig struct {
 }
 
 type Client struct {
-	origin string
-	token  string
-	http   *http.Client
+	origin   string
+	token    string
+	http     *http.Client
+	deadline time.Duration
 }
 
 // Forget releases the private transport and retained bearer when one outbox
@@ -108,8 +111,9 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 		DialContext:     publicDialer.DialContext,
 	}
 	return &Client{
-		origin: origin,
-		token:  cfg.Credential,
+		origin:   origin,
+		token:    cfg.Credential,
+		deadline: cfg.Deadline,
 		http: &http.Client{
 			Transport: transport,
 			Timeout:   cfg.Deadline,
@@ -140,6 +144,10 @@ func (e *ResponseError) Error() string {
 }
 
 func (c *Client) do(ctx context.Context, op operation, path string, body any, out any) error {
+	return c.doWithBudget(ctx, op, path, body, out, nil)
+}
+
+func (c *Client) doWithBudget(ctx context.Context, op operation, path string, body any, out any, remaining *int64) error {
 	var input io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -168,6 +176,12 @@ func (c *Client) do(ctx context.Context, op operation, path string, body any, ou
 	}
 	if len(raw) > responseCap {
 		return errors.New("forgejo: provider response exceeded 1 MiB")
+	}
+	if remaining != nil {
+		*remaining -= int64(len(raw))
+		if *remaining < 0 {
+			return errors.New("forgejo: secret listing exceeded the aggregate 4 MiB response limit")
+		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Provider bodies are intentionally not surfaced: a broken provider can
@@ -232,19 +246,25 @@ func (c *Client) ListSecretNames(ctx context.Context, d adapter.Destination) ([]
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, c.deadline)
+	defer cancel()
 	var names []string
+	remaining := int64(providerListByteLimit)
 	for page := 1; ; page++ {
 		var rows []struct {
 			Name string `json:"name"`
 		}
 		query := "?page=" + strconv.Itoa(page) + "&limit=" + strconv.Itoa(providerPageLimit)
-		if err := c.do(ctx, operationRegistry["list-secrets"], "/"+path+"/actions/secrets"+query, nil, &rows); err != nil {
+		if err := c.doWithBudget(ctx, operationRegistry["list-secrets"], "/"+path+"/actions/secrets"+query, nil, &rows, &remaining); err != nil {
 			return nil, err
 		}
 		if len(names)+len(rows) > providerSecretNameLimit {
 			return nil, ErrSecretListLimit
 		}
 		for _, row := range rows {
+			if len(row.Name) == 0 || len(row.Name) > providerNameByteLimit {
+				return nil, errors.New("forgejo: provider returned an invalid secret name length")
+			}
 			names = append(names, row.Name)
 		}
 		if len(rows) < providerPageLimit {

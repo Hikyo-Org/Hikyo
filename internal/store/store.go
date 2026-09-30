@@ -28,6 +28,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
@@ -1722,6 +1723,9 @@ func (p *VerifiedPostgresSource) Digest() string {
 // held by this DB. Both transactions roll back without durable writes.
 func (d *DB) VerifyPostgresSource(ctx context.Context, candidateDSN string) (*VerifiedPostgresSource, error) {
 	if d == nil || d.engine != EnginePostgres || d.pool == nil || !d.admission.Valid() || candidateDSN == "" {
+		return nil, errPostgresSourceProof
+	}
+	if err := config.ValidatePostgresDSN(candidateDSN); err != nil {
 		return nil, errPostgresSourceProof
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

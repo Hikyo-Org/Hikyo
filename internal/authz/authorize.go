@@ -98,6 +98,31 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 	}
 }
 
+// AuthorizeDEKRotation authorizes the instance-level rotation capability and,
+// for a project DEK, also proves that the addressed project currently exists.
+// Project key creation happens outside the transaction, so this check must run
+// before any keyring preparation and again in the committing transaction.
+func (a *TxAuthorizer) AuthorizeDEKRotation(ctx context.Context, caller Identity, scope domain.Scope) (Proof, error) {
+	proof, err := a.Authorize(ctx, caller, OpRotateDEK, domain.Scope{})
+	if err != nil {
+		return nil, err
+	}
+	if scope == (domain.Scope{}) {
+		return proof, nil
+	}
+	level, err := scope.Level()
+	if err != nil {
+		return nil, err
+	}
+	if level != domain.LevelProject {
+		return nil, fmt.Errorf("authz: project DEK rotation requires a project scope")
+	}
+	if _, err := a.r.ResolveChain(ctx, scope); err != nil {
+		return nil, err
+	}
+	return proof, nil
+}
+
 // ContractArtifactClass maps a resolved identity to the vocabulary used by
 // x-hikyo-artifacts. Identity class, not bearer spelling, is authoritative.
 func ContractArtifactClass(caller Identity) string {

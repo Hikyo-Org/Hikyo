@@ -178,6 +178,9 @@ export function ImportWizard({
   // per environment, what is already `set`. Declaration is project-scoped, so
   // `declared` agrees across environments; `set` is what varies.
   const [presence, setPresence] = useState<ReadonlyMap<string, ValueOccurrenceList>>(new Map());
+  // The exact occurrence tokens shown by the final review. They are never
+  // refreshed after confirmation: movement during review must conflict.
+  const [bindings, setBindings] = useState<ReadonlyMap<string, ValueOccurrenceList>>(new Map());
   const [declarations, setDeclarations] = useState<ReadonlyMap<string, Declaration>>(new Map());
   const [overwrite, setOverwrite] = useState<ReadonlyMap<string, ReadonlySet<string>>>(new Map());
   const [trimAcks, setTrimAcks] = useState<ReadonlySet<string>>(new Set());
@@ -254,9 +257,36 @@ export function ImportWizard({
 
   const resetChoices = () => {
     setPresence(new Map());
+    setBindings(new Map());
     setDeclarations(new Map());
     setOverwrite(new Map());
     setTrimAcks(new Set());
+  };
+
+  const beginFinalReview = async () => {
+    setError(null);
+    try {
+      const results = await Promise.all(
+        selectedEnvironments.map(async (environment) => {
+          const list = await occurrences.mutateAsync({
+            environment: environment.id,
+            candidates: importableEntries.map((entry) => {
+              const declaration = declarations.get(entry.key);
+              return {
+                name: entry.key,
+                classification: declaration?.classification ?? ('config' as const),
+                type: declaration?.type ?? ('string' as const),
+              };
+            }),
+          });
+          return [environment.id, list] as const;
+        }),
+      );
+      setBindings(new Map(results));
+      setStep('review');
+    } catch (caught) {
+      setError(matrixMutationError(asError(caught), 'import'));
+    }
   };
 
   const beginReview = async () => {
@@ -361,16 +391,10 @@ export function ImportWizard({
         continue;
       }
       try {
-        // Phase 1b: re-read now that declarations have landed, so every token
-        // names the exact state phase 2 will re-check inside its transaction.
-        const list = await occurrences.mutateAsync({
-          environment: environment.id,
-          candidates: toSend.map((entry) => ({
-            name: entry.key,
-            classification: 'config' as const,
-            type: 'string' as const,
-          })),
-        });
+        const list = bindings.get(environment.id);
+        if (list === undefined) {
+          throw new Error('review binding is missing for this environment');
+        }
         const tokens = indexOccurrences(list.items);
         const result = await importValues.mutateAsync({
           environment: environment.id,
@@ -877,8 +901,8 @@ export function ImportWizard({
           <Button type="button" onClick={() => setStep('source')}>
             Back
           </Button>
-          <Button type="button" variant="primary" onClick={() => setStep('review')}>
-            Review changes
+          <Button type="button" variant="primary" disabled={busy} onClick={beginFinalReview}>
+            {busy ? 'Binding…' : 'Review changes'}
           </Button>
         </footer>
       </>

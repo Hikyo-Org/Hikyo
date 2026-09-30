@@ -396,8 +396,9 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 		}
 		assertMCPNoCanary(t, "debug logs", logs.Bytes())
 		metricsRec := httptest.NewRecorder()
-		server.NewOperational(nil, mcpOperationalHealth{}, metrics).ServeHTTP(metricsRec,
-			httptest.NewRequest(http.MethodGet, "http://127.0.0.1/metrics", nil))
+		metricsRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/metrics", nil)
+		metricsRequest.RemoteAddr = "127.0.0.1:1234"
+		server.NewOperational(nil, mcpOperationalHealth{}, metrics).ServeHTTP(metricsRec, metricsRequest)
 		assertMCPNoCanary(t, "metrics", metricsRec.Body.Bytes())
 
 		// Alternating replicas: boot a distinct keyring, auth/admission services,

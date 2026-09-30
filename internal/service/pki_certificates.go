@@ -180,19 +180,21 @@ func selectIssuer(ctx context.Context, r store.Repos, proof authz.Proof, policy 
 // leafPlan is everything decided in the INTENT transaction and needed to sign
 // and settle outside it.
 type leafPlan struct {
-	certID      string
-	serial      string
-	issuer      store.PKIIssuer
-	sealedKey   []byte
-	resolved    pki.Resolved
-	policy      pki.Policy
-	notBefore   time.Time
-	notAfter    time.Time
-	publicKey   crypto.PublicKey
-	principal   domain.PrincipalID
-	class       string
-	profileName string
-	renewedFrom string
+	certID         string
+	serial         string
+	issuer         store.PKIIssuer
+	sealedKey      []byte
+	resolved       pki.Resolved
+	policy         pki.Policy
+	notBefore      time.Time
+	notAfter       time.Time
+	publicKey      crypto.PublicKey
+	principal      domain.PrincipalID
+	class          string
+	profileID      string
+	profileName    string
+	profileVersion int64
+	renewedFrom    string
 }
 
 func (s *PKI) reserveLeaf(ctx context.Context, r store.Repos, proof authz.Proof, caller authz.Identity, profile store.PKIProfile, policy pki.Policy, resolved pki.Resolved, publicKey crypto.PublicKey, requestedIssuer, keySource, renewedFrom, kind string, now time.Time) (leafPlan, error) {
@@ -231,7 +233,8 @@ func (s *PKI) reserveLeaf(ctx context.Context, r store.Repos, proof authz.Proof,
 	plan := leafPlan{
 		certID: certID, serial: pki.SerialHex(serial), issuer: signingIssuer, sealedKey: sealed,
 		resolved: resolved, policy: policy, notBefore: notBefore, notAfter: notAfter, publicKey: publicKey,
-		principal: caller.Principal, class: string(caller.Class), profileName: profile.Name, renewedFrom: renewedFrom,
+		principal: caller.Principal, class: string(caller.Class), profileID: profile.ID,
+		profileName: profile.Name, profileVersion: profile.RowVersion, renewedFrom: renewedFrom,
 	}
 	if err := r.PKI().CreateCertificate(ctx, proof, store.PKICertificateCreate{
 		ID: certID, ProfileID: profile.ID, ProfileName: profile.Name, IssuerID: issuer.ID, Serial: plan.serial,
@@ -307,7 +310,8 @@ func (s *PKI) settleLeaf(ctx context.Context, actor Actor, op authz.Operation, s
 		}
 		issued = der != nil
 		if issued {
-			if _, err := r.PKI().BoundProfile(ctx, proof, plan.profileName); err != nil {
+			currentProfile, err := r.PKI().BoundProfile(ctx, proof, plan.profileName)
+			if err != nil || currentProfile.ID != plan.profileID || currentProfile.RowVersion != plan.profileVersion {
 				issued = false
 			} else if err := s.pkiCallerGate(ctx, az, caller, scope, plan.policy, generated, false, now); err != nil {
 				issued = false
@@ -398,6 +402,11 @@ func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Sc
 	if req.GenerateKey == (req.CSRPEM != "") {
 		return CertificateIssueResult{}, fmt.Errorf("%w: supply exactly one of csr_pem or generate_key", domain.ErrInvalid)
 	}
+	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpCertificateIssue, authz.OpCertificateIssue, scope, s.now)
+	if err != nil {
+		return CertificateIssueResult{}, err
+	}
+	defer release()
 	var publicKey crypto.PublicKey
 	if req.CSRPEM != "" {
 		csr, err := pki.ParseCSR([]byte(req.CSRPEM))
@@ -406,12 +415,6 @@ func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Sc
 		}
 		publicKey = csr.PublicKey
 	}
-	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpCertificateIssue, authz.OpCertificateIssue, scope, s.now)
-	if err != nil {
-		return CertificateIssueResult{}, err
-	}
-	defer release()
-
 	var generatedKey crypto.Signer
 	if req.GenerateKey {
 		algorithm := pki.ECDSAP256

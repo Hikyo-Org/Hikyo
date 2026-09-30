@@ -326,7 +326,7 @@ type SCIMRepo interface {
 	RemoveMembershipsForUser(ctx context.Context, p authz.Proof, bindingID, userID string) error
 	DeleteGroupMembersForBinding(ctx context.Context, p authz.Proof, bindingID string) error
 
-	EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) error
+	EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) (bool, error)
 	ClearAttention(ctx context.Context, p authz.Proof, bindingID, state, subjectRef string) (int64, error)
 	DeleteAttentionForBinding(ctx context.Context, p authz.Proof, bindingID string) error
 }
@@ -1338,25 +1338,31 @@ func (r scimRepo) DeleteGroupMembersForBinding(ctx context.Context, p authz.Proo
 // Attention states
 // ---------------------------------------------------------------------------
 
-func (r scimRepo) EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) error {
+func (r scimRepo) EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMEnterAttention, r.tok)
 	if err != nil {
-		return err
+		return false, err
 	}
+	var affected int64
 	if r.sq != nil {
-		return constraint(r.sq.EnterSCIMAttention(ctx, sqlitegen.EnterSCIMAttentionParams{
+		affected, err = r.sq.EnterSCIMAttention(ctx, sqlitegen.EnterSCIMAttentionParams{
 			ID:        a.ID,
 			OrgID:     string(chain.Org),
 			BindingID: a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
 			EnteredAt: CanonTime(a.EnteredAt).Format(timeFormat),
-		}))
+		})
+	} else {
+		affected, err = r.pg.EnterSCIMAttention(ctx, pggen.EnterSCIMAttentionParams{
+			ID:         a.ID,
+			ChainOrgID: string(chain.Org),
+			BindingID:  a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
+			EnteredAt: pgtype.Timestamptz{Time: CanonTime(a.EnteredAt), Valid: true},
+		})
 	}
-	return constraint(r.pg.EnterSCIMAttention(ctx, pggen.EnterSCIMAttentionParams{
-		ID:         a.ID,
-		ChainOrgID: string(chain.Org),
-		BindingID:  a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
-		EnteredAt: pgtype.Timestamptz{Time: CanonTime(a.EnteredAt), Valid: true},
-	}))
+	if err != nil {
+		return false, constraint(err)
+	}
+	return affected == 1, nil
 }
 
 func (r scimRepo) Attention(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMAttentionRow, error) {

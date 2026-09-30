@@ -123,7 +123,7 @@ func (s *deliveryStub) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if status == http.StatusOK {
+	if s.json != "" {
 		_, _ = io.WriteString(w, s.json)
 	}
 }
@@ -529,7 +529,7 @@ func makeOwnedSecret(t *testing.T, sch *runtime.Scheme, cr *hikyov1.HikyoSecret,
 // makeOptedInDeployment builds a Deployment consuming the target (opt-in).
 func makeOptedInDeployment(name string, consumesTargets ...string) *appsv1.Deployment {
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, UID: types.UID("deployment-uid-" + name), Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.DeploymentSpec{
 			Template: emptyPodTemplate(),
 		},
@@ -538,7 +538,7 @@ func makeOptedInDeployment(name string, consumesTargets ...string) *appsv1.Deplo
 
 func makeOptedInStatefulSet(name string, consumesTargets ...string) *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, UID: types.UID("statefulset-uid-" + name), Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.StatefulSetSpec{
 			Template: emptyPodTemplate(),
 		},
@@ -547,7 +547,7 @@ func makeOptedInStatefulSet(name string, consumesTargets ...string) *appsv1.Stat
 
 func makeOptedInDaemonSet(name string, consumesTargets ...string) *appsv1.DaemonSet {
 	return &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, UID: types.UID("daemonset-uid-" + name), Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.DaemonSetSpec{
 			Template: emptyPodTemplate(),
 		},

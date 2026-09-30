@@ -102,7 +102,8 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	build := func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		client, err := awssm.NewClient(awssm.ClientConfig{
 			Origin: config.Origin, Credential: credential, Deadline: 5 * time.Second,
-			AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
+			AllowedCIDRs:    []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+			STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
 		})
 		if err != nil {
 			return nil, err

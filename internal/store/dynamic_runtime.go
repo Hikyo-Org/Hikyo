@@ -288,10 +288,15 @@ func (r *DynamicRuntime) settle(ctx context.Context, lease ClaimedLease, effectI
 // clears the crash fence so the term ends.
 func (r *DynamicRuntime) RecordOutcome(ctx context.Context, lease ClaimedLease, effectID, kind, outcome, newState string, issuedAt, expiresAt time.Time) error {
 	// A settled row parks next_attempt_at far ahead so it is never re-claimed;
-	// an activated lease parks it at expiry so the worker expires it on time.
+	// an active lease parks at its effective expiry so the worker expires it on
+	// time even when a failed renewal preserves the stored expiry.
 	next := time.Now().UTC().Add(365 * 24 * time.Hour)
-	if newState == "active" && !expiresAt.IsZero() {
-		next = expiresAt
+	if newState == "active" {
+		if !expiresAt.IsZero() {
+			next = expiresAt
+		} else if !lease.ExpiresAt.IsZero() {
+			next = lease.ExpiresAt
+		}
 	}
 	return r.settle(ctx, lease, effectID, kind, outcome, newState, issuedAt, expiresAt, next)
 }

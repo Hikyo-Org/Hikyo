@@ -34,6 +34,14 @@ import (
 // a lighter read than the operation it is budgeted as (Copy authorizes the
 // source read OpValueList but is budgeted as OpValueCopySource).
 func chargeDefaultAtEntry(ctx context.Context, db *store.DB, budget *Budget, actor Actor, authOp, classifyOp authz.Operation, scope domain.Scope, now func() time.Time) (func(), error) {
+	return chargeDefaultAtEntryWeighted(ctx, db, budget, actor, authOp, classifyOp, scope, 1, now)
+}
+
+// chargeDefaultAtEntryWeighted applies one default-budget rate charge per unit
+// of caller-controlled work while taking the operation's concurrency slot only
+// once. This prevents bulk endpoints from multiplying durable writes behind a
+// single request charge.
+func chargeDefaultAtEntryWeighted(ctx context.Context, db *store.DB, budget *Budget, actor Actor, authOp, classifyOp authz.Operation, scope domain.Scope, weight int, now func() time.Time) (func(), error) {
 	// Couple the call site to the totality map: a method may only take the
 	// fail-closed default for an operation classified default-expensive. A named
 	// or exempt operation reaching here is a wiring bug, caught at the call.
@@ -58,7 +66,7 @@ func chargeDefaultAtEntry(ctx context.Context, db *store.DB, budget *Budget, act
 	if err != nil {
 		return nil, err
 	}
-	return budget.acquire(budgetDefault, budgetKeys{Principal: principal, Org: scope.Org})
+	return budget.acquireWeighted(budgetDefault, budgetKeys{Principal: principal, Org: scope.Org}, weight)
 }
 
 // Budget is the ops-spec § 179 expensive-path availability layer plus the § 151
@@ -232,6 +240,13 @@ var (
 	budgetExportInstance = budgetCategory{
 		name:  "export",
 		rates: []budgetRateRule{{dimPrincipal, BudgetExportRatePerMin, time.Minute}},
+		concs: []budgetConcRule{{dimInstance, BudgetExportInstanceConcurrency}},
+	}
+	// budgetExportInstanceConcurrency is the pre-authentication instance-wide
+	// slot for actor-based audit exports. The principal rate is charged after
+	// transaction-local actor resolution through budgetExportRate.
+	budgetExportInstanceConcurrency = budgetCategory{
+		name:  "export",
 		concs: []budgetConcRule{{dimInstance, BudgetExportInstanceConcurrency}},
 	}
 	// budgetValuesExport takes the "export" concurrency at entry (org + instance);
@@ -412,10 +427,14 @@ func (b *Budget) chargeSignup() (refund func(), err error) {
 // concurrency slots (a no-op for a rate-only category), safe to call more than
 // once. Every refusal wraps admission.ErrOverloaded.
 func (b *Budget) acquire(cat budgetCategory, keys budgetKeys) (func(), error) {
+	return b.acquireWeighted(cat, keys, 1)
+}
+
+func (b *Budget) acquireWeighted(cat budgetCategory, keys budgetKeys, weight int) (func(), error) {
 	if b == nil {
 		return noopBudgetRelease, nil
 	}
-	return b.acquireAt(cat, keys, b.clock())
+	return b.acquireAtWeighted(cat, keys, b.clock(), weight)
 }
 
 func (b *Budget) clock() time.Time {
@@ -428,6 +447,13 @@ func (b *Budget) clock() time.Time {
 // acquireAt is acquire at a stated instant, so a caller can later identify
 // the one rate hit it recorded (chargeSignup's refund).
 func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (func(), error) {
+	return b.acquireAtWeighted(cat, keys, at, 1)
+}
+
+func (b *Budget) acquireAtWeighted(cat budgetCategory, keys budgetKeys, at time.Time, weight int) (func(), error) {
+	if weight < 1 {
+		return noopBudgetRelease, errors.New("service: budget weight must be positive")
+	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -449,21 +475,26 @@ func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (f
 	for _, r := range cat.rates {
 		key := budgetMapKey(cat.name, r.dim, keys.value(r.dim))
 		cutoff := at.Add(-r.window)
-		kept := make([]time.Time, 0, len(b.rate[key].hits)+1)
+		kept := make([]time.Time, 0, len(b.rate[key].hits)+weight)
 		for _, t := range b.rate[key].hits {
 			if t.After(cutoff) {
 				kept = append(kept, t)
 			}
 		}
-		if len(kept) >= r.limit {
+		if len(kept)+weight > r.limit {
 			// The instant is read before b.mu, so concurrent charges may land out
 			// of order. kept is this call's own storage and a refusal publishes
 			// nothing, so sort it here: the hit whose departure admits the next
 			// request is then len(kept)-limit from the oldest.
 			slices.SortFunc(kept, time.Time.Compare)
+			wait := admission.RetryAfter
+			excess := len(kept) + weight - r.limit
+			if excess <= len(kept) {
+				wait = kept[excess-1].Add(r.window).Sub(at)
+			}
 			return noopBudgetRelease, &admission.RateLimitedError{
 				Cause: fmt.Errorf("%w: service: %s rate budget exhausted", admission.ErrOverloaded, cat.name),
-				Wait:  kept[len(kept)-r.limit].Add(r.window).Sub(at),
+				Wait:  wait,
 			}
 		}
 		pending = append(pending, slid{key: key, kept: kept, window: r.window})
@@ -507,7 +538,10 @@ func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (f
 
 	// 4. Every rule passed: record the rate hits and take the concurrency slots.
 	for _, p := range pending {
-		b.rate[p.key] = rateBucket{hits: append(p.kept, at), window: p.window}
+		for range weight {
+			p.kept = append(p.kept, at)
+		}
+		b.rate[p.key] = rateBucket{hits: p.kept, window: p.window}
 	}
 	taken := make([]string, 0, len(cat.concs))
 	for _, c := range cat.concs {

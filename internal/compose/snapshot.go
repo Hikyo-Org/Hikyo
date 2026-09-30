@@ -45,8 +45,8 @@ import (
 //     both server-asserted and integrity-protected in the header.
 
 const (
-	snapshotFile = "snapshot.bin"
-	hwmFile      = "snapshot.hwm"
+	snapshotFile = "snapshot.bin" // legacy single-slot filename, load-only
+	hwmFile      = "snapshot.hwm" // legacy single-slot filename, load-only
 
 	// snapshotMagic versions the container framing independently of the crypto
 	// envelope's own format byte.
@@ -93,10 +93,6 @@ type hwm struct {
 // advances snapshot.hwm to (issued_at, header-digest) and REFUSES to save an
 // issuance older than the current high-water mark (a rollback attempt).
 func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payload SnapshotPayload) error {
-	stateDir, err := binding.StorageDir()
-	if err != nil {
-		return err
-	}
 	header, err := binding.CanonicalAAD()
 	if err != nil {
 		return err
@@ -117,8 +113,12 @@ func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payloa
 		return fmt.Errorf("compose: snapshot header is %d bytes, exceeds the framing limit", len(header))
 	}
 	digest := headerDigest(header)
+	snapshotPath, hwmPath, err := snapshotPaths(binding)
+	if err != nil {
+		return err
+	}
 
-	mark, err := readHWM(stateDir)
+	mark, err := readHWM(hwmPath)
 	if err != nil {
 		return err
 	}
@@ -144,7 +144,7 @@ func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payloa
 		return fmt.Errorf("compose: seal snapshot: %w", err)
 	}
 	container := frameSnapshot(header, sealed)
-	if err := atomicWrite(filepath.Join(stateDir, snapshotFile), container, 0o600); err != nil {
+	if err := atomicWrite(snapshotPath, container, 0o600); err != nil {
 		return fmt.Errorf("compose: write snapshot: %w", err)
 	}
 	// Advance the HWM only after the snapshot is durable.
@@ -152,7 +152,7 @@ func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payloa
 	if err != nil {
 		return fmt.Errorf("compose: marshal high-water mark: %w", err)
 	}
-	if err := atomicWrite(filepath.Join(stateDir, hwmFile), nextHWM, 0o600); err != nil {
+	if err := atomicWrite(hwmPath, nextHWM, 0o600); err != nil {
 		return fmt.Errorf("compose: write high-water mark: %w", err)
 	}
 	return nil
@@ -173,7 +173,18 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 		return zeroP, zeroB, err
 	}
 
-	record, err := os.ReadFile(filepath.Join(stateDir, snapshotFile))
+	snapshotPath, hwmPath, err := snapshotPaths(expect)
+	if err != nil {
+		return zeroP, zeroB, err
+	}
+	record, err := os.ReadFile(snapshotPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// One-release compatibility for the former shared slot. ContextMatches
+		// below still authenticates and refuses a snapshot from another scope.
+		snapshotPath = filepath.Join(stateDir, snapshotFile)
+		hwmPath = filepath.Join(stateDir, hwmFile)
+		record, err = os.ReadFile(snapshotPath)
+	}
 	if err != nil {
 		return zeroP, zeroB, fmt.Errorf("compose: read snapshot: %w", err)
 	}
@@ -203,7 +214,7 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 		return zeroP, binding, fmt.Errorf("compose: snapshot expires_at %q is not RFC3339: %w", aad.ExpiresAt, err)
 	}
 
-	mark, err := readHWM(stateDir)
+	mark, err := readHWM(hwmPath)
 	if err != nil {
 		return zeroP, binding, err
 	}
@@ -273,8 +284,20 @@ func unframeSnapshot(record []byte) (header, sealed []byte, err error) {
 }
 
 // readHWM returns the recorded high-water mark, or nil if none.
-func readHWM(stateDir string) (*hwm, error) {
-	b, err := os.ReadFile(filepath.Join(stateDir, hwmFile))
+func snapshotPaths(binding crypto.SnapshotBinding) (string, string, error) {
+	stateDir, err := binding.StorageDir()
+	if err != nil {
+		return "", "", err
+	}
+	key, err := binding.StorageKey()
+	if err != nil {
+		return "", "", err
+	}
+	return filepath.Join(stateDir, "snapshot-"+key+".bin"), filepath.Join(stateDir, "snapshot-"+key+".hwm"), nil
+}
+
+func readHWM(name string) (*hwm, error) {
+	b, err := os.ReadFile(name)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil

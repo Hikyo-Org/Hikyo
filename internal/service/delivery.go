@@ -563,8 +563,8 @@ func (s *Delivery) ReconcileOfflineRecords(ctx context.Context, presented string
 
 // ReconcileOfflineRecordsAs is ReconcileOfflineRecords with the caller decided.
 func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, scope domain.Scope, records []OfflineRecord) (ReconcileResult, error) {
-	if len(records) == 0 || len(records) > 1000 {
-		return ReconcileResult{}, invalidDetail("offline reconciliation requires between 1 and 1000 records")
+	if len(records) == 0 || len(records) > BudgetDefaultRatePerMin {
+		return ReconcileResult{}, invalidDetail("offline reconciliation requires between 1 and %d records", BudgetDefaultRatePerMin)
 	}
 	for _, record := range records {
 		if record.RecordID == "" || len(record.RecordID) > 64 || record.KeyID == "" || len(record.KeyID) > 64 ||
@@ -575,10 +575,10 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 		}
 	}
 
-	// §179 fail-closed default: a bulk offline-record flush (up to 1000 records)
-	// with no named category. Authorized-then-acquired at entry (rate +
-	// concurrency), so an unauthorized caller cannot occupy the org's slots.
-	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpDeliveryReconcileOffline, authz.OpDeliveryReconcileOffline, scope, s.now)
+	// §179 fail-closed default: every caller-supplied record consumes one rate
+	// charge while the batch takes one concurrency slot. Authorized-then-acquired
+	// at entry, so an unauthorized caller cannot occupy the org's slots.
+	release, err := chargeDefaultAtEntryWeighted(ctx, s.DB, s.Budget, actor, authz.OpDeliveryReconcileOffline, authz.OpDeliveryReconcileOffline, scope, len(records), s.now)
 	if err != nil {
 		return ReconcileResult{}, err
 	}
@@ -814,7 +814,8 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 		}
 		keys = append(keys, key)
 		manifest = append(manifest, delivery.Row{
-			Key: entry.KeyName, Classification: entry.Classification, Value: resolved,
+			Key: entry.KeyName, Classification: entry.Classification,
+			Occurrence: entry.ValueEntryID, Value: resolved,
 		})
 	}
 	// The PINNED schema revision, not the live one: what this snapshot was

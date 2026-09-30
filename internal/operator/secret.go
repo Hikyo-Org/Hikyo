@@ -178,7 +178,8 @@ func dataEqual(a, b map[string][]byte) bool {
 		return false
 	}
 	for k, v := range a {
-		if !bytes.Equal(v, b[k]) {
+		other, ok := b[k]
+		if !ok || !bytes.Equal(v, other) {
 			return false
 		}
 	}

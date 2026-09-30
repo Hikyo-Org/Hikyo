@@ -18,11 +18,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/jackc/pgx/v5/pgconn"
+	"modernc.org/sqlite"
 )
 
 // RestoreState is the instance's restore posture.
@@ -166,6 +169,47 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 		return fmt.Errorf("authn: invalidate restored dynamic provider credentials: %w", err)
 	}
 	return nil
+}
+
+// InvalidateRestoredExternalCredentials destroys every restored credential
+// whose verifier lives outside this instance's epoch boundary.
+func (r *Resolver) InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error {
+	if r.sq != nil {
+		at := encodeTime(now)
+		if err := r.sq.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oidc_providers") {
+			return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+		}
+		if err := r.sq.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oauth2_providers") {
+			return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+		}
+		if err := r.sq.DeleteRestoredRemotes(ctx); err != nil && !missingRestoreTable(err, "remotes") {
+			return fmt.Errorf("authn: delete restored remotes: %w", err)
+		}
+		return nil
+	}
+	at := pgTimestamp(now)
+	if err := r.pg.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oidc_providers") {
+		return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+	}
+	if err := r.pg.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil && !missingRestoreTable(err, "oauth2_providers") {
+		return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+	}
+	if err := r.pg.DeleteRestoredRemotes(ctx); err != nil && !missingRestoreTable(err, "remotes") {
+		return fmt.Errorf("authn: delete restored remotes: %w", err)
+	}
+	return nil
+}
+
+// missingRestoreTable accepts only an absent table while reconciling an older
+// archive before its migrations run. An archive predating a table cannot carry
+// credentials in it; every other datastore error remains fatal.
+func missingRestoreTable(err error, table string) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "42P01" && (pgErr.TableName == table || strings.Contains(pgErr.Message, `relation "`+table+`" does not exist`))
+	}
+	var sqliteErr *sqlite.Error
+	return errors.As(err, &sqliteErr) && strings.Contains(sqliteErr.Error(), "no such table: "+table)
 }
 
 // HoldRestoredPKIIssuers suspends minting on every restored CA issuer (#154,

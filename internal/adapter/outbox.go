@@ -14,6 +14,10 @@ const (
 	LeaseTime  = 2 * time.Minute
 )
 
+func JobKinds() []JobKind {
+	return []JobKind{Converge, Scrub, Activate}
+}
+
 type JobKind string
 
 const (

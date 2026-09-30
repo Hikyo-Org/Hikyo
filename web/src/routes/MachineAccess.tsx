@@ -1723,6 +1723,19 @@ export function carriedClaims(
     .map(toRequestPin);
 }
 
+export function unsafeNumericClaim(credential: MachineCredential): string | null {
+  for (const pin of credential.required_claims ?? []) {
+    if (
+      pin.number_value !== undefined &&
+      (pin.number_value > BigInt(Number.MAX_SAFE_INTEGER) ||
+        pin.number_value < BigInt(Number.MIN_SAFE_INTEGER))
+    ) {
+      return pin.claim;
+    }
+  }
+  return null;
+}
+
 /**
  * toRequestPin converts one READ-shape pin (whose `number_value` is a bigint)
  * to the REQUEST shape (a plain number). The int64→number narrowing is the
@@ -1735,6 +1748,12 @@ function toRequestPin(pin: ClaimPin): FederatedClaimPin {
     return { claim: pin.claim, string_value: pin.string_value };
   }
   if (pin.number_value !== undefined) {
+    if (
+      pin.number_value > BigInt(Number.MAX_SAFE_INTEGER) ||
+      pin.number_value < BigInt(Number.MIN_SAFE_INTEGER)
+    ) {
+      throw new Error('numeric claim cannot be represented exactly by the browser contract');
+    }
     return { claim: pin.claim, number_value: Number(pin.number_value) };
   }
   if (pin.bool_value !== undefined) {
@@ -2034,9 +2053,10 @@ export function BindingDialog({
   // pinned; a fresh binding starts on Kubernetes. The account is locked to the
   // row the replace was launched from, because a binding belongs to one.
   const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
+  const unsafeClaim = replaces === undefined ? null : unsafeNumericClaim(replaces);
   // Predecessor pins no form field renders, carried verbatim so a replacement
   // never silently drops an identity constraint the form could not show.
-  const carried = replaces === undefined ? [] : carriedClaims(seedPreset, replaces);
+  const carried = replaces === undefined || unsafeClaim !== null ? [] : carriedClaims(seedPreset, replaces);
   const [account, setAccount] = useState(initial.id);
   const [preset, setPreset] = useState<FederationPreset>(seedPreset);
   const [issuer, setIssuer] = useState(replaces?.issuer ?? seedPreset.issuer);
@@ -2098,6 +2118,12 @@ export function BindingDialog({
   };
 
   const submit = async () => {
+    if (unsafeClaim !== null) {
+      setFailure(
+        `Claim ${unsafeClaim} is outside the browser's exact integer range. Replace this binding with the CLI so its constraint is not rounded.`,
+      );
+      return;
+    }
     if (refusal !== null && !deliberate) {
       setFailure(
         'This binding pins a pull-request event. Acknowledge deliberately below, or pin another event.',
@@ -2205,7 +2231,7 @@ export function BindingDialog({
           <Button type="button" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" type="button" disabled={busy} onClick={() => void submit()}>
+          <Button variant="primary" type="button" disabled={busy || unsafeClaim !== null} onClick={() => void submit()}>
             {busy
               ? replacing
                 ? 'Replacing…'
@@ -2221,7 +2247,13 @@ export function BindingDialog({
           form as submitted, so nothing here may change until it resolves,
           otherwise the success or failure sentence describes one account while
           the operator is looking at another. */}
-      <fieldset className="machine__lock" disabled={busy}>
+      {unsafeClaim === null ? null : (
+        <Alert>
+          Claim <code>{unsafeClaim}</code> is outside the browser&apos;s exact integer range. Use the
+          CLI to replace this binding without rounding its authentication constraint.
+        </Alert>
+      )}
+      <fieldset className="machine__lock" disabled={busy || unsafeClaim !== null}>
       {replacing ? null : (
         <div className="machine__presets">
           {FEDERATION_PRESETS.map((entry) => (
@@ -2651,7 +2683,7 @@ function GrantBody({
     } catch (error) {
       if (issued) {
         refreshGrants();
-        setFailure(grantFailureText(error));
+        setFailure(grantFailureText(error, { operation: 'create', scope: 'environment' }));
       } else {
         setFailure(identityRefusalText(error));
       }

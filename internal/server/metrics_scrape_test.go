@@ -187,8 +187,9 @@ func TestMCPMetricsAndAccessLogsUseOnlyClosedLabels(t *testing.T) {
 	}
 
 	operational := httptest.NewRecorder()
-	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational,
-		httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	metricsRequest := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRequest.RemoteAddr = "127.0.0.1:1234"
+	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational, metricsRequest)
 	body := operational.Body.String()
 	mustContain(t, body, "# TYPE "+server.MetricMCPRequestsTotal+" counter")
 	mustContain(t, body, "# TYPE "+server.MetricMCPRequestsInFlight+" gauge")
@@ -219,12 +220,33 @@ func TestMCPMetricsRecoverAndRecordPanicsWithoutLoggingPanicValue(t *testing.T) 
 	}
 
 	operational := httptest.NewRecorder()
-	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational,
-		httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	metricsRequest := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRequest.RemoteAddr = "127.0.0.1:1234"
+	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational, metricsRequest)
 	body := operational.Body.String()
 	mustContain(t, body, server.MetricMCPRequestsTotal+`{method="tools/call",status="5xx",tool="hikyo_list_definitions"} 1`)
 	if strings.Contains(logs.String(), "tenant-secret-value") {
 		t.Fatal("MCP panic value reached the access log")
+	}
+}
+
+func TestOperationalMetricsRefuseNonLoopbackClients(t *testing.T) {
+	handler := server.NewOperational(nil, stubRetentionHealth{}, server.NewMetrics(nil))
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.RemoteAddr = "192.0.2.25:4321"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-loopback metrics = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+
+	// Node-originated liveness remains available on the operational listener.
+	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.RemoteAddr = "192.0.2.25:4321"
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("non-loopback health = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 

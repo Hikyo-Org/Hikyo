@@ -1,6 +1,8 @@
 package samlsp
 
 import (
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
@@ -24,6 +26,7 @@ var (
 	ErrMetadataSigningCertificate = errors.New("samlsp: metadata has no usable assertion-signing certificate")
 	ErrMetadataValidUntil         = errors.New("samlsp: invalid metadata validUntil")
 	ErrMetadataSignature          = errors.New("samlsp: invalid metadata signature")
+	ErrMetadataCertificateKey     = errors.New("samlsp: metadata certificate uses a weak or unsupported public key")
 )
 
 // Metadata is the provider material extracted from one bounded etree. When a
@@ -253,5 +256,33 @@ func parseMetadataCertificate(encoded string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x509.ParseCertificate(der)
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateMetadataCertificateKey(certificate); err != nil {
+		return nil, err
+	}
+	return certificate, nil
+}
+
+func validateMetadataCertificateKey(certificate *x509.Certificate) error {
+	switch key := certificate.PublicKey.(type) {
+	case *rsa.PublicKey:
+		if key.N == nil || key.N.BitLen() < 2048 {
+			return ErrMetadataCertificateKey
+		}
+	case *ecdsa.PublicKey:
+		if key.Curve == nil || key.Curve.Params() == nil {
+			return ErrMetadataCertificateKey
+		}
+		switch key.Curve.Params().Name {
+		case "P-256", "P-384", "P-521":
+		default:
+			return ErrMetadataCertificateKey
+		}
+	default:
+		return ErrMetadataCertificateKey
+	}
+	return nil
 }

@@ -24,9 +24,8 @@ import (
 //     path stat a rename could race between check and use.
 //   - os.OpenRoot follows a symlinked ROOT path (the root itself is not confined
 //     — only lookups WITHIN it are), so after OpenRoot succeeds we os.Lstat the
-//     path once and refuse a symlink. That Lstat comes AFTER the open, so a race
-//     can only cause a spurious refusal, never a spurious acceptance — the fd we
-//     actually use is already pinned.
+//     path, refuse a symlink, and require os.SameFile with root.Stat("."). The
+//     descriptor and checked pathname therefore identify the same directory.
 //   - local.key is opened O_RDONLY|O_NOFOLLOW and its mode/owner/regularity read
 //     from that fd (f.Stat()); there is no Lstat→open gap. An escaping symlink is
 //     refused by os.Root itself ("path escapes"); an in-root, non-escaping key
@@ -61,8 +60,8 @@ func loadOrCreateMasterKey(dir string) ([]byte, error) {
 func openStateDir(dir string) (*os.Root, error) {
 	// Create parents permissively, then the leaf itself with os.Mkdir so a
 	// successful create is distinguishable from a pre-existing dir: only a dir we
-	// just created is chmod'd (to counter umask); an existing one is verified and
-	// refused if loose, never silently repaired.
+	// just created is distinguishable from a pre-existing dir. Mode 0700 has no
+	// group/other bits for umask to widen, so no path-based chmod is needed.
 	if parent := filepath.Dir(dir); parent != dir {
 		if err := os.MkdirAll(parent, 0o700); err != nil {
 			return nil, fmt.Errorf("crypto: create state dir parents %s: %w", parent, err)
@@ -70,9 +69,6 @@ func openStateDir(dir string) (*os.Root, error) {
 	}
 	switch err := os.Mkdir(dir, 0o700); {
 	case err == nil:
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return nil, fmt.Errorf("crypto: chmod state dir %s: %w", dir, err)
-		}
 	case errors.Is(err, os.ErrExist):
 		// Pre-existing: verified below, never repaired.
 	default:
@@ -85,7 +81,8 @@ func openStateDir(dir string) (*os.Root, error) {
 	}
 	// os.OpenRoot follows a symlinked root path; refuse a symlinked state dir with
 	// a single post-open Lstat (see file header: post-open ⇒ no acceptance race).
-	if li, err := os.Lstat(dir); err != nil {
+	li, err := os.Lstat(dir)
+	if err != nil {
 		root.Close()
 		return nil, fmt.Errorf("crypto: lstat state dir %s: %w", dir, err)
 	} else if li.Mode()&os.ModeSymlink != 0 {
@@ -100,6 +97,10 @@ func openStateDir(dir string) (*os.Root, error) {
 	if !info.IsDir() {
 		root.Close()
 		return nil, fmt.Errorf("crypto: state path %s is not a directory", dir)
+	}
+	if !os.SameFile(li, info) {
+		root.Close()
+		return nil, fmt.Errorf("crypto: state dir %s changed while it was opened; refusing", dir)
 	}
 	if perm := info.Mode().Perm(); perm != 0o700 {
 		root.Close()

@@ -29,6 +29,7 @@ import {
   useRevokeGrant,
   whoCan,
   type GrantOutcomeView,
+  type GrantFailureContext,
   type IssuedAuthority,
   type Names,
   type ScopeOption,
@@ -355,7 +356,10 @@ export function Members({ scope }: { scope: MembersScope }) {
           );
           feedback.ok(revokeOutcomeText(grant, survivor, names));
         },
-        onError: feedback.report,
+        onError: (error) => feedback.report(new GrantRefusal(error, {
+          operation: 'revoke',
+          scope: scopeOf(grant).kind,
+        })),
       },
     );
   };
@@ -722,6 +726,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           world={world}
           rule={editing.draft}
           projects={askable}
+          actingPrincipal={me}
           busy={ruleMutations.save.isPending || ruleMutations.remove.isPending}
           failure={editorFailure}
           onCancel={() => setEditing(null)}
@@ -1052,8 +1057,15 @@ class RuleRefusal extends Error {
   }
 }
 
+class GrantRefusal extends Error {
+  constructor(cause: unknown, context: GrantFailureContext) {
+    super(grantFailureText(cause, context), { cause });
+    this.name = 'GrantRefusal';
+  }
+}
+
 function membersFailureText(error: unknown): string {
-  return error instanceof ResetRefusal || error instanceof RuleRefusal ? error.message : grantFailureText(error);
+  return error instanceof ResetRefusal || error instanceof RuleRefusal || error instanceof GrantRefusal ? error.message : grantFailureText(error);
 }
 
 function principalLabel(principal: string, grants: readonly Grant[]): string {
@@ -1214,7 +1226,7 @@ function GrantModal({
             ),
           onError: (error) => {
             onStage('grant');
-            setFailure(grantFailureText(error));
+            setFailure(grantFailureText(error, { operation: 'create', scope: scope.kind }));
           },
         },
       );
@@ -1256,7 +1268,7 @@ function GrantModal({
           const widened = wideningEnvironment(cause);
           if (widened === null) {
             onStage('grant');
-            setFailure(refused(capability, grantFailureText(cause)));
+            setFailure(refused(capability, grantFailureText(cause, { operation: 'create', scope: scope.kind })));
             return;
           }
           if (reauthenticated.has(widened)) {
@@ -1271,7 +1283,7 @@ function GrantModal({
             await runPasskeyCeremony({ operation: 'mint', environmentId: widened, keyIds: [] });
           } catch (ceremonyError) {
             onStage('grant');
-            setFailure(refused(capability, grantFailureText(ceremonyError)));
+            setFailure(refused(capability, grantFailureText(ceremonyError, { operation: 'create', scope: scope.kind })));
             return;
           }
         }

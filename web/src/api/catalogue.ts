@@ -14,6 +14,7 @@ import {
 } from '@hikyo/operations';
 import { zFolderList, zKeyGroupList } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import type { z } from 'zod';
 
 import { ApiError, ok, parsed, type RefusalFinding } from './client.ts';
@@ -26,7 +27,8 @@ import {
   type MatrixRef,
 } from './keys.ts';
 import { keyMetadataRefusalText } from './matrix.ts';
-import { useTransport } from './transport.tsx';
+import { useTransport, useWorkspaceContext } from './transport.tsx';
+import { isCurrentWorkspaceSession, workspaceSession, WorkspaceError } from './workspace.ts';
 
 /**
  * The declaration-catalogue writes #493 adds on top of #491's read/metadata
@@ -178,15 +180,28 @@ export type FolderMoveOutcome = {
 export function useMoveKeysToFolders(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
+  const workspace = useWorkspaceContext();
+  const live = useRef(true);
+  useEffect(() => () => {
+    live.current = false;
+  }, []);
   return useMutation({
     mutationFn: async (input: {
       readonly moves: readonly FolderMove[];
       readonly existingFolders: readonly string[];
     }): Promise<readonly FolderMoveOutcome[]> => {
+      const initiatingSession = workspace === null ? undefined : workspaceSession(workspace.origin);
+      const assertCurrent = (): void => {
+        if (!live.current || (workspace !== null && (initiatingSession === undefined || !isCurrentWorkspaceSession(initiatingSession)))) {
+          throw new WorkspaceError('This cleanup stopped because its workspace session ended or was replaced. Run Cleanup again after reconnecting.');
+        }
+      };
+      assertCurrent();
       const known = new Set(input.existingFolders);
       const outcomes: FolderMoveOutcome[] = [];
       let exhausted: string | null = null;
       for (const move of input.moves) {
+        assertCurrent();
         if (exhausted !== null) {
           outcomes.push({ id: move.id, error: exhausted });
           continue;
@@ -194,9 +209,11 @@ export function useMoveKeysToFolders(ref: MatrixRef) {
         try {
           if (move.folder !== '' && !known.has(move.folder)) {
             await createFolderTolerant(transport, ref, move.folder);
+            assertCurrent();
             known.add(move.folder);
           }
         } catch (error) {
+          assertCurrent();
           outcomes.push({ id: move.id, error: catalogueRefusalText(error, 'create the folder') });
           continue;
         }
@@ -211,8 +228,10 @@ export function useMoveKeysToFolders(ref: MatrixRef) {
             },
             ...transport,
           });
+          assertCurrent();
           outcomes.push({ id: move.id, error: null });
         } catch (error) {
+          assertCurrent();
           // Only the PATCH is a schema revision, so only its 429 is the
           // budget; a throttled folder create is reported as that.
           if (error instanceof ApiError && error.status === 429) {

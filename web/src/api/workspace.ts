@@ -1,8 +1,13 @@
-import { zMeta, zSessionList, zWorkspaceHandoffStarted, zWorkspaceSession } from '@hikyo/zod';
-import { useSyncExternalStore } from 'react';
-import type { ZodType } from 'zod';
+import {
+  zMeta,
+  zSessionList,
+  zWorkspaceHandoffStarted,
+  zWorkspaceSession,
+} from "@hikyo/zod";
+import { useSyncExternalStore } from "react";
+import type { ZodType } from "zod";
 
-import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
+import { assertSessionEpoch, captureSessionEpoch } from "./sessionEpoch.ts";
 
 /**
  * The workspace tier's CROSS-ORIGIN half (#71, multi-instance ADR § The handoff
@@ -15,7 +20,7 @@ import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
  * therefore load-bearing, not tidiness.
  *
  * The structural rule everything below obeys: THE BROWSER TALKS TO THE REMOTE
- * DIRECTLY. This module never asks its own server about another instance, 
+ * DIRECTLY. This module never asks its own server about another instance,
  * there is no endpoint that would answer, and `api/noproxy_test.go` is what
  * keeps it that way.
  *
@@ -79,15 +84,21 @@ export function workspaceBearer(origin: string): WorkspaceBearer | undefined {
 }
 
 /** Captures the aggregate identity an asynchronous workspace request belongs to. */
-export function workspaceSession(origin: string): WorkspaceSessionReference | undefined {
+export function workspaceSession(
+  origin: string,
+): WorkspaceSessionReference | undefined {
   return workspaceSessions.get(origin);
 }
 
-function isCurrentWorkspaceSession(session: WorkspaceSessionReference): boolean {
+export function isCurrentWorkspaceSession(
+  session: WorkspaceSessionReference,
+): boolean {
   return workspaceSessions.get(session.bearer.origin)?.epoch === session.epoch;
 }
 
-function workspaceSessionFor(bearer: WorkspaceBearer): WorkspaceSessionState | undefined {
+function workspaceSessionFor(
+  bearer: WorkspaceBearer,
+): WorkspaceSessionState | undefined {
   const session = workspaceSessions.get(bearer.origin);
   if (
     session === undefined ||
@@ -174,7 +185,7 @@ export function useWorkspaces(): readonly WorkspaceBearer[] {
 /**
  * How often the shell asks the remote whether the workspace is still alive.
  *
- * This is the ADR's "expiry surfaces in the shell as session expired, 
+ * This is the ADR's "expiry surfaces in the shell as session expired,
  * reconnect", and it is also how the two server-side kill switches become
  * visible over here: de-allowlisting this origin and revoking the session in
  * the remote's own active-session list both take effect at the remote's next
@@ -194,22 +205,25 @@ export const livenessPollMs = LIVENESS_POLL_MS;
  * too, keeping a value the remote has already forgotten would let the card
  * claim a workspace that is not there.
  */
-export async function probeWorkspace(bearer: WorkspaceBearer): Promise<boolean> {
+export async function probeWorkspace(
+  bearer: WorkspaceBearer,
+): Promise<boolean> {
   const session = workspaceSessionFor(bearer);
   if (session === undefined) {
     return false;
   }
+  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(`${bearer.origin}/api/v1/me/sessions`, {
-      mode: 'cors',
-      credentials: 'omit',
+      mode: "cors",
+      credentials: "omit",
       headers: { Authorization: `Bearer ${bearer.value}` },
       // A DEADLINE, because a hung fetch is worse than a failed one: without
       // it a single stalled probe never settles, and since the poll waits for
       // its predecessor no later probe ever runs. The workspace would then
       // survive forever on the strength of a request that never finished.
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      signal,
     });
   } catch {
     // An opaque failure, and the shell cannot see which kind: a remote that is
@@ -223,7 +237,7 @@ export async function probeWorkspace(bearer: WorkspaceBearer): Promise<boolean> 
     // card must not do.
     return strike(session);
   }
-  // Only a 401 is the session dying (revoked, expired, origin-binding mismatch, 
+  // Only a 401 is the session dying (revoked, expired, origin-binding mismatch,
   // all ErrUnauthenticated).
   if (response.status === 401) {
     dropWorkspaceSession(session);
@@ -241,7 +255,7 @@ export async function probeWorkspace(bearer: WorkspaceBearer): Promise<boolean> 
   }
   // ONLY A WELL-FORMED SUCCESS CLEARS THE STRIKE COUNT. Anything else is a
   // strike: a 404 or a 500 is not this endpoint answering, and a 200 carrying
-  // HTML is something in the path, a captive portal, a proxy error page, 
+  // HTML is something in the path, a captive portal, a proxy error page,
   // that is not the remote at all. Treating those as "alive" is how the card
   // ends up claiming a workspace nobody can use, which is the exact failure the
   // strike counter exists to prevent.
@@ -249,7 +263,13 @@ export async function probeWorkspace(bearer: WorkspaceBearer): Promise<boolean> 
     return strike(session);
   }
   try {
-    zSessionList.parse(await response.json());
+    zSessionList.parse(
+      await readBoundedWorkspaceJSON(
+        response,
+        signal,
+        WORKSPACE_CONTROL_RESPONSE_MAX_BYTES,
+      ),
+    );
   } catch {
     return strike(session);
   }
@@ -273,7 +293,7 @@ const PROBE_TIMEOUT_MS = 4_000;
 export class WorkspaceError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'WorkspaceError';
+    this.name = "WorkspaceError";
   }
 }
 
@@ -289,6 +309,12 @@ export class WorkspaceError extends Error {
  * forever is the one state the launcher must never sit in.
  */
 export const HANDOFF_REQUEST_TIMEOUT_MS = 15_000;
+
+/** Small control-plane responses must never be able to exhaust the viewer. */
+export const WORKSPACE_CONTROL_RESPONSE_MAX_BYTES = 256 * 1024;
+
+/** Ordinary workspace API responses are bounded before the generated parser sees them. */
+export const WORKSPACE_DATA_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 
 /** The caller-owned half of a handoff request: disposal, supersession, retry. */
 export type HandoffRequest = { readonly signal: AbortSignal };
@@ -307,9 +333,86 @@ function abortable<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
       return;
     }
     const onAbort = () => reject(signal.reason);
-    signal.addEventListener('abort', onAbort, { once: true });
-    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+    signal.addEventListener("abort", onAbort, { once: true });
+    work
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", onAbort));
   });
+}
+
+function declaredResponseLength(response: Response): number | undefined {
+  const value = response.headers.get("Content-Length");
+  if (value === null) {
+    return undefined;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new WorkspaceError("The remote returned an invalid Content-Length.");
+  }
+  const length = Number(value);
+  if (!Number.isSafeInteger(length)) {
+    throw new WorkspaceError("The remote response is too large.");
+  }
+  return length;
+}
+
+/**
+ * Read a foreign response without ever allocating from attacker-declared size.
+ * The streaming ceiling also covers chunked responses that omit Content-Length.
+ */
+export async function readBoundedWorkspaceBody(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes: number,
+): Promise<ArrayBuffer> {
+  const declared = declaredResponseLength(response);
+  if (declared !== undefined && declared > maxBytes) {
+    throw new WorkspaceError(`The remote response exceeded ${maxBytes} bytes.`);
+  }
+  if (response.body === null) {
+    return new ArrayBuffer(0);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await abortable(signal, reader.read());
+      if (done) {
+        break;
+      }
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new WorkspaceError(
+          `The remote response exceeded ${maxBytes} bytes.`,
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    void reader.cancel(error).catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body.buffer;
+}
+
+async function readBoundedWorkspaceJSON(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes: number,
+): Promise<unknown> {
+  const body = await readBoundedWorkspaceBody(response, signal, maxBytes);
+  return JSON.parse(new TextDecoder().decode(body));
 }
 
 /**
@@ -346,12 +449,15 @@ async function remoteJSON<T>(
   let response: Response;
   try {
     response = await fetch(origin + path, {
-      method: request.body === undefined ? 'GET' : 'POST',
-      mode: 'cors',
+      method: request.body === undefined ? "GET" : "POST",
+      mode: "cors",
       // The bearer is a header, so nothing ambient may travel. Omitting
       // credentials is what keeps the remote's CORS out of credentials mode.
-      credentials: 'omit',
-      headers: request.body === undefined ? {} : { 'Content-Type': 'application/json' },
+      credentials: "omit",
+      headers:
+        request.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" },
       body: request.body === undefined ? null : JSON.stringify(request.body),
       signal,
     });
@@ -367,7 +473,11 @@ async function remoteJSON<T>(
   }
   let body: unknown;
   try {
-    body = await abortable(signal, response.json());
+    body = await readBoundedWorkspaceJSON(
+      response,
+      signal,
+      WORKSPACE_CONTROL_RESPONSE_MAX_BYTES,
+    );
   } catch (error) {
     if (signal.aborted) {
       throw failed();
@@ -381,15 +491,18 @@ async function remoteJSON<T>(
  * assertCompatible performs the LIVE pre-auth meta read the ADR requires before
  * establishing or resuming a workspace.
  */
-export async function assertCompatible(origin: string, request: HandoffRequest): Promise<void> {
+export async function assertCompatible(
+  origin: string,
+  request: HandoffRequest,
+): Promise<void> {
   // The live protection is right here in `remoteJSON`: a remote that is
   // unreachable, refuses this origin, or serves a meta that does not PARSE as
   // this protocol throws, and the caller refuses the workspace. The numeric
-  // check below is the second half, the per-operation minimum-revision gate, 
+  // check below is the second half, the per-operation minimum-revision gate,
   // and it is dormant while this shell's floor equals the meta contract's own
   // (`zMeta` already rejects a revision below 1). It becomes live the day a
   // future operation raises `WORKSPACE_MIN_API_REVISION` above that floor.
-  const meta = await remoteJSON(origin, '/api/v1/meta', zMeta, request);
+  const meta = await remoteJSON(origin, "/api/v1/meta", zMeta, request);
   if (meta.api_revision < WORKSPACE_MIN_API_REVISION) {
     throw new WorkspaceError(
       `${origin} serves API revision ${meta.api_revision}; this shell needs at least ` +
@@ -402,11 +515,14 @@ export async function assertCompatible(origin: string, request: HandoffRequest):
 // --- PKCE (RFC 7636, S256) ---------------------------------------------------
 
 function base64url(bytes: Uint8Array): string {
-  let binary = '';
+  let binary = "";
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 function newVerifier(): string {
@@ -414,16 +530,19 @@ function newVerifier(): string {
 }
 
 async function challengeFor(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier),
+  );
   return base64url(new Uint8Array(digest));
 }
 
 // --- the ceremony ------------------------------------------------------------
 
 /** The path the viewing UI's own callback page is served at. */
-const CALLBACK_PATH = '/workspace/callback';
+const CALLBACK_PATH = "/workspace/callback";
 /** The path a serving instance's authorization page is served at. */
-const APPROVE_PATH = '/workspace/approve';
+const APPROVE_PATH = "/workspace/approve";
 
 /** channelName is the nonce-named BroadcastChannel for one transaction. */
 export function channelName(state: string): string {
@@ -454,7 +573,11 @@ function awaitFrontChannel(
     const listening = new AbortController();
     const timer = setTimeout(() => {
       settle();
-      reject(new WorkspaceError('The sign-in window was closed or timed out. Try again.'));
+      reject(
+        new WorkspaceError(
+          "The sign-in window was closed or timed out. Try again.",
+        ),
+      );
     }, timeoutMs);
     const settle = () => {
       clearTimeout(timer);
@@ -465,7 +588,7 @@ function awaitFrontChannel(
     // that is gone has nobody to hand the code to. The deadline stays the
     // ceremony's own; this signal carries no timeout.
     signal.addEventListener(
-      'abort',
+      "abort",
       () => {
         settle();
         reject(signal.reason);
@@ -493,12 +616,17 @@ function awaitFrontChannel(
  * not match yields null instead of a half-populated object.
  */
 function frontChannelMessage(data: unknown): FrontChannelResult | null {
-  if (typeof data !== 'object' || data === null) {
+  if (typeof data !== "object" || data === null) {
     return null;
   }
   const record: Record<string, unknown> = { ...data };
   const { code, state } = record;
-  if (typeof code !== 'string' || typeof state !== 'string' || code === '' || state === '') {
+  if (
+    typeof code !== "string" ||
+    typeof state !== "string" ||
+    code === "" ||
+    state === ""
+  ) {
     return null;
   }
   return { code, state };
@@ -540,9 +668,12 @@ function assertHandoffOwner(owner: HandoffOwner): void {
   assertSessionEpoch(owner.sessionEpoch);
   if (
     owner.epoch !== workspaceOwnerEpoch ||
-    (owner.stepUpSession !== undefined && !isCurrentWorkspaceSession(owner.stepUpSession))
+    (owner.stepUpSession !== undefined &&
+      !isCurrentWorkspaceSession(owner.stepUpSession))
   ) {
-    throw new WorkspaceError('The session changed during workspace sign-in. Try again.');
+    throw new WorkspaceError(
+      "The session changed during workspace sign-in. Try again.",
+    );
   }
 }
 
@@ -557,7 +688,8 @@ export type StepUpParams = {
   /** The workspace session being elevated. A step-up NEVER mints a second one. */
   readonly session: string;
   /** What the reauthentication authorizes, as the reveal endpoint consumes it. */
-  readonly operation: 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass';
+  readonly operation:
+    "reveal" | "copy" | "publish" | "approve" | "reject" | "bypass";
   /** The environment the elevation covers. */
   readonly environment: string;
   /** The enumerated key unit the elevation covers. */
@@ -579,12 +711,22 @@ export async function prepareWorkspace(
   request: HandoffRequest & { readonly stepUp?: StepUpParams },
 ): Promise<PreparedWorkspace> {
   const { signal, stepUp } = request;
-  const stepUpSession = stepUp === undefined ? undefined : workspaceSession(origin);
-  if (stepUp !== undefined && stepUpSession?.bearer.session !== stepUp.session) {
-    throw new WorkspaceError('The workspace session changed. Reconnect before trying again.');
+  const stepUpSession =
+    stepUp === undefined ? undefined : workspaceSession(origin);
+  if (
+    stepUp !== undefined &&
+    stepUpSession?.bearer.session !== stepUp.session
+  ) {
+    throw new WorkspaceError(
+      "The workspace session changed. Reconnect before trying again.",
+    );
   }
   const sessionEpoch = captureSessionEpoch();
-  const owner: HandoffOwner = { epoch: workspaceOwnerEpoch, sessionEpoch, stepUpSession };
+  const owner: HandoffOwner = {
+    epoch: workspaceOwnerEpoch,
+    sessionEpoch,
+    stepUpSession,
+  };
   await assertCompatible(origin, { signal });
   assertHandoffOwner(owner);
 
@@ -597,19 +739,24 @@ export async function prepareWorkspace(
   assertHandoffOwner(owner);
   const body =
     stepUp === undefined
-      ? { ...base, purpose: 'establishment' as const }
+      ? { ...base, purpose: "establishment" as const }
       : {
           ...base,
-          purpose: 'step-up' as const,
+          purpose: "step-up" as const,
           session: stepUp.session,
           operation: stepUp.operation,
           environment: stepUp.environment,
           key_set: [...stepUp.keySet],
         };
-  const started = await remoteJSON(origin, '/api/v1/auth/workspace/start', zWorkspaceHandoffStarted, {
-    signal,
-    body,
-  });
+  const started = await remoteJSON(
+    origin,
+    "/api/v1/auth/workspace/start",
+    zWorkspaceHandoffStarted,
+    {
+      signal,
+      body,
+    },
+  );
   assertHandoffOwner(owner);
   // The approve URL carries only STATE. Purpose, operation, environment and the
   // enumerated key set are bound in the remote's own transaction row and read
@@ -617,8 +764,13 @@ export async function prepareWorkspace(
   // could select the wrong ceremony; putting the key set here would additionally
   // cap reveal-all at the browser's URL length.
   const approve = new URL(`${origin}${APPROVE_PATH}`);
-  approve.searchParams.set('state', started.state);
-  const prepared = { origin, state: started.state, verifier, approveURL: approve.toString() };
+  approve.searchParams.set("state", started.state);
+  const prepared = {
+    origin,
+    state: started.state,
+    verifier,
+    approveURL: approve.toString(),
+  };
   handoffOwners.set(prepared, owner);
   return prepared;
 }
@@ -643,20 +795,37 @@ export async function openPrepared(
 ): Promise<WorkspaceBearer> {
   const owner = handoffOwners.get(prepared);
   if (owner === undefined) {
-    throw new WorkspaceError('This workspace sign-in is no longer available. Try again.');
+    throw new WorkspaceError(
+      "This workspace sign-in is no longer available. Try again.",
+    );
   }
   assertHandoffOwner(owner);
   handoffOwners.delete(prepared);
-  const waiting = awaitFrontChannel(prepared.state, CEREMONY_TIMEOUT_MS, signal);
-  globalThis.open(prepared.approveURL, '_blank', 'noopener,popup=yes,width=520,height=680');
+  const waiting = awaitFrontChannel(
+    prepared.state,
+    CEREMONY_TIMEOUT_MS,
+    signal,
+  );
+  globalThis.open(
+    prepared.approveURL,
+    "_blank",
+    "noopener,popup=yes,width=520,height=680",
+  );
   const { code } = await waiting;
   assertHandoffOwner(owner);
 
   const session = await remoteJSON(
     prepared.origin,
-    '/api/v1/auth/workspace/redeem',
+    "/api/v1/auth/workspace/redeem",
     zWorkspaceSession,
-    { signal, body: { code, pkce_verifier: prepared.verifier, origin: globalThis.location.origin } },
+    {
+      signal,
+      body: {
+        code,
+        pkce_verifier: prepared.verifier,
+        origin: globalThis.location.origin,
+      },
+    },
   );
   const bearer: WorkspaceBearer = {
     origin: prepared.origin,
@@ -681,15 +850,20 @@ export async function openPrepared(
   return bearer;
 }
 
-async function revokeDiscardedWorkspace(bearer: WorkspaceBearer): Promise<void> {
+async function revokeDiscardedWorkspace(
+  bearer: WorkspaceBearer,
+): Promise<void> {
   try {
-    await fetch(`${bearer.origin}/api/v1/me/sessions/${encodeURIComponent(bearer.session)}`, {
-      method: 'DELETE',
-      mode: 'cors',
-      credentials: 'omit',
-      headers: { Authorization: `Bearer ${bearer.value}` },
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
+    await fetch(
+      `${bearer.origin}/api/v1/me/sessions/${encodeURIComponent(bearer.session)}`,
+      {
+        method: "DELETE",
+        mode: "cors",
+        credentials: "omit",
+        headers: { Authorization: `Bearer ${bearer.value}` },
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      },
+    );
   } catch {
     // Local rejection is unconditional; remote cleanup is best effort because
     // a disconnected or de-allowlisting remote cannot be reached by this shell.

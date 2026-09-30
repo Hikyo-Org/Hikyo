@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/lint"
@@ -78,13 +79,17 @@ func TestInvariant01ClassificationTotality(t *testing.T) {
 		}
 	}
 
-	// Outbox job types and SSE emit sites: the registries are the wire
-	// table's "job:" and "sse:" key spaces, empty today. When the outbox
-	// (#65) or SSE (#51) land, their type registries join this enumeration.
+	for _, kind := range adapter.JobKinds() {
+		key := "job:" + string(kind)
+		seen[key] = true
+		if _, classified := wire[key]; !classified {
+			t.Errorf("outbox job %q has no probe classification", key)
+		}
+	}
 
 	// No stale wire entries: everything classified must exist.
 	for key, class := range wire {
-		if strings.HasPrefix(key, "http:") || strings.HasPrefix(key, "cli:") {
+		if strings.HasPrefix(key, "http:") || strings.HasPrefix(key, "cli:") || strings.HasPrefix(key, "job:") {
 			if !seen[key] {
 				t.Errorf("wire registry entry %q matches no live route or verb", key)
 			}

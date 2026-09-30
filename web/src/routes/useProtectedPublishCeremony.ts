@@ -107,7 +107,9 @@ export function useProtectedPublishCeremony(
           await advance(remaining.slice(1));
           return;
         }
-        if (window.live && !window.single_decision) {
+        // Workspace windows are bound to one exact operation and key set.
+        // Their liveness alone never proves that they cover this next act.
+        if (window.live && !window.single_decision && transport.client === undefined) {
           await advance(remaining.slice(1));
           return;
         }

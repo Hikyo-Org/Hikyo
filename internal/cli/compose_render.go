@@ -84,7 +84,8 @@ func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags
 	}
 	// 2. Flush-before-fetch.
 	if err := stack.flushOffline(ctx); err != nil {
-		return false, stack, err
+		moved, offlineErr := stack.renderOffline(ctx, ios, lock, keys, snapshotBinding, err)
+		return moved, stack, offlineErr
 	}
 	// 3. Cursor: present it only when the full local eligibility test holds.
 	currentStamps, err := compose.CurrentStamps(stack.cfgDir)

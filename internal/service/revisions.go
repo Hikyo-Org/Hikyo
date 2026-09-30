@@ -62,6 +62,7 @@ type SnapshotKey struct {
 	KeyID          string
 	Name           string
 	Classification string
+	Sensitive      bool
 }
 
 // CellSignal is one `(key, environment)` cell's matrix signals.
@@ -228,6 +229,16 @@ func (s *Revisions) Show(ctx context.Context, actor Actor, scope domain.Scope, r
 		}
 		rows := make([]delivery.Row, 0, len(entries))
 		keys := make([]SnapshotKey, 0, len(entries))
+		valueEntryIDs := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			valueEntryIDs = append(valueEntryIDs, entry.ValueEntryID)
+		}
+		slices.Sort(valueEntryIDs)
+		valueEntryIDs = slices.Compact(valueEntryIDs)
+		stickySecrets, err := r.Snapshots().SecretValueOccurrenceIDsIn(ctx, p, valueEntryIDs)
+		if err != nil {
+			return err
+		}
 		for _, entry := range entries {
 			// The manifest is computed server-side over plaintext because the
 			// token must move when a VALUE moves. Nothing decrypted here
@@ -239,10 +250,12 @@ func (s *Revisions) Show(ctx context.Context, actor Actor, scope domain.Scope, r
 				return fmt.Errorf("service: snapshot entry %s: %w", entry.ID, err)
 			}
 			rows = append(rows, delivery.Row{
-				Key: entry.KeyName, Classification: entry.Classification, Value: string(plain),
+				Key: entry.KeyName, Classification: entry.Classification,
+				Occurrence: entry.ValueEntryID, Value: string(plain),
 			})
 			keys = append(keys, SnapshotKey{
 				KeyID: entry.KeyID, Name: entry.KeyName, Classification: entry.Classification,
+				Sensitive: entry.Classification == string(schema.Secret) || stickySecrets[entry.ValueEntryID],
 			})
 		}
 		token, err := s.Keyring.ChangeToken(string(scope.Org), string(scope.Project), string(scope.Env),
@@ -529,6 +542,22 @@ func (s *Revisions) ExportWithParameters(ctx context.Context, actor Actor, scope
 		if err != nil {
 			return revisionExportResult{}, err
 		}
+		keys, err := r.Catalogue().List(ctx, p)
+		if err != nil {
+			return revisionExportResult{}, err
+		}
+		currentSecrets := make(map[string]bool, len(keys))
+		for _, key := range keys {
+			currentSecrets[key.ID] = key.Classification == string(schema.Secret)
+		}
+		valueEntryIDs := make(map[string]struct{}, len(entries))
+		for _, entry := range entries {
+			valueEntryIDs[entry.ValueEntryID] = struct{}{}
+		}
+		stickySecrets, err := stickySecretValueEntries(ctx, r, p, valueEntryIDs)
+		if err != nil {
+			return revisionExportResult{}, err
+		}
 		contract, err := snapshotParameters(ctx, r.Snapshots(), p, snapshot, supplied)
 		if err != nil {
 			return revisionExportResult{}, err
@@ -536,7 +565,7 @@ func (s *Revisions) ExportWithParameters(ctx context.Context, actor Actor, scope
 		if reveal {
 			unit := make([]string, 0, len(entries))
 			for _, entry := range entries {
-				if entry.Classification == string(schema.Secret) {
+				if entry.Classification == string(schema.Secret) || currentSecrets[entry.KeyID] || stickySecrets[entry.ValueEntryID] {
 					unit = append(unit, entry.KeyID)
 				}
 			}
@@ -547,8 +576,13 @@ func (s *Revisions) ExportWithParameters(ctx context.Context, actor Actor, scope
 		}
 		renderBytes := 0
 		for _, entry := range entries {
-			value := ExportedValue{Name: entry.KeyName, Classification: entry.Classification}
-			if entry.Classification == string(schema.Config) || reveal {
+			sensitive := entry.Classification == string(schema.Secret) || currentSecrets[entry.KeyID] || stickySecrets[entry.ValueEntryID]
+			classification := entry.Classification
+			if sensitive {
+				classification = string(schema.Secret)
+			}
+			value := ExportedValue{Name: entry.KeyName, Classification: classification}
+			if !sensitive || reveal {
 				plain, err := sealer.OpenField(snapshotAAD(
 					entry.OrgID, entry.ProjectID, entry.EnvironmentID, entry.KeyID, entry.SnapshotID, entry.ID), entry.Ciphertext)
 				if err != nil {
@@ -565,7 +599,7 @@ func (s *Revisions) ExportWithParameters(ctx context.Context, actor Actor, scope
 				value.Value, value.Revealed = resolved, true
 			}
 			result.values = append(result.values, value)
-			if entry.Classification != string(schema.Secret) || !value.Revealed {
+			if !sensitive || !value.Revealed {
 				continue
 			}
 			ev, err := domainEvent(ctx, audit.EventValueRevealed, caller.Principal,
@@ -667,7 +701,7 @@ func (s *Revisions) RotateTokenKey(ctx context.Context, actor Actor) (TokenKeyRo
 		}
 		return r.Audit().InsertInstance(ctx, p, ev)
 	})
-	if errors.Is(err, store.ErrRotationSuperseded) {
+	if errors.Is(err, store.ErrRotationSuperseded) || errors.Is(err, crypto.ErrStaleMaster) {
 		// A concurrent rotation won the store's compare-and-swap. Conflict,
 		// not a server fault: the caller retries against the new key.
 		return TokenKeyRotation{}, fmt.Errorf("%w: %s", domain.ErrConflict, err)
@@ -744,7 +778,7 @@ func (s *Revisions) RotateScanningKey(ctx context.Context, actor Actor) (Scannin
 		}
 		return dropped, nil
 	})
-	if errors.Is(err, store.ErrRotationSuperseded) {
+	if errors.Is(err, store.ErrRotationSuperseded) || errors.Is(err, crypto.ErrStaleMaster) {
 		return ScanningKeyRotation{}, fmt.Errorf("%w: %s", domain.ErrConflict, err)
 	}
 	if err != nil {

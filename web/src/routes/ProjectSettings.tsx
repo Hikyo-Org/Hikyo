@@ -821,6 +821,7 @@ function EnvironmentPolicy({
   const save = useSetEnvironmentSettings(org, project);
   const windowId = useId();
   const [windowValue, setWindowValue] = useState('900');
+  const [windowBatchPending, setWindowBatchPending] = useState(false);
 
   if (environments.length === 0) {
     return <p role="status">This project holds no environments yet.</p>;
@@ -845,13 +846,14 @@ function EnvironmentPolicy({
               <Button
                 type="button"
                 variant="quiet"
-                disabled={!ready || save.isPending}
+                disabled={!ready || save.isPending || windowBatchPending}
                 aria-pressed={protectedFlag}
                 onClick={() =>
                   save.mutate(
                     {
                       environment: environment.id,
                       protectedFlag: !protectedFlag,
+                      expectedProtected: protectedFlag,
                       reauthWindowSeconds: protectedFlag ? Number(windowValue) : 0,
                     },
                     {
@@ -894,31 +896,36 @@ function EnvironmentPolicy({
           id={windowId}
           className="settings-select"
           value={windowValue}
-          disabled={save.isPending}
-          onChange={(event) => {
+          disabled={save.isPending || windowBatchPending}
+          onChange={async (event) => {
             const next = event.currentTarget.value;
             setWindowValue(next);
             const editable = environments.filter((environment) => {
               const state = protection.get(environment.id);
               return state?.status === 'ready' && !state.protected;
             });
-            editable.forEach((environment, index) =>
-              save.mutate(
+            setWindowBatchPending(true);
+            const results = await Promise.allSettled(
+              editable.map((environment) =>
+                save.mutateAsync(
                 {
                   environment: environment.id,
                   protectedFlag: false,
+                  expectedProtected: false,
                   reauthWindowSeconds: Number(next),
                 },
-                {
-                  onSuccess: () => {
-                    if (index === editable.length - 1) {
-                      onDone(`Reveal reauthentication window changed to ${next} seconds.`);
-                    }
-                  },
-                  onError,
-                },
+                ),
               ),
             );
+            setWindowBatchPending(false);
+            const failed = results.flatMap((result, index) =>
+              result.status === 'rejected' ? [editable[index]?.name ?? 'unknown'] : [],
+            );
+            if (failed.length > 0) {
+              onError(new Error(`Reveal-window update failed for: ${failed.join(', ')}. Every policy was refreshed; retry after reviewing the current values.`));
+              return;
+            }
+            onDone(`Reveal reauthentication window changed to ${next} seconds in ${String(editable.length)} environment${editable.length === 1 ? '' : 's'}.`);
           }}
         >
           <option value="0">0 (every disclosure)</option>

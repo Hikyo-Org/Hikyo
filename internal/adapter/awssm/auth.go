@@ -251,6 +251,21 @@ func resolveRoute(rawOrigin string, d Descriptor) (route, error) {
 	return route{origin: origin, region: d.Region, sts: sts}, nil
 }
 
+// STSOrigin returns the exact STS origin selected by an adapter descriptor.
+// Callers use it to select that origin's own operator egress exception rather
+// than lending the Secrets Manager origin's private-network authority to STS.
+func STSOrigin(rawOrigin, rawCredential string) (string, error) {
+	descriptor, err := ParseDescriptor(rawCredential)
+	if err != nil {
+		return "", configError(err)
+	}
+	route, err := resolveRoute(rawOrigin, descriptor)
+	if err != nil {
+		return "", configError(err)
+	}
+	return route.sts, nil
+}
+
 func regionalSTS(region string) string {
 	if strings.HasPrefix(region, "cn-") {
 		return "https://sts." + region + ".amazonaws.com.cn"

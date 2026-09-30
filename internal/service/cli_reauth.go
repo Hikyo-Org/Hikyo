@@ -492,6 +492,16 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 }
 
 func (s *Auth) RedeemCLIReauth(ctx context.Context, code, pkceVerifier string) (CLIReauthRedeemed, error) {
+	// Redemption is public and every refusal is durably audited. Enter the
+	// shared pre-authentication budget before parsing attacker-controlled input
+	// so malformed and unknown codes cannot become an unbounded audit-write
+	// primitive.
+	release, err := s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
+	if err != nil {
+		return CLIReauthRedeemed{}, err
+	}
+	defer release()
+
 	if err := crypto.ParseArtifact(code, crypto.ArtifactHandoffCode); err != nil || !validPKCEVerifier(pkceVerifier) {
 		return CLIReauthRedeemed{}, s.rejectCLIReauthRequest(ctx, "redeem", ErrCLIReauthInvalid)
 	}

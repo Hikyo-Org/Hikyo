@@ -83,14 +83,13 @@ export function EstablishCredential() {
       setAuthority('');
       setPassword('');
       setRepeat('');
+      setRecovered(false);
       setDone(true);
     } catch (error) {
       setFailure(establishFailureText(error));
-    } finally {
-      setAuthority('');
-      setRecovered(false);
       setPassword('');
       setRepeat('');
+    } finally {
       setPending(false);
     }
   };

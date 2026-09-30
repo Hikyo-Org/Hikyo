@@ -112,6 +112,33 @@ func TestBuildAuthnRequestBuildsUnsignedLoginRequest(t *testing.T) {
 	}
 }
 
+func TestBuildAuthnRequestRefusesUnsafeNavigationURLs(t *testing.T) {
+	t.Parallel()
+
+	base := AuthnRequestConfig{
+		IDPSSOURL:  "https://idp.example/sso",
+		SPEntityID: "https://hikyo.example/saml/metadata",
+		ACSURL:     "https://hikyo.example/api/v1/auth/saml/provider/acs",
+		RelayState: "opaque",
+		Now:        time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC),
+	}
+	for name, mutate := range map[string]func(*AuthnRequestConfig){
+		"plaintext SSO": func(c *AuthnRequestConfig) { c.IDPSSOURL = "http://idp.example/sso" },
+		"non-web SSO":   func(c *AuthnRequestConfig) { c.IDPSSOURL = "ftp://idp.example/sso" },
+		"SSO userinfo":  func(c *AuthnRequestConfig) { c.IDPSSOURL = "https://user@idp.example/sso" },
+		"SSO fragment":  func(c *AuthnRequestConfig) { c.IDPSSOURL = "https://idp.example/sso#fragment" },
+		"plaintext ACS": func(c *AuthnRequestConfig) { c.ACSURL = "http://hikyo.example/acs" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			config := base
+			mutate(&config)
+			if _, err := BuildAuthnRequest(config); err == nil {
+				t.Fatal("unsafe navigation URL was accepted")
+			}
+		})
+	}
+}
+
 func rawQueryValues(t *testing.T, rawQuery string) map[string]string {
 	t.Helper()
 	values := make(map[string]string)

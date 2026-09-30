@@ -166,6 +166,11 @@ function ProviderRow({
           · {provider.allow_email_nameid ? 'email NameID allowed' : 'opaque NameID only'} ·{' '}
           {provider.force_sign_requests ? 'signed AuthnRequests' : 'metadata-driven signing'}
         </span>
+        {provider.metadata_signing_fingerprint ? (
+          <span className="settings-row__detail mono">
+            metadata-signing certificate: {provider.metadata_signing_fingerprint}
+          </span>
+        ) : null}
         {provider.warnings.map((warning) => (
           <span
             className="settings-row__detail"
@@ -321,6 +326,8 @@ function MetadataDiff({ diff }: { diff: SamlMetadataDiff }) {
     ['Removed endpoints', diff.endpoints_removed],
     ['New signing certificates', diff.certs_added_fps],
     ['Removed signing certificates', diff.certs_removed_fps],
+    ['New metadata-signing certificates', diff.metadata_certs_added_fps],
+    ['Removed metadata-signing certificates', diff.metadata_certs_removed_fps],
   ];
   const anyChange = rows.some(([, values]) => values.length > 0);
   return (

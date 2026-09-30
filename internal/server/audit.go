@@ -19,18 +19,6 @@ import (
 // granularity the transport asks for.
 const auditExportPageSize = 500
 
-// auditPrincipal resolves the caller's session to a principal. The audit
-// service is principal-keyed (its export budget is charged before it touches
-// the store, so it cannot itself authenticate); the transport resolves the
-// session here, exactly as `whoami` does, and hands the principal down.
-func (a *API) auditPrincipal(ctx context.Context) (domain.PrincipalID, error) {
-	id, err := a.Auth.Identity(ctx, bearer(ctx))
-	if err != nil {
-		return "", err
-	}
-	return id.Principal, nil
-}
-
 // auditQueryFilter builds the store filter from the paged query parameters. An
 // absent limit defaults to 100; the store clamps anything above its cap.
 func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, actor, actorName, operation, outcome, objectType, objectID, correlation *string, outcomes []string) service.AuditFilter {
@@ -197,13 +185,9 @@ func wireAuditEvent(e service.AuditEvent) (apigen.AuditEvent, error) {
 // --- query handlers ---
 
 func (a *API) QueryOrgAudit(ctx context.Context, req apigen.QueryOrgAuditRequestObject) (apigen.QueryOrgAuditResponseObject, error) {
-	principal, err := a.auditPrincipal(ctx)
-	if err != nil {
-		return nil, err
-	}
 	p := req.Params
 	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
-	page, err := a.Audits.Query(ctx, principal, domain.Scope{Org: domain.OrgID(req.Org)}, f)
+	page, err := a.Audits.QueryActor(ctx, service.Bearer(bearer(ctx)), domain.Scope{Org: domain.OrgID(req.Org)}, f)
 	if err != nil {
 		return nil, err
 	}
@@ -215,13 +199,9 @@ func (a *API) QueryOrgAudit(ctx context.Context, req apigen.QueryOrgAuditRequest
 }
 
 func (a *API) QueryProjectAudit(ctx context.Context, req apigen.QueryProjectAuditRequestObject) (apigen.QueryProjectAuditResponseObject, error) {
-	principal, err := a.auditPrincipal(ctx)
-	if err != nil {
-		return nil, err
-	}
 	p := req.Params
 	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
-	page, err := a.Audits.Query(ctx, principal, projectScope(req.Org, req.Project), f)
+	page, err := a.Audits.QueryActor(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), f)
 	if err != nil {
 		return nil, err
 	}
@@ -233,13 +213,9 @@ func (a *API) QueryProjectAudit(ctx context.Context, req apigen.QueryProjectAudi
 }
 
 func (a *API) QueryEnvAudit(ctx context.Context, req apigen.QueryEnvAuditRequestObject) (apigen.QueryEnvAuditResponseObject, error) {
-	principal, err := a.auditPrincipal(ctx)
-	if err != nil {
-		return nil, err
-	}
 	p := req.Params
 	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
-	page, err := a.Audits.Query(ctx, principal, envScope(req.Org, req.Project, req.Environment), f)
+	page, err := a.Audits.QueryActor(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), f)
 	if err != nil {
 		return nil, err
 	}
@@ -253,45 +229,33 @@ func (a *API) QueryEnvAudit(ctx context.Context, req apigen.QueryEnvAuditRequest
 // --- export handlers ---
 
 func (a *API) ExportOrgAudit(ctx context.Context, req apigen.ExportOrgAuditRequestObject) (apigen.ExportOrgAuditResponseObject, error) {
-	principal, err := a.auditPrincipal(ctx)
-	if err != nil {
-		return nil, err
-	}
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
 		export: func(w io.Writer) error {
-			return a.Audits.Export(ctx, principal, domain.Scope{Org: domain.OrgID(req.Org)}, f, auditExportPageSize, w)
+			return a.Audits.ExportActor(ctx, service.Bearer(bearer(ctx)), domain.Scope{Org: domain.OrgID(req.Org)}, f, auditExportPageSize, w)
 		},
 		filename: auditFilename(req.Org),
 	}, nil
 }
 
 func (a *API) ExportProjectAudit(ctx context.Context, req apigen.ExportProjectAuditRequestObject) (apigen.ExportProjectAuditResponseObject, error) {
-	principal, err := a.auditPrincipal(ctx)
-	if err != nil {
-		return nil, err
-	}
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
 		export: func(w io.Writer) error {
-			return a.Audits.Export(ctx, principal, projectScope(req.Org, req.Project), f, auditExportPageSize, w)
+			return a.Audits.ExportActor(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), f, auditExportPageSize, w)
 		},
 		filename: auditFilename(req.Org, req.Project),
 	}, nil
 }
 
 func (a *API) ExportEnvAudit(ctx context.Context, req apigen.ExportEnvAuditRequestObject) (apigen.ExportEnvAuditResponseObject, error) {
-	principal, err := a.auditPrincipal(ctx)
-	if err != nil {
-		return nil, err
-	}
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
 		export: func(w io.Writer) error {
-			return a.Audits.Export(ctx, principal, envScope(req.Org, req.Project, req.Environment), f, auditExportPageSize, w)
+			return a.Audits.ExportActor(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), f, auditExportPageSize, w)
 		},
 		filename: auditFilename(req.Org, req.Project, req.Environment),
 	}, nil

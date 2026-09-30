@@ -56,7 +56,7 @@ func bootFileSyncRig(t *testing.T, engine store.Engine) *fileSyncRig {
 	loadAndRegisterKeyring(t, db, rootKey)
 	seedComposeCatalogue(t, db)
 	stateDir := t.TempDir()
-	writeTrustStore(t, stateDir, origin)
+	writeTrustStore(t, stateDir, origin, cfg.CLISocket)
 	return &fileSyncRig{composeRig: &composeRig{origin: origin, db: db, stateDir: stateDir}, stop: stop}
 }
 

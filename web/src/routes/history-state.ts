@@ -351,6 +351,7 @@ export type HistorySnapshotKey = {
   readonly keyId: string;
   readonly name: string;
   readonly classification: 'config' | 'secret';
+  readonly sensitive?: boolean;
 };
 
 export type HistoryCurrentCell = {
@@ -371,9 +372,8 @@ export type CeremonyKey = { readonly id: string; readonly name: string };
  * stage it, and the CURRENT secret is read only to compare two set values, a
  * restore-to-absent opens no current plaintext and must not demand it.
  *
- * ponytail: written-time STICKY bits are invisible to the browser; everything
- * knowable client-side is unioned. Carry the sticky bit on `SnapshotKey` when
- * the wire exposes it so the browser can exactly reproduce the server unit.
+ * The revision detail carries the server's sticky occurrence decision, so a
+ * secret-to-config reclassification cannot hide a required ceremony key.
  */
 export function restoreCeremonyUnit(input: {
   readonly revisionKeys: readonly HistorySnapshotKey[];
@@ -384,7 +384,7 @@ export function restoreCeremonyUnit(input: {
   return input.revisionKeys
     .filter((key) => input.keyId === null || key.keyId === input.keyId)
     .filter((key) => {
-      if (key.classification === 'secret') {
+      if (key.sensitive === true || key.classification === 'secret') {
         return true;
       }
       const current = currentByKey.get(key.keyId);
@@ -410,6 +410,7 @@ export function pinCeremonyUnit(
   return revisionKeys
     .filter(
       (key) =>
+        key.sensitive === true ||
         key.classification === 'secret' ||
         currentByKey.get(key.keyId)?.classification === 'secret',
     )

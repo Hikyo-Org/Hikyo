@@ -191,7 +191,7 @@ describe('grant refusals', () => {
       new ApiError(403, 'forbidden'),
     );
 
-    expect(grantFailureText(failure)).toBe(
+    expect(grantFailureText(failure, { operation: 'create', scope: 'org' })).toBe(
       'Completed 2 of 3 (live and listed below). Created: none. Origin added: read. Unchanged: edit. publish was refused: Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.',
     );
   });
@@ -366,11 +366,16 @@ describe('grant outcome rendering', () => {
 
 describe('grant refusals', () => {
   it('reads a 403 as the second-factor refusal it provably is on this surface', () => {
-    expect(grantFailureText(new ApiError(403, 'x'))).toContain('second factor');
+    expect(grantFailureText(new ApiError(403, 'x'), { operation: 'create', scope: 'org' })).toContain('second factor');
   });
 
   it('reads a 409 on revoke as the lockout invariant', () => {
-    expect(grantFailureText(new ApiError(409, 'x'))).toContain('manage its members');
+    expect(grantFailureText(new ApiError(409, 'x'), { operation: 'revoke', scope: 'org' })).toContain('manage its members');
+  });
+
+  it('does not invent MFA or lockout remedies for instance and create refusals', () => {
+    expect(grantFailureText(new ApiError(403, 'x'), { operation: 'create', scope: 'instance' })).toContain('may not manage');
+    expect(grantFailureText(new ApiError(409, 'x'), { operation: 'create', scope: 'environment' })).toContain('conflicts');
   });
 
   it('does not pretend to know which of the two answers a 404 is', () => {

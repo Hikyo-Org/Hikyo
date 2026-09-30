@@ -73,7 +73,11 @@ func (a *API) ListInstanceConnections(ctx context.Context, _ apigen.ListInstance
 func (a *API) MintInstanceConnection(ctx context.Context, req apigen.MintInstanceConnectionRequestObject) (apigen.MintInstanceConnectionResponseObject, error) {
 	var want service.MintRequest
 	if req.Body.LifetimeSeconds != nil {
-		want.Lifetime = time.Duration(*req.Body.LifetimeSeconds) * time.Second
+		lifetime, err := credentialLifetime(int64(*req.Body.LifetimeSeconds))
+		if err != nil {
+			return nil, err
+		}
+		want.Lifetime = lifetime
 	}
 	if req.Body.Indefinite != nil {
 		want.Indefinite = *req.Body.Indefinite

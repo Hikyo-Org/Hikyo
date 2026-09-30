@@ -86,6 +86,12 @@ func validateAuthnRequestConfig(config AuthnRequestConfig) error {
 			return ErrInvalidAuthnRequestConfig
 		}
 	}
+	for _, rawURL := range []string{config.IDPSSOURL, config.ACSURL} {
+		parsed, err := url.Parse(rawURL)
+		if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Fragment != "" {
+			return ErrInvalidAuthnRequestConfig
+		}
+	}
 	if !config.Sign {
 		return nil
 	}

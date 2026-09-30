@@ -64,6 +64,23 @@ func (q *Queries) ConsumeWebAuthnCeremony(ctx context.Context, arg ConsumeWebAut
 	return result.RowsAffected(), nil
 }
 
+const deleteExpiredUnconsumedWebAuthnCeremonies = `-- name: DeleteExpiredUnconsumedWebAuthnCeremonies :execrows
+DELETE FROM webauthn_ceremonies
+WHERE consumed_at IS NULL AND expires_at <= $1
+`
+
+// Expired, unconsumed challenges have no provenance value and cannot be
+// referenced by a session or reauthentication window. Remove them before
+// creating the next ceremony so sustained starts cannot grow storage forever.
+// hikyo:authn-resolution
+func (q *Queries) DeleteExpiredUnconsumedWebAuthnCeremonies(ctx context.Context, expiresAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredUnconsumedWebAuthnCeremonies, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSessionsForWebAuthnCredential = `-- name: DeleteSessionsForWebAuthnCredential :execrows
 DELETE FROM sessions WHERE ceremony_id IN (
     SELECT id FROM webauthn_ceremonies WHERE credential_id = $1

@@ -97,7 +97,7 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
  * discovery, which is about the page rather than the credential, stays outside
  * the card.
  */
-export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
+export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent; returnTo?: string } = {}) {
   const [search] = useSearchParams();
   const signupOrg = intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
   const login = useLogin();
@@ -233,7 +233,12 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
           // The row names its protocol (a slug is unique per kind only); the
           // sign-up door admits the OIDC kind alone, so a SAML start signs in.
           if (provider.kind === 'saml') saml.mutate(provider.slug);
-          else oidc.mutate({ provider: provider.slug, intent: startIntent, signupOrg });
+          else oidc.mutate({
+            provider: provider.slug,
+            intent: startIntent,
+            signupOrg,
+            ...(returnTo === undefined ? {} : { returnTo }),
+          });
         }}
         /* Quiet links, demoted from buttons: the CSS keeps them on the 44px
            touch floor (#567) without reading as a third way to sign in. */

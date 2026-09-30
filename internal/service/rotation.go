@@ -100,6 +100,22 @@ func (s *Rotation) RotateDEK(ctx context.Context, actor Actor, scope DEKScope) (
 	if err := scope.validate(); err != nil {
 		return DEKRotation{}, err
 	}
+	authScope := domain.Scope{}
+	if !scope.Instance {
+		authScope = domain.Scope{Org: domain.OrgID(scope.OrgID), Project: domain.ProjectID(scope.ProjectID)}
+	}
+	// Authenticate and prove project existence before project key preparation.
+	// PrepareProjectDEKRotation may create the initial persistent project key.
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, s.now())
+		if err != nil {
+			return err
+		}
+		_, err = az.AuthorizeDEKRotation(ctx, caller, authScope)
+		return err
+	}); err != nil {
+		return DEKRotation{}, err
+	}
 
 	// Mint the successor outside the operator's transaction, like the token
 	// rotation: the persistence closure is retryable, and only the attempt that
@@ -120,7 +136,11 @@ func (s *Rotation) RotateDEK(ctx context.Context, actor Actor, scope DEKScope) (
 	next.CreatedAt = store.CanonTime(s.now())
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpRotateDEK, domain.Scope{}, s.now())
+		caller, err := actor.resolve(ctx, az, s.now())
+		if err != nil {
+			return err
+		}
+		p, err := az.AuthorizeDEKRotation(ctx, caller, authScope)
 		if err != nil {
 			return err
 		}

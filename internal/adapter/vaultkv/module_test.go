@@ -679,6 +679,34 @@ func TestPruneSoftDeletesAndReAddReclaimsOwnPath(t *testing.T) {
 	}
 }
 
+func TestReclassificationRetiresOppositeSurfaceWithoutPruningDesiredPath(t *testing.T) {
+	kv := newFakeKV()
+	journal := newFakeJournal()
+	target := testTarget(t, kv)
+	module := &Module{API: kv}
+	config := []adapter.ManifestEntry{{KeyID: "key_log", CanonicalName: "LOG_LEVEL", Classification: adapter.ConfigClassification, Value: "debug"}}
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: config}, journal); err != nil {
+		t.Fatal(err)
+	}
+	// Adoption of the reclassified row creates the new surface claim while the
+	// asynchronous old claim still exists.
+	journal.states["secret:LOG_LEVEL"] = adapter.Owned
+	secret := []adapter.ManifestEntry{{KeyID: "key_log", CanonicalName: "LOG_LEVEL", Classification: adapter.SecretClassification, Value: "sensitive"}}
+	kv.calls = nil
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: secret, Ledger: journal.ledger()}, journal); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(kv.calls, "soft-delete:apps/pay/LOG_LEVEL") {
+		t.Fatalf("reclassification pruned its desired path: %v", kv.calls)
+	}
+	if got, ok := kv.value("apps/pay/LOG_LEVEL"); !ok || got != "sensitive" {
+		t.Fatalf("reclassified path = %q, %t, want sensitive", got, ok)
+	}
+	if journal.states["variable:LOG_LEVEL"] != adapter.Released {
+		t.Fatalf("opposite-surface ownership claim = %q, want released", journal.states["variable:LOG_LEVEL"])
+	}
+}
+
 func TestTeardownPrunesSentinelLastAndNeverDestroys(t *testing.T) {
 	kv := newFakeKV()
 	journal := newFakeJournal()

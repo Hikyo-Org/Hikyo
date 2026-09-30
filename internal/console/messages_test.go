@@ -28,6 +28,7 @@ func TestServerReadyMessageShowsUserAndOperatorEndpoints(t *testing.T) {
 		AppURL:         "https://hikyo.example.com",
 		ListenAddress:  "0.0.0.0:8443",
 		OperationalURL: "http://127.0.0.1:8081",
+		CLISocket:      "/run/user/1000/hikyo.sock",
 		Mode:           "production",
 	}
 	got := ServerReadyMessage(info)
@@ -36,6 +37,7 @@ func TestServerReadyMessageShowsUserAndOperatorEndpoints(t *testing.T) {
 		"  App         https://hikyo.example.com\n" +
 		"  Listen      0.0.0.0:8443\n" +
 		"  Operations  http://127.0.0.1:8081\n" +
+		"  CLI socket  /run/user/1000/hikyo.sock\n" +
 		"  Mode        production\n"
 	if got != want {
 		t.Fatalf("ServerReadyMessage() = %q, want %q", got, want)

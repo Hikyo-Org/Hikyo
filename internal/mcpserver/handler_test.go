@@ -593,6 +593,25 @@ func TestMalformedJSONRPCPrecedesUnknownMethodPolicy(t *testing.T) {
 	}
 }
 
+func TestLegacyFallbacksAreRejectedBeforeSDKDispatch(t *testing.T) {
+	registry, _ := testRegistry(t, "echo")
+	h := testHandler(t, registry)
+
+	missingMetadata := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+	req := request(http.MethodPost, "https://hikyo.example.com/mcp", "tools/list", "", missingMetadata)
+	rec := serve(t, h, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":-32602`) {
+		t.Fatalf("missing metadata = %d %q", rec.Code, rec.Body.String())
+	}
+
+	batch := []byte(`[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}},{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}]`)
+	req = request(http.MethodPost, "https://hikyo.example.com/mcp", "tools/list", "", batch)
+	rec = serve(t, h, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":-32600`) {
+		t.Fatalf("batch = %d %q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestToolErrorsAreSafeAndExecutionIsBounded(t *testing.T) {
 	registry := NewRegistry()
 	err := Register(registry, ToolSpec{

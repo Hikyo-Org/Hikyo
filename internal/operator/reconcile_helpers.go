@@ -414,8 +414,8 @@ func validateResyncInterval(cr *hikyov1.HikyoSecret) error {
 	if err != nil {
 		return fmt.Errorf("%q: %w", cr.Spec.ResyncInterval, err)
 	}
-	if d <= 0 {
-		return fmt.Errorf("%q is not a positive duration", cr.Spec.ResyncInterval)
+	if d < 30*time.Second {
+		return fmt.Errorf("%q is below the 30s minimum", cr.Spec.ResyncInterval)
 	}
 	return nil
 }

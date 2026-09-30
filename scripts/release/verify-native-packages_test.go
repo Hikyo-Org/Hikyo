@@ -47,6 +47,57 @@ func TestInspectTarRejectsNonExecutableBinary(t *testing.T) {
 	}
 }
 
+func TestInspectTarRejectsUnsafeInstallationMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header tar.Header
+	}{
+		{name: "non-root owner", header: tar.Header{Name: binaryPath, Typeflag: tar.TypeReg, Mode: 0o755, Uid: 1000}},
+		{name: "writable directory", header: tar.Header{Name: "usr/bin/", Typeflag: tar.TypeDir, Mode: 0o777}},
+		{name: "extended attribute", header: tar.Header{Name: binaryPath, Typeflag: tar.TypeReg, Mode: 0o755, PAXRecords: map[string]string{"SCHILY.xattr.security.capability": "value"}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			writer := tar.NewWriter(&output)
+			header := tc.header
+			if header.Typeflag != tar.TypeDir {
+				header.Size = 1
+			}
+			if err := writer.WriteHeader(&header); err != nil {
+				t.Fatal(err)
+			}
+			if header.Size != 0 {
+				if _, err := writer.Write([]byte("x")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := inspectTar(tar.NewReader(bytes.NewReader(output.Bytes())), newTarInspection(), nil); err == nil {
+				t.Fatal("inspectTar accepted unsafe installation metadata")
+			}
+		})
+	}
+}
+
+func TestRPMMetadataRejectsCapabilitiesAndUnsafeFlags(t *testing.T) {
+	t.Parallel()
+
+	if tag, found := firstForbiddenRPMHook(func(candidate int) bool { return candidate == 5010 }); !found || tag != 5010 {
+		t.Fatal("RPM FILECAPS metadata is not rejected")
+	}
+	if err := validateRPMFileFlags(binaryPath, 1); err == nil {
+		t.Fatal("binary file flags were accepted")
+	}
+	if err := validateRPMFileFlags(licensePath, 1<<7); err != nil {
+		t.Fatalf("standard RPM license marker refused: %v", err)
+	}
+}
+
 func TestInspectDebControlRejectsMaintainerScript(t *testing.T) {
 	t.Parallel()
 

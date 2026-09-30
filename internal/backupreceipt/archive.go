@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
@@ -156,8 +157,47 @@ func AuthenticateArchive(ctx context.Context, ciphertext *Ciphertext, receiptRaw
 	if err := matchAuthenticatedManifest(plain, receipt); err != nil {
 		return nil, err
 	}
+	if err := validateArchiveMembers(plain, stat.Size()); err != nil {
+		return nil, err
+	}
 	retained = true
 	return &AuthenticatedArchive{file: plain, size: stat.Size(), snapshot: receipt.Snapshot, planDigest: plan.Digest(), receiptDigest: releaseidentity.Hash(receiptRaw)}, nil
+}
+
+func validateArchiveMembers(plain *os.File, archiveSize int64) error {
+	if _, err := plain.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	reader := tar.NewReader(plain)
+	var logicalBytes int64
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return errors.New("invalid authenticated archive member")
+		}
+		if err := validateArchiveHeader(header); err != nil {
+			return err
+		}
+		if header.Size < 0 || header.Size > archiveSize-logicalBytes {
+			return errors.New("authenticated archive logical size exceeds its stored size")
+		}
+		logicalBytes += header.Size
+	}
+}
+
+func validateArchiveHeader(header *tar.Header) error {
+	if header.Typeflag == tar.TypeGNUSparse {
+		return errors.New("sparse archive members are not supported")
+	}
+	for key := range header.PAXRecords {
+		if strings.HasPrefix(key, "GNU.sparse.") {
+			return errors.New("sparse archive members are not supported")
+		}
+	}
+	return nil
 }
 
 func matchAuthenticatedManifest(plain io.Reader, receipt Receipt) error {

@@ -1,8 +1,13 @@
 package samlsp
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +59,42 @@ func TestParseMetadataRejectsAmbiguousEntityAndMissingRedirectEndpoint(t *testin
 	missingRedirect := []byte(`<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="x"><md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"><md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="https://idp.example/sso"/></md:IDPSSODescriptor></md:EntityDescriptor>`)
 	if _, err := ParseMetadata(missingRedirect, "x"); !errors.Is(err, ErrMetadataSSOEndpoint) {
 		t.Fatalf("POST-only ParseMetadata() error = %v, want ErrMetadataSSOEndpoint", err)
+	}
+}
+
+func TestValidateMetadataCertificateKeyRejectsWeakAndUnsupportedKeys(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]*x509.Certificate{
+		"rsa-1024": {
+			PublicKey: &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 1023), E: 65537},
+		},
+		"ecdsa-p224": {
+			PublicKey: &ecdsa.PublicKey{Curve: elliptic.P224()},
+		},
+	}
+	for name, certificate := range tests {
+		certificate := certificate
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := validateMetadataCertificateKey(certificate); !errors.Is(err, ErrMetadataCertificateKey) {
+				t.Fatalf("validateMetadataCertificateKey() error = %v, want ErrMetadataCertificateKey", err)
+			}
+		})
+	}
+}
+
+func TestValidateMetadataCertificateKeyAcceptsSupportedKeys(t *testing.T) {
+	t.Parallel()
+
+	_, rsaCertificate := requestSigningFixture(t)
+	if err := validateMetadataCertificateKey(rsaCertificate); err != nil {
+		t.Fatalf("validateMetadataCertificateKey(RSA-2048) error = %v", err)
+	}
+	if err := validateMetadataCertificateKey(&x509.Certificate{
+		PublicKey: &ecdsa.PublicKey{Curve: elliptic.P256()},
+	}); err != nil {
+		t.Fatalf("validateMetadataCertificateKey(ECDSA-P256) error = %v", err)
 	}
 }
 

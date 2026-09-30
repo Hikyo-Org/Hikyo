@@ -41,14 +41,16 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #153 adds the client-local `scan` verb (no route, operation or event).
 	// Member access rules add four operation-linked routes: list at org and
 	// project depth, create and revoke.
-	if got := len(facts.Wire()); got != 431 {
-		t.Fatalf("wire entries = %d, want 431", got)
+	// Adapter workers add three system-owned job kinds, each linked to its
+	// operation and direct audit-event surface.
+	if got := len(facts.Wire()); got != 434 {
+		t.Fatalf("wire entries = %d, want 434", got)
 	}
-	if got := len(facts.WireRoutes()); got != 319 {
-		t.Fatalf("operation-linked entries = %d, want 319", got)
+	if got := len(facts.WireRoutes()); got != 322 {
+		t.Fatalf("operation-linked entries = %d, want 322", got)
 	}
-	if got := len(facts.WireEvents()); got != 83 {
-		t.Fatalf("direct-event entries = %d, want 83", got)
+	if got := len(facts.WireEvents()); got != 86 {
+		t.Fatalf("direct-event entries = %d, want 86", got)
 	}
 }
 

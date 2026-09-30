@@ -173,9 +173,10 @@ DELETE FROM scim_group_members WHERE org_id = ? AND binding_id = ? AND user_id =
 -- name: DeleteSCIMGroupMembersForBinding :execrows
 DELETE FROM scim_group_members WHERE org_id = ? AND binding_id = ?;
 
--- name: EnterSCIMAttention :exec
+-- name: EnterSCIMAttention :execrows
 INSERT INTO scim_attention (id, org_id, binding_id, state, subject_ref, cause, entered_at)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (binding_id, state, subject_ref) DO NOTHING;
 
 -- name: ListSCIMAttention :many
 SELECT id, org_id, binding_id, state, subject_ref, cause, entered_at

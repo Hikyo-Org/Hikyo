@@ -827,15 +827,20 @@ export function resetFailureText(error: unknown): string {
  * cannot be distinguished from a genuine miss, and saying otherwise would
  * invent the oracle the server closed.
  */
-export function grantFailureText(error: unknown): string {
+export type GrantFailureContext = {
+  readonly operation?: 'create' | 'revoke';
+  readonly scope?: ScopeRef['kind'];
+};
+
+export function grantFailureText(error: unknown, context: GrantFailureContext = {}): string {
   if (error instanceof GrantPartialFailure) {
     if (error.completed.length === 0) {
-      return grantFailureText(error.cause);
+      return grantFailureText(error.cause, context);
     }
     return (
       `Completed ${String(error.completed.length)} of ${String(error.total)} (live and listed below). ` +
       `${grantOutcomeSummary(error.completed)} ` +
-      `${error.failedCapability} was refused: ${grantFailureText(error.cause)}`
+      `${error.failedCapability} was refused: ${grantFailureText(error.cause, context)}`
     );
   }
   if (error instanceof ApiError) {
@@ -848,14 +853,17 @@ export function grantFailureText(error: unknown): string {
       case 401:
         return 'Your session ended. Sign in again to continue.';
       case 403:
-        return 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.';
+        return context.scope === 'instance'
+          ? 'This session may not manage instance members, or its required assurance is missing. Sign in again and verify the account has instance manage-members authority.'
+          : 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.';
       case 404:
         return 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.';
       case 409:
-        return (
-          error.detail ??
-          'Refused: this would leave the organisation with nobody able to manage its members.'
-        );
+        if (error.detail !== undefined) return error.detail;
+        if (context.operation === 'revoke' && (context.scope === 'org' || context.scope === 'instance')) {
+          return 'Refused: this would leave this scope with nobody able to manage its members.';
+        }
+        return 'The grant conflicts with this principal, scope, capability, or current authorization state. Reload and review the requested grant.';
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:

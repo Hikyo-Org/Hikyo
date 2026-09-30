@@ -53,6 +53,16 @@ func runComposeSync(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Generated env files now exist. Resolve the real Compose configuration at
+	// this boundary, before deciding there is nothing to apply and before Docker
+	// can replace any running container.
+	dockerFindings, _, _ := doctorDocker(ctx, ios, stack.cfgDir)
+	if hasAnyError(dockerFindings) {
+		if rerr := renderComposeFindings(ios.Stderr, FormatTable, dockerFindings); rerr != nil {
+			return failf(ExitInternal, "hikyo compose sync: rendering post-render Docker findings: %v", rerr)
+		}
+		return failf(ExitRefused, "hikyo compose sync: Docker configuration remains invalid after rendering")
+	}
 
 	// (3) Apply through `docker compose up -d` when a stamp moved, a prior sync
 	// left an apply-pending marker, OR active stamps differ from the durable
@@ -126,6 +136,9 @@ var syncRepairableCodes = map[string]bool{
 	"server_unreachable":    true,
 	"generation_absent":     true,
 	"generation_incomplete": true,
+	"docker_config_failed":  true,
+	"label_stamp_mismatch":  true,
+	"stamp_mismatch":        true,
 }
 
 // hasBlockingError reports whether any error finding OUTSIDE the sync-repairable
@@ -133,6 +146,15 @@ var syncRepairableCodes = map[string]bool{
 func hasBlockingError(findings []compose.Finding) bool {
 	for _, f := range findings {
 		if f.Severity == compose.SeverityError && !syncRepairableCodes[f.Code] {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAnyError(findings []compose.Finding) bool {
+	for _, f := range findings {
+		if f.Severity == compose.SeverityError {
 			return true
 		}
 	}

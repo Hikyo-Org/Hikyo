@@ -118,6 +118,12 @@ describe('k8s connector', () => {
     );
   });
 
+  it('refuses an oversized YAML node graph before materializing it', () => {
+    const ignored = Array.from({ length: 25001 }, (_, index) => `  field${String(index)}: value`).join('\n');
+    const manifest = `kind: Secret\nmetadata:\n  name: bounded\nignored:\n${ignored}\ndata:\n  VALUE: eA==\n`;
+    expect(refusal(parseSource('k8s', manifest))).toMatch(/parser bound/);
+  });
+
   it('refuses a post-transform collision', () => {
     expect(
       refusal(parseSource('k8s', 'kind: Secret\nmetadata:\n  name: coll\ndata:\n  db-host: eA==\n  db.host: eQ==\n')),
@@ -210,6 +216,16 @@ describe('infisical connector', () => {
     ).toMatch(/more than once/);
   });
 
+  it.each([
+    ['s', 'ſ'],
+    ['σ', 'ς'],
+    ['µ', 'μ'],
+    ['в', 'ᲀ'],
+  ])('refuses Unicode SimpleFold-equivalent members %s and %s', (first, second) => {
+    const source = JSON.stringify([{ [first]: 1, [second]: 2 }]);
+    expect(refusal(parseSource('infisical', source, { envSlug: 'prod' }))).toMatch(/more than once/);
+  });
+
   it('refuses a non-string value instead of coercing it to an empty secret', () => {
     expect(
       refusal(parseSource('infisical', '[{"key":"API_KEY","value":123,"type":"shared","secretPath":"/"}]', { envSlug: 'prod' })),
@@ -220,6 +236,14 @@ describe('infisical connector', () => {
     expect(
       refusal(parseSource('infisical', '[{"key":"X","value":123,"type":"personal","secretPath":"/"}]', { envSlug: 'prod' })),
     ).toMatch(/pinned JSON array/);
+  });
+
+  it('refuses ignored JSON structures at the parser node bound', () => {
+    const ignored = Array.from({ length: 50001 }, () => 0);
+    const source = JSON.stringify([
+      { key: 'VALUE', value: 'x', type: 'shared', secretPath: '/', ignored },
+    ]);
+    expect(refusal(parseSource('infisical', source, { envSlug: 'prod' }))).toMatch(/parser bound/);
   });
 
   it('refuses a hostile type without echoing its value', () => {

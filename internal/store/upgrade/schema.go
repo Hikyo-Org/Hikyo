@@ -144,7 +144,10 @@ func inspectAppliedWith(ctx context.Context, queryRows catalogQuery, engine rele
 	return applied, nil
 }
 
-const sqliteCatalogSQL = `SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`
+// SQLite reserves the literal "sqlite_" prefix for its own schema objects.
+// Do not use LIKE here: its underscore wildcard would also hide attacker-added
+// objects named sqliteX..., allowing them to escape the catalog digest.
+const sqliteCatalogSQL = `SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema WHERE substr(name,1,7) <> 'sqlite_' ORDER BY type,name`
 
 // PostgreSQL catalog output excludes OIDs and schema owners so independently
 // created databases with the same migration bytes compare exactly. Include

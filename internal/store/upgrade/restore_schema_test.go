@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -85,4 +86,29 @@ func TestRestoreControlSchemaIsExactEmptyAndTransactional(t *testing.T) {
 			t.Fatal("nonempty authority table accepted")
 		}
 	})
+}
+
+func TestSQLiteCatalogExcludesOnlyReservedSQLitePrefix(t *testing.T) {
+	cfg := testConfig(t, releaseidentity.SQLite)
+	if err := migrateFixture(t, cfg); err != nil {
+		t.Fatal(err)
+	}
+	query(t, cfg, `CREATE TRIGGER sqliteXcredential_epoch AFTER UPDATE ON auth_instance_state BEGIN SELECT 1; END`)
+
+	err := WithLock(t.Context(), cfg, func(s *Session) error {
+		catalog, err := inspectCatalog(t.Context(), s.conn, releaseidentity.SQLite)
+		if err != nil {
+			return err
+		}
+		for _, object := range catalog.Objects {
+			if strings.Contains(object, `"sqliteXcredential_epoch"`) {
+				return nil
+			}
+		}
+		t.Fatal("catalog omitted a non-reserved sqliteX trigger")
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

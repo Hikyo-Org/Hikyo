@@ -76,7 +76,7 @@ func bootComposeRig(t *testing.T, engine store.Engine) *composeRig {
 	seedComposeCatalogue(t, db)
 
 	stateDir := t.TempDir()
-	writeTrustStore(t, stateDir, origin)
+	writeTrustStore(t, stateDir, origin, cfg.CLISocket)
 	return &composeRig{origin: origin, db: db, stateDir: stateDir}
 }
 
@@ -524,12 +524,12 @@ func withCmd(base []string, cmd string) []string {
 	return append(append(append([]string{}, base...), "--"), cmd)
 }
 
-func writeTrustStore(t *testing.T, stateDir, origin string) {
+func writeTrustStore(t *testing.T, stateDir, origin, socket string) {
 	t.Helper()
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	entry := map[string]map[string]string{"local": {"name": "local", "origin": origin}}
+	entry := map[string]map[string]string{"local": {"name": "local", "origin": origin, "cli_socket": socket}}
 	data, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatal(err)

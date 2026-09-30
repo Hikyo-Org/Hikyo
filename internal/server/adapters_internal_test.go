@@ -107,6 +107,37 @@ func TestReauthTotpResponseUsesArtifactChannelAndReportsOnlyOpenedWindows(t *tes
 	})
 }
 
+func TestReauthPasskeyResponseReturnsRotatedBearerOnPresentedChannel(t *testing.T) {
+	result := service.ReauthResult{
+		SessionToken: "rotated-secret", CSRFToken: "rotated-csrf", SessionID: "ses_one",
+		EnvironmentID: "env_one", WindowExpires: time.Date(2026, 8, 17, 12, 5, 0, 0, time.UTC),
+	}
+
+	t.Run("bearer body", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/reauth/passkey/finish", nil)
+		request.Header.Set("Authorization", "Bearer old-secret")
+		response, err := makeReauthPasskeyResponse(request, result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.body.SessionToken == nil || *response.body.SessionToken != "rotated-secret" || len(response.cookies) != 0 {
+			t.Fatalf("response = %+v", response)
+		}
+	})
+
+	t.Run("browser cookie", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/reauth/passkey/finish", nil)
+		request.AddCookie(&http.Cookie{Name: browserSessionCookie, Value: "old-secret"})
+		response, err := makeReauthPasskeyResponse(request, result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.body.SessionToken != nil || len(response.cookies) != 2 || response.cookies[0].Value != "rotated-secret" || response.cookies[1].Value != "rotated-csrf" {
+			t.Fatalf("response = %+v", response)
+		}
+	})
+}
+
 func TestAdapterTargetResponseIncludesConvergedRevisionAndPendingConflicts(t *testing.T) {
 	revision := int64(42)
 	artifact := service.AdapterConflictArtifact{ID: "acf_one", DestinationID: 77, TargetGeneration: 3, CreatedAt: time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC), Entries: []service.AdapterConflictEntry{{Surface: "variable", EffectiveName: "PROD_MODE"}}}

@@ -325,6 +325,12 @@
   },
   {
     "engine": "postgres",
+    "name": "DeleteExpiredUnconsumedWebAuthnCeremonies",
+    "annotation": "authn-resolution",
+    "hash": "ce7914dd39594c9ecb888e2c9e0ea711e9fd9a43f3a91cb66b3ab08afcf6466b"
+  },
+  {
+    "engine": "postgres",
     "name": "DeleteExpiredWorkspaceHandoffs",
     "annotation": "authn-resolution",
     "hash": "869063b1e391f267d168752156bc0ccdab25c4dea62bc848b5cf164cce4b46e6"
@@ -442,6 +448,12 @@
     "name": "DeleteRemote",
     "annotation": "instance-scoped",
     "hash": "19b2d2767fc3e6283a36513fbc393d7db7b6252b97486514faa9d7c27a6ccec8"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRestoredRemotes",
+    "annotation": "authn-resolution",
+    "hash": "9de916aa030b49d85f876861eaba67c674359d197d7f30d8e2a504dcfc7180ef"
   },
   {
     "engine": "postgres",
@@ -1240,6 +1252,18 @@
     "name": "InvalidateRestoredDynamicProviderCredentials",
     "annotation": "authn-resolution",
     "hash": "96eaf3c2f40351bf1bed78e2fcc47738a1c166aed7aaec424a4140235019cede"
+  },
+  {
+    "engine": "postgres",
+    "name": "InvalidateRestoredOAuth2ProviderCredentials",
+    "annotation": "authn-resolution",
+    "hash": "c591683be32ae3260a0c85771690905956fd4a77ea4ebb1a3f864bae1b3c8d86"
+  },
+  {
+    "engine": "postgres",
+    "name": "InvalidateRestoredOIDCProviderCredentials",
+    "annotation": "authn-resolution",
+    "hash": "fca0fa0a88246519bda590e78563958aff2750092084f84ef74ec76f3b007b2d"
   },
   {
     "engine": "postgres",
@@ -2617,6 +2641,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeleteExpiredUnconsumedWebAuthnCeremonies",
+    "annotation": "authn-resolution",
+    "hash": "282ae3f4e177fb68ab3a7bbb12e3665e283a01bc49139ca277e4982641465ff2"
+  },
+  {
+    "engine": "sqlite",
     "name": "DeleteExpiredWorkspaceHandoffs",
     "annotation": "authn-resolution",
     "hash": "65d6ad5981b736a08f920a7a2c8d3e9c7534d542acbe45a15e128e59b9308804"
@@ -2734,6 +2764,12 @@
     "name": "DeleteRemote",
     "annotation": "instance-scoped",
     "hash": "d70c0f1411f45f78b73c373363e88b9835092a86994919f0d8b0d836b609d2e0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRestoredRemotes",
+    "annotation": "authn-resolution",
+    "hash": "9de916aa030b49d85f876861eaba67c674359d197d7f30d8e2a504dcfc7180ef"
   },
   {
     "engine": "sqlite",
@@ -3532,6 +3568,18 @@
     "name": "InvalidateRestoredDynamicProviderCredentials",
     "annotation": "authn-resolution",
     "hash": "96eaf3c2f40351bf1bed78e2fcc47738a1c166aed7aaec424a4140235019cede"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InvalidateRestoredOAuth2ProviderCredentials",
+    "annotation": "authn-resolution",
+    "hash": "8d192141eb51a1a1bc085901c893c963f306b35183f31eab02bdca5fc6ca1d47"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InvalidateRestoredOIDCProviderCredentials",
+    "annotation": "authn-resolution",
+    "hash": "c9d3308a178b075fe879a5b82795288af1127a7623028cb8e10db9f865074ad2"
   },
   {
     "engine": "sqlite",

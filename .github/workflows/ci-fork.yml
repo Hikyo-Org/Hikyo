@@ -1,7 +1,7 @@
-# Fork pull-request validation (#813). actions/checkout refuses fork code under
-# pull_request_target, correctly: there the runtime token can write the base
-# branch's cache. A fork's validation therefore runs here, under pull_request,
-# with a read-only token, no secrets, and PR-scoped cache writes.
+# Pull-request validation (#813). PR code runs only under pull_request, with a
+# read-only token, no secrets, and PR-scoped cache writes. This applies to
+# same-repository branches too: pull_request_target's base cache scope is not a
+# safe place to execute code merely because the author can push a branch.
 #
 # This run's result is not a merge gate by itself: the YAML comes from the PR's
 # merge ref. trusted-ci's ci-required (base-controlled) accepts it only when the
@@ -30,10 +30,10 @@ concurrency:
 
 jobs:
   vouch:
-    if: github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Require a vouched author
+        if: github.event.pull_request.head.repo.full_name != github.repository
         uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
         with:
           user: ${{ github.event.pull_request.user.login }}
@@ -42,7 +42,6 @@ jobs:
 
   validation:
     needs: vouch
-    if: github.event.pull_request.head.repo.full_name != github.repository
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read

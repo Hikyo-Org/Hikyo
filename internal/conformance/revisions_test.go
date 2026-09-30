@@ -47,6 +47,7 @@ func init() {
 		scenario{"revision_ciphertext_is_owner_bound", scenarioRevisionCiphertextBinding},
 		scenario{"advisory_projects_authorization_per_event", scenarioAdvisoryAuthorization},
 		scenario{"historical_export_takes_reveal_history_not_reveal", scenarioHistoricalExportFormula},
+		scenario{"historical_export_masks_sticky_secret_occurrences", scenarioHistoricalExportStickySecrecy},
 		scenario{"restore_of_superseded_secret_takes_reveal_history", scenarioRestoreSupersededSecret},
 		scenario{"restore_gate_uses_written_time_classification", scenarioRestoreWrittenTimeClassification},
 		scenario{"restore_secret_formulas_are_side_specific", scenarioRestoreSideSpecificSecretFormula},
@@ -59,6 +60,42 @@ func init() {
 		scenario{"pin_lifecycle_quota_and_expiry_refusals_by_name", scenarioPinLifecycle},
 		scenario{"delivery_retry_clears_rolled_back_pin_metadata", scenarioDeliveryRetryClearsPinMetadata},
 	)
+}
+
+func scenarioHistoricalExportStickySecrecy(t *testing.T, db *store.DB) {
+	who, scope, values, envs, keys := valueFixture(t, db, "exportsticky")
+	actor := service.LocalPrincipal(who)
+	dev := mustEnv(t, envs, actor, scope, "dev")
+	key := mustKey(t, keys, actor, scope, "STICKY", string(schema.Config), schema.DefaultPresenceRules())
+	publishValue(t, db, values, actor, dev, "STICKY", "historical-secret")
+	historical := latestRevisionOf(t, db, string(dev.Env))
+	seed(t, db, []string{fmt.Sprintf(`
+		INSERT INTO secret_value_occurrences (value_entry_id,org_id,project_id,environment_id)
+		SELECT e.value_entry_id,e.org_id,e.project_id,e.environment_id
+		FROM snapshot_entries e JOIN snapshots s ON s.id=e.snapshot_id
+		WHERE s.environment_id='%s' AND s.revision=%d AND e.key_id='%s'
+		ON CONFLICT (value_entry_id) DO NOTHING`, dev.Env, historical, key.ID)})
+	publishValue(t, db, values, actor, dev, "STICKY", "current-config")
+
+	revisions := revisionSvc(t, db)
+	masked, _, err := revisions.ExportWithParameters(t.Context(), actor, dev, historical, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(masked) != 1 || masked[0].Classification != string(schema.Secret) || masked[0].Revealed || masked[0].Value != "" {
+		t.Fatalf("non-reveal historical export = %+v, want authoritative secret presence only", masked)
+	}
+	historian := service.LocalPrincipal(newPrincipal(t, db,
+		"usr_export_sticky_historian_"+string(scope.Project), []grantSpec{
+			{"read", domain.Scope{Org: scope.Org}}, {"reveal-history", domain.Scope{Org: scope.Org}},
+		}))
+	revealed, _, err := revisions.ExportWithParameters(t.Context(), historian, dev, historical, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revealed) != 1 || !revealed[0].Revealed || revealed[0].Value != "historical-secret" {
+		t.Fatalf("reveal-history export = %+v, want historical plaintext", revealed)
+	}
 }
 
 func scenarioRevisionListDetailCollectionParity(t *testing.T, db *store.DB) {

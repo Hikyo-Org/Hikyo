@@ -8,6 +8,7 @@ import (
 	"context"
 	"io/fs"
 	"math"
+	"net"
 	"net/http"
 	"time"
 
@@ -200,6 +201,11 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		_, _ = w.Write([]byte("ready"))
 	})
 	r.Get("/metrics", func(w http.ResponseWriter, req *http.Request) {
+		host, _, err := net.SplitHostPort(req.RemoteAddr)
+		if err != nil || !net.ParseIP(host).IsLoopback() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		if healthService == nil {
 			http.Error(w, "retention health unavailable", http.StatusServiceUnavailable)
 			return

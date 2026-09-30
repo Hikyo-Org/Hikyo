@@ -217,7 +217,8 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 		return s.offline(ctx, ios, dest, err)
 	}
 	present, presentStamp := "", ""
-	if stored := s.loadCursor(); stored != nil && stored.Credential == credentialFingerprint(s.token) && stored.ConfigDigest == s.configDigest() {
+	snapshotFresh := s.snapshotFreshForCursor(ios.now())
+	if stored := s.loadCursor(); snapshotFresh && stored != nil && stored.Credential == credentialFingerprint(s.token) && stored.ConfigDigest == s.configDigest() {
 		if st, ok, err := dest.Intact(s.keys, s.cfg.Target, s.policy, s.fileNames()); err == nil && ok && st.Stamp == stored.Stamp {
 			present = stored.Cursor
 			presentStamp = st.Stamp
@@ -277,6 +278,44 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 	s.printResult(ios, res, fmt.Sprintf("revision %d", resp.Revision))
 	s.report(ctx, ios, "applied", resp.Revision, generation, res.Stamp)
 	return fileSyncApplied, nil
+}
+
+// snapshotFreshForCursor keeps the current-response shortcut from aging the
+// offline recovery cache out while live contact continues. A missing, invalid,
+// expired, or nearly expired snapshot forces one full authorized delivery.
+func (s *fileSyncSession) snapshotFreshForCursor(now time.Time) bool {
+	if !s.cfg.Snapshot.OfflineServe {
+		return true
+	}
+	binding, err := s.snapshotBinding()
+	if err != nil {
+		return false
+	}
+	_, stored, err := compose.LoadSnapshot(s.keys, binding, now, s.cfg.SnapshotMaxAge())
+	if err != nil {
+		return false
+	}
+	aad, err := stored.AAD()
+	if err != nil {
+		return false
+	}
+	issued, err := time.Parse(time.RFC3339, aad.IssuedAt)
+	if err != nil {
+		return false
+	}
+	expires, err := time.Parse(time.RFC3339, aad.ExpiresAt)
+	if err != nil {
+		return false
+	}
+	effective := expires
+	if capped := issued.Add(s.cfg.SnapshotMaxAge()); capped.Before(effective) {
+		effective = capped
+	}
+	refreshMargin := s.cfg.SnapshotMaxAge() / 10
+	if refreshMargin > time.Hour {
+		refreshMargin = time.Hour
+	}
+	return now.Add(refreshMargin).Before(effective)
 }
 
 // publish renders every file and commits them as one generation. Every

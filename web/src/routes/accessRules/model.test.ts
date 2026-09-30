@@ -18,6 +18,8 @@ import {
   resolve,
   rulesFromGrants,
   savePlan,
+  selfRemoveRefusal,
+  selfSaveRefusal,
   type Key,
   type PermId,
   type Rule,
@@ -74,6 +76,37 @@ describe('the vocabulary', () => {
       ok: false,
       why: 'Not available here: needs all keys of an environment',
     });
+  });
+});
+
+describe('self-edit transaction safety', () => {
+  it('refuses multi-request changes to the acting principal but permits one request', () => {
+    const current = rulesOf(makeWorld(), IDS.alice)[0];
+    expect(current).toBeDefined();
+    if (current === undefined) return;
+
+    expect(selfSaveRefusal(current, { ...current, perms: ['read'] }, IDS.alice)).toContain('multiple requests');
+    expect(selfSaveRefusal(current, { ...current, perms: [...current.perms, 'reveal'] }, IDS.alice)).toBeNull();
+    expect(selfSaveRefusal(current, { ...current, perms: ['read'] }, IDS.bob)).toBeNull();
+  });
+
+  it('refuses removal of a multi-part rule owned by the acting principal', () => {
+    const current = rulesOf(makeWorld(), IDS.alice)[0];
+    expect(current).toBeDefined();
+    if (current === undefined) return;
+
+    expect(selfRemoveRefusal(current, IDS.alice)).toContain('multiple requests');
+    expect(selfRemoveRefusal(current, IDS.bob)).toBeNull();
+  });
+
+  it('does not confuse delimiter-bearing folder names with multiple folders', () => {
+    const current = rulesOf(makeWorld(), IDS.alice)[0];
+    expect(current).toBeDefined();
+    if (current === undefined || current.source.kind !== 'rule') return;
+
+    const oneFolder = { ...current, keys: { mode: 'all' as const, items: [{ project: PAY, folder: `a,${PAY}|f|b` }] } };
+    const twoFolders = { ...current, keys: { mode: 'all' as const, items: [{ project: PAY, folder: 'a' }, { project: PAY, folder: 'b' }] } };
+    expect(savePlan(oneFolder, twoFolders)).toEqual({ create: effective(twoFolders), revoke: current.source.parts.map((part) => part.id) });
   });
 });
 

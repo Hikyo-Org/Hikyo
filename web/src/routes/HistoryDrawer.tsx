@@ -965,6 +965,7 @@ function RevisionDetail({
     keyId: key.key_id,
     name: key.name,
     classification: key.classification,
+    sensitive: key.sensitive,
   }));
   const pinnedHere = pins.filter((pin) => pin.revision === revision.revision);
 

@@ -125,6 +125,7 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 		Version:  "e2e",
 	}, nil)))
 	t.Cleanup(httpSrv.Close)
+	cliSocket := serveLocalCLI(t, httpSrv.Config.Handler)
 
 	// Fresh install: the first administrator is minted on the host, never
 	// over the network. The authority it returns creates no session.
@@ -177,7 +178,7 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 	prompts["New password"] = password
 	prompts["Repeat"] = password
 	if code := cli.Run(t.Context(), ios(), []string{
-		"account", "establish-credential", "--instance", httpSrv.URL, "--as", "demo-admin",
+		"account", "establish-credential", "--instance", httpSrv.URL, "--socket", cliSocket, "--as", "demo-admin",
 	}); code != cli.ExitOK {
 		t.Fatalf("establish-credential exited %d", code)
 	}

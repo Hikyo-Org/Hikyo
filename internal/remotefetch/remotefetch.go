@@ -23,6 +23,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -307,10 +308,11 @@ func (c *Client) dialThroughProxy(ctx context.Context, addr string) (net.Conn, e
 	if err != nil {
 		return nil, err
 	}
-	if err := establishCONNECT(ctx, conn, addr, c.cfg.Deadline); err != nil {
+	tunnel, err := establishCONNECT(ctx, conn, addr, c.cfg.Deadline)
+	if err != nil {
 		return nil, err
 	}
-	return conn, nil
+	return tunnel, nil
 }
 
 // establishCONNECT owns conn until a tunnel is established. Both blocking
@@ -318,10 +320,40 @@ func (c *Client) dialThroughProxy(ctx context.Context, addr string) (net.Conn, e
 // configured remote deadline; cancellation actively wakes either syscall.
 // Any failure closes the connection before returning, so a stalled proxy
 // cannot retain a goroutine and file descriptor past the request budget.
-func establishCONNECT(ctx context.Context, conn net.Conn, addr string, deadline time.Duration) error {
-	closeWithError := func(err error) error {
+const maxConnectResponseHeader = 64 << 10
+
+type connectHeaderReader struct {
+	io.Reader
+	remaining int64
+	bounded   bool
+}
+
+func (r *connectHeaderReader) Read(p []byte) (int, error) {
+	if !r.bounded {
+		return r.Reader.Read(p)
+	}
+	if r.remaining <= 0 {
+		return 0, errors.New("remotefetch: forward proxy CONNECT response headers exceeded 64 KiB")
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	n, err := r.Reader.Read(p)
+	r.remaining -= int64(n)
+	return n, err
+}
+
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
+
+func establishCONNECT(ctx context.Context, conn net.Conn, addr string, deadline time.Duration) (net.Conn, error) {
+	closeWithError := func(err error) (net.Conn, error) {
 		_ = conn.Close()
-		return err
+		return nil, err
 	}
 	ioDeadline := time.Now().Add(deadline)
 	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(ioDeadline) {
@@ -344,7 +376,9 @@ func establishCONNECT(ctx context.Context, conn net.Conn, addr string, deadline 
 		stopCancellation()
 		return closeWithError(err)
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
+	bounded := &connectHeaderReader{Reader: conn, remaining: maxConnectResponseHeader + 1, bounded: true}
+	reader := bufio.NewReader(bounded)
+	resp, err := http.ReadResponse(reader, req)
 	if err != nil {
 		stopCancellation()
 		if ctx.Err() != nil {
@@ -352,7 +386,6 @@ func establishCONNECT(ctx context.Context, conn net.Conn, addr string, deadline 
 		}
 		return closeWithError(err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		stopCancellation()
 		return closeWithError(fmt.Errorf("remotefetch: the forward proxy refused CONNECT with %s", resp.Status))
@@ -360,10 +393,14 @@ func establishCONNECT(ctx context.Context, conn net.Conn, addr string, deadline 
 	if !stopCancellation() {
 		return closeWithError(ctx.Err())
 	}
+	// CONNECT success has no HTTP body. Never honor or drain a hostile
+	// Content-Length or chunked body before handing the tunnel to TLS.
+	resp.Body = http.NoBody
+	bounded.bounded = false
 	if err := conn.SetDeadline(time.Time{}); err != nil {
 		return closeWithError(err)
 	}
-	return nil
+	return &bufferedConn{Conn: conn, reader: reader}, nil
 }
 
 // ClassifyError maps a transport or status failure to its outcome. It is

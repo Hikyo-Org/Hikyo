@@ -48,6 +48,7 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
     }
     const id = nextGuardId++;
     const sentinel: Sentinel = { hikyoNavigationGuard: id };
+    const protectedURL = window.location.href;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
@@ -66,20 +67,20 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
         // A finished guard's sentinel, left under the cursor because its
         // `history.back()` consumed ours instead. Adopt it rather than
         // surface a dismissal nobody attempted.
-        history.replaceState(sentinel, '', window.location.href);
+        history.replaceState(sentinel, '', protectedURL);
         return;
       }
       // The route, or an older live guard's sentinel: a real Back press.
-      history.pushState(sentinel, '', window.location.href);
+      history.pushState(sentinel, '', protectedURL);
       attempt.current();
     };
     live.push(id);
-    history.pushState(sentinel, '', window.location.href);
+    history.pushState(sentinel, '', protectedURL);
     window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('popstate', onPopState);
+    window.addEventListener('popstate', onPopState, { capture: true });
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('popstate', onPopState, { capture: true });
       live.splice(live.indexOf(id), 1);
       history.back();
     };

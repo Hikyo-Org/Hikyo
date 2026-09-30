@@ -32,6 +32,11 @@ import (
 	"filippo.io/age"
 )
 
+const (
+	maxHeaderBytes = 256 << 10
+	maxRecipients  = 256
+)
+
 // Export and open refusals. Each is its own sentinel because the operator
 // error behind each is different, and a restore runbook that cannot tell
 // "you handed me the wrong key" from "this file is a prefix" is useless.
@@ -57,6 +62,9 @@ var (
 	// ErrUnlock reports an unusable unlock: neither an identity nor a
 	// passphrase, or both at once.
 	ErrUnlock = errors.New("backup: restore needs exactly one of the backup identity or the container passphrase")
+
+	ErrHeaderTooLarge    = errors.New("backup: container header exceeds the 256 KiB limit")
+	ErrTooManyRecipients = errors.New("backup: container exceeds the 256-recipient limit")
 )
 
 // Options is the export recipient policy. Recipients are age public
@@ -84,6 +92,9 @@ func (o Options) Validate() error {
 }
 
 func (o Options) recipients() ([]age.Recipient, error) {
+	if len(o.Recipients) > maxRecipients {
+		return nil, ErrTooManyRecipients
+	}
 	if len(o.Recipients) > 0 && o.Passphrase != "" {
 		return nil, ErrRecipientExclusive
 	}
@@ -184,7 +195,10 @@ func ExtractTo(dst io.Writer, src io.Reader, u Unlock) error {
 	// refused on its shape rather than on whether this caller happens to hold
 	// the stronger of its two doors.
 	var consumed bytes.Buffer
-	header, err := age.ExtractHeader(io.TeeReader(src, &consumed))
+	header, err := age.ExtractHeader(io.TeeReader(io.LimitReader(src, maxHeaderBytes+1), &consumed))
+	if consumed.Len() > maxHeaderBytes {
+		return ErrHeaderTooLarge
+	}
 	if err != nil {
 		return fmt.Errorf("backup: read container header: %w", err)
 	}
@@ -229,6 +243,9 @@ func checkStanzaExclusivity(header []byte) error {
 			continue
 		}
 		stanzas++
+		if stanzas > maxRecipients {
+			return ErrTooManyRecipients
+		}
 		if fields := strings.Fields(line); len(fields) >= 2 && fields[1] == "scrypt" {
 			scrypt++
 		}

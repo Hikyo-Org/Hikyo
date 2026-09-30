@@ -133,3 +133,15 @@ func TestAuthenticatedArchiveRequiresActualCompleteContainer(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthenticatedArchiveRejectsSparseMetadata(t *testing.T) {
+	if err := validateArchiveHeader(&tar.Header{
+		Typeflag:   tar.TypeReg,
+		PAXRecords: map[string]string{"GNU.sparse.realsize": "1099511627776"},
+	}); err == nil {
+		t.Fatal("GNU sparse PAX metadata was accepted")
+	}
+	if err := validateArchiveHeader(&tar.Header{Typeflag: tar.TypeGNUSparse}); err == nil {
+		t.Fatal("GNU sparse member type was accepted")
+	}
+}

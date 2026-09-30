@@ -7,6 +7,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -95,7 +97,8 @@ func emulatorClient(t *testing.T, server *awssmtest.Server) *Client {
 	roots.AddCert(server.Certificate())
 	client, err := NewClient(ClientConfig{
 		Origin: server.URL, Credential: staticDescriptor(server.Region), Deadline: 5 * time.Second,
-		AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
+		AllowedCIDRs:    []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+		STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -162,6 +165,56 @@ func TestWireErrorClassification(t *testing.T) {
 	server.FailNext("PutSecretValue", 500, "InternalServiceError", "")
 	if err := client.PutSecretValue(t.Context(), "x", strings.Repeat("a", 64), "v"); IsDefinite(err) {
 		t.Fatalf("5xx must be ambiguous, got definite %v", err)
+	}
+}
+
+func TestSTSResponseBodyIsBoundedBeforeSDKDeserialization(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(strings.Repeat("x", responseCap+1)))
+	}))
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	loopback := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	descriptor := `{"mode":"static","region":"eu-west-1","sts_origin":"` + server.URL + `","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"fixture"}`
+	client, err := NewClient(ClientConfig{
+		Origin: server.URL, Credential: descriptor, Deadline: 5 * time.Second,
+		AllowedCIDRs: loopback, STSAllowedCIDRs: loopback, RootCAs: roots,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Forget()
+	if _, err := client.ResolveIdentity(t.Context()); err == nil {
+		t.Fatal("oversized STS response was accepted")
+	}
+}
+
+func TestListSecretNamesRejectsRepeatedPaginationToken(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		_, _ = w.Write([]byte(`{"SecretList":[],"NextToken":"repeated"}`))
+	}))
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	loopback := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	client, err := NewClient(ClientConfig{
+		Origin: server.URL, Credential: staticDescriptor("eu-west-1"), Deadline: 5 * time.Second,
+		AllowedCIDRs: loopback, STSAllowedCIDRs: loopback, RootCAs: roots,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Forget()
+	if _, err := client.ListSecretNames(t.Context(), "prefix", 0); !errors.Is(err, ErrSecretListPagination) {
+		t.Fatalf("ListSecretNames() error = %v, want ErrSecretListPagination", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
 	}
 }
 

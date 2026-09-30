@@ -444,11 +444,9 @@ func canonicalRows(rows []compose.SnapshotRow) []byte {
 	return data
 }
 
-// sanitizedEnviron returns the process environment with the workload credential
-// (HIKYO_TOKEN) removed: it is the ONLY credential-transport env var (the token
-// file is a flag, not an env var), and it must never reach the child or any
-// subprocess the CLI spawns (finding 1). Building the child env from this — not
-// os.Environ() — means the credential was never present, not stripped after.
+// sanitizedEnviron returns the process environment without Hikyo's control
+// namespace. That namespace includes bearer credentials, database URLs, and
+// root encryption keys; none may reach a workload or Docker subprocess.
 //
 // CREDENTIALS_DIRECTORY is deliberately NOT stripped (R1-1, accepted): it is a
 // directory PATH, not a secret, and access to the files under it is per-open and
@@ -459,7 +457,8 @@ func sanitizedEnviron() []string {
 	src := os.Environ()
 	out := make([]string, 0, len(src))
 	for _, e := range src {
-		if strings.HasPrefix(e, "HIKYO_TOKEN=") {
+		name, _, _ := strings.Cut(e, "=")
+		if strings.HasPrefix(strings.ToUpper(name), "HIKYO_") {
 			continue
 		}
 		out = append(out, e)

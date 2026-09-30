@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -288,24 +290,33 @@ func (a *API) ReauthPasskeyFinish(ctx context.Context, req apigen.ReauthPasskeyF
 		}
 		return nil, err
 	}
+	resp, err := makeReauthPasskeyResponse(requestFrom(ctx), result)
+	if err != nil {
+		a.fault(ctx, "passkey reauth response", err)
+		return apigen.ReauthPasskeyFinish500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
+	}
+	return resp, nil
+}
+
+func makeReauthPasskeyResponse(request *http.Request, result service.ReauthResult) (reauthPasskeyResponse, error) {
+	if request == nil || result.SessionToken == "" {
+		return reauthPasskeyResponse{}, errors.New("server: passkey reauth result has no delivery channel or rotated token")
+	}
 	resp := reauthPasskeyResponse{body: apigen.ReauthResult{
 		SessionId:      result.SessionID,
 		EnvironmentId:  result.EnvironmentID,
 		SingleDecision: result.SingleDecision,
 		WindowExpires:  result.WindowExpires,
 	}}
-	// The reauth always rotates the acting session; deliver the rotated token on
-	// the channel that carried the presented one. A cookie-borne browser session
-	// gets its rotated cookie; a bearer caller reads the token from nowhere here
-	// (the body omits it by contract), which is fine — WebAuthn is browser-only.
-	if result.SessionToken != "" {
-		if r := requestFrom(ctx); r != nil {
-			if _, cerr := r.Cookie(browserSessionCookie); cerr == nil {
-				resp.cookies = browserCookiesFor(result.SessionToken, result.CSRFToken)
-			}
-		}
+	if cookie, err := request.Cookie(browserSessionCookie); err == nil && strings.TrimSpace(cookie.Value) != "" {
+		resp.cookies = browserCookiesFor(result.SessionToken, result.CSRFToken)
+		return resp, nil
 	}
-	return resp, nil
+	if value, ok := strings.CutPrefix(request.Header.Get("Authorization"), "Bearer "); ok && strings.TrimSpace(value) != "" {
+		resp.body.SessionToken = &result.SessionToken
+		return resp, nil
+	}
+	return reauthPasskeyResponse{}, errors.New("server: passkey reauth request carried no recognized session artifact")
 }
 
 // ---------------------------------------------------------------------------

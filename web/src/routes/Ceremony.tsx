@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useWorkspaceContext } from '../api/transport.tsx';
@@ -178,6 +178,10 @@ export function Ceremony({
   const busy = pending !== null;
   const [failure, setFailure] = useState<string | null>(null);
   const first = useRef<HTMLButtonElement>(null);
+	const attemptGeneration = useRef(0);
+	useEffect(() => () => {
+		attemptGeneration.current += 1;
+	}, []);
   // A workspace disclosure cannot run its ceremony here: a passkey assertion is
   // bound to THIS origin's relying-party id, and the remote would reject it. So
   // inside a workspace the modal hands off to the remote's own origin in a
@@ -193,15 +197,18 @@ export function Ceremony({
   const signed = SIGNED_OPERATION[request.purpose];
 
   const attempt = async (factor: 'passkey' | 'oidc' | 'totp', run: () => Promise<void>) => {
+	const generation = ++attemptGeneration.current;
     setPending(factor);
     setFailure(null);
     try {
       await run();
+	  if (generation !== attemptGeneration.current) return;
       onAuthorised();
     } catch (err) {
+	  if (generation !== attemptGeneration.current) return;
       setFailure(ceremonyRefusalText(err));
     } finally {
-      setPending(null);
+	  if (generation === attemptGeneration.current) setPending(null);
     }
   };
 
@@ -252,6 +259,8 @@ export function Ceremony({
       // reach the caller, or the modal disappears while the act stays staged.
       onCancel={(event) => {
         event.preventDefault();
+		if (busy) return;
+		attemptGeneration.current += 1;
         onCancel();
       }}
     >

@@ -389,8 +389,8 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 		}
 		return change, rowFatal, gateErr
 	}
-	if err := m.apply(ctx, req, row, plan, token); err != nil {
-		status, err := m.finishFailure(ctx, journal, effect, state, err)
+	if mutated, err := m.apply(ctx, req, row, plan, token); err != nil {
+		status, err := m.finishFailure(ctx, journal, effect, state, mutated, err)
 		if status == rowConflict {
 			change.Disposition = adapter.Conflict
 		}
@@ -402,7 +402,8 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 	return change, rowDone, nil
 }
 
-func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter.DesiredRow, plan writePlan, token string) error {
+func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter.DesiredRow, plan writePlan, token string) (bool, error) {
+	mutated := false
 	tags := map[string]string{adapter.SentinelName: req.Target.ID}
 	if plan.create {
 		// The tag is created with the secret, so ownership is never absent on
@@ -413,37 +414,46 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 			// a replay of our own create landed. Only the tag can tell.
 			meta, found, describeErr := m.describe(ctx, req.Target.Destination, row.EffectiveName)
 			if describeErr != nil {
-				return describeErr
+				return mutated, describeErr
 			}
 			if !found || meta.Tags[adapter.SentinelName] != req.Target.ID {
-				return fmt.Errorf("%w: secret %s was created outside Hikyo", adapter.ErrConflict, row.EffectiveName)
+				return mutated, fmt.Errorf("%w: secret %s was created outside Hikyo", adapter.ErrConflict, row.EffectiveName)
 			}
+			mutated = true
 		} else if err != nil {
-			return err
+			return mutated, err
+		} else {
+			mutated = true
 		}
 	}
 	if plan.restore {
 		if err := m.API.RestoreSecret(ctx, row.EffectiveName); err != nil {
-			return err
+			return mutated, err
 		}
+		mutated = true
 	}
 	if plan.tag {
 		if err := m.API.TagSecret(ctx, row.EffectiveName, tags); err != nil {
-			return errors.Join(errOwnershipTag, err)
+			return mutated, errors.Join(errOwnershipTag, err)
 		}
+		mutated = true
 	}
 	if plan.put {
 		if err := m.API.PutSecretValue(ctx, row.EffectiveName, token, row.Value); err != nil {
-			return err
+			return mutated, err
 		}
+		mutated = true
 	}
 	if plan.versionTag {
 		// Records the version Hikyo wrote independently of staging-label
 		// behaviour. If this tag fails after the write, HIKYO_CURRENT still
 		// marks the version, so the replay recognises it and retags.
-		return m.API.TagSecret(ctx, row.EffectiveName, map[string]string{VersionTag: token})
+		if err := m.API.TagSecret(ctx, row.EffectiveName, map[string]string{VersionTag: token}); err != nil {
+			return mutated, err
+		}
+		mutated = true
 	}
-	return nil
+	return mutated, nil
 }
 
 // errOwnershipTag means the adopted secret's value has not been written.
@@ -453,7 +463,7 @@ var errOwnershipTag = errors.New("aws-secrets-manager: recording adopted ownersh
 // finishFailure settles an attempted write. A refusal AWS answered is a
 // definite failure; anything else may have landed and stays dispatched so the
 // replay reuses the same idempotency token.
-func (m *Module) finishFailure(ctx context.Context, journal adapter.Journal, effect adapter.Effect, state adapter.LedgerState, err error) (rowStatus, error) {
+func (m *Module) finishFailure(ctx context.Context, journal adapter.Journal, effect adapter.Effect, state adapter.LedgerState, mutated bool, err error) (rowStatus, error) {
 	completion := adapter.Completion{Outcome: adapter.OutcomeUnknown, State: adapter.Dispatched}
 	if errors.Is(err, errOwnershipTag) {
 		completion.State = state
@@ -461,8 +471,10 @@ func (m *Module) finishFailure(ctx context.Context, journal adapter.Journal, eff
 	conflict := errors.Is(err, adapter.ErrConflict)
 	if IsDefinite(err) || conflict {
 		completion = adapter.Completion{Outcome: adapter.OutcomeFailure, State: state, Conflict: conflict}
-		if state == adapter.Reserved {
+		if state == adapter.Reserved && !mutated {
 			completion.State, completion.ReleaseLedger = "", true
+		} else if state == adapter.Reserved {
+			completion.State = adapter.Dispatched
 		}
 	}
 	if finishErr := journal.Finish(ctx, effect, completion); finishErr != nil {

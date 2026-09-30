@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
+	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 )
 
 // Client is the origin-bound HTTP client.
@@ -125,11 +126,14 @@ func (c *Client) wait(ctx context.Context, d time.Duration) error {
 // NewClient builds a client bound to a trust entry.
 func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 	transport := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
 		TLSHandshakeTimeout: 10 * time.Second,
 		ForceAttemptHTTP2:   true,
 	}
 	if strings.HasPrefix(entry.Origin, "https://") {
+		transport.Proxy = http.ProxyFromEnvironment
+		if entry.CLISocket != "" {
+			return nil, failf(ExitRefused, "trust entry %q combines https with a local CLI socket; re-establish it", entry.Name)
+		}
 		if entry.SPKIPin == "" {
 			return nil, failf(ExitRefused,
 				"trust entry %q names an https origin with no recorded certificate pin; re-establish it", entry.Name)
@@ -180,6 +184,18 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 		return nil, failf(ExitRefused,
 			"refusing to use plaintext http for a non-loopback instance (%s): the session artifact is a bearer credential",
 			entry.Origin)
+	} else if entry.CLISocket == "" {
+		return nil, failf(ExitRefused,
+			"refusing identity-free loopback http for %s: configure a same-user local CLI socket or pinned https",
+			entry.Origin)
+	} else {
+		if err := localsocket.ValidatePath(entry.CLISocket); err != nil {
+			return nil, failf(ExitRefused, "local CLI socket: %v", err)
+		}
+		transport.ForceAttemptHTTP2 = false
+		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return localsocket.DialContext(ctx, entry.CLISocket)
+		}
 	}
 
 	return &Client{
@@ -198,7 +214,8 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 	}, nil
 }
 
-// isLoopbackOrigin decides whether plaintext http is acceptable. url.Hostname
+// isLoopbackOrigin decides whether an HTTP application origin may be carried
+// over an authenticated local socket. url.Hostname
 // strips the brackets an IPv6 literal carries, so `http://[::1]:8080` is
 // recognised — a hand-rolled colon split reads its host as "[" and refuses a
 // perfectly good loopback address.

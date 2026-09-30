@@ -20,6 +20,8 @@ import {
   PRESETS,
   projectById,
   projectName,
+  selfRemoveRefusal,
+  selfSaveRefusal,
   setMode,
   tapped,
   toggleItems,
@@ -51,6 +53,7 @@ export function RuleEditorDialog({
   projects,
   busy = false,
   failure = null,
+  actingPrincipal = '',
   onSave,
   onRemove,
   onCancel,
@@ -60,6 +63,7 @@ export function RuleEditorDialog({
   projects: readonly string[];
   busy?: boolean;
   failure?: string | null;
+  actingPrincipal?: string;
   onSave: (rule: Rule) => void;
   onRemove?: (rule: Rule) => void;
   onCancel: () => void;
@@ -73,6 +77,8 @@ export function RuleEditorDialog({
   const editing = rule.source.kind === 'rule';
   const unreadable = chosen.filter((p) => projectById(world, p)?.keys === null);
   const singleKeys = keyChoices(world, chosen, draft);
+  const saveRefusal = selfSaveRefusal(editing ? rule : null, draft, actingPrincipal);
+  const removeRefusal = selfRemoveRefusal(rule, actingPrincipal);
   const cancel = () => {
     if (!busy) onCancel();
   };
@@ -91,20 +97,21 @@ export function RuleEditorDialog({
       actions={
         <>
           {editing && onRemove !== undefined ? (
-            <Button type="button" variant="danger" className="access-editor__remove" disabled={busy} onClick={() => onRemove(rule)}>
+            <Button type="button" variant="danger" className="access-editor__remove" disabled={busy || removeRefusal !== null} onClick={() => onRemove(rule)}>
               Remove rule
             </Button>
           ) : null}
           <Button type="button" disabled={busy} onClick={cancel}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" disabled={!valid || busy} aria-busy={busy ? true : undefined} onClick={() => onSave(draft)}>
+          <Button type="button" variant="primary" disabled={!valid || busy || saveRefusal !== null} aria-busy={busy ? true : undefined} onClick={() => onSave(draft)}>
             {busy ? 'Saving…' : 'Save'}
           </Button>
         </>
       }
     >
       {failure === null ? null : <Alert>{failure}</Alert>}
+      {saveRefusal === null && removeRefusal === null ? null : <Alert>{saveRefusal ?? removeRefusal}</Alert>}
       <fieldset className="access-editor__section">
         <legend className="eyebrow">Where</legend>
         <AxisBox title="Projects" hint="Tap one or more projects. A rule names its projects: access to all projects stays an organisation grant.">

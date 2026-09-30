@@ -118,21 +118,23 @@ func OpenDestination(dir string, requireTmpfs bool) (*Destination, error) {
 		root.Close()
 		return nil, fmt.Errorf("filesync: destination %s changed while it was being opened", dir)
 	}
-	if requireTmpfs {
-		ok, err := isTmpfs(dir)
-		if err != nil {
-			root.Close()
-			return nil, fmt.Errorf("%w: %s: %v", ErrNotTmpfs, dir, err)
-		}
-		if !ok {
-			root.Close()
-			return nil, fmt.Errorf("%w: %s", ErrNotTmpfs, dir)
-		}
-	}
 	lock, err := lockDirectory(dir, fi)
 	if err != nil {
 		root.Close()
 		return nil, err
+	}
+	if requireTmpfs {
+		ok, err := isTmpfsFile(lock)
+		if err != nil {
+			_ = unlockDirectory(lock)
+			root.Close()
+			return nil, fmt.Errorf("%w: %s: %v", ErrNotTmpfs, dir, err)
+		}
+		if !ok {
+			_ = unlockDirectory(lock)
+			root.Close()
+			return nil, fmt.Errorf("%w: %s", ErrNotTmpfs, dir)
+		}
 	}
 	return &Destination{dir: dir, root: root, lock: lock}, nil
 }
@@ -298,6 +300,9 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 	if err := d.claimBinding(plan.Target); err != nil {
 		return res, err
 	}
+	if err := d.ensureGenDirAccess(); err != nil {
+		return res, err
+	}
 	if err := d.recover(); err != nil {
 		return res, err
 	}
@@ -408,7 +413,7 @@ func (d *Destination) claimBinding(target string) error {
 	fi, err := d.root.Lstat(genDir)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		if err := d.root.Mkdir(genDir, 0o700); err != nil {
+		if err := d.root.Mkdir(genDir, 0o711); err != nil {
 			return err
 		}
 		if err := d.writeFileSynced(bindingFile, []byte(target+"\n"), 0o600); err != nil {
@@ -614,21 +619,14 @@ func (d *Destination) stage(gen string, plan Plan, probe Probe) error {
 	if err := d.syncDir(dir); err != nil {
 		return err
 	}
-	if err := d.ensureGenDirAccess(plan.Policy, dirMode); err != nil {
-		return err
-	}
 	return d.syncDir(genDir)
 }
 
-// ensureGenDirAccess gives .hikyo-gen the same reach as a generation, so the
-// configured owner and group can traverse to their files.
-func (d *Destination) ensureGenDirAccess(policy Policy, mode os.FileMode) error {
-	if policy.UID >= 0 || policy.GID >= 0 {
-		if err := d.root.Chown(genDir, policy.UID, policy.GID); err != nil {
-			return fmt.Errorf("filesync: chown %s: %w", genDir, err)
-		}
-	}
-	return d.root.Chmod(genDir, mode)
+// ensureGenDirAccess keeps the shared generation directory independent from
+// any one generation's owner and mode. Execute-only access lets each
+// generation enforce its own policy without exposing the directory listing.
+func (d *Destination) ensureGenDirAccess() error {
+	return d.root.Chmod(genDir, 0o711)
 }
 
 func (d *Destination) writeOwned(name string, content []byte, policy Policy) error {

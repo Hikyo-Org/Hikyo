@@ -837,7 +837,34 @@ function MoveDetail({
             ))}
           </ul>
           {data.state === 'attention_required' ? (
-            resuming && adapter !== undefined ? (
+            data.kind === 'target' ? (
+              <>
+                <Alert>
+                  This target destination move cannot be resumed with an origin credential. Cancel
+                  it below, then start the target destination change again with the corrected target.
+                </Alert>
+                <div className="panel__actions">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={busy}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          await ceremonyFor('adapter.configure', environments);
+                          await cancel.mutateAsync(moveId);
+                          feedback.ok('Move canceled. The old route is being reconverged.');
+                        } catch (error) {
+                          feedback.report(error);
+                        }
+                      })()
+                    }
+                  >
+                    Cancel move
+                  </Button>
+                </div>
+              </>
+            ) : resuming && adapter !== undefined ? (
               <OriginMoveForm
                 title="Resume move"
                 provider={adapter.provider}

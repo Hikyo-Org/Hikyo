@@ -29,9 +29,9 @@ const environments = [
   { id: 'env-prod', name: 'production' },
 ];
 
-// Phase 1a candidates carry the default `secret` intent; 1b carries `config`.
-// The mock uses that to answer 1a with the new key still undeclared and 1b with
-// every declaration landed, the exact transition the wizard depends on.
+// Phase 1a candidates carry the default `secret` intent; the final review read
+// carries the selected intent. The mock uses that to distinguish discovery from
+// the tokens the operator actually reviews.
 function occurrenceList(input: {
   environment: string;
   candidates: readonly { name: string; classification: string }[];
@@ -168,12 +168,22 @@ describe('ImportWizard success', () => {
     await reachReview(container);
     await click(button(container, 'Import'));
     const call = importValues.mock.calls[0]?.[0];
-    // env-dev tokens come from the 1b read, so they name the post-declaration state.
+    // env-dev tokens come from the final review read and are preserved while
+    // declarations land.
     expect(call.precondition.occurrences).toContainEqual({
       key: 'NEW',
       environment_id: 'env-dev',
       token: 'tok-NEW-env-dev',
     });
+    expect(listOccurrences).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not rebind occurrence tokens after final review', async () => {
+    const { container } = await render();
+    await reachReview(container);
+    const readsAtReview = listOccurrences.mock.calls.length;
+    await click(button(container, 'Import'));
+    expect(listOccurrences).toHaveBeenCalledTimes(readsAtReview);
   });
 });
 

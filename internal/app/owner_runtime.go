@@ -38,6 +38,7 @@ type ownerRuntime struct {
 	publicEndpoint, operationalEndpoint *runtimeEndpoint
 	endpointErrors                      chan error
 	endpointWG                          sync.WaitGroup
+	cliServer                           *managedHTTPServer
 	serving                             bool
 	workerContext                       context.Context
 	transitioning                       bool

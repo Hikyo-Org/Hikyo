@@ -70,6 +70,15 @@ func snapState(t *testing.T) (string, *crypto.LocalKeys) {
 	return state, testKeys(t)
 }
 
+func snapPaths(t *testing.T, binding crypto.SnapshotBinding) (string, string) {
+	t.Helper()
+	snapshot, mark, err := snapshotPaths(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot, mark
+}
+
 func mkdir700(p string) error { return osMkdir(p, 0o700) }
 
 // TestSnapshotSaveLoadRoundTrip saves, drops all in-memory AAD, and loads with
@@ -228,7 +237,8 @@ func TestSnapshotHWMRollbackRefusedOnLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := atomicWrite(filepath.Join(state, snapshotFile), frameSnapshot(hdr, sealed), 0o600); err != nil {
+	snapshotPath, _ := snapPaths(t, snapScope(t, state, "env_1"))
+	if err := atomicWrite(snapshotPath, frameSnapshot(hdr, sealed), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
@@ -264,7 +274,8 @@ func TestSnapshotSameIssuanceRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := atomicWrite(filepath.Join(state, snapshotFile), frameSnapshot(hdr, sealed), 0o600); err != nil {
+	snapshotPath, _ := snapPaths(t, snapScope(t, state, "env_1"))
+	if err := atomicWrite(snapshotPath, frameSnapshot(hdr, sealed), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
@@ -280,8 +291,17 @@ func TestSnapshotContextMismatchRefused(t *testing.T) {
 	if err := SaveSnapshot(keys, snapBinding(t, state, aad), SnapshotPayload{}); err != nil {
 		t.Fatal(err)
 	}
+	source, _ := snapPaths(t, snapScope(t, state, "env_1"))
+	target, _ := snapPaths(t, snapScope(t, state, "env_2"))
+	record, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(target, record, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
-	_, _, err := LoadSnapshot(keys, snapScope(t, state, "env_2"), now, DefaultSnapshotMaxAge)
+	_, _, err = LoadSnapshot(keys, snapScope(t, state, "env_2"), now, DefaultSnapshotMaxAge)
 	if !errors.Is(err, ErrSnapshotContext) {
 		t.Fatalf("err = %v, want ErrSnapshotContext (refused by name, not ErrDecrypt)", err)
 	}
@@ -293,7 +313,7 @@ func TestSnapshotTamperedContainerFailsAEAD(t *testing.T) {
 	if err := SaveSnapshot(keys, snapBinding(t, state, aad), SnapshotPayload{Rows: []SnapshotRow{{Name: "A", Value: "1"}}}); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(state, snapshotFile)
+	path, _ := snapPaths(t, snapScope(t, state, "env_1"))
 	raw, err := osReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -306,5 +326,40 @@ func TestSnapshotTamperedContainerFailsAEAD(t *testing.T) {
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	if _, _, err := LoadSnapshot(keys, snapScope(t, state, "env_1"), now, DefaultSnapshotMaxAge); !errors.Is(err, crypto.ErrDecrypt) {
 		t.Fatalf("tampered container err = %v, want ErrDecrypt", err)
+	}
+}
+
+func TestSnapshotScopesKeepIndependentOfflineState(t *testing.T) {
+	state, keys := snapState(t)
+	renderAAD := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
+	runAAD := renderAAD
+	runAAD.TargetNames = []string{"__run__"}
+	runAAD.ChangeToken = "v1:run-token"
+	if err := SaveSnapshot(keys, snapBinding(t, state, renderAAD), SnapshotPayload{Rows: []SnapshotRow{{Name: "MODE", Value: "render"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSnapshot(keys, snapBinding(t, state, runAAD), SnapshotPayload{Rows: []SnapshotRow{{Name: "MODE", Value: "run"}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	renderPayload, _, err := LoadSnapshot(keys, snapScope(t, state, "env_1"), now, DefaultSnapshotMaxAge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runScope, err := crypto.NewSnapshotBinding(crypto.SnapshotBindingScope{
+		StorageDir: state, InstanceOrigin: "https://hikyo.example", OrgID: "org_1",
+		ProjectID: "prj_1", EnvironmentID: "env_1", CredentialFingerprint: "fp_1",
+		TargetNames: []string{"__run__"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runPayload, _, err := LoadSnapshot(keys, runScope, now, DefaultSnapshotMaxAge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renderPayload.Rows[0].Value != "render" || runPayload.Rows[0].Value != "run" {
+		t.Fatalf("scope caches collided: render=%+v run=%+v", renderPayload, runPayload)
 	}
 }

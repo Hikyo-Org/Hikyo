@@ -183,7 +183,9 @@ func samlMutationWire(result service.SAMLProviderMutationResult) apigen.SamlProv
 		Diff: apigen.SamlMetadataDiff{
 			EndpointsAdded: result.Diff.EndpointsAdded, EndpointsRemoved: result.Diff.EndpointsRemoved,
 			CertsAddedFps: result.Diff.CertsAddedFps, CertsRemovedFps: result.Diff.CertsRemovedFps,
-			ValidUntil: result.Diff.ValidUntil,
+			MetadataCertsAddedFps:   result.Diff.MetadataCertsAddedFps,
+			MetadataCertsRemovedFps: result.Diff.MetadataCertsRemovedFps,
+			ValidUntil:              result.Diff.ValidUntil,
 		},
 		RequiredFingerprints: result.RequiredFingerprints, RequiredEndpoints: result.RequiredEndpoints,
 	}

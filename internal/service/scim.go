@@ -587,11 +587,15 @@ func (s *SCIM) enterAttention(
 	if err != nil {
 		return nil, err
 	}
-	if err := r.SCIM().EnterAttention(ctx, c.proof, store.SCIMAttentionRow{
+	inserted, err := r.SCIM().EnterAttention(ctx, c.proof, store.SCIMAttentionRow{
 		ID: id, BindingID: c.binding.ID, State: string(state),
 		SubjectRef: subjectRef, Cause: string(cause), EnteredAt: now,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
+	}
+	if !inserted {
+		return nil, nil
 	}
 	return []grantEventInput{{
 		typ:    audit.EventSCIMAttentionEntered,

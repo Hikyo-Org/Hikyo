@@ -121,11 +121,20 @@ pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
 go build -tags ui -o ./bin/hikyo ./cmd/hikyo
 
-./bin/hikyo server --dev
+mkdir -m 700 .hikyo-runtime
+./bin/hikyo server --dev --cli-socket "$PWD/.hikyo-runtime/cli.sock"
 ```
 
 Open <http://127.0.0.1:8080>. The command creates `hikyo-dev.db` and a
 permission-`0600` root key in the current directory.
+
+Local CLI authentication uses the same-user Unix socket, not the browser's
+plaintext loopback TCP listener:
+
+```bash
+./bin/hikyo login http://127.0.0.1:8080 --local --as admin \
+  --socket "$PWD/.hikyo-runtime/cli.sock"
+```
 
 `--dev` is loopback-only and intended for evaluation. A `-tags ui` build embeds
 the browser app; a plain `go build` produces an API-only binary.
@@ -140,7 +149,7 @@ One binary handles both operator and day-to-day client workflows.
 
 ```bash
 # Operate the instance
-hikyo server [--dev] [--listen ADDR] [--root-key-file PATH]
+hikyo server [--dev] [--listen ADDR] [--cli-socket PATH] [--root-key-file PATH]
 hikyo migrate [--dev]
 hikyo admin [--dev] create --username admin
 hikyo backup [--dev] export

@@ -23,6 +23,7 @@ const providers = {
       redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/okta/callback',
       assurance_policy: '{"acr":["phr"]}',
       enabled: true,
+      row_version: 1n,
     },
     {
       slug: 'legacy-adfs',
@@ -33,6 +34,7 @@ const providers = {
       redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/legacy-adfs/callback',
       assurance_policy: null,
       enabled: false,
+      row_version: 1n,
     },
   ],
 } satisfies z.input<typeof zOidcProviderList>;

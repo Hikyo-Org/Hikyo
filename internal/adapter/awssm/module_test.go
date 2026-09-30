@@ -464,6 +464,27 @@ func TestAdoptedSecretIsTaggedBeforeWrite(t *testing.T) {
 	}
 }
 
+func TestDefiniteLaterFailurePreservesCustodyOfCreatedSecret(t *testing.T) {
+	for _, operation := range []string{"put", "tag"} {
+		t.Run(operation, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			api.failOnce[operation+":prod/app"] = &ResponseError{Status: 403, Code: "AccessDeniedException"}
+			_, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{
+				Target: jsonTarget(), Manifest: manifest(), JobID: "job_partial",
+			}, journal)
+			if err == nil {
+				t.Fatal("partial mutation unexpectedly succeeded")
+			}
+			if api.secrets["prod/app"] == nil {
+				t.Fatal("fixture did not create the remote secret")
+			}
+			if journal.states["prod/app"] != adapter.Dispatched {
+				t.Fatalf("ledger state = %q, want dispatched custody", journal.states["prod/app"])
+			}
+		})
+	}
+}
+
 func TestOwnedSecretScheduledForDeletionIsRestored(t *testing.T) {
 	api, journal := newFakeAPI(), newFakeJournal()
 	api.secrets["prod/app"] = &fakeSecret{tags: map[string]string{adapter.SentinelName: testTarget}, stages: map[string][]string{}, values: map[string]string{}, deleted: true}

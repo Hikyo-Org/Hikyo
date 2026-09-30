@@ -56,7 +56,7 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 			t.Cleanup(server.Close)
 			stateDir := t.TempDir()
 			st := &State{dir: stateDir}
-			if err := st.Trust().Put(TrustEntry{Name: "local", Origin: server.URL}); err != nil {
+			if err := st.Trust().Put(pinnedTestEntry("local", server)); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.PutSession(SessionArtifact{Instance: "local", Origin: server.URL, Token: "doctor-test-token",

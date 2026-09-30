@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -101,7 +100,11 @@ func (a *API) CreateFederatedBinding(ctx context.Context, req apigen.CreateFeder
 		want.Indefinite = *req.Body.Indefinite
 	}
 	if req.Body.LifetimeSeconds != nil {
-		want.Lifetime = time.Duration(*req.Body.LifetimeSeconds) * time.Second
+		lifetime, err := credentialLifetime(int64(*req.Body.LifetimeSeconds))
+		if err != nil {
+			return nil, err
+		}
+		want.Lifetime = lifetime
 	}
 	if req.Body.Replaces != nil {
 		want.Replaces = *req.Body.Replaces

@@ -592,12 +592,13 @@ func (q *Queries) DeleteSCIMUsersForBinding(ctx context.Context, arg DeleteSCIMU
 	return result.RowsAffected(), nil
 }
 
-const enterSCIMAttention = `-- name: EnterSCIMAttention :exec
+const enterSCIMAttention = `-- name: EnterSCIMAttention :execrows
 INSERT INTO scim_attention (id, org_id, binding_id, state, subject_ref, cause, entered_at)
 VALUES (
     $1, $2, $3, $4,
     $5, $6, $7
 )
+ON CONFLICT (binding_id, state, subject_ref) DO NOTHING
 `
 
 type EnterSCIMAttentionParams struct {
@@ -610,8 +611,8 @@ type EnterSCIMAttentionParams struct {
 	EnteredAt  pgtype.Timestamptz
 }
 
-func (q *Queries) EnterSCIMAttention(ctx context.Context, arg EnterSCIMAttentionParams) error {
-	_, err := q.db.Exec(ctx, enterSCIMAttention,
+func (q *Queries) EnterSCIMAttention(ctx context.Context, arg EnterSCIMAttentionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enterSCIMAttention,
 		arg.ID,
 		arg.ChainOrgID,
 		arg.BindingID,
@@ -620,7 +621,10 @@ func (q *Queries) EnterSCIMAttention(ctx context.Context, arg EnterSCIMAttention
 		arg.Cause,
 		arg.EnteredAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getSCIMBinding = `-- name: GetSCIMBinding :one

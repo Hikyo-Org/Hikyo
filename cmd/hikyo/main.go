@@ -127,7 +127,7 @@ func run() int {
 	case cmd == "server":
 		return runServer(ctx, args)
 	case cmd == "operator":
-		return runOperatorMode(ctx)
+		return runOperatorMode(ctx, args)
 	case cmd == "config-rollout":
 		return runConfigRollout(ctx, args, os.Stderr)
 	case cmd == "updater":
@@ -372,6 +372,7 @@ func runServer(ctx context.Context, args []string) int {
 			AppURL:         appURL,
 			ListenAddress:  srv.Addr,
 			OperationalURL: "http://" + srv.OperationalAddr,
+			CLISocket:      srv.CLISocket,
 			Mode:           mode,
 		})
 	}
@@ -397,7 +398,11 @@ func serverAppURL(cfg *config.Config, srv *app.Server) string {
 // separate process, not a mode of the running server. It loads no keyring and no
 // root key — configuration is HIKYO_OPERATOR_* env only, read inside
 // internal/operator. It is a real multicall MODE, never a client verb.
-func runOperatorMode(ctx context.Context) int {
+func runOperatorMode(ctx context.Context, args []string) int {
+	if len(args) != 0 {
+		fmt.Fprintln(os.Stderr, "usage: hikyo operator")
+		return 2
+	}
 	operator.Version = version
 	log := app.Logger(false)
 	if err := operator.Run(ctx, log); err != nil {

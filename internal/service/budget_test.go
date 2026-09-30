@@ -60,6 +60,25 @@ func TestBudgetRateWindowSlides(t *testing.T) {
 	}
 }
 
+func TestBudgetWeightedRateChargesEachUnitAtomically(t *testing.T) {
+	c := &clock{t: time.Unix(1_700_000_000, 0)}
+	b := newTestBudget(c)
+	keys := principalKeys("p1", "org1", "proj1")
+
+	release, err := b.acquireWeighted(budgetDefault, keys, BudgetDefaultRatePerMin-5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if _, err := b.acquireWeighted(budgetDefault, keys, 6); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("overflowing weighted charge = %v, want ErrOverloaded", err)
+	}
+	// The refused six-unit charge is atomic and leaves room for exactly five.
+	if _, err := b.acquireWeighted(budgetDefault, keys, 5); err != nil {
+		t.Fatalf("five-unit remainder refused: %v", err)
+	}
+}
+
 // A rate refusal carries when its own window admits the subject again (#806),
 // so the export budget's Retry-After is not a guess. Waiting exactly that long
 // is enough; a concurrency refusal has no window and carries no wait.

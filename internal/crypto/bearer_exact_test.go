@@ -50,6 +50,14 @@ func TestParseArtifactAcceptsOnlyEmittableBodies(t *testing.T) {
 	}
 }
 
+func TestParseArtifactRefusesOversizedBodyBeforeDecoding(t *testing.T) {
+	body := strings.Repeat("z", maxBodyChars+1)
+	value := "hik_" + artifactFormatVersion + "_" + string(ArtifactCLISession) + "_" + body + checksum(body)
+	if err := ParseArtifact(value, ArtifactCLISession); err == nil {
+		t.Fatal("oversized artifact body was accepted")
+	}
+}
+
 // The sign-up verification token (social-signin spec 2.4, #605) rides the one
 // grammar beside the handoff pair: pinned spelling, round trip, and refusal
 // under any other type, so a `su` value can never be presented as `hs`/`hc`

@@ -113,6 +113,11 @@ export function useWorkspaceHandoff(
   const kickoff = useCallback(() => {
     const { signal } = beginAttempt(attemptRef);
     if (preparationKind === 'refused') return;
+    const contacting: HandoffPhase = { kind: 'contacting' };
+    phaseRef.current = contacting;
+    queueMicrotask(() => {
+      if (!signal.aborted) setPhase(contacting);
+    });
 
     const stepUp =
       session === undefined || operation === undefined || environment === undefined

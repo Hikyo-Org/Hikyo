@@ -90,6 +90,11 @@ export function ChangeApprovals() {
   const params = useParams();
   const org = params.org ?? '';
   const project = params.project ?? '';
+
+  return <ScopedChangeApprovals key={`${org}/${project}`} org={org} project={project} />;
+}
+
+function ScopedChangeApprovals({ org, project }: { org: string; project: string }) {
   const ref = { org, project };
 
   const environments = useEnvironments(org, project);

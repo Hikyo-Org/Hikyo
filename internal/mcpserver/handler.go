@@ -214,7 +214,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(bytes.NewReader(raw))
 	var envelope rpcEnvelope
 	if err := decodeOne(raw, &envelope); err != nil {
-		h.sdk.ServeHTTP(w, r)
+		writeRPCError(w, http.StatusBadRequest, nil, -32600, "expected one JSON-RPC request object", nil)
 		return
 	}
 	if envelope.JSONRPC != "2.0" {
@@ -254,10 +254,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("Mcp-Name", decodedName)
 	}
 	if requestedVersion == "" {
-		// Missing modern request metadata is an invalid-params error. The SDK
-		// owns that schema check; a present mirror header cannot turn malformed
-		// body metadata into a header-mismatch error.
-		h.serveSDK(w, r, envelope.Method, envelope.ID, MaxStaticResponseBytes, nil)
+		// The transport is pinned to Hikyo's modern stateless protocol. Never
+		// delegate missing metadata to the SDK because it also accepts legacy
+		// requests and batches that bypass Hikyo's discovery admission policy.
+		writeRPCError(w, http.StatusBadRequest, envelope.ID, -32602, "protocol metadata is required", nil)
 		return
 	}
 	if requestedVersion != "" && requestedVersion != ProtocolVersion {

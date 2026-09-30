@@ -14,6 +14,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
@@ -52,6 +54,8 @@ type Provider struct {
 
 var _ dynamic.Provider = (*Provider)(nil)
 
+const maxPostgresMessageBody = 1 << 20
+
 // New validates the config and builds the base connection template. It does not
 // connect: the first connection happens on the first operation, under that
 // operation's deadline.
@@ -79,6 +83,11 @@ func newWithDialer(cfg Config, resolver netpolicy.Resolver, dialer netpolicy.Dia
 		return nil, fmt.Errorf("postgres: egress policy: %w", err)
 	}
 	connConfig.DialFunc = publicDialer.DialContext
+	connConfig.BuildFrontend = func(r io.Reader, w io.Writer) *pgproto3.Frontend {
+		frontend := pgproto3.NewFrontend(r, w)
+		frontend.SetMaxBodyLen(maxPostgresMessageBody)
+		return frontend
+	}
 	// verify-full: sslmode in the DSN already made pgx build a verifying
 	// tls.Config with the right ServerName; only the trust root is overridden
 	// here when the operator supplied a bundle. A nil TLSConfig would mean the

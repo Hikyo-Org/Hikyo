@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "hikyo.fullname" . }}-server
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hikyo.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # The application listener remains reachable through the Service and from
+    # ordinary cluster clients. Port 8081 is intentionally absent: Kubernetes
+    # node-originated probes remain permitted, while workload pods cannot read
+    # unauthenticated readiness or metrics directly from the pod IP.
+    - ports:
+        - protocol: TCP
+          port: 8080

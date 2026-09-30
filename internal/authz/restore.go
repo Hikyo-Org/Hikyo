@@ -40,6 +40,10 @@ func (a *TxAuthorizer) InvalidateRestoredAdapterCredentials(ctx context.Context)
 	return a.r.InvalidateRestoredAdapterCredentials(ctx)
 }
 
+func (a *TxAuthorizer) InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error {
+	return a.r.InvalidateRestoredExternalCredentials(ctx, now)
+}
+
 func (a *TxAuthorizer) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
 	return a.r.InvalidateRestoredDynamicProviderCredentials(ctx)
 }

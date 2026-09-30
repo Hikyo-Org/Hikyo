@@ -44,6 +44,7 @@ type ServerInfo struct {
 	AppURL         string
 	ListenAddress  string
 	OperationalURL string
+	CLISocket      string
 	Mode           string
 }
 
@@ -55,6 +56,9 @@ func ServerReadyMessage(info ServerInfo) string {
 	fmt.Fprintf(&message, "  App         %s\n", info.AppURL)
 	fmt.Fprintf(&message, "  Listen      %s\n", info.ListenAddress)
 	fmt.Fprintf(&message, "  Operations  %s\n", info.OperationalURL)
+	if info.CLISocket != "" {
+		fmt.Fprintf(&message, "  CLI socket  %s\n", info.CLISocket)
+	}
 	fmt.Fprintf(&message, "  Mode        %s\n", info.Mode)
 	return message.String()
 }

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router";
 
-import { useSensitiveState } from '../api/sensitiveMutation.ts';
+import { useSensitiveState } from "../api/sensitiveMutation.ts";
 import {
   disclosureRefusalText,
   fetchRevealWindow,
@@ -15,15 +15,18 @@ import {
   writeRefusalText,
   type RevealWindow,
   type ValueCell,
-} from '../api/values.ts';
-import type { EnvRef } from '../api/keys.ts';
-import { useTransport } from '../api/transport.tsx';
-import { writeExpiringClipboard } from '../app/clipboard.ts';
-import { Alert } from '../ui/Alert.tsx';
-import { Badge } from '../ui/Badge.tsx';
-import { Button } from '../ui/Button.tsx';
-import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
-import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
+} from "../api/values.ts";
+import type { EnvRef } from "../api/keys.ts";
+import { useTransport } from "../api/transport.tsx";
+import {
+  clearClipboardIfStill,
+  writeExpiringClipboard,
+} from "../app/clipboard.ts";
+import { Alert } from "../ui/Alert.tsx";
+import { Badge } from "../ui/Badge.tsx";
+import { Button } from "../ui/Button.tsx";
+import { Ceremony, type CeremonyPurpose } from "./Ceremony.tsx";
+import { useCeremonyTask, type CeremonyTask } from "./useCeremonyTask.ts";
 
 /**
  * The reveal / copy / write-only-edit surface (#58, locked prototype #21).
@@ -52,7 +55,7 @@ import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 /** REMASK_MS is the 10s-class default the prototype fixed; the exact value becomes a project setting. */
 const REMASK_MS = 10_000;
-const MASK = '••••••••';
+const MASK = "••••••••";
 
 /**
  * AUDIT_LINES is how many disclosure records the surface keeps on screen.
@@ -83,9 +86,9 @@ function cellKey(environment: string, keyID: string): string {
 
 export function Values() {
   const params = useParams();
-  const org = params['org'] ?? '';
-  const project = params['project'] ?? '';
-  const environment = params['environment'] ?? '';
+  const org = params["org"] ?? "";
+  const project = params["project"] ?? "";
+  const environment = params["environment"] ?? "";
   // NAVIGATION RE-MASKS. React Router reuses this component when only the route
   // parameters change. Keying the surface on the environment identity remounts
   // it, so a value disclosed in development is not still in state, and on
@@ -103,8 +106,19 @@ export function Values() {
   );
 }
 
-function ValuesSurface({ org, project, environment }: { org: string; project: string; environment: string }) {
-  const env = useMemo<EnvRef>(() => ({ org, project, environment }), [org, project, environment]);
+function ValuesSurface({
+  org,
+  project,
+  environment,
+}: {
+  org: string;
+  project: string;
+  environment: string;
+}) {
+  const env = useMemo<EnvRef>(
+    () => ({ org, project, environment }),
+    [org, project, environment],
+  );
 
   const transport = useTransport();
   const values = useValues(env);
@@ -115,14 +129,17 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
   const setValue = useSetValue(env);
   const copy = useCopyValues(env);
 
-  const [disclosed, setDisclosed] = useSensitiveState<Record<string, Disclosed>>({});
+  const [disclosed, setDisclosed] = useSensitiveState<
+    Record<string, Disclosed>
+  >({});
   const [now, setNow] = useState(() => Date.now());
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [revealAnnouncement, setRevealAnnouncement] = useState<RevealAnnouncement | null>(null);
+  const [revealAnnouncement, setRevealAnnouncement] =
+    useState<RevealAnnouncement | null>(null);
   const [audit, setAudit] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
-  const [destination, setDestination] = useState('');
+  const [destination, setDestination] = useState("");
   const ceremony = useCeremonyTask([
     env.org,
     env.project,
@@ -143,19 +160,30 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
   // setTimeout-per-cell does not guarantee.
   useEffect(() => {
     setDisclosed((current) => {
-      const live = Object.entries(current).filter(([, d]) => d.until > Date.now());
-      return live.length === Object.keys(current).length ? current : Object.fromEntries(live);
+      const live = Object.entries(current).filter(
+        ([, d]) => d.until > Date.now(),
+      );
+      return live.length === Object.keys(current).length
+        ? current
+        : Object.fromEntries(live);
     });
   }, [now, setDisclosed]);
 
-  const cells: ValueCell[] = useMemo(() => values.data?.items ?? [], [values.data]);
+  const cells: ValueCell[] = useMemo(
+    () => values.data?.items ?? [],
+    [values.data],
+  );
   // The modal title is purpose-bound, `reveal · production`, so it needs the
   // environment's NAME. Until the list resolves the id is the honest stand-in:
   // showing nothing would make the ceremony's headline blank, which is worse
   // than showing an identifier.
-  const environments = useMemo(() => environmentsQuery.data?.items ?? [], [environmentsQuery.data]);
+  const environments = useMemo(
+    () => environmentsQuery.data?.items ?? [],
+    [environmentsQuery.data],
+  );
   const nameOf = useCallback(
-    (id: string) => environments.find((candidate) => candidate.id === id)?.name ?? id,
+    (id: string) =>
+      environments.find((candidate) => candidate.id === id)?.name ?? id,
     [environments],
   );
   const environmentName = nameOf(env.environment);
@@ -163,7 +191,7 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
   const guard: RevealWindow | undefined = revealGuard.data;
 
   const secretsSet = useMemo(
-    () => cells.filter((c) => c.classification === 'secret' && c.set),
+    () => cells.filter((c) => c.classification === "secret" && c.set),
     [cells],
   );
 
@@ -185,9 +213,17 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
    */
   const withCeremony = useCallback(
     async (
-      keys: ReadonlyArray<{ id: string; name: string; classification?: 'secret' | 'config' }>,
+      keys: ReadonlyArray<{
+        id: string;
+        name: string;
+        classification?: "secret" | "config";
+      }>,
       act: (task: CeremonyTask) => Promise<void>,
-      targets: ReadonlyArray<{ id: string; name: string; purpose: CeremonyPurpose }>,
+      targets: ReadonlyArray<{
+        id: string;
+        name: string;
+        purpose: CeremonyPurpose;
+      }>,
     ) => {
       const operationKey = [
         keys.map((key) => key.id),
@@ -197,7 +233,11 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
       setRefusal(null);
 
       const advance = async (
-        remaining: ReadonlyArray<{ id: string; name: string; purpose: CeremonyPurpose }>,
+        remaining: ReadonlyArray<{
+          id: string;
+          name: string;
+          purpose: CeremonyPurpose;
+        }>,
       ): Promise<void> => {
         if (!ceremony.isCurrent(task)) return;
         const target = remaining[0];
@@ -218,9 +258,13 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
             task.signal,
           );
         } catch {
-          if (ceremony.commit(task, () => {
-            setRefusal('The reveal window could not be read, so nothing was disclosed.');
-          })) {
+          if (
+            ceremony.commit(task, () => {
+              setRefusal(
+                "The reveal window could not be read, so nothing was disclosed.",
+              );
+            })
+          ) {
             ceremony.finish(task);
           }
           return;
@@ -229,9 +273,13 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
         if (state.can_reveal !== true) {
           // The fetched window is the authority: a stale cache may have
           // offered the control, but the disclosure stops here.
-          if (ceremony.commit(task, () => {
-            setRefusal('Reveal is not granted here, so nothing was disclosed.');
-          })) {
+          if (
+            ceremony.commit(task, () => {
+              setRefusal(
+                "Reveal is not granted here, so nothing was disclosed.",
+              );
+            })
+          ) {
             ceremony.finish(task);
           }
           return;
@@ -264,7 +312,12 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
     // One line per key. "Revealed 40 secrets" as a single line is the audit
     // shape the ADR forbids, and a UI that summarises trains people to expect
     // a trail that summarises.
-    setAudit((prev) => [...names.map((n) => `Disclosure recorded · ${n}`), ...prev].slice(0, AUDIT_LINES));
+    setAudit((prev) =>
+      [...names.map((n) => `Disclosure recorded · ${n}`), ...prev].slice(
+        0,
+        AUDIT_LINES,
+      ),
+    );
   }, []);
 
   const recordDisclosures = useCallback(
@@ -273,15 +326,20 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
       setDisclosed((current) => {
         const next = { ...current };
         for (const entry of entries) {
-          next[cellKey(env.environment, entry.id)] = { value: entry.value, until };
+          next[cellKey(env.environment, entry.id)] = {
+            value: entry.value,
+            until,
+          };
         }
         return next;
       });
       const [first] = entries;
       if (first !== undefined) {
         const subject =
-          entries.length === 1 ? `${first.name} revealed` : `${entries.length} secrets revealed`;
-        const verb = entries.length === 1 ? 're-masks' : 're-mask';
+          entries.length === 1
+            ? `${first.name} revealed`
+            : `${entries.length} secrets revealed`;
+        const verb = entries.length === 1 ? "re-masks" : "re-mask";
         setRevealAnnouncement((current) => ({
           id: (current?.id ?? 0) + 1,
           message: `${subject}: ${verb} in ${String(REMASK_MS / 1000)} seconds`,
@@ -294,16 +352,24 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
 
   const doRevealOne = (cell: ValueCell) =>
     void withCeremony(
-      [{ id: cell.key_id, name: cell.name, classification: cell.classification }],
+      [
+        {
+          id: cell.key_id,
+          name: cell.name,
+          classification: cell.classification,
+        },
+      ],
       async (task) => {
         try {
           const fresh = await revealOne.mutateAsync(cell.name);
           ceremony.commit(task, () => {
             if (fresh.value === undefined) {
-              setRefusal('The server disclosed no value for that key.');
+              setRefusal("The server disclosed no value for that key.");
               return;
             }
-            recordDisclosures([{ id: fresh.key_id, name: fresh.name, value: fresh.value }]);
+            recordDisclosures([
+              { id: fresh.key_id, name: fresh.name, value: fresh.value },
+            ]);
           });
         } catch (err) {
           ceremony.commit(task, () => {
@@ -312,20 +378,30 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
           });
         }
       },
-      [{ id: env.environment, name: environmentName, purpose: 'reveal' }],
+      [{ id: env.environment, name: environmentName, purpose: "reveal" }],
     );
 
   const doRevealAll = () =>
     void withCeremony(
-      secretsSet.map((c) => ({ id: c.key_id, name: c.name, classification: c.classification })),
+      secretsSet.map((c) => ({
+        id: c.key_id,
+        name: c.name,
+        classification: c.classification,
+      })),
       async (task) => {
         try {
           const fresh = await revealAll.mutateAsync();
           ceremony.commit(task, () => {
             recordDisclosures(
               fresh.items
-                .filter((c) => c.classification === 'secret' && c.value !== undefined)
-                .map((c) => ({ id: c.key_id, name: c.name, value: c.value ?? '' })),
+                .filter(
+                  (c) => c.classification === "secret" && c.value !== undefined,
+                )
+                .map((c) => ({
+                  id: c.key_id,
+                  name: c.name,
+                  value: c.value ?? "",
+                })),
             );
           });
         } catch (err) {
@@ -335,7 +411,7 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
           });
         }
       },
-      [{ id: env.environment, name: environmentName, purpose: 'reveal' }],
+      [{ id: env.environment, name: environmentName, purpose: "reveal" }],
     );
 
   /**
@@ -347,38 +423,52 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
    * the actor controls, which is a disclosure by the ADR's own definition.
    */
   const doCopy = (cell: ValueCell) => {
-    if (cell.classification !== 'secret') {
-      void writeExpiringClipboard(cell.value ?? '', false).then(setNotice);
+    if (cell.classification !== "secret") {
+      void writeExpiringClipboard(cell.value ?? "", false).then(setNotice);
       return;
     }
     void withCeremony(
-      [{ id: cell.key_id, name: cell.name, classification: cell.classification }],
+      [
+        {
+          id: cell.key_id,
+          name: cell.name,
+          classification: cell.classification,
+        },
+      ],
       async (task) => {
         try {
           const fresh = await revealOne.mutateAsync(cell.name);
           if (fresh.value === undefined) {
             ceremony.commit(task, () => {
-              setRefusal('The server disclosed no value for that key.');
+              setRefusal("The server disclosed no value for that key.");
             });
             return;
           }
-          ceremony.commit(task, () => noteDisclosure([fresh.name]));
+          if (!ceremony.commit(task, () => noteDisclosure([fresh.name]))) {
+            return;
+          }
           const message = await writeExpiringClipboard(fresh.value, true);
-          ceremony.commit(task, () => setNotice(message));
+          if (!ceremony.commit(task, () => setNotice(message))) {
+            await clearClipboardIfStill(fresh.value);
+          }
         } catch (err) {
           ceremony.commit(task, () => setRefusal(disclosureRefusalText(err)));
         }
       },
-      [{ id: env.environment, name: environmentName, purpose: 'clipboard' }],
+      [{ id: env.environment, name: environmentName, purpose: "clipboard" }],
     );
   };
 
   const doPublishInto = () => {
-    if (secretsSet.length === 0 || destination === '') {
+    if (secretsSet.length === 0 || destination === "") {
       return;
     }
     void withCeremony(
-      secretsSet.map((c) => ({ id: c.key_id, name: c.name, classification: c.classification })),
+      secretsSet.map((c) => ({
+        id: c.key_id,
+        name: c.name,
+        classification: c.classification,
+      })),
       async (task) => {
         try {
           await copy.mutateAsync({
@@ -387,10 +477,12 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
           });
           ceremony.commit(task, () => {
             setAudit((prev) =>
-              [...secretsSet.map((c) => `Copied into ${destination} · ${c.name}`), ...prev].slice(
-                0,
-                12,
-              ),
+              [
+                ...secretsSet.map(
+                  (c) => `Copied into ${destination} · ${c.name}`,
+                ),
+                ...prev,
+              ].slice(0, 12),
             );
           });
         } catch (err) {
@@ -401,8 +493,8 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
       // this environment (a disclosure) and lands in that one (which, when it
       // is protected, is the publish-into-protected ceremony).
       [
-        { id: env.environment, name: environmentName, purpose: 'copy' },
-        { id: destination, name: destinationName, purpose: 'publish' },
+        { id: env.environment, name: environmentName, purpose: "copy" },
+        { id: destination, name: destinationName, purpose: "publish" },
       ],
     );
   };
@@ -410,7 +502,7 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
   const saveDraft = async (cell: ValueCell, value: string): Promise<void> => {
     // Empty means UNCHANGED. There is no per-row clear: clearing a value stays
     // a per-cell action, as the prototype's resolution fixed.
-    if (value === '') {
+    if (value === "") {
       return;
     }
 
@@ -441,12 +533,11 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
         <Alert>The values could not be loaded. Reload to try again.</Alert>
       ) : null}
 
-      {refusal !== null ? (
-        <Alert>{refusal}</Alert>
-      ) : null}
+      {refusal !== null ? <Alert>{refusal}</Alert> : null}
 
       {notice !== null ? (
-        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
+        <p className="notice" role="status">
+          {/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>
@@ -488,7 +579,7 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
         <Button
           type="button"
           onClick={doPublishInto}
-          disabled={secretsSet.length === 0 || destination === ''}
+          disabled={secretsSet.length === 0 || destination === ""}
         >
           Publish into environment
         </Button>
@@ -509,8 +600,10 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
           {cells.map((cell) => {
             const live = disclosed[cellKey(env.environment, cell.key_id)];
             const remaining =
-              live === undefined ? 0 : Math.max(0, Math.ceil((live.until - now) / 1000));
-            const secret = cell.classification === 'secret';
+              live === undefined
+                ? 0
+                : Math.max(0, Math.ceil((live.until - now) / 1000));
+            const secret = cell.classification === "secret";
             // WRITE-ONLY IS A CAPABILITY, not a display state. `edit` without
             // `reveal` is a supported grant shape the permission model refuses
             // to reject, and the guard reports whether this principal holds
@@ -530,7 +623,9 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
                   <button
                     className="values__keyname mono"
                     type="button"
-                    onClick={() => setEditing(editing === cell.name ? null : cell.name)}
+                    onClick={() =>
+                      setEditing(editing === cell.name ? null : cell.name)
+                    }
                     aria-expanded={editing === cell.name}
                     disabled={setValue.isPending}
                   >
@@ -551,11 +646,16 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
                       </span>
                     </span>
                   ) : secret ? (
-                    <span className="mono values__masked" aria-label={`${cell.name} is masked`}>
+                    <span
+                      className="mono values__masked"
+                      aria-label={`${cell.name} is masked`}
+                    >
                       {MASK}
                     </span>
                   ) : (
-                    <span className="mono values__plain">{cell.value ?? ''}</span>
+                    <span className="mono values__plain">
+                      {cell.value ?? ""}
+                    </span>
                   )}
                 </td>
                 <td className="values__actions">
@@ -572,7 +672,11 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
                     <Button
                       type="button"
                       onClick={() => doCopy(cell)}
-                      aria-label={secret ? `Copy ${cell.name} (audited disclosure)` : `Copy ${cell.name}`}
+                      aria-label={
+                        secret
+                          ? `Copy ${cell.name} (audited disclosure)`
+                          : `Copy ${cell.name}`
+                      }
                     >
                       Copy
                     </Button>
@@ -597,7 +701,9 @@ function ValuesSurface({ org, project, environment }: { org: string; project: st
       <section className="values__audit" aria-label="Disclosure records">
         <h2>Recorded this session</h2>
         {audit.length === 0 ? (
-          <p role="status">No disclosures yet. Reveal or copy a secret above to record one.</p>
+          <p role="status">
+            No disclosures yet. Reveal or copy a secret above to record one.
+          </p>
         ) : (
           // The live region is the LIST, not each item. An explicit role on an
           // `li` replaces its implicit `listitem` role, which would leave the
@@ -636,10 +742,10 @@ function windowChip(state: RevealWindow, now: number) {
     return (
       <Badge role="status">
         {state.totp_offered
-          ? 'Locked · each disclosure asks first'
+          ? "Locked · each disclosure asks first"
           : state.protected
-            ? 'Protected · a passkey per disclosure'
-            : 'Locked · a passkey per disclosure'}
+            ? "Protected · a passkey per disclosure"
+            : "Locked · a passkey per disclosure"}
       </Badge>
     );
   }
@@ -653,7 +759,10 @@ function windowChip(state: RevealWindow, now: number) {
   const seconds =
     state.expires_at === undefined
       ? 0
-      : Math.max(0, Math.ceil((new Date(state.expires_at).getTime() - now) / 1000));
+      : Math.max(
+          0,
+          Math.ceil((new Date(state.expires_at).getTime() - now) / 1000),
+        );
   return (
     <Badge tone="ok" role="status">
       {`Reveal window · ${String(seconds)}s`}
@@ -681,7 +790,7 @@ function RowEditor({
   saving: boolean;
   onSave: (value: string) => void;
 }) {
-  const [draft, setDraft] = useSensitiveState('');
+  const [draft, setDraft] = useSensitiveState("");
   const id = `edit-${cell.key_id}`;
   return (
     <form
@@ -689,7 +798,7 @@ function RowEditor({
       onSubmit={(event) => {
         event.preventDefault();
         onSave(draft);
-        setDraft('');
+        setDraft("");
       }}
     >
       <div className="field">
@@ -700,7 +809,9 @@ function RowEditor({
           className="mono"
           autoComplete="off"
           placeholder={
-            writeOnly ? 'Replace without seeing the current value' : 'Leave empty to keep unchanged'
+            writeOnly
+              ? "Replace without seeing the current value"
+              : "Leave empty to keep unchanged"
           }
           data-write-only={writeOnly}
           value={draft}
@@ -710,12 +821,12 @@ function RowEditor({
       </div>
       {writeOnly ? (
         <p className="row-editor__hint" role="status">
-          You may replace this value but not read it. Saving sets a new one; leaving the field empty
-          changes nothing.
+          You may replace this value but not read it. Saving sets a new one;
+          leaving the field empty changes nothing.
         </p>
       ) : null}
       <Button variant="primary" type="submit" disabled={saving}>
-        {saving ? 'Saving…' : 'Save draft'}
+        {saving ? "Saving…" : "Save draft"}
       </Button>
     </form>
   );

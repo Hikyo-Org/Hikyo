@@ -727,6 +727,7 @@ func (s *SCIM) ListUsers(ctx context.Context, actor Actor, org domain.OrgID, bin
 	total := 0
 	err := s.wireTx(ctx, actor, org, bindingID, authz.OpSCIMUserList,
 		func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext, now time.Time) ([]grantEventInput, error) {
+			attemptOut := make([]SCIMUserResource, 0, page.Count)
 			selected := store.SCIMListFilter{}
 			switch filter.Shape {
 			case scimproto.FilterNone:
@@ -747,16 +748,17 @@ func (s *SCIM) ListUsers(ctx context.Context, actor Actor, org domain.OrgID, bin
 			if err != nil {
 				return nil, err
 			}
-			total = int(count)
 			for _, row := range rows {
 				view, err := s.renderUser(ctx, r, c, row)
 				if err != nil {
 					return nil, err
 				}
-				out = append(out, view)
+				attemptOut = append(attemptOut, view)
 			}
+			out = attemptOut
+			total = int(count)
 			return []grantEventInput{
-				directoryReadEvent(bindingID, "user", string(filter.Shape), page.StartIndex, len(out)),
+				directoryReadEvent(bindingID, "user", string(filter.Shape), page.StartIndex, len(attemptOut)),
 			}, nil
 		})
 	return out, total, err

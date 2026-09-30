@@ -154,6 +154,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 			}
 		}))
 		defer httpServer.Close()
+		cliSocket := serveLocalCLI(t, httpServer.Config.Handler)
 		stdout, stderr := &strings.Builder{}, &strings.Builder{}
 		stateDir := t.TempDir()
 		ios := cli.IO{Stdout: stdout, Stderr: stderr, Workdir: t.TempDir(), Env: cli.Env{Getenv: func(key string) string {
@@ -166,7 +167,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := state.Trust().Put(cli.TrustEntry{Name: "local", Origin: httpServer.URL}); err != nil {
+		if err := state.Trust().Put(cli.TrustEntry{Name: "local", Origin: httpServer.URL, CLISocket: cliSocket}); err != nil {
 			t.Fatal(err)
 		}
 		if err := state.PutSession(cli.SessionArtifact{Instance: "local", Origin: httpServer.URL, Token: fixture.admin.token, SessionID: "ses_fixture", Principal: string(fixture.admin.boot.PrincipalID), ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {

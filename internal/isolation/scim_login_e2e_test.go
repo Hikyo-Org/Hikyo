@@ -433,6 +433,10 @@ func runSCIMReconcileKeepsFreshOrigins(t *testing.T, db *store.DB) {
 	// the backup left them.
 	db = restoreIsolationFixture(t, db)
 	s.DB = db
+	// CompleteRestore disables restored login providers. This fixture does not
+	// exercise OIDC traffic, so model the operator's provider reconfiguration by
+	// re-enabling the referenced row before SCIM is allowed back on the wire.
+	disableSCIMProvider(t, db, "okta", true)
 
 	// The operator reconciles the binding's provisioning CONNECTION and
 	// re-mints, which is the only way the identity provider gets back on the
@@ -517,7 +521,7 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 	oidcAdministrator := oidcAdmin(t, db)
 	auth, admin := oidcAdministrator.auth, oidcAdministrator.boot.PrincipalID
-	_, _ = configureProvider(t, auth, ctx, admin, "okta", service.ProviderInput{
+	providers, idp := configureProvider(t, auth, ctx, admin, "okta", service.ProviderInput{
 		DisplayName: "Okta", ClientID: "c", ClientSecret: "s", Scopes: "openid", Enabled: true,
 	})
 	s := scimSvc(db)
@@ -666,15 +670,10 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	if _, err := s.GetUser(ctx, wire, orgA, binding.ID, stays.ID); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("a restored credential verifier must be permanently dead, got %v", err)
 	}
-	// Re-assertion does NOT re-bless a link: a login through the provider is
-	// still refused, because the link's epoch is the operator's to reconcile.
-	start, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	code, state := driveIdP(t, start.AuthURL+"&sub=stays")
-	if _, err := auth.OIDCCallback(ctx, "okta", code, state, "", "", start.BindingCookie, ""); !isUnauth(err) {
-		t.Fatalf("a restored identity link must stay inert until operator reconciliation, got %v", err)
+	// Restored provider credentials are destroyed and the provider is disabled.
+	// No login ceremony starts until an operator reconciles and reconfigures it.
+	if _, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false); err == nil {
+		t.Fatal("a restored provider started a login before reconfiguration")
 	}
 
 	// THE WINDOW between the restore and the operator's reconciliation is where
@@ -691,14 +690,6 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 		strconv.FormatInt(generationBefore, 10)+` WHERE principal_id = '`+string(goesPrincipal)+`'`)
 	if err := protectedOp(goesSession); !isUnauth(err) {
 		t.Fatalf("a RESTORED session of a post-backup-deprovisioned user must be refused, got %v", err)
-	}
-	relogin, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reCode, reState := driveIdP(t, relogin.AuthURL+"&sub=goes")
-	if _, err := auth.OIDCCallback(ctx, "okta", reCode, reState, "", "", relogin.BindingCookie, ""); !isUnauth(err) {
-		t.Fatalf("a user withdrawn after the backup must not be able to log in during the restore window, got %v", err)
 	}
 	// And no wire push can re-bless them either: every credential is dead.
 	if _, err := s.PatchUser(ctx, wire, orgA, binding.ID, goes.ID,
@@ -770,6 +761,21 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	// by the IdP, so nothing would ever recreate it.
 	if _, err := restoreSvc.Reconcile(ctx, admin); err != nil {
 		t.Fatalf("reconcile admin: %v", err)
+	}
+	providers.DB = db
+	if _, err := providers.Put(ctx, service.LocalPrincipal(admin), "okta", service.ProviderInput{
+		DisplayName: "Okta", Issuer: idp.Issuer(), ClientID: "c", ClientSecret: "replacement-secret",
+		Scopes: "openid", Enabled: true,
+	}); err != nil {
+		t.Fatalf("reconfigure restored provider: %v", err)
+	}
+	relogin, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reCode, reState := driveIdP(t, relogin.AuthURL+"&sub=goes")
+	if _, err := auth.OIDCCallback(ctx, "okta", reCode, reState, "", "", relogin.BindingCookie, ""); !isUnauth(err) {
+		t.Fatalf("a withdrawn user logged in after provider recovery but before identity reconciliation: %v", err)
 	}
 	connection := domain.PrincipalID(queryString(t, db,
 		`SELECT connection_principal_id FROM scim_bindings WHERE id = '`+binding.ID+`'`))

@@ -227,6 +227,7 @@ func (s *SCIM) setMembers(
 
 	var events []grantEventInput
 	var added, removed []string
+	survivingActiveAccounts := make(map[string]bool, len(desired))
 	for _, id := range desired {
 		// A member reference resolving to no user THIS BINDING provisioned is
 		// refused by name: the IdP can only reference ids this server minted.
@@ -265,6 +266,7 @@ func (s *SCIM) setMembers(
 		if !user.Active {
 			continue // an inactive user holds no origins; membership is recorded, not granted
 		}
+		survivingActiveAccounts[user.AccountID] = true
 		principal, err := principalForAccount(ctx, az, user.AccountID)
 		if err != nil {
 			return nil, nil, nil, err
@@ -292,13 +294,9 @@ func (s *SCIM) setMembers(
 		// member of this group in its own right. Releasing the group's origins
 		// for the PRINCIPAL when only one of them left would take away access
 		// the identity provider is still asserting through the other. The check
-		// runs AFTER the row is gone, so it asks about the membership that
-		// actually survives.
-		justified, err := s.groupStillJustifiedByPeer(ctx, r, c, groupID, user.AccountID)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if justified {
+		// is computed once from the desired active resources above, avoiding a
+		// survivor scan for every removal.
+		if survivingActiveAccounts[user.AccountID] {
 			continue
 		}
 		principal, err := principalForAccount(ctx, az, user.AccountID)
@@ -312,35 +310,6 @@ func (s *SCIM) setMembers(
 		events = append(events, evs...)
 	}
 	return events, added, removed, nil
-}
-
-// groupStillJustifiedByPeer reports whether any ACTIVE resource of the same
-// account remains a member of this group. It is the membership-shaped twin of
-// `originsJustifiedElsewhere`, which answers the same question for a whole
-// deprovision.
-//
-// ponytail: linear in the group's surviving membership, one user read per
-// member. Groups here are bounded by the page bound and the traffic is a
-// connector's reconciliation cycle; if a directory ever holds groups where that
-// matters, the answer is a single query joining scim_group_members to
-// scim_users on account_id, not a cache.
-func (s *SCIM) groupStillJustifiedByPeer(
-	ctx context.Context, r store.Repos, c scimContext, groupID, accountID string,
-) (bool, error) {
-	survivors, err := r.SCIM().GroupMembers(ctx, c.proof, c.binding.ID, groupID)
-	if err != nil {
-		return false, err
-	}
-	for _, m := range survivors {
-		peer, err := r.SCIM().User(ctx, c.proof, c.binding.ID, m.UserID)
-		if err != nil {
-			return false, err
-		}
-		if peer.AccountID == accountID && peer.Active {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // releaseGroupOrigins releases ONE group's origins for one principal.

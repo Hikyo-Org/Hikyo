@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 )
 
 // Root-key bootstrap, per the encryption-model ADR: the operator-held 256-bit root
@@ -38,19 +36,9 @@ var (
 func ReadRootKey(file, envValue string) ([]byte, error) {
 	switch {
 	case file != "":
-		info, err := os.Stat(file)
+		raw, err := readRootKeyFile(file)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil, fmt.Errorf("%w (file %s does not exist)", ErrNoRootKey, file)
-			}
-			return nil, fmt.Errorf("crypto: root key file: %w", err)
-		}
-		if info.Mode().Perm()&0o077 != 0 {
-			return nil, fmt.Errorf("%w: %s is mode %04o", ErrRootKeyPerms, file, info.Mode().Perm())
-		}
-		raw, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("crypto: root key file: %w", err)
+			return nil, err
 		}
 		// Best-effort zeroing (ADR § Key material in memory) starts at the
 		// read buffer: decode on the byte path, no string copies, wipe the

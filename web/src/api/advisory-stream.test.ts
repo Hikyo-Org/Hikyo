@@ -143,4 +143,25 @@ describe('watchProjectAdvisoryStream', () => {
       vi.useRealTimers();
     }
   });
+
+  it('interrupts the generated transport retry sleep when disposed', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = { events: [] as unknown[], states: [] as string[] };
+      const handle = watchProjectAdvisoryStream(ref, {}, handlers(state));
+      await vi.advanceTimersByTimeAsync(0);
+      const transportSleep = hoisted.calls[0]?.options['sseSleepFn'];
+      expect(transportSleep).toBeTypeOf('function');
+
+      let settled = false;
+      const waiting = (transportSleep as (ms: number) => Promise<void>)(10_000).then(() => {
+        settled = true;
+      });
+      await handle.stop();
+      await waiting;
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

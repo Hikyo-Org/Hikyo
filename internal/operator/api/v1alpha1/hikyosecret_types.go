@@ -138,6 +138,7 @@ func (m Mapping) EffectiveSecretKey() string {
 // annotation's key-name limit (`stamp.hikyo.dev/<target.name>`, § 0.2).
 //
 // +kubebuilder:validation:XValidation:rule="self.name == oldSelf.name",message="target.name is immutable"
+// +kubebuilder:validation:XValidation:rule="self.creationPolicy == oldSelf.creationPolicy",message="target.creationPolicy is immutable"
 type Target struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
@@ -208,6 +209,7 @@ type HikyoSecretSpec struct {
 	// +optional
 	// +kubebuilder:default="5m"
 	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$`
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('30s')",message="resyncInterval must be at least 30s"
 	ResyncInterval string `json:"resyncInterval,omitempty"`
 }
 

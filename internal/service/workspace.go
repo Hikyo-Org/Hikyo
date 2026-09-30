@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -640,8 +641,18 @@ func CanonicalOrigin(raw string) (string, error) {
 		return "", fmt.Errorf("%w: an origin must not carry a query or fragment", domain.ErrInvalid)
 	case strings.Contains(u.Host, "*"):
 		return "", fmt.Errorf("%w: wildcards are not origins", domain.ErrInvalid)
+	case u.Scheme == "http" && !workspaceLoopbackHost(u.Hostname()):
+		return "", fmt.Errorf("%w: non-loopback workspace origins must use https", domain.ErrInvalid)
 	}
 	return u.Scheme + "://" + strings.ToLower(u.Host), nil
+}
+
+func workspaceLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // ---------------------------------------------------------------------------

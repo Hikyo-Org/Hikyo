@@ -1193,6 +1193,8 @@ var registry = map[EventType]TypeSpec{
 			"subject_resolved": {Kind: KindBool, Required: true},
 			"account_id":       {Kind: KindString},
 			"authority_id":     {Kind: KindString}, // success only
+			"factors_retired":  {Kind: KindBool},   // success only
+			"passkeys_retired": {Kind: KindInt},    // success only
 			"cause":            {Kind: KindString}, // failures only, by class
 		},
 	},

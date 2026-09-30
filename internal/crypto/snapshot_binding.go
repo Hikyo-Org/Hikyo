@@ -1,6 +1,9 @@
 package crypto
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -111,6 +114,22 @@ func (b SnapshotBinding) StorageDir() (string, error) {
 		return "", err
 	}
 	return b.scope.StorageDir, nil
+}
+
+// StorageKey identifies the complete locally known snapshot scope without
+// exposing any part of it in a filename. Run, render, config-only, credentials,
+// and target sets therefore retain independent offline caches and high-water
+// marks inside the same stack state directory.
+func (b SnapshotBinding) StorageKey() (string, error) {
+	if err := b.validateScope(); err != nil {
+		return "", err
+	}
+	raw, err := json.Marshal(b.scope)
+	if err != nil {
+		return "", fmt.Errorf("crypto: marshal snapshot storage scope: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // ParseSnapshotBinding validates an existing serialized AAD header without

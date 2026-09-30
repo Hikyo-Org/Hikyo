@@ -87,13 +87,23 @@ while IFS= read -r path; do
 	destination="$repo_root/$path"
 	mkdir -p "$(dirname "$destination")"
 	"$UNZIP_BIN" -p "$artifact_zip" "$path" >"$destination"
-	if (cd "$repo_root" && "$GO_BIN" test -count=1 \
-		-run="^${target_and_hash}\$" -timeout=30s "$package") >&2; then
+	if [ "$(sed -n '1{s/\r$//;p;}' "$destination")" != 'go test fuzz v1' ]; then
+		printf 'fuzz classification: malformed corpus header for %s; attributing to PR\n' "$path" >&2
+		printf '%s\n' "$path" >>"$related_paths"
+		continue
+	fi
+	replay="$work_dir/replay.json"
+	if (cd "$repo_root" && "$GO_BIN" test -json -count=1 \
+		-run="^${target_and_hash}\$" -timeout=30s "$package") >"$replay" 2>&1; then
 		printf '%s\n' "$path" >>"$related_paths"
 		printf 'fuzz classification: %s passes on base; PR-related\n' "$path" >&2
-	else
+	elif "$JQ_BIN" -e --arg test "$target_and_hash" \
+		'select(.Action == "fail" and .Test == $test)' "$replay" >/dev/null; then
 		printf '%s\n' "$path" >>"$unrelated_paths"
-		printf 'fuzz classification: %s also fails on base; independent issue\n' "$path" >&2
+		printf 'fuzz classification: %s named subtest also fails on base; independent issue\n' "$path" >&2
+	else
+		printf '%s\n' "$path" >>"$related_paths"
+		printf 'fuzz classification: %s failed before its named subtest; attributing to PR\n' "$path" >&2
 	fi
 done <"$valid_paths"
 

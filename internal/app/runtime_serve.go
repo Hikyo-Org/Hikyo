@@ -18,6 +18,16 @@ func (o *ownerRuntime) serve(ctx context.Context, ready func()) error {
 	o.serving = true
 	o.startEndpoint(o.publicEndpoint)
 	o.startEndpoint(o.operationalEndpoint)
+	if o.cliServer != nil {
+		o.endpointWG.Add(1)
+		go func() {
+			defer o.endpointWG.Done()
+			select {
+			case o.endpointErrors <- o.cliServer.Serve(o.server.cliLn):
+			default:
+			}
+		}()
+	}
 	address, operationalAddress := o.publicEndpoint.listener.Addr().String(), o.operationalEndpoint.listener.Addr().String()
 	o.mu.Unlock()
 	o.changeMu.Unlock()
@@ -46,7 +56,11 @@ func (o *ownerRuntime) serve(ctx context.Context, ready func()) error {
 	public.retired.Store(true)
 	operational.retired.Store(true)
 	o.mu.Unlock()
-	shutdownErr := shutdownHTTPServers(5*time.Second, public.server, operational.server)
+	servers := []*managedHTTPServer{public.server, operational.server}
+	if o.cliServer != nil {
+		servers = append(servers, o.cliServer)
+	}
+	shutdownErr := shutdownHTTPServers(5*time.Second, servers...)
 	o.endpointWG.Wait()
 	o.changeMu.Unlock()
 	o.stop()

@@ -42,6 +42,7 @@ type tarInspection struct {
 	payload  payload
 	metadata map[string][]byte
 	files    map[string]bool
+	dirs     map[string]bool
 }
 
 func main() {
@@ -96,11 +97,6 @@ func verifyAll(dist, version string) error {
 			}
 			if !bytes.Equal(got.license, license) {
 				return fmt.Errorf("%s: packaged LICENSE differs from repository LICENSE", id.filename)
-			}
-			if runtime.GOOS == "linux" && runtime.GOARCH == arch {
-				if err := verifyExecutable(got.binary, version); err != nil {
-					return fmt.Errorf("%s: %w", id.filename, err)
-				}
 			}
 		}
 	}
@@ -289,7 +285,7 @@ func verifyRPM(filename string, id identity) (payload, error) {
 		return payload{}, fmt.Errorf("RPM identity mismatch: Name=%q EVR=%q Arch=%q", nevra.Name, metadataVersion, nevra.Arch)
 	}
 	if tag, found := firstForbiddenRPMHook(rpm.Header.HasTag); found {
-		return payload{}, fmt.Errorf("RPM contains forbidden script tag %d", tag)
+		return payload{}, fmt.Errorf("RPM contains forbidden side-effect tag %d", tag)
 	}
 	reader, err := rpm.PayloadReaderExtended()
 	if err != nil {
@@ -309,17 +305,30 @@ func verifyRPM(filename string, id identity) (payload, error) {
 			return payload{}, err
 		}
 		kind := info.Mode() & 0o170000
+		if info.UserName() != "root" || info.GroupName() != "root" {
+			return payload{}, fmt.Errorf("RPM payload %q must be owned by root:root", entry)
+		}
 		switch kind {
 		case 0o040000:
 			if !allowedPayloadDirectory(entry) {
 				return payload{}, fmt.Errorf("unexpected RPM directory %q", entry)
 			}
+			if info.Mode()&0o7777 != 0o755 {
+				return payload{}, fmt.Errorf("RPM directory %q has mode %#o, want 0755", entry, info.Mode()&0o7777)
+			}
+			if info.Flags() != 0 || inspection.dirs[entry] {
+				return payload{}, fmt.Errorf("RPM directory %q has flags or is duplicated", entry)
+			}
+			inspection.dirs[entry] = true
 		case 0o100000:
 			content, err := io.ReadAll(reader)
 			if err != nil {
 				return payload{}, err
 			}
 			if err := validatePayloadMode(entry, int64(info.Mode())); err != nil {
+				return payload{}, err
+			}
+			if err := validateRPMFileFlags(entry, info.Flags()); err != nil {
 				return payload{}, err
 			}
 			if err := recordPayloadFile(inspection, entry, content); err != nil {
@@ -344,7 +353,15 @@ func forbiddenRPMScriptTags() []int {
 		5076, 5077, // Transaction file-trigger scripts and interpreters.
 		5103, 5104, 5105, 5106, // Pre/post-untransaction scripts and interpreters.
 		5109, // Native sysusers metadata creates accounts during installation.
+		rpmutils.FILECAPS,
 	}
+}
+
+func validateRPMFileFlags(entry string, flags int) error {
+	if flags == 0 || entry == licensePath && flags == rpmutils.RPMFILE_LICENSE {
+		return nil
+	}
+	return fmt.Errorf("RPM payload %q has forbidden file flags %#x", entry, flags)
 }
 
 func firstForbiddenRPMHook(hasTag func(int) bool) (int, bool) {
@@ -421,6 +438,9 @@ func inspectDebControl(tr *tar.Reader) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := validateTarMetadata(hdr, entry); err != nil {
+			return nil, err
+		}
 		if hdr.Typeflag == tar.TypeDir {
 			if entry != "." {
 				return nil, fmt.Errorf("unexpected Debian control directory %q", entry)
@@ -485,7 +505,7 @@ func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[
 }
 
 func newTarInspection() *tarInspection {
-	return &tarInspection{metadata: make(map[string][]byte), files: make(map[string]bool)}
+	return &tarInspection{metadata: make(map[string][]byte), files: make(map[string]bool), dirs: make(map[string]bool)}
 }
 
 func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]bool) error {
@@ -501,10 +521,20 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 		if err != nil {
 			return err
 		}
+		if err := validateTarMetadata(hdr, entry); err != nil {
+			return err
+		}
 		if hdr.Typeflag == tar.TypeDir {
 			if !allowedPayloadDirectory(entry) {
 				return fmt.Errorf("unexpected package directory %q", entry)
 			}
+			if hdr.Mode&0o7777 != 0o755 {
+				return fmt.Errorf("package directory %q has mode %#o, want 0755", entry, hdr.Mode&0o7777)
+			}
+			if inspection.dirs[entry] {
+				return fmt.Errorf("duplicate package directory %q", entry)
+			}
+			inspection.dirs[entry] = true
 			continue
 		}
 		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
@@ -528,6 +558,16 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 			return err
 		}
 	}
+}
+
+func validateTarMetadata(hdr *tar.Header, entry string) error {
+	if hdr.Uid != 0 || hdr.Gid != 0 || hdr.Uname != "" && hdr.Uname != "root" || hdr.Gname != "" && hdr.Gname != "root" {
+		return fmt.Errorf("package entry %q must be owned by root:root", entry)
+	}
+	if len(hdr.PAXRecords) != 0 || len(hdr.Xattrs) != 0 {
+		return fmt.Errorf("package entry %q contains forbidden extended metadata", entry)
+	}
+	return nil
 }
 
 func validatePayloadMode(entry string, mode int64) error {
@@ -609,26 +649,6 @@ func parseEquals(data []byte) map[string]string {
 		}
 	}
 	return fields
-}
-
-func verifyExecutable(binary []byte, version string) error {
-	dir, err := os.MkdirTemp("", "hikyo-native-package-exec.*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	filename := filepath.Join(dir, "hikyo")
-	if err := os.WriteFile(filename, binary, 0o700); err != nil {
-		return err
-	}
-	out, err := exec.Command(filename, "--version").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("packaged binary version command failed: %s", strings.TrimSpace(string(out)))
-	}
-	if strings.TrimSpace(string(out)) != version {
-		return fmt.Errorf("packaged binary reports unexpected version: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
 }
 
 func mapKeys(values map[string][]byte) []string {

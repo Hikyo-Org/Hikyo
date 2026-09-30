@@ -33,7 +33,10 @@ case "$arguments" in
 	*-list=\^FuzzRelated\$*) printf 'FuzzRelated\n' ;;
 	*-list=\^FuzzUnrelated\$*) printf 'FuzzUnrelated\n' ;;
 	*-run=\^FuzzRelated/*) exit 0 ;;
-	*-run=\^FuzzUnrelated/*) exit 1 ;;
+	*-run=\^FuzzUnrelated/*)
+		printf '{"Action":"fail","Test":"FuzzUnrelated/2222222222222222222222222222222222222222222222222222222222222222"}\n'
+		exit 1
+		;;
 	*)
 		printf 'unexpected Go fixture invocation: %s\n' "$arguments" >&2
 		exit 2

@@ -63,6 +63,26 @@ describe('useNavigationGuard', () => {
     expect(latest).toHaveBeenCalledTimes(1);
   });
 
+  it('restores the protected URL when Back skips multiple entries', async () => {
+    const pushState = vi.spyOn(history, 'pushState').mockImplementation(() => {});
+    const protectedURL = window.location.href;
+    const onAttempt = vi.fn();
+    await mount(true, onAttempt);
+    pushState.mockClear();
+    history.replaceState({}, '', '/older-entry');
+
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(pushState).toHaveBeenCalledWith(
+      { hikyoNavigationGuard: expect.any(Number) },
+      '',
+      protectedURL,
+    );
+    expect(onAttempt).toHaveBeenCalledOnce();
+  });
+
   it('adopts a stale sentinel left by a finished guard instead of surfacing an attempt', async () => {
     const pushState = vi.spyOn(history, 'pushState').mockImplementation(() => {});
     const replaceState = vi.spyOn(history, 'replaceState').mockImplementation(() => {});

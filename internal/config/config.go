@@ -76,11 +76,14 @@ type Config struct {
 	ManagedNodeInputs map[string]string
 	Upgrade           UpgradeConfiguration
 	// Applied upgrade selection is external bootstrap metadata, never user paths.
-	UpgradeSource           string
-	UpgradeMaterialDigest   string
-	Dev                     bool
-	Listen                  string
-	OperationalListen       string
+	UpgradeSource         string
+	UpgradeMaterialDigest string
+	Dev                   bool
+	Listen                string
+	OperationalListen     string
+	// CLISocket is an optional same-user Unix socket for credential-bearing
+	// local CLI traffic. It is bootstrap-only and never a managed runtime path.
+	CLISocket               string
 	TLSCertFile             string
 	TLSKeyFile              string
 	ConfigRolloutEnrollment string
@@ -276,6 +279,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_PG_POOL_MAX":                    true,
 	"HIKYO_LISTEN":                         true,
 	"HIKYO_OPERATIONAL_LISTEN":             true,
+	"HIKYO_CLI_SOCKET":                     true,
 	"HIKYO_TLS_CERT_FILE":                  true,
 	"HIKYO_TLS_KEY_FILE":                   true,
 	"HIKYO_EXTERNAL_ORIGIN":                true,
@@ -364,7 +368,7 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 func load(subcommand string, args []string, getenv func(string) string, environ []string, deferOwner bool) (*Config, []string, error) {
 	fs := flag.NewFlagSet(subcommand, flag.ContinueOnError)
 	dev := fs.Bool("dev", false, "development mode: zero-config sqlite, text logs")
-	listen, operationalListen, tlsCertFile, tlsKeyFile, autoMigrate, rootKeyFile := new(string), new(string), new(string), new(string), new(bool), new(string)
+	listen, operationalListen, cliSocket, tlsCertFile, tlsKeyFile, autoMigrate, rootKeyFile := new(string), new(string), new(string), new(string), new(string), new(bool), new(string)
 	*autoMigrate = true
 	*rootKeyFile = getenv("HIKYO_ROOT_KEY_FILE")
 	rolloutEnrollment, rolloutSigningKey := new(string), new(string)
@@ -380,6 +384,7 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		unattended = fs.Bool("upgrade-unattended", *unattended, "allow enrolled noninteractive upgrades before serving")
 		listen = fs.String("listen", "", "listen address (default 127.0.0.1:8080, env HIKYO_LISTEN)")
 		operationalListen = fs.String("operational-listen", "", "operational listen address (default 127.0.0.1:8081, env HIKYO_OPERATIONAL_LISTEN)")
+		cliSocket = fs.String("cli-socket", "", "same-user Unix socket for local CLI traffic (env HIKYO_CLI_SOCKET)")
 		tlsCertFile = fs.String("tls-cert-file", "", "TLS certificate chain file (env HIKYO_TLS_CERT_FILE)")
 		tlsKeyFile = fs.String("tls-key-file", "", "TLS private key file (env HIKYO_TLS_KEY_FILE)")
 		autoMigrate = fs.Bool("auto-migrate", true, "apply pending migrations at boot")
@@ -421,6 +426,7 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		AutoMigrate:             *autoMigrate,
 		Listen:                  *listen,
 		OperationalListen:       *operationalListen,
+		CLISocket:               *cliSocket,
 		TLSCertFile:             *tlsCertFile,
 		TLSKeyFile:              *tlsKeyFile,
 		ConfigRolloutEnrollment: *rolloutEnrollment,
@@ -447,6 +453,12 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 	}
 	if subcommand == "server" {
+		if cfg.CLISocket == "" {
+			cfg.CLISocket = strings.TrimSpace(getenv("HIKYO_CLI_SOCKET"))
+		}
+		if cfg.CLISocket != "" && (!filepath.IsAbs(cfg.CLISocket) || filepath.Clean(cfg.CLISocket) != cfg.CLISocket) {
+			return nil, nil, errors.New("HIKYO_CLI_SOCKET must be an absolute canonical path")
+		}
 		cfg.UpdaterSocket = strings.TrimSpace(getenv("HIKYO_UPDATER_SOCKET"))
 		if cfg.UpdaterSocket != "" {
 			return nil, nil, fmt.Errorf("HIKYO_UPDATER_SOCKET: %w; remove this setting to start the server", ErrRemoteApplyDisabled)
@@ -1237,6 +1249,21 @@ func parseDatastore(raw string) (Datastore, error) {
 	}
 }
 
+// ValidatePostgresDSN applies the exact syntax, explicit-host, and TLS policy
+// used by startup. Rollout source proofs call this before attempting a
+// connection so a descriptor cannot be approved if the replacement process
+// would refuse it as HIKYO_DB.
+func ValidatePostgresDSN(raw string) error {
+	ds, err := parseDatastore(raw)
+	if err != nil {
+		return err
+	}
+	if ds.Engine != EnginePostgres {
+		return fmt.Errorf("HIKYO_DB: rollout source must be a PostgreSQL URL")
+	}
+	return nil
+}
+
 // validatePostgresTLS enforces the threat-model boundary restated in the
 // system-architecture ADR: remote postgres requires TLS with certificate
 // verification or a same-host socket; no plaintext to a non-loopback host.
@@ -1278,10 +1305,10 @@ func validatePostgresTLS(dsn string) error {
 		return nil
 	}
 	switch u.Query().Get("sslmode") {
-	case "verify-full", "verify-ca":
+	case "verify-full":
 		return nil
 	}
-	return fmt.Errorf("HIKYO_DB: remote postgres host %q requires sslmode=verify-full or verify-ca (no plaintext on a non-loopback boundary)", host)
+	return fmt.Errorf("HIKYO_DB: remote postgres host %q requires sslmode=verify-full (certificate and hostname verification)", host)
 }
 
 // Audit retention is host configuration; no tenant can shorten its evidence window.
