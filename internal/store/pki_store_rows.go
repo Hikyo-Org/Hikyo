@@ -120,7 +120,11 @@ func sqlitePKISwept(c sqlitegen.RuntimePKIStaleIssuingRow) (pkiSweptRow, error) 
 }
 
 func sqlitePKICandidate(c sqlitegen.RuntimePKIDueCRLsRow) (PKICRLCandidate, error) {
-	out := PKICRLCandidate{IssuerID: c.ID, Name: c.Name, Version: int64(c.Version), CertificateDER: c.CertificateDer, EncryptedPrivateKey: c.EncryptedPrivateKey, DEKVersion: uint32(c.DekVersion.Int64), CRLNumber: c.CrlNumber, RevocationSeq: c.RevocationSeq}
+	version, err := checkedStoredDEKVersion(c.DekVersion.Int64)
+	if err != nil {
+		return PKICRLCandidate{}, err
+	}
+	out := PKICRLCandidate{IssuerID: c.ID, Name: c.Name, Version: int64(c.Version), CertificateDER: c.CertificateDer, EncryptedPrivateKey: c.EncryptedPrivateKey, DEKVersion: version, CRLNumber: c.CrlNumber, RevocationSeq: c.RevocationSeq}
 	return out, nil
 }
 
@@ -234,6 +238,10 @@ func pgPKISwept(c pggen.RuntimePKIStaleIssuingRow) (pkiSweptRow, error) {
 }
 
 func pgPKICandidate(c pggen.RuntimePKIDueCRLsRow) (PKICRLCandidate, error) {
-	out := PKICRLCandidate{IssuerID: c.ID, Name: c.Name, Version: int64(c.Version), CertificateDER: c.CertificateDer, EncryptedPrivateKey: c.EncryptedPrivateKey, DEKVersion: uint32(c.DekVersion.Int64), CRLNumber: c.CrlNumber, RevocationSeq: c.RevocationSeq}
+	version, err := checkedStoredDEKVersion(c.DekVersion.Int64)
+	if err != nil {
+		return PKICRLCandidate{}, err
+	}
+	out := PKICRLCandidate{IssuerID: c.ID, Name: c.Name, Version: int64(c.Version), CertificateDER: c.CertificateDer, EncryptedPrivateKey: c.EncryptedPrivateKey, DEKVersion: version, CRLNumber: c.CrlNumber, RevocationSeq: c.RevocationSeq}
 	return out, nil
 }

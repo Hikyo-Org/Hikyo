@@ -90,6 +90,13 @@ describe('carriedClaims', () => {
     }
   });
 
+  it('preserves a custom numeric pin without rounding its read value', () => {
+    const credential = binding([{ claim: 'custom_id', number_value: 9007199254740993n }]);
+    expect(carriedClaims(presetForBinding(credential), credential)).toEqual([
+      { claim: 'custom_id', number_value: 9007199254740993n },
+    ]);
+  });
+
   it('carries nothing when every pin is a preset field', () => {
     const credential = binding([
       { claim: '/kubernetes.io/serviceaccount/uid', string_value: 'abc' },

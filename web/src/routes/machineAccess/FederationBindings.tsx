@@ -164,26 +164,21 @@ export function seedClaims(
 export function carriedClaims(
   preset: FederationPreset,
   credential: MachineCredential,
-): FederatedClaimPin[] {
+): ClaimPin[] {
   const rendered = new Set(preset.claims.map((field) => field.claim));
   return (credential.required_claims ?? [])
-    .filter((pin) => !rendered.has(pin.claim))
-    .map(toRequestPin);
+    .filter((pin) => !rendered.has(pin.claim));
 }
 
-/**
- * toRequestPin converts one READ-shape pin (whose `number_value` is a bigint)
- * to the REQUEST shape (a plain number). The int64→number narrowing is the
- * generated client's own boundary, the wire type is a number, so it is no
- * lossier here than a first mint of the same claim, and a real repository id
- * sits far below the safe-integer ceiling.
- */
-function toRequestPin(pin: ClaimPin): FederatedClaimPin {
+/** Convert only numeric pins the request contract can carry exactly. */
+function toRequestPin(pin: ClaimPin): FederatedClaimPin | null {
   if (pin.string_value !== undefined) {
     return { claim: pin.claim, string_value: pin.string_value };
   }
   if (pin.number_value !== undefined) {
-    return { claim: pin.claim, number_value: Number(pin.number_value) };
+    const value = Number(pin.number_value);
+    if (!Number.isSafeInteger(value) || BigInt(value) !== pin.number_value) return null;
+    return { claim: pin.claim, number_value: value };
   }
   if (pin.bool_value !== undefined) {
     return { claim: pin.claim, bool_value: pin.bool_value };
@@ -191,8 +186,8 @@ function toRequestPin(pin: ClaimPin): FederatedClaimPin {
   return { claim: pin.claim };
 }
 
-/** requestPinText renders a request-shape pin for the read-only preserved list. */
-function requestPinText(pin: FederatedClaimPin): string {
+/** Render preserved read-shape pins without narrowing their numeric values. */
+function requestPinText(pin: ClaimPin): string {
   if (pin.string_value !== undefined) {
     return pin.string_value;
   }
@@ -356,7 +351,16 @@ export function BindingDialog({
     // Carried pins are appended, never merged: a preset field and a carried
     // claim can never share a name (carried is exactly the complement), so
     // there is nothing to reconcile.
-    const allPins = [...pins, ...carried];
+    const carriedRequests: FederatedClaimPin[] = [];
+    for (const pin of carried) {
+      const converted = toRequestPin(pin);
+      if (converted === null) {
+        setFailure('A preserved numeric pin cannot be carried exactly by this contract. Nothing was bound.');
+        return;
+      }
+      carriedRequests.push(converted);
+    }
+    const allPins = [...pins, ...carriedRequests];
     setBusy(true);
     setFailure(null);
     // Same issued-vs-nothing-happened line the mint draws: once the request

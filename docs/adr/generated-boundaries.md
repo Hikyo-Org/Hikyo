@@ -1,7 +1,8 @@
 # Generated boundaries and MachineAccess decomposition
 
-Status: implemented and selected architecture verified on 2026-09-30; exact-head
-remote CI remains pending. Addresses the architectural holds in
+Status: implemented and selected architecture verified on 2026-09-30. CI results
+are tracked for each exact revision in [PR #843](https://github.com/Hikyo-Org/Hikyo/pull/843);
+the earlier `d747caf6` result covers only the initial mechanical cleanup. Addresses the architectural holds in
 [#619](https://github.com/Hikyo-Org/Hikyo/issues/619).
 
 ## Context
@@ -181,7 +182,7 @@ registry's init panic, and preservation of authz-owned forwarding documentation.
 The signature/doc interface and CI-only table-validation revisions address the
 last two. The implemented query gates, typed list binds and per-query scope
 evidence address the SQL design objections locally. Final combined adversarial
-verification is recorded below; exact-head remote CI remains pending.
+verification is recorded below.
 
 The separate code review of the CI guards reached its three-round cap with
 R3 CHANGES. Its remaining parser mismatch is fixed by matching sqlc's raw-line
@@ -203,8 +204,7 @@ and flow evidence are distinct, and adapter retry timestamp parsing retains the
 original queued-with-attempts condition. Regression coverage pins the SQLite
 six-digit microsecond timestamp and adds organization-only dialog resets. Web
 typecheck, lint and all 1,321 unit tests pass, as do the focused both-engine
-PKI/transit tests and full lint suite. Final implementation verification is recorded below; exact-head remote CI
-remains pending.
+PKI/transit tests and full lint suite. Final implementation verification is recorded below.
 
 Final native Opus implementation R3 returned CLEAN and architecture R3 returned
 SOUND. The reviewer independently mutated the flow-only evidence guard and three
@@ -220,3 +220,30 @@ PostgreSQL target. Earlier monolithic isolation and broad race commands reached
 their timeouts during active tests; focused regressions and targeted race checks
 pass. Complete isolation and race coverage remains the unchanged three/six CI
 shard gate on the final pushed head. No timeout or gate was weakened.
+
+## Subsequent review fixes
+
+Remote validation of implementation revision `4f1a2d4f` passed 48 checks with
+2 intentional skips, including all three isolation and six race shards.
+CodeRabbit then requested followups: hidden embedded resolver exposure,
+corrupt DEK-version narrowing, transit admission lock compatibility, SQLite
+statement terminators, and unsafe carried federation pins. These are addressed
+with embedded-field regressions, checked DEK reads on both engines, a PostgreSQL
+lock-compatibility/mutual-exclusion test, regenerated SQL, and exact bigint
+preservation with pre-request refusal. The activity result-alias comment is
+corrected. The earlier `d747caf6` CI result does not prove the architecture or
+these followups. CI and review results for each later revision are recorded in
+PR #843; they must not be inferred from an earlier head.
+
+The followup review also found the same version-narrowing flaw in the instance
+reencryption inventory. All 16 versioned instance listers now share checked DEK
+and row-version decoding. PostgreSQL INTEGER limits and self-config version
+inputs are checked before narrowing; BIGINT inputs retain their full range.
+Corrupt PKI issuer versions are refused by signing, CRL and reencryption reads,
+so a wrapped value cannot be mistaken for an already-current DEK during retire.
+
+Native Opus followup R3 returned CLEAN after the reencryption read/input fixes.
+It independently checked build/vet, stored-integer boundaries and binding form
+regressions. The task's separate dual-engine checks cover PostgreSQL, which the
+reviewer's environment did not run. Full store/authz/generator, full lint and
+1,325 web tests pass locally; later-head CI results remain in PR #843.

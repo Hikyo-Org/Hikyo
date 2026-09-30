@@ -229,8 +229,6 @@ func (q *Queries) AdapterMoveBeginOriginCollisions(ctx context.Context, arg Adap
 }
 
 const adapterMoveBeginOriginTargets = `-- name: AdapterMoveBeginOriginTargets :many
-;
-
 SELECT t.id AS id,t.environment_id AS environment_id,t.destination_kind AS kind,t.destination_owner AS owner,t.destination_name AS name,t.destination_environment AS destination_environment,t.destination_scope AS destination_scope,t.destination_id AS destination_id,t.repository_id AS repository_id,t.visibility AS visibility,CAST(t.selected_repository_ids AS TEXT) AS selected_repository_ids,t.name_prefix AS prefix,t.generation AS generation,COALESCE(t.active_job_id,'') AS active_job,CAST(COALESCE((SELECT json_group_array(value) FROM (SELECT surface||':'||effective_name AS value FROM adapter_ledger WHERE target_id=t.id AND org_id=t.org_id AND project_id=t.project_id AND environment_id=t.environment_id AND state IN ('owned','dispatched') ORDER BY surface,effective_name)),'[]') AS TEXT) AS orphaned_names FROM adapter_targets t WHERE t.adapter_id=?1 AND t.org_id=?2 AND t.project_id=?3 AND t.state='active' ORDER BY t.id
 `
 
@@ -1415,8 +1413,6 @@ func (q *Queries) AdapterMoveUpdateAuthority(ctx context.Context, arg AdapterMov
 }
 
 const adapterMoveUpdatePendingOrigin = `-- name: AdapterMoveUpdatePendingOrigin :execrows
-;
-
 UPDATE adapter_route_moves SET pending_origin=?1,pending_credential_ciphertext=?2 WHERE id=?3 AND org_id=?4 AND project_id=?5 AND state='attention_required' AND kind='origin'
 `
 

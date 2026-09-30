@@ -133,7 +133,22 @@ The canonical core-package script passes with the digest-pinned PostgreSQL
 target. Latent generic-helper and build-context guard notes have local fixes
 and regression coverage. The separate guard code loop remains capped at R3
 CHANGES with its prescribed fixes verified locally, not a fourth CLEAN pass.
-Exact-head remote CI remains pending; this is not merge or deployment evidence.
+Exact-head CI results are recorded per revision in PR #843; this is not merge or deployment evidence.
+
+### Subsequent review fixes
+
+Architecture revision `4f1a2d4f` passed 48 remote checks with 2 intentional skips,
+including all isolation and race shards. CodeRabbit's later requested fixes add
+checked DEK-version reads, preserve/display carried bigint federation pins and
+refuse lossy replacement before any request, cover hidden embedded resolver
+fields, retain transit admission serialization while permitting foreign-key
+readers, normalize SQL terminators through sqlc, and correct the privacy alias
+comment. The same DEK/row-version checks also cover all 16 instance reencryption listers;
+PostgreSQL INTEGER input narrowing is checked before execution.
+Both-engine corruption and admission-limit tests and the PostgreSQL
+lock compatibility regression pass. Native followup R3 is CLEAN. Full store/authz/generator, full lint and 1,325
+web tests pass locally. Subsequent revision evidence is tracked in
+PR #843; earlier-head green checks cannot stand in for the final head.
 
 ### Validation and review of the initial mechanical cleanup
 

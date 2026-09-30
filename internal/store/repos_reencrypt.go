@@ -83,7 +83,11 @@ func (r sqliteReencrypt) ListPasswordCredsForReencrypt(ctx context.Context, p au
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.AccountID, Ciphertext: x.Verifier, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.AccountID, x.Verifier, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -106,7 +110,11 @@ func (r sqliteReencrypt) ListTotpCredsForReencrypt(ctx context.Context, p authz.
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.Seed, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.Seed, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -129,7 +137,11 @@ func (r sqliteReencrypt) ListRecoveryCodesForReencrypt(ctx context.Context, p au
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.AccountID, Ciphertext: x.Batch, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.AccountID, x.Batch, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -152,7 +164,11 @@ func (r sqliteReencrypt) ListOidcProvidersForReencrypt(ctx context.Context, p au
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.ClientSecret, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.ClientSecret, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -176,7 +192,11 @@ func (r sqliteReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p 
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.ClientSecret, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.ClientSecret, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -200,7 +220,11 @@ func (r sqliteReencrypt) ListSamlKeysForReencrypt(ctx context.Context, p authz.P
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.EncryptedPrivateKey, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.EncryptedPrivateKey, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -242,13 +266,22 @@ func (r pgReencrypt) ListPasswordCredsForReencrypt(ctx context.Context, p authz.
 	if _, err := authz.Verify(p, authz.StoreReencryptListPasswordCreds, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListPasswordCredsForReencrypt(ctx, pggen.ListPasswordCredsForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListPasswordCredsForReencrypt(ctx, pggen.ListPasswordCredsForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.AccountID, Ciphertext: x.Verifier, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.AccountID, x.Verifier, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -265,13 +298,22 @@ func (r pgReencrypt) ListTotpCredsForReencrypt(ctx context.Context, p authz.Proo
 	if _, err := authz.Verify(p, authz.StoreReencryptListTotpCreds, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListTotpCredsForReencrypt(ctx, pggen.ListTotpCredsForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListTotpCredsForReencrypt(ctx, pggen.ListTotpCredsForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.Seed, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.Seed, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -288,13 +330,22 @@ func (r pgReencrypt) ListRecoveryCodesForReencrypt(ctx context.Context, p authz.
 	if _, err := authz.Verify(p, authz.StoreReencryptListRecoveryCodes, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListRecoveryCodesForReencrypt(ctx, pggen.ListRecoveryCodesForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListRecoveryCodesForReencrypt(ctx, pggen.ListRecoveryCodesForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.AccountID, Ciphertext: x.Batch, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.AccountID, x.Batch, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -311,13 +362,22 @@ func (r pgReencrypt) ListOidcProvidersForReencrypt(ctx context.Context, p authz.
 	if _, err := authz.Verify(p, authz.StoreReencryptListOidcProviders, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListOidcProvidersForReencrypt(ctx, pggen.ListOidcProvidersForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListOidcProvidersForReencrypt(ctx, pggen.ListOidcProvidersForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.ClientSecret, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.ClientSecret, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -335,13 +395,22 @@ func (r pgReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p auth
 	if _, err := authz.Verify(p, authz.StoreReencryptListOauth2Providers, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListOauth2ProvidersForReencrypt(ctx, pggen.ListOauth2ProvidersForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListOauth2ProvidersForReencrypt(ctx, pggen.ListOauth2ProvidersForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.ClientSecret, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.ClientSecret, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -359,13 +428,22 @@ func (r pgReencrypt) ListSamlKeysForReencrypt(ctx context.Context, p authz.Proof
 	if _, err := authz.Verify(p, authz.StoreReencryptListSamlKeys, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListSamlKeysForReencrypt(ctx, pggen.ListSamlKeysForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListSamlKeysForReencrypt(ctx, pggen.ListSamlKeysForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.EncryptedPrivateKey, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.EncryptedPrivateKey, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -382,7 +460,12 @@ func (r pgReencrypt) ListRemotesForReencrypt(ctx context.Context, p authz.Proof,
 	if _, err := authz.Verify(p, authz.StoreReencryptListRemotes, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListRemotesForReencrypt(ctx, pggen.ListRemotesForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListRemotesForReencrypt(ctx, pggen.ListRemotesForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +494,11 @@ func (r sqliteReencrypt) ListSelfConfigSeedInputsForReencrypt(ctx context.Contex
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.NodeID, Ciphertext: x.Ciphertext, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.NodeID, x.Ciphertext, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -428,13 +515,22 @@ func (r pgReencrypt) ListSelfConfigSeedInputsForReencrypt(ctx context.Context, p
 	if _, err := authz.Verify(p, authz.StoreReencryptListSelfConfigSeedInputs, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListSelfConfigSeedInputsForReencrypt(ctx, pggen.ListSelfConfigSeedInputsForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListSelfConfigSeedInputsForReencrypt(ctx, pggen.ListSelfConfigSeedInputsForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.NodeID, Ciphertext: x.Ciphertext, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.NodeID, x.Ciphertext, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -443,7 +539,17 @@ func (r pgReencrypt) ReencryptSelfConfigSeedInput(ctx context.Context, p authz.P
 	if _, err := authz.Verify(p, authz.StoreReencryptSelfConfigSeedInput, r.tok); err != nil {
 		return false, err
 	}
-	n, err := r.q.ReencryptSelfConfigSeedInput(ctx, pggen.ReencryptSelfConfigSeedInputParams{Ct: newCiphertext, OldCt: oldCiphertext, DekVersion: int32(dekVersion), NodeID: id, RowVersion: int32(rowVersion)})
+	checkedDekVersion, err := checkedPGInt32(int64(dekVersion))
+	if err != nil {
+		return false, err
+	}
+
+	checkedRowVersion, err := checkedPGInt32(int64(rowVersion))
+	if err != nil {
+		return false, err
+	}
+
+	n, err := r.q.ReencryptSelfConfigSeedInput(ctx, pggen.ReencryptSelfConfigSeedInputParams{Ct: newCiphertext, OldCt: oldCiphertext, DekVersion: checkedDekVersion, NodeID: id, RowVersion: checkedRowVersion})
 	return n == 1, err
 }
 
@@ -457,7 +563,11 @@ func (r sqliteReencrypt) ListPkiIssuersForReencrypt(ctx context.Context, p authz
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.EncryptedPrivateKey, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.EncryptedPrivateKey, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -474,13 +584,22 @@ func (r pgReencrypt) ListPkiIssuersForReencrypt(ctx context.Context, p authz.Pro
 	if _, err := authz.Verify(p, authz.StoreReencryptListPkiIssuers, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListPkiIssuersForReencrypt(ctx, pggen.ListPkiIssuersForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.ListPkiIssuersForReencrypt(ctx, pggen.ListPkiIssuersForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ReencryptInstanceRow, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.EncryptedPrivateKey, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+		item, err := storedReencryptInstanceRow(x.ID, x.EncryptedPrivateKey, int64(x.DekVersion), int64(x.RowVersion))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
@@ -491,4 +610,16 @@ func (r pgReencrypt) ReencryptPkiIssuer(ctx context.Context, p authz.Proof, id s
 	}
 	n, err := r.q.ReencryptPkiIssuer(ctx, pggen.ReencryptPkiIssuerParams{Ct: newCiphertext, DekVersion: pgtype.Int8{Int64: int64(dekVersion), Valid: true}, ID: id, RowVersion: int64(rowVersion)})
 	return n == 1, err
+}
+
+func storedReencryptInstanceRow(id string, ciphertext []byte, dekVersion, rowVersion int64) (ReencryptInstanceRow, error) {
+	dek, err := checkedStoredDEKVersion(dekVersion)
+	if err != nil {
+		return ReencryptInstanceRow{}, err
+	}
+	row, err := checkedStoredUint32("row_version", rowVersion)
+	if err != nil {
+		return ReencryptInstanceRow{}, err
+	}
+	return ReencryptInstanceRow{ID: id, Ciphertext: ciphertext, DEKVersion: dek, RowVersion: row}, nil
 }

@@ -198,7 +198,11 @@ func (q sqlitePKIStoreQueries) pkiIssuerKey(ctx context.Context, id string) (pki
 	if err != nil {
 		return pkiSealedKey{}, err
 	}
-	return pkiSealedKey{ciphertext: c.EncryptedPrivateKey, version: uint32(c.DekVersion.Int64)}, nil
+	version, err := checkedStoredDEKVersion(c.DekVersion.Int64)
+	if err != nil {
+		return pkiSealedKey{}, err
+	}
+	return pkiSealedKey{ciphertext: c.EncryptedPrivateKey, version: version}, nil
 }
 
 func (q sqlitePKIStoreQueries) pkiCreateIssuer(ctx context.Context, m PKIIssuerCreate) error {
@@ -573,7 +577,11 @@ func (q pgPKIStoreQueries) pkiIssuerKey(ctx context.Context, id string) (pkiSeal
 	if err != nil {
 		return pkiSealedKey{}, err
 	}
-	return pkiSealedKey{ciphertext: c.EncryptedPrivateKey, version: uint32(c.DekVersion.Int64)}, nil
+	version, err := checkedStoredDEKVersion(c.DekVersion.Int64)
+	if err != nil {
+		return pkiSealedKey{}, err
+	}
+	return pkiSealedKey{ciphertext: c.EncryptedPrivateKey, version: version}, nil
 }
 
 func (q pgPKIStoreQueries) pkiCreateIssuer(ctx context.Context, m PKIIssuerCreate) error {

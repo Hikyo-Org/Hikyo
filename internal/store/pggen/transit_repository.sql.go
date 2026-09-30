@@ -12,7 +12,7 @@ import (
 )
 
 const transitAdmissionLock = `-- name: TransitAdmissionLock :one
-SELECT id FROM environments WHERE org_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE
+SELECT id FROM environments WHERE org_id=$1 AND project_id=$2 AND id=$3 FOR NO KEY UPDATE
 `
 
 type TransitAdmissionLockParams struct {

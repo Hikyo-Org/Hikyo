@@ -122,7 +122,7 @@ func containsResolver(typ reflect.Type, seen map[reflect.Type]bool) bool {
 	case reflect.Struct:
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
-			if field.PkgPath == "" && containsResolver(field.Type, seen) {
+			if (field.PkgPath == "" || field.Anonymous) && containsResolver(field.Type, seen) {
 				return true
 			}
 		}
@@ -136,8 +136,10 @@ func containsResolver(typ reflect.Type, seen map[reflect.Type]bool) bool {
 	return false
 }
 
+type resolverCarrier struct{ Resolver *authn.Resolver }
+
 func TestResolverExposureGuardCatchesNestedSignaturesAndFields(t *testing.T) {
-	for _, value := range []any{(*authn.Resolver)(nil), ([]*authn.Resolver)(nil), (map[string]*authn.Resolver)(nil), (func() *authn.Resolver)(nil), (*interface{ Get() *authn.Resolver })(nil), struct{ Resolver *authn.Resolver }{}} {
+	for _, value := range []any{(*authn.Resolver)(nil), ([]*authn.Resolver)(nil), (map[string]*authn.Resolver)(nil), (func() *authn.Resolver)(nil), (*interface{ Get() *authn.Resolver })(nil), struct{ Resolver *authn.Resolver }{}, struct{ resolverCarrier }{}, struct{ *resolverCarrier }{}} {
 		if !containsResolver(reflect.TypeOf(value), map[reflect.Type]bool{}) {
 			t.Errorf("missed resolver exposure in %T", value)
 		}

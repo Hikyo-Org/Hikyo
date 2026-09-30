@@ -8,7 +8,7 @@ SELECT id,environment_id,name,algorithm,custody,allowed_operations,state,latest_
 SELECT id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at FROM transit_keys WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND name=sqlc.arg(name) AND state<>'destroyed' FOR SHARE;
 
 -- name: TransitAdmissionLock :one
-SELECT id FROM environments WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND id=sqlc.arg(chain_env) FOR UPDATE;
+SELECT id FROM environments WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND id=sqlc.arg(chain_env) FOR NO KEY UPDATE;
 
 -- name: TransitCountKeys :one
 SELECT COUNT(*) FROM transit_keys WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state<>'destroyed';

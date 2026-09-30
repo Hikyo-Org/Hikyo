@@ -13,3 +13,15 @@ func checkedPGInt32(value int64) (int32, error) {
 	}
 	return int32(value), nil
 }
+
+// checkedStoredDEKVersion rejects corrupted storage before narrowing a key version.
+func checkedStoredDEKVersion(value int64) (uint32, error) {
+	return checkedStoredUint32("dek_version", value)
+}
+
+func checkedStoredUint32(field string, value int64) (uint32, error) {
+	if value < 0 || value > math.MaxUint32 {
+		return 0, fmt.Errorf("store: %s out of range: %d", field, value)
+	}
+	return uint32(value), nil
+}
