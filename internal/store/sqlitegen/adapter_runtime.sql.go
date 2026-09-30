@@ -906,17 +906,25 @@ func (q *Queries) AdapterWorkerCloseIndeterminateEffectsUpdate(ctx context.Conte
 }
 
 const adapterWorkerCompleteJob = `-- name: AdapterWorkerCompleteJob :execrows
-UPDATE adapter_outbox SET state=?1,finished_at=?2,lease_owner=NULL,lease_expires_at=NULL WHERE id=?3 AND lease_owner=?4
+UPDATE adapter_outbox SET state=?1,finished_at=?2,lease_owner=NULL,lease_expires_at=NULL WHERE id=?3 AND lease_owner=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND target_id=?8 AND generation=?9 AND authority_principal_id=?10 AND kind=?11 AND COALESCE(route_move_id,'')=CAST(?12 AS TEXT)
 `
 
 type AdapterWorkerCompleteJobParams struct {
-	State      string
-	At         sql.NullString
-	JobID      string
-	LeaseOwner sql.NullString
+	State              string
+	At                 sql.NullString
+	JobID              string
+	LeaseOwner         sql.NullString
+	ChainOrg           string
+	ChainProject       string
+	ChainEnv           string
+	TargetID           string
+	Generation         int64
+	AuthorityPrincipal string
+	Kind               string
+	RouteMoveID        string
 }
 
-// hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target-generation or route-move-state checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction.
+// hikyo:reason Closed adapter worker terminal settlement matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any audit. Ordinary outcomes retain scoped current-target checks; intentional stale-generation abort settles and audits only that stored claimed identity without requiring the superseded current-target fence, in the same transaction.
 // hikyo:instance-scoped
 func (q *Queries) AdapterWorkerCompleteJob(ctx context.Context, arg AdapterWorkerCompleteJobParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, adapterWorkerCompleteJob,
@@ -924,6 +932,14 @@ func (q *Queries) AdapterWorkerCompleteJob(ctx context.Context, arg AdapterWorke
 		arg.At,
 		arg.JobID,
 		arg.LeaseOwner,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.TargetID,
+		arg.Generation,
+		arg.AuthorityPrincipal,
+		arg.Kind,
+		arg.RouteMoveID,
 	)
 	if err != nil {
 		return 0, err
@@ -1130,19 +1146,39 @@ func (q *Queries) AdapterWorkerFinishJobMarkTargets(ctx context.Context, arg Ada
 }
 
 const adapterWorkerFinishJobQuery = `-- name: AdapterWorkerFinishJobQuery :execrows
-UPDATE adapter_outbox SET state='queued',next_attempt_at=?1,lease_owner=NULL,lease_expires_at=NULL WHERE id=?2 AND lease_owner=?3
+UPDATE adapter_outbox SET state='queued',next_attempt_at=?1,lease_owner=NULL,lease_expires_at=NULL WHERE id=?2 AND lease_owner=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND target_id=?7 AND generation=?8 AND authority_principal_id=?9 AND kind=?10 AND COALESCE(route_move_id,'')=CAST(?11 AS TEXT)
 `
 
 type AdapterWorkerFinishJobQueryParams struct {
-	Due        string
-	JobID      string
-	LeaseOwner sql.NullString
+	Due                string
+	JobID              string
+	LeaseOwner         sql.NullString
+	ChainOrg           string
+	ChainProject       string
+	ChainEnv           string
+	TargetID           string
+	Generation         int64
+	AuthorityPrincipal string
+	Kind               string
+	RouteMoveID        string
 }
 
-// hikyo:reason Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement.
+// hikyo:reason Closed adapter worker retry matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any settlement or audit; ordinary retry continuation also retains scoped current-target generation/provider fences.
 // hikyo:instance-scoped
 func (q *Queries) AdapterWorkerFinishJobQuery(ctx context.Context, arg AdapterWorkerFinishJobQueryParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, adapterWorkerFinishJobQuery, arg.Due, arg.JobID, arg.LeaseOwner)
+	result, err := q.db.ExecContext(ctx, adapterWorkerFinishJobQuery,
+		arg.Due,
+		arg.JobID,
+		arg.LeaseOwner,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.TargetID,
+		arg.Generation,
+		arg.AuthorityPrincipal,
+		arg.Kind,
+		arg.RouteMoveID,
+	)
 	if err != nil {
 		return 0, err
 	}

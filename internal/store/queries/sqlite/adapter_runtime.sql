@@ -192,15 +192,15 @@ DELETE FROM adapter_route_move_claims WHERE move_id=sqlc.arg(route_move_id) AND 
 -- name: AdapterWorkerActivateOriginRouteMoveCompleteMove :execrows
 UPDATE adapter_route_moves SET state='completed',pending_origin=NULL,pending_credential_ciphertext=NULL WHERE id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND adapter_id=sqlc.arg(adapter_i_d) AND kind='origin' AND state='activating';
 
--- hikyo:reason Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement.
+-- hikyo:reason Closed adapter worker retry matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any settlement or audit; ordinary retry continuation also retains scoped current-target generation/provider fences.
 -- hikyo:instance-scoped
 -- name: AdapterWorkerFinishJobQuery :execrows
-UPDATE adapter_outbox SET state='queued',next_attempt_at=sqlc.arg(due),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner);
+UPDATE adapter_outbox SET state='queued',next_attempt_at=sqlc.arg(due),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND target_id=sqlc.arg(target_id) AND generation=sqlc.arg(generation) AND authority_principal_id=sqlc.arg(authority_principal) AND kind=sqlc.arg(kind) AND COALESCE(route_move_id,'')=CAST(sqlc.arg(route_move_id) AS TEXT);
 
--- hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target-generation or route-move-state checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction.
+-- hikyo:reason Closed adapter worker terminal settlement matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any audit. Ordinary outcomes retain scoped current-target checks; intentional stale-generation abort settles and audits only that stored claimed identity without requiring the superseded current-target fence, in the same transaction.
 -- hikyo:instance-scoped
 -- name: AdapterWorkerCompleteJob :execrows
-UPDATE adapter_outbox SET state=sqlc.arg(state),finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner);
+UPDATE adapter_outbox SET state=sqlc.arg(state),finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND target_id=sqlc.arg(target_id) AND generation=sqlc.arg(generation) AND authority_principal_id=sqlc.arg(authority_principal) AND kind=sqlc.arg(kind) AND COALESCE(route_move_id,'')=CAST(sqlc.arg(route_move_id) AS TEXT);
 
 -- name: AdapterWorkerFinishJobLookup :one
 SELECT adapter_id FROM adapter_targets WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env);

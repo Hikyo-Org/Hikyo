@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -75,5 +76,77 @@ func TestAdapterClaimedGenerationAbortPreservesChainAndLeaseOwner(t *testing.T) 
 				}
 			})
 		})
+	}
+}
+
+func TestAdapterSettlementMatchesStoredClaimIdentity(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		for _, route := range []string{"", "arm_claim"} {
+			t.Run(fmt.Sprintf("abort=%v/route=%q", abort, route), func(t *testing.T) {
+				forEngines(t, func(t *testing.T, db *store.DB) {
+					seedGitLabMoves(t, db, "staging")
+					runtime := generatedAdapterRuntime(db)
+					now := time.Now().UTC()
+					enqueued, err := runtime.Enqueue(t.Context(), adapter.Job{OrgID: "org_gitlab", ProjectID: "prj_gitlab", EnvironmentID: "env_gitlab_e2e", TargetID: "tgt_gitlab_a", Kind: adapter.Converge, AuthorityPrincipal: "usr_gitlab"}, now)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if route != "" {
+						execRaw(t, db, "INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_claim','org_gitlab','prj_gitlab','adp_gitlab','tgt_gitlab_a','target','usr_gitlab','completed',TRUE,'2026-08-17T00:00:00Z')")
+						execRaw(t, db, fmt.Sprintf("UPDATE adapter_outbox SET route_move_id='%s' WHERE id='%s'", route, enqueued.ID))
+					}
+					job, found, err := runtime.ClaimDue(t.Context(), "identity-worker", now.Add(time.Second), now.Add(time.Minute))
+					if err != nil || !found || job.RouteMoveID != route {
+						t.Fatalf("claim: %+v found=%v err=%v", job, found, err)
+					}
+					if abort {
+						execRaw(t, db, fmt.Sprintf("UPDATE adapter_targets SET generation=generation+1 WHERE id='%s'", job.TargetID))
+					}
+					settle := func(candidate adapter.Job) error {
+						if abort {
+							return runtime.Fail(t.Context(), candidate, 0, now.Add(2*time.Second), adapter.ErrSuperseded)
+						}
+						return runtime.Retry(t.Context(), candidate, now.Add(time.Minute), 0, nil, nil, errors.New("provider unavailable"))
+					}
+					snapshot := func() []string {
+						return []string{
+							queryString(t, db, fmt.Sprintf("SELECT state||'|'||COALESCE(lease_owner,'')||'|'||COALESCE(CAST(finished_at AS TEXT),'')||'|'||CAST(next_attempt_at AS TEXT) FROM adapter_outbox WHERE id='%s'", job.ID)),
+							queryString(t, db, fmt.Sprintf("SELECT CAST(generation AS TEXT)||'|'||sync_status||'|'||COALESCE(active_job_id,'') FROM adapter_targets WHERE id='%s'", job.TargetID)),
+							fmt.Sprint(queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events")),
+						}
+					}
+					before := snapshot()
+					for field, mutate := range map[string]func(*adapter.Job){
+						"org":         func(j *adapter.Job) { j.OrgID = "org_b" },
+						"project":     func(j *adapter.Job) { j.ProjectID = "prj_other" },
+						"environment": func(j *adapter.Job) { j.EnvironmentID = "env_gitlab_second" },
+						"target":      func(j *adapter.Job) { j.TargetID = "tgt_gitlab_b" },
+						"generation":  func(j *adapter.Job) { j.Generation++ },
+						"authority":   func(j *adapter.Job) { j.AuthorityPrincipal = "usr_other" },
+						"kind":        func(j *adapter.Job) { j.Kind = adapter.Scrub },
+						"route":       func(j *adapter.Job) { j.RouteMoveID = route + "_other" },
+					} {
+						forged := job
+						mutate(&forged)
+						if err := settle(forged); !errors.Is(err, adapter.ErrSuperseded) {
+							t.Fatalf("%s forged settlement: %v", field, err)
+						}
+						if after := snapshot(); !slices.Equal(before, after) {
+							t.Fatalf("%s forged settlement changed job/target/audit: %v -> %v", field, before, after)
+						}
+					}
+					if err := settle(job); err != nil {
+						t.Fatalf("original claimed settlement: %v", err)
+					}
+					want := "queued"
+					if abort {
+						want = "failed"
+					}
+					if got := queryString(t, db, fmt.Sprintf("SELECT state FROM adapter_outbox WHERE id='%s'", job.ID)); got != want {
+						t.Fatalf("original claimed job state: %s, want %s", got, want)
+					}
+				})
+			})
+		}
 	}
 }

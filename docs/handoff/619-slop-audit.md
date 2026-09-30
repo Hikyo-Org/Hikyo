@@ -529,12 +529,15 @@ Stored integer checks share one bound predicate while preserving both historical
 corruption diagnostics. Native fix verification and remote exact-head evidence
 remain in PR #843 rather than this architecture record.
 
-The exhaustive 175-record/92-name exemption review found one reason overstatement:
-`AdapterWorkerCompleteJob` intentionally settles an owned stale-generation job
-without requiring the superseded target fence. Both-engine annotation reasons
-now state that exception. The closed worker must retain the unchanged job returned
-by ClaimDue; abort settlement does not independently validate a caller-modified
-job chain. Both-engine regression coverage proves wrong-owner refusal, unchanged
-newer target and a single audit carrying the original claimed chain. SQL, generated
-API, annotation names, classes and hashes remain unchanged by this correction.
+The exhaustive 175-record/92-name exemption review found an overstated abort
+reason. The following CodeRabbit review identified the related settlement gap:
+a caller could preserve the job id and lease owner while changing audit identity.
+Retry and terminal settlement now compare the stored outbox org, project,
+environment, target, generation, authority principal, kind and optional route
+identity before any downstream change or audit. They do not require the current
+target generation, so a genuine superseded claim can still be settled and audited.
+Both-engine tests cover all eight forged identity fields, empty and nonempty route
+identities, unchanged job/target/audit on refusal, valid retry and stale-generation
+Converge/Scrub aborts. Exactly four existing query SQL hashes and reasons change;
+the 939 annotation identities/classes and 381 legacy names remain fixed.
 Security sign-off remains an owner review item; this evidence is not approval.

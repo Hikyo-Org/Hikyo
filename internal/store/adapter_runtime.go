@@ -944,7 +944,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 	return r.transaction(ctx, func(tx adapterDBTX) error {
 		if state == "queued" {
 
-			rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobQuery(ctx, due, job.ID, job.LeaseOwner)
+			rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobQuery(ctx, due, job)
 			if err != nil {
 				return err
 			}
@@ -953,7 +953,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			}
 		} else {
 
-			rows, err := tx.adapterRuntimeQueries().adapterWorkerCompleteJob(ctx, state, finished, job.ID, job.LeaseOwner)
+			rows, err := tx.adapterRuntimeQueries().adapterWorkerCompleteJob(ctx, state, finished, job)
 			if err != nil {
 				return err
 			}

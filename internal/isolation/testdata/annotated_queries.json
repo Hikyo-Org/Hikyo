@@ -31,15 +31,15 @@
     "engine": "postgres",
     "name": "AdapterWorkerCompleteJob",
     "annotation": "instance-scoped",
-    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
-    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target-generation or route-move-state checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction."
+    "hash": "c34dc2428877ed7658e6730863a989f0871f3dc4b0db26df959d6667edc589a7",
+    "reason": "Closed adapter worker terminal settlement matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any audit. Ordinary outcomes retain scoped current-target checks; intentional stale-generation abort settles and audits only that stored claimed identity without requiring the superseded current-target fence, in the same transaction."
   },
   {
     "engine": "postgres",
     "name": "AdapterWorkerFinishJobQuery",
     "annotation": "instance-scoped",
-    "hash": "8b9e47bde6b1d9d0d4590628d4d9e80ff3c7477d610370a4dd3185be864937f6",
-    "reason": "Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement."
+    "hash": "7a16d9c44088fa73cf62896a568a2c3d165d62abe6eafe9a75d827a09a5fadf6",
+    "reason": "Closed adapter worker retry matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any settlement or audit; ordinary retry continuation also retains scoped current-target generation/provider fences."
   },
   {
     "engine": "postgres",
@@ -2967,15 +2967,15 @@
     "engine": "sqlite",
     "name": "AdapterWorkerCompleteJob",
     "annotation": "instance-scoped",
-    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
-    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target-generation or route-move-state checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction."
+    "hash": "c34dc2428877ed7658e6730863a989f0871f3dc4b0db26df959d6667edc589a7",
+    "reason": "Closed adapter worker terminal settlement matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any audit. Ordinary outcomes retain scoped current-target checks; intentional stale-generation abort settles and audits only that stored claimed identity without requiring the superseded current-target fence, in the same transaction."
   },
   {
     "engine": "sqlite",
     "name": "AdapterWorkerFinishJobQuery",
     "annotation": "instance-scoped",
-    "hash": "8b9e47bde6b1d9d0d4590628d4d9e80ff3c7477d610370a4dd3185be864937f6",
-    "reason": "Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement."
+    "hash": "7a16d9c44088fa73cf62896a568a2c3d165d62abe6eafe9a75d827a09a5fadf6",
+    "reason": "Closed adapter worker retry matches the claimed outbox row id, lease owner, stored org/project/environment/target/generation/authority/kind/route identity before any settlement or audit; ordinary retry continuation also retains scoped current-target generation/provider fences."
   },
   {
     "engine": "sqlite",

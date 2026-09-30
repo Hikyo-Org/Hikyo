@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -71,8 +72,8 @@ type adapterRuntimeQueries interface {
 	adapterWorkerActivateOriginRouteMoveActivateAdapter(ctx context.Context, pendingOrigin string, pendingCredential []byte, at time.Time, expires *time.Time, adapterID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerActivateOriginRouteMoveDeleteClaims(ctx context.Context, routeMoveID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerActivateOriginRouteMoveCompleteMove(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, adapterID string) (int64, error)
-	adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, jobID string, leaseOwner string) (int64, error)
-	adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error)
+	adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, job adapter.Job) (int64, error)
+	adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, job adapter.Job) (int64, error)
 	adapterWorkerFinishJobLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (string, error)
 	adapterWorkerFinishJobMarkTarget(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
 	adapterWorkerFinishJobErase(ctx context.Context, adapterID string, chainOrg string, chainProject string) (int64, error)
@@ -476,11 +477,11 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveDeleteC
 func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveCompleteMove(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, adapterID string) (int64, error) {
 	return q.queries.AdapterWorkerActivateOriginRouteMoveCompleteMove(ctx, sqlitegen.AdapterWorkerActivateOriginRouteMoveCompleteMoveParams{RouteMoveID: routeMoveID, ChainOrg: chainOrg, ChainProject: chainProject, AdapterID: adapterID})
 }
-func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, jobID string, leaseOwner string) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobQuery(ctx, sqlitegen.AdapterWorkerFinishJobQueryParams{Due: fixedStamp(due), JobID: jobID, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
+func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerFinishJobQuery(ctx, sqlitegen.AdapterWorkerFinishJobQueryParams{Due: fixedStamp(due), JobID: job.ID, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, TargetID: job.TargetID, Generation: job.Generation, AuthorityPrincipal: job.AuthorityPrincipal, Kind: string(job.Kind), RouteMoveID: job.RouteMoveID})
 }
-func (q sqliteAdapterRuntimeQueries) adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error) {
-	return q.queries.AdapterWorkerCompleteJob(ctx, sqlitegen.AdapterWorkerCompleteJobParams{State: state, At: runtimeSQLiteStamp(at), JobID: jobID, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
+func (q sqliteAdapterRuntimeQueries) adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerCompleteJob(ctx, sqlitegen.AdapterWorkerCompleteJobParams{State: state, At: runtimeSQLiteStamp(at), JobID: job.ID, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, TargetID: job.TargetID, Generation: job.Generation, AuthorityPrincipal: job.AuthorityPrincipal, Kind: string(job.Kind), RouteMoveID: job.RouteMoveID})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (string, error) {
 	return q.queries.AdapterWorkerFinishJobLookup(ctx, sqlitegen.AdapterWorkerFinishJobLookupParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
@@ -807,11 +808,11 @@ func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveDeleteClaim
 func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveCompleteMove(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, adapterID string) (int64, error) {
 	return q.queries.AdapterWorkerActivateOriginRouteMoveCompleteMove(ctx, pggen.AdapterWorkerActivateOriginRouteMoveCompleteMoveParams{RouteMoveID: routeMoveID, ChainOrg: chainOrg, ChainProject: chainProject, AdapterID: adapterID})
 }
-func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, jobID string, leaseOwner string) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobQuery(ctx, pggen.AdapterWorkerFinishJobQueryParams{Due: pgRequiredTime(due), JobID: jobID, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})
+func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerFinishJobQuery(ctx, pggen.AdapterWorkerFinishJobQueryParams{Due: pgRequiredTime(due), JobID: job.ID, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, TargetID: job.TargetID, Generation: job.Generation, AuthorityPrincipal: job.AuthorityPrincipal, Kind: string(job.Kind), RouteMoveID: job.RouteMoveID})
 }
-func (q pgAdapterRuntimeQueries) adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error) {
-	return q.queries.AdapterWorkerCompleteJob(ctx, pggen.AdapterWorkerCompleteJobParams{State: state, At: pgRequiredTime(at), JobID: jobID, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})
+func (q pgAdapterRuntimeQueries) adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerCompleteJob(ctx, pggen.AdapterWorkerCompleteJobParams{State: state, At: pgRequiredTime(at), JobID: job.ID, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, TargetID: job.TargetID, Generation: job.Generation, AuthorityPrincipal: job.AuthorityPrincipal, Kind: string(job.Kind), RouteMoveID: job.RouteMoveID})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (string, error) {
 	return q.queries.AdapterWorkerFinishJobLookup(ctx, pggen.AdapterWorkerFinishJobLookupParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
