@@ -65,8 +65,9 @@ as instance operations.
 `TxAuthorizer` retains its private concrete resolver and its reviewed public
 method surface. Generate only pure delegation methods from an explicit list of
 public method name, target resolver method, signature and original authz-owned
-documentation. A private Go interface with explicit forwarding directives is
-the reviewed allowlist; `go/types` checks signature identity including aliases.
+documentation. A private Go interface is the reviewed allowlist; a forwarding
+directive is required only when the resolver target has a different name.
+`go/types` checks signature identity including aliases.
 Duplicate public names fail; multiple wrappers may intentionally target the
 same resolver method. Preserve renames and documented contracts. Methods with
 constant injection or argument transformations stay handwritten, as do methods

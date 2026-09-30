@@ -3,7 +3,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -11,7 +10,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -68,62 +67,14 @@ func readJSON(path string, dest any) error {
 	if err != nil {
 		return err
 	}
-	// JSON objects are not permitted to overwrite an earlier declaration.
-	d := json.NewDecoder(bytes.NewReader(b))
-	if err := uniqueJSON(d); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	if _, err := d.Token(); err != io.EOF {
-		return fmt.Errorf("%s: trailing JSON", path)
-	}
-	d = json.NewDecoder(bytes.NewReader(b))
-	d.DisallowUnknownFields()
-	if err := d.Decode(dest); err != nil {
+	if err := definitions.DecodeStrict(b, dest); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil
 }
 
-func uniqueJSON(d *json.Decoder) error {
-	t, err := d.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := t.(json.Delim)
-	if !ok {
-		return nil
-	}
-	if delim == '{' {
-		seen := map[string]bool{}
-		for d.More() {
-			key, err := d.Token()
-			if err != nil {
-				return err
-			}
-			name, ok := key.(string)
-			if !ok || seen[name] {
-				return fmt.Errorf("duplicate or invalid JSON key %v", key)
-			}
-			seen[name] = true
-			if err := uniqueJSON(d); err != nil {
-				return err
-			}
-		}
-	} else if delim == '[' {
-		for d.More() {
-			if err := uniqueJSON(d); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("unexpected delimiter %v", delim)
-	}
-	_, err = d.Token()
-	return err
-}
-
-// The Go interface is the reviewed allowlist and signature owner. Generator
-// metadata lives only in a target annotation; signatures remain compiler input.
+// The Go interface is the reviewed allowlist and signature owner.
+// A target annotation is needed only for a renamed resolver method.
 func readForwarders(path string, dest *forwarders) error {
 	source, err := os.ReadFile(path)
 	if err != nil {
@@ -135,6 +86,15 @@ func readForwarders(path string, dest *forwarders) error {
 		return err
 	}
 	*dest = forwarders{Version: 1, Imports: map[string]string{}}
+	directives := map[*ast.Comment]bool{}
+	for _, group := range file.Comments {
+		for _, comment := range group.List {
+			text := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(comment.Text, "//"), "/*"))
+			if strings.HasPrefix(text, "hikyo:forward") {
+				directives[comment] = true
+			}
+		}
+	}
 	for _, imp := range file.Imports {
 		value, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
@@ -178,30 +138,42 @@ func readForwarders(path string, dest *forwarders) error {
 				if _, ok := field.Type.(*ast.FuncType); !ok {
 					return fmt.Errorf("forwarders: non-method entry")
 				}
-				entry := forwarder{Name: field.Names[0].Name, Signature: "func (a *TxAuthorizer) " + string(source[fset.Position(field.Pos()).Offset:fset.Position(field.End()).Offset])}
+				entry := forwarder{Name: field.Names[0].Name, Target: field.Names[0].Name, Signature: "func (a *TxAuthorizer) " + string(source[fset.Position(field.Pos()).Offset:fset.Position(field.End()).Offset])}
 				var docs []string
-				if field.Doc != nil {
-					for _, comment := range field.Doc.List {
-						if strings.HasPrefix(comment.Text, "//hikyo:forward ") {
-							if entry.Target != "" {
+				annotated := false
+				for _, group := range []*ast.CommentGroup{field.Doc, field.Comment} {
+					if group == nil {
+						continue
+					}
+					for _, comment := range group.List {
+						if directives[comment] {
+							if group != field.Doc || !strings.HasPrefix(comment.Text, "//hikyo:forward ") {
+								return fmt.Errorf("forwarders: invalid target annotation %s", entry.Name)
+							}
+							if annotated {
 								return fmt.Errorf("forwarders: duplicate target annotation %s", entry.Name)
 							}
 							entry.Target = strings.TrimPrefix(comment.Text, "//hikyo:forward ")
-						} else {
+							if !token.IsIdentifier(entry.Target) {
+								return fmt.Errorf("forwarders: invalid target annotation %s", entry.Name)
+							}
+							annotated = true
+							delete(directives, comment)
+						} else if group == field.Doc {
 							docs = append(docs, comment.Text)
 						}
 					}
 				}
 				entry.Doc = strings.Join(docs, "\n")
-				if entry.Target == "" {
-					return fmt.Errorf("forwarders: missing target annotation %s", entry.Name)
-				}
 				dest.Forwarders = append(dest.Forwarders, entry)
 			}
 		}
 	}
 	if !found {
 		return fmt.Errorf("forwarders: txForwarded interface missing")
+	}
+	if len(directives) != 0 {
+		return fmt.Errorf("forwarders: target annotation must directly document an allowlisted method")
 	}
 	return nil
 }

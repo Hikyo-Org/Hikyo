@@ -264,7 +264,7 @@ func CheckSQLPredicates(repoRoot string) []string {
 		}
 	}
 	for engine, pins := range reviews {
-		for name, pin := range pins {
+		for name := range pins {
 			found := false
 			for _, q := range perEngine[engine] {
 				if q.Name == name {
@@ -272,15 +272,8 @@ func CheckSQLPredicates(repoRoot string) []string {
 					break
 				}
 			}
-			other := "sqlite"
-			if engine == "sqlite" {
-				other = "postgres"
-			}
 			if !found {
 				findings = append(findings, fmt.Sprintf("sqlpredicate: retire absent reviewed scoped query %s/%s", engine, name))
-			}
-			if reviews[other][name].Authority != pin.Authority {
-				findings = append(findings, fmt.Sprintf("sqlpredicate: scoped query %s has different reviewed authority between engines", name))
 			}
 		}
 	}

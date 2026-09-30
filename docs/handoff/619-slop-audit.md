@@ -264,3 +264,66 @@ What landed:
   never called the get-one operation; the row was held up by a dead hook.
 - Kept after re-verification: `Config.SQLiteDriver` (query-count test needs
   a custom driver), `CanonicalKeySet` (now called where it was re-inlined).
+
+## Maintenance cost and merge hold
+
+The owner holds the merge while reviewing the maintenance cost. At head
+`969548a`, this PR added 55,455 lines and removed 10,638. Generated Go accounts
+for 27,635 added lines; handwritten runtime and other files still grew by
+2,989 lines, and SQL source added 2,861. Moving SQL and splitting a route do not
+by themselves establish reduced total complexity. The remaining growth buys
+typed engine boundaries and the selected CI proof boundaries; it remains a
+review tradeoff rather than a code-deletion claim.
+
+The additional simplification removes 188 redundant same-name resolver target
+annotations while retaining all 24 renames. Generated forwarders remain byte
+identical. It removes 146 no-op result temporaries/conversions and replaces 17
+copied row literals with compiler-checked struct conversions. Existing
+zero-result-on-error guards, actual PostgreSQL widening, timestamp and JSON
+conversions remain explicit. These changes remove 403 handwritten runtime
+lines without adding a mapping abstraction or another generator.
+
+Scoped query metadata now has 33 shared authority/test records with separate
+SQLite and PostgreSQL SQL/API hashes. All 66 prior hash/authority/evidence
+records are preserved exactly after expansion. Missing or unknown engines and
+empty hashes fail CI. The inventory shrinks by 94 lines; the loader and its
+negative tests consume part of that saving. Raw protocol/helper/build-context
+pins and the historical annotation boundary remain intact.
+
+Native simplification review R1 found malformed forwarding comments could fall
+back to same-name forwarding, plus the preexisting inventory reader accepted
+duplicate and unknown JSON members. Both are now refused with negative tests.
+The generator and scoped inventory reader share `definitions.DecodeStrict`,
+removing the generator's separate JSON token walker instead of copying it into
+the scoped inventory checker. Shared decoding also rejects trailing content and
+case-variant duplicate fields. R2 found detached directive comments; the parser now accounts
+for every directive in the AST comment inventory and refuses unattached ones.
+These failures remain generation/CI failures.
+
+Simplification review R3 returned CHANGES for an attempted reuse of the artifact
+decoder in the raw protocol inventory's CI reader. Its case folding rejects two
+distinct pinned Go helpers, `WithExistingProjectSealer` and
+`withExistingProjectSealer`. The prescribed bounded fix is applied: revert only
+that optional decoder swap, leaving the original raw reader, all helper pins and
+the shared artifact utility unchanged. A schema-aware shared decoder would add
+scope and require further review; it is not part of this simplification. The
+original guard R3 and this prescribed R3 fix retain human disposition, with no
+fourth native round and no whole-PR CLEAN claim.
+
+After that prescribed revert, full lint/authz/generator/definitions checks pass,
+and full generation/supply-chain preflight passes in 154 seconds with no
+generated drift. Full store checks and ten both-engine scope/runtime groups
+passed on the unchanged runtime delta. Exact pushed-head CI remains a separate
+live fact in PR #843; no earlier revision's result proves a later head.
+
+The Jev recheck identified no concrete missing test or remaining original guard
+fix. All eight direct test groups behind the 66 scoped pins ran afresh with
+both database engines and no skips, passing in 17.103 seconds. Lint/authz and
+generator checks passed independently. Jev's original readiness score was
+2.01/3 with confidence 0.01 and probabilities 3% blocked, 29% not ready, 31%
+nearly ready, 37% ready. A focused factual recheck returned 0.23 probability of
+a concrete coverage gap, 0.27 of an unaddressed original guard fix and 0.89 of
+pending human disposition. These advisory probabilities do not establish a
+defect or clear the review cap. The original guard R3 CHANGES remains for human
+disposition; it is not relabeled CLEAN. New simplification checks and exact-head
+CI are recorded separately in the PR. Merge remains held by the owner.

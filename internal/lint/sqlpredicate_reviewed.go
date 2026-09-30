@@ -2,7 +2,6 @@ package lint
 
 import (
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 )
 
 // These are tenant-scoped queries reviewed beyond the bounded SQL grammar.
@@ -27,9 +28,39 @@ type scopedQueryReview struct {
 var scopedQueryReviewsJSON []byte
 
 func readScopedQueryReviews() (map[string]map[string]scopedQueryReview, error) {
-	var reviews map[string]map[string]scopedQueryReview
-	err := json.Unmarshal(scopedQueryReviewsJSON, &reviews)
-	return reviews, err
+	return parseScopedQueryReviews(scopedQueryReviewsJSON)
+}
+
+// Authority and regression evidence belong to the query; SQL and generated
+// API contracts remain independently pinned for both mandatory engines.
+func parseScopedQueryReviews(source []byte) (map[string]map[string]scopedQueryReview, error) {
+	var records map[string]struct {
+		Authority string            `json:"authority"`
+		Tests     []string          `json:"tests"`
+		FlowTests []string          `json:"flow_tests,omitempty"`
+		SQLHash   map[string]string `json:"sql_hash"`
+		APIHash   map[string]string `json:"api_hash"`
+	}
+	if err := definitions.DecodeStrict(source, &records); err != nil {
+		return nil, err
+	}
+	reviews := map[string]map[string]scopedQueryReview{"sqlite": {}, "postgres": {}}
+	for name, definition := range records {
+		for kind, hashes := range map[string]map[string]string{"SQL": definition.SQLHash, "API": definition.APIHash} {
+			if len(hashes) != len(reviews) {
+				return nil, fmt.Errorf("scoped query %s: %s hashes require exactly sqlite and postgres", name, kind)
+			}
+			for engine, hash := range hashes {
+				if reviews[engine] == nil || strings.TrimSpace(hash) == "" {
+					return nil, fmt.Errorf("scoped query %s: invalid %s hash for engine %q", name, kind, engine)
+				}
+			}
+		}
+		for engine := range reviews {
+			reviews[engine][name] = scopedQueryReview{SQLHash: definition.SQLHash[engine], APIHash: definition.APIHash[engine], Authority: definition.Authority, Tests: definition.Tests, FlowTests: definition.FlowTests}
+		}
+	}
+	return reviews, nil
 }
 
 func checkScopedQueryReview(engine string, q Query, api generatedContract, generated bool, review scopedQueryReview, root string) []string {

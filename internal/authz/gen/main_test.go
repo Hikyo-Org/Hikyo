@@ -99,27 +99,34 @@ func TestWireRejectsInvalidMissingConflictingAndStaleMetadata(t *testing.T) {
 }
 
 func TestForwarderAllowlistKeepsGoSignatureAndDocs(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "forwarders.go")
-	if err := os.WriteFile(path, []byte("package authz\nimport \"context\"\ntype txForwarded interface {\n// Renamed preserves owner documentation.\n//hikyo:forward Original\nRenamed(ctx context.Context, values ...string) error\n}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	var m forwarders
-	if err := readForwarders(path, &m); err != nil {
-		t.Fatal(err)
-	}
-	b, err := renderForwarders(m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"// Renamed preserves owner documentation.", "Renamed(ctx context.Context, values ...string) error", "return a.r.Original(ctx, values...)", "var _ txForwarded = (*TxAuthorizer)(nil)"} {
-		if !strings.Contains(string(b), want) {
-			t.Errorf("missing %s", want)
-		}
+	for _, test := range []struct{ name, annotation, target string }{
+		{"same name", "", "Renamed"},
+		{"renamed", "//hikyo:forward Original\n", "Original"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "forwarders.go")
+			if err := os.WriteFile(path, []byte("package authz\nimport \"context\"\ntype txForwarded interface {\n// Renamed preserves owner documentation.\n"+test.annotation+"Renamed(ctx context.Context, values ...string) error\n}"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var m forwarders
+			if err := readForwarders(path, &m); err != nil {
+				t.Fatal(err)
+			}
+			b, err := renderForwarders(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"// Renamed preserves owner documentation.", "Renamed(ctx context.Context, values ...string) error", "return a.r." + test.target + "(ctx, values...)", "var _ txForwarded = (*TxAuthorizer)(nil)"} {
+				if !strings.Contains(string(b), want) {
+					t.Errorf("missing %s", want)
+				}
+			}
+		})
 	}
 }
 
 func TestForwarderRejectsUnsupportedAllowlist(t *testing.T) {
-	for _, source := range []string{"type txForwarded interface { Embedded }", "type txForwarded interface { Read() }", "type txForwarded interface {\n//hikyo:forward A\n//hikyo:forward B\nRead() }", "type txForwarded struct {}", "type Other interface {}"} {
+	for _, source := range []string{"type txForwarded interface { Embedded }", "type txForwarded interface {\n//hikyo:forward A\n//hikyo:forward B\nRead() }", "type txForwarded interface {\n//hikyo:forward\nRead() }", "type txForwarded interface {\n//hikyo:forward \nRead() }", "type txForwarded interface {\n//hikyo:forwardOriginal\nRead() }", "type txForwarded interface {\n// hikyo:forward Original\nRead() }", "type txForwarded interface {\n/*hikyo:forward Original*/\nRead() }", "type txForwarded interface {\nRead() //hikyo:forward Original\n}", "type txForwarded interface {\n//hikyo:forward Original\n\nRead() }", "type txForwarded struct {}", "type Other interface {}"} {
 		t.Run(source, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "forwarders.go")
 			if err := os.WriteFile(path, []byte("package authz\n"+source), 0600); err != nil {
