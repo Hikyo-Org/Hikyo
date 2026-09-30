@@ -537,7 +537,8 @@ environment, target, generation, authority principal, kind and optional route
 identity before any downstream change or audit. They do not require the current
 target generation, so a genuine superseded claim can still be settled and audited.
 Both-engine tests cover all eight forged identity fields, empty and nonempty route
-identities, unchanged job/target/audit on refusal, valid retry and stale-generation
-Converge/Scrub aborts. Exactly four existing query SQL hashes and reasons change;
+identities, a coherent second-target chain, unchanged job/both-targets/audit on
+refusal, valid retry and stale-generation Converge/Scrub aborts. Exactly four
+existing query SQL hashes and reasons change;
 the 939 annotation identities/classes and 381 legacy names remain fixed.
 Security sign-off remains an owner review item; this evidence is not approval.

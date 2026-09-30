@@ -112,11 +112,18 @@ func TestAdapterSettlementMatchesStoredClaimIdentity(t *testing.T) {
 						return []string{
 							queryString(t, db, fmt.Sprintf("SELECT state||'|'||COALESCE(lease_owner,'')||'|'||COALESCE(CAST(finished_at AS TEXT),'')||'|'||CAST(next_attempt_at AS TEXT) FROM adapter_outbox WHERE id='%s'", job.ID)),
 							queryString(t, db, fmt.Sprintf("SELECT CAST(generation AS TEXT)||'|'||sync_status||'|'||COALESCE(active_job_id,'') FROM adapter_targets WHERE id='%s'", job.TargetID)),
+							queryString(t, db, "SELECT CAST(generation AS TEXT)||'|'||sync_status||'|'||COALESCE(active_job_id,'') FROM adapter_targets WHERE id='tgt_gitlab_b'"),
 							fmt.Sprint(queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events")),
 						}
 					}
+					if got := queryInt(t, db, "SELECT generation FROM adapter_targets WHERE id='tgt_gitlab_b'"); got != 1 {
+						t.Fatalf("foreign target generation: %d, want 1", got)
+					}
 					before := snapshot()
 					for field, mutate := range map[string]func(*adapter.Job){
+						"coherent foreign target": func(j *adapter.Job) {
+							j.TargetID, j.EnvironmentID, j.Generation = "tgt_gitlab_b", "env_gitlab_second", 1
+						},
 						"org":         func(j *adapter.Job) { j.OrgID = "org_b" },
 						"project":     func(j *adapter.Job) { j.ProjectID = "prj_other" },
 						"environment": func(j *adapter.Job) { j.EnvironmentID = "env_gitlab_second" },
