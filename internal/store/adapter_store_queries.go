@@ -88,11 +88,9 @@ func (q sqliteAdapterStoreQueries) manifestKeys(ctx context.Context, chain domai
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.ManifestEntry
-	for _, row := range rows {
-		out = append(out, adapter.ManifestEntry{KeyID: row.ID, CanonicalName: row.Name, Classification: adapter.Classification(row.Classification)})
-	}
-	return out, nil
+	return mapRows(rows, func(row sqlitegen.ListAdapterManifestKeysRow) (adapter.ManifestEntry, error) {
+		return adapter.ManifestEntry{KeyID: row.ID, CanonicalName: row.Name, Classification: adapter.Classification(row.Classification)}, nil
+	})
 }
 
 func (q pgAdapterStoreQueries) manifestKeys(ctx context.Context, chain domain.Scope, keyIDs []string) ([]adapter.ManifestEntry, error) {
@@ -100,11 +98,9 @@ func (q pgAdapterStoreQueries) manifestKeys(ctx context.Context, chain domain.Sc
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.ManifestEntry
-	for _, row := range rows {
-		out = append(out, adapter.ManifestEntry{KeyID: row.ID, CanonicalName: row.Name, Classification: adapter.Classification(row.Classification)})
-	}
-	return out, nil
+	return mapRows(rows, func(row pggen.ListAdapterManifestKeysRow) (adapter.ManifestEntry, error) {
+		return adapter.ManifestEntry{KeyID: row.ID, CanonicalName: row.Name, Classification: adapter.Classification(row.Classification)}, nil
+	})
 }
 
 func (q sqliteAdapterStoreQueries) listAdaptersForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -112,11 +108,9 @@ func (q sqliteAdapterStoreQueries) listAdaptersForReencrypt(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	var out []ReencryptFieldRow
-	for _, c := range rows {
-		out = append(out, ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.CredentialCiphertext})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterListForReencryptRow) (ReencryptFieldRow, error) {
+		return ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.CredentialCiphertext}, nil
+	})
 }
 
 func (q sqliteAdapterStoreQueries) listMovesForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -124,11 +118,9 @@ func (q sqliteAdapterStoreQueries) listMovesForReencrypt(ctx context.Context, ch
 	if err != nil {
 		return nil, err
 	}
-	var out []ReencryptFieldRow
-	for _, c := range rows {
-		out = append(out, ReencryptFieldRow{ID: c.ID, Owner: c.AdapterID, Ciphertext: c.PendingCredentialCiphertext})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterListMovesForReencryptRow) (ReencryptFieldRow, error) {
+		return ReencryptFieldRow{ID: c.ID, Owner: c.AdapterID, Ciphertext: c.PendingCredentialCiphertext}, nil
+	})
 }
 
 func (q sqliteAdapterStoreQueries) reencryptAdapter(ctx context.Context, chain domain.Scope, id string, newCiphertext, oldCiphertext []byte) (int64, error) {
@@ -146,11 +138,9 @@ func (q pgAdapterStoreQueries) listAdaptersForReencrypt(ctx context.Context, cha
 	if err != nil {
 		return nil, err
 	}
-	var out []ReencryptFieldRow
-	for _, c := range rows {
-		out = append(out, ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.CredentialCiphertext})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterListForReencryptRow) (ReencryptFieldRow, error) {
+		return ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.CredentialCiphertext}, nil
+	})
 }
 
 func (q pgAdapterStoreQueries) listMovesForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -158,11 +148,9 @@ func (q pgAdapterStoreQueries) listMovesForReencrypt(ctx context.Context, chain 
 	if err != nil {
 		return nil, err
 	}
-	var out []ReencryptFieldRow
-	for _, c := range rows {
-		out = append(out, ReencryptFieldRow{ID: c.ID, Owner: c.AdapterID, Ciphertext: c.PendingCredentialCiphertext})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterListMovesForReencryptRow) (ReencryptFieldRow, error) {
+		return ReencryptFieldRow{ID: c.ID, Owner: c.AdapterID, Ciphertext: c.PendingCredentialCiphertext}, nil
+	})
 }
 
 func (q pgAdapterStoreQueries) reencryptAdapter(ctx context.Context, chain domain.Scope, id string, newCiphertext, oldCiphertext []byte) (int64, error) {
@@ -203,15 +191,9 @@ func (q sqliteAdapterStoreQueries) adapterList(ctx context.Context, chain domain
 	if err != nil {
 		return nil, err
 	}
-	var out []AdapterRecord
-	for _, c := range rows {
-		value, err := adapterRecordSQLite(sqlitegen.AdapterGetRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, value)
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterListRow) (AdapterRecord, error) {
+		return adapterRecordSQLite(sqlitegen.AdapterGetRow(c))
+	})
 }
 
 func (q sqliteAdapterStoreQueries) adapterTarget(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error) {
@@ -230,15 +212,9 @@ func (q sqliteAdapterStoreQueries) adapterListTargets(ctx context.Context, chain
 	if err != nil {
 		return nil, err
 	}
-	var out []AdapterTarget
-	for _, c := range rows {
-		value, err := adapterTargetSQLite(sqlitegen.AdapterGetTargetRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, value)
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterListTargetsRow) (AdapterTarget, error) {
+		return adapterTargetSQLite(sqlitegen.AdapterGetTargetRow(c))
+	})
 }
 
 func (q sqliteAdapterStoreQueries) adapterActiveTargetForUpdate(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error) {
@@ -310,15 +286,9 @@ func (q pgAdapterStoreQueries) adapterList(ctx context.Context, chain domain.Sco
 	if err != nil {
 		return nil, err
 	}
-	var out []AdapterRecord
-	for _, c := range rows {
-		value, err := adapterRecordPG(pggen.AdapterGetRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, value)
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterListRow) (AdapterRecord, error) {
+		return adapterRecordPG(pggen.AdapterGetRow(c))
+	})
 }
 
 func (q pgAdapterStoreQueries) adapterTarget(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error) {
@@ -337,15 +307,9 @@ func (q pgAdapterStoreQueries) adapterListTargets(ctx context.Context, chain dom
 	if err != nil {
 		return nil, err
 	}
-	var out []AdapterTarget
-	for _, c := range rows {
-		value, err := adapterTargetPG(pggen.AdapterGetTargetRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, value)
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterListTargetsRow) (AdapterTarget, error) {
+		return adapterTargetPG(pggen.AdapterGetTargetRow(c))
+	})
 }
 
 func (q pgAdapterStoreQueries) adapterActiveTargetForUpdate(ctx context.Context, chain domain.Scope, targetID string) (AdapterTarget, error) {
@@ -489,11 +453,9 @@ func (q sqliteAdapterStoreQueries) mapping(ctx context.Context, chain domain.Sco
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.ManifestEntry
-	for _, c := range rows {
-		out = append(out, adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterMappingRow) (adapter.ManifestEntry, error) {
+		return adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)}, nil
+	})
 }
 
 func (q sqliteAdapterStoreQueries) planManifest(ctx context.Context, chain domain.Scope, targetID string, envID string) ([]adapter.ManifestEntry, error) {
@@ -501,11 +463,9 @@ func (q sqliteAdapterStoreQueries) planManifest(ctx context.Context, chain domai
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.ManifestEntry
-	for _, c := range rows {
-		out = append(out, adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterPlanManifestRow) (adapter.ManifestEntry, error) {
+		return adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)}, nil
+	})
 }
 
 func (q sqliteAdapterStoreQueries) planCredential(ctx context.Context, chain domain.Scope, adapterID string) ([]byte, AdapterTransport, error) {
@@ -517,11 +477,9 @@ func (q sqliteAdapterStoreQueries) planLedger(ctx context.Context, chain domain.
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.LedgerEntry
-	for _, c := range rows {
-		out = append(out, adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0}, nil
+	})
 }
 func (q sqliteAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
 	return q.queries.AdapterTargetEnvironments(ctx, sqlitegen.AdapterTargetEnvironmentsParams{TargetID: targetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
@@ -564,11 +522,9 @@ func (q pgAdapterStoreQueries) mapping(ctx context.Context, chain domain.Scope, 
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.ManifestEntry
-	for _, c := range rows {
-		out = append(out, adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterMappingRow) (adapter.ManifestEntry, error) {
+		return adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)}, nil
+	})
 }
 
 func (q pgAdapterStoreQueries) planManifest(ctx context.Context, chain domain.Scope, targetID string, envID string) ([]adapter.ManifestEntry, error) {
@@ -576,11 +532,9 @@ func (q pgAdapterStoreQueries) planManifest(ctx context.Context, chain domain.Sc
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.ManifestEntry
-	for _, c := range rows {
-		out = append(out, adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterPlanManifestRow) (adapter.ManifestEntry, error) {
+		return adapter.ManifestEntry{KeyID: c.KeyID, CanonicalName: c.KeyName, Classification: adapter.Classification(c.Classification)}, nil
+	})
 }
 
 func (q pgAdapterStoreQueries) planCredential(ctx context.Context, chain domain.Scope, adapterID string) ([]byte, AdapterTransport, error) {
@@ -592,11 +546,9 @@ func (q pgAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scop
 	if err != nil {
 		return nil, err
 	}
-	var out []adapter.LedgerEntry
-	for _, c := range rows {
-		out = append(out, adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing}, nil
+	})
 }
 func (q pgAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
 	return q.queries.AdapterTargetEnvironments(ctx, pggen.AdapterTargetEnvironmentsParams{TargetID: targetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})

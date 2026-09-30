@@ -1,8 +1,9 @@
+import { statusText } from './statusText.ts';
 import { adoptInstanceConfigOp, applyInstanceConfigOp, getInstanceConfigOp, previewInstanceConfigAdoptionOp, reauthPasskeyFinishOp, reauthPasskeyStartOp, reauthTotpOp, testInstanceConfigMailOp } from '@hikyo/operations';
 import type { zInstanceConfigStatus, zSelfConfigReauthIntent } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
-import { ApiError, parsed } from './client.ts';
+import { parsed } from './client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { notifySuccess } from '../app/notifications.tsx';
 import { forgetWorkspace } from './workspace.ts';
@@ -61,18 +62,19 @@ export function useSelfConfigActions() {
 }
 
 export function selfConfigFailure(error: Error): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401: return 'Your session ended. Reconnect to this instance.';
-      case 403: return 'This action needs instance administration, project access and fresh reauthentication on this owner.';
-      case 404: return 'Configuration is not disclosed to this session, or this owner does not support managed configuration.';
-      case 409: return 'The selected revision or generation changed. Refresh, review the current state and try again.';
-      case 503: return 'This node is catching up with the committed configuration. Retry after refreshing status.';
-      case 429: return 'The owner is limiting requests. Wait before trying again.';
-      case 400: return 'The owner refused this configuration or authorization. Check the selected revision and try again.';
-    }
-  }
-  return 'The owner could not confirm the result. Refresh status before retrying.';
+  return statusText(
+    error,
+    {
+      401: 'Your session ended. Reconnect to this instance.',
+      403: 'This action needs instance administration, project access and fresh reauthentication on this owner.',
+      404: 'Configuration is not disclosed to this session, or this owner does not support managed configuration.',
+      409: 'The selected revision or generation changed. Refresh, review the current state and try again.',
+      503: 'This node is catching up with the committed configuration. Retry after refreshing status.',
+      429: 'The owner is limiting requests. Wait before trying again.',
+      400: 'The owner refused this configuration or authorization. Check the selected revision and try again.',
+    },
+    'The owner could not confirm the result. Refresh status before retrying.',
+  );
 }
 
 export function revisionNumber(value: string): bigint | null {

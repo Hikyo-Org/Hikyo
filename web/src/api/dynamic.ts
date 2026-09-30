@@ -396,23 +396,21 @@ export function deleteProviderRefusalText(error: unknown): string {
  */
 export function leaseMintRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail('The server refused that mint request as malformed.', error);
-      case 403:
-        return 'The server refused this mint. A human mint needs a disclosure capability over this environment and a fresh reauthentication; a machine mint needs the project machine-reveal opt-in.';
-      case 404:
-        return 'That provider or environment is no longer here.';
-      case 409:
-        return withDetail(
+    return statusText(
+      error,
+      {
+        400: (error) => withDetail('The server refused that mint request as malformed.', error),
+        403: 'The server refused this mint. A human mint needs a disclosure capability over this environment and a fresh reauthentication; a machine mint needs the project machine-reveal opt-in.',
+        404: 'That provider or environment is no longer here.',
+        409: (error) =>
+          withDetail(
           'The mint could not be completed: the provider refused it, or is not in a state that can mint. No credential was issued.',
           error,
-        );
-      case 429:
-        return commonRefusalText.requests;
-      default:
-        return `The mint could not be completed (server error ${String(error.status)}).`;
-    }
+        ),
+        429: commonRefusalText.requests,
+      },
+      `The mint could not be completed (server error ${String(error.status)}).`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed or timed out. Nothing was minted.';
@@ -440,29 +438,26 @@ export function leaseActionRefusalText(
   verb: 'renew' | 'revoke' | 'settle',
   error: unknown,
 ): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return commonRefusalText.unauthenticated;
-      case 403:
-        return verb === 'renew'
+  return statusText(
+    error,
+    {
+      401: commonRefusalText.unauthenticated,
+      403:
+        verb === 'renew'
           ? 'The server refused the renewal. Renewing re-checks read over this environment: a principal that lost it cannot renew.'
-          : `The server refused to ${verb} this lease.`;
-      case 404:
-        return 'That lease is no longer here.';
-      case 409:
-        return {
+          : `The server refused to ${verb} this lease.`,
+      404: 'That lease is no longer here.',
+      409: {
           renew: 'This lease is not active, so it cannot be renewed. Reload to see its current state.',
           revoke:
             'This lease is already terminal or being revoked. Reload to see its current state.',
           settle:
             'This lease is not awaiting reconcile, so there is nothing to settle. Reload to see its current state.',
-        }[verb];
-      case 429:
-        return commonRefusalText.requests;
-      default:
-        return `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`} (server error ${String(error.status)}).`;
-    }
-  }
-  return `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`}.`;
+        }[verb],
+      429: commonRefusalText.requests,
+    },
+    `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`}.`,
+    (error) =>
+      `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`} (server error ${String(error.status)}).`,
+  );
 }

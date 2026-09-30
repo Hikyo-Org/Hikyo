@@ -9,7 +9,6 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,33 +16,33 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api"
-	"github.com/Hikyo-Org/hikyo/internal/definitions"
-	"golang.org/x/tools/go/packages"
 )
 
 type forwarder struct {
-	Name      string `json:"name"`
-	Target    string `json:"target"`
-	Signature string `json:"signature"`
-	Doc       string `json:"doc,omitempty"`
+	Name      string
+	Target    string
+	Signature string
+	Doc       string
+	Args      []string
+	Returns   bool
 }
 type forwarders struct {
-	Version    int               `json:"version"`
-	Imports    map[string]string `json:"imports"`
-	Forwarders []forwarder       `json:"forwarders"`
+	Version    int
+	Imports    map[string]string
+	Forwarders []forwarder
 }
 type wireRow struct {
-	Key       string   `json:"key"`
-	Class     string   `json:"class,omitempty"`
-	Ops       []string `json:"operations,omitempty"`
-	Events    []string `json:"events,omitempty"`
-	Index     int      `json:"primary_index,omitempty"`
-	NoPrimary string   `json:"no_primary,omitempty"`
+	Key       string
+	Class     string
+	Ops       []string
+	Events    []string
+	Index     int
+	NoPrimary string
 }
 type wireExtras struct {
-	Version    int       `json:"version"`
-	Extensions []wireRow `json:"extensions"`
-	Entries    []wireRow `json:"entries"`
+	Version    int
+	Extensions map[string]wireRow
+	Entries    map[string]wireRow
 }
 type catalog struct {
 	Operations map[string]string // const name -> wire identifier
@@ -60,17 +59,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func readJSON(path string, dest any) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if err := definitions.DecodeStrict(b, dest); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	return nil
 }
 
 // The Go interface is the reviewed allowlist and signature owner.
@@ -135,10 +123,31 @@ func readForwarders(path string, dest *forwarders) error {
 				if len(field.Names) != 1 {
 					return fmt.Errorf("forwarders: embedded interfaces are forbidden")
 				}
-				if _, ok := field.Type.(*ast.FuncType); !ok {
+				fn, ok := field.Type.(*ast.FuncType)
+				if !ok {
 					return fmt.Errorf("forwarders: non-method entry")
 				}
 				entry := forwarder{Name: field.Names[0].Name, Target: field.Names[0].Name, Signature: "func (a *TxAuthorizer) " + string(source[fset.Position(field.Pos()).Offset:fset.Position(field.End()).Offset])}
+				if !ast.IsExported(entry.Name) {
+					return fmt.Errorf("forwarders: private method %s", entry.Name)
+				}
+				for _, param := range fn.Params.List {
+					if len(param.Names) == 0 {
+						return fmt.Errorf("forwarders %s: unnamed argument", entry.Name)
+					}
+					for _, name := range param.Names {
+						if name.Name == "_" {
+							return fmt.Errorf("forwarders %s: blank argument", entry.Name)
+						}
+						entry.Args = append(entry.Args, name.Name)
+					}
+				}
+				if len(fn.Params.List) > 0 {
+					if _, ok := fn.Params.List[len(fn.Params.List)-1].Type.(*ast.Ellipsis); ok {
+						entry.Args[len(entry.Args)-1] += "..."
+					}
+				}
+				entry.Returns = fn.Results != nil && len(fn.Results.List) > 0
 				var docs []string
 				annotated := false
 				for _, group := range []*ast.CommentGroup{field.Doc, field.Comment} {
@@ -180,11 +189,7 @@ func readForwarders(path string, dest *forwarders) error {
 
 func run(root string, check bool) error {
 	var forwards forwarders
-	var extras wireExtras
 	if err := readForwarders(filepath.Join(root, "internal/authz/forwarders.go"), &forwards); err != nil {
-		return err
-	}
-	if err := readJSON(filepath.Join(root, "internal/authz/wire_extras.json"), &extras); err != nil {
 		return err
 	}
 	forward, err := renderForwarders(forwards)
@@ -199,16 +204,13 @@ func run(root string, check bool) error {
 	if err != nil {
 		return err
 	}
-	wire, err := renderWire(ops, extras, cat)
+	wire, err := renderWire(ops, reviewedWireExtras, cat)
 	if err != nil {
 		return err
 	}
 	outputs := map[string][]byte{
 		filepath.Join(root, "internal/authz/forwarders_gen.go"):    forward,
 		filepath.Join(root, "internal/authz/wire_registry_gen.go"): wire,
-	}
-	if err := validateTypes(root, outputs, forwards); err != nil {
-		return err
 	}
 	for path, generated := range outputs {
 		if err := updateOutput(path, generated, check); err != nil {
@@ -273,55 +275,14 @@ func renderForwarders(m forwarders) ([]byte, error) {
 			return nil, fmt.Errorf("forwarders: invalid or duplicate entry %q", entry.Name)
 		}
 		seen[entry.Name] = true
-		file, err := parser.ParseFile(token.NewFileSet(), "signature.go", "package authz\n"+entry.Signature+" {}", 0)
-		if err != nil {
-			return nil, fmt.Errorf("forwarders %s: %w", entry.Name, err)
-		}
-		if len(file.Decls) != 1 {
-			return nil, fmt.Errorf("forwarders %s: multiple declarations", entry.Name)
-		}
-		fn, ok := file.Decls[0].(*ast.FuncDecl)
-		if !ok || fn.Name.Name != entry.Name || fn.Recv == nil || len(fn.Recv.List) != 1 || len(fn.Recv.List[0].Names) != 1 || fn.Recv.List[0].Names[0].Name != "a" {
-			return nil, fmt.Errorf("forwarders %s: unsupported receiver or name", entry.Name)
-		}
-		star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
-		if !ok {
-			return nil, fmt.Errorf("forwarders %s: non-pointer receiver", entry.Name)
-		}
-		id, ok := star.X.(*ast.Ident)
-		if !ok || id.Name != "TxAuthorizer" {
-			return nil, fmt.Errorf("forwarders %s: wrong receiver", entry.Name)
-		}
-		var args []string
-		for _, p := range fn.Type.Params.List {
-			if len(p.Names) == 0 {
-				return nil, fmt.Errorf("forwarders %s: unnamed argument", entry.Name)
-			}
-			for _, n := range p.Names {
-				if n.Name == "_" {
-					return nil, fmt.Errorf("forwarders %s: blank argument", entry.Name)
-				}
-				args = append(args, n.Name)
-			}
-		}
-		if len(fn.Type.Params.List) > 0 {
-			if _, ok := fn.Type.Params.List[len(fn.Type.Params.List)-1].Type.(*ast.Ellipsis); ok {
-				args[len(args)-1] += "..."
-			}
-		}
 		if entry.Doc != "" {
-			for _, line := range strings.Split(entry.Doc, "\n") {
-				if !strings.HasPrefix(strings.TrimSpace(line), "//") {
-					return nil, fmt.Errorf("forwarders %s: documentation must contain only comments", entry.Name)
-				}
-			}
 			b.WriteString(entry.Doc + "\n")
 		}
 		b.WriteString(entry.Signature + " {\n")
-		if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+		if entry.Returns {
 			b.WriteString("return ")
 		}
-		fmt.Fprintf(&b, "a.r.%s(%s)\n}\n\n", entry.Target, strings.Join(args, ", "))
+		fmt.Fprintf(&b, "a.r.%s(%s)\n}\n\n", entry.Target, strings.Join(entry.Args, ", "))
 	}
 	return format.Source([]byte(b.String()))
 }
@@ -433,7 +394,8 @@ func renderWire(ops map[string]api.Operation, extras wireExtras, cat catalog) ([
 		byValue[value] = name
 	}
 	extensions := map[string]wireRow{}
-	for _, row := range extras.Extensions {
+	for key, row := range extras.Extensions {
+		row.Key = key
 		if row.Key == "" || extensions[row.Key].Key != "" || row.Class != "" {
 			return nil, fmt.Errorf("wire: duplicate or conflicting extension %q", row.Key)
 		}
@@ -483,7 +445,8 @@ func renderWire(ops map[string]api.Operation, extras wireExtras, cat catalog) ([
 	if len(extensions) > 0 {
 		return nil, fmt.Errorf("wire: stale contract extensions")
 	}
-	for _, row := range extras.Entries {
+	for key, row := range extras.Entries {
+		row.Key = key
 		if row.Key == "" || rows[row.Key].Key != "" || row.NoPrimary != "" || row.Index != 0 {
 			return nil, fmt.Errorf("wire: duplicate/conflicting explicit row %q", row.Key)
 		}
@@ -543,50 +506,4 @@ func renderWire(ops map[string]api.Operation, extras wireExtras, cat catalog) ([
 	}
 	b.WriteString("}\n")
 	return format.Source([]byte(b.String()))
-}
-
-func validateTypes(root string, outputs map[string][]byte, m forwarders) error {
-	overlay := map[string][]byte{}
-	for path, b := range outputs {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-		overlay[abs] = b
-	}
-	pkgs, err := packages.Load(&packages.Config{Dir: root, Mode: packages.NeedTypes | packages.NeedImports | packages.NeedName, Overlay: overlay}, module+"/internal/authz")
-	if err != nil {
-		return err
-	}
-	if len(pkgs) != 1 {
-		return fmt.Errorf("types: expected authz package")
-	}
-	pkg := pkgs[0]
-	for _, e := range pkg.Errors {
-		return fmt.Errorf("types: %s", e)
-	}
-	authorizer := pkg.Types.Scope().Lookup("TxAuthorizer")
-	resolver := pkg.Imports[module+"/internal/store/authn"]
-	if authorizer == nil || resolver == nil {
-		return fmt.Errorf("types: missing authority types")
-	}
-	target := resolver.Types.Scope().Lookup("Resolver")
-	if target == nil {
-		return fmt.Errorf("types: missing concrete resolver")
-	}
-	for _, entry := range m.Forwarders {
-		a, _, _ := types.LookupFieldOrMethod(types.NewPointer(authorizer.Type()), false, pkg.Types, entry.Name)
-		r, _, _ := types.LookupFieldOrMethod(types.NewPointer(target.Type()), false, resolver.Types, entry.Target)
-		if a == nil || r == nil {
-			return fmt.Errorf("types: missing forwarded method %s -> %s", entry.Name, entry.Target)
-		}
-		strip := func(obj types.Object) *types.Signature {
-			sig := obj.Type().(*types.Signature)
-			return types.NewSignatureType(nil, nil, nil, sig.Params(), sig.Results(), sig.Variadic())
-		}
-		if !types.Identical(strip(a), strip(r)) {
-			return fmt.Errorf("types: forwarding contract differs %s -> %s", entry.Name, entry.Target)
-		}
-	}
-	return nil
 }

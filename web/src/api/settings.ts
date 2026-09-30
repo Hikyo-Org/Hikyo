@@ -615,22 +615,18 @@ function environmentLifecycleRefusalText(
   error: unknown,
   refusal: EnvironmentLifecycleRefusal,
 ): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? refusal.invalid;
-      case 401:
-        return commonRefusalText.sessionEnded;
-      case 403:
-      case 404:
-        return environmentLifecyclePermission(refusal.action);
-      case 409:
-        return error.detail ?? refusal.conflict;
-      case 429:
-        return commonRefusalText.attempts;
-    }
-  }
-  return refusal.uncertain;
+  return statusText(
+    error,
+    {
+      400: (error) => error.detail ?? refusal.invalid,
+      401: commonRefusalText.sessionEnded,
+      403: environmentLifecyclePermission(refusal.action),
+      404: environmentLifecyclePermission(refusal.action),
+      409: (error) => error.detail ?? refusal.conflict,
+      429: commonRefusalText.attempts,
+    },
+    refusal.uncertain,
+  );
 }
 
 /**

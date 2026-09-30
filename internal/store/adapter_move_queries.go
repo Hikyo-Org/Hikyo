@@ -92,8 +92,8 @@ func (q sqliteAdapterMoveQueries) get(ctx context.Context, moveID string, chainO
 	if err != nil {
 		return adapterMoveGetRow{}, err
 	}
-	var created adapterStoredTime
-	if err := created.Scan(row.CreatedAt); err != nil {
+	created := row.CreatedAt
+	if err := normalizeStoredTimes(&created); err != nil {
 		return adapterMoveGetRow{}, err
 	}
 	return adapterMoveGetRow{ID: row.ID, AdapterID: row.AdapterID, Kind: row.Kind, State: row.State, Keep: row.KeepRemote != 0, PendingOrigin: row.PendingOrigin, Created: created, AuthorityPrincipalID: row.AuthorityPrincipalID}, nil
@@ -104,8 +104,8 @@ func (q sqliteAdapterMoveQueries) getLocked(ctx context.Context, moveID string, 
 	if err != nil {
 		return adapterMoveGetRow{}, err
 	}
-	var created adapterStoredTime
-	if err := created.Scan(row.CreatedAt); err != nil {
+	created := row.CreatedAt
+	if err := normalizeStoredTimes(&created); err != nil {
 		return adapterMoveGetRow{}, err
 	}
 	return adapterMoveGetRow{ID: row.ID, AdapterID: row.AdapterID, Kind: row.Kind, State: row.State, Keep: row.KeepRemote != 0, PendingOrigin: row.PendingOrigin, Created: created, AuthorityPrincipalID: row.AuthorityPrincipalID}, nil
@@ -116,11 +116,9 @@ func (q sqliteAdapterMoveQueries) targets(ctx context.Context, moveID string, ch
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveTargetsRow
-	for _, row := range row {
-		out = append(out, adapterMoveTargetsRow{TargetID: row.TargetID, EnvironmentID: row.EnvironmentID, DestinationKind: row.DestinationKind, DestinationOwner: row.DestinationOwner, DestinationName: row.DestinationName, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedJSON: []byte(row.SelectedRepositoryIds), NamePrefix: row.NamePrefix, OrphanJSON: []byte(row.OrphanedNames)})
-	}
-	return out, nil
+	return mapRows(row, func(row sqlitegen.AdapterMoveTargetsRow) (adapterMoveTargetsRow, error) {
+		return adapterMoveTargetsRow{TargetID: row.TargetID, EnvironmentID: row.EnvironmentID, DestinationKind: row.DestinationKind, DestinationOwner: row.DestinationOwner, DestinationName: row.DestinationName, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedJSON: []byte(row.SelectedRepositoryIds), NamePrefix: row.NamePrefix, OrphanJSON: []byte(row.OrphanedNames)}, nil
+	})
 }
 
 func (q sqliteAdapterMoveQueries) jobs(ctx context.Context, moveID string, chainOrg domain.OrgID, chainProject domain.ProjectID) ([]adapterMoveJobsRow, error) {
@@ -128,11 +126,9 @@ func (q sqliteAdapterMoveQueries) jobs(ctx context.Context, moveID string, chain
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveJobsRow
-	for _, row := range row {
-		out = append(out, adapterMoveJobsRow{ID: row.ID, TargetID: row.TargetID, Kind: row.Kind, State: row.State})
-	}
-	return out, nil
+	return mapRows(row, func(row sqlitegen.AdapterMoveJobsRow) (adapterMoveJobsRow, error) {
+		return adapterMoveJobsRow{ID: row.ID, TargetID: row.TargetID, Kind: row.Kind, State: row.State}, nil
+	})
 }
 
 func (q sqliteAdapterMoveQueries) cancelTarget(ctx context.Context, targetTargetID string, chainOrg domain.OrgID, chainProject domain.ProjectID, targetEnvironmentID string) (adapterMoveCancelTargetRow, error) {
@@ -258,11 +254,9 @@ func (q sqliteAdapterMoveQueries) beginOriginTargets(ctx context.Context, mutati
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveBeginOriginTargetsRow
-	for _, row := range row {
-		out = append(out, adapterMoveBeginOriginTargetsRow{Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: []byte(row.SelectedRepositoryIds), Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: []byte(row.OrphanedNames)})
-	}
-	return out, nil
+	return mapRows(row, func(row sqlitegen.AdapterMoveBeginOriginTargetsRow) (adapterMoveBeginOriginTargetsRow, error) {
+		return adapterMoveBeginOriginTargetsRow{Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: []byte(row.SelectedRepositoryIds), Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: []byte(row.OrphanedNames)}, nil
+	})
 }
 
 func (q sqliteAdapterMoveQueries) insertOrigin(ctx context.Context, mutationMoveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, mutationAdapterID string, mutationOrigin string, mutationPendingCredentialCiphertext []byte, mutationAuthorityPrincipalID string, moveState string, mutationKeepRemote bool, stamp time.Time) (int64, error) {
@@ -344,11 +338,9 @@ func (q sqliteAdapterMoveQueries) aWSConfiguredNames(ctx context.Context, chainO
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveAWSConfiguredNamesRow
-	for _, row := range row {
-		out = append(out, adapterMoveAWSConfiguredNamesRow{TargetID: row.TargetID, Kind: row.Kind, Name: row.Name, Prefix: row.Prefix, KeyName: row.KeyName})
-	}
-	return out, nil
+	return mapRows(row, func(row sqlitegen.AdapterMoveAWSConfiguredNamesRow) (adapterMoveAWSConfiguredNamesRow, error) {
+		return adapterMoveAWSConfiguredNamesRow{Kind: row.Kind, Name: row.Name, Prefix: row.Prefix, KeyName: row.KeyName}, nil
+	})
 }
 
 func (q sqliteAdapterMoveQueries) aWSPendingNames(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, origin string, targetDestinationOwner string, targetID string) ([]adapterMoveAWSPendingNamesRow, error) {
@@ -356,11 +348,9 @@ func (q sqliteAdapterMoveQueries) aWSPendingNames(ctx context.Context, chainOrg 
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveAWSPendingNamesRow
-	for _, row := range row {
-		out = append(out, adapterMoveAWSPendingNamesRow{OtherTarget: row.OtherTarget, Effective: row.Effective})
-	}
-	return out, nil
+	return mapRows(row, func(row sqlitegen.AdapterMoveAWSPendingNamesRow) (adapterMoveAWSPendingNamesRow, error) {
+		return adapterMoveAWSPendingNamesRow{OtherTarget: row.OtherTarget, Effective: row.Effective}, nil
+	})
 }
 
 func (q sqliteAdapterMoveQueries) insertAWSClaim(ctx context.Context, moveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, targetEnvironmentID string, targetID string, keyID string, origin string, targetDestinationKind string, targetDestinationOwner string, targetDestinationName string, targetDestinationEnvironment string, surface string, claimEffectiveName string, normalizedName string) (int64, error) {
@@ -381,8 +371,8 @@ func (q pgAdapterMoveQueries) get(ctx context.Context, moveID string, chainOrg d
 	if err != nil {
 		return adapterMoveGetRow{}, err
 	}
-	var created adapterStoredTime
-	if err := created.Scan(pgStoredStamp(row.CreatedAt)); err != nil {
+	created := pgStoredStamp(row.CreatedAt)
+	if err := normalizeStoredTimes(&created); err != nil {
 		return adapterMoveGetRow{}, err
 	}
 	return adapterMoveGetRow{ID: row.ID, AdapterID: row.AdapterID, Kind: row.Kind, State: row.State, Keep: row.KeepRemote, PendingOrigin: row.PendingOrigin, Created: created, AuthorityPrincipalID: row.AuthorityPrincipalID}, nil
@@ -393,8 +383,8 @@ func (q pgAdapterMoveQueries) getLocked(ctx context.Context, moveID string, chai
 	if err != nil {
 		return adapterMoveGetRow{}, err
 	}
-	var created adapterStoredTime
-	if err := created.Scan(pgStoredStamp(row.CreatedAt)); err != nil {
+	created := pgStoredStamp(row.CreatedAt)
+	if err := normalizeStoredTimes(&created); err != nil {
 		return adapterMoveGetRow{}, err
 	}
 	return adapterMoveGetRow{ID: row.ID, AdapterID: row.AdapterID, Kind: row.Kind, State: row.State, Keep: row.KeepRemote, PendingOrigin: row.PendingOrigin, Created: created, AuthorityPrincipalID: row.AuthorityPrincipalID}, nil
@@ -405,11 +395,9 @@ func (q pgAdapterMoveQueries) targets(ctx context.Context, moveID string, chainO
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveTargetsRow
-	for _, row := range row {
-		out = append(out, adapterMoveTargetsRow{TargetID: row.TargetID, EnvironmentID: row.EnvironmentID, DestinationKind: row.DestinationKind, DestinationOwner: row.DestinationOwner, DestinationName: row.DestinationName, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedJSON: row.SelectedRepositoryIds, NamePrefix: row.NamePrefix, OrphanJSON: row.OrphanedNames})
-	}
-	return out, nil
+	return mapRows(row, func(row pggen.AdapterMoveTargetsRow) (adapterMoveTargetsRow, error) {
+		return adapterMoveTargetsRow{TargetID: row.TargetID, EnvironmentID: row.EnvironmentID, DestinationKind: row.DestinationKind, DestinationOwner: row.DestinationOwner, DestinationName: row.DestinationName, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedJSON: row.SelectedRepositoryIds, NamePrefix: row.NamePrefix, OrphanJSON: row.OrphanedNames}, nil
+	})
 }
 
 func (q pgAdapterMoveQueries) jobs(ctx context.Context, moveID string, chainOrg domain.OrgID, chainProject domain.ProjectID) ([]adapterMoveJobsRow, error) {
@@ -417,11 +405,9 @@ func (q pgAdapterMoveQueries) jobs(ctx context.Context, moveID string, chainOrg 
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveJobsRow
-	for _, row := range row {
-		out = append(out, adapterMoveJobsRow{ID: row.ID, TargetID: row.TargetID, Kind: row.Kind, State: row.State})
-	}
-	return out, nil
+	return mapRows(row, func(row pggen.AdapterMoveJobsRow) (adapterMoveJobsRow, error) {
+		return adapterMoveJobsRow{ID: row.ID, TargetID: row.TargetID, Kind: row.Kind, State: row.State}, nil
+	})
 }
 
 func (q pgAdapterMoveQueries) cancelTarget(ctx context.Context, targetTargetID string, chainOrg domain.OrgID, chainProject domain.ProjectID, targetEnvironmentID string) (adapterMoveCancelTargetRow, error) {
@@ -547,11 +533,9 @@ func (q pgAdapterMoveQueries) beginOriginTargets(ctx context.Context, mutationAd
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveBeginOriginTargetsRow
-	for _, row := range row {
-		out = append(out, adapterMoveBeginOriginTargetsRow{Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: row.SelectedRepositoryIds, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: row.OrphanedNames})
-	}
-	return out, nil
+	return mapRows(row, func(row pggen.AdapterMoveBeginOriginTargetsRow) (adapterMoveBeginOriginTargetsRow, error) {
+		return adapterMoveBeginOriginTargetsRow{Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: row.SelectedRepositoryIds, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: row.OrphanedNames}, nil
+	})
 }
 
 func (q pgAdapterMoveQueries) insertOrigin(ctx context.Context, mutationMoveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, mutationAdapterID string, mutationOrigin string, mutationPendingCredentialCiphertext []byte, mutationAuthorityPrincipalID string, moveState string, mutationKeepRemote bool, stamp time.Time) (int64, error) {
@@ -633,11 +617,9 @@ func (q pgAdapterMoveQueries) aWSConfiguredNames(ctx context.Context, chainOrg d
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveAWSConfiguredNamesRow
-	for _, row := range row {
-		out = append(out, adapterMoveAWSConfiguredNamesRow{TargetID: row.TargetID, Kind: row.Kind, Name: row.Name, Prefix: row.Prefix, KeyName: row.KeyName})
-	}
-	return out, nil
+	return mapRows(row, func(row pggen.AdapterMoveAWSConfiguredNamesRow) (adapterMoveAWSConfiguredNamesRow, error) {
+		return adapterMoveAWSConfiguredNamesRow{Kind: row.Kind, Name: row.Name, Prefix: row.Prefix, KeyName: row.KeyName}, nil
+	})
 }
 
 func (q pgAdapterMoveQueries) aWSPendingNames(ctx context.Context, chainOrg domain.OrgID, chainProject domain.ProjectID, origin string, targetDestinationOwner string, targetID string) ([]adapterMoveAWSPendingNamesRow, error) {
@@ -645,11 +627,9 @@ func (q pgAdapterMoveQueries) aWSPendingNames(ctx context.Context, chainOrg doma
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterMoveAWSPendingNamesRow
-	for _, row := range row {
-		out = append(out, adapterMoveAWSPendingNamesRow{OtherTarget: row.OtherTarget, Effective: row.Effective})
-	}
-	return out, nil
+	return mapRows(row, func(row pggen.AdapterMoveAWSPendingNamesRow) (adapterMoveAWSPendingNamesRow, error) {
+		return adapterMoveAWSPendingNamesRow{OtherTarget: row.OtherTarget, Effective: row.Effective}, nil
+	})
 }
 
 func (q pgAdapterMoveQueries) insertAWSClaim(ctx context.Context, moveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, targetEnvironmentID string, targetID string, keyID string, origin string, targetDestinationKind string, targetDestinationOwner string, targetDestinationName string, targetDestinationEnvironment string, surface string, claimEffectiveName string, normalizedName string) (int64, error) {

@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
 import { useRef, useState, type MutableRefObject } from 'react';
 import type { GrantResult } from '@hikyo/client';
 import { createGrantsSequentially, grantFailureText } from '../../api/access.ts';
@@ -342,20 +343,15 @@ function GrantBody({
         />
       ) : null}
 
-      <p className="ceremony__cap" role="status">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          {`This grant re-scopes every credential already in circulation. ${account.name} has ${String(liveCredentials)} live credential${liveCredentials === 1 ? '' : 's'}, and each one gains ${
-            effectiveCapability === 'read'
-              ? 'read (configuration and secret presence)'
-              : reporting
-                ? 'report-delivery-status (value-free delivery-target status reports)'
-                : 'reveal (standing secret plaintext decryption)'
-          }${withReport ? ' and report-delivery-status' : ''} on ${chosen?.name ?? 'that environment'} the moment this lands.`}
-        </span>
-      </p>
+      <CeremonyNotice>
+        {`This grant re-scopes every credential already in circulation. ${account.name} has ${String(liveCredentials)} live credential${liveCredentials === 1 ? '' : 's'}, and each one gains ${
+          effectiveCapability === 'read'
+            ? 'read (configuration and secret presence)'
+            : reporting
+              ? 'report-delivery-status (value-free delivery-target status reports)'
+              : 'reveal (standing secret plaintext decryption)'
+        }${withReport ? ' and report-delivery-status' : ''} on ${chosen?.name ?? 'that environment'} the moment this lands.`}
+      </CeremonyNotice>
 
       <p className="ceremony__stepup">
         <span className="alert__glyph" aria-hidden="true">

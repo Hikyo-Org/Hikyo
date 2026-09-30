@@ -11,7 +11,7 @@ import (
 )
 
 const adapterMoveAWSConfiguredNames = `-- name: AdapterMoveAWSConfiguredNames :many
-SELECT t.id AS target_id,t.destination_kind AS kind,t.destination_name AS name,t.name_prefix AS prefix,COALESCE(k.name,'') AS key_name FROM adapter_targets t
+SELECT t.destination_kind AS kind,t.destination_name AS name,t.name_prefix AS prefix,COALESCE(k.name,'') AS key_name FROM adapter_targets t
 		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
 		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
 		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
@@ -29,11 +29,10 @@ type AdapterMoveAWSConfiguredNamesParams struct {
 }
 
 type AdapterMoveAWSConfiguredNamesRow struct {
-	TargetID string
-	Kind     string
-	Name     string
-	Prefix   string
-	KeyName  string
+	Kind    string
+	Name    string
+	Prefix  string
+	KeyName string
 }
 
 func (q *Queries) AdapterMoveAWSConfiguredNames(ctx context.Context, arg AdapterMoveAWSConfiguredNamesParams) ([]AdapterMoveAWSConfiguredNamesRow, error) {
@@ -52,7 +51,6 @@ func (q *Queries) AdapterMoveAWSConfiguredNames(ctx context.Context, arg Adapter
 	for rows.Next() {
 		var i AdapterMoveAWSConfiguredNamesRow
 		if err := rows.Scan(
-			&i.TargetID,
 			&i.Kind,
 			&i.Name,
 			&i.Prefix,

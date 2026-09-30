@@ -28,15 +28,13 @@ func (q sqliteSSHStoreQueries) sshCAKeys(ctx context.Context, chain domain.Scope
 	if err != nil {
 		return nil, err
 	}
-	var result []SSHCAKey
-	for _, c := range rows {
+	return mapRows(rows, func(c sqlitegen.SSHCAKeysRow) (SSHCAKey, error) {
 		out := SSHCAKey{ID: c.ID, CAID: c.CaID, Algorithm: c.Algorithm, PublicKey: c.PublicKey, Fingerprint: c.Fingerprint, Origin: c.Origin, State: c.State, CreatedAt: c.CreatedAt, RetiringAt: c.RetiringAt.String, RetireAfter: c.RetireAfter.String, RetiredAt: c.RetiredAt.String}
 		if err := normalizeStoredTimes(&out.CreatedAt, &out.RetiringAt, &out.RetireAfter, &out.RetiredAt); err != nil {
-			return nil, err
+			return SSHCAKey{}, err
 		}
-		result = append(result, out)
-	}
-	return result, nil
+		return out, nil
+	})
 }
 
 func (q pgSSHStoreQueries) sshCAKeys(ctx context.Context, chain domain.Scope) ([]SSHCAKey, error) {
@@ -44,15 +42,13 @@ func (q pgSSHStoreQueries) sshCAKeys(ctx context.Context, chain domain.Scope) ([
 	if err != nil {
 		return nil, err
 	}
-	var result []SSHCAKey
-	for _, c := range rows {
+	return mapRows(rows, func(c pggen.SSHCAKeysRow) (SSHCAKey, error) {
 		out := SSHCAKey{ID: c.ID, CAID: c.CaID, Algorithm: c.Algorithm, PublicKey: c.PublicKey, Fingerprint: c.Fingerprint, Origin: c.Origin, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt), RetiringAt: pgStoredStamp(c.RetiringAt), RetireAfter: pgStoredStamp(c.RetireAfter), RetiredAt: pgStoredStamp(c.RetiredAt)}
 		if err := normalizeStoredTimes(&out.CreatedAt, &out.RetiringAt, &out.RetireAfter, &out.RetiredAt); err != nil {
-			return nil, err
+			return SSHCAKey{}, err
 		}
-		result = append(result, out)
-	}
-	return result, nil
+		return out, nil
+	})
 }
 
 func (q sqliteSSHStoreQueries) sshGetCA(ctx context.Context, chain domain.Scope, caID string) (SSHCA, error) {
@@ -63,11 +59,7 @@ func (q sqliteSSHStoreQueries) sshGetCA(ctx context.Context, chain domain.Scope,
 	if err != nil {
 		return SSHCA{}, err
 	}
-	out := SSHCA{ID: c.ID, Name: c.Name, State: c.State, AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedAt: c.CreatedAt}
-	if err := normalizeStoredTimes(&out.CreatedAt); err != nil {
-		return SSHCA{}, err
-	}
-	return out, nil
+	return sqliteSshCA(c)
 }
 
 func (q pgSSHStoreQueries) sshGetCA(ctx context.Context, chain domain.Scope, caID string) (SSHCA, error) {
@@ -78,11 +70,7 @@ func (q pgSSHStoreQueries) sshGetCA(ctx context.Context, chain domain.Scope, caI
 	if err != nil {
 		return SSHCA{}, err
 	}
-	out := SSHCA{ID: c.ID, Name: c.Name, State: c.State, AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedAt: pgStoredStamp(c.CreatedAt)}
-	if err := normalizeStoredTimes(&out.CreatedAt); err != nil {
-		return SSHCA{}, err
-	}
-	return out, nil
+	return pgSshCA(c)
 }
 
 func (q sqliteSSHStoreQueries) sshListCAs(ctx context.Context, chain domain.Scope) ([]SSHCA, error) {
@@ -90,15 +78,9 @@ func (q sqliteSSHStoreQueries) sshListCAs(ctx context.Context, chain domain.Scop
 	if err != nil {
 		return nil, err
 	}
-	var result []SSHCA
-	for _, c := range rows {
-		out := SSHCA{ID: c.ID, Name: c.Name, State: c.State, AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedAt: c.CreatedAt}
-		if err := normalizeStoredTimes(&out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c sqlitegen.SSHListCAsRow) (SSHCA, error) {
+		return sqliteSshCA(sqlitegen.SSHGetCARow(c))
+	})
 }
 
 func (q pgSSHStoreQueries) sshListCAs(ctx context.Context, chain domain.Scope) ([]SSHCA, error) {
@@ -106,15 +88,9 @@ func (q pgSSHStoreQueries) sshListCAs(ctx context.Context, chain domain.Scope) (
 	if err != nil {
 		return nil, err
 	}
-	var result []SSHCA
-	for _, c := range rows {
-		out := SSHCA{ID: c.ID, Name: c.Name, State: c.State, AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedAt: pgStoredStamp(c.CreatedAt)}
-		if err := normalizeStoredTimes(&out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c pggen.SSHListCAsRow) (SSHCA, error) {
+		return pgSshCA(pggen.SSHGetCARow(c))
+	})
 }
 
 func (q sqliteSSHStoreQueries) sshActiveCAKey(ctx context.Context, chain domain.Scope, caID string) (SSHActiveKey, error) {
@@ -219,14 +195,7 @@ func (q sqliteSSHStoreQueries) sshGetProfile(ctx context.Context, chain domain.S
 	if err != nil {
 		return SSHProfile{}, err
 	}
-	out := SSHProfile{ID: c.ID, CAID: c.CaID, Name: c.Name, ForceCommand: c.ForceCommand, DefaultTTLSeconds: c.DefaultTtlSeconds, MaxTTLSeconds: c.MaxTtlSeconds, State: c.State, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
-	if err := normalizeStoredTimes(&out.CreatedAt, &out.UpdatedAt); err != nil {
-		return SSHProfile{}, err
-	}
-	if err := decodeSSHProfileLists(&out, c.Principals, c.SourceAddresses, c.Extensions, c.KeyAlgorithms); err != nil {
-		return SSHProfile{}, err
-	}
-	return out, nil
+	return sqliteSshProfile(c)
 }
 
 func (q pgSSHStoreQueries) sshGetProfile(ctx context.Context, chain domain.Scope, profileID string) (SSHProfile, error) {
@@ -237,14 +206,7 @@ func (q pgSSHStoreQueries) sshGetProfile(ctx context.Context, chain domain.Scope
 	if err != nil {
 		return SSHProfile{}, err
 	}
-	out := SSHProfile{ID: c.ID, CAID: c.CaID, Name: c.Name, ForceCommand: c.ForceCommand, DefaultTTLSeconds: c.DefaultTtlSeconds, MaxTTLSeconds: c.MaxTtlSeconds, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt)}
-	if err := normalizeStoredTimes(&out.CreatedAt, &out.UpdatedAt); err != nil {
-		return SSHProfile{}, err
-	}
-	if err := decodeSSHProfileLists(&out, c.Principals, c.SourceAddresses, c.Extensions, c.KeyAlgorithms); err != nil {
-		return SSHProfile{}, err
-	}
-	return out, nil
+	return pgSshProfile(c)
 }
 
 func (q sqliteSSHStoreQueries) sshListProfiles(ctx context.Context, chain domain.Scope) ([]SSHProfile, error) {
@@ -252,18 +214,9 @@ func (q sqliteSSHStoreQueries) sshListProfiles(ctx context.Context, chain domain
 	if err != nil {
 		return nil, err
 	}
-	var result []SSHProfile
-	for _, c := range rows {
-		out := SSHProfile{ID: c.ID, CAID: c.CaID, Name: c.Name, ForceCommand: c.ForceCommand, DefaultTTLSeconds: c.DefaultTtlSeconds, MaxTTLSeconds: c.MaxTtlSeconds, State: c.State, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
-		if err := normalizeStoredTimes(&out.CreatedAt, &out.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if err := decodeSSHProfileLists(&out, c.Principals, c.SourceAddresses, c.Extensions, c.KeyAlgorithms); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c sqlitegen.SSHListProfilesRow) (SSHProfile, error) {
+		return sqliteSshProfile(sqlitegen.SSHGetProfileRow(c))
+	})
 }
 
 func (q pgSSHStoreQueries) sshListProfiles(ctx context.Context, chain domain.Scope) ([]SSHProfile, error) {
@@ -271,18 +224,9 @@ func (q pgSSHStoreQueries) sshListProfiles(ctx context.Context, chain domain.Sco
 	if err != nil {
 		return nil, err
 	}
-	var result []SSHProfile
-	for _, c := range rows {
-		out := SSHProfile{ID: c.ID, CAID: c.CaID, Name: c.Name, ForceCommand: c.ForceCommand, DefaultTTLSeconds: c.DefaultTtlSeconds, MaxTTLSeconds: c.MaxTtlSeconds, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt)}
-		if err := normalizeStoredTimes(&out.CreatedAt, &out.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if err := decodeSSHProfileLists(&out, c.Principals, c.SourceAddresses, c.Extensions, c.KeyAlgorithms); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c pggen.SSHListProfilesRow) (SSHProfile, error) {
+		return pgSshProfile(pggen.SSHGetProfileRow(c))
+	})
 }
 
 func (q sqliteSSHStoreQueries) sshIsRequester(ctx context.Context, chain domain.Scope, profileID string, principalID string) (int64, error) {
@@ -301,6 +245,146 @@ func (q sqliteSSHStoreQueries) sshGetCertificate(ctx context.Context, chain doma
 	if err != nil {
 		return SSHCertificate{}, err
 	}
+	return sqliteSshCertificate(c)
+}
+
+func (q pgSSHStoreQueries) sshGetCertificate(ctx context.Context, chain domain.Scope, certID string) (SSHCertificate, error) {
+	c, err := q.queries.SSHGetCertificate(ctx, pggen.SSHGetCertificateParams{CertificateID: certID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
+	if isNoRows(err) {
+		return SSHCertificate{}, ErrNotFound
+	}
+	if err != nil {
+		return SSHCertificate{}, err
+	}
+	return pgSshCertificate(c)
+}
+
+func (q sqliteSSHStoreQueries) sshListCertificates(ctx context.Context, chain domain.Scope, limit int) ([]SSHCertificate, error) {
+	rows, err := q.queries.SSHListCertificates(ctx, sqlitegen.SSHListCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.SSHListCertificatesRow) (SSHCertificate, error) {
+		return sqliteSshCertificate(sqlitegen.SSHGetCertificateRow(c))
+	})
+}
+
+func (q pgSSHStoreQueries) sshListCertificates(ctx context.Context, chain domain.Scope, limit int) ([]SSHCertificate, error) {
+	rows, err := q.queries.SSHListCertificates(ctx, pggen.SSHListCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.SSHListCertificatesRow) (SSHCertificate, error) {
+		return pgSshCertificate(pggen.SSHGetCertificateRow(c))
+	})
+}
+
+func (q sqliteSSHStoreQueries) sshProfileRevocationCandidates(ctx context.Context, chain domain.Scope, profileID string, at time.Time) ([]SSHRevokedCertificate, error) {
+	rows, err := q.queries.SSHProfileRevocationCandidates(ctx, sqlitegen.SSHProfileRevocationCandidatesParams{ProfileID: profileID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), At: fixedStamp(at)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.SSHProfileRevocationCandidatesRow) (SSHRevokedCertificate, error) {
+		out := SSHRevokedCertificate{ID: c.ID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID}
+		return out, nil
+	})
+}
+
+func (q pgSSHStoreQueries) sshProfileRevocationCandidates(ctx context.Context, chain domain.Scope, profileID string, at time.Time) ([]SSHRevokedCertificate, error) {
+	rows, err := q.queries.SSHProfileRevocationCandidates(ctx, pggen.SSHProfileRevocationCandidatesParams{ProfileID: profileID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), At: pgRequiredTime(at)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.SSHProfileRevocationCandidatesRow) (SSHRevokedCertificate, error) {
+		out := SSHRevokedCertificate{ID: c.ID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID}
+		return out, nil
+	})
+}
+
+func (q sqliteSSHStoreQueries) sshRevokedSerials(ctx context.Context, chain domain.Scope, caID string, now time.Time, limit int) ([]SSHRevokedSerial, error) {
+	rows, err := q.queries.SSHRevokedSerials(ctx, sqlitegen.SSHRevokedSerialsParams{CaID: caID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: fixedStamp(now), PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.SSHRevokedSerialsRow) (SSHRevokedSerial, error) {
+		out := SSHRevokedSerial{CAKeyPublicKey: c.PublicKey, Serial: c.Serial}
+		return out, nil
+	})
+}
+
+func (q pgSSHStoreQueries) sshRevokedSerials(ctx context.Context, chain domain.Scope, caID string, now time.Time, limit int) ([]SSHRevokedSerial, error) {
+	rows, err := q.queries.SSHRevokedSerials(ctx, pggen.SSHRevokedSerialsParams{CaID: caID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: pgRequiredTime(now), PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.SSHRevokedSerialsRow) (SSHRevokedSerial, error) {
+		out := SSHRevokedSerial{CAKeyPublicKey: c.PublicKey, Serial: c.Serial}
+		return out, nil
+	})
+}
+
+func (q sqliteSSHStoreQueries) sshListKeysForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
+	rows, err := q.queries.SSHListKeysForReencrypt(ctx, sqlitegen.SSHListKeysForReencryptParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Cursor: cursor, PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c sqlitegen.SSHListKeysForReencryptRow) (ReencryptFieldRow, error) {
+		out := ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.PrivateKeyCiphertext}
+		return out, nil
+	})
+}
+
+func (q pgSSHStoreQueries) sshListKeysForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
+	rows, err := q.queries.SSHListKeysForReencrypt(ctx, pggen.SSHListKeysForReencryptParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Cursor: cursor, PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(c pggen.SSHListKeysForReencryptRow) (ReencryptFieldRow, error) {
+		out := ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.PrivateKeyCiphertext}
+		return out, nil
+	})
+}
+
+func sqliteSshCA(c sqlitegen.SSHGetCARow) (SSHCA, error) {
+	out := SSHCA{ID: c.ID, Name: c.Name, State: c.State, AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedAt: c.CreatedAt}
+	if err := normalizeStoredTimes(&out.CreatedAt); err != nil {
+		return SSHCA{}, err
+	}
+	return out, nil
+}
+
+func pgSshCA(c pggen.SSHGetCARow) (SSHCA, error) {
+	out := SSHCA{ID: c.ID, Name: c.Name, State: c.State, AuthorityPrincipalID: c.AuthorityPrincipalID, CreatedAt: pgStoredStamp(c.CreatedAt)}
+	if err := normalizeStoredTimes(&out.CreatedAt); err != nil {
+		return SSHCA{}, err
+	}
+	return out, nil
+}
+
+func sqliteSshProfile(c sqlitegen.SSHGetProfileRow) (SSHProfile, error) {
+	out := SSHProfile{ID: c.ID, CAID: c.CaID, Name: c.Name, ForceCommand: c.ForceCommand, DefaultTTLSeconds: c.DefaultTtlSeconds, MaxTTLSeconds: c.MaxTtlSeconds, State: c.State, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+	if err := normalizeStoredTimes(&out.CreatedAt, &out.UpdatedAt); err != nil {
+		return SSHProfile{}, err
+	}
+	if err := decodeSSHProfileLists(&out, c.Principals, c.SourceAddresses, c.Extensions, c.KeyAlgorithms); err != nil {
+		return SSHProfile{}, err
+	}
+	return out, nil
+}
+
+func pgSshProfile(c pggen.SSHGetProfileRow) (SSHProfile, error) {
+	out := SSHProfile{ID: c.ID, CAID: c.CaID, Name: c.Name, ForceCommand: c.ForceCommand, DefaultTTLSeconds: c.DefaultTtlSeconds, MaxTTLSeconds: c.MaxTtlSeconds, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt), UpdatedAt: pgStoredStamp(c.UpdatedAt)}
+	if err := normalizeStoredTimes(&out.CreatedAt, &out.UpdatedAt); err != nil {
+		return SSHProfile{}, err
+	}
+	if err := decodeSSHProfileLists(&out, c.Principals, c.SourceAddresses, c.Extensions, c.KeyAlgorithms); err != nil {
+		return SSHProfile{}, err
+	}
+	return out, nil
+}
+
+func sqliteSshCertificate(c sqlitegen.SSHGetCertificateRow) (SSHCertificate, error) {
+	var err error
 	out := SSHCertificate{ID: c.ID, CAID: c.CaID, CAKeyID: c.CaKeyID, ProfileID: c.ProfileID, Serial: c.Serial, KeyID: c.KeyID, PublicKeyFingerprint: c.PublicKeyFingerprint, KeyAlgorithm: c.KeyAlgorithm, KeyOrigin: c.KeyOrigin, ValidAfter: c.ValidAfter, ValidBefore: c.ValidBefore, RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, State: c.State, RevokedAt: c.RevokedAt.String, RevocationReason: c.RevocationReason.String, CreatedAt: c.CreatedAt, CAKeyState: c.CaKeyState, CAKeyRetireAfter: c.CaKeyRetireAfter.String, CAState: c.CaState}
 	if err := normalizeStoredTimes(&out.ValidAfter, &out.ValidBefore, &out.RevokedAt, &out.CreatedAt, &out.CAKeyRetireAfter); err != nil {
 		return SSHCertificate{}, err
@@ -312,14 +396,8 @@ func (q sqliteSSHStoreQueries) sshGetCertificate(ctx context.Context, chain doma
 	return out, nil
 }
 
-func (q pgSSHStoreQueries) sshGetCertificate(ctx context.Context, chain domain.Scope, certID string) (SSHCertificate, error) {
-	c, err := q.queries.SSHGetCertificate(ctx, pggen.SSHGetCertificateParams{CertificateID: certID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env)})
-	if isNoRows(err) {
-		return SSHCertificate{}, ErrNotFound
-	}
-	if err != nil {
-		return SSHCertificate{}, err
-	}
+func pgSshCertificate(c pggen.SSHGetCertificateRow) (SSHCertificate, error) {
+	var err error
 	out := SSHCertificate{ID: c.ID, CAID: c.CaID, CAKeyID: c.CaKeyID, ProfileID: c.ProfileID, Serial: c.Serial, KeyID: c.KeyID, PublicKeyFingerprint: c.PublicKeyFingerprint, KeyAlgorithm: c.KeyAlgorithm, KeyOrigin: c.KeyOrigin, ValidAfter: pgStoredStamp(c.ValidAfter), ValidBefore: pgStoredStamp(c.ValidBefore), RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, State: c.State, RevokedAt: pgStoredStamp(c.RevokedAt), RevocationReason: c.RevocationReason.String, CreatedAt: pgStoredStamp(c.CreatedAt), CAKeyState: c.CaKeyState, CAKeyRetireAfter: pgStoredStamp(c.CaKeyRetireAfter), CAState: c.CaState}
 	if err := normalizeStoredTimes(&out.ValidAfter, &out.ValidBefore, &out.RevokedAt, &out.CreatedAt, &out.CAKeyRetireAfter); err != nil {
 		return SSHCertificate{}, err
@@ -329,122 +407,4 @@ func (q pgSSHStoreQueries) sshGetCertificate(ctx context.Context, chain domain.S
 		return SSHCertificate{}, err
 	}
 	return out, nil
-}
-
-func (q sqliteSSHStoreQueries) sshListCertificates(ctx context.Context, chain domain.Scope, limit int) ([]SSHCertificate, error) {
-	rows, err := q.queries.SSHListCertificates(ctx, sqlitegen.SSHListCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
-	if err != nil {
-		return nil, err
-	}
-	var result []SSHCertificate
-	for _, c := range rows {
-		out := SSHCertificate{ID: c.ID, CAID: c.CaID, CAKeyID: c.CaKeyID, ProfileID: c.ProfileID, Serial: c.Serial, KeyID: c.KeyID, PublicKeyFingerprint: c.PublicKeyFingerprint, KeyAlgorithm: c.KeyAlgorithm, KeyOrigin: c.KeyOrigin, ValidAfter: c.ValidAfter, ValidBefore: c.ValidBefore, RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, State: c.State, RevokedAt: c.RevokedAt.String, RevocationReason: c.RevocationReason.String, CreatedAt: c.CreatedAt, CAKeyState: c.CaKeyState, CAKeyRetireAfter: c.CaKeyRetireAfter.String, CAState: c.CaState}
-		if err := normalizeStoredTimes(&out.ValidAfter, &out.ValidBefore, &out.RevokedAt, &out.CreatedAt, &out.CAKeyRetireAfter); err != nil {
-			return nil, err
-		}
-		out.Principals, err = decodeSSHList(c.Principals)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q pgSSHStoreQueries) sshListCertificates(ctx context.Context, chain domain.Scope, limit int) ([]SSHCertificate, error) {
-	rows, err := q.queries.SSHListCertificates(ctx, pggen.SSHListCertificatesParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), PageLimit: int64(limit)})
-	if err != nil {
-		return nil, err
-	}
-	var result []SSHCertificate
-	for _, c := range rows {
-		out := SSHCertificate{ID: c.ID, CAID: c.CaID, CAKeyID: c.CaKeyID, ProfileID: c.ProfileID, Serial: c.Serial, KeyID: c.KeyID, PublicKeyFingerprint: c.PublicKeyFingerprint, KeyAlgorithm: c.KeyAlgorithm, KeyOrigin: c.KeyOrigin, ValidAfter: pgStoredStamp(c.ValidAfter), ValidBefore: pgStoredStamp(c.ValidBefore), RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, State: c.State, RevokedAt: pgStoredStamp(c.RevokedAt), RevocationReason: c.RevocationReason.String, CreatedAt: pgStoredStamp(c.CreatedAt), CAKeyState: c.CaKeyState, CAKeyRetireAfter: pgStoredStamp(c.CaKeyRetireAfter), CAState: c.CaState}
-		if err := normalizeStoredTimes(&out.ValidAfter, &out.ValidBefore, &out.RevokedAt, &out.CreatedAt, &out.CAKeyRetireAfter); err != nil {
-			return nil, err
-		}
-		out.Principals, err = decodeSSHList(c.Principals)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q sqliteSSHStoreQueries) sshProfileRevocationCandidates(ctx context.Context, chain domain.Scope, profileID string, at time.Time) ([]SSHRevokedCertificate, error) {
-	rows, err := q.queries.SSHProfileRevocationCandidates(ctx, sqlitegen.SSHProfileRevocationCandidatesParams{ProfileID: profileID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), At: fixedStamp(at)})
-	if err != nil {
-		return nil, err
-	}
-	var result []SSHRevokedCertificate
-	for _, c := range rows {
-		out := SSHRevokedCertificate{ID: c.ID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q pgSSHStoreQueries) sshProfileRevocationCandidates(ctx context.Context, chain domain.Scope, profileID string, at time.Time) ([]SSHRevokedCertificate, error) {
-	rows, err := q.queries.SSHProfileRevocationCandidates(ctx, pggen.SSHProfileRevocationCandidatesParams{ProfileID: profileID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), At: pgRequiredTime(at)})
-	if err != nil {
-		return nil, err
-	}
-	var result []SSHRevokedCertificate
-	for _, c := range rows {
-		out := SSHRevokedCertificate{ID: c.ID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q sqliteSSHStoreQueries) sshRevokedSerials(ctx context.Context, chain domain.Scope, caID string, now time.Time, limit int) ([]SSHRevokedSerial, error) {
-	rows, err := q.queries.SSHRevokedSerials(ctx, sqlitegen.SSHRevokedSerialsParams{CaID: caID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: fixedStamp(now), PageLimit: int64(limit)})
-	if err != nil {
-		return nil, err
-	}
-	var result []SSHRevokedSerial
-	for _, c := range rows {
-		out := SSHRevokedSerial{CAKeyPublicKey: c.PublicKey, Serial: c.Serial}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q pgSSHStoreQueries) sshRevokedSerials(ctx context.Context, chain domain.Scope, caID string, now time.Time, limit int) ([]SSHRevokedSerial, error) {
-	rows, err := q.queries.SSHRevokedSerials(ctx, pggen.SSHRevokedSerialsParams{CaID: caID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), ChainEnv: string(chain.Env), Now: pgRequiredTime(now), PageLimit: int64(limit)})
-	if err != nil {
-		return nil, err
-	}
-	var result []SSHRevokedSerial
-	for _, c := range rows {
-		out := SSHRevokedSerial{CAKeyPublicKey: c.PublicKey, Serial: c.Serial}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q sqliteSSHStoreQueries) sshListKeysForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
-	rows, err := q.queries.SSHListKeysForReencrypt(ctx, sqlitegen.SSHListKeysForReencryptParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Cursor: cursor, PageLimit: int64(limit)})
-	if err != nil {
-		return nil, err
-	}
-	var result []ReencryptFieldRow
-	for _, c := range rows {
-		out := ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.PrivateKeyCiphertext}
-		result = append(result, out)
-	}
-	return result, nil
-}
-
-func (q pgSSHStoreQueries) sshListKeysForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
-	rows, err := q.queries.SSHListKeysForReencrypt(ctx, pggen.SSHListKeysForReencryptParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Cursor: cursor, PageLimit: int64(limit)})
-	if err != nil {
-		return nil, err
-	}
-	var result []ReencryptFieldRow
-	for _, c := range rows {
-		out := ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.PrivateKeyCiphertext}
-		result = append(result, out)
-	}
-	return result, nil
 }

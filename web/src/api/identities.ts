@@ -894,20 +894,17 @@ export function deleteServiceAccountFailureText(error: unknown): string {
  */
 export function identityRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'The server refused that as malformed. Check the issuer, subject, audience and the pinned claims; every one of them is matched byte-for-byte.';
-      case 403:
-        return 'The server refused this act. Minting or binding needs a disclosure capability over every environment the account reaches in the resulting state, plus a fresh reauthentication.';
-      case 404:
-        return 'That service account is no longer here.';
-      case 409:
-        return 'The server refused this as a conflict: the live-credential ceiling, or an identical binding that already exists.';
-      case 429:
-        return commonRefusalText.requests;
-      default:
-        return `The act could not be completed (server error ${String(error.status)}).`;
-    }
+    return statusText(
+      error,
+      {
+        400: 'The server refused that as malformed. Check the issuer, subject, audience and the pinned claims; every one of them is matched byte-for-byte.',
+        403: 'The server refused this act. Minting or binding needs a disclosure capability over every environment the account reaches in the resulting state, plus a fresh reauthentication.',
+        404: 'That service account is no longer here.',
+        409: 'The server refused this as a conflict: the live-credential ceiling, or an identical binding that already exists.',
+        429: commonRefusalText.requests,
+      },
+      `The act could not be completed (server error ${String(error.status)}).`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed or timed out. Nothing was minted.';

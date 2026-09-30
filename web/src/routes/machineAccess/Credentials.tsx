@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
 import { useEffect, useRef } from 'react';
 import {
   expiryLabel,
@@ -200,16 +201,11 @@ export function MintDialog({
               default asked for, said now rather than discovered when it dies.
             </Alert>
           ) : null}
-          <p className="ceremony__cap" role="status">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              This value is never retrievable again. The list shows metadata only and rotation never
-              returns it. Store it in the consuming system now; if it is lost, revoke this
-              credential and mint a fresh one.
-            </span>
-          </p>
+          <CeremonyNotice>
+            This value is never retrievable again. The list shows metadata only and rotation never
+            returns it. Store it in the consuming system now; if it is lost, revoke this
+            credential and mint a fresh one.
+          </CeremonyNotice>
           <Button
             type="button"
             onClick={async () => {

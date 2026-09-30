@@ -94,17 +94,7 @@ func rawSQLHelperReferences(declaration rawSQLDeclaration, root string) []string
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return true
 		}
-		name := fn.Name()
-		if sig, ok := fn.Type().(*types.Signature); ok && sig.Recv() != nil {
-			typ := types.Unalias(sig.Recv().Type())
-			if pointer, ok := typ.(*types.Pointer); ok {
-				typ = types.Unalias(pointer.Elem())
-			}
-			if named, ok := typ.(*types.Named); ok {
-				name = named.Obj().Name() + "." + name
-			}
-		}
-		refs[filepath.ToSlash(rel)+":"+name] = true
+		refs[filepath.ToSlash(rel)+":"+rawSQLObjectName(fn)] = true
 		return true
 	})
 	result := make([]string, 0, len(refs))
@@ -162,4 +152,20 @@ func rawSQLProtocolDependencies(protocol RawSQLProtocol, context string) map[str
 		}
 	}
 	return expected
+}
+
+// AST declarations and typed method references use the same receiver-qualified
+// owner, including pointer and instantiated generic receivers.
+func rawSQLObjectName(fn *types.Func) string {
+	name := fn.Name()
+	if sig, ok := fn.Type().(*types.Signature); ok && sig.Recv() != nil {
+		typ := types.Unalias(sig.Recv().Type())
+		if pointer, ok := typ.(*types.Pointer); ok {
+			typ = types.Unalias(pointer.Elem())
+		}
+		if named, ok := typ.(*types.Named); ok {
+			name = named.Obj().Name() + "." + name
+		}
+	}
+	return name
 }

@@ -62,9 +62,6 @@ func (r adapterQueries) ReplaceMoveOrigin(ctx context.Context, p authz.Proof, mo
 }
 
 func readAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, moveID string, lock bool) (AdapterMove, error) {
-	var out AdapterMove
-	var keep bool
-	var created adapterStoredTime
 	var queryResult adapterMoveGetRow
 	var err error
 	if lock {
@@ -72,23 +69,22 @@ func readAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, move
 	} else {
 		queryResult, err = db.adapterMoveQueries().get(ctx, moveID, chain.Org, chain.Project)
 	}
-	out.ID, out.AdapterID, out.Kind, out.State, keep, out.PendingOrigin, created, out.AuthorityPrincipalID = queryResult.ID, queryResult.AdapterID, queryResult.Kind, queryResult.State, queryResult.Keep, queryResult.PendingOrigin, queryResult.Created, queryResult.AuthorityPrincipalID
+	out := AdapterMove{ID: queryResult.ID, AdapterID: queryResult.AdapterID, Kind: queryResult.Kind, State: queryResult.State, KeepRemote: queryResult.Keep, PendingOrigin: queryResult.PendingOrigin, CreatedAt: queryResult.Created, AuthorityPrincipalID: queryResult.AuthorityPrincipalID}
 	if isNoRows(err) {
 		return AdapterMove{}, ErrNotFound
 	}
 	if err != nil {
 		return AdapterMove{}, err
 	}
-	out.KeepRemote, out.CreatedAt = keep, created.value
 
 	rows, err := db.adapterMoveQueries().targets(ctx, moveID, chain.Org, chain.Project)
 	if err != nil {
 		return AdapterMove{}, err
 	}
 	for _, targetQueryRow := range rows {
-		var target AdapterMoveTarget
-		var orphanJSON, selectedJSON []byte
-		target.TargetID, target.EnvironmentID, target.DestinationKind, target.DestinationOwner, target.DestinationName, target.DestinationEnvironment, target.DestinationScope, target.DestinationID, target.RepositoryID, target.Visibility, selectedJSON, target.NamePrefix, orphanJSON = targetQueryRow.TargetID, targetQueryRow.EnvironmentID, targetQueryRow.DestinationKind, targetQueryRow.DestinationOwner, targetQueryRow.DestinationName, targetQueryRow.DestinationEnvironment, targetQueryRow.DestinationScope, targetQueryRow.DestinationID, targetQueryRow.RepositoryID, targetQueryRow.Visibility, targetQueryRow.SelectedJSON, targetQueryRow.NamePrefix, targetQueryRow.OrphanJSON
+		target := AdapterMoveTarget{TargetID: targetQueryRow.TargetID, EnvironmentID: targetQueryRow.EnvironmentID, DestinationKind: targetQueryRow.DestinationKind, DestinationOwner: targetQueryRow.DestinationOwner, DestinationName: targetQueryRow.DestinationName, DestinationEnvironment: targetQueryRow.DestinationEnvironment, DestinationScope: targetQueryRow.DestinationScope, DestinationID: targetQueryRow.DestinationID, RepositoryID: targetQueryRow.RepositoryID, Visibility: targetQueryRow.Visibility, NamePrefix: targetQueryRow.NamePrefix}
+		selectedJSON := targetQueryRow.SelectedJSON
+		orphanJSON := targetQueryRow.OrphanJSON
 		if err := json.Unmarshal(orphanJSON, &target.Orphaned); err != nil {
 			return AdapterMove{}, err
 		}
@@ -107,8 +103,8 @@ func readAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, move
 	}
 	jobs := map[string][]AdapterMoveJob{}
 	for _, jobQueryRow := range jobRows {
-		var job AdapterMoveJob
-		job.ID, job.TargetID, job.Kind, job.State = jobQueryRow.ID, jobQueryRow.TargetID, jobQueryRow.Kind, jobQueryRow.State
+		job := AdapterMoveJob{ID: jobQueryRow.ID, TargetID: jobQueryRow.TargetID, Kind: jobQueryRow.Kind, State: jobQueryRow.State}
+
 		jobs[job.TargetID] = append(jobs[job.TargetID], job)
 	}
 	for i := range out.Targets {
@@ -134,25 +130,22 @@ func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, mo
 	previousAuthority := move.AuthorityPrincipalID
 	stamp := at
 	for _, target := range move.Targets {
-		var generation int64
-		var providerBusy int
 
 		lookupResult, err := db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
-		generation, providerBusy = lookupResult.Generation, lookupResult.ProviderBusy
 		if err != nil {
 			return AdapterMove{}, adapter.ErrSuperseded
 		}
-		if providerBusy != 0 {
+		if lookupResult.ProviderBusy != 0 {
 			return AdapterMove{}, adapter.ErrProviderBusy
 		}
 		jobID := newAdapterID("job")
-		nextGeneration := generation + 1
+		nextGeneration := lookupResult.Generation + 1
 
 		if rows, err := db.adapterMoveQueries().insertConvergeJob(ctx, jobID, chain.Org, chain.Project, target.EnvironmentID, target.TargetID, moveID, authorityPrincipalID, nextGeneration, target.TargetID, stamp, stamp); err != nil || rows != 1 {
 			return AdapterMove{}, errors.Join(err, ErrConflict)
 		}
 
-		if rows, err := db.adapterMoveQueries().activateCanceledTarget(ctx, nextGeneration, jobID, target.TargetID, chain.Org, chain.Project, target.EnvironmentID, generation); err != nil || rows != 1 {
+		if rows, err := db.adapterMoveQueries().activateCanceledTarget(ctx, nextGeneration, jobID, target.TargetID, chain.Org, chain.Project, target.EnvironmentID, lookupResult.Generation); err != nil || rows != 1 {
 			return AdapterMove{}, errors.Join(err, adapter.ErrSuperseded)
 		}
 	}
@@ -341,21 +334,18 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 		mutation.MoveID = newAdapterID("arm")
 	}
 	stamp := mutation.At
-	var currentOrigin string
-	var providerBusy int
 
 	lookupAdapterResult, err := db.adapterMoveQueries().beginOriginAdapter(ctx, stamp, mutation.AdapterID, chain.Org, chain.Project)
-	currentOrigin, providerBusy = lookupAdapterResult.CurrentOrigin, lookupAdapterResult.ProviderBusy
 	if isNoRows(err) {
 		return AdapterRouteMoveBatch{}, ErrNotFound
 	}
 	if err != nil {
 		return AdapterRouteMoveBatch{}, err
 	}
-	if providerBusy != 0 {
+	if lookupAdapterResult.ProviderBusy != 0 {
 		return AdapterRouteMoveBatch{}, adapter.ErrProviderBusy
 	}
-	if currentOrigin == mutation.Origin {
+	if lookupAdapterResult.CurrentOrigin == mutation.Origin {
 		return AdapterRouteMoveBatch{}, fmt.Errorf("%w: adapter origin is unchanged", domain.ErrInvalid)
 	}
 	var collision int
@@ -381,9 +371,9 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 	}
 	var targets []originTarget
 	for _, targetQueryRow := range rows {
-		var target originTarget
-		var orphanRaw, selectedRaw []byte
-		target.id, target.environmentID, target.kind, target.owner, target.name, target.destinationEnvironment, target.destinationScope, target.destinationID, target.repositoryID, target.visibility, selectedRaw, target.prefix, target.generation, target.activeJob, orphanRaw = targetQueryRow.Id, targetQueryRow.EnvironmentID, targetQueryRow.Kind, targetQueryRow.Owner, targetQueryRow.Name, targetQueryRow.DestinationEnvironment, targetQueryRow.DestinationScope, targetQueryRow.DestinationID, targetQueryRow.RepositoryID, targetQueryRow.Visibility, targetQueryRow.SelectedRaw, targetQueryRow.Prefix, targetQueryRow.Generation, targetQueryRow.ActiveJob, targetQueryRow.OrphanRaw
+		target := originTarget{id: targetQueryRow.Id, environmentID: targetQueryRow.EnvironmentID, kind: targetQueryRow.Kind, owner: targetQueryRow.Owner, name: targetQueryRow.Name, destinationEnvironment: targetQueryRow.DestinationEnvironment, destinationScope: targetQueryRow.DestinationScope, destinationID: targetQueryRow.DestinationID, repositoryID: targetQueryRow.RepositoryID, visibility: targetQueryRow.Visibility, prefix: targetQueryRow.Prefix, generation: targetQueryRow.Generation, activeJob: targetQueryRow.ActiveJob}
+		selectedRaw := targetQueryRow.SelectedRaw
+		orphanRaw := targetQueryRow.OrphanRaw
 		if err := json.Unmarshal(orphanRaw, &target.orphaned); err != nil {
 			return AdapterRouteMoveBatch{}, err
 		}
@@ -550,44 +540,37 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 		mutation.MoveID = newAdapterID("arm")
 	}
 	stamp := mutation.At
-	var current struct {
-		adapterID, origin, environmentID, kind, owner, name, destinationEnvironment, destinationScope, prefix, activeJob string
-		destinationID, generation                                                                                        int64
-		providerBusy                                                                                                     int
-	}
-	var orphanRaw []byte
 
 	lookupResult, err := db.adapterMoveQueries().beginTarget(ctx, stamp, mutation.Target.ID, chain.Org, chain.Project)
-	current.adapterID, current.origin, current.environmentID, current.kind, current.owner, current.name, current.destinationEnvironment, current.destinationScope, current.destinationID, current.prefix, current.generation, current.activeJob, current.providerBusy, orphanRaw = lookupResult.AdapterID, lookupResult.Origin, lookupResult.EnvironmentID, lookupResult.Kind, lookupResult.Owner, lookupResult.Name, lookupResult.DestinationEnvironment, lookupResult.DestinationScope, lookupResult.DestinationID, lookupResult.Prefix, lookupResult.Generation, lookupResult.ActiveJob, lookupResult.ProviderBusy, lookupResult.OrphanRaw
 	if isNoRows(err) {
 		return AdapterRouteMoveResult{}, ErrNotFound
 	}
 	if err != nil {
 		return AdapterRouteMoveResult{}, err
 	}
-	if current.providerBusy != 0 {
+	if lookupResult.ProviderBusy != 0 {
 		return AdapterRouteMoveResult{}, adapter.ErrProviderBusy
 	}
-	if current.generation != mutation.ExpectedGeneration {
+	if lookupResult.Generation != mutation.ExpectedGeneration {
 		return AdapterRouteMoveResult{}, adapter.ErrSuperseded
 	}
-	if current.adapterID != mutation.Target.AdapterID {
+	if lookupResult.AdapterID != mutation.Target.AdapterID {
 		return AdapterRouteMoveResult{}, fmt.Errorf("%w: target does not belong to adapter", domain.ErrConflict)
 	}
-	if current.environmentID != mutation.Target.EnvironmentID {
+	if lookupResult.EnvironmentID != mutation.Target.EnvironmentID {
 		return AdapterRouteMoveResult{}, fmt.Errorf("%w: moving a target between environments requires a replacement target identity", domain.ErrConflict)
 	}
 	if err := requireUnchangedMoveFlags(ctx, db, chain, mutation.Target); err != nil {
 		return AdapterRouteMoveResult{}, err
 	}
-	if current.destinationScope != mutation.Target.DestinationScope {
+	if lookupResult.DestinationScope != mutation.Target.DestinationScope {
 		return AdapterRouteMoveResult{}, fmt.Errorf("%w: a GitLab environment scope is immutable; remove the target and add a new one", domain.ErrConflict)
 	}
-	if current.kind == mutation.Target.DestinationKind && current.owner == mutation.Target.DestinationOwner && current.name == mutation.Target.DestinationName && current.destinationEnvironment == mutation.Target.DestinationEnvironment {
+	if lookupResult.Kind == mutation.Target.DestinationKind && lookupResult.Owner == mutation.Target.DestinationOwner && lookupResult.Name == mutation.Target.DestinationName && lookupResult.DestinationEnvironment == mutation.Target.DestinationEnvironment {
 		return AdapterRouteMoveResult{}, fmt.Errorf("%w: target update does not move its route", domain.ErrInvalid)
 	}
 	var orphaned []string
-	if err := json.Unmarshal(orphanRaw, &orphaned); err != nil {
+	if err := json.Unmarshal(lookupResult.OrphanRaw, &orphaned); err != nil {
 		return AdapterRouteMoveResult{}, fmt.Errorf("store: adapter move orphan list: %w", err)
 	}
 	moveState, jobKind := "scrubbing", "scrub"
@@ -595,7 +578,7 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 		moveState, jobKind = "activating", "activate"
 	}
 
-	if rows, err := db.adapterMoveQueries().insertTargetMove(ctx, mutation.MoveID, chain.Org, chain.Project, current.adapterID, mutation.Target.ID, mutation.AuthorityPrincipalID, moveState, mutation.KeepRemote, stamp); err != nil || rows != 1 {
+	if rows, err := db.adapterMoveQueries().insertTargetMove(ctx, mutation.MoveID, chain.Org, chain.Project, lookupResult.AdapterID, mutation.Target.ID, mutation.AuthorityPrincipalID, moveState, mutation.KeepRemote, stamp); err != nil || rows != 1 {
 		if err != nil {
 			return AdapterRouteMoveResult{}, err
 		}
@@ -623,12 +606,12 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 			return AdapterRouteMoveResult{}, ErrConflict
 		}
 	}
-	if err := reserveAdapterMoveClaims(ctx, db, chain, mutation.MoveID, current.origin, mutation.Target); err != nil {
+	if err := reserveAdapterMoveClaims(ctx, db, chain, mutation.MoveID, lookupResult.Origin, mutation.Target); err != nil {
 		return AdapterRouteMoveResult{}, err
 	}
-	if current.activeJob != "" {
+	if lookupResult.ActiveJob != "" {
 
-		if rows, err := db.adapterMoveQueries().supersedeJob(ctx, stamp, current.activeJob, mutation.Target.ID, chain.Org, chain.Project, current.environmentID); err != nil || rows != 1 {
+		if rows, err := db.adapterMoveQueries().supersedeJob(ctx, stamp, lookupResult.ActiveJob, mutation.Target.ID, chain.Org, chain.Project, lookupResult.EnvironmentID); err != nil || rows != 1 {
 			if err != nil {
 				return AdapterRouteMoveResult{}, err
 			}
@@ -637,34 +620,34 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 	}
 	if mutation.KeepRemote {
 
-		if _, err := db.adapterMoveQueries().releaseLedger(ctx, stamp, mutation.Target.ID, chain.Org, chain.Project, current.environmentID); err != nil {
+		if _, err := db.adapterMoveQueries().releaseLedger(ctx, stamp, mutation.Target.ID, chain.Org, chain.Project, lookupResult.EnvironmentID); err != nil {
 			return AdapterRouteMoveResult{}, err
 		}
 	}
 	jobID := newAdapterID("job")
-	generation := current.generation + 1
+	generation := lookupResult.Generation + 1
 
-	if rows, err := db.adapterMoveQueries().insertJob(ctx, jobID, chain.Org, chain.Project, current.environmentID, mutation.Target.ID, jobKind, mutation.MoveID, mutation.AuthorityPrincipalID, generation, mutation.Target.ID, stamp, stamp); err != nil || rows != 1 {
+	if rows, err := db.adapterMoveQueries().insertJob(ctx, jobID, chain.Org, chain.Project, lookupResult.EnvironmentID, mutation.Target.ID, jobKind, mutation.MoveID, mutation.AuthorityPrincipalID, generation, mutation.Target.ID, stamp, stamp); err != nil || rows != 1 {
 		if err != nil {
 			return AdapterRouteMoveResult{}, err
 		}
 		return AdapterRouteMoveResult{}, ErrConflict
 	}
 
-	if rows, err := db.adapterMoveQueries().markMovingTarget(ctx, generation, jobID, mutation.Target.ID, chain.Org, chain.Project, current.environmentID, current.generation); err != nil || rows != 1 {
+	if rows, err := db.adapterMoveQueries().markMovingTarget(ctx, generation, jobID, mutation.Target.ID, chain.Org, chain.Project, lookupResult.EnvironmentID, lookupResult.Generation); err != nil || rows != 1 {
 		if err != nil {
 			return AdapterRouteMoveResult{}, err
 		}
 		return AdapterRouteMoveResult{}, adapter.ErrProviderBusy
 	}
 
-	if rows, err := db.adapterMoveQueries().setActiveAuthority(ctx, mutation.AuthorityPrincipalID, current.adapterID, chain.Org, chain.Project); err != nil || rows != 1 {
+	if rows, err := db.adapterMoveQueries().setActiveAuthority(ctx, mutation.AuthorityPrincipalID, lookupResult.AdapterID, chain.Org, chain.Project); err != nil || rows != 1 {
 		if err != nil {
 			return AdapterRouteMoveResult{}, err
 		}
 		return AdapterRouteMoveResult{}, ErrNotFound
 	}
-	result := AdapterRouteMoveResult{MoveID: mutation.MoveID, TargetID: mutation.Target.ID, JobID: jobID, SupersededJobID: current.activeJob, Generation: generation}
+	result := AdapterRouteMoveResult{MoveID: mutation.MoveID, TargetID: mutation.Target.ID, JobID: jobID, SupersededJobID: lookupResult.ActiveJob, Generation: generation}
 	if mutation.KeepRemote {
 		result.Orphaned = orphaned
 	}
@@ -745,14 +728,12 @@ func reserveAWSMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope,
 		return err
 	}
 	for _, configuredRow := range rows {
-		var kind, name, prefix, keyName string
-		_, kind, name, prefix, keyName = configuredRow.TargetID, configuredRow.Kind, configuredRow.Name, configuredRow.Prefix, configuredRow.KeyName
-		claimed := name
-		if kind == string(adapter.PerKey) {
-			if keyName == "" {
+		claimed := configuredRow.Name
+		if configuredRow.Kind == string(adapter.PerKey) {
+			if configuredRow.KeyName == "" {
 				continue
 			}
-			claimed = name + prefix + keyName
+			claimed = configuredRow.Name + configuredRow.Prefix + configuredRow.KeyName
 		}
 		if desired[strings.ToUpper(claimed)] {
 			return fmt.Errorf("%w: effective name %q is already configured on the pending destination", domain.ErrConflict, claimed)
@@ -764,10 +745,8 @@ func reserveAWSMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope,
 		return err
 	}
 	for _, pendingRow := range pendingRows {
-		var otherTarget, effective string
-		otherTarget, effective = pendingRow.OtherTarget, pendingRow.Effective
-		if desired[strings.ToUpper(effective)] {
-			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effective, otherTarget)
+		if desired[strings.ToUpper(pendingRow.Effective)] {
+			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, pendingRow.Effective, pendingRow.OtherTarget)
 		}
 	}
 	for _, claim := range claims {
@@ -789,15 +768,12 @@ func reserveAWSMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope,
 // Move storage preserves flags at activation, so accepting changed flags here
 // would promise state that cannot be committed. Check both creation and resume.
 func requireUnchangedMoveFlags(ctx context.Context, db adapterDB, chain domain.Scope, target AdapterTargetMutation) error {
-	var protected, hidden, expand bool
-	var provider string
 
 	queryResult, err := db.adapterMoveQueries().flags(ctx, chain.Org, chain.Project, target.AdapterID, target.ID)
-	provider, protected, hidden, expand = queryResult.Provider, queryResult.Protected, queryResult.Hidden, queryResult.Expand
 	if err != nil {
 		return err
 	}
-	if provider == string(adapter.GitLabProvider) && (protected != target.VariableProtected || hidden != target.VariableHidden || expand != target.VariableExpand) {
+	if queryResult.Provider == string(adapter.GitLabProvider) && (queryResult.Protected != target.VariableProtected || queryResult.Hidden != target.VariableHidden || queryResult.Expand != target.VariableExpand) {
 		return fmt.Errorf("%w: update variable flags separately before or after moving the destination", domain.ErrInvalid)
 	}
 	return nil

@@ -99,15 +99,9 @@ func (q sqlitePKIStoreQueries) pkiListIssuers(ctx context.Context) ([]PKIIssuer,
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIIssuer
-	for _, c := range c {
-		item, err := sqlitePKIIssuer(sqlitegen.PKIGetIssuerRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c sqlitegen.PKIListIssuersRow) (PKIIssuer, error) {
+		return sqlitePKIIssuer(sqlitegen.PKIGetIssuerRow(c))
+	})
 }
 
 func (q sqlitePKIStoreQueries) pkiListProfiles(ctx context.Context) ([]PKIProfile, error) {
@@ -115,15 +109,7 @@ func (q sqlitePKIStoreQueries) pkiListProfiles(ctx context.Context) ([]PKIProfil
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIProfile
-	for _, c := range c {
-		item, err := sqlitePKIProfile(sqlitegen.PkiProfile(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c sqlitegen.PkiProfile) (PKIProfile, error) { return sqlitePKIProfile(sqlitegen.PkiProfile(c)) })
 }
 
 func (q sqlitePKIStoreQueries) pkiGetIssuer(ctx context.Context, id string) (PKIIssuer, error) {
@@ -179,15 +165,7 @@ func (q sqlitePKIStoreQueries) pkiListBindings(ctx context.Context, profileID st
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIProfileBinding
-	for _, c := range c {
-		item, err := sqlitePKIBinding(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqlitePKIBinding)
 }
 
 func (q sqlitePKIStoreQueries) pkiIssuerKey(ctx context.Context, id string) (pkiSealedKey, error) {
@@ -254,15 +232,7 @@ func (q sqlitePKIStoreQueries) pkiRevokedEntries(ctx context.Context, issuerID s
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIRevokedEntry
-	for _, c := range c {
-		item, err := sqlitePKIRevocation(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqlitePKIRevocation)
 }
 
 func (q sqlitePKIStoreQueries) pkiRevokedChildren(ctx context.Context, issuerID string, now time.Time) ([]pkiRevokedChild, error) {
@@ -270,15 +240,7 @@ func (q sqlitePKIStoreQueries) pkiRevokedChildren(ctx context.Context, issuerID 
 	if err != nil {
 		return nil, err
 	}
-	var out []pkiRevokedChild
-	for _, c := range c {
-		item, err := sqlitePKIChild(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqlitePKIChild)
 }
 
 func (q sqlitePKIStoreQueries) pkiPublishCRL(ctx context.Context, id string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (int64, error) {
@@ -322,15 +284,7 @@ func (q sqlitePKIStoreQueries) pkiBoundProfiles(ctx context.Context, chain domai
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIProfile
-	for _, c := range c {
-		item, err := sqlitePKIProfile(sqlitegen.PkiProfile(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c sqlitegen.PkiProfile) (PKIProfile, error) { return sqlitePKIProfile(sqlitegen.PkiProfile(c)) })
 }
 
 func (q sqlitePKIStoreQueries) pkiGetCertificate(ctx context.Context, chain domain.Scope, id string) (PKICertificate, error) {
@@ -350,15 +304,9 @@ func (q sqlitePKIStoreQueries) pkiListCertificates(ctx context.Context, chain do
 	if err != nil {
 		return nil, err
 	}
-	var out []PKICertificate
-	for _, c := range c {
-		item, err := sqlitePKICertificate(sqlitegen.PKIGetCertificateRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c sqlitegen.PKIListCertificatesRow) (PKICertificate, error) {
+		return sqlitePKICertificate(sqlitegen.PKIGetCertificateRow(c))
+	})
 }
 
 func (q sqlitePKIStoreQueries) pkiFenceIssuance(ctx context.Context, id string) (int64, error) {
@@ -398,15 +346,7 @@ func (q sqlitePKIStoreQueries) runtimePKIStaleIssuing(ctx context.Context, now t
 	if err != nil {
 		return nil, err
 	}
-	var out []pkiSweptRow
-	for _, c := range c {
-		item, err := sqlitePKISwept(sqlitegen.RuntimePKIStaleIssuingRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqlitePKISwept)
 }
 
 func (q sqlitePKIStoreQueries) runtimePKIExpired(ctx context.Context, now time.Time, limit int) ([]pkiSweptRow, error) {
@@ -414,15 +354,9 @@ func (q sqlitePKIStoreQueries) runtimePKIExpired(ctx context.Context, now time.T
 	if err != nil {
 		return nil, err
 	}
-	var out []pkiSweptRow
-	for _, c := range c {
-		item, err := sqlitePKISwept(sqlitegen.RuntimePKIStaleIssuingRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c sqlitegen.RuntimePKIExpiredRow) (pkiSweptRow, error) {
+		return sqlitePKISwept(sqlitegen.RuntimePKIStaleIssuingRow(c))
+	})
 }
 
 func (q sqlitePKIStoreQueries) runtimePKIMarkUnknown(ctx context.Context, row pkiSweptRow, at time.Time) (int64, error) {
@@ -446,15 +380,7 @@ func (q sqlitePKIStoreQueries) runtimePKIDueCRLs(ctx context.Context, halfLife t
 	if err != nil {
 		return nil, err
 	}
-	var out []PKICRLCandidate
-	for _, c := range c {
-		item, err := sqlitePKICandidate(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqlitePKICandidate)
 }
 
 func (q sqlitePKIStoreQueries) runtimePKIPublishedAudit(ctx context.Context, id, issuerID, payload string, at time.Time) error {
@@ -478,15 +404,7 @@ func (q pgPKIStoreQueries) pkiListIssuers(ctx context.Context) ([]PKIIssuer, err
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIIssuer
-	for _, c := range c {
-		item, err := pgPKIIssuer(pggen.PKIGetIssuerRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c pggen.PKIListIssuersRow) (PKIIssuer, error) { return pgPKIIssuer(pggen.PKIGetIssuerRow(c)) })
 }
 
 func (q pgPKIStoreQueries) pkiListProfiles(ctx context.Context) ([]PKIProfile, error) {
@@ -494,15 +412,7 @@ func (q pgPKIStoreQueries) pkiListProfiles(ctx context.Context) ([]PKIProfile, e
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIProfile
-	for _, c := range c {
-		item, err := pgPKIProfile(pggen.PkiProfile(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c pggen.PkiProfile) (PKIProfile, error) { return pgPKIProfile(pggen.PkiProfile(c)) })
 }
 
 func (q pgPKIStoreQueries) pkiGetIssuer(ctx context.Context, id string) (PKIIssuer, error) {
@@ -558,15 +468,7 @@ func (q pgPKIStoreQueries) pkiListBindings(ctx context.Context, profileID string
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIProfileBinding
-	for _, c := range c {
-		item, err := pgPKIBinding(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgPKIBinding)
 }
 
 func (q pgPKIStoreQueries) pkiIssuerKey(ctx context.Context, id string) (pkiSealedKey, error) {
@@ -643,15 +545,7 @@ func (q pgPKIStoreQueries) pkiRevokedEntries(ctx context.Context, issuerID strin
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIRevokedEntry
-	for _, c := range c {
-		item, err := pgPKIRevocation(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgPKIRevocation)
 }
 
 func (q pgPKIStoreQueries) pkiRevokedChildren(ctx context.Context, issuerID string, now time.Time) ([]pkiRevokedChild, error) {
@@ -659,15 +553,7 @@ func (q pgPKIStoreQueries) pkiRevokedChildren(ctx context.Context, issuerID stri
 	if err != nil {
 		return nil, err
 	}
-	var out []pkiRevokedChild
-	for _, c := range c {
-		item, err := pgPKIChild(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgPKIChild)
 }
 
 func (q pgPKIStoreQueries) pkiPublishCRL(ctx context.Context, id string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (int64, error) {
@@ -711,15 +597,7 @@ func (q pgPKIStoreQueries) pkiBoundProfiles(ctx context.Context, chain domain.Sc
 	if err != nil {
 		return nil, err
 	}
-	var out []PKIProfile
-	for _, c := range c {
-		item, err := pgPKIProfile(pggen.PkiProfile(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c pggen.PkiProfile) (PKIProfile, error) { return pgPKIProfile(pggen.PkiProfile(c)) })
 }
 
 func (q pgPKIStoreQueries) pkiGetCertificate(ctx context.Context, chain domain.Scope, id string) (PKICertificate, error) {
@@ -739,15 +617,9 @@ func (q pgPKIStoreQueries) pkiListCertificates(ctx context.Context, chain domain
 	if err != nil {
 		return nil, err
 	}
-	var out []PKICertificate
-	for _, c := range c {
-		item, err := pgPKICertificate(pggen.PKIGetCertificateRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c pggen.PKIListCertificatesRow) (PKICertificate, error) {
+		return pgPKICertificate(pggen.PKIGetCertificateRow(c))
+	})
 }
 
 func (q pgPKIStoreQueries) pkiFenceIssuance(ctx context.Context, id string) (int64, error) {
@@ -787,15 +659,7 @@ func (q pgPKIStoreQueries) runtimePKIStaleIssuing(ctx context.Context, now time.
 	if err != nil {
 		return nil, err
 	}
-	var out []pkiSweptRow
-	for _, c := range c {
-		item, err := pgPKISwept(pggen.RuntimePKIStaleIssuingRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgPKISwept)
 }
 
 func (q pgPKIStoreQueries) runtimePKIExpired(ctx context.Context, now time.Time, limit int) ([]pkiSweptRow, error) {
@@ -803,15 +667,9 @@ func (q pgPKIStoreQueries) runtimePKIExpired(ctx context.Context, now time.Time,
 	if err != nil {
 		return nil, err
 	}
-	var out []pkiSweptRow
-	for _, c := range c {
-		item, err := pgPKISwept(pggen.RuntimePKIStaleIssuingRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c pggen.RuntimePKIExpiredRow) (pkiSweptRow, error) {
+		return pgPKISwept(pggen.RuntimePKIStaleIssuingRow(c))
+	})
 }
 
 func (q pgPKIStoreQueries) runtimePKIMarkUnknown(ctx context.Context, row pkiSweptRow, at time.Time) (int64, error) {
@@ -835,15 +693,7 @@ func (q pgPKIStoreQueries) runtimePKIDueCRLs(ctx context.Context, halfLife time.
 	if err != nil {
 		return nil, err
 	}
-	var out []PKICRLCandidate
-	for _, c := range c {
-		item, err := pgPKICandidate(c)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgPKICandidate)
 }
 
 func (q pgPKIStoreQueries) runtimePKIPublishedAudit(ctx context.Context, id, issuerID, payload string, at time.Time) error {

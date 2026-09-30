@@ -1,9 +1,6 @@
 package lint
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,12 +11,11 @@ import (
 // reviewed engine protocol owner; ordinary data queries never enter this file.
 func TestRawSQLProtocolsRepo(t *testing.T) {
 	root := repoRoot(t)
-	raw, err := os.ReadFile(filepath.Join(root, "internal/lint/testdata/raw_sql_protocols.json"))
-	if err != nil {
-		t.Fatal(err)
+	if reviewedPinsError != nil {
+		t.Fatal(reviewedPinsError)
 	}
-	var protocols map[string]RawSQLProtocol
-	if err := json.Unmarshal(raw, &protocols); err != nil {
+	protocols, err := reviewedPins.rawProtocols()
+	if err != nil {
 		t.Fatal(err)
 	}
 	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {

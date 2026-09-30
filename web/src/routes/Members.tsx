@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
@@ -1327,15 +1328,10 @@ function GrantModal({
             ))}
           </ul>
         )}
-        <p className="ceremony__cap" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            Narrower option: grant on one project, or on one environment. Production protection
-            rests on granting narrowly, not on the protected flag alone.
-          </span>
-        </p>
+        <CeremonyNotice>
+          Narrower option: grant on one project, or on one environment. Production protection
+          rests on granting narrowly, not on the protected flag alone.
+        </CeremonyNotice>
         {failure !== null ? <Alert>{failure}</Alert> : null}
       </Dialog>
     );

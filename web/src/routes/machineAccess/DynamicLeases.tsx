@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { isoDay, type ProjectRef } from '../../api/identities.ts';
 import {
@@ -302,16 +303,11 @@ export function LeaseMintDialog({
           {disclosed.result.expires_at !== undefined && disclosed.result.expires_at !== null ? (
             <Alert tone="warn">{`This lease expires ${isoDay(disclosed.result.expires_at)}. The provider may have shortened the lifetime you asked for.`}</Alert>
           ) : null}
-          <p className="ceremony__cap" role="status">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              This password is never retrievable again. The list shows metadata only, and a renewal
-              never returns it. Store it in the consuming workload now; if it is lost, revoke this
-              lease and mint a fresh one.
-            </span>
-          </p>
+          <CeremonyNotice>
+            This password is never retrievable again. The list shows metadata only, and a renewal
+            never returns it. Store it in the consuming workload now; if it is lost, revoke this
+            lease and mint a fresh one.
+          </CeremonyNotice>
           <Button
             type="button"
             onClick={async () => {

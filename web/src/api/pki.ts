@@ -26,7 +26,7 @@ import type { PkiPolicy as PkiPolicyBody } from '@hikyo/client';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { commonRefusalText } from './statusText.ts';
+import { commonRefusalText, statusText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { type TransportOptions, useTransport } from './transport.tsx';
 
@@ -459,50 +459,40 @@ function withDetail(base: string, error: unknown): string {
 
 /** pkiAdminRefusalText names an issuer or profile refusal. */
 export function pkiAdminRefusalText(error: unknown, action: string): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail(`The server refused to ${action}: the request was not valid.`, error);
-      case 401:
-        return commonRefusalText.unauthenticated;
-      case 403:
-        return `To ${action} you need instance-config and a second factor. Present your authenticator in the banner above.`;
-      case 404:
-        return withDetail(`Could not ${action}: it is no longer here.`, error);
-      case 409:
-        return withDetail(`The server refused to ${action} as a conflict.`, error);
-      case 429:
-        return commonRefusalText.requests;
-      default:
-        return `Could not ${action} (server error ${String(error.status)}).`;
-    }
-  }
-  return `Could not ${action}.`;
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        withDetail(`The server refused to ${action}: the request was not valid.`, error),
+      401: commonRefusalText.unauthenticated,
+      403: `To ${action} you need instance-config and a second factor. Present your authenticator in the banner above.`,
+      404: (error) => withDetail(`Could not ${action}: it is no longer here.`, error),
+      409: (error) => withDetail(`The server refused to ${action} as a conflict.`, error),
+      429: commonRefusalText.requests,
+    },
+    `Could not ${action}.`,
+    (error) => `Could not ${action} (server error ${String(error.status)}).`,
+  );
 }
 
 /** certificateRefusalText formats an API or unknown error for a certificate
  * action. It does not determine whether issuance committed; use issueFailureText
  * for failures after an issuance request was sent. */
 export function certificateRefusalText(error: unknown, action: string): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail(`The profile refused to ${action}.`, error);
-      case 401:
-        return commonRefusalText.unauthenticated;
-      case 403:
-        return withDetail(`To ${action} you need issue-certificate on this environment.`, error);
-      case 404:
-        return `Could not ${action}: the profile is not bound here, or you may not use it.`;
-      case 409:
-        return withDetail(`The server refused to ${action} as a conflict.`, error);
-      case 429:
-        return commonRefusalText.requests;
-      default:
-        return `Could not ${action} (server error ${String(error.status)}).`;
-    }
-  }
-  return `Could not ${action}.`;
+  return statusText(
+    error,
+    {
+      400: (error) => withDetail(`The profile refused to ${action}.`, error),
+      401: commonRefusalText.unauthenticated,
+      403: (error) =>
+        withDetail(`To ${action} you need issue-certificate on this environment.`, error),
+      404: `Could not ${action}: the profile is not bound here, or you may not use it.`,
+      409: (error) => withDetail(`The server refused to ${action} as a conflict.`, error),
+      429: commonRefusalText.requests,
+    },
+    `Could not ${action}.`,
+    (error) => `Could not ${action} (server error ${String(error.status)}).`,
+  );
 }
 
 /** issueFailureText is for a failure AFTER the issue request left: the server

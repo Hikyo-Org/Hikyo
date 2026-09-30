@@ -953,7 +953,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			}
 		} else {
 
-			rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobQuery2(ctx, state, finished, job.ID, job.LeaseOwner)
+			rows, err := tx.adapterRuntimeQueries().adapterWorkerCompleteJob(ctx, state, finished, job.ID, job.LeaseOwner)
 			if err != nil {
 				return err
 			}
@@ -1075,7 +1075,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		if targetStatus == "converged" {
 			convergedRevision, convergedRev = revision, rev
 		}
-		rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobQuery3(ctx, targetStatus, convergedRevision, convergedRev, failureJSON, warningJSON, revision, rev, attemptedAt, errorClass, attentionMode, retainActiveJob, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
+		rows, err := tx.adapterRuntimeQueries().adapterWorkerRecordJobOutcome(ctx, targetStatus, convergedRevision, convergedRev, failureJSON, warningJSON, revision, rev, attemptedAt, errorClass, attentionMode, retainActiveJob, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
 		if err != nil {
 			return err
 		}

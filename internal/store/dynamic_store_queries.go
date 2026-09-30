@@ -49,11 +49,7 @@ func (q sqliteDynamicStoreQueries) dynamicGetProvider(ctx context.Context, chain
 	if err != nil {
 		return DynamicProviderRecord{}, err
 	}
-	out := DynamicProviderRecord{ID: c.ID, Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialPresent: c.CredentialPresent == 1, CredentialSetAt: c.CredentialSetAt.String, AuthorityPrincipalID: c.AuthorityPrincipalID, State: c.State, CreatedAt: c.CreatedAt}
-	if err := normalizeStoredTimes(&out.CredentialSetAt, &out.CreatedAt); err != nil {
-		return DynamicProviderRecord{}, err
-	}
-	return out, nil
+	return sqliteDynamicProvider(c)
 }
 
 func (q pgDynamicStoreQueries) dynamicGetProvider(ctx context.Context, chain domain.Scope, providerID string) (DynamicProviderRecord, error) {
@@ -64,11 +60,7 @@ func (q pgDynamicStoreQueries) dynamicGetProvider(ctx context.Context, chain dom
 	if err != nil {
 		return DynamicProviderRecord{}, err
 	}
-	out := DynamicProviderRecord{ID: c.ID, Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialPresent: c.CredentialPresent == 1, CredentialSetAt: pgStoredStamp(c.CredentialSetAt), AuthorityPrincipalID: c.AuthorityPrincipalID, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt)}
-	if err := normalizeStoredTimes(&out.CredentialSetAt, &out.CreatedAt); err != nil {
-		return DynamicProviderRecord{}, err
-	}
-	return out, nil
+	return pgDynamicProvider(c)
 }
 
 func (q sqliteDynamicStoreQueries) dynamicProviderCredentialCiphertext(ctx context.Context, chain domain.Scope, providerID string) ([]byte, error) {
@@ -92,15 +84,9 @@ func (q sqliteDynamicStoreQueries) dynamicListProviders(ctx context.Context, cha
 	if err != nil {
 		return nil, err
 	}
-	var result []DynamicProviderRecord
-	for _, c := range rows {
-		out := DynamicProviderRecord{ID: c.ID, Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialPresent: c.CredentialPresent == 1, CredentialSetAt: c.CredentialSetAt.String, AuthorityPrincipalID: c.AuthorityPrincipalID, State: c.State, CreatedAt: c.CreatedAt}
-		if err := normalizeStoredTimes(&out.CredentialSetAt, &out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c sqlitegen.DynamicListProvidersRow) (DynamicProviderRecord, error) {
+		return sqliteDynamicProvider(sqlitegen.DynamicGetProviderRow(c))
+	})
 }
 
 func (q pgDynamicStoreQueries) dynamicListProviders(ctx context.Context, chain domain.Scope) ([]DynamicProviderRecord, error) {
@@ -108,15 +94,9 @@ func (q pgDynamicStoreQueries) dynamicListProviders(ctx context.Context, chain d
 	if err != nil {
 		return nil, err
 	}
-	var result []DynamicProviderRecord
-	for _, c := range rows {
-		out := DynamicProviderRecord{ID: c.ID, Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialPresent: c.CredentialPresent == 1, CredentialSetAt: pgStoredStamp(c.CredentialSetAt), AuthorityPrincipalID: c.AuthorityPrincipalID, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt)}
-		if err := normalizeStoredTimes(&out.CredentialSetAt, &out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c pggen.DynamicListProvidersRow) (DynamicProviderRecord, error) {
+		return pgDynamicProvider(pggen.DynamicGetProviderRow(c))
+	})
 }
 
 func (q sqliteDynamicStoreQueries) dynamicReplaceProviderCredential(ctx context.Context, chain domain.Scope, m DynamicProviderCredentialMutation) (int64, error) {
@@ -169,11 +149,7 @@ func (q sqliteDynamicStoreQueries) dynamicGetLease(ctx context.Context, chain do
 	if err != nil {
 		return DynamicLease{}, err
 	}
-	out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: c.IssuedAt.String, ExpiresAt: c.ExpiresAt.String, MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: c.LastTransitionAt, CreatedAt: c.CreatedAt}
-	if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
-		return DynamicLease{}, err
-	}
-	return out, nil
+	return sqliteDynamicLease(c)
 }
 
 func (q pgDynamicStoreQueries) dynamicGetLease(ctx context.Context, chain domain.Scope, leaseID string) (DynamicLease, error) {
@@ -184,11 +160,7 @@ func (q pgDynamicStoreQueries) dynamicGetLease(ctx context.Context, chain domain
 	if err != nil {
 		return DynamicLease{}, err
 	}
-	out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: pgStoredStamp(c.IssuedAt), ExpiresAt: pgStoredStamp(c.ExpiresAt), MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: pgStoredStamp(c.LastTransitionAt), CreatedAt: pgStoredStamp(c.CreatedAt)}
-	if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
-		return DynamicLease{}, err
-	}
-	return out, nil
+	return pgDynamicLease(c)
 }
 
 func (q sqliteDynamicStoreQueries) dynamicListLeasesForEnvironment(ctx context.Context, chain domain.Scope) ([]DynamicLease, error) {
@@ -196,15 +168,9 @@ func (q sqliteDynamicStoreQueries) dynamicListLeasesForEnvironment(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	var result []DynamicLease
-	for _, c := range rows {
-		out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: c.IssuedAt.String, ExpiresAt: c.ExpiresAt.String, MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: c.LastTransitionAt, CreatedAt: c.CreatedAt}
-		if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c sqlitegen.DynamicListLeasesForEnvironmentRow) (DynamicLease, error) {
+		return sqliteDynamicLease(sqlitegen.DynamicGetLeaseRow(c))
+	})
 }
 
 func (q pgDynamicStoreQueries) dynamicListLeasesForEnvironment(ctx context.Context, chain domain.Scope) ([]DynamicLease, error) {
@@ -212,15 +178,9 @@ func (q pgDynamicStoreQueries) dynamicListLeasesForEnvironment(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	var result []DynamicLease
-	for _, c := range rows {
-		out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: pgStoredStamp(c.IssuedAt), ExpiresAt: pgStoredStamp(c.ExpiresAt), MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: pgStoredStamp(c.LastTransitionAt), CreatedAt: pgStoredStamp(c.CreatedAt)}
-		if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c pggen.DynamicListLeasesForEnvironmentRow) (DynamicLease, error) {
+		return pgDynamicLease(pggen.DynamicGetLeaseRow(c))
+	})
 }
 
 func (q sqliteDynamicStoreQueries) dynamicActiveLeaseIDsForProvider(ctx context.Context, chain domain.Scope, providerID string) ([]DynamicLease, error) {
@@ -228,15 +188,9 @@ func (q sqliteDynamicStoreQueries) dynamicActiveLeaseIDsForProvider(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	var result []DynamicLease
-	for _, c := range rows {
-		out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: c.IssuedAt.String, ExpiresAt: c.ExpiresAt.String, MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: c.LastTransitionAt, CreatedAt: c.CreatedAt}
-		if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c sqlitegen.DynamicActiveLeaseIDsForProviderRow) (DynamicLease, error) {
+		return sqliteDynamicLease(sqlitegen.DynamicGetLeaseRow(c))
+	})
 }
 
 func (q pgDynamicStoreQueries) dynamicActiveLeaseIDsForProvider(ctx context.Context, chain domain.Scope, providerID string) ([]DynamicLease, error) {
@@ -244,15 +198,9 @@ func (q pgDynamicStoreQueries) dynamicActiveLeaseIDsForProvider(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	var result []DynamicLease
-	for _, c := range rows {
-		out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: pgStoredStamp(c.IssuedAt), ExpiresAt: pgStoredStamp(c.ExpiresAt), MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: pgStoredStamp(c.LastTransitionAt), CreatedAt: pgStoredStamp(c.CreatedAt)}
-		if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
-			return nil, err
-		}
-		result = append(result, out)
-	}
-	return result, nil
+	return mapRows(rows, func(c pggen.DynamicActiveLeaseIDsForProviderRow) (DynamicLease, error) {
+		return pgDynamicLease(pggen.DynamicGetLeaseRow(c))
+	})
 }
 
 func (q sqliteDynamicStoreQueries) dynamicFinishMint(ctx context.Context, chain domain.Scope, m DynamicLeaseFinishMint) (int64, error) {
@@ -280,12 +228,10 @@ func (q sqliteDynamicStoreQueries) dynamicListProvidersForReencrypt(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	var result []ReencryptFieldRow
-	for _, c := range rows {
+	return mapRows(rows, func(c sqlitegen.DynamicListProvidersForReencryptRow) (ReencryptFieldRow, error) {
 		out := ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.AdminCredentialCiphertext}
-		result = append(result, out)
-	}
-	return result, nil
+		return out, nil
+	})
 }
 
 func (q pgDynamicStoreQueries) dynamicListProvidersForReencrypt(ctx context.Context, chain domain.Scope, cursor string, limit int) ([]ReencryptFieldRow, error) {
@@ -293,12 +239,10 @@ func (q pgDynamicStoreQueries) dynamicListProvidersForReencrypt(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	var result []ReencryptFieldRow
-	for _, c := range rows {
+	return mapRows(rows, func(c pggen.DynamicListProvidersForReencryptRow) (ReencryptFieldRow, error) {
 		out := ReencryptFieldRow{ID: c.ID, Owner: c.ID, Ciphertext: c.AdminCredentialCiphertext}
-		result = append(result, out)
-	}
-	return result, nil
+		return out, nil
+	})
 }
 
 func (q sqliteDynamicStoreQueries) dynamicEnqueueTransition(ctx context.Context, chain domain.Scope, m DynamicLeaseTransition) (int64, error) {
@@ -355,4 +299,36 @@ func (q pgDynamicStoreQueries) dynamicEnqueueTransition(ctx context.Context, cha
 		return 0, errors.New("store: unknown lease transition target state")
 	}
 	return n, constraint(err)
+}
+
+func sqliteDynamicProvider(c sqlitegen.DynamicGetProviderRow) (DynamicProviderRecord, error) {
+	out := DynamicProviderRecord{ID: c.ID, Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialPresent: c.CredentialPresent == 1, CredentialSetAt: c.CredentialSetAt.String, AuthorityPrincipalID: c.AuthorityPrincipalID, State: c.State, CreatedAt: c.CreatedAt}
+	if err := normalizeStoredTimes(&out.CredentialSetAt, &out.CreatedAt); err != nil {
+		return DynamicProviderRecord{}, err
+	}
+	return out, nil
+}
+
+func pgDynamicProvider(c pggen.DynamicGetProviderRow) (DynamicProviderRecord, error) {
+	out := DynamicProviderRecord{ID: c.ID, Kind: c.Kind, Origin: c.Origin, TLSMode: c.TlsMode, GrantRole: c.GrantRole, CredentialPresent: c.CredentialPresent == 1, CredentialSetAt: pgStoredStamp(c.CredentialSetAt), AuthorityPrincipalID: c.AuthorityPrincipalID, State: c.State, CreatedAt: pgStoredStamp(c.CreatedAt)}
+	if err := normalizeStoredTimes(&out.CredentialSetAt, &out.CreatedAt); err != nil {
+		return DynamicProviderRecord{}, err
+	}
+	return out, nil
+}
+
+func sqliteDynamicLease(c sqlitegen.DynamicGetLeaseRow) (DynamicLease, error) {
+	out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: c.IssuedAt.String, ExpiresAt: c.ExpiresAt.String, MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: c.LastTransitionAt, CreatedAt: c.CreatedAt}
+	if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
+		return DynamicLease{}, err
+	}
+	return out, nil
+}
+
+func pgDynamicLease(c pggen.DynamicGetLeaseRow) (DynamicLease, error) {
+	out := DynamicLease{ID: c.ID, ProviderID: c.ProviderID, EnvironmentID: c.EnvironmentID, PrincipalID: c.PrincipalID, PrincipalClass: c.PrincipalClass, ProviderHandle: c.ProviderHandle, State: c.State, IssuedAt: pgStoredStamp(c.IssuedAt), ExpiresAt: pgStoredStamp(c.ExpiresAt), MaxTTLSeconds: c.MaxTtlSeconds, LastTransitionAt: pgStoredStamp(c.LastTransitionAt), CreatedAt: pgStoredStamp(c.CreatedAt)}
+	if err := normalizeStoredTimes(&out.IssuedAt, &out.ExpiresAt, &out.LastTransitionAt, &out.CreatedAt); err != nil {
+		return DynamicLease{}, err
+	}
+	return out, nil
 }

@@ -192,7 +192,7 @@ func rawSQLRestrictedReference(pkg *packages.Package, root string, node ast.Node
 	if err != nil {
 		return ""
 	}
-	owner := filepath.ToSlash(path) + ":" + function.Name()
+	owner := filepath.ToSlash(path) + ":" + rawSQLObjectName(function)
 	if protocols[owner].Callers != nil {
 		return owner
 	}
@@ -264,15 +264,8 @@ func rawSQLFunctionName(fn *ast.FuncDecl) string {
 }
 
 func rawSQLCall(info *types.Info, call *ast.CallExpr) bool {
-	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
-		if method, ok := info.Uses[selector.Sel].(*types.Func); ok {
-			if declared, ok := method.Type().(*types.Signature); ok && declared.Recv() != nil {
-				key := rawSQLNamedType(declared.Recv().Type())
-				if key == "github.com/jackc/pgx/v5/pgconn.Batch" || key == "github.com/jackc/pgx/v5/pgproto3.Frontend" {
-					return true
-				}
-			}
-		}
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && rawSQLNode(info, selector) {
+		return true
 	}
 	if selector, ok := call.Fun.(*ast.SelectorExpr); ok && (selector.Sel.Name == "SQL" || selector.Sel.Name == "SQLPerEngine") {
 		if method, ok := info.Uses[selector.Sel].(*types.Func); ok && method.Pkg() != nil && method.Pkg().Path() == Module+"/internal/store" {

@@ -900,6 +900,32 @@ func (q *Queries) AdapterWorkerCloseIndeterminateEffectsUpdate(ctx context.Conte
 	return result.RowsAffected(), nil
 }
 
+const adapterWorkerCompleteJob = `-- name: AdapterWorkerCompleteJob :execrows
+UPDATE adapter_outbox SET state=$1,finished_at=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$3 AND lease_owner=$4
+`
+
+type AdapterWorkerCompleteJobParams struct {
+	State      string
+	At         pgtype.Timestamptz
+	JobID      string
+	LeaseOwner pgtype.Text
+}
+
+// hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit.
+// hikyo:instance-scoped
+func (q *Queries) AdapterWorkerCompleteJob(ctx context.Context, arg AdapterWorkerCompleteJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerCompleteJob,
+		arg.State,
+		arg.At,
+		arg.JobID,
+		arg.LeaseOwner,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adapterWorkerFinishDeadCredentialScrubErase = `-- name: AdapterWorkerFinishDeadCredentialScrubErase :execrows
 UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL WHERE adapters.id=$1 AND adapters.org_id=$2 AND adapters.project_id=$3 AND adapters.state='tombstoned' AND NOT EXISTS (SELECT 1 FROM adapter_targets retained WHERE retained.adapter_id=$1 AND retained.state<>'tombstoned') AND NOT EXISTS (SELECT 1 FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE t.adapter_id=$1 AND j.kind='scrub' AND j.state IN ('queued','running'))
 `
@@ -1112,80 +1138,6 @@ type AdapterWorkerFinishJobQueryParams struct {
 // hikyo:instance-scoped
 func (q *Queries) AdapterWorkerFinishJobQuery(ctx context.Context, arg AdapterWorkerFinishJobQueryParams) (int64, error) {
 	result, err := q.db.Exec(ctx, adapterWorkerFinishJobQuery, arg.Due, arg.JobID, arg.LeaseOwner)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const adapterWorkerFinishJobQuery2 = `-- name: AdapterWorkerFinishJobQuery2 :execrows
-UPDATE adapter_outbox SET state=$1,finished_at=$2,lease_owner=NULL,lease_expires_at=NULL WHERE id=$3 AND lease_owner=$4
-`
-
-type AdapterWorkerFinishJobQuery2Params struct {
-	State      string
-	At         pgtype.Timestamptz
-	JobID      string
-	LeaseOwner pgtype.Text
-}
-
-// hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit.
-// hikyo:instance-scoped
-func (q *Queries) AdapterWorkerFinishJobQuery2(ctx context.Context, arg AdapterWorkerFinishJobQuery2Params) (int64, error) {
-	result, err := q.db.Exec(ctx, adapterWorkerFinishJobQuery2,
-		arg.State,
-		arg.At,
-		arg.JobID,
-		arg.LeaseOwner,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const adapterWorkerFinishJobQuery3 = `-- name: AdapterWorkerFinishJobQuery3 :execrows
-UPDATE adapter_targets SET sync_status=$1,converged_revision=CASE WHEN CAST($2 AS BIGINT)>0 THEN $3 ELSE converged_revision END,failure_names=$4,warnings=$5,last_attempted_revision=CASE WHEN CAST($6 AS BIGINT)>0 THEN $7 ELSE last_attempted_revision END,last_attempted_at=$8,last_error_class=$9,drift_attention=CASE WHEN CAST($10 AS INTEGER)=0 THEN FALSE WHEN CAST($10 AS INTEGER)=1 THEN TRUE ELSE drift_attention END,active_job_id=CASE WHEN CAST($11 AS INTEGER)=1 THEN active_job_id ELSE NULL END WHERE id=$12 AND org_id=$13 AND project_id=$14 AND environment_id=$15 AND generation=$16 AND provider_lease_job_id IS NULL
-`
-
-type AdapterWorkerFinishJobQuery3Params struct {
-	TargetStatus      string
-	ConvergedRevision int64
-	ConvergedRev      pgtype.Int8
-	FailureJSON       []byte
-	WarningJSON       []byte
-	Revision          int64
-	Rev               pgtype.Int8
-	AttemptedAt       pgtype.Timestamptz
-	ErrorClass        pgtype.Text
-	AttentionMode     int32
-	RetainActiveJob   int32
-	TargetID          string
-	ChainOrg          string
-	ChainProject      string
-	ChainEnv          string
-	Generation        int64
-}
-
-func (q *Queries) AdapterWorkerFinishJobQuery3(ctx context.Context, arg AdapterWorkerFinishJobQuery3Params) (int64, error) {
-	result, err := q.db.Exec(ctx, adapterWorkerFinishJobQuery3,
-		arg.TargetStatus,
-		arg.ConvergedRevision,
-		arg.ConvergedRev,
-		arg.FailureJSON,
-		arg.WarningJSON,
-		arg.Revision,
-		arg.Rev,
-		arg.AttemptedAt,
-		arg.ErrorClass,
-		arg.AttentionMode,
-		arg.RetainActiveJob,
-		arg.TargetID,
-		arg.ChainOrg,
-		arg.ChainProject,
-		arg.ChainEnv,
-		arg.Generation,
-	)
 	if err != nil {
 		return 0, err
 	}
@@ -2223,6 +2175,54 @@ func (q *Queries) AdapterWorkerRaiseDriftAttentionQuery(ctx context.Context, arg
 		arg.Org,
 		arg.Project,
 		arg.EnvironmentID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const adapterWorkerRecordJobOutcome = `-- name: AdapterWorkerRecordJobOutcome :execrows
+UPDATE adapter_targets SET sync_status=$1,converged_revision=CASE WHEN CAST($2 AS BIGINT)>0 THEN $3 ELSE converged_revision END,failure_names=$4,warnings=$5,last_attempted_revision=CASE WHEN CAST($6 AS BIGINT)>0 THEN $7 ELSE last_attempted_revision END,last_attempted_at=$8,last_error_class=$9,drift_attention=CASE WHEN CAST($10 AS INTEGER)=0 THEN FALSE WHEN CAST($10 AS INTEGER)=1 THEN TRUE ELSE drift_attention END,active_job_id=CASE WHEN CAST($11 AS INTEGER)=1 THEN active_job_id ELSE NULL END WHERE id=$12 AND org_id=$13 AND project_id=$14 AND environment_id=$15 AND generation=$16 AND provider_lease_job_id IS NULL
+`
+
+type AdapterWorkerRecordJobOutcomeParams struct {
+	TargetStatus      string
+	ConvergedRevision int64
+	ConvergedRev      pgtype.Int8
+	FailureJSON       []byte
+	WarningJSON       []byte
+	Revision          int64
+	Rev               pgtype.Int8
+	AttemptedAt       pgtype.Timestamptz
+	ErrorClass        pgtype.Text
+	AttentionMode     int32
+	RetainActiveJob   int32
+	TargetID          string
+	ChainOrg          string
+	ChainProject      string
+	ChainEnv          string
+	Generation        int64
+}
+
+func (q *Queries) AdapterWorkerRecordJobOutcome(ctx context.Context, arg AdapterWorkerRecordJobOutcomeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerRecordJobOutcome,
+		arg.TargetStatus,
+		arg.ConvergedRevision,
+		arg.ConvergedRev,
+		arg.FailureJSON,
+		arg.WarningJSON,
+		arg.Revision,
+		arg.Rev,
+		arg.AttemptedAt,
+		arg.ErrorClass,
+		arg.AttentionMode,
+		arg.RetainActiveJob,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
 	)
 	if err != nil {
 		return 0, err

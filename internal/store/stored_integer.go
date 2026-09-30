@@ -19,8 +19,12 @@ func checkedStoredDEKVersion(value int64) (uint32, error) {
 	return checkedStoredUint32("dek_version", value)
 }
 
+// storedUint32Fits is the common storage bound for key and row versions.
+func storedUint32Fits(value int64) bool { return value >= 0 && value <= math.MaxUint32 }
+
+// checkedStoredUint32 preserves the existing field-first corruption diagnostic.
 func checkedStoredUint32(field string, value int64) (uint32, error) {
-	if value < 0 || value > math.MaxUint32 {
+	if !storedUint32Fits(value) {
 		return 0, fmt.Errorf("store: %s out of range: %d", field, value)
 	}
 	return uint32(value), nil

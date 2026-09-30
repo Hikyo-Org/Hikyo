@@ -38,26 +38,6 @@ type approvedContractDifference struct {
 	Reason          string
 }
 
-// approvedContractDifferences is deliberately exact. An exception is accepted
-// only while both normalized SQL statements and both generated Go APIs retain
-// their reviewed hashes. A query or schema change therefore invalidates its pin.
-var approvedContractDifferences = map[string]approvedContractDifference{
-	"GuardSingletonLease":              pin("f7765bb47baec68d6275f3c86dc0f744a6f8cd111cdfd8dd57d04894ffafbd06", "3b8f2911cea002e0f3884cf19b0c99cba9654f5351394af0adc0598b0b6647ca", "aeb232daec28e46fe0d71f7a90eb7c9faa39dd547f87577b04f4e047fe73bb3c", "684eafec4d2afebab3dea60bd6f3dd6067745c252f3cc961ed40c800901b83fe", "SQLite binds its admitted transaction process clock; PostgreSQL uses clock_timestamp after waits to preserve lease expiry fencing."),
-	"CoordinationClaimLease":           pin("f9a31822c1ce7d52520b031a5cbf80d21573ac7120a771a75bd99146002e2af4", "a50e7270b83216c05e439f9d779e0b976cf4cd5a78dbcb51dfeebef60f725455", "dc3646309181156cbe98662ceb39a40703c320370b01df97d6bee7591bd37490", "02e47ff173b6da01f7c223bbd6b4b0e087048af5c10348633c8f2b500277ba10", "SQLite excluded.acquired_at is the identical inserted now parameter, because sqlc cannot bind the update arm separately; PostgreSQL reuses that same now parameter in the predicate."),
-	"CoordinationRecordAccountFailure": pin("e971614140141685f15552578052893c2ac4a4a61ddc57860aa932266b9a123c", "3e5c05be273163c49d89511c1fcc8888ad04775269a120da32a28b70c84e4664", "9b9fbb5e4d10b73bd35c97f79a60c15dda2d836cf4287e4a2d8cb68c86ae828d", "0080b6f0faf9acc3a4370ba0e45524863657827bdad2337c5b748e51d0db8d2a", "PostgreSQL uses transaction now and GREATEST; SQLite uses the supplied process timestamp and identical inserted excluded.until_at with max, preserving monotonic last-failure stamps."),
-	"CoordinationAccountFailureState":  pin("6efd19559e08b879d2f565da24e1d71084087a713b3726e1c8d16160b4084dc6", "d6cbf3e3d9d9f155f9be8087d5f977e651f9549369622b7455240a7d91ad3a16", "d7161a72166b66f61dfbaa022a4ecdd361d2f372b4b8173c162135f984e529dc", "c976ace53caca506383833766f96216f9a8c3f1442d14ba323019eb8960495af", "PostgreSQL returns the transaction database clock with the backoff stamp; SQLite compares its process clock under the admitted single-writer path."),
-	"InsertInstanceAuditEvent":         pin("b9bd450a26225955cf2d260d48f252e6c0a73caff301e24a3b08ff0bc1f338e7", "8119dce5ff473013f5ad809d47f786a6f06b91543fb0e75e78599a789c9d9792", "a506185e78e1db6eed9af13b67f5443b83243b5aacb29613cbc5bf49d4017488", "439f4681a6b157d7d47d4f87d4815c742d0b12b02e5276961189c0642d3478b7", "SQLite binds recorded_at; PostgreSQL's deferred appender assigns it"),
-	"InsertTenantAuditEvent":           pin("ed8f8618d0f4289d6735a2ba7ab5d1135a8a29f4a570bcd5368c38baf4d4e3e1", "7ab43dd3f56957d51768bcfb03c1622612fdda971718c143abd3d1877094d625", "a9f31dfe7af196bd0c6e44ba946ae0aec2f1c505e5ed8d34f236cd07b6c7495b", "0d53582db06d063c08cd66639c9ca15feb16bbc2c4deea54ba0d0eb44fc84f36", "SQLite binds recorded_at; PostgreSQL's deferred appender assigns it"),
-	"PageInstanceAudit":                pin("3c5b8ca14a82fa1ee3fd7c466769092b28f72e29c372f2639c3a6283bd1b5489", "0c2dcb6144d1bf394607a3027abd9e94ea1d64954049735e319e8a56af31ae22", "3ade01183bb0bb0ac66aff4d57abc6838620d0bc38644f6245e9c87fe1b04abb", "b67d8e4894d2c36ac255a9939392d9e0c1095a246d4f938e4969ca91b36a5114", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageInstanceAuditExport":          pin("8ba95a02b908bd8c05ee7a7baa4629c6fb6d553202543bbbabb364e460480a66", "d447876aa505a7a589bf1b1400ab9c57381932f414e0e207c3dc5ee794427f98", "bc3685ff499a432ee936a43a73683a7bd81682aa2777ffd9c06cb4e4ceace2c2", "c7d2d00577f69e149058f4667825081d17d5dd0b8862db17db0ad1d8e7881cad", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageTenantAuditEnv":               pin("7934810705135463755ae4f3760d64df00f69047d57e069036be723a5a44c0a3", "310ba728f5f11dfac0742102f38dcf786daeb95eec9c2914eb66f00ea470dc18", "46cb9f667e8cd31a9530079c41c2e02fa56c8e7f2ef480ff6a89d9c4f616956f", "ee121e269adae270f6e83582437f884d7e4c708d73cdb31134b89e8366aed50d", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageTenantAuditExportEnv":         pin("03bc0d2e5620a8c7117874f6a61dd5f236b28ec4ccc69cdc6a313d5aaa6a186b", "2ec85cdaedf0bd13bb80f0258eae29a30487c4c3c9e4e5266da7a4b37c7ebb59", "727cd90a0ca610c276efcb4421d87a2434c2e5b6d1d19dbaed2dba55d90bb708", "da054fb2e568803a53d6cbda842c97dcf9d4ea09deb1c664165e25d9bf694a0b", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageTenantAuditExportOrg":         pin("16c023aa0137312a27b95e513a19501cc7bc7f9096a856ddf61d97db9ac4e746", "9ea07a23563f661942839dfd4feae44f6bc28e61fd2f4e5944a61efdd2c8522c", "66033c1e9f86b179b057e7854784e5fbe0c1b5e1aadad9d310e2f24bf66d45e9", "4790c1ee97917dfb8c145e6ee1329dd4305055a1f6b951526de962cdc2797d6d", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageTenantAuditExportProject":     pin("beba5db5086d77b54bef39c1a2de629db08b23da28b751bedd2388eb2618abcd", "07c09aa90fd3517f5d403fbbff54722510c27e08b3177d70378bd71133011caf", "2b4f62deaa146894d80372f7778f88e787a7dcfc23cdba9b9e8bc01a2f000e99", "704e0855171fea40d7c8a414a129287c55579773c6a2967cc7387b720fa1f485", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageTenantAuditOrg":               pin("12abef7deec7e5000db1cebe96c994264f98a7015fa289b74b82b04a13952628", "51ed60d74792458ee97a7fd19f28b9c358c8e61ea6bcc384063b075fbb0d5dc7", "2f9fae1eb821bc2f0abea61210d1b3827d5548f95b764a51d4ac82a0d2a65194", "d46205810c04e00743482483d7daeb81b869f70e132e6c6c7694bbed93551d57", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-	"PageTenantAuditProject":           pin("3916c1b1edd4669b15dee7678de74758d96a2f7a1ecf00d652e86d17388b94df", "8cebdbd9008a96589eaa0a045f33a7f6c0cbf539cb59fb1540ea779a6d908697", "669f2af73a4b3fa16d24ee59a93717c70e9a6a6ab09c615571428fb29e75f2fd", "e377b4d0a316aad0fea10e87b9846ad13293b02c6cecf695249823e50b88b877", "PostgreSQL returns commit_seq; SQLite uses seq as its commit cursor"),
-}
-
 // approvedParameterNames bridges only sqlc names that are known to describe
 // the same caller-facing value for one query. Keep these query-specific so a
 // cursor can never silently become an account, snapshot, or other id.
@@ -113,10 +93,6 @@ func aliases(pairs ...string) map[string]string {
 		out[pairs[i]] = pairs[i+1]
 	}
 	return out
-}
-
-func pin(sqliteSQL, postgresSQL, sqliteAPI, postgresAPI, reason string) approvedContractDifference {
-	return approvedContractDifference{SQLiteSQLHash: sqliteSQL, PostgresSQLHash: postgresSQL, SQLiteAPIHash: sqliteAPI, PostgresAPIHash: postgresAPI, Reason: reason}
 }
 
 func compareQueryContracts(name string, sqlite, postgres Query, sqliteAPI, postgresAPI generatedContract) []string {
@@ -278,10 +254,33 @@ func expandResult(expr ast.Expr, structs map[string][]apiField) ([]apiField, boo
 	}
 	if ident, ok := expr.(*ast.Ident); ok {
 		if fields, found := structs[ident.Name]; found {
-			return slices.Clone(fields), strings.HasSuffix(ident.Name, "Row")
+			return expandModelFields(fields, structs, nil), strings.HasSuffix(ident.Name, "Row")
 		}
 	}
 	return []apiField{{Name: "$value", Type: expressionString(expr)}}, true
+}
+
+// sqlc.embed carries a named model inside a query row. Include its fields in
+// the API pin so schema changes cannot hide behind an unchanged type name.
+func expandModelFields(fields []apiField, structs map[string][]apiField, parents map[string]bool) []apiField {
+	var out []apiField
+	for _, field := range fields {
+		nested, model := structs[field.Type]
+		if !model || parents[field.Type] {
+			out = append(out, field)
+			continue
+		}
+		path := make(map[string]bool, len(parents)+1)
+		for name := range parents {
+			path[name] = true
+		}
+		path[field.Type] = true
+		for _, child := range expandModelFields(nested, structs, path) {
+			child.Name = field.Name + "." + child.Name
+			out = append(out, child)
+		}
+	}
+	return out
 }
 
 func generatedBindSites(body *ast.BlockStmt, querySQL map[string]string, engine string) ([]string, bool) {
@@ -383,86 +382,25 @@ func bindOrdinals(sql, engine string) []int {
 
 func maskSQLContractLiteralsAndComments(sql string) string {
 	b := []byte(sql)
-	for i := 0; i < len(b); {
-		switch {
-		case b[i] == '\'' || b[i] == '"':
-			quote := b[i]
-			backslashEscapes := quote == '\'' && i > 0 && (b[i-1] == 'E' || b[i-1] == 'e') && (i == 1 || !isSQLIdentifierByte(b[i-2]))
+	for i := 0; i < len(sql); {
+		end, kind, closed := sqlLexeme(sql, i, true)
+		if kind == 0 {
 			i++
-			for i < len(b) {
-				if backslashEscapes && b[i] == '\\' && i+1 < len(b) {
-					b[i], b[i+1] = ' ', ' '
-					i += 2
-					continue
-				}
-				if b[i] == quote {
-					if i+1 < len(b) && b[i+1] == quote {
-						b[i], b[i+1] = ' ', ' '
-						i += 2
-						continue
-					}
-					i++
-					break
-				}
-				b[i] = ' '
-				i++
-			}
-		case i+1 < len(b) && b[i] == '-' && b[i+1] == '-':
-			for i < len(b) && b[i] != '\n' {
-				b[i] = ' '
-				i++
-			}
-		case i+1 < len(b) && b[i] == '/' && b[i+1] == '*':
-			b[i], b[i+1] = ' ', ' '
-			i += 2
-			depth := 1
-			for i < len(b) && depth > 0 {
-				switch {
-				case i+1 < len(b) && b[i] == '/' && b[i+1] == '*':
-					b[i], b[i+1] = ' ', ' '
-					i += 2
-					depth++
-				case i+1 < len(b) && b[i] == '*' && b[i+1] == '/':
-					b[i], b[i+1] = ' ', ' '
-					i += 2
-					depth--
-				default:
-					b[i] = ' '
-					i++
-				}
-			}
-		case b[i] == '$':
-			end := i + 1
-			for end < len(b) && isDollarTagByte(b[end], end == i+1) {
-				end++
-			}
-			if end >= len(b) || b[end] != '$' {
-				i++
-				continue
-			}
-			tag := string(b[i : end+1])
-			closeAt := strings.Index(string(b[end+1:]), tag)
-			if closeAt < 0 {
-				i++
-				continue
-			}
-			stop := end + 1 + closeAt + len(tag)
-			for ; i < stop; i++ {
-				b[i] = ' '
-			}
-		default:
-			i++
+			continue
 		}
+		from, to := i, end
+		if kind == '\'' || kind == '"' {
+			from++
+			if closed {
+				to--
+			}
+		}
+		for j := from; j < to; j++ {
+			b[j] = ' '
+		}
+		i = end
 	}
 	return string(b)
-}
-
-func isDollarTagByte(c byte, first bool) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || !first && c >= '0' && c <= '9'
-}
-
-func isSQLIdentifierByte(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 func queriesReceiver(fields *ast.FieldList) bool {
@@ -656,6 +594,9 @@ func compatibleResultTypes(queryName string, sqlite, postgres generatedContract)
 }
 
 func compatibleType(queryName, name, sqlite, postgres string) bool {
+	if at := strings.LastIndexByte(name, '.'); at >= 0 {
+		name = name[at+1:]
+	}
 	if sqlite == postgres {
 		return true
 	}

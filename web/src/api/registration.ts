@@ -1,3 +1,4 @@
+import { statusText } from './statusText.ts';
 import {
   deleteInstanceRegistrationPolicyOp,
   deleteOrgRegistrationPolicyOp,
@@ -241,25 +242,20 @@ export function inactiveText(state: Extract<PolicyView['state'], { state: 'inact
  * same way, since the next step, entering proof again, is the same).
  */
 export function registrationFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail === undefined
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail === undefined
           ? 'The policy was refused. Check each entry and try again.'
-          : preconditionText(error.detail);
-      case 401:
-        return 'That proof was not accepted. Enter a fresh authenticator code, or your password if you have no authenticator.';
-      case 403:
-        return 'This needs a second factor, or a grant you do not hold (a new organisation per sign-up needs org.create).';
-      case 404:
-        return 'There is no registration policy here any more. Reload.';
-      case 409:
-        return 'The policy changed underneath you. Reload before saving again.';
-      case 429:
-        return 'Too many attempts. Wait a moment, then try again.';
-      default:
-        return 'The server could not save the policy. Try again.';
-    }
-  }
-  return transportRefusalText(error) ?? 'The server could not be reached. Try again.';
+          : preconditionText(error.detail),
+      401: 'That proof was not accepted. Enter a fresh authenticator code, or your password if you have no authenticator.',
+      403: 'This needs a second factor, or a grant you do not hold (a new organisation per sign-up needs org.create).',
+      404: 'There is no registration policy here any more. Reload.',
+      409: 'The policy changed underneath you. Reload before saving again.',
+      429: 'Too many attempts. Wait a moment, then try again.',
+    },
+    transportRefusalText(error) ?? 'The server could not be reached. Try again.',
+    'The server could not save the policy. Try again.',
+  );
 }

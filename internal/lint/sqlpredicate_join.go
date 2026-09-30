@@ -74,7 +74,7 @@ func checkJoinedSelectWithBindings(label, sql string, rules map[string]TableRule
 		}
 	}
 	predicates := sql[where+7:]
-	for _, tail := range []string{" ORDER BY ", " FOR UPDATE", " FOR SHARE", " FOR NO KEY UPDATE", " FOR KEY SHARE", " GROUP BY ", " LIMIT "} {
+	for _, tail := range predicateTails {
 		if end := strings.Index(strings.ToUpper(maskSQLContractLiteralsAndComments(predicates)), tail); end >= 0 {
 			predicates = predicates[:end]
 		}
@@ -147,5 +147,5 @@ var (
 	innerJoinSplitRe  = regexp.MustCompile(`(?i)\s+(?:INNER\s+)?JOIN\s+`)
 	joinedTableRe     = regexp.MustCompile(`(?i)^(\w+)\s+(?:AS\s+)?(\w+)$`)
 	joinedEqualityRe  = regexp.MustCompile(`(?i)^(\w+\.\w+)\s*=\s*(\w+\.\w+)$`)
-	joinedConjunctRe  = regexp.MustCompile(`(?i)^(\w+\.\w+)\s*(=|<>|!=|<=|>=|<|>)\s*(` + paramRe + `|'(?:[^']|'')*'|-?\d+(?:\.\d+)?|TRUE|FALSE|NULL)$`)
+	joinedConjunctRe  = regexp.MustCompile(`(?i)^(\w+\.\w+)\s*(=|<>|!=|<=|>=|<|>)\s*(` + predicateValue + `)$`)
 )

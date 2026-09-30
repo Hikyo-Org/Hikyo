@@ -17,7 +17,7 @@ func checkScopedMembership(engine string, q Query, sql string, rules map[string]
 	}
 	label := fmt.Sprintf("sqlpredicate(%s): %s", engine, q.Name)
 	rootMask := strings.ToUpper(maskSQLContractLiteralsAndComments(m[1]))
-	if len(selectTokenRe.FindAllStringIndex(rootMask, -1)) != 1 || len(regexp.MustCompile(`\bFROM\b`).FindAllStringIndex(rootMask, -1)) != 1 || strings.Contains(rootMask, " JOIN ") {
+	if len(selectTokenRe.FindAllStringIndex(rootMask, -1)) != 1 || len(fromTokenRe.FindAllStringIndex(rootMask, -1)) != 1 || strings.Contains(rootMask, " JOIN ") {
 		return []string{label + ": membership root must be a single-table read"}, true
 	}
 	root, kind, ok := statementTarget(strings.ToUpper(m[1] + "id = SQLCARG_membership" + m[3]))
@@ -59,6 +59,7 @@ func checkScopedMembership(engine string, q Query, sql string, rules map[string]
 }
 
 var (
+	fromTokenRe             = regexp.MustCompile(`\bFROM\b`)
 	membershipRe            = regexp.MustCompile(`(?i)^(SELECT [^()]+ FROM \w+ WHERE (?:\w+\s*=\s*(?:\?|\$\d+|SQLCARG_\w+) AND )?)id IN \((SELECT \w+ FROM \w+ WHERE .+)\)( ORDER BY \w+)?$`)
 	nullableApplicabilityRe = regexp.MustCompile(`(?i)\((\w+) IS NULL OR (\w+)\s*=\s*(\?|\$\d+|SQLCARG_\w+)\)`)
 )

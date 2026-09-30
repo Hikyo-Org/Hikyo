@@ -16,11 +16,9 @@ func (q sqliteAdapterStoreQueries) publishedTargets(ctx context.Context, chain d
 	if err != nil {
 		return nil, err
 	}
-	var out []publishedAdapterTarget
-	for _, c := range rows {
-		out = append(out, publishedAdapterTarget{id: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterPublishedTargetsRow) (publishedAdapterTarget, error) {
+		return publishedAdapterTarget{id: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID}, nil
+	})
 }
 func (q sqliteAdapterStoreQueries) manualTarget(ctx context.Context, chain domain.Scope, targetID string, at time.Time) (publishedAdapterTarget, int64, int64, error) {
 	c, err := q.queries.AdapterManualTarget(ctx, sqlitegen.AdapterManualTargetParams{TargetID: targetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), At: runtimeSQLiteStamp(at)})
@@ -43,11 +41,9 @@ func (q sqliteAdapterStoreQueries) teardownTargets(ctx context.Context, chain do
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterTeardownTarget
-	for _, c := range rows {
-		out = append(out, adapterTeardownTarget{adapterID: c.AdapterID, targetID: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID, providerBusy: int(c.ProviderBusy)})
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterTeardownTargetsRow) (adapterTeardownTarget, error) {
+		return adapterTeardownTarget{adapterID: c.AdapterID, targetID: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID, providerBusy: int(c.ProviderBusy)}, nil
+	})
 }
 func (q sqliteAdapterStoreQueries) teardownAuthority(ctx context.Context, chain domain.Scope, adapterID string) (string, error) {
 	return q.queries.AdapterTeardownAuthority(ctx, sqlitegen.AdapterTeardownAuthorityParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
@@ -69,11 +65,9 @@ func (q pgAdapterStoreQueries) publishedTargets(ctx context.Context, chain domai
 	if err != nil {
 		return nil, err
 	}
-	var out []publishedAdapterTarget
-	for _, c := range rows {
-		out = append(out, publishedAdapterTarget{id: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterPublishedTargetsRow) (publishedAdapterTarget, error) {
+		return publishedAdapterTarget{id: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID}, nil
+	})
 }
 func (q pgAdapterStoreQueries) manualTarget(ctx context.Context, chain domain.Scope, targetID string, at time.Time) (publishedAdapterTarget, int64, int64, error) {
 	c, err := q.queries.AdapterManualTarget(ctx, pggen.AdapterManualTargetParams{TargetID: targetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), At: pgRequiredTime(at)})
@@ -96,11 +90,9 @@ func (q pgAdapterStoreQueries) teardownTargets(ctx context.Context, chain domain
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterTeardownTarget
-	for _, c := range rows {
-		out = append(out, adapterTeardownTarget{adapterID: c.AdapterID, targetID: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID, providerBusy: int(c.ProviderBusy)})
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterTeardownTargetsRow) (adapterTeardownTarget, error) {
+		return adapterTeardownTarget{adapterID: c.AdapterID, targetID: c.ID, environmentID: c.EnvironmentID, authority: c.AuthorityPrincipalID, generation: c.Generation, activeJob: c.ActiveJobID, providerBusy: int(c.ProviderBusy)}, nil
+	})
 }
 func (q pgAdapterStoreQueries) teardownAuthority(ctx context.Context, chain domain.Scope, adapterID string) (string, error) {
 	return q.queries.AdapterTeardownAuthority(ctx, pggen.AdapterTeardownAuthorityParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})

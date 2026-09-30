@@ -17,7 +17,7 @@ func TestScopedQueryReviewInventoryRejectsAmbiguousJSON(t *testing.T) {
 		"trailing input":   `{"Query":` + valid + `} {}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parseScopedQueryReviews([]byte(source)); err == nil {
+			if _, err := parseReviewedPins([]byte(`{"scoped_queries":` + source + `}`)); err == nil {
 				t.Fatal("ambiguous inventory accepted")
 			}
 		})
@@ -26,7 +26,7 @@ func TestScopedQueryReviewInventoryRejectsAmbiguousJSON(t *testing.T) {
 
 func TestScopedQueryReviewInventoryRequiresBothEngineContracts(t *testing.T) {
 	var definitions map[string]map[string]json.RawMessage
-	if err := json.Unmarshal(scopedQueryReviewsJSON, &definitions); err != nil {
+	if err := json.Unmarshal(scopedReviewJSON(t), &definitions); err != nil {
 		t.Fatal(err)
 	}
 	const name = "AdapterMapping"
@@ -52,7 +52,7 @@ func TestScopedQueryReviewInventoryRequiresBothEngineContracts(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := parseScopedQueryReviews(source); err == nil {
+				if _, err := parseReviewedPins(append(append([]byte(`{"scoped_queries":`), source...), '}')); err == nil {
 					t.Fatal("incomplete or unknown engine contract accepted")
 				}
 			})
@@ -119,4 +119,13 @@ func TestReviewedScopedQueryRequiresExactSQLAPIAndEvidence(t *testing.T) {
 	if got := checkScopedQueryReview("sqlite", q, api, true, review, root); len(got) == 0 {
 		t.Fatal("tenant query relabeled instance-scoped")
 	}
+}
+
+func scopedReviewJSON(t *testing.T) []byte {
+	t.Helper()
+	source, err := json.Marshal(reviewedPins.ScopedQueries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return source
 }

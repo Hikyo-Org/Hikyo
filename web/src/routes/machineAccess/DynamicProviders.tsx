@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
 import { useState } from 'react';
 import { useSensitiveState } from '../../api/sensitiveMutation.ts';
 import { type ProjectRef } from '../../api/identities.ts';
@@ -329,16 +330,11 @@ export function RevokeCredentialDialog({
         </>
       }
     >
-      <p className="ceremony__cap" role="status">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          This clears the stored credential. Existing leases stay minted at the provider, but Hikyo
-          can no longer renew, revoke or expire them, a revocation that needs the credential will
-          strand, until you set a replacement. New mints are refused while there is no credential.
-        </span>
-      </p>
+      <CeremonyNotice>
+        This clears the stored credential. Existing leases stay minted at the provider, but Hikyo
+        can no longer renew, revoke or expire them, a revocation that needs the credential will
+        strand, until you set a replacement. New mints are refused while there is no credential.
+      </CeremonyNotice>
 
       {failure !== null ? (
         <Alert>{failure}</Alert>
@@ -424,18 +420,13 @@ export function DeleteProviderDialog({
         </Button>
       }
     >
-      <p className="ceremony__cap" role="status">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          {leasesKnown
-            ? liveLeaseCount === 0
-              ? 'This provider has no live leases. Deleting it removes its configuration and its stored credential. This cannot be undone.'
-              : `This provider has ${String(liveLeaseCount)} live lease${liveLeaseCount === 1 ? '' : 's'}. Deleting it queues ${liveLeaseCount === 1 ? 'that lease' : 'each of them'} for revocation, then removes the provider. This cannot be undone.`
-            : 'The lease listing could not be read, so the number of live leases is unknown. If any exist, confirm the cascade below or the delete will be refused.'}
-        </span>
-      </p>
+      <CeremonyNotice>
+        {leasesKnown
+          ? liveLeaseCount === 0
+            ? 'This provider has no live leases. Deleting it removes its configuration and its stored credential. This cannot be undone.'
+            : `This provider has ${String(liveLeaseCount)} live lease${liveLeaseCount === 1 ? '' : 's'}. Deleting it queues ${liveLeaseCount === 1 ? 'that lease' : 'each of them'} for revocation, then removes the provider. This cannot be undone.`
+          : 'The lease listing could not be read, so the number of live leases is unknown. If any exist, confirm the cascade below or the delete will be refused.'}
+      </CeremonyNotice>
 
       {showCascade ? (
         <Checkbox

@@ -29,17 +29,17 @@
   },
   {
     "engine": "postgres",
+    "name": "AdapterWorkerCompleteJob",
+    "annotation": "instance-scoped",
+    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
+    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
+  },
+  {
+    "engine": "postgres",
     "name": "AdapterWorkerFinishJobQuery",
     "annotation": "instance-scoped",
     "hash": "8b9e47bde6b1d9d0d4590628d4d9e80ff3c7477d610370a4dd3185be864937f6",
     "reason": "Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement."
-  },
-  {
-    "engine": "postgres",
-    "name": "AdapterWorkerFinishJobQuery2",
-    "annotation": "instance-scoped",
-    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
-    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
   },
   {
     "engine": "postgres",
@@ -2847,14 +2847,14 @@
     "engine": "postgres",
     "name": "TransitSelectDeletionDue",
     "annotation": "instance-scoped",
-    "hash": "93f6d4b7f682ce9bbd1ffb4439a6c9005a26411e7f392e026ace5b3af13afab8",
+    "hash": "32a4447837440dc3c699c82a74117f3baf4220f94bbb1f6c3cd1b1b6624854a6",
     "reason": "StoreTransitSelectDeletionDue verifies the existing closed system scheduler authority; globally lists due pending-deletion keys so each subsequent purge resolves its own tenant chain in a transaction."
   },
   {
     "engine": "postgres",
     "name": "TransitSelectRotationDue",
     "annotation": "instance-scoped",
-    "hash": "4f74fedc46b7ec9217199f6d54ec4338c603b0d542b94e11c2a79d918070981f",
+    "hash": "ce1526bd89163d6ab7e738567101eb1fe2ee3ea606801378a19442f7e0252e80",
     "reason": "StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization."
   },
   {
@@ -2965,17 +2965,17 @@
   },
   {
     "engine": "sqlite",
+    "name": "AdapterWorkerCompleteJob",
+    "annotation": "instance-scoped",
+    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
+    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
+  },
+  {
+    "engine": "sqlite",
     "name": "AdapterWorkerFinishJobQuery",
     "annotation": "instance-scoped",
     "hash": "8b9e47bde6b1d9d0d4590628d4d9e80ff3c7477d610370a4dd3185be864937f6",
     "reason": "Closed adapter worker retry settles only its globally unique claimed job id and lease owner; the enclosing transaction preserves scoped generation/provider fences and refuses superseded settlement."
-  },
-  {
-    "engine": "sqlite",
-    "name": "AdapterWorkerFinishJobQuery2",
-    "annotation": "instance-scoped",
-    "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
-    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
   },
   {
     "engine": "sqlite",
@@ -5720,14 +5720,14 @@
     "engine": "sqlite",
     "name": "TransitSelectDeletionDue",
     "annotation": "instance-scoped",
-    "hash": "65a4ea91ec1463c822d315ee5fa87daa96d589a1be686c2ea12c222d94cb09c8",
+    "hash": "8dafce41de127bdea1f8baf8235f6173f3213cc4f51a2c5b1be32991c8ccee32",
     "reason": "StoreTransitSelectDeletionDue verifies the existing closed system scheduler authority; globally lists due pending-deletion keys so each subsequent purge resolves its own tenant chain in a transaction."
   },
   {
     "engine": "sqlite",
     "name": "TransitSelectRotationDue",
     "annotation": "instance-scoped",
-    "hash": "377501dbe3aa69522f4b7811f1533fe4cd4e3b50afbf7ffe654eb5f857f2e5e9",
+    "hash": "444f660b44816309861487a729df7ee469755bd41f29f65138c05c2ee3c00cfb",
     "reason": "StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization."
   },
   {

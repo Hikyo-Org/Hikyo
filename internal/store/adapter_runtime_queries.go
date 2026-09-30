@@ -72,14 +72,14 @@ type adapterRuntimeQueries interface {
 	adapterWorkerActivateOriginRouteMoveDeleteClaims(ctx context.Context, routeMoveID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerActivateOriginRouteMoveCompleteMove(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, adapterID string) (int64, error)
 	adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, jobID string, leaseOwner string) (int64, error)
-	adapterWorkerFinishJobQuery2(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error)
+	adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error)
 	adapterWorkerFinishJobLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (string, error)
 	adapterWorkerFinishJobMarkTarget(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
 	adapterWorkerFinishJobErase(ctx context.Context, adapterID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerFinishJobAttention(ctx context.Context, routeMoveID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerFinishJobSupersede(ctx context.Context, at time.Time, routeMoveID string, chainOrg string, chainProject string, jobID string) (int64, error)
 	adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error)
-	adapterWorkerFinishJobQuery3(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
+	adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
 	adapterWorkerRaiseDriftAttentionQuery(ctx context.Context, targetID string, org string, project string, environmentID string) (int64, error)
 	adapterWorkerFinishRouteMoveScrubLookupMove(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, targetID string, chainEnv string) (string, error)
 	adapterWorkerFinishRouteMoveScrubActiveLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (int64, error)
@@ -245,19 +245,16 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionQuery(ctx context
 	if err != nil {
 		return adapterWorkerLoadExecutionQueryRow{}, err
 	}
-	c := value
-	return adapterWorkerLoadExecutionQueryRow{Provider: c.Provider, Origin: c.Origin, ID: c.ID, CredentialCiphertext: c.CredentialCiphertext, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, DestinationID: c.DestinationID, RepositoryID: c.RepositoryID, Visibility: c.Visibility, SelectedRepositoryIds: []byte(c.SelectedRepositoryIds), NamePrefix: c.NamePrefix, Generation: c.Generation, SpkiPin: c.SpkiPin, CaBundlePem: c.CaBundlePem, AllowPersonalToken: c.AllowPersonalToken, DestinationScope: c.DestinationScope, VariableProtected: c.VariableProtected, VariableHidden: c.VariableHidden, VariableExpand: c.VariableExpand}, nil
+	return adapterWorkerLoadExecutionQueryRow{Provider: value.Provider, Origin: value.Origin, ID: value.ID, CredentialCiphertext: value.CredentialCiphertext, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, DestinationID: value.DestinationID, RepositoryID: value.RepositoryID, Visibility: value.Visibility, SelectedRepositoryIds: []byte(value.SelectedRepositoryIds), NamePrefix: value.NamePrefix, Generation: value.Generation, SpkiPin: value.SpkiPin, CaBundlePem: value.CaBundlePem, AllowPersonalToken: value.AllowPersonalToken, DestinationScope: value.DestinationScope, VariableProtected: value.VariableProtected, VariableHidden: value.VariableHidden, VariableExpand: value.VariableExpand}, nil
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) ([]adapterWorkerLoadExecutionLedgerQueryRow, error) {
 	value, err := q.queries.AdapterWorkerLoadExecutionLedgerQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionLedgerQueryParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerLoadExecutionLedgerQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0)})
-	}
-	return out, nil
+	return mapRows(value, func(c sqlitegen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0)}, nil
+	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {
 	value, err := q.queries.AdapterWorkerLoadExecutionSnapshotQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionSnapshotQueryParams{ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
@@ -271,19 +268,16 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionEntryQuery(ctx co
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerLoadExecutionEntryQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerLoadExecutionEntryQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c sqlitegen.AdapterWorkerLoadExecutionEntryQueryRow) (adapterWorkerLoadExecutionEntryQueryRow, error) {
+		return adapterWorkerLoadExecutionEntryQueryRow(c), nil
+	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadActivationQuery(ctx context.Context, jobID string, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (adapterWorkerLoadActivationQueryRow, error) {
 	value, err := q.queries.AdapterWorkerLoadActivationQuery(ctx, sqlitegen.AdapterWorkerLoadActivationQueryParams{JobID: jobID, RouteMoveID: sql.NullString{String: routeMoveID, Valid: true}, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
 	if err != nil {
 		return adapterWorkerLoadActivationQueryRow{}, err
 	}
-	c := value
-	return adapterWorkerLoadActivationQueryRow{Provider: c.Provider, PendingOrigin: c.PendingOrigin, ID: c.ID, PendingCredentialCiphertext: c.PendingCredentialCiphertext, EnvironmentID: c.EnvironmentID, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, DestinationID: c.DestinationID, RepositoryID: c.RepositoryID, Visibility: c.Visibility, SelectedRepositoryIds: []byte(c.SelectedRepositoryIds), NamePrefix: c.NamePrefix, Generation: c.Generation, SpkiPin: c.SpkiPin, CaBundlePem: c.CaBundlePem, AllowPersonalToken: c.AllowPersonalToken, DestinationScope: c.DestinationScope, VariableProtected: c.VariableProtected, VariableHidden: c.VariableHidden, VariableExpand: c.VariableExpand}, nil
+	return adapterWorkerLoadActivationQueryRow{Provider: value.Provider, PendingOrigin: value.PendingOrigin, ID: value.ID, PendingCredentialCiphertext: value.PendingCredentialCiphertext, EnvironmentID: value.EnvironmentID, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, DestinationID: value.DestinationID, RepositoryID: value.RepositoryID, Visibility: value.Visibility, SelectedRepositoryIds: []byte(value.SelectedRepositoryIds), NamePrefix: value.NamePrefix, Generation: value.Generation, SpkiPin: value.SpkiPin, CaBundlePem: value.CaBundlePem, AllowPersonalToken: value.AllowPersonalToken, DestinationScope: value.DestinationScope, VariableProtected: value.VariableProtected, VariableHidden: value.VariableHidden, VariableExpand: value.VariableExpand}, nil
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerTryEnqueueLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, now time.Time) (int64, error) {
 	return q.queries.AdapterWorkerTryEnqueueLookup(ctx, sqlitegen.AdapterWorkerTryEnqueueLookupParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Now: runtimeSQLiteStamp(now)})
@@ -321,11 +315,9 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerCloseIndeterminateEffectsQuery
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerCloseIndeterminateEffectsQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerCloseIndeterminateEffectsQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c sqlitegen.AdapterWorkerCloseIndeterminateEffectsQueryRow) (adapterWorkerCloseIndeterminateEffectsQueryRow, error) {
+		return adapterWorkerCloseIndeterminateEffectsQueryRow(c), nil
+	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerCloseIndeterminateEffectsUpdate(ctx context.Context, outcomeAuditID string, at time.Time, effectID string, chainOrg string, chainProject string, chainEnv string, targetID string) (int64, error) {
 	return q.queries.AdapterWorkerCloseIndeterminateEffectsUpdate(ctx, sqlitegen.AdapterWorkerCloseIndeterminateEffectsUpdateParams{OutcomeAuditID: sql.NullString{String: outcomeAuditID, Valid: true}, At: runtimeSQLiteStamp(at), EffectID: effectID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, TargetID: targetID})
@@ -412,8 +404,7 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateLookup(ctx context.Con
 	if err != nil {
 		return adapterWorkerActivateLookupRow{}, err
 	}
-	c := value
-	return adapterWorkerActivateLookupRow{AdapterID: c.AdapterID, EnvironmentID: c.EnvironmentID, EnvironmentID_2: c.EnvironmentID_2, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, Visibility: c.Visibility, SelectedRepositoryIds: []byte(c.SelectedRepositoryIds), NamePrefix: c.NamePrefix, Kind: c.Kind, PendingOrigin: c.PendingOrigin}, nil
+	return adapterWorkerActivateLookupRow{AdapterID: value.AdapterID, EnvironmentID: value.EnvironmentID, EnvironmentID_2: value.EnvironmentID_2, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, Visibility: value.Visibility, SelectedRepositoryIds: []byte(value.SelectedRepositoryIds), NamePrefix: value.NamePrefix, Kind: value.Kind, PendingOrigin: value.PendingOrigin}, nil
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateCollisionQuery(ctx context.Context, routeMoveID string, targetID string, pendingOrigin string, kind string, repositoryID int64, destinationID int64, sentinelName string) (int64, error) {
 	return q.queries.AdapterWorkerActivateCollisionQuery(ctx, sqlitegen.AdapterWorkerActivateCollisionQueryParams{RouteMoveID: routeMoveID, TargetID: targetID, PendingOrigin: pendingOrigin, Kind: kind, RepositoryID: repositoryID, DestinationID: destinationID, SentinelName: sentinelName})
@@ -460,11 +451,9 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveTargetQ
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerActivateOriginRouteMoveTargetQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerActivateOriginRouteMoveTargetQueryRow{ID: c.ID, EnvironmentID: c.EnvironmentID, Generation: c.Generation, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, DestinationID: c.DestinationID, RepositoryID: c.RepositoryID, Visibility: c.Visibility, SelectedRepositoryIds: []byte(c.SelectedRepositoryIds), NamePrefix: c.NamePrefix})
-	}
-	return out, nil
+	return mapRows(value, func(c sqlitegen.AdapterWorkerActivateOriginRouteMoveTargetQueryRow) (adapterWorkerActivateOriginRouteMoveTargetQueryRow, error) {
+		return adapterWorkerActivateOriginRouteMoveTargetQueryRow{ID: c.ID, EnvironmentID: c.EnvironmentID, Generation: c.Generation, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, DestinationID: c.DestinationID, RepositoryID: c.RepositoryID, Visibility: c.Visibility, SelectedRepositoryIds: []byte(c.SelectedRepositoryIds), NamePrefix: c.NamePrefix}, nil
+	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveDeleteKeys(ctx context.Context, effectID string, chainOrg string, chainProject string, environment string) (int64, error) {
 	return q.queries.AdapterWorkerActivateOriginRouteMoveDeleteKeys(ctx, sqlitegen.AdapterWorkerActivateOriginRouteMoveDeleteKeysParams{EffectID: effectID, ChainOrg: chainOrg, ChainProject: chainProject, Environment: environment})
@@ -479,7 +468,7 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveApplyTa
 	return q.queries.AdapterWorkerActivateOriginRouteMoveApplyTarget(ctx, sqlitegen.AdapterWorkerActivateOriginRouteMoveApplyTargetParams{Kind: kind, Owner: owner, Name: name, DestinationEnvironment: destinationEnvironment, DestinationID: destinationID, RepositoryID: repositoryID, Visibility: visibility, SelectedRaw: string(selectedRaw), Prefix: prefix, Generation: generation, ExpectedGeneration: expectedGeneration, ConvergeID: sql.NullString{String: convergeID, Valid: true}, EffectID: effectID, AdapterID: adapterID, ChainOrg: chainOrg, ChainProject: chainProject, Environment: environment})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveActivateAdapter(ctx context.Context, pendingOrigin string, pendingCredential []byte, at time.Time, expires *time.Time, adapterID string, chainOrg string, chainProject string) (int64, error) {
-	return q.queries.AdapterWorkerActivateOriginRouteMoveActivateAdapter(ctx, sqlitegen.AdapterWorkerActivateOriginRouteMoveActivateAdapterParams{PendingOrigin: pendingOrigin, PendingCredential: pendingCredential, At: runtimeSQLiteStamp(at), Expires: workerSQLiteOptionalTime(expires), AdapterID: adapterID, ChainOrg: chainOrg, ChainProject: chainProject})
+	return q.queries.AdapterWorkerActivateOriginRouteMoveActivateAdapter(ctx, sqlitegen.AdapterWorkerActivateOriginRouteMoveActivateAdapterParams{PendingOrigin: pendingOrigin, PendingCredential: pendingCredential, At: runtimeSQLiteStamp(at), Expires: sqliteStampPtr(expires), AdapterID: adapterID, ChainOrg: chainOrg, ChainProject: chainProject})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveDeleteClaims(ctx context.Context, routeMoveID string, chainOrg string, chainProject string) (int64, error) {
 	return q.queries.AdapterWorkerActivateOriginRouteMoveDeleteClaims(ctx, sqlitegen.AdapterWorkerActivateOriginRouteMoveDeleteClaimsParams{RouteMoveID: routeMoveID, ChainOrg: chainOrg, ChainProject: chainProject})
@@ -490,8 +479,8 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveComplet
 func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, jobID string, leaseOwner string) (int64, error) {
 	return q.queries.AdapterWorkerFinishJobQuery(ctx, sqlitegen.AdapterWorkerFinishJobQueryParams{Due: fixedStamp(due), JobID: jobID, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
 }
-func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobQuery2(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobQuery2(ctx, sqlitegen.AdapterWorkerFinishJobQuery2Params{State: state, At: runtimeSQLiteStamp(at), JobID: jobID, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
+func (q sqliteAdapterRuntimeQueries) adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error) {
+	return q.queries.AdapterWorkerCompleteJob(ctx, sqlitegen.AdapterWorkerCompleteJobParams{State: state, At: runtimeSQLiteStamp(at), JobID: jobID, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (string, error) {
 	return q.queries.AdapterWorkerFinishJobLookup(ctx, sqlitegen.AdapterWorkerFinishJobLookupParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
@@ -511,8 +500,8 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobSupersede(ctx context
 func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error) {
 	return q.queries.AdapterWorkerFinishJobMarkTargets(ctx, sqlitegen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: chainOrg, ChainProject: chainProject, RouteMoveID: routeMoveID})
 }
-func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobQuery3(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobQuery3(ctx, sqlitegen.AdapterWorkerFinishJobQuery3Params{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: convergedRev, FailureJSON: string(failureJSON), WarningJSON: string(warningJSON), Revision: revision, Rev: rev, AttemptedAt: runtimeSQLiteStamp(attemptedAt), ErrorClass: errorClass, AttentionMode: attentionMode, RetainActiveJob: retainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
+func (q sqliteAdapterRuntimeQueries) adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
+	return q.queries.AdapterWorkerRecordJobOutcome(ctx, sqlitegen.AdapterWorkerRecordJobOutcomeParams{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: convergedRev, FailureJSON: string(failureJSON), WarningJSON: string(warningJSON), Revision: revision, Rev: rev, AttemptedAt: runtimeSQLiteStamp(attemptedAt), ErrorClass: errorClass, AttentionMode: attentionMode, RetainActiveJob: retainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerRaiseDriftAttentionQuery(ctx context.Context, targetID string, org string, project string, environmentID string) (int64, error) {
 	return q.queries.AdapterWorkerRaiseDriftAttentionQuery(ctx, sqlitegen.AdapterWorkerRaiseDriftAttentionQueryParams{TargetID: targetID, Org: org, Project: project, EnvironmentID: environmentID})
@@ -549,11 +538,9 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishOriginRouteMoveScrubTarg
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c sqlitegen.AdapterWorkerFinishOriginRouteMoveScrubTargetQueryRow) (adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow, error) {
+		return adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow(c), nil
+	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishOriginRouteMoveScrubInsert(ctx context.Context, activateID string, chainOrg string, chainProject string, environment string, effectID string, routeMoveID string, authority string, generation int64, at time.Time) (int64, error) {
 	return q.queries.AdapterWorkerFinishOriginRouteMoveScrubInsert(ctx, sqlitegen.AdapterWorkerFinishOriginRouteMoveScrubInsertParams{ActivateID: activateID, ChainOrg: chainOrg, ChainProject: chainProject, Environment: environment, EffectID: effectID, RouteMoveID: sql.NullString{String: routeMoveID, Valid: true}, Authority: authority, Generation: generation, At: fixedStamp(at)})
@@ -584,19 +571,16 @@ func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionQuery(ctx context.Con
 	if err != nil {
 		return adapterWorkerLoadExecutionQueryRow{}, err
 	}
-	c := value
-	return adapterWorkerLoadExecutionQueryRow{Provider: c.Provider, Origin: c.Origin, ID: c.ID, CredentialCiphertext: c.CredentialCiphertext, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, DestinationID: c.DestinationID, RepositoryID: c.RepositoryID, Visibility: c.Visibility, SelectedRepositoryIds: c.SelectedRepositoryIds, NamePrefix: c.NamePrefix, Generation: c.Generation, SpkiPin: c.SpkiPin, CaBundlePem: c.CaBundlePem, AllowPersonalToken: int64(c.AllowPersonalToken), DestinationScope: c.DestinationScope, VariableProtected: int64(c.VariableProtected), VariableHidden: int64(c.VariableHidden), VariableExpand: int64(c.VariableExpand)}, nil
+	return adapterWorkerLoadExecutionQueryRow{Provider: value.Provider, Origin: value.Origin, ID: value.ID, CredentialCiphertext: value.CredentialCiphertext, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, DestinationID: value.DestinationID, RepositoryID: value.RepositoryID, Visibility: value.Visibility, SelectedRepositoryIds: value.SelectedRepositoryIds, NamePrefix: value.NamePrefix, Generation: value.Generation, SpkiPin: value.SpkiPin, CaBundlePem: value.CaBundlePem, AllowPersonalToken: int64(value.AllowPersonalToken), DestinationScope: value.DestinationScope, VariableProtected: int64(value.VariableProtected), VariableHidden: int64(value.VariableHidden), VariableExpand: int64(value.VariableExpand)}, nil
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) ([]adapterWorkerLoadExecutionLedgerQueryRow, error) {
 	value, err := q.queries.AdapterWorkerLoadExecutionLedgerQuery(ctx, pggen.AdapterWorkerLoadExecutionLedgerQueryParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerLoadExecutionLedgerQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerLoadExecutionLedgerQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c pggen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
+		return adapterWorkerLoadExecutionLedgerQueryRow(c), nil
+	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {
 	value, err := q.queries.AdapterWorkerLoadExecutionSnapshotQuery(ctx, pggen.AdapterWorkerLoadExecutionSnapshotQueryParams{ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
@@ -610,19 +594,16 @@ func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionEntryQuery(ctx contex
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerLoadExecutionEntryQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerLoadExecutionEntryQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c pggen.AdapterWorkerLoadExecutionEntryQueryRow) (adapterWorkerLoadExecutionEntryQueryRow, error) {
+		return adapterWorkerLoadExecutionEntryQueryRow(c), nil
+	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerLoadActivationQuery(ctx context.Context, jobID string, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (adapterWorkerLoadActivationQueryRow, error) {
 	value, err := q.queries.AdapterWorkerLoadActivationQuery(ctx, pggen.AdapterWorkerLoadActivationQueryParams{JobID: jobID, RouteMoveID: pgtype.Text{String: routeMoveID, Valid: true}, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})
 	if err != nil {
 		return adapterWorkerLoadActivationQueryRow{}, err
 	}
-	c := value
-	return adapterWorkerLoadActivationQueryRow{Provider: c.Provider, PendingOrigin: c.PendingOrigin, ID: c.ID, PendingCredentialCiphertext: c.PendingCredentialCiphertext, EnvironmentID: c.EnvironmentID, DestinationKind: c.DestinationKind, DestinationOwner: c.DestinationOwner, DestinationName: c.DestinationName, DestinationEnvironment: c.DestinationEnvironment, DestinationID: c.DestinationID, RepositoryID: c.RepositoryID, Visibility: c.Visibility, SelectedRepositoryIds: c.SelectedRepositoryIds, NamePrefix: c.NamePrefix, Generation: c.Generation, SpkiPin: c.SpkiPin, CaBundlePem: c.CaBundlePem, AllowPersonalToken: int64(c.AllowPersonalToken), DestinationScope: c.DestinationScope, VariableProtected: int64(c.VariableProtected), VariableHidden: int64(c.VariableHidden), VariableExpand: int64(c.VariableExpand)}, nil
+	return adapterWorkerLoadActivationQueryRow{Provider: value.Provider, PendingOrigin: value.PendingOrigin, ID: value.ID, PendingCredentialCiphertext: value.PendingCredentialCiphertext, EnvironmentID: value.EnvironmentID, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, DestinationID: value.DestinationID, RepositoryID: value.RepositoryID, Visibility: value.Visibility, SelectedRepositoryIds: value.SelectedRepositoryIds, NamePrefix: value.NamePrefix, Generation: value.Generation, SpkiPin: value.SpkiPin, CaBundlePem: value.CaBundlePem, AllowPersonalToken: int64(value.AllowPersonalToken), DestinationScope: value.DestinationScope, VariableProtected: int64(value.VariableProtected), VariableHidden: int64(value.VariableHidden), VariableExpand: int64(value.VariableExpand)}, nil
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerTryEnqueueLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, now time.Time) (int64, error) {
 	return q.queries.AdapterWorkerTryEnqueueLookup(ctx, pggen.AdapterWorkerTryEnqueueLookupParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Now: pgRequiredTime(now)})
@@ -650,8 +631,7 @@ func (q pgAdapterRuntimeQueries) adapterWorkerClaimDueSelectQuery(ctx context.Co
 	if err != nil {
 		return adapterWorkerClaimDueSelectQueryRow{}, err
 	}
-	c := value
-	return adapterWorkerClaimDueSelectQueryRow{ID: c.ID, OrgID: c.OrgID, ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, TargetID: c.TargetID, Kind: c.Kind, RouteMoveID: c.RouteMoveID, AuthorityPrincipalID: c.AuthorityPrincipalID, Generation: c.Generation, AttemptCount: int64(c.AttemptCount), CreatedAt: pgStoredStamp(c.CreatedAt)}, nil
+	return adapterWorkerClaimDueSelectQueryRow{ID: value.ID, OrgID: value.OrgID, ProjectID: value.ProjectID, EnvironmentID: value.EnvironmentID, TargetID: value.TargetID, Kind: value.Kind, RouteMoveID: value.RouteMoveID, AuthorityPrincipalID: value.AuthorityPrincipalID, Generation: value.Generation, AttemptCount: int64(value.AttemptCount), CreatedAt: pgStoredStamp(value.CreatedAt)}, nil
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerClaimDueUpdate(ctx context.Context, attempt int64, worker string, leaseUntil time.Time, jobID string) (int64, error) {
 	checkedAttempt, err := checkedPGInt32(int64(attempt))
@@ -665,11 +645,9 @@ func (q pgAdapterRuntimeQueries) adapterWorkerCloseIndeterminateEffectsQuery(ctx
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerCloseIndeterminateEffectsQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerCloseIndeterminateEffectsQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c pggen.AdapterWorkerCloseIndeterminateEffectsQueryRow) (adapterWorkerCloseIndeterminateEffectsQueryRow, error) {
+		return adapterWorkerCloseIndeterminateEffectsQueryRow(c), nil
+	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerCloseIndeterminateEffectsUpdate(ctx context.Context, outcomeAuditID string, at time.Time, effectID string, chainOrg string, chainProject string, chainEnv string, targetID string) (int64, error) {
 	return q.queries.AdapterWorkerCloseIndeterminateEffectsUpdate(ctx, pggen.AdapterWorkerCloseIndeterminateEffectsUpdateParams{OutcomeAuditID: pgtype.Text{String: outcomeAuditID, Valid: true}, At: pgRequiredTime(at), EffectID: effectID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, TargetID: targetID})
@@ -797,19 +775,16 @@ func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveLoadPending
 	if err != nil {
 		return adapterWorkerActivateOriginRouteMoveLoadPendingRow{}, err
 	}
-	c := value
-	return adapterWorkerActivateOriginRouteMoveLoadPendingRow{PendingOrigin: sql.NullString{String: c.PendingOrigin.String, Valid: c.PendingOrigin.Valid}, PendingCredentialCiphertext: c.PendingCredentialCiphertext}, nil
+	return adapterWorkerActivateOriginRouteMoveLoadPendingRow{PendingOrigin: sql.NullString{String: value.PendingOrigin.String, Valid: value.PendingOrigin.Valid}, PendingCredentialCiphertext: value.PendingCredentialCiphertext}, nil
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveTargetQuery(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, adapterID string) ([]adapterWorkerActivateOriginRouteMoveTargetQueryRow, error) {
 	value, err := q.queries.AdapterWorkerActivateOriginRouteMoveTargetQuery(ctx, pggen.AdapterWorkerActivateOriginRouteMoveTargetQueryParams{RouteMoveID: routeMoveID, ChainOrg: chainOrg, ChainProject: chainProject, AdapterID: adapterID})
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerActivateOriginRouteMoveTargetQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerActivateOriginRouteMoveTargetQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c pggen.AdapterWorkerActivateOriginRouteMoveTargetQueryRow) (adapterWorkerActivateOriginRouteMoveTargetQueryRow, error) {
+		return adapterWorkerActivateOriginRouteMoveTargetQueryRow(c), nil
+	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveDeleteKeys(ctx context.Context, effectID string, chainOrg string, chainProject string, environment string) (int64, error) {
 	return q.queries.AdapterWorkerActivateOriginRouteMoveDeleteKeys(ctx, pggen.AdapterWorkerActivateOriginRouteMoveDeleteKeysParams{EffectID: effectID, ChainOrg: chainOrg, ChainProject: chainProject, Environment: environment})
@@ -824,7 +799,7 @@ func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveApplyTarget
 	return q.queries.AdapterWorkerActivateOriginRouteMoveApplyTarget(ctx, pggen.AdapterWorkerActivateOriginRouteMoveApplyTargetParams{Kind: kind, Owner: owner, Name: name, DestinationEnvironment: destinationEnvironment, DestinationID: destinationID, RepositoryID: repositoryID, Visibility: visibility, SelectedRaw: selectedRaw, Prefix: prefix, Generation: generation, ExpectedGeneration: expectedGeneration, ConvergeID: pgtype.Text{String: convergeID, Valid: true}, EffectID: effectID, AdapterID: adapterID, ChainOrg: chainOrg, ChainProject: chainProject, Environment: environment})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveActivateAdapter(ctx context.Context, pendingOrigin string, pendingCredential []byte, at time.Time, expires *time.Time, adapterID string, chainOrg string, chainProject string) (int64, error) {
-	return q.queries.AdapterWorkerActivateOriginRouteMoveActivateAdapter(ctx, pggen.AdapterWorkerActivateOriginRouteMoveActivateAdapterParams{PendingOrigin: pendingOrigin, PendingCredential: pendingCredential, At: pgRequiredTime(at), Expires: workerPGOptionalTime(expires), AdapterID: adapterID, ChainOrg: chainOrg, ChainProject: chainProject})
+	return q.queries.AdapterWorkerActivateOriginRouteMoveActivateAdapter(ctx, pggen.AdapterWorkerActivateOriginRouteMoveActivateAdapterParams{PendingOrigin: pendingOrigin, PendingCredential: pendingCredential, At: pgRequiredTime(at), Expires: pgStampPtr(expires), AdapterID: adapterID, ChainOrg: chainOrg, ChainProject: chainProject})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveDeleteClaims(ctx context.Context, routeMoveID string, chainOrg string, chainProject string) (int64, error) {
 	return q.queries.AdapterWorkerActivateOriginRouteMoveDeleteClaims(ctx, pggen.AdapterWorkerActivateOriginRouteMoveDeleteClaimsParams{RouteMoveID: routeMoveID, ChainOrg: chainOrg, ChainProject: chainProject})
@@ -835,8 +810,8 @@ func (q pgAdapterRuntimeQueries) adapterWorkerActivateOriginRouteMoveCompleteMov
 func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobQuery(ctx context.Context, due time.Time, jobID string, leaseOwner string) (int64, error) {
 	return q.queries.AdapterWorkerFinishJobQuery(ctx, pggen.AdapterWorkerFinishJobQueryParams{Due: pgRequiredTime(due), JobID: jobID, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})
 }
-func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobQuery2(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobQuery2(ctx, pggen.AdapterWorkerFinishJobQuery2Params{State: state, At: pgRequiredTime(at), JobID: jobID, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})
+func (q pgAdapterRuntimeQueries) adapterWorkerCompleteJob(ctx context.Context, state string, at time.Time, jobID string, leaseOwner string) (int64, error) {
+	return q.queries.AdapterWorkerCompleteJob(ctx, pggen.AdapterWorkerCompleteJobParams{State: state, At: pgRequiredTime(at), JobID: jobID, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobLookup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (string, error) {
 	return q.queries.AdapterWorkerFinishJobLookup(ctx, pggen.AdapterWorkerFinishJobLookupParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
@@ -856,7 +831,7 @@ func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobSupersede(ctx context.Con
 func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error) {
 	return q.queries.AdapterWorkerFinishJobMarkTargets(ctx, pggen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: chainOrg, ChainProject: chainProject, RouteMoveID: routeMoveID})
 }
-func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobQuery3(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
+func (q pgAdapterRuntimeQueries) adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
 	checkedAttentionMode, err := checkedPGInt32(int64(attentionMode))
 	if err != nil {
 		return 0, err
@@ -865,7 +840,7 @@ func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobQuery3(ctx context.Contex
 	if err != nil {
 		return 0, err
 	}
-	return q.queries.AdapterWorkerFinishJobQuery3(ctx, pggen.AdapterWorkerFinishJobQuery3Params{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: pgtype.Int8{Int64: convergedRev.Int64, Valid: convergedRev.Valid}, FailureJSON: failureJSON, WarningJSON: warningJSON, Revision: revision, Rev: pgtype.Int8{Int64: rev.Int64, Valid: rev.Valid}, AttemptedAt: pgRequiredTime(attemptedAt), ErrorClass: pgtype.Text{String: errorClass.String, Valid: errorClass.Valid}, AttentionMode: checkedAttentionMode, RetainActiveJob: checkedRetainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
+	return q.queries.AdapterWorkerRecordJobOutcome(ctx, pggen.AdapterWorkerRecordJobOutcomeParams{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: pgtype.Int8{Int64: convergedRev.Int64, Valid: convergedRev.Valid}, FailureJSON: failureJSON, WarningJSON: warningJSON, Revision: revision, Rev: pgtype.Int8{Int64: rev.Int64, Valid: rev.Valid}, AttemptedAt: pgRequiredTime(attemptedAt), ErrorClass: pgtype.Text{String: errorClass.String, Valid: errorClass.Valid}, AttentionMode: checkedAttentionMode, RetainActiveJob: checkedRetainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerRaiseDriftAttentionQuery(ctx context.Context, targetID string, org string, project string, environmentID string) (int64, error) {
 	return q.queries.AdapterWorkerRaiseDriftAttentionQuery(ctx, pggen.AdapterWorkerRaiseDriftAttentionQueryParams{TargetID: targetID, Org: org, Project: project, EnvironmentID: environmentID})
@@ -902,11 +877,9 @@ func (q pgAdapterRuntimeQueries) adapterWorkerFinishOriginRouteMoveScrubTargetQu
 	if err != nil {
 		return nil, err
 	}
-	var out []adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow
-	for _, c := range value {
-		out = append(out, adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow(c))
-	}
-	return out, nil
+	return mapRows(value, func(c pggen.AdapterWorkerFinishOriginRouteMoveScrubTargetQueryRow) (adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow, error) {
+		return adapterWorkerFinishOriginRouteMoveScrubTargetQueryRow(c), nil
+	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerFinishOriginRouteMoveScrubInsert(ctx context.Context, activateID string, chainOrg string, chainProject string, environment string, effectID string, routeMoveID string, authority string, generation int64, at time.Time) (int64, error) {
 	return q.queries.AdapterWorkerFinishOriginRouteMoveScrubInsert(ctx, pggen.AdapterWorkerFinishOriginRouteMoveScrubInsertParams{ActivateID: activateID, ChainOrg: chainOrg, ChainProject: chainProject, Environment: environment, EffectID: effectID, RouteMoveID: pgtype.Text{String: routeMoveID, Valid: true}, Authority: authority, Generation: generation, At: pgRequiredTime(at)})

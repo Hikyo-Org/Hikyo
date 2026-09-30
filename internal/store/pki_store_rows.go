@@ -8,7 +8,13 @@ import (
 )
 
 // Typed generated projections preserve the public row shape and timestamp errors.
-func pkiReadTime(value string) (time.Time, error) { return pkiTime(adapterStoredTime{value: value}) }
+func pkiReadTime(value string) (time.Time, error) {
+	parsed, err := readStoredTime(value)
+	if err != nil || parsed == nil {
+		return time.Time{}, err
+	}
+	return *parsed, nil
+}
 
 func sqlitePKIIssuer(c sqlitegen.PKIGetIssuerRow) (PKIIssuer, error) {
 	out := PKIIssuer{ID: c.ID, Name: c.Name, Version: int64(c.Version), Kind: c.Kind, Origin: c.Origin, ParentID: c.ParentID, State: c.State, KeyAlgorithm: c.KeyAlgorithm, KeyFingerprint: c.KeyFingerprint, KeyPresent: c.KeyPresent == 1, CertificateDER: c.CertificateDer, CSRDER: c.CsrDer, ChainPEM: c.ChainPem, SubjectCN: c.SubjectCn, SubjectOrg: c.SubjectOrg, CRLDistributionURL: c.CrlDistributionUrl, RestoreHold: c.RestoreHold == 1, IssuedCount: c.IssuedCount, CRLDER: c.CrlDer, CRLNumber: c.CrlNumber, RevocationSeq: c.RevocationSeq, RowVersion: c.RowVersion, CreatedBy: c.CreatedBy}

@@ -153,19 +153,7 @@ func TestAdapterCoreGeneratedQueriesBindOwningChain(t *testing.T) {
 				if n, err := query.read(t.Context(), own); err != nil || n != 1 {
 					t.Fatalf("owning control rows=%d err=%v", n, err)
 				}
-				for _, axis := range []string{"org", "project", "environment"} {
-					if axis == "environment" && !query.environment {
-						continue
-					}
-					foreign := own
-					switch axis {
-					case "org":
-						foreign.org = "org_b"
-					case "project":
-						foreign.project = "prj_a2"
-					case "environment":
-						foreign.environment = "env_prod"
-					}
+				for axis, foreign := range adapterForeignScopes(own, adapterQueryScope{org: "org_b", project: "prj_a2", environment: "env_prod"}, query.environment) {
 					if n, err := query.read(t.Context(), foreign); err != nil || n != 0 {
 						t.Fatalf("foreign %s rows=%d err=%v", axis, n, err)
 					}

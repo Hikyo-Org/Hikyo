@@ -3,7 +3,6 @@ package isolation
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -14,7 +13,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -61,24 +59,10 @@ func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 			nullableStamp := sql.NullString{String: stamp, Valid: true}
 			nullableOwner := sql.NullString{String: job.LeaseOwner, Valid: true}
 			queries = append(queries, adapterScopeQuery{name: "AdapterWorkerActivateLookup", environment: true, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterWorkerActivateLookup(ctx, sqlitegen.AdapterWorkerActivateLookupParams{RouteMoveID: "arm_direct_runtime", TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterWorkerActivateLookup(ctx, sqlitegen.AdapterWorkerActivateLookupParams{RouteMoveID: "arm_direct_runtime", TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterWorkerLoadExecutionQuery", environment: true, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterWorkerLoadExecutionQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionQueryParams{JobID: job.ID, TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation, LeaseOwner: nullableOwner})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterWorkerLoadExecutionQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionQueryParams{JobID: job.ID, TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation, LeaseOwner: nullableOwner}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterWorkerLoadExecutionEntryQuery", environment: true, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
 				result, err := q.AdapterWorkerLoadExecutionEntryQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionEntryQueryParams{TargetID: "tgt_gitlab_a", SnapshotID: "snap_runtime", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment})
@@ -108,24 +92,10 @@ func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 			nullableStamp := stamp
 			nullableOwner := pgtype.Text{String: job.LeaseOwner, Valid: true}
 			queries = append(queries, adapterScopeQuery{name: "AdapterWorkerActivateLookup", environment: true, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterWorkerActivateLookup(ctx, pggen.AdapterWorkerActivateLookupParams{RouteMoveID: "arm_direct_runtime", TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterWorkerActivateLookup(ctx, pggen.AdapterWorkerActivateLookupParams{RouteMoveID: "arm_direct_runtime", TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterWorkerLoadExecutionQuery", environment: true, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterWorkerLoadExecutionQuery(ctx, pggen.AdapterWorkerLoadExecutionQueryParams{JobID: job.ID, TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation, LeaseOwner: nullableOwner})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterWorkerLoadExecutionQuery(ctx, pggen.AdapterWorkerLoadExecutionQueryParams{JobID: job.ID, TargetID: "tgt_gitlab_a", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment, Generation: job.Generation, LeaseOwner: nullableOwner}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterWorkerLoadExecutionEntryQuery", environment: true, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
 				result, err := q.AdapterWorkerLoadExecutionEntryQuery(ctx, pggen.AdapterWorkerLoadExecutionEntryQueryParams{TargetID: "tgt_gitlab_a", SnapshotID: "snap_runtime", ChainOrg: scope.org, ChainProject: scope.project, ChainEnv: scope.environment})

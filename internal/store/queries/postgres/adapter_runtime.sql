@@ -199,7 +199,7 @@ UPDATE adapter_outbox SET state='queued',next_attempt_at=sqlc.arg(due),lease_own
 
 -- hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit.
 -- hikyo:instance-scoped
--- name: AdapterWorkerFinishJobQuery2 :execrows
+-- name: AdapterWorkerCompleteJob :execrows
 UPDATE adapter_outbox SET state=sqlc.arg(state),finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner);
 
 -- name: AdapterWorkerFinishJobLookup :one
@@ -220,7 +220,7 @@ UPDATE adapter_outbox SET state='superseded',finished_at=sqlc.arg(at),lease_owne
 -- name: AdapterWorkerFinishJobMarkTargets :execrows
 UPDATE adapter_targets SET sync_status='failed',failure_names='["route"]'::jsonb,active_job_id=NULL WHERE adapter_targets.org_id=sqlc.arg(chain_org) AND adapter_targets.project_id=sqlc.arg(chain_project) AND adapter_targets.id IN (SELECT mt.target_id FROM adapter_route_move_targets mt WHERE mt.move_id=sqlc.arg(route_move_id) AND mt.org_id=sqlc.arg(chain_org) AND mt.project_id=sqlc.arg(chain_project)) AND adapter_targets.state='moving';
 
--- name: AdapterWorkerFinishJobQuery3 :execrows
+-- name: AdapterWorkerRecordJobOutcome :execrows
 UPDATE adapter_targets SET sync_status=sqlc.arg(target_status),converged_revision=CASE WHEN CAST(sqlc.arg(converged_revision) AS BIGINT)>0 THEN sqlc.arg(converged_rev) ELSE converged_revision END,failure_names=sqlc.arg(failure_j_s_o_n),warnings=sqlc.arg(warning_j_s_o_n),last_attempted_revision=CASE WHEN CAST(sqlc.arg(revision) AS BIGINT)>0 THEN sqlc.arg(rev) ELSE last_attempted_revision END,last_attempted_at=sqlc.arg(attempted_at),last_error_class=sqlc.arg(error_class),drift_attention=CASE WHEN CAST(sqlc.arg(attention_mode) AS INTEGER)=0 THEN FALSE WHEN CAST(sqlc.arg(attention_mode) AS INTEGER)=1 THEN TRUE ELSE drift_attention END,active_job_id=CASE WHEN CAST(sqlc.arg(retain_active_job) AS INTEGER)=1 THEN active_job_id ELSE NULL END WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND provider_lease_job_id IS NULL;
 
 -- name: AdapterWorkerRaiseDriftAttentionQuery :execrows

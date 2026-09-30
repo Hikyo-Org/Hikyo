@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { generatePath, Link } from 'react-router';
@@ -941,15 +942,10 @@ export function ConnectionMintDialog({
           for, said now rather than discovered when it dies.
         </Alert>
       ) : null}
-      <p className="ceremony__cap" role="status">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          This value is never retrievable again. The list shows metadata only. Store it in the
-          consuming instance now; if it is lost, revoke this credential and mint a fresh one.
-        </span>
-      </p>
+      <CeremonyNotice>
+        This value is never retrievable again. The list shows metadata only. Store it in the
+        consuming instance now; if it is lost, revoke this credential and mint a fresh one.
+      </CeremonyNotice>
       <Button
         type="button"
         onClick={async () => {

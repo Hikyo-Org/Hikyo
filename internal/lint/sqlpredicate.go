@@ -65,7 +65,9 @@ var (
 	annotRe = regexp.MustCompile(`^--\s*hikyo:(instance-scoped|authn-resolution)\s*$`)
 	// A bindable parameter: sqlite positional, postgres positional, or the
 	// sqlc named form (the reserved chain_* parameters use it on postgres).
-	paramRe = `(\?|\$\d+|SQLCARG_\w+)`
+	paramRe        = `(\?|\$\d+|SQLCARG_\w+)`
+	predicateValue = `(?:` + paramRe + `|'(?:[^']|'')*'|-?\d+(?:\.\d+)?|TRUE|FALSE|NULL)`
+	predicateTails = []string{" ORDER BY ", " FOR UPDATE", " FOR SHARE", " FOR NO KEY UPDATE", " FOR KEY SHARE", " GROUP BY ", " LIMIT "}
 	// sqlcArgRe masks sqlc.arg(name) into a paren-free token so the
 	// conservative parenthesis rejection doesn't fire on the named-parameter
 	// syntax itself.
@@ -413,7 +415,7 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 	// walk. FOR UPDATE is a row-lock request, ORDER BY a sort, GROUP BY (with
 	// any HAVING after it) an aggregation over rows the chain conjuncts already
 	// confined; none of them widens that set.
-	for _, tail := range []string{" ORDER BY ", " FOR UPDATE", " FOR SHARE", " FOR NO KEY UPDATE", " FOR KEY SHARE", " GROUP BY ", " LIMIT "} {
+	for _, tail := range predicateTails {
 		if end := strings.Index(strings.ToUpper(maskSQLContractLiteralsAndComments(where)), tail); end >= 0 {
 			where = where[:end]
 		}
@@ -585,7 +587,7 @@ var (
 	doNothingRe = regexp.MustCompile(`(?i)\s+ON CONFLICT \([\w, ]+\) DO NOTHING$`)
 	// Fixed state predicates only narrow rows already constrained by bound
 	// tenant-chain conjuncts. A literal can never satisfy a chain binding.
-	conjunctRe       = regexp.MustCompile(`(?i)^(\w+)\s*(=|<>|!=|<=|>=|<|>)\s*(` + paramRe + `|'(?:[^']|'')*'|-?\d+(?:\.\d+)?|TRUE|FALSE|NULL)$`)
+	conjunctRe       = regexp.MustCompile(`(?i)^(\w+)\s*(=|<>|!=|<=|>=|<|>)\s*(` + predicateValue + `)$`)
 	boundParameterRe = regexp.MustCompile(`(?i)^` + paramRe + `$`)
 	spaceRe          = regexp.MustCompile(`\s+`)
 

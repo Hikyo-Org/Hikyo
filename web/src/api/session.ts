@@ -11,7 +11,7 @@ import { zMyOrgList } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { commonRefusalText } from './statusText.ts';
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 import { useTransport } from './transport.tsx';
@@ -26,20 +26,18 @@ import { useAuth } from '../app/AuthProvider.tsx';
  * message nobody investigates.
  */
 export function loginFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        // One sentence for every credential refusal: an unknown account and a
-        // wrong password are the same fact from out here, and saying more
-        // would be the account-existence oracle the server closed on purpose.
-        return 'That username and password did not match. Check both and try again.';
-      case 429:
-        return commonRefusalText.attempts;
-      default:
-        return `Sign-in could not be completed (server error ${error.status}). Try again shortly.`;
-    }
-  }
-  return 'Sign-in could not be completed: the server could not be reached, or it answered something this client does not understand.';
+  return statusText(
+    error,
+    {
+      // One sentence for every credential refusal: an unknown account and a
+      // wrong password are the same fact from out here, and saying more
+      // would be the account-existence oracle the server closed on purpose.
+      401: 'That username and password did not match. Check both and try again.',
+      429: commonRefusalText.attempts,
+    },
+    'Sign-in could not be completed: the server could not be reached, or it answered something this client does not understand.',
+    (error) => `Sign-in could not be completed (server error ${error.status}). Try again shortly.`,
+  );
 }
 
 export type { WhoAmI } from '../app/AuthProvider.tsx';

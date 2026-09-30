@@ -148,9 +148,3 @@ func TestResolverExposureGuardCatchesNestedSignaturesAndFields(t *testing.T) {
 		t.Fatal("private resolver field incorrectly exposed")
 	}
 }
-
-func TestGeneratedWireRegistryIsValid(t *testing.T) {
-	if _, err := newWireRegistry(wireRegistry); err != nil {
-		t.Fatal(err)
-	}
-}

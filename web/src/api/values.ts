@@ -46,7 +46,7 @@ import { environmentListQueryOptions } from './hierarchyQueries.ts';
  * One rule is carried here rather than in the components, because it is the
  * one that is easy to get subtly wrong: **the window gates the prompt, never
  * the check**. So a refusal from a disclosure route is NOT read as "the window
- * lapsed, prompt again". A 403 there means the server refused the disclosure, 
+ * lapsed, prompt again". A 403 there means the server refused the disclosure,
  * most often a grant revoked under an open window, and the honest response is
  * to remask and say so, not to loop the human through a ceremony that will
  * refuse again.
@@ -138,7 +138,7 @@ export function useRevealWindow(
 
 /**
  * base64url helpers. WebAuthn's JSON shapes carry binary as base64url and the
- * browser's credential API wants ArrayBuffers, so exactly one place converts, 
+ * browser's credential API wants ArrayBuffers, so exactly one place converts,
  * exported so the account-security enrolment ceremonies (#60) share it rather
  * than growing a second, subtly different copy.
  */
@@ -380,16 +380,15 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
 export function ceremonyRefusalText(error: unknown): string {
   if (error instanceof OIDCCeremonyError) return error.message;
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 409:
-        return 'This environment requires a passkey for every disclosure, so a code cannot authorise it.';
-      case 401:
-        return 'That code did not match. Check your authenticator and try again.';
-      case 429:
-        return commonRefusalText.attempts;
-      default:
-        return `The reauthentication could not be completed (server error ${error.status}).`;
-    }
+    return statusText(
+      error,
+      {
+        409: 'This environment requires a passkey for every disclosure, so a code cannot authorise it.',
+        401: 'That code did not match. Check your authenticator and try again.',
+        429: commonRefusalText.attempts,
+      },
+      `The reauthentication could not be completed (server error ${error.status}).`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed or timed out. Nothing was disclosed.';

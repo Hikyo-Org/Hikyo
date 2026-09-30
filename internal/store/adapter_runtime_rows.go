@@ -1,12 +1,8 @@
 package store
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 )
@@ -41,17 +37,4 @@ func workerActivationMetadata(c adapterWorkerLoadActivationQueryRow, targetID st
 		return AdapterActivation{}, err
 	}
 	return AdapterActivation{Provider: execution.Provider, Origin: execution.Origin, CredentialOwnerID: execution.CredentialOwnerID, CredentialCiphertext: execution.CredentialCiphertext, Transport: execution.Transport, Target: execution.Target}, nil
-}
-
-func workerSQLiteOptionalTime(value *time.Time) sql.NullString {
-	if value == nil {
-		return sql.NullString{}
-	}
-	return runtimeSQLiteStamp(*value)
-}
-func workerPGOptionalTime(value *time.Time) pgtype.Timestamptz {
-	if value == nil {
-		return pgtype.Timestamptz{}
-	}
-	return pgRequiredTime(*value)
 }

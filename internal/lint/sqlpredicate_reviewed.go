@@ -1,7 +1,6 @@
 package lint
 
 import (
-	_ "embed"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -10,8 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/Hikyo-Org/hikyo/internal/definitions"
 )
 
 // These are tenant-scoped queries reviewed beyond the bounded SQL grammar.
@@ -24,43 +21,21 @@ type scopedQueryReview struct {
 	FlowTests []string `json:"flow_tests,omitempty"`
 }
 
-//go:embed testdata/scoped_query_reviews.json
-var scopedQueryReviewsJSON []byte
-
 func readScopedQueryReviews() (map[string]map[string]scopedQueryReview, error) {
-	return parseScopedQueryReviews(scopedQueryReviewsJSON)
+	if reviewedPinsError != nil {
+		return nil, reviewedPinsError
+	}
+	return expandScopedQueryReviews(reviewedPins.ScopedQueries), nil
 }
 
-// Authority and regression evidence belong to the query; SQL and generated
-// API contracts remain independently pinned for both mandatory engines.
-func parseScopedQueryReviews(source []byte) (map[string]map[string]scopedQueryReview, error) {
-	var records map[string]struct {
-		Authority string            `json:"authority"`
-		Tests     []string          `json:"tests"`
-		FlowTests []string          `json:"flow_tests,omitempty"`
-		SQLHash   map[string]string `json:"sql_hash"`
-		APIHash   map[string]string `json:"api_hash"`
-	}
-	if err := definitions.DecodeStrict(source, &records); err != nil {
-		return nil, err
-	}
+func expandScopedQueryReviews(records map[string]reviewedQueryPin) map[string]map[string]scopedQueryReview {
 	reviews := map[string]map[string]scopedQueryReview{"sqlite": {}, "postgres": {}}
-	for name, definition := range records {
-		for kind, hashes := range map[string]map[string]string{"SQL": definition.SQLHash, "API": definition.APIHash} {
-			if len(hashes) != len(reviews) {
-				return nil, fmt.Errorf("scoped query %s: %s hashes require exactly sqlite and postgres", name, kind)
-			}
-			for engine, hash := range hashes {
-				if reviews[engine] == nil || strings.TrimSpace(hash) == "" {
-					return nil, fmt.Errorf("scoped query %s: invalid %s hash for engine %q", name, kind, engine)
-				}
-			}
-		}
+	for name, pin := range records {
 		for engine := range reviews {
-			reviews[engine][name] = scopedQueryReview{SQLHash: definition.SQLHash[engine], APIHash: definition.APIHash[engine], Authority: definition.Authority, Tests: definition.Tests, FlowTests: definition.FlowTests}
+			reviews[engine][name] = scopedQueryReview{SQLHash: pin.SQLHash[engine], APIHash: pin.APIHash[engine], Authority: pin.Authority, Tests: pin.Tests, FlowTests: pin.FlowTests}
 		}
 	}
-	return reviews, nil
+	return reviews
 }
 
 func checkScopedQueryReview(engine string, q Query, api generatedContract, generated bool, review scopedQueryReview, root string) []string {

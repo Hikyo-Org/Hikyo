@@ -182,3 +182,42 @@ func helperProtocol(ctx context.Context,d driver) {d.Exec(ctx,build())}
 		})
 	}
 }
+
+func TestRawSQLMethodProtocolCallerPins(t *testing.T) {
+	for _, receiver := range []string{"owner", "owner[T]"} {
+		t.Run(receiver, func(t *testing.T) {
+			declaration, instance := "type owner struct{}", "owner"
+			if receiver != "owner" {
+				declaration, instance = "type owner[T any] struct{}", "owner[int]"
+			}
+			root, pkg, pins := rawSQLDependencyFixture(t, declaration+`
+func (o *`+receiver+`) execute(ctx context.Context, d driver) { d.Exec(ctx,"SELECT 1") }
+func approvedMethod(ctx context.Context,d driver) { o:=`+instance+`{}; o.execute(ctx,d) }
+func bypassMethod(ctx context.Context,d driver) { o:=`+instance+`{}; alias:=o.execute; alias(ctx,d) }
+func bypassExpression(ctx context.Context,d driver) { o:=`+instance+`{}; alias:=(*`+instance+`).execute; alias(&o,ctx,d) }
+`)
+			decls := rawSQLDeclarations([]*packages.Package{pkg}, root, Module)
+			approved := decls["protocol.go:approvedMethod"]
+			hash, err := rawSQLBodyHash(approved.pkg, approved.fn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pin := pins["protocol.go:owner.execute"]
+			pin.Callers = map[string]string{"protocol.go:approvedMethod": hash}
+			pins["protocol.go:owner.execute"] = pin
+			findings := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n")
+			for _, caller := range []string{"bypassMethod", "bypassExpression"} {
+				if !strings.Contains(findings, caller+" references protocol protocol.go:owner.execute") {
+					t.Fatalf("method bypass escaped: %s", findings)
+				}
+			}
+			if strings.Contains(findings, "approvedMethod references protocol") {
+				t.Fatal(findings)
+			}
+			pin.Callers["protocol.go:approvedMethod"] = "changed"
+			if got := strings.Join(CheckRawSQL([]*packages.Package{pkg}, root, Module, pins), "\n"); !strings.Contains(got, "approvedMethod references protocol") {
+				t.Fatal("method caller drift escaped: " + got)
+			}
+		})
+	}
+}

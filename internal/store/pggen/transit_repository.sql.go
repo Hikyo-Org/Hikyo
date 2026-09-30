@@ -423,7 +423,7 @@ func (q *Queries) TransitFenceTrim(ctx context.Context, arg TransitFenceTrimPara
 }
 
 const transitGetKey = `-- name: TransitGetKey :one
-SELECT id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at FROM transit_keys WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND name=$4 AND state<>'destroyed'
+SELECT transit_keys.id, transit_keys.org_id, transit_keys.project_id, transit_keys.environment_id, transit_keys.name, transit_keys.algorithm, transit_keys.custody, transit_keys.allowed_operations, transit_keys.exportable, transit_keys.state, transit_keys.latest_version, transit_keys.min_encrypt_version, transit_keys.min_decrypt_version, transit_keys.min_available_version, transit_keys.compromised_through_version, transit_keys.rotation_period_seconds, transit_keys.purge_started, transit_keys.deletion_after, transit_keys.created_by, transit_keys.created_at, transit_keys.updated_at FROM transit_keys WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND name=$4 AND state<>'destroyed'
 `
 
 type TransitGetKeyParams struct {
@@ -434,23 +434,7 @@ type TransitGetKeyParams struct {
 }
 
 type TransitGetKeyRow struct {
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         string
-	State                     string
-	LatestVersion             int32
-	MinEncryptVersion         int32
-	MinDecryptVersion         int32
-	MinAvailableVersion       int32
-	CompromisedThroughVersion int32
-	RotationPeriodSeconds     int64
-	DeletionAfter             pgtype.Timestamptz
-	CreatedBy                 string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	TransitKey TransitKey
 }
 
 func (q *Queries) TransitGetKey(ctx context.Context, arg TransitGetKeyParams) (TransitGetKeyRow, error) {
@@ -462,29 +446,33 @@ func (q *Queries) TransitGetKey(ctx context.Context, arg TransitGetKeyParams) (T
 	)
 	var i TransitGetKeyRow
 	err := row.Scan(
-		&i.ID,
-		&i.EnvironmentID,
-		&i.Name,
-		&i.Algorithm,
-		&i.Custody,
-		&i.AllowedOperations,
-		&i.State,
-		&i.LatestVersion,
-		&i.MinEncryptVersion,
-		&i.MinDecryptVersion,
-		&i.MinAvailableVersion,
-		&i.CompromisedThroughVersion,
-		&i.RotationPeriodSeconds,
-		&i.DeletionAfter,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.TransitKey.ID,
+		&i.TransitKey.OrgID,
+		&i.TransitKey.ProjectID,
+		&i.TransitKey.EnvironmentID,
+		&i.TransitKey.Name,
+		&i.TransitKey.Algorithm,
+		&i.TransitKey.Custody,
+		&i.TransitKey.AllowedOperations,
+		&i.TransitKey.Exportable,
+		&i.TransitKey.State,
+		&i.TransitKey.LatestVersion,
+		&i.TransitKey.MinEncryptVersion,
+		&i.TransitKey.MinDecryptVersion,
+		&i.TransitKey.MinAvailableVersion,
+		&i.TransitKey.CompromisedThroughVersion,
+		&i.TransitKey.RotationPeriodSeconds,
+		&i.TransitKey.PurgeStarted,
+		&i.TransitKey.DeletionAfter,
+		&i.TransitKey.CreatedBy,
+		&i.TransitKey.CreatedAt,
+		&i.TransitKey.UpdatedAt,
 	)
 	return i, err
 }
 
 const transitGetKeyForUse = `-- name: TransitGetKeyForUse :one
-SELECT id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at FROM transit_keys WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND name=$4 AND state<>'destroyed' FOR SHARE
+SELECT transit_keys.id, transit_keys.org_id, transit_keys.project_id, transit_keys.environment_id, transit_keys.name, transit_keys.algorithm, transit_keys.custody, transit_keys.allowed_operations, transit_keys.exportable, transit_keys.state, transit_keys.latest_version, transit_keys.min_encrypt_version, transit_keys.min_decrypt_version, transit_keys.min_available_version, transit_keys.compromised_through_version, transit_keys.rotation_period_seconds, transit_keys.purge_started, transit_keys.deletion_after, transit_keys.created_by, transit_keys.created_at, transit_keys.updated_at FROM transit_keys WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND name=$4 AND state<>'destroyed' FOR SHARE
 `
 
 type TransitGetKeyForUseParams struct {
@@ -495,23 +483,7 @@ type TransitGetKeyForUseParams struct {
 }
 
 type TransitGetKeyForUseRow struct {
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         string
-	State                     string
-	LatestVersion             int32
-	MinEncryptVersion         int32
-	MinDecryptVersion         int32
-	MinAvailableVersion       int32
-	CompromisedThroughVersion int32
-	RotationPeriodSeconds     int64
-	DeletionAfter             pgtype.Timestamptz
-	CreatedBy                 string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	TransitKey TransitKey
 }
 
 func (q *Queries) TransitGetKeyForUse(ctx context.Context, arg TransitGetKeyForUseParams) (TransitGetKeyForUseRow, error) {
@@ -523,23 +495,27 @@ func (q *Queries) TransitGetKeyForUse(ctx context.Context, arg TransitGetKeyForU
 	)
 	var i TransitGetKeyForUseRow
 	err := row.Scan(
-		&i.ID,
-		&i.EnvironmentID,
-		&i.Name,
-		&i.Algorithm,
-		&i.Custody,
-		&i.AllowedOperations,
-		&i.State,
-		&i.LatestVersion,
-		&i.MinEncryptVersion,
-		&i.MinDecryptVersion,
-		&i.MinAvailableVersion,
-		&i.CompromisedThroughVersion,
-		&i.RotationPeriodSeconds,
-		&i.DeletionAfter,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.TransitKey.ID,
+		&i.TransitKey.OrgID,
+		&i.TransitKey.ProjectID,
+		&i.TransitKey.EnvironmentID,
+		&i.TransitKey.Name,
+		&i.TransitKey.Algorithm,
+		&i.TransitKey.Custody,
+		&i.TransitKey.AllowedOperations,
+		&i.TransitKey.Exportable,
+		&i.TransitKey.State,
+		&i.TransitKey.LatestVersion,
+		&i.TransitKey.MinEncryptVersion,
+		&i.TransitKey.MinDecryptVersion,
+		&i.TransitKey.MinAvailableVersion,
+		&i.TransitKey.CompromisedThroughVersion,
+		&i.TransitKey.RotationPeriodSeconds,
+		&i.TransitKey.PurgeStarted,
+		&i.TransitKey.DeletionAfter,
+		&i.TransitKey.CreatedBy,
+		&i.TransitKey.CreatedAt,
+		&i.TransitKey.UpdatedAt,
 	)
 	return i, err
 }
@@ -638,7 +614,7 @@ func (q *Queries) TransitInsertVersion(ctx context.Context, arg TransitInsertVer
 }
 
 const transitKeyByID = `-- name: TransitKeyByID :one
-SELECT id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at FROM transit_keys WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
+SELECT transit_keys.id, transit_keys.org_id, transit_keys.project_id, transit_keys.environment_id, transit_keys.name, transit_keys.algorithm, transit_keys.custody, transit_keys.allowed_operations, transit_keys.exportable, transit_keys.state, transit_keys.latest_version, transit_keys.min_encrypt_version, transit_keys.min_decrypt_version, transit_keys.min_available_version, transit_keys.compromised_through_version, transit_keys.rotation_period_seconds, transit_keys.purge_started, transit_keys.deletion_after, transit_keys.created_by, transit_keys.created_at, transit_keys.updated_at FROM transit_keys WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4
 `
 
 type TransitKeyByIDParams struct {
@@ -649,23 +625,7 @@ type TransitKeyByIDParams struct {
 }
 
 type TransitKeyByIDRow struct {
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         string
-	State                     string
-	LatestVersion             int32
-	MinEncryptVersion         int32
-	MinDecryptVersion         int32
-	MinAvailableVersion       int32
-	CompromisedThroughVersion int32
-	RotationPeriodSeconds     int64
-	DeletionAfter             pgtype.Timestamptz
-	CreatedBy                 string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	TransitKey TransitKey
 }
 
 func (q *Queries) TransitKeyByID(ctx context.Context, arg TransitKeyByIDParams) (TransitKeyByIDRow, error) {
@@ -677,23 +637,27 @@ func (q *Queries) TransitKeyByID(ctx context.Context, arg TransitKeyByIDParams) 
 	)
 	var i TransitKeyByIDRow
 	err := row.Scan(
-		&i.ID,
-		&i.EnvironmentID,
-		&i.Name,
-		&i.Algorithm,
-		&i.Custody,
-		&i.AllowedOperations,
-		&i.State,
-		&i.LatestVersion,
-		&i.MinEncryptVersion,
-		&i.MinDecryptVersion,
-		&i.MinAvailableVersion,
-		&i.CompromisedThroughVersion,
-		&i.RotationPeriodSeconds,
-		&i.DeletionAfter,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.TransitKey.ID,
+		&i.TransitKey.OrgID,
+		&i.TransitKey.ProjectID,
+		&i.TransitKey.EnvironmentID,
+		&i.TransitKey.Name,
+		&i.TransitKey.Algorithm,
+		&i.TransitKey.Custody,
+		&i.TransitKey.AllowedOperations,
+		&i.TransitKey.Exportable,
+		&i.TransitKey.State,
+		&i.TransitKey.LatestVersion,
+		&i.TransitKey.MinEncryptVersion,
+		&i.TransitKey.MinDecryptVersion,
+		&i.TransitKey.MinAvailableVersion,
+		&i.TransitKey.CompromisedThroughVersion,
+		&i.TransitKey.RotationPeriodSeconds,
+		&i.TransitKey.PurgeStarted,
+		&i.TransitKey.DeletionAfter,
+		&i.TransitKey.CreatedBy,
+		&i.TransitKey.CreatedAt,
+		&i.TransitKey.UpdatedAt,
 	)
 	return i, err
 }
@@ -740,7 +704,7 @@ func (q *Queries) TransitListCallers(ctx context.Context, arg TransitListCallers
 }
 
 const transitListKeys = `-- name: TransitListKeys :many
-SELECT id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at FROM transit_keys WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state<>'destroyed' ORDER BY name
+SELECT transit_keys.id, transit_keys.org_id, transit_keys.project_id, transit_keys.environment_id, transit_keys.name, transit_keys.algorithm, transit_keys.custody, transit_keys.allowed_operations, transit_keys.exportable, transit_keys.state, transit_keys.latest_version, transit_keys.min_encrypt_version, transit_keys.min_decrypt_version, transit_keys.min_available_version, transit_keys.compromised_through_version, transit_keys.rotation_period_seconds, transit_keys.purge_started, transit_keys.deletion_after, transit_keys.created_by, transit_keys.created_at, transit_keys.updated_at FROM transit_keys WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND state<>'destroyed' ORDER BY name
 `
 
 type TransitListKeysParams struct {
@@ -750,23 +714,7 @@ type TransitListKeysParams struct {
 }
 
 type TransitListKeysRow struct {
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         string
-	State                     string
-	LatestVersion             int32
-	MinEncryptVersion         int32
-	MinDecryptVersion         int32
-	MinAvailableVersion       int32
-	CompromisedThroughVersion int32
-	RotationPeriodSeconds     int64
-	DeletionAfter             pgtype.Timestamptz
-	CreatedBy                 string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	TransitKey TransitKey
 }
 
 func (q *Queries) TransitListKeys(ctx context.Context, arg TransitListKeysParams) ([]TransitListKeysRow, error) {
@@ -779,23 +727,27 @@ func (q *Queries) TransitListKeys(ctx context.Context, arg TransitListKeysParams
 	for rows.Next() {
 		var i TransitListKeysRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.EnvironmentID,
-			&i.Name,
-			&i.Algorithm,
-			&i.Custody,
-			&i.AllowedOperations,
-			&i.State,
-			&i.LatestVersion,
-			&i.MinEncryptVersion,
-			&i.MinDecryptVersion,
-			&i.MinAvailableVersion,
-			&i.CompromisedThroughVersion,
-			&i.RotationPeriodSeconds,
-			&i.DeletionAfter,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.TransitKey.ID,
+			&i.TransitKey.OrgID,
+			&i.TransitKey.ProjectID,
+			&i.TransitKey.EnvironmentID,
+			&i.TransitKey.Name,
+			&i.TransitKey.Algorithm,
+			&i.TransitKey.Custody,
+			&i.TransitKey.AllowedOperations,
+			&i.TransitKey.Exportable,
+			&i.TransitKey.State,
+			&i.TransitKey.LatestVersion,
+			&i.TransitKey.MinEncryptVersion,
+			&i.TransitKey.MinDecryptVersion,
+			&i.TransitKey.MinAvailableVersion,
+			&i.TransitKey.CompromisedThroughVersion,
+			&i.TransitKey.RotationPeriodSeconds,
+			&i.TransitKey.PurgeStarted,
+			&i.TransitKey.DeletionAfter,
+			&i.TransitKey.CreatedBy,
+			&i.TransitKey.CreatedAt,
+			&i.TransitKey.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -934,7 +886,7 @@ func (q *Queries) TransitReencrypt(ctx context.Context, arg TransitReencryptPara
 }
 
 const transitSelectDeletionDue = `-- name: TransitSelectDeletionDue :many
-SELECT k.org_id,k.project_id,k.id,k.environment_id,k.name,k.algorithm,k.custody,k.allowed_operations,k.state,k.latest_version,k.min_encrypt_version,k.min_decrypt_version,k.min_available_version,k.compromised_through_version,k.rotation_period_seconds,k.deletion_after,k.created_by,k.created_at,k.updated_at FROM transit_keys k WHERE k.state='pending-deletion' AND k.deletion_after<=$1 AND k.id>$2 ORDER BY k.id LIMIT CAST($3 AS BIGINT)
+SELECT k.id, k.org_id, k.project_id, k.environment_id, k.name, k.algorithm, k.custody, k.allowed_operations, k.exportable, k.state, k.latest_version, k.min_encrypt_version, k.min_decrypt_version, k.min_available_version, k.compromised_through_version, k.rotation_period_seconds, k.purge_started, k.deletion_after, k.created_by, k.created_at, k.updated_at FROM transit_keys k WHERE k.state='pending-deletion' AND k.deletion_after<=$1 AND k.id>$2 ORDER BY k.id LIMIT CAST($3 AS BIGINT)
 `
 
 type TransitSelectDeletionDueParams struct {
@@ -944,25 +896,7 @@ type TransitSelectDeletionDueParams struct {
 }
 
 type TransitSelectDeletionDueRow struct {
-	OrgID                     string
-	ProjectID                 string
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         string
-	State                     string
-	LatestVersion             int32
-	MinEncryptVersion         int32
-	MinDecryptVersion         int32
-	MinAvailableVersion       int32
-	CompromisedThroughVersion int32
-	RotationPeriodSeconds     int64
-	DeletionAfter             pgtype.Timestamptz
-	CreatedBy                 string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	TransitKey TransitKey
 }
 
 // hikyo:reason StoreTransitSelectDeletionDue verifies the existing closed system scheduler authority; globally lists due pending-deletion keys so each subsequent purge resolves its own tenant chain in a transaction.
@@ -977,25 +911,27 @@ func (q *Queries) TransitSelectDeletionDue(ctx context.Context, arg TransitSelec
 	for rows.Next() {
 		var i TransitSelectDeletionDueRow
 		if err := rows.Scan(
-			&i.OrgID,
-			&i.ProjectID,
-			&i.ID,
-			&i.EnvironmentID,
-			&i.Name,
-			&i.Algorithm,
-			&i.Custody,
-			&i.AllowedOperations,
-			&i.State,
-			&i.LatestVersion,
-			&i.MinEncryptVersion,
-			&i.MinDecryptVersion,
-			&i.MinAvailableVersion,
-			&i.CompromisedThroughVersion,
-			&i.RotationPeriodSeconds,
-			&i.DeletionAfter,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.TransitKey.ID,
+			&i.TransitKey.OrgID,
+			&i.TransitKey.ProjectID,
+			&i.TransitKey.EnvironmentID,
+			&i.TransitKey.Name,
+			&i.TransitKey.Algorithm,
+			&i.TransitKey.Custody,
+			&i.TransitKey.AllowedOperations,
+			&i.TransitKey.Exportable,
+			&i.TransitKey.State,
+			&i.TransitKey.LatestVersion,
+			&i.TransitKey.MinEncryptVersion,
+			&i.TransitKey.MinDecryptVersion,
+			&i.TransitKey.MinAvailableVersion,
+			&i.TransitKey.CompromisedThroughVersion,
+			&i.TransitKey.RotationPeriodSeconds,
+			&i.TransitKey.PurgeStarted,
+			&i.TransitKey.DeletionAfter,
+			&i.TransitKey.CreatedBy,
+			&i.TransitKey.CreatedAt,
+			&i.TransitKey.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1008,7 +944,7 @@ func (q *Queries) TransitSelectDeletionDue(ctx context.Context, arg TransitSelec
 }
 
 const transitSelectRotationDue = `-- name: TransitSelectRotationDue :many
-SELECT k.org_id,k.project_id,k.id,k.environment_id,k.name,k.algorithm,k.custody,k.allowed_operations,k.state,k.latest_version,k.min_encrypt_version,k.min_decrypt_version,k.min_available_version,k.compromised_through_version,k.rotation_period_seconds,k.deletion_after,k.created_by,k.created_at,k.updated_at,v.created_at AS latest_created_at FROM transit_keys k JOIN transit_key_versions v ON v.key_id=k.id AND v.org_id=k.org_id AND v.version=k.latest_version WHERE k.state='active' AND k.rotation_period_seconds>0 AND k.id>$1 ORDER BY k.id LIMIT CAST($2 AS BIGINT)
+SELECT k.id, k.org_id, k.project_id, k.environment_id, k.name, k.algorithm, k.custody, k.allowed_operations, k.exportable, k.state, k.latest_version, k.min_encrypt_version, k.min_decrypt_version, k.min_available_version, k.compromised_through_version, k.rotation_period_seconds, k.purge_started, k.deletion_after, k.created_by, k.created_at, k.updated_at,v.created_at AS latest_created_at FROM transit_keys k JOIN transit_key_versions v ON v.key_id=k.id AND v.org_id=k.org_id AND v.version=k.latest_version WHERE k.state='active' AND k.rotation_period_seconds>0 AND k.id>$1 ORDER BY k.id LIMIT CAST($2 AS BIGINT)
 `
 
 type TransitSelectRotationDueParams struct {
@@ -1017,26 +953,8 @@ type TransitSelectRotationDueParams struct {
 }
 
 type TransitSelectRotationDueRow struct {
-	OrgID                     string
-	ProjectID                 string
-	ID                        string
-	EnvironmentID             string
-	Name                      string
-	Algorithm                 string
-	Custody                   string
-	AllowedOperations         string
-	State                     string
-	LatestVersion             int32
-	MinEncryptVersion         int32
-	MinDecryptVersion         int32
-	MinAvailableVersion       int32
-	CompromisedThroughVersion int32
-	RotationPeriodSeconds     int64
-	DeletionAfter             pgtype.Timestamptz
-	CreatedBy                 string
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
-	LatestCreatedAt           pgtype.Timestamptz
+	TransitKey      TransitKey
+	LatestCreatedAt pgtype.Timestamptz
 }
 
 // hikyo:reason StoreTransitSelectRotationDue verifies the existing closed system scheduler authority; globally lists active rotation candidates with their latest-version timestamp before scoped worker authorization.
@@ -1051,25 +969,27 @@ func (q *Queries) TransitSelectRotationDue(ctx context.Context, arg TransitSelec
 	for rows.Next() {
 		var i TransitSelectRotationDueRow
 		if err := rows.Scan(
-			&i.OrgID,
-			&i.ProjectID,
-			&i.ID,
-			&i.EnvironmentID,
-			&i.Name,
-			&i.Algorithm,
-			&i.Custody,
-			&i.AllowedOperations,
-			&i.State,
-			&i.LatestVersion,
-			&i.MinEncryptVersion,
-			&i.MinDecryptVersion,
-			&i.MinAvailableVersion,
-			&i.CompromisedThroughVersion,
-			&i.RotationPeriodSeconds,
-			&i.DeletionAfter,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.TransitKey.ID,
+			&i.TransitKey.OrgID,
+			&i.TransitKey.ProjectID,
+			&i.TransitKey.EnvironmentID,
+			&i.TransitKey.Name,
+			&i.TransitKey.Algorithm,
+			&i.TransitKey.Custody,
+			&i.TransitKey.AllowedOperations,
+			&i.TransitKey.Exportable,
+			&i.TransitKey.State,
+			&i.TransitKey.LatestVersion,
+			&i.TransitKey.MinEncryptVersion,
+			&i.TransitKey.MinDecryptVersion,
+			&i.TransitKey.MinAvailableVersion,
+			&i.TransitKey.CompromisedThroughVersion,
+			&i.TransitKey.RotationPeriodSeconds,
+			&i.TransitKey.PurgeStarted,
+			&i.TransitKey.DeletionAfter,
+			&i.TransitKey.CreatedBy,
+			&i.TransitKey.CreatedAt,
+			&i.TransitKey.UpdatedAt,
 			&i.LatestCreatedAt,
 		); err != nil {
 			return nil, err

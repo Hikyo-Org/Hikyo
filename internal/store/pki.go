@@ -230,14 +230,6 @@ func (r pgRepos) PKI() PKIRepo           { return pkiQueries{db: pgAdoptDB{db: r
 func (r sqliteReadRepos) PKI() PKIReader { return r.r.PKI() }
 func (r pgReadRepos) PKI() PKIReader     { return r.r.PKI() }
 
-func pkiTime(t adapterStoredTime) (time.Time, error) {
-	parsed, err := t.Time()
-	if err != nil || parsed == nil {
-		return time.Time{}, err
-	}
-	return *parsed, nil
-}
-
 func affectedOne(n int64, err error) (bool, error) {
 	if err != nil {
 		return false, err

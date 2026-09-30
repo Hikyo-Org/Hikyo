@@ -21,31 +21,23 @@ type sqliteSshRuntimeQueries struct{ queries *sqlitegen.Queries }
 type pgSshRuntimeQueries struct{ queries *pggen.Queries }
 
 func (q pgSshRuntimeQueries) sshLiveCertificates(ctx context.Context, now time.Time, afterID string, limit int) ([]SSHSweepCandidate, error) {
-	var out []SSHSweepCandidate
-
 	rows, err := q.queries.RuntimeSSHListLiveCertificates(ctx, pggen.RuntimeSSHListLiveCertificatesParams{Now: pgRequiredTime(now), AfterID: afterID, PageLimit: int64(limit)})
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range rows {
-		out = append(out, SSHSweepCandidate{ID: c.ID, OrgID: c.OrgID, ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, ProfileID: c.ProfileID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, RequesterListed: c.RequesterListed == 1})
-	}
-
-	return out, nil
+	return mapRows(rows, func(c pggen.RuntimeSSHListLiveCertificatesRow) (SSHSweepCandidate, error) {
+		return SSHSweepCandidate{ID: c.ID, OrgID: c.OrgID, ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, ProfileID: c.ProfileID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, RequesterListed: c.RequesterListed == 1}, nil
+	})
 }
 
 func (q sqliteSshRuntimeQueries) sshLiveCertificates(ctx context.Context, now time.Time, afterID string, limit int) ([]SSHSweepCandidate, error) {
-	var out []SSHSweepCandidate
-
 	rows, err := q.queries.RuntimeSSHListLiveCertificates(ctx, sqlitegen.RuntimeSSHListLiveCertificatesParams{Now: fixedStamp(now), AfterID: afterID, PageLimit: int64(limit)})
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range rows {
-		out = append(out, SSHSweepCandidate{ID: c.ID, OrgID: c.OrgID, ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, ProfileID: c.ProfileID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, RequesterListed: c.RequesterListed == 1})
-	}
-
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.RuntimeSSHListLiveCertificatesRow) (SSHSweepCandidate, error) {
+		return SSHSweepCandidate{ID: c.ID, OrgID: c.OrgID, ProjectID: c.ProjectID, EnvironmentID: c.EnvironmentID, ProfileID: c.ProfileID, Serial: c.Serial, RequesterPrincipalID: c.RequesterPrincipalID, RequesterClass: c.RequesterClass, RequesterListed: c.RequesterListed == 1}, nil
+	})
 }
 
 func (q pgSshRuntimeQueries) sshRevokeForAuthority(ctx context.Context, c SSHSweepCandidate, at time.Time) (int64, error) {

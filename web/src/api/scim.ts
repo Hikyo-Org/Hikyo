@@ -31,7 +31,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { useState } from 'react';
 import type { z } from 'zod';
 
-import { commonRefusalText } from './statusText.ts';
+import { commonRefusalText, statusText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 
 export type ScimBinding = z.infer<typeof zScimBinding>;
@@ -317,19 +317,15 @@ export function useScimDirectoryGroups(
 // grants rely on) and a 404 is the uniform "not available OR does not exist"
 // answer, never an oracle for which the two it is.
 
+const scimRefusals: Readonly<Partial<Record<number, string>>> = {
+  401: commonRefusalText.sessionEnded,
+  403: 'Administering SCIM needs a second factor. Sign in again and present your passkey or a code, then retry.',
+  404: 'This is not available to you, or it does not exist. The two are deliberately the same answer.',
+  429: commonRefusalText.attempts,
+};
+
 function commonScimFailureText(error: ApiError): string | null {
-  switch (error.status) {
-    case 401:
-      return commonRefusalText.sessionEnded;
-    case 403:
-      return 'Administering SCIM needs a second factor. Sign in again and present your passkey or a code, then retry.';
-    case 404:
-      return 'This is not available to you, or it does not exist. The two are deliberately the same answer.';
-    case 429:
-      return commonRefusalText.attempts;
-    default:
-      return null;
-  }
+  return scimRefusals[error.status] ?? null;
 }
 
 /** scimReadFailureText names a failed read without inventing a cause. */
@@ -351,17 +347,17 @@ export function scimMutationFailureText(error: unknown): string {
     if (common !== null) {
       return common;
     }
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'That request was refused: it did not meet the contract for this operation.';
-      case 409:
-        return (
+    return statusText(
+      error,
+      {
+        400: (error) =>
+          error.detail ?? 'That request was refused: it did not meet the contract for this operation.',
+        409: (error) =>
           error.detail ??
-          'Refused: this conflicts with the current state. Reload to see what changed, then retry.'
-        );
-      default:
-        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
-    }
+          'Refused: this conflicts with the current state. Reload to see what changed, then retry.',
+      },
+      `The server failed (${error.status}); whether the change applied is unknown: reload to check.`,
+    );
   }
   return 'The SCIM surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.';
 }
@@ -377,21 +373,19 @@ export function scimMintFailureText(error: unknown): string {
     if (common !== null) {
       return common;
     }
-    switch (error.status) {
-      case 400:
-        return (
+    // A 5xx may follow a committed mint. Keep outcome uncertainty and point
+    // to the credential list so a stray credential can be revoked.
+    return statusText(
+      error,
+      {
+        400: (error) =>
           error.detail ??
-          'The mint was refused: the reauthentication proof was not accepted, or an indefinite credential is not allowed on this instance. No credential was issued.'
-        );
-      case 409:
-        return error.detail ?? 'Refused: reload to see the binding’s current credentials, then retry.';
-      default:
-        // A 5xx may have committed the mint before the response was lost, so
-        // this must NOT claim nothing was issued, that would strand a live,
-        // unrevoked credential. Say the outcome is unknown and point at the
-        // list, where a stray credential shows up revocable.
-        return `The mint failed (${error.status}); whether a credential was issued is unknown. Reload the list: if a new credential appears, revoke it.`;
-    }
+          'The mint was refused: the reauthentication proof was not accepted, or an indefinite credential is not allowed on this instance. No credential was issued.',
+        409: (error) =>
+          error.detail ?? 'Refused: reload to see the binding’s current credentials, then retry.',
+      },
+      `The mint failed (${error.status}); whether a credential was issued is unknown. Reload the list: if a new credential appears, revoke it.`,
+    );
   }
   // Same honesty for a lost/garbled response: the request may have committed.
   return 'The mint could not be completed: the server could not be reached, or it answered something this client does not understand. Whether a credential was issued is unknown: reload the list, and revoke any credential you did not intend.';

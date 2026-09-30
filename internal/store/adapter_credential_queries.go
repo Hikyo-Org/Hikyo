@@ -24,11 +24,7 @@ func (q sqliteAdapterStoreQueries) orphans(ctx context.Context, chain domain.Sco
 	if err != nil {
 		return nil, err
 	}
-	var out []string
-	for _, c := range rows {
-		out = append(out, c.Surface+":"+c.EffectiveName)
-	}
-	return out, nil
+	return mapRows(rows, func(c sqlitegen.AdapterOrphansRow) (string, error) { return c.Surface + ":" + c.EffectiveName, nil })
 }
 func (q sqliteAdapterStoreQueries) replaceCredentialTarget(ctx context.Context, chain domain.Scope, adapterID string, at time.Time) (string, int, int64, error) {
 	c, err := q.queries.AdapterReplaceCredentialTarget(ctx, sqlitegen.AdapterReplaceCredentialTargetParams{AdapterID: adapterID, At: runtimeSQLiteStamp(at), ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
@@ -81,11 +77,7 @@ func (q pgAdapterStoreQueries) orphans(ctx context.Context, chain domain.Scope, 
 	if err != nil {
 		return nil, err
 	}
-	var out []string
-	for _, c := range rows {
-		out = append(out, c.Surface+":"+c.EffectiveName)
-	}
-	return out, nil
+	return mapRows(rows, func(c pggen.AdapterOrphansRow) (string, error) { return c.Surface + ":" + c.EffectiveName, nil })
 }
 func (q pgAdapterStoreQueries) replaceCredentialTarget(ctx context.Context, chain domain.Scope, adapterID string, at time.Time) (string, int, int64, error) {
 	c, err := q.queries.AdapterReplaceCredentialTarget(ctx, pggen.AdapterReplaceCredentialTargetParams{AdapterID: adapterID, At: pgRequiredTime(at), ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})

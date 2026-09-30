@@ -71,17 +71,12 @@ func narrowPredicate(text string, chain map[string]bool, columnOK func(string) b
 func splitSQLTop(text, separator string) ([]string, bool) {
 	var parts []string
 	depth, start := 0, 0
-	quoted := false
 	for i := 0; i < len(text); i++ {
-		if text[i] == '\'' {
-			if quoted && i+1 < len(text) && text[i+1] == '\'' {
-				i++
-				continue
+		if end, kind, closed := sqlLexeme(text, i, true); kind != 0 {
+			if !closed || kind == '-' || kind == '/' {
+				return nil, false
 			}
-			quoted = !quoted
-			continue
-		}
-		if quoted {
+			i = end - 1
 			continue
 		}
 		switch text[i] {
@@ -99,7 +94,7 @@ func splitSQLTop(text, separator string) ([]string, bool) {
 			start = i + 1
 		}
 	}
-	if depth != 0 || quoted {
+	if depth != 0 {
 		return nil, false
 	}
 	return append(parts, text[start:]), true
@@ -107,7 +102,7 @@ func splitSQLTop(text, separator string) ([]string, bool) {
 
 var (
 	narrowColumn              = `(?:\w+\.)?\w+`
-	narrowValue               = `(?:` + paramRe + `|'(?:[^']|'')*'|-?\d+(?:\.\d+)?|TRUE|FALSE|NULL)`
+	narrowValue               = predicateValue
 	narrowComparisonRe        = regexp.MustCompile(`(?i)^(` + narrowColumn + `)\s*(?:=|<>|!=|<=|>=|<|>)\s*` + narrowValue + `$`)
 	narrowReverseComparisonRe = regexp.MustCompile(`(?i)^` + narrowValue + `\s*(?:=|<>|!=|<=|>=|<|>)\s*(` + narrowColumn + `)$`)
 	narrowNullRe              = regexp.MustCompile(`(?i)^(` + narrowColumn + `) IS (?:NOT )?NULL$`)

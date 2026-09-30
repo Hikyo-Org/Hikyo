@@ -52,7 +52,7 @@ export type { Level };
  *     single "create" call to get wrong.
  *  2. **A capability may only be granted at or above its DEEPEST level.**
  *     `manage-projects` on one environment is a row nothing can evaluate, so
- *     the checklist offers, per scope, exactly the atoms that scope admits, 
+ *     the checklist offers, per scope, exactly the atoms that scope admits,
  *     the same table `internal/domain`'s `capabilityLevels` holds, transcribed
  *     with the ADR's own "Covers" wording as the explanation each `(?)` shows.
  *  3. **Each checked capability becomes its own revocable line.** The modal
@@ -780,23 +780,18 @@ export async function resetCredential(principal: string): Promise<IssuedAuthorit
  * yours".
  */
 export function inviteFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The invitation was refused: check the username and the template.';
-      case 401:
-        return 'Your session ended. Sign in again to invite members.';
-      case 403:
-        return 'Inviting members needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.';
-      case 409:
-        return 'That username is already taken.';
-    }
-  }
-  return (
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ?? 'The invitation was refused: check the username and the template.',
+      401: 'Your session ended. Sign in again to invite members.',
+      403: 'Inviting members needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      404: 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.',
+      409: 'That username is already taken.',
+    },
     transportRefusalText(error) ??
-    'The invitation could not be sent, or the answer did not match the contract. Nothing was issued.'
+    'The invitation could not be sent, or the answer did not match the contract. Nothing was issued.',
   );
 }
 
@@ -839,31 +834,24 @@ export function grantFailureText(error: unknown): string {
       `${error.failedCapability} was refused: ${grantFailureText(error.cause)}`
     );
   }
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return (
-          error.detail ??
-          'That grant was refused: the capability cannot be held at this scope, or this principal may not hold it.'
-        );
-      case 401:
-        return commonRefusalText.sessionEnded;
-      case 403:
-        return 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.';
-      case 409:
-        return (
-          error.detail ??
-          'Refused: this would leave the organisation with nobody able to manage its members.'
-        );
-      case 429:
-        return commonRefusalText.attempts;
-      default:
-        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
-    }
-  }
-  return 'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.';
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ??
+          'That grant was refused: the capability cannot be held at this scope, or this principal may not hold it.',
+      401: commonRefusalText.sessionEnded,
+      403: 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      404: 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.',
+      409: (error) =>
+        error.detail ??
+          'Refused: this would leave the organisation with nobody able to manage its members.',
+      429: commonRefusalText.attempts,
+    },
+    'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.',
+    (error) =>
+      `The server failed (${error.status}); whether the change applied is unknown: reload to check.`,
+  );
 }
 
 export function membershipFailureText(error: unknown): string {

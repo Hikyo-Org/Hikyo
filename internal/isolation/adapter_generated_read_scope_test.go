@@ -3,7 +3,6 @@ package isolation
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -21,6 +19,18 @@ type adapterScopeQuery struct {
 	environment bool
 	aws         bool
 	read        func(context.Context, adapterQueryScope) (int, error)
+}
+
+// Each refusal changes exactly one chain component; other components stay owned.
+func adapterForeignScopes(own, foreign adapterQueryScope, environment bool) map[string]adapterQueryScope {
+	scopes := map[string]adapterQueryScope{
+		"org":     {org: foreign.org, project: own.project, environment: own.environment},
+		"project": {org: own.org, project: foreign.project, environment: own.environment},
+	}
+	if environment {
+		scopes["environment"] = adapterQueryScope{org: own.org, project: own.project, environment: foreign.environment}
+	}
+	return scopes
 }
 
 func TestAdapterGeneratedQueriesBindOwningChain(t *testing.T) {
@@ -47,28 +57,14 @@ func TestAdapterGeneratedQueriesBindOwningChain(t *testing.T) {
 				return len(rows), err
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterMoveBeginOriginAdapter", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterMoveBeginOriginAdapter(ctx, sqlitegen.AdapterMoveBeginOriginAdapterParams{ObservedAt: sql.NullString{String: observed.Format(time.RFC3339Nano), Valid: true}, MutationAdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterMoveBeginOriginAdapter(ctx, sqlitegen.AdapterMoveBeginOriginAdapterParams{ObservedAt: sql.NullString{String: observed.Format(time.RFC3339Nano), Valid: true}, MutationAdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterMoveBeginOriginTargets", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
 				rows, err := q.AdapterMoveBeginOriginTargets(ctx, sqlitegen.AdapterMoveBeginOriginTargetsParams{MutationAdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project})
 				return len(rows), err
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterMoveBeginTarget", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterMoveBeginTarget(ctx, sqlitegen.AdapterMoveBeginTargetParams{ObservedAt: sql.NullString{String: observed.Format(time.RFC3339Nano), Valid: true}, MutationTargetID: "tgt_gitlab_b", ChainOrg: scope.org, ChainProject: scope.project})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterMoveBeginTarget(ctx, sqlitegen.AdapterMoveBeginTargetParams{ObservedAt: sql.NullString{String: observed.Format(time.RFC3339Nano), Valid: true}, MutationTargetID: "tgt_gitlab_b", ChainOrg: scope.org, ChainProject: scope.project}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterConfigConfiguredNames", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
 				rows, err := q.AdapterConfigConfiguredNames(ctx, sqlitegen.AdapterConfigConfiguredNamesParams{AdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project, DestinationKind: "repository", DestinationID: 43, DestinationScope: "staging", ExcludeTargetID: ""})
@@ -118,28 +114,14 @@ func TestAdapterGeneratedQueriesBindOwningChain(t *testing.T) {
 				return len(rows), err
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterMoveBeginOriginAdapter", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterMoveBeginOriginAdapter(ctx, pggen.AdapterMoveBeginOriginAdapterParams{ObservedAt: pgtype.Timestamptz{Time: observed, Valid: true}, MutationAdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterMoveBeginOriginAdapter(ctx, pggen.AdapterMoveBeginOriginAdapterParams{ObservedAt: pgtype.Timestamptz{Time: observed, Valid: true}, MutationAdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterMoveBeginOriginTargets", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
 				rows, err := q.AdapterMoveBeginOriginTargets(ctx, pggen.AdapterMoveBeginOriginTargetsParams{MutationAdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project})
 				return len(rows), err
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterMoveBeginTarget", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
-				_, err := q.AdapterMoveBeginTarget(ctx, pggen.AdapterMoveBeginTargetParams{ObservedAt: pgtype.Timestamptz{Time: observed, Valid: true}, MutationTargetID: "tgt_gitlab_b", ChainOrg: scope.org, ChainProject: scope.project})
-				if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-					return 0, nil
-				}
-				if err != nil {
-					return 0, err
-				}
-				return 1, nil
+				return adapterCoreOne(q.AdapterMoveBeginTarget(ctx, pggen.AdapterMoveBeginTargetParams{ObservedAt: pgtype.Timestamptz{Time: observed, Valid: true}, MutationTargetID: "tgt_gitlab_b", ChainOrg: scope.org, ChainProject: scope.project}))
 			}})
 			queries = append(queries, adapterScopeQuery{name: "AdapterConfigConfiguredNames", environment: false, aws: false, read: func(ctx context.Context, scope adapterQueryScope) (int, error) {
 				rows, err := q.AdapterConfigConfiguredNames(ctx, pggen.AdapterConfigConfiguredNamesParams{AdapterID: "adp_gitlab", ChainOrg: scope.org, ChainProject: scope.project, DestinationKind: "repository", DestinationID: 43, DestinationScope: "staging", ExcludeTargetID: ""})
@@ -197,19 +179,7 @@ func TestAdapterGeneratedQueriesBindOwningChain(t *testing.T) {
 					if n, err := query.read(t.Context(), own); err != nil || n < 1 {
 						t.Fatalf("owning chain control rows=%d err=%v", n, err)
 					}
-					for _, axis := range []string{"org", "project", "environment"} {
-						if axis == "environment" && !query.environment {
-							continue
-						}
-						foreign := own
-						switch axis {
-						case "org":
-							foreign.org = "org_other"
-						case "project":
-							foreign.project = "prj_other"
-						case "environment":
-							foreign.environment = "env_gitlab_second"
-						}
+					for axis, foreign := range adapterForeignScopes(own, adapterQueryScope{org: "org_other", project: "prj_other", environment: "env_gitlab_second"}, query.environment) {
 						if n, err := query.read(t.Context(), foreign); err != nil || n != 0 {
 							t.Fatalf("foreign %s rows=%d err=%v", axis, n, err)
 						}
@@ -258,16 +228,7 @@ func TestAdapterGeneratedSnapshotInsertBindsParentChain(t *testing.T) {
 
 		own := adapterQueryScope{org: "org_gitlab", project: "prj_gitlab", environment: "env_gitlab_second"}
 		// Refusal cases run before the positive insert, so uniqueness cannot mask a missing parent fence.
-		for _, axis := range []string{"org", "project", "environment"} {
-			foreign := own
-			switch axis {
-			case "org":
-				foreign.org = "org_other"
-			case "project":
-				foreign.project = "prj_other"
-			case "environment":
-				foreign.environment = "env_gitlab_e2e"
-			}
+		for axis, foreign := range adapterForeignScopes(own, adapterQueryScope{org: "org_other", project: "prj_other", environment: "env_gitlab_e2e"}, true) {
 			if n, err := insert(foreign); err == nil || n != 0 {
 				t.Fatalf("foreign %s insert rows=%d err=%v", axis, n, err)
 			}

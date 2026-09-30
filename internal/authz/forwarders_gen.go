@@ -852,7 +852,6 @@ func (a *TxAuthorizer) ReplaceRegistrationPolicy(ctx context.Context, p Registra
 // SCIM mapping row names a scope at AUTHORING time and expands it at every
 // sync, and a row whose environment does not belong to its project would write
 // grants against a chain that never existed.
-//
 // It mints no proof and reveals nothing a caller could not learn by addressing
 // the scope: an unresolvable chain answers domain.ErrNotFound uniformly,
 // whether the link is missing or foreign.

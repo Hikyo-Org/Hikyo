@@ -7,7 +7,7 @@ type adapterMoveGetRow struct {
 	State                string
 	Keep                 bool
 	PendingOrigin        string
-	Created              adapterStoredTime
+	Created              string
 	AuthorityPrincipalID string
 }
 

@@ -115,7 +115,7 @@ SELECT (COUNT(*))::bigint AS configured FROM adapter_targets t JOIN adapters a O
 INSERT INTO adapter_route_move_claims (move_id,org_id,project_id,environment_id,target_id,key_id,provider_origin,destination_kind,destination_owner,destination_name,destination_environment,destination_scope,surface,effective_name,normalized_name) VALUES (sqlc.arg(move_id),sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(target_environment_id),sqlc.arg(target_id),sqlc.arg(key_id),sqlc.arg(origin),sqlc.arg(target_destination_kind),sqlc.arg(target_destination_owner),sqlc.arg(target_destination_name),sqlc.arg(target_destination_environment),sqlc.arg(target_destination_scope),sqlc.arg(pending_surface),sqlc.arg(pending_effective),sqlc.arg(normalized_name));
 
 -- name: AdapterMoveAWSConfiguredNames :many
-SELECT (t.id)::text AS target_id,(t.destination_kind)::text AS kind,(t.destination_name)::text AS name,(t.name_prefix)::text AS prefix,(COALESCE(k.name,''))::text AS key_name FROM adapter_targets t
+SELECT (t.destination_kind)::text AS kind,(t.destination_name)::text AS name,(t.name_prefix)::text AS prefix,(COALESCE(k.name,''))::text AS key_name FROM adapter_targets t
 		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
 		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
 		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id

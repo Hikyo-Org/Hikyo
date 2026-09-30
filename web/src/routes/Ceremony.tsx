@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useRef, useState, type FormEvent } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -295,19 +296,14 @@ export function Ceremony({
             // Stated, never a disabled control. "Protected" and "the window is
             // set to 0" are different sentences and the human is owed whichever
             // one is true.
-            <p className="ceremony__cap" role="status">
-              <span className="alert__glyph" aria-hidden="true">
-                ⚿
-              </span>
-              <span>
-                {request.window.protected
-                  ? 'This environment is protected, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'
-                  : 'This environment allows no reauthentication window, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'}
-                {oidcSession
-                  ? ' Your identity provider cannot satisfy a per-disclosure gate; use a passkey.'
-                  : ''}
-              </span>
-            </p>
+            <CeremonyNotice glyph="⚿">
+              {request.window.protected
+                ? 'This environment is protected, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'
+                : 'This environment allows no reauthentication window, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'}
+              {oidcSession
+                ? ' Your identity provider cannot satisfy a per-disclosure gate; use a passkey.'
+                : ''}
+            </CeremonyNotice>
           )}
 
           {/* The row stays in the body, not in Dialog's `actions` slot: the

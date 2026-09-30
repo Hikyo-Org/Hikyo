@@ -460,6 +460,9 @@ func (r transitQueries) Compromise(ctx context.Context, p authz.Proof, keyID str
 	}
 
 	q := r.db.transitStoreQueries()
+	if _, err := q.transitKeyByID(ctx, chain, keyID); err != nil {
+		return 0, err
+	}
 	rows, err := q.transitCompromise(ctx, chain, keyID, at)
 	if err != nil {
 		return 0, err
@@ -468,7 +471,10 @@ func (r transitQueries) Compromise(ctx context.Context, p authz.Proof, keyID str
 		return 0, ErrNotFound
 	}
 	through, err := q.transitCompromisedThrough(ctx, chain, keyID)
-	return uint32(through), err
+	if err != nil {
+		return 0, err
+	}
+	return dbVersion("compromised_through_version", through)
 }
 
 // FenceTrim persists and returns the current minimum decrypt version as the
@@ -481,6 +487,9 @@ func (r transitQueries) FenceTrim(ctx context.Context, p authz.Proof, keyID stri
 	}
 
 	q := r.db.transitStoreQueries()
+	if _, err := q.transitKeyByID(ctx, chain, keyID); err != nil {
+		return 0, err
+	}
 	rows, err := q.transitFenceTrim(ctx, chain, keyID, at)
 	if err != nil {
 		return 0, err
@@ -489,7 +498,10 @@ func (r transitQueries) FenceTrim(ctx context.Context, p authz.Proof, keyID stri
 		return 0, r.missingOrConflict(ctx, chain, keyID)
 	}
 	floor, err := q.transitTrimFloor(ctx, chain, keyID)
-	return uint32(floor), err
+	if err != nil {
+		return 0, err
+	}
+	return dbVersion("min_available_version", floor)
 }
 
 // Trim deletes version rows strictly below through and returns the deleted
@@ -508,6 +520,9 @@ func (r transitQueries) Trim(ctx context.Context, p authz.Proof, keyID string, t
 		if isNoRows(err) {
 			return 0, r.missingOrConflict(ctx, chain, keyID)
 		}
+		return 0, err
+	}
+	if _, err := dbVersion("min_available_version", floor); err != nil {
 		return 0, err
 	}
 	// Delete only versions this attempt processed, even if another trim fenced a higher floor.

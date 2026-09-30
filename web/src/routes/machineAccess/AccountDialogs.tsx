@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
 import { useState } from 'react';
 import {
   createServiceAccountFailureText,
@@ -209,14 +210,9 @@ export function DeleteAccountDialog({
     >
       {/* The cap comes first, so the dim lede below it stays in the body
           rather than moving above the sentence it qualifies. */}
-      <p className="ceremony__cap" role="status">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          {`This deletes ${account.name} and everything attached to it in one act: ${String(live)} live credential${live === 1 ? '' : 's'} revoked, each stops authenticating at once, and every environment grant released. It does not cascade to anything else, and it cannot be undone.`}
-        </span>
-      </p>
+      <CeremonyNotice>
+        {`This deletes ${account.name} and everything attached to it in one act: ${String(live)} live credential${live === 1 ? '' : 's'} revoked, each stops authenticating at once, and every environment grant released. It does not cascade to anything else, and it cannot be undone.`}
+      </CeremonyNotice>
       <p className="dialog__lede">
         Any bearer token or federated binding this account issued authenticates nothing the moment
         the delete lands. Distribute the replacement first if a workload still depends on it.

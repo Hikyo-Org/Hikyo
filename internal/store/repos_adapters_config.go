@@ -14,47 +14,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
-type adapterStoredTime struct{ value string }
-
-// Time returns the stored instant, or nil for an absent one.
-func (t adapterStoredTime) Time() (*time.Time, error) {
-	if t.value == "" {
-		return nil, nil
-	}
-	parsed, err := time.Parse(timeFormat, t.value)
-	if err != nil {
-		return nil, fmt.Errorf("store: malformed adapter timestamp %q: %w", t.value, err)
-	}
-	parsed = parsed.UTC()
-	return &parsed, nil
-}
-
-func (t *adapterStoredTime) Scan(src any) error {
-	switch value := src.(type) {
-	case nil:
-		t.value = ""
-		return nil
-	case time.Time:
-		t.value = CanonTime(value).Format(timeFormat)
-		return nil
-	case string:
-		if value == "" {
-			t.value = ""
-			return nil
-		}
-		parsed, err := time.Parse(timeFormat, value)
-		if err != nil {
-			return fmt.Errorf("store: malformed adapter timestamp %q: %w", value, err)
-		}
-		t.value = CanonTime(parsed).Format(timeFormat)
-		return nil
-	case []byte:
-		return t.Scan(string(value))
-	default:
-		return fmt.Errorf("store: unsupported adapter timestamp type %T", src)
-	}
-}
-
 func (r adapterQueries) Get(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersGet, r.tok)
 	if err != nil {
@@ -95,22 +54,6 @@ func (r adapterQueries) ListTargets(ctx context.Context, p authz.Proof, adapterI
 		}
 	}
 	return targets, nil
-}
-
-func collectStrings(rows interface {
-	Next() bool
-	Scan(...any) error
-	Err() error
-}) ([]string, error) {
-	var out []string
-	for rows.Next() {
-		var value string
-		if err := rows.Scan(&value); err != nil {
-			return nil, err
-		}
-		out = append(out, value)
-	}
-	return out, rows.Err()
 }
 
 func (r adapterQueries) TargetKeyIDs(ctx context.Context, p authz.Proof, targetID string) ([]string, error) {
@@ -275,14 +218,12 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 		return err
 	}
 	for _, configuredNamesRow := range rows {
-		var targetID, prefix, canonicalName string
-		targetID, prefix, canonicalName = configuredNamesRow.TargetID, configuredNamesRow.Prefix, configuredNamesRow.CanonicalName
-		if _, found := desired[prefix+adapter.SentinelName]; found {
-			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, prefix+adapter.SentinelName, targetID)
+		if _, found := desired[configuredNamesRow.Prefix+adapter.SentinelName]; found {
+			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, configuredNamesRow.Prefix+adapter.SentinelName, configuredNamesRow.TargetID)
 		}
-		if canonicalName != "" {
-			if _, found := desired[prefix+canonicalName]; found {
-				return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, prefix+canonicalName, targetID)
+		if configuredNamesRow.CanonicalName != "" {
+			if _, found := desired[configuredNamesRow.Prefix+configuredNamesRow.CanonicalName]; found {
+				return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, configuredNamesRow.Prefix+configuredNamesRow.CanonicalName, configuredNamesRow.TargetID)
 			}
 		}
 	}
@@ -292,10 +233,8 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 		return err
 	}
 	for _, pendingNamesRow := range pendingRows {
-		var targetID, effectiveName string
-		targetID, effectiveName = pendingNamesRow.TargetID, pendingNamesRow.EffectiveName
-		if _, found := desired[effectiveName]; found {
-			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effectiveName, targetID)
+		if _, found := desired[pendingNamesRow.EffectiveName]; found {
+			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, pendingNamesRow.EffectiveName, pendingNamesRow.TargetID)
 		}
 	}
 	return nil
@@ -316,17 +255,15 @@ func refuseAWSNameCollision(ctx context.Context, db adapterDB, chain domain.Scop
 		return err
 	}
 	for _, awsConfiguredNamesRow := range rows {
-		var targetID, kind, name, prefix, keyName string
-		targetID, kind, name, prefix, keyName = awsConfiguredNamesRow.TargetID, awsConfiguredNamesRow.Kind, awsConfiguredNamesRow.Name, awsConfiguredNamesRow.Prefix, awsConfiguredNamesRow.KeyName
-		claimed := name
-		if kind == string(adapter.PerKey) {
-			if keyName == "" {
+		claimed := awsConfiguredNamesRow.Name
+		if awsConfiguredNamesRow.Kind == string(adapter.PerKey) {
+			if awsConfiguredNamesRow.KeyName == "" {
 				continue
 			}
-			claimed = name + prefix + keyName
+			claimed = awsConfiguredNamesRow.Name + awsConfiguredNamesRow.Prefix + awsConfiguredNamesRow.KeyName
 		}
 		if desired[strings.ToUpper(claimed)] {
-			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, claimed, targetID)
+			return fmt.Errorf("%w: effective name %q is already configured by target %q on this destination", domain.ErrConflict, claimed, awsConfiguredNamesRow.TargetID)
 		}
 	}
 
@@ -335,10 +272,8 @@ func refuseAWSNameCollision(ctx context.Context, db adapterDB, chain domain.Scop
 		return err
 	}
 	for _, awsPendingNamesRow := range pendingRows {
-		var targetID, effectiveName string
-		targetID, effectiveName = awsPendingNamesRow.TargetID, awsPendingNamesRow.EffectiveName
-		if desired[strings.ToUpper(effectiveName)] {
-			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, effectiveName, targetID)
+		if desired[strings.ToUpper(awsPendingNamesRow.EffectiveName)] {
+			return fmt.Errorf("%w: effective name %q is reserved by pending target %q on this destination", domain.ErrConflict, awsPendingNamesRow.EffectiveName, awsPendingNamesRow.TargetID)
 		}
 	}
 	return nil

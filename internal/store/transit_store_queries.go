@@ -79,15 +79,9 @@ func (q sqliteTransitStoreQueries) transitListKeys(ctx context.Context, chain do
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitKeyRecord
-	for _, c := range c {
-		item, err := sqliteTransitKey(sqlitegen.TransitKeyByIDRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c sqlitegen.TransitListKeysRow) (TransitKeyRecord, error) {
+		return sqliteTransitKey(c.TransitKey)
+	})
 }
 
 func (q sqliteTransitStoreQueries) transitGetKey(ctx context.Context, chain domain.Scope, name string) (TransitKeyRecord, error) {
@@ -98,7 +92,7 @@ func (q sqliteTransitStoreQueries) transitGetKey(ctx context.Context, chain doma
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
-	item, err := sqliteTransitKey(sqlitegen.TransitKeyByIDRow(c))
+	item, err := sqliteTransitKey(c.TransitKey)
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
@@ -113,7 +107,7 @@ func (q sqliteTransitStoreQueries) transitGetKeyForUse(ctx context.Context, chai
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
-	item, err := sqliteTransitKey(sqlitegen.TransitKeyByIDRow(c))
+	item, err := sqliteTransitKey(c.TransitKey)
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
@@ -133,15 +127,7 @@ func (q sqliteTransitStoreQueries) transitListVersions(ctx context.Context, chai
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitVersionRecord
-	for _, c := range c {
-		item, err := sqliteTransitVersion(sqlitegen.TransitListVersionsRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqliteTransitVersion)
 }
 
 func (q sqliteTransitStoreQueries) transitListCallers(ctx context.Context, chain domain.Scope, keyID string) ([]TransitCaller, error) {
@@ -199,7 +185,7 @@ func (q sqliteTransitStoreQueries) transitKeyByID(ctx context.Context, chain dom
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
-	item, err := sqliteTransitKey(sqlitegen.TransitKeyByIDRow(c))
+	item, err := sqliteTransitKey(c.TransitKey)
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
@@ -255,15 +241,7 @@ func (q sqliteTransitStoreQueries) transitListReencrypt(ctx context.Context, cha
 	if err != nil {
 		return nil, err
 	}
-	var out []ReencryptFieldRow
-	for _, c := range c {
-		item, err := sqliteTransitReencrypt(sqlitegen.TransitListReencryptRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqliteTransitReencrypt)
 }
 
 func (q sqliteTransitStoreQueries) transitReencrypt(ctx context.Context, chain domain.Scope, id string, newCT, oldCT []byte) (int64, error) {
@@ -275,15 +253,7 @@ func (q sqliteTransitStoreQueries) transitSelectDeletionDue(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitDueKey
-	for _, c := range c {
-		item, err := sqliteTransitDeletion(sqlitegen.TransitSelectDeletionDueRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqliteTransitDeletion)
 }
 
 func (q sqliteTransitStoreQueries) transitSelectRotationDue(ctx context.Context, afterID string, limit int) ([]TransitDueKey, error) {
@@ -291,15 +261,7 @@ func (q sqliteTransitStoreQueries) transitSelectRotationDue(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitDueKey
-	for _, c := range c {
-		item, err := sqliteTransitRotation(sqlitegen.TransitSelectRotationDueRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqliteTransitRotation)
 }
 
 func (q sqliteTransitStoreQueries) transitFencePurge(ctx context.Context, chain domain.Scope, id string, now time.Time) (int64, error) {
@@ -311,15 +273,7 @@ func (q sqliteTransitStoreQueries) transitExternalVersions(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitVersionMaterial
-	for _, c := range c {
-		item, err := sqliteTransitExternal(sqlitegen.TransitExternalVersionsRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, sqliteTransitExternal)
 }
 
 func (q sqliteTransitStoreQueries) transitDestroy(ctx context.Context, chain domain.Scope, id string, now time.Time) (int64, error) {
@@ -368,15 +322,9 @@ func (q pgTransitStoreQueries) transitListKeys(ctx context.Context, chain domain
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitKeyRecord
-	for _, c := range c {
-		item, err := pgTransitKey(pggen.TransitKeyByIDRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, func(c pggen.TransitListKeysRow) (TransitKeyRecord, error) {
+		return pgTransitKey(c.TransitKey)
+	})
 }
 
 func (q pgTransitStoreQueries) transitGetKey(ctx context.Context, chain domain.Scope, name string) (TransitKeyRecord, error) {
@@ -387,7 +335,7 @@ func (q pgTransitStoreQueries) transitGetKey(ctx context.Context, chain domain.S
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
-	item, err := pgTransitKey(pggen.TransitKeyByIDRow(c))
+	item, err := pgTransitKey(c.TransitKey)
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
@@ -402,7 +350,7 @@ func (q pgTransitStoreQueries) transitGetKeyForUse(ctx context.Context, chain do
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
-	item, err := pgTransitKey(pggen.TransitKeyByIDRow(c))
+	item, err := pgTransitKey(c.TransitKey)
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
@@ -422,15 +370,7 @@ func (q pgTransitStoreQueries) transitListVersions(ctx context.Context, chain do
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitVersionRecord
-	for _, c := range c {
-		item, err := pgTransitVersion(pggen.TransitListVersionsRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgTransitVersion)
 }
 
 func (q pgTransitStoreQueries) transitListCallers(ctx context.Context, chain domain.Scope, keyID string) ([]TransitCaller, error) {
@@ -498,7 +438,7 @@ func (q pgTransitStoreQueries) transitKeyByID(ctx context.Context, chain domain.
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
-	item, err := pgTransitKey(pggen.TransitKeyByIDRow(c))
+	item, err := pgTransitKey(c.TransitKey)
 	if err != nil {
 		return TransitKeyRecord{}, err
 	}
@@ -578,15 +518,7 @@ func (q pgTransitStoreQueries) transitListReencrypt(ctx context.Context, chain d
 	if err != nil {
 		return nil, err
 	}
-	var out []ReencryptFieldRow
-	for _, c := range c {
-		item, err := pgTransitReencrypt(pggen.TransitListReencryptRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgTransitReencrypt)
 }
 
 func (q pgTransitStoreQueries) transitReencrypt(ctx context.Context, chain domain.Scope, id string, newCT, oldCT []byte) (int64, error) {
@@ -598,15 +530,7 @@ func (q pgTransitStoreQueries) transitSelectDeletionDue(ctx context.Context, now
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitDueKey
-	for _, c := range c {
-		item, err := pgTransitDeletion(pggen.TransitSelectDeletionDueRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgTransitDeletion)
 }
 
 func (q pgTransitStoreQueries) transitSelectRotationDue(ctx context.Context, afterID string, limit int) ([]TransitDueKey, error) {
@@ -614,15 +538,7 @@ func (q pgTransitStoreQueries) transitSelectRotationDue(ctx context.Context, aft
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitDueKey
-	for _, c := range c {
-		item, err := pgTransitRotation(pggen.TransitSelectRotationDueRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgTransitRotation)
 }
 
 func (q pgTransitStoreQueries) transitFencePurge(ctx context.Context, chain domain.Scope, id string, now time.Time) (int64, error) {
@@ -634,15 +550,7 @@ func (q pgTransitStoreQueries) transitExternalVersions(ctx context.Context, chai
 	if err != nil {
 		return nil, err
 	}
-	var out []TransitVersionMaterial
-	for _, c := range c {
-		item, err := pgTransitExternal(pggen.TransitExternalVersionsRow(c))
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, nil
+	return mapRows(c, pgTransitExternal)
 }
 
 func (q pgTransitStoreQueries) transitDestroy(ctx context.Context, chain domain.Scope, id string, now time.Time) (int64, error) {
