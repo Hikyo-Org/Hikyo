@@ -25,6 +25,8 @@ func TestHikyoSecretPredicateKeepsLifecycleUpdates(t *testing.T) {
 	base := &hikyov1.HikyoSecret{ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "default", Generation: 3}}
 	for name, mutate := range map[string]func(*hikyov1.HikyoSecret){
 		"generation": func(cr *hikyov1.HikyoSecret) { cr.Generation++ },
+		"label":      func(cr *hikyov1.HikyoSecret) { cr.Labels = map[string]string{"owner": "platform"} },
+		"annotation": func(cr *hikyov1.HikyoSecret) { cr.Annotations = map[string]string{"floor.hikyo.dev/phase": "1"} },
 		"finalizer":  func(cr *hikyov1.HikyoSecret) { cr.Finalizers = []string{hikyov1.OrphanFinalizer} },
 		"deletion": func(cr *hikyov1.HikyoSecret) {
 			now := metav1.NewTime(time.Now().UTC())

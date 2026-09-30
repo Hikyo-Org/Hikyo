@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
@@ -199,8 +200,8 @@ func (r *HikyoSecretReconciler) SetupWithManager(mgr manager.Manager) error {
 }
 
 // hikyoSecretPredicate suppresses the status update emitted at the end of a
-// reconcile. Spec generation, deletion, and finalizer transitions still enqueue
-// immediately; steady-state refresh remains governed by RequeueAfter.
+// reconcile. Spec, label, annotation, deletion, and finalizer transitions still
+// enqueue immediately; steady-state refresh remains governed by RequeueAfter.
 func hikyoSecretPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -210,6 +211,8 @@ func hikyoSecretPredicate() predicate.Funcs {
 				return true
 			}
 			return oldCR.Generation != newCR.Generation ||
+				!maps.Equal(oldCR.Labels, newCR.Labels) ||
+				!maps.Equal(oldCR.Annotations, newCR.Annotations) ||
 				!reflect.DeepEqual(oldCR.DeletionTimestamp, newCR.DeletionTimestamp) ||
 				!slices.Equal(oldCR.Finalizers, newCR.Finalizers)
 		},
