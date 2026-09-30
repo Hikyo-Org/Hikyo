@@ -916,7 +916,7 @@ type AdapterWorkerCompleteJobParams struct {
 	LeaseOwner sql.NullString
 }
 
-// hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target generation/provider checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction.
+// hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target-generation or route-move-state checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction.
 // hikyo:instance-scoped
 func (q *Queries) AdapterWorkerCompleteJob(ctx context.Context, arg AdapterWorkerCompleteJobParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, adapterWorkerCompleteJob,

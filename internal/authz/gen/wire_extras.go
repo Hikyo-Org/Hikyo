@@ -55,7 +55,7 @@ var reviewedWireExtras = wireExtras{
 		"http:GET /api/v1/orgs/{org}/scim/v2/{binding}/Schemas":       {Events: []string{"EventSCIMCredentialRefused"}},
 		// The credential-versus-binding-path mismatch (#73 §8). It is refused
 		// BEFORE any operation authorizes; there is no proof and no operation
-		// row to hang it on; so like the authentication surface's own events it
+		// row to hang it on, so like the authentication surface's own events it
 		// is declared here, against the mount every wire request enters through.
 		//
 		// All THREE discovery routes declare it, and they are the only routes that
@@ -78,8 +78,8 @@ var reviewedWireExtras = wireExtras{
 		// org-scoped and instance-scoped credential-reset operations by the target's
 		// grant classification, resolved under the target-row lock inside the
 		// handler's tx. Both are mapped here so the operation linkage records that
-		// this route reaches CapCredentialReset (MFA-mandatory): the chokepoint —
-		// authorize(), which the service calls on the chosen op inside that tx —
+		// this route reaches CapCredentialReset (MFA-mandatory). The chokepoint
+		// authorize(), called on the chosen operation inside that transaction,
 		// enforces capability + MFA + assurance. The route keeps its unauthenticated
 		// probe class (enumeration uniformity is its dominant contract, reinforced by
 		// B2's uniform refusal) and carries no single x-hikyo-operation, since two ops
@@ -108,7 +108,7 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/auth/logout":                                      {Events: []string{"EventAuthLogout"}},
 		// whoami resolves a session and reports it. It writes nothing and its
 		// result duplicates what the login event already recorded, so it is the
-		// one auth path with no event of its own; pinned in the exemption
+		// one auth path with no event of its own, pinned in the exemption
 		// fixture with that reason rather than silently absent.
 		// OIDC (#54). start emits only a throttle crossing directly; the callback
 		// is where a login/link/reauth lands, so it carries the family of outcomes
@@ -145,7 +145,7 @@ var reviewedWireExtras = wireExtras{
 		// mints an establishment authority whose consumption is recorded by the
 		// establish path.
 		// Each factor ceremony validates a proof under the per-account backoff, so
-		// a crossed threshold is an event it can emit; declared here so the
+		// a crossed threshold is an event it can emit, declared here so the
 		// audit-completeness contract covers it.
 		"http:POST /api/v1/auth/totp/enrol/start":      {Events: []string{"EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/step-up":          {Events: []string{"EventAuthReauthenticated", "EventAuthThrottleCrossed"}},
@@ -285,8 +285,8 @@ var reviewedWireExtras = wireExtras{
 		"cli:env":              {Class: "ClassTenant"},
 		// `hikyo backup` and `hikyo restore` (#76): the operator lifecycle, on the
 		// server's own host. System class, and the probe contract that matters is
-		// exactly the one the totality invariant asserts by finding no HTTP route
-		//; a restore endpoint reachable from the network would be an instance
+		// exactly the one the totality invariant asserts by finding no HTTP route.
+		// A restore endpoint reachable from the network would be an instance
 		// replacement one request away, and the reconciliation that follows a
 		// restore is unreachable by any other means anyway, because a restore
 		// leaves no principal able to authorize anything.
@@ -397,7 +397,7 @@ var reviewedWireExtras = wireExtras{
 		"cli:update": {Class: "ClassUnauthenticated"},
 		// `values` reaches only the tenant-scoped value routes.
 		"cli:values": {Class: "ClassTenant"},
-		// Local product-information commands print build metadata; no principal,
+		// Local product-information commands print build metadata: no principal,
 		// no server, no store; the pre-auth contract is trivially total.
 		"cli:version":                   {Class: "ClassUnauthenticated"},
 		"cli:welcome":                   {Class: "ClassUnauthenticated"},
@@ -434,8 +434,8 @@ var reviewedWireExtras = wireExtras{
 // list: it projects the caller's OWN grant rows onto the organisations
 // they name, reaches no chokepoint operation and can disclose nothing the
 // caller does not already hold. Its probe contract is therefore
-// enumeration uniformity; an unresolvable session must be
-// indistinguishable from one whose grants name no org; not tenancy.
+// enumeration uniformity, not tenancy: an unresolvable session must be
+// indistinguishable from one whose grants name no org.
 
 // http:GET /api/v1/auth/methods
 // A successful consume mints a recovery-issued credential-establishment
@@ -454,8 +454,8 @@ var reviewedWireExtras = wireExtras{
 // SCIM provisioning (#73). Every route is tenant-class at org depth: a
 // binding a caller may not reach answers byte-identically to one that is
 // not there, which is what keeps the mount from being a cross-org oracle.
-// The wire routes are protocol paths; the same closed exception class the
-// authentication ceremonies belong to; and are parity-exempt, but they are
+// The wire routes are protocol paths (the same closed exception class as
+// authentication ceremonies) and are parity-exempt, but they are
 // NOT unauthenticated: each one presents a provisioning credential.
 
 // http:GET /api/v1/instance/oidc-providers
@@ -512,7 +512,7 @@ var reviewedWireExtras = wireExtras{
 
 // http:GET /api/v1/instance/federation-issuers
 // OIDC federation (#62). Issuer configuration is instance-class under
-// `instance-config`; the same siting as OIDC and SAML provider
+// `instance-config`, the same siting as OIDC and SAML provider
 // administration, and for the same reason #16 gave: an org-scoped issuer
 // would let an org admin add a provider and mint identities authenticating
 // into the instance.
@@ -527,7 +527,7 @@ var reviewedWireExtras = wireExtras{
 // http:GET /api/v1/orgs/{org}/projects/{project}/keys
 // The key catalogue (#49). Every route is tenant-class at project depth:
 // a key is declared once per project, and a key the caller cannot reach
-// answers byte-identically to one that is not there; including the two
+// answers byte-identically to one that is not there, including the two
 // reveal-gated routes, whose refusal must be indistinguishable or the gate
 // itself becomes the one-bit oracle it exists to close.
 

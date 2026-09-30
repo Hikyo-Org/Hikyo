@@ -197,7 +197,7 @@ UPDATE adapter_route_moves SET state='completed',pending_origin=NULL,pending_cre
 -- name: AdapterWorkerFinishJobQuery :execrows
 UPDATE adapter_outbox SET state='queued',next_attempt_at=sqlc.arg(due),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner);
 
--- hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target generation/provider checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction.
+-- hikyo:reason Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target-generation or route-move-state checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction.
 -- hikyo:instance-scoped
 -- name: AdapterWorkerCompleteJob :execrows
 UPDATE adapter_outbox SET state=sqlc.arg(state),finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND lease_owner=sqlc.arg(lease_owner);
