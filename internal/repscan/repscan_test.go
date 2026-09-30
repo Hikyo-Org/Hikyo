@@ -62,7 +62,12 @@ func scan(t *testing.T, opts Options) *Report {
 
 func refusal(t *testing.T, opts Options, kind Kind, want string) {
 	t.Helper()
-	_, err := Run(context.Background(), loadRules(t), opts)
+	refusalContext(t, context.Background(), opts, kind, want)
+}
+
+func refusalContext(t *testing.T, ctx context.Context, opts Options, kind Kind, want string) {
+	t.Helper()
+	_, err := Run(ctx, loadRules(t), opts)
 	if err == nil {
 		t.Fatalf("Run succeeded, want a refusal containing %q", want)
 	}
@@ -356,7 +361,6 @@ func TestBudgetsRefuseByName(t *testing.T) {
 		"files":    {func(l *Limits) { l.MaxFiles = 1 }, "more than 1 files"},
 		"bytes":    {func(l *Limits) { l.MaxTotalBytes = int64(len(githubPAT)) + 2 }, "bytes scanned in total"},
 		"findings": {func(l *Limits) { l.MaxFindings = 1 }, "more than 1 findings"},
-		"runtime":  {func(l *Limits) { l.Timeout = time.Nanosecond }, "runtime budget"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			opts := pathsOptions(dir)
@@ -364,6 +368,11 @@ func TestBudgetsRefuseByName(t *testing.T) {
 			refusal(t, opts, KindRefused, tc.want)
 		})
 	}
+	t.Run("runtime", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		refusalContext(t, ctx, pathsOptions(dir), KindRefused, "runtime budget")
+	})
 }
 
 // TestParityWithValueEntry: the local scanner's verdict on the value-entry
