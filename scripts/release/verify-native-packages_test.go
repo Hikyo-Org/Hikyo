@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"testing"
+	"time"
 )
 
 func TestInspectTarRejectsInstallHook(t *testing.T) {
@@ -94,12 +95,21 @@ func TestInspectTarAcceptsOnlyMatchingAPKChecksumMetadata(t *testing.T) {
 	archive := makeTarWithHeader(t, tar.Header{
 		Name:       binaryPath,
 		Typeflag:   tar.TypeReg,
+		Format:     tar.FormatPAX,
 		Mode:       0o755,
 		Size:       int64(len(content)),
+		ModTime:    time.Unix(1, 500),
 		PAXRecords: map[string]string{apkChecksumPAXKey: hex.EncodeToString(checksum[:])},
 	}, content)
+	header, err := tar.NewReader(bytes.NewReader(archive)).Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := header.PAXRecords[paxModTimeKey]; !ok {
+		t.Fatal("test APK entry does not exercise standard PAX modification time metadata")
+	}
 	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), newTarInspection(), nil, true); err != nil {
-		t.Fatalf("matching APK checksum refused: %v", err)
+		t.Fatalf("matching APK checksum and standard modification time refused: %v", err)
 	}
 
 	archive = makeTarWithHeader(t, tar.Header{
@@ -111,6 +121,20 @@ func TestInspectTarAcceptsOnlyMatchingAPKChecksumMetadata(t *testing.T) {
 	}, content)
 	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), newTarInspection(), nil, true); err == nil {
 		t.Fatal("mismatched APK checksum accepted")
+	}
+
+	archive = makeTarWithHeader(t, tar.Header{
+		Name:     binaryPath,
+		Typeflag: tar.TypeReg,
+		Mode:     0o755,
+		Size:     int64(len(content)),
+		PAXRecords: map[string]string{
+			apkChecksumPAXKey: hex.EncodeToString(checksum[:]),
+			"comment":         "untrusted metadata",
+		},
+	}, content)
+	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), newTarInspection(), nil, true); err == nil {
+		t.Fatal("APK checksum accompanied by non-time PAX metadata was accepted")
 	}
 }
 

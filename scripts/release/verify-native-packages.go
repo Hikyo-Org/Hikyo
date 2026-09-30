@@ -568,7 +568,10 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 	}
 }
 
-const apkChecksumPAXKey = "APK-TOOLS.checksum.SHA1"
+const (
+	apkChecksumPAXKey = "APK-TOOLS.checksum.SHA1"
+	paxModTimeKey     = "mtime"
+)
 
 func validateTarMetadata(hdr *tar.Header, entry string, allowAPKChecksum bool) error {
 	if hdr.Uid != 0 || hdr.Gid != 0 || hdr.Uname != "" && hdr.Uname != "root" || hdr.Gname != "" && hdr.Gname != "root" {
@@ -581,7 +584,11 @@ func validateTarMetadata(hdr *tar.Header, entry string, allowAPKChecksum bool) e
 		return nil
 	}
 	checksum, ok := hdr.PAXRecords[apkChecksumPAXKey]
-	if !allowAPKChecksum || len(hdr.PAXRecords) != 1 || !ok || len(checksum) != sha1.Size*2 {
+	allowedRecords := 1
+	if _, hasModTime := hdr.PAXRecords[paxModTimeKey]; hasModTime {
+		allowedRecords++
+	}
+	if !allowAPKChecksum || len(hdr.PAXRecords) != allowedRecords || !ok || len(checksum) != sha1.Size*2 {
 		return fmt.Errorf("package entry %q contains forbidden extended metadata", entry)
 	}
 	if _, err := hex.DecodeString(checksum); err != nil {
