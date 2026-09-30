@@ -528,3 +528,13 @@ caller allowlists, reasons, query authority, engines and evidence before writing
 Stored integer checks share one bound predicate while preserving both historical
 corruption diagnostics. Native fix verification and remote exact-head evidence
 remain in PR #843 rather than this architecture record.
+
+The exhaustive 175-record/92-name exemption review found one reason overstatement:
+`AdapterWorkerCompleteJob` intentionally settles an owned stale-generation job
+without requiring the superseded target fence. Both-engine annotation reasons
+now state that exception. The closed worker must retain the unchanged job returned
+by ClaimDue; abort settlement does not independently validate a caller-modified
+job chain. Both-engine regression coverage proves wrong-owner refusal, unchanged
+newer target and a single audit carrying the original claimed chain. SQL, generated
+API, annotation names, classes and hashes remain unchanged by this correction.
+Security sign-off remains an owner review item; this evidence is not approval.

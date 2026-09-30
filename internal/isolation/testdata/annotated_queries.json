@@ -32,7 +32,7 @@
     "name": "AdapterWorkerCompleteJob",
     "annotation": "instance-scoped",
     "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
-    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
+    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target generation/provider checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction."
   },
   {
     "engine": "postgres",
@@ -2968,7 +2968,7 @@
     "name": "AdapterWorkerCompleteJob",
     "annotation": "instance-scoped",
     "hash": "52d20816ad043fdaef8bce4cc11b613797c66452bd94551f8ce8f8836f4e1e28",
-    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner; scoped generation/provider fences remain in the same transaction before audit and commit."
+    "reason": "Closed adapter worker terminal settlement updates only its globally unique claimed job id and lease owner. Ordinary outcomes retain scoped target generation/provider checks; intentional stale-generation abort instead settles and audits the immutable ClaimDue job chain without requiring the superseded target fence, in the same transaction."
   },
   {
     "engine": "sqlite",
