@@ -1,11 +1,9 @@
 // @vitest-environment happy-dom
-import { act, useState } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { useState } from 'react';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { useResetOnChange } from '../app/useResetOnChange.ts';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 /**
  * MachineAccess closes its create/binding/grant and lease dialogs whenever the
@@ -30,26 +28,20 @@ function DialogHost({ org, project, session }: { org: string; project: string; s
   return <div data-open={open ? 'yes' : 'no'} />;
 }
 
-let root: Root | null = null;
-let container: HTMLElement | null = null;
+let view: Awaited<ReturnType<typeof renderForm>> | null = null;
 
 afterEach(async () => {
-  if (root !== null) {
-    await act(async () => root?.unmount());
-    root = null;
-  }
-  container = null;
+  await view?.unmount();
+  view = null;
 });
 
 async function render(props: { org: string; project: string; session: string }): Promise<void> {
-  container ??= document.createElement('div');
-  root ??= createRoot(container);
-  const mounted = root;
-  await act(async () => mounted.render(<DialogHost {...props} />));
+  if (view === null) view = await renderForm(<DialogHost {...props} />);
+  else await view.rerender(<DialogHost {...props} />);
 }
 
 function isOpen(): boolean {
-  return container?.querySelector('div')?.getAttribute('data-open') === 'yes';
+  return view?.container.querySelector('div')?.getAttribute('data-open') === 'yes';
 }
 
 describe('MachineAccess dialog reset', () => {

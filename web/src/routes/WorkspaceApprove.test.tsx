@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import type { WorkspaceHandoffTransaction } from '@hikyo/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkspaceApprove } from './WorkspaceApprove.tsx';
@@ -24,8 +23,7 @@ vi.mock('../api/values.ts', async (original) => ({
   runPasskeyCeremony: ceremonies.passkey,
   runTOTPCeremony: ceremonies.totp,
 }));
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-const roots: Root[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 const fetcher = vi.fn<typeof fetch>();
 const id = (prefix: string, n: number) =>
   `${prefix}_00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
@@ -56,27 +54,15 @@ beforeEach(() => {
   );
 });
 afterEach(async () => {
-  for (const root of roots.splice(0)) await act(async () => root.unmount());
+  for (const unmount of cleanups.splice(0)) await unmount();
   document.body.replaceChildren();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 async function render() {
-  const container = document.createElement('div');
-  document.body.append(container);
-  const root = createRoot(container);
-  roots.push(root);
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  await act(async () =>
-    root.render(
-      <QueryClientProvider client={client}>
-        <WorkspaceApprove />
-      </QueryClientProvider>,
-    ),
-  );
+  const { container, unmount } = await renderForm(<WorkspaceApprove />);
+  cleanups.push(unmount);
   await settle();
   return container;
 }

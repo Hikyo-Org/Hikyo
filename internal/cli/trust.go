@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
@@ -156,11 +157,7 @@ func (s *TrustStore) write(entries map[string]TrustEntry) error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path() + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path())
+	return securefile.WriteAtomic(s.path(), append(raw, '\n'), 0o600)
 }
 
 // CanonicalOrigin reduces a URL to scheme://host[:port], rejecting anything

@@ -1,3 +1,4 @@
+import { deferred } from '../testkit/ceremony.ts';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { blockSessionEpoch, installSessionFence } from './sessionEpoch.ts';
@@ -30,15 +31,6 @@ const stepUp = {
   keySet: ['key_1'],
 } satisfies StepUpParams;
 
-function deferred<T>() {
-  let complete = (_value: T): void => {
-    throw new Error('Deferred promise was not initialized');
-  };
-  const promise = new Promise<T>((resolve) => {
-    complete = resolve;
-  });
-  return { promise, resolve: complete };
-}
 
 /** A signal no test aborts: these cases are about ownership, not disposal. */
 function live(): AbortSignal {

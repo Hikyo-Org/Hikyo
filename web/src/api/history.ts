@@ -1,6 +1,5 @@
 import {
   createRevisionPinOp,
-  getProjectRetentionOp,
   getRevisionOp,
   listRevisionPinsOp,
   listRevisionsOp,
@@ -21,7 +20,6 @@ import { ApiError, parsed } from './client.ts';
 import {
   pinsKey,
   pendingMatrixKey,
-  projectRetentionKey,
   revisionDetailKey,
   revisionsKey,
   signalsMatrixKey,
@@ -30,6 +28,7 @@ import {
   type MatrixRef,
 } from './keys.ts';
 import { useTransport } from './transport.tsx';
+import { projectRetentionQueryOptions } from './hierarchyQueries.ts';
 
 /**
  * The revision-history API boundary (#59).
@@ -196,11 +195,7 @@ export function useRevisionPins(env: EnvRef): UseQueryResult<RevisionPinList> {
  */
 export function useProjectRetention(ref: MatrixRef): UseQueryResult<ProjectRetention> {
   const transport = useTransport();
-  return useQuery({
-    queryKey: projectRetentionKey(ref),
-    queryFn: () => parsed(getProjectRetentionOp, { path: { ...ref }, ...transport }),
-    enabled: ref.org !== '' && ref.project !== '',
-  });
+  return useQuery(projectRetentionQueryOptions(ref, transport.client));
 }
 
 /**

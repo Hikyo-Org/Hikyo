@@ -17,6 +17,7 @@ import { zSshca, zSshCertificate, zSshProfile } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { useTransport, type TransportOptions } from './transport.tsx';
 
@@ -311,7 +312,7 @@ export function sshRefusalText(
       case 400:
         return withDetail(`The server refused the request as invalid. ${nothing}`, error);
       case 401:
-        return 'The session could not be authenticated. Reload and sign in first.';
+        return commonRefusalText.unauthenticated;
       case 403:
       case 404:
         return act === 'revoke'
@@ -331,7 +332,7 @@ export function sshRefusalText(
           error,
         );
       case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
+        return commonRefusalText.requests;
       default:
         return `${nothing} (server error ${String(error.status)})`;
     }
@@ -356,7 +357,7 @@ export function sshIssueFailureText(error: unknown, issued: boolean): string {
       case 409:
         return withDetail('The profile is disabled or its CA changed. No certificate was issued.', error);
       case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
+        return commonRefusalText.requests;
       default:
         break;
     }

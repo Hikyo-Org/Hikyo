@@ -3,6 +3,7 @@ import type { zRuleList } from '@hikyo/zod';
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { createBody, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
@@ -123,7 +124,7 @@ function refusalText(error: unknown): string {
       case 400:
         return error.detail ?? 'The server refused this rule: check where it applies and what it gives.';
       case 401:
-        return 'Your session ended. Sign in again to continue.';
+        return commonRefusalText.sessionEnded;
       case 403:
         return 'Managing access needs a second factor. Sign in again and present your passkey or a code, then retry.';
       case 404:
@@ -131,7 +132,7 @@ function refusalText(error: unknown): string {
       case 409:
         return error.detail ?? 'The server refused this change as it stands.';
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
     }

@@ -1,3 +1,4 @@
+import { commonRefusalText } from './statusText.ts';
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import {
   loginChallengeWebauthnFinishOp,
@@ -45,7 +46,7 @@ export function stepUpFailureText(error: unknown): string {
           ? `${error.detail}.`
           : 'That code was already used for its time step: wait for the next code and try again.';
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return `The step-up could not be completed (server error ${error.status}). Try again shortly.`;
     }

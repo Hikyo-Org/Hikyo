@@ -1,3 +1,4 @@
+import { deferred } from '../testkit/ceremony.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -42,23 +43,6 @@ function sessionList(): Response {
   );
 }
 
-function deferredResponse(): {
-  readonly promise: Promise<Response>;
-  readonly resolve: (response: Response) => void;
-  readonly reject: (error: Error) => void;
-} {
-  let resolveResponse = (_response: Response): void => {
-    throw new Error('deferred response was not initialized');
-  };
-  let rejectResponse = (_error: Error): void => {
-    throw new Error('deferred response was not initialized');
-  };
-  const promise = new Promise<Response>((resolve, reject) => {
-    resolveResponse = resolve;
-    rejectResponse = reject;
-  });
-  return { promise, resolve: resolveResponse, reject: rejectResponse };
-}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -265,7 +249,7 @@ describe('probeWorkspace strike counting', () => {
 // let the old probe's verdict delete the NEW session.
 describe('probeWorkspace session identity', () => {
   it('ignores a completion about a session that has been replaced', async () => {
-    const response = deferredResponse();
+    const response = deferred<Response>();
     vi.stubGlobal('fetch', vi.fn(() => response.promise));
     rememberWorkspace(bearer);
     const inFlight = probeWorkspace(bearer);
@@ -285,7 +269,7 @@ describe('probeWorkspace session identity', () => {
   // down the live elevated bearer that shares its session id, the drop is keyed
   // by local epoch, exactly as the transport's kill path is.
   it('ignores a stale 401 for a value the same session has since rotated', async () => {
-    const response = deferredResponse();
+    const response = deferred<Response>();
     vi.stubGlobal('fetch', vi.fn(() => response.promise));
     rememberWorkspace(bearer);
     const inFlight = probeWorkspace(bearer);
@@ -301,7 +285,7 @@ describe('probeWorkspace session identity', () => {
   });
 
   it('does not report a stale successful probe as health for the replacement session', async () => {
-    const response = deferredResponse();
+    const response = deferred<Response>();
     vi.stubGlobal('fetch', vi.fn(() => response.promise));
     rememberWorkspace(bearer);
     const inFlight = probeWorkspace(bearer);
@@ -314,7 +298,7 @@ describe('probeWorkspace session identity', () => {
   });
 
   it('does not spend a stale failed probe against a replacement epoch', async () => {
-    const response = deferredResponse();
+    const response = deferred<Response>();
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => response.promise)

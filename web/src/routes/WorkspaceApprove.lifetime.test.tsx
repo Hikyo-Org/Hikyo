@@ -1,15 +1,15 @@
 // @vitest-environment happy-dom
+import { deferred } from '../testkit/ceremony.ts';
 import type { WorkspaceHandoffTransaction } from '@hikyo/client';
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider, useAuth, type WhoAmI } from '../app/AuthProvider.tsx';
 import { WorkspaceApprove } from './WorkspaceApprove.tsx';
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const fetcher = vi.fn<typeof fetch>();
-let root: Root | undefined;
+let view: Awaited<ReturnType<typeof renderForm>> | undefined;
 const id = (prefix: string, n: number) =>
   `${prefix}_00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 function identity(n: number): WhoAmI {
@@ -50,15 +50,6 @@ function summary(): WorkspaceHandoffTransaction {
     key_ids: [],
   };
 }
-function deferred<T>() {
-  let resolve: (value: T) => void = () => {
-    throw new Error('deferred not initialized');
-  };
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 async function settle() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -77,8 +68,8 @@ beforeEach(() => {
   globalThis.history.replaceState({}, '', '/workspace/approve?state=opaque-state');
 });
 afterEach(async () => {
-  if (root !== undefined) await act(async () => root?.unmount());
-  root = undefined;
+  await view?.unmount();
+  view = undefined;
   document.body.replaceChildren();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -96,15 +87,10 @@ describe('consent lifetime under the real AuthProvider', () => {
       );
     });
     const redirect = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => {});
-    const container = document.createElement('div');
-    document.body.append(container);
-    root = createRoot(container);
-    await act(async () =>
-      root?.render(
-        <AuthProvider>
-          <WorkspaceApprove />
-        </AuthProvider>,
-      ),
+    view = await renderForm(
+      <AuthProvider>
+        <WorkspaceApprove />
+      </AuthProvider>,
     );
     await settle();
     await settle();
@@ -135,16 +121,11 @@ describe('consent lifetime under the real AuthProvider', () => {
       return response(summary());
     });
     const redirect = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => {});
-    const container = document.createElement('div');
-    document.body.append(container);
-    root = createRoot(container);
-    await act(async () =>
-      root?.render(
-        <AuthProvider>
-          <SwitchSession />
-          <WorkspaceApprove />
-        </AuthProvider>,
-      ),
+    view = await renderForm(
+      <AuthProvider>
+        <SwitchSession />
+        <WorkspaceApprove />
+      </AuthProvider>,
     );
     await settle();
     await settle();
@@ -153,8 +134,8 @@ describe('consent lifetime under the real AuthProvider', () => {
     expect(reads).toBe(2);
     expect(posts).toBe(stage === 'approval' ? 1 : 0);
     if (retirement === 'unmount') {
-      await act(async () => root?.unmount());
-      root = undefined;
+      await view.unmount();
+      view = undefined;
     } else {
       await act(async () => button('Switch session').click());
       await settle();

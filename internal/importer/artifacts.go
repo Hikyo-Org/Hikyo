@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"strings"
-	"unicode"
 
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -394,104 +392,34 @@ func ParseValuesFile(raw []byte) (ValuesFile, error) {
 }
 
 func strictDecode(raw []byte, what string, into any) error {
-	if err := rejectDuplicateMembers(raw, "import", what); err != nil {
-		return err
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(into); err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "unknown field") {
-			return failure("import", CodeVersion, what,
-				"it carries a field this build does not know (%s): version mismatch — "+
-					"this artifact was written by a different Hikyo version", msg)
-		}
-		return failure("import", CodeMalformed, what, "it is not a well-formed artifact of this kind")
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return failure("import", CodeMalformed, what, "trailing content after the document")
-	}
-	return nil
+	return artifactDecodeError(definitions.DecodeStrict(raw, into), "import", what)
 }
 
-// rejectDuplicateMembers walks the raw JSON token stream before decoding into
-// a Go value. encoding/json otherwise accepts duplicate object members with
-// last-one-wins semantics, which is unsafe for reviewed artifacts.
 func rejectDuplicateMembers(raw []byte, source, what string) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := walkJSONValue(dec, source, what); err != nil {
-		return err
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return failure(source, CodeMalformed, what, "trailing content after the document")
-	}
-	return nil
+	return artifactDecodeError(definitions.RejectDuplicateMembers(raw), source, what)
 }
 
-func walkJSONValue(dec *json.Decoder, source, what string) error {
-	tok, err := dec.Token()
-	if err != nil {
-		return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-	}
-	delim, ok := tok.(json.Delim)
-	if !ok {
+// artifactDecodeError preserves the import refusal taxonomy around the shared
+// closed-schema decoder, including safe member names and version diagnostics.
+func artifactDecodeError(err error, source, what string) error {
+	if err == nil {
 		return nil
 	}
-	switch delim {
-	case '{':
-		seen := map[string]struct{}{}
-		for dec.More() {
-			member, err := dec.Token()
-			if err != nil {
-				return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-			}
-			key, ok := member.(string)
-			if !ok {
-				return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-			}
-			folded := foldJSONMember(key)
-			if _, duplicate := seen[folded]; duplicate {
-				return failure(source, CodeDuplicateKey, what,
-					"object member %s appears more than once", quoteName(key))
-			}
-			seen[folded] = struct{}{}
-			if err := walkJSONValue(dec, source, what); err != nil {
-				return err
-			}
-		}
-		end, err := dec.Token()
-		if err != nil || end != json.Delim('}') {
-			return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-		}
-	case '[':
-		for dec.More() {
-			if err := walkJSONValue(dec, source, what); err != nil {
-				return err
-			}
-		}
-		end, err := dec.Token()
-		if err != nil || end != json.Delim(']') {
-			return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-		}
+	var duplicate *definitions.DuplicateMemberError
+	var unknown *definitions.UnknownFieldError
+	switch {
+	case errors.As(err, &duplicate):
+		return failure(source, CodeDuplicateKey, what,
+			"object member %s appears more than once", quoteName(duplicate.Member))
+	case errors.As(err, &unknown):
+		return failure(source, CodeVersion, what,
+			"it carries a field this build does not know (json: unknown field %q): version mismatch - "+
+				"this artifact was written by a different Hikyo version", unknown.Field)
+	case errors.Is(err, definitions.ErrTrailing):
+		return failure(source, CodeMalformed, what, "trailing content after the document")
 	default:
 		return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
 	}
-	return nil
-}
-
-// foldJSONMember mirrors encoding/json's case-insensitive struct-field match.
-// Exact and case-variant spellings must occupy one logical member slot before
-// the later struct decode can apply last-value-wins semantics to them.
-func foldJSONMember(name string) string {
-	return strings.Map(func(r rune) rune {
-		for {
-			next := unicode.SimpleFold(r)
-			if next <= r {
-				return next
-			}
-			r = next
-		}
-	}, name)
 }
 
 func checkVersions(what string, format, contract int) error {

@@ -7,6 +7,93 @@ duplication, wrappers, pre-modern idioms, doc rot) and the PR series that remove
 it. The full audit report with per-finding grep evidence is the body of #619.
 Each PR below appends a "what landed" entry here.
 
+## Remaining-work recheck, 2026-09-30
+
+Baseline: `cebc7d4b` (current `main` when this pass began). The six original
+remediation PRs and the separate production-verification fixes are already
+merged. The September audit is evidence to recheck, not a current deletion list.
+
+### What this pass changes
+
+- **C-cli:** four atomic writers use `securefile`, including directory fsync;
+  session/trust writes no longer use predictable `.tmp` paths. A symlink
+  regression verifies existing victim bytes remain unchanged. Import artifacts
+  share the canonical strict JSON decoder while retaining duplicate-member,
+  malformed/trailing, version-mismatch and connector-specific refusal codes.
+  Import summary names and artifact tables have one owner.
+- **C-web:** environment and retention query options share resource owners;
+  caller-specific transport, enabled gates and invalidations remain intact.
+  Thirteen simple refusal dispatchers and 43 repeated messages share helpers.
+  A temporary before/after characterization compared each dispatcher across
+  40 API/non-API inputs, including empty details and server/network fallbacks.
+  Passkey completion is shared without combining the normal/adapter purpose
+  binding; regression coverage checks binary response payload and session fences.
+  Timestamp rendering and JSON syntax parsing have shared owners.
+- **B1/B2:** route tests use the existing mount/rerender/unmount harness; deferred
+  promises share one helper. Redundant registry count, embedded-file equality,
+  help-substring and copied-prototype-constant checks are removed. Useful guards
+  are strengthened: typed lint replaces two untyped service seam checks and a
+  repository byte scan for test-only observers; applied database schemas and
+  parsed API fields replace the masked-state source scan. The acceptance ledger
+  points at the new schema test file.
+- **Preview fixture:** the prototype identity omitted the required delivery
+  reporting grant. It now satisfies `zWhoAmI`, with a contract regression, and
+  the browser opens the app instead of remaining on the reconnect screen.
+
+### What remains and why
+
+| Remaining item | Current evidence | Disposition |
+| --- | --- | --- |
+| Hand SQL versus system-architecture ADR | 284 `.SQL(...)` call sites in non-test `internal/store` files; count is call sites, not estimated LOC | Owner selects sqlc migration or documented dialect/analyzer policy |
+| Resolver forwarding surface | 221 simple `TxAuthorizer` methods delegate to `a.r`; excludes methods with real policy | Owner selects explicit set, generation, or embedding after trusted-set analysis |
+| Authz/OpenAPI registry ownership | Existing registry still explicitly links route, operation and audit events | Owner selects canonical derivation direction; no boundary widened here |
+| MachineAccess decomposition | `web/src/routes/MachineAccess.tsx`: 3,943 lines | Owner-approved split remains held |
+
+The four holds above are preserved from the accepted audit disposition. They
+are not counted as safe deletions, and this pass does not claim the repository
+has zero duplication or close #619.
+
+Formerly flagged items intentionally retained after source verification:
+
+- Environment lifecycle now has a rendered settings surface; #623 is closed.
+- Metric tests scrape actual emitted metrics; migration uniqueness, SAML guarded
+  constructor wiring, SCIM acceptance coverage and fixtureref lexer negatives
+  protect real contracts. The earlier lexer-to-regex change was rejected in review.
+- Chrome identity controls remain the ADR-pinned visual surface (181 lines,
+  already smaller than the original 330-line report); moving them out of the
+  production tree previously broke the visual contract.
+- Unknown-engine refusal, deliberate nil-preserving copies and per-task handoffs
+  remain intentional. No schema migration, feature removal or authorization
+  widening occurs in this pass.
+
+### Validation and review
+
+Local checks: TypeScript typecheck, full web lint, all 1,272 unit tests (148
+files), and production build pass. All 23 migrated route-test files also pass
+169 focused tests. Full conformance passes against SQLite and the digest-pinned
+PostgreSQL CI image; typed lint passes its default, UI and Windows contexts.
+Targeted CLI/importer/definitions/securefile/compose/authz/scanning/fixtureref/API
+tests and scoped go vet pass. Graphify structural data is refreshed locally.
+
+T3 browser verification: prototype login opens the app; project settings renders
+its environment/retention controls at 1280x800 and 390x844 without horizontal
+overflow. The audit page renders its existing generic failure state because
+that prototype endpoint has no success fixture. These are local prototype
+checks, not production deployment evidence. Native Claude Opus 5.5 high R1 found a local-interface budget-check bypass,
+missing observer-owner fail-closed checks, escaped unknown-field diagnostics and
+incomplete PostgreSQL schema-object coverage. Fixes and R2 verification are
+recorded in the PR. The unknown-field refusal uses ASCII punctuation under the
+repository's explicit no-em-dash rule; its code, field escaping and version
+mismatch wording remain intact. R2 returned CLEAN; its evidence condition is
+satisfied by a fresh two-engine run of both schema scenarios, including every
+injected PostgreSQL default/index/view/trigger/function case. Final code was
+integrated onto `0e5e9de6`; that base advance changes only unrelated lockfiles.
+Exact-head remote CI is recorded in the PR.
+A native macOS PostgreSQL 18.6 run failed the existing signed-schema admission
+fingerprint before the scenario ran. The exact digest-pinned CI image passes the
+new scenario on PostgreSQL, as does SQLite; no gate was weakened to accommodate
+the native variant. The disposable database is owned by this task.
+
 ## Categories found
 
 - Copy-paste duplication (~4,500 LOC): same authorize prelude 206x in

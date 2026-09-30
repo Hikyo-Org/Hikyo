@@ -22,6 +22,7 @@ import { zGrantList, type zInvitationResult } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   expandTemplate,
@@ -846,7 +847,7 @@ export function grantFailureText(error: unknown): string {
           'That grant was refused: the capability cannot be held at this scope, or this principal may not hold it.'
         );
       case 401:
-        return 'Your session ended. Sign in again to continue.';
+        return commonRefusalText.sessionEnded;
       case 403:
         return 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.';
       case 404:
@@ -857,7 +858,7 @@ export function grantFailureText(error: unknown): string {
           'Refused: this would leave the organisation with nobody able to manage its members.'
         );
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
     }
@@ -866,19 +867,10 @@ export function grantFailureText(error: unknown): string {
 }
 
 export function membershipFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'Your session ended. Sign in again to read this membership listing.';
-      case 403:
-        return 'This membership listing needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'This organisation does not exist, or it is not available to you. The two are deliberately the same answer.';
-      case 429:
-        return 'Too many membership reads right now. Wait a moment and reload.';
-      default:
-        return `The server failed while reading memberships (${error.status}). Reload to try again.`;
-    }
-  }
-  return 'The membership listing could not be reached, or its response did not match the contract. Reload to try again.';
+  return statusText(error, {
+    401: 'Your session ended. Sign in again to read this membership listing.',
+    403: 'This membership listing needs a second factor. Sign in again and present your passkey or a code, then retry.',
+    404: 'This organisation does not exist, or it is not available to you. The two are deliberately the same answer.',
+    429: 'Too many membership reads right now. Wait a moment and reload.',
+  }, 'The membership listing could not be reached, or its response did not match the contract. Reload to try again.', (error) => `The server failed while reading memberships (${error.status}). Reload to try again.`);
 }

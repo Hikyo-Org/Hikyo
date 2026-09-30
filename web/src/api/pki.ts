@@ -26,6 +26,7 @@ import type { PkiPolicy as PkiPolicyBody } from '@hikyo/client';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { type TransportOptions, useTransport } from './transport.tsx';
 
@@ -463,7 +464,7 @@ export function pkiAdminRefusalText(error: unknown, action: string): string {
       case 400:
         return withDetail(`The server refused to ${action}: the request was not valid.`, error);
       case 401:
-        return 'The session could not be authenticated. Reload and sign in first.';
+        return commonRefusalText.unauthenticated;
       case 403:
         return `To ${action} you need instance-config and a second factor. Present your authenticator in the banner above.`;
       case 404:
@@ -471,7 +472,7 @@ export function pkiAdminRefusalText(error: unknown, action: string): string {
       case 409:
         return withDetail(`The server refused to ${action} as a conflict.`, error);
       case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
+        return commonRefusalText.requests;
       default:
         return `Could not ${action} (server error ${String(error.status)}).`;
     }
@@ -488,7 +489,7 @@ export function certificateRefusalText(error: unknown, action: string): string {
       case 400:
         return withDetail(`The profile refused to ${action}.`, error);
       case 401:
-        return 'The session could not be authenticated. Reload and sign in first.';
+        return commonRefusalText.unauthenticated;
       case 403:
         return withDetail(`To ${action} you need issue-certificate on this environment.`, error);
       case 404:
@@ -496,7 +497,7 @@ export function certificateRefusalText(error: unknown, action: string): string {
       case 409:
         return withDetail(`The server refused to ${action} as a conflict.`, error);
       case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
+        return commonRefusalText.requests;
       default:
         return `Could not ${action} (server error ${String(error.status)}).`;
     }

@@ -1,12 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RevealWindow } from '../api/values.ts';
 import { deferred, revealWindow } from '../testkit/ceremony.ts';
-import { settle } from '../testkit/renderForm.tsx';
+import { renderForm, settle } from '../testkit/renderForm.tsx';
 import type { CeremonyRequest } from './Ceremony.tsx';
 import { Values } from './Values.tsx';
 
@@ -96,18 +95,13 @@ function App() {
   );
 }
 
-async function renderValues(): Promise<{ container: HTMLElement; root: Root }> {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <MemoryRouter initialEntries={['/orgs/org-a/projects/project-a/environments/env-a/values']}>
-        <App />
-      </MemoryRouter>,
-    );
-  });
-  return { container, root };
+async function renderValues() {
+  const { container, unmount } = await renderForm(
+    <MemoryRouter initialEntries={['/orgs/org-a/projects/project-a/environments/env-a/values']}>
+      <App />
+    </MemoryRouter>,
+  );
+  return { container, unmount };
 }
 
 function button(container: HTMLElement, name: string): HTMLButtonElement {
@@ -142,7 +136,7 @@ describe('Values reveal gating', () => {
   ] as const) {
     it(`offers no disclosure control while the guard is ${label}`, async () => {
       mocks.guard = guard;
-      const { container, root } = await renderValues();
+      const { container, unmount } = await renderValues();
       const labels = [...container.querySelectorAll('button')].map(
         (b) => b.getAttribute('aria-label') ?? b.textContent,
       );
@@ -152,19 +146,19 @@ describe('Values reveal gating', () => {
         (b) => b.textContent === 'Reveal every secret',
       );
       expect(revealAll?.disabled).toBe(true);
-      await act(async () => root.unmount());
+      await unmount();
     });
   }
 
   it('stops a disclosure whose freshly fetched window says no, even with a stale cache', async () => {
     mocks.guard = revealWindow(true);
     mocks.fetchRevealWindow.mockResolvedValueOnce({ ...revealWindow(true), can_reveal: false });
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
     await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
     expect(mocks.revealOne).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Reveal is not granted here, so nothing was disclosed.');
-    await act(async () => root.unmount());
+    await unmount();
   });
 });
 
@@ -176,7 +170,7 @@ describe('Values reveal accessibility', () => {
       name: 'KEY_A',
       value: 'revealed-value',
     });
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
@@ -192,7 +186,7 @@ describe('Values reveal accessibility', () => {
       'true',
     );
     expect(container.querySelector('.values__countdown')?.hasAttribute('role')).toBe(false);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('uses one reveal announcement when every secret is disclosed', async () => {
@@ -213,7 +207,7 @@ describe('Values reveal accessibility', () => {
         },
       ],
     });
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
     const liveRegionCount = container.querySelectorAll(
       '[role="status"], [aria-live="polite"]',
     ).length;
@@ -231,7 +225,7 @@ describe('Values reveal accessibility', () => {
     expect(container.querySelectorAll('[role="status"], [aria-live="polite"]')).toHaveLength(
       liveRegionCount,
     );
-    await act(async () => root.unmount());
+    await unmount();
   });
 });
 
@@ -239,7 +233,7 @@ describe('Values ceremony task ownership', () => {
   it('ignores a guard completion from the environment visited before navigation', async () => {
     const pending = deferred<RevealWindow>();
     mocks.fetchRevealWindow.mockImplementationOnce(() => pending.promise);
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'Reveal KEY_A').click());
     await act(async () => button(container, 'Navigate').click());
@@ -247,13 +241,13 @@ describe('Values ceremony task ownership', () => {
     await settle();
 
     expect(container.querySelector('[data-testid="ceremony"]')).toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('ignores a guard completion for a publish destination that changed', async () => {
     const pending = deferred<RevealWindow>();
     mocks.fetchRevealWindow.mockImplementationOnce(() => pending.promise);
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
     await selectDestination(container, 'env-b');
 
     await act(async () => button(container, 'Publish into environment').click());
@@ -262,7 +256,7 @@ describe('Values ceremony task ownership', () => {
     await settle();
 
     expect(container.querySelector('[data-testid="ceremony"]')).toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('does not disclose a value whose request completes after navigation', async () => {
@@ -273,7 +267,7 @@ describe('Values ceremony task ownership', () => {
     }>();
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
     mocks.revealOne.mockImplementationOnce(() => disclosure.promise);
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
@@ -287,6 +281,6 @@ describe('Values ceremony task ownership', () => {
 
     expect(container.textContent).not.toContain('must-not-cross-environments');
     expect(container.textContent).toContain('No disclosures yet.');
-    await act(async () => root.unmount());
+    await unmount();
   });
 });

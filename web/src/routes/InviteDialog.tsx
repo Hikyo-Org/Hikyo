@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
+import { formatWhen } from '../lib/formatWhen.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   inviteFailureText,
@@ -248,7 +249,6 @@ export function IssuedAuthorityDialog({
   origin: string;
   onClose: () => void;
 }) {
-  const expires = new Date(issued.expiresAt);
   const handle = username ?? '<their username>';
 
   return (
@@ -283,7 +283,7 @@ export function IssuedAuthorityDialog({
         success="Authority copied. Hand it over out of band; clipboard history may retain it."
       />
       <p className="field__hint">
-        Expires {Number.isNaN(expires.getTime()) ? issued.expiresAt : expires.toLocaleString()}.
+        Expires {formatWhen(issued.expiresAt)}.
         Single use: once a password is set with it, it is spent.
       </p>
       <p className="field__hint">

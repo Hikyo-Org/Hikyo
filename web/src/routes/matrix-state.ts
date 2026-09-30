@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { zJSONText } from '../lib/jsonText.ts';
 
 /**
  * Pure state for the environment matrix.
@@ -252,16 +252,6 @@ export type MatrixDraftValidation = {
   readonly level: 'error' | 'notice';
   readonly message: string;
 };
-
-const zJSONText = z.string().transform((text, context): unknown => {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return parsed;
-  } catch {
-    context.addIssue({ code: 'custom', message: 'Enter valid JSON.' });
-    return z.NEVER;
-  }
-});
 
 const validation = (
   level: MatrixDraftValidation['level'],

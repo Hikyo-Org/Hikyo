@@ -3,7 +3,6 @@ import { assertSessionEpoch, captureSessionEpoch, reconcileSessionResponse } fro
 import {
   copyValuesOp,
   getRevealWindowOp,
-  listEnvironmentsOp,
   listValuesOp,
   oidcStartOp,
   reauthPasskeyFinishOp,
@@ -23,6 +22,7 @@ import type { Client } from '@hikyo/runtime-core';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, parsed } from './client.ts';
 import { oidcChannelName, rememberOIDCReturn } from './oidcChannel.ts';
@@ -33,6 +33,7 @@ import {
   type EnvRef,
 } from './keys.ts';
 import { useTransport } from './transport.tsx';
+import { environmentListQueryOptions } from './hierarchyQueries.ts';
 
 /**
  * The value surface and the reveal ceremony, as the SPA sees them (#58).
@@ -61,9 +62,8 @@ export type EnvironmentList = z.infer<typeof zEnvironmentList>;
 export function useEnvironments(env: EnvRef): UseQueryResult<EnvironmentList> {
   const transport = useTransport();
   return useQuery({
-    queryKey: ['environments', env.org, env.project] as const,
-    queryFn: () =>
-      parsed(listEnvironmentsOp, { path: { org: env.org, project: env.project }, ...transport }),
+    ...environmentListQueryOptions(env, transport.client),
+    enabled: true,
   });
 }
 
@@ -179,28 +179,7 @@ export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<v
       },
     });
   const request = requestOptions(options);
-  const assertion = await navigator.credentials.get({ publicKey: request });
-  assertSessionEpoch(epoch);
-  if (assertion === null || !(assertion instanceof PublicKeyCredential)) {
-    throw new Error('the authenticator returned no assertion');
-  }
-  const response = assertion.response;
-  if (!(response instanceof AuthenticatorAssertionResponse)) {
-    throw new Error('the authenticator returned the wrong response type');
-  }
-  await parsed(reauthPasskeyFinishOp, {
-      body: {
-        id: assertion.id,
-        rawId: toBase64URL(assertion.rawId),
-        type: assertion.type,
-        response: {
-          clientDataJSON: toBase64URL(response.clientDataJSON),
-          authenticatorData: toBase64URL(response.authenticatorData),
-          signature: toBase64URL(response.signature),
-          userHandle: response.userHandle === null ? null : toBase64URL(response.userHandle),
-        },
-      },
-    });
+  await finishPasskeyCeremony(request, epoch);
 }
 
 /** Run one adapter-purpose passkey ceremony over one zero-window environment. */
@@ -220,6 +199,13 @@ export async function runAdapterPasskeyCeremony(input: {
       },
     });
   const request = requestOptions(options);
+  await finishPasskeyCeremony(request, epoch);
+}
+
+async function finishPasskeyCeremony(
+  request: PublicKeyCredentialRequestOptions,
+  epoch: ReturnType<typeof captureSessionEpoch>,
+): Promise<void> {
   const assertion = await navigator.credentials.get({ publicKey: request });
   assertSessionEpoch(epoch);
   if (assertion === null || !(assertion instanceof PublicKeyCredential)) {
@@ -400,7 +386,7 @@ export function ceremonyRefusalText(error: unknown): string {
       case 401:
         return 'That code did not match. Check your authenticator and try again.';
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return `The reauthentication could not be completed (server error ${error.status}).`;
     }
@@ -420,45 +406,23 @@ export function ceremonyRefusalText(error: unknown): string {
  * ago.
  */
 export function disclosureRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 403:
-        return 'The server refused this disclosure. Your access may have changed, or the reauthentication no longer covers these keys. Nothing was shown.';
-      case 404:
-        return 'Nothing here to disclose.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The values could not be disclosed (server error ${error.status}).`;
-    }
-  }
-  return 'The values could not be disclosed.';
+  return statusText(error, {
+    403: 'The server refused this disclosure. Your access may have changed, or the reauthentication no longer covers these keys. Nothing was shown.',
+    404: 'Nothing here to disclose.',
+    429: commonRefusalText.requests,
+  }, 'The values could not be disclosed.', (error) => `The values could not be disclosed (server error ${error.status}).`);
 }
 
 /** Map a value-write refusal without pretending an unconfirmed request was rolled back. */
 export function writeRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The server refused this value as invalid.';
-      case 401:
-        return 'Your session ended. Sign in again before staging this value.';
-      case 403:
-        return 'You are not permitted to stage this value.';
-      case 404:
-        return 'This value is no longer here. Reload before trying again.';
-      case 409:
-        return (
-          error.detail ??
-          'This value changed before your draft could be staged. Reload and try again.'
-        );
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return 'The server did not confirm whether this value was staged. Reload to check before trying again.';
-    }
-  }
-  return 'The server did not confirm whether this value was staged. Reload to check before trying again.';
+  return statusText(error, {
+    400: (error) => error.detail ?? 'The server refused this value as invalid.',
+    401: 'Your session ended. Sign in again before staging this value.',
+    403: 'You are not permitted to stage this value.',
+    404: 'This value is no longer here. Reload before trying again.',
+    409: (error) => error.detail ?? 'This value changed before your draft could be staged. Reload and try again.',
+    429: commonRefusalText.requests,
+  }, 'The server did not confirm whether this value was staged. Reload to check before trying again.');
 }
 
 /** useRevealOne discloses a single cell. */

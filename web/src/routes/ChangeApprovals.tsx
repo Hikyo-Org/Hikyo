@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 
+import { formatWhen } from '../lib/formatWhen.ts';
 import {
   useApprovalPolicies,
   useApprovalRequests,
@@ -21,12 +22,6 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
-
-/** A stored UTC timestamp rendered in the operator's locale. */
-function when(value: string): string {
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? value : at.toLocaleString();
-}
 
 function refusal(error: unknown): string {
   if (error instanceof ApiError) {
@@ -493,7 +488,7 @@ function ApprovalRequestRow({
         </div>
         <div>
           <dt>Expires</dt>
-          <dd>{when(request.expires_at)}</dd>
+          <dd>{formatWhen(request.expires_at)}</dd>
         </div>
         {request.purpose === '' ? null : (
           <div>

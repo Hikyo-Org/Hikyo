@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -68,7 +69,8 @@ func unknownField(err error) (string, bool) {
 	if i < 0 {
 		return "", false
 	}
-	return strings.Trim(msg[i+len(marker):], `"`), true
+	field, err := strconv.Unquote(msg[i+len(marker):])
+	return field, err == nil
 }
 
 // RejectDuplicateMembers walks the raw token stream before any decode.

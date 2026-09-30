@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { useState } from 'react';
 import type { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 
 export type ScimBinding = z.infer<typeof zScimBinding>;
@@ -319,13 +320,13 @@ export function useScimDirectoryGroups(
 function commonScimFailureText(error: ApiError): string | null {
   switch (error.status) {
     case 401:
-      return 'Your session ended. Sign in again to continue.';
+      return commonRefusalText.sessionEnded;
     case 403:
       return 'Administering SCIM needs a second factor. Sign in again and present your passkey or a code, then retry.';
     case 404:
       return 'This is not available to you, or it does not exist. The two are deliberately the same answer.';
     case 429:
-      return 'Too many attempts right now. Wait a moment and try again.';
+      return commonRefusalText.attempts;
     default:
       return null;
   }

@@ -11,6 +11,7 @@ import { zMyOrgList } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 import { useTransport } from './transport.tsx';
@@ -33,7 +34,7 @@ export function loginFailureText(error: unknown): string {
         // would be the account-existence oracle the server closed on purpose.
         return 'That username and password did not match. Check both and try again.';
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return `Sign-in could not be completed (server error ${error.status}). Try again shortly.`;
     }

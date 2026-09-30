@@ -26,6 +26,7 @@ import {
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { useSensitiveMutation, useSensitiveState } from './sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, parsed } from './client.ts';
@@ -565,7 +566,7 @@ export function accountFailureText(error: unknown): string {
       case 409:
         return 'The requested change conflicts with the account’s current security state. Reload and review it before trying again.';
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return `The account surface answered an error (${error.status}); whether the change applied is unknown: reload to check.`;
     }

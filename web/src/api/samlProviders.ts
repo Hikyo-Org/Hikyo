@@ -1,3 +1,4 @@
+import { commonRefusalText } from './statusText.ts';
 import {
   compromiseRetireSamlSpKeyOp,
   deleteSamlProviderOp,
@@ -216,7 +217,7 @@ export function samlFailureText(error: unknown, action: SamlAction): string {
     case 400:
       return error.detail ?? invalidText(action);
     case 401:
-      return 'Your session ended. Sign in again to continue.';
+      return commonRefusalText.sessionEnded;
     case 403:
       // A 403 on an instance-config operation is uniform: either the session's
       // assurance is inadequate for this MFA-mandatory operation, or the
@@ -230,7 +231,7 @@ export function samlFailureText(error: unknown, action: SamlAction): string {
       // render one.
       return conflictText(action);
     case 429:
-      return 'Too many attempts right now. Wait a moment and try again.';
+      return commonRefusalText.attempts;
     default:
       return 'The server failed; whether the change applied is unknown: reload to check.';
   }

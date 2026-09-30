@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-query';
 import { z } from 'zod';
 
+import { commonRefusalText } from './statusText.ts';
 import { ApiError, ok, parsed } from './client.ts';
 
 /**
@@ -289,7 +290,7 @@ export function oidcProviderRefusalText(
           'The server refused this provider. If the issuer is new, its OpenID configuration must be reachable and its discovered issuer must match exactly; if the slug is already in use, choose another.'
         );
       case 401:
-        return 'Your session ended. Sign in again to continue.';
+        return commonRefusalText.sessionEnded;
       case 403:
         return 'You are not permitted to administer identity providers: that needs instance-config, which is MFA-mandatory. Present your second factor.';
       case 404:
@@ -299,7 +300,7 @@ export function oidcProviderRefusalText(
       case 409:
         return 'This identity provider changed underneath you. Reload the provider list before retrying.';
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
     }
   }
   return operation === 'delete-oidc-provider'

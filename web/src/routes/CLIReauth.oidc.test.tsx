@@ -1,10 +1,9 @@
 // @vitest-environment happy-dom
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { settleTask } from '../testkit/renderForm.tsx';
+import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { CLIReauth } from './CLIReauth.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -60,22 +59,13 @@ async function renderTransaction(environments: Array<{
     expires_at: '2099-08-23T12:00:00Z',
   });
   globalThis.history.replaceState({}, '', '/auth/cli/reauth?transaction=txn-195');
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () =>
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <CLIReauth />
-      </QueryClientProvider>,
-    ),
-  );
+  const { container, unmount } = await renderForm(<CLIReauth />, { client: queryClient });
   await settleTask();
   return {
     container,
     unmount: async () => {
-      await act(async () => root.unmount());
+      await unmount();
       queryClient.clear();
     },
   };

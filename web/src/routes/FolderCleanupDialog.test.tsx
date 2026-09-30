@@ -1,13 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { renderForm, typeInto } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { FolderCleanupDialog } from './FolderCleanupDialog.tsx';
 import type { WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const proposals = [
   { id: 'id_HIKYO_ARGON2_TIME', name: 'HIKYO_ARGON2_TIME', folder: 'Argon2' },
@@ -19,30 +17,21 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function set(element: HTMLInputElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-  if (setter === undefined) throw new Error('no value setter');
-  setter.call(element, value);
-  element.dispatchEvent(new Event('input', { bubbles: true }));
-}
+
 
 async function render(onApply: (moves: readonly FolderMove[]) => Promise<readonly FolderMoveOutcome[]>) {
   const onClose = vi.fn();
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <FolderCleanupDialog
+  const view = await renderForm(
+    <FolderCleanupDialog
         proposals={proposals}
         existingFolders={['Legacy']}
         busy={false}
         envName={(id) => (id === 'env_01989abc-def0-7123-8123-00000000000b' ? 'production' : id)}
         onApply={onApply}
         onClose={onClose}
-      />,
-    );
-  });
+      />
+  );
+  const { container } = view;
   const button = (label: RegExp) => {
     const found = [...container.querySelectorAll('button')].find((node) => label.test(node.textContent ?? ''));
     if (found === undefined) throw new Error(`no button ${String(label)}`);
@@ -53,7 +42,7 @@ async function render(onApply: (moves: readonly FolderMove[]) => Promise<readonl
     if (found === null) throw new Error(`no input ${label}`);
     return found;
   };
-  return { container, onClose, button, input, unmount: () => act(async () => root.unmount()) };
+  return { container, onClose, button, input, unmount: view.unmount };
 }
 
 describe('FolderCleanupDialog', () => {
@@ -74,8 +63,8 @@ describe('FolderCleanupDialog', () => {
       view.input('Move HIKYO_ARGON2_TIME').click();
     });
     await act(async () => {
-      set(view.input('Folder for HIKYO_ARGON2_MEMORY_KIB'), 'Hashing');
-      set(view.input('Folder for HIKYO_EXTERNAL_ORIGIN'), 'Web');
+      typeInto(view.input('Folder for HIKYO_ARGON2_MEMORY_KIB'), 'Hashing');
+      typeInto(view.input('Folder for HIKYO_EXTERNAL_ORIGIN'), 'Web');
     });
     expect(view.input('Move HIKYO_EXTERNAL_ORIGIN').checked).toBe(true);
     expect(view.button(/^Move/).textContent).toBe('Move 2 key(s)');
