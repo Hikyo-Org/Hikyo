@@ -54,8 +54,8 @@ var reviewedWireExtras = wireExtras{
 		"http:GET /api/v1/orgs/{org}/scim/v2/{binding}/ResourceTypes": {Events: []string{"EventSCIMCredentialRefused"}},
 		"http:GET /api/v1/orgs/{org}/scim/v2/{binding}/Schemas":       {Events: []string{"EventSCIMCredentialRefused"}},
 		// The credential-versus-binding-path mismatch (#73 §8). It is refused
-		// BEFORE any operation authorizes — there is no proof and no operation
-		// row to hang it on — so like the authentication surface's own events it
+		// BEFORE any operation authorizes; there is no proof and no operation
+		// row to hang it on; so like the authentication surface's own events it
 		// is declared here, against the mount every wire request enters through.
 		//
 		// All THREE discovery routes declare it, and they are the only routes that
@@ -108,7 +108,7 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/auth/logout":                                      {Events: []string{"EventAuthLogout"}},
 		// whoami resolves a session and reports it. It writes nothing and its
 		// result duplicates what the login event already recorded, so it is the
-		// one auth path with no event of its own — pinned in the exemption
+		// one auth path with no event of its own; pinned in the exemption
 		// fixture with that reason rather than silently absent.
 		// OIDC (#54). start emits only a throttle crossing directly; the callback
 		// is where a login/link/reauth lands, so it carries the family of outcomes
@@ -134,7 +134,7 @@ var reviewedWireExtras = wireExtras{
 		// take a session but an unresolvable one is exactly the case they must not
 		// distinguish, so their probe contract is enumeration uniformity, not
 		// tenancy. `recovery/begin` is fully pre-auth. None reaches an authz
-		// operation — the account-security mutations resolve and rotate the acting
+		// operation; the account-security mutations resolve and rotate the acting
 		// session, which is resolution rather than authorization, so their audit
 		// obligation is discharged directly through Events like every other
 		// authentication-surface endpoint.
@@ -145,7 +145,7 @@ var reviewedWireExtras = wireExtras{
 		// mints an establishment authority whose consumption is recorded by the
 		// establish path.
 		// Each factor ceremony validates a proof under the per-account backoff, so
-		// a crossed threshold is an event it can emit — declared here so the
+		// a crossed threshold is an event it can emit; declared here so the
 		// audit-completeness contract covers it.
 		"http:POST /api/v1/auth/totp/enrol/start":      {Events: []string{"EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/step-up":          {Events: []string{"EventAuthReauthenticated", "EventAuthThrottleCrossed"}},
@@ -154,7 +154,7 @@ var reviewedWireExtras = wireExtras{
 		// the credential inventory. Login is fully pre-auth; the rest take a session
 		// but an unresolvable one is exactly the case they must not distinguish, so
 		// all are unauthenticated-class (enumeration uniformity). None reaches an
-		// authz operation — the mutations resolve and rotate the acting session,
+		// authz operation; the mutations resolve and rotate the acting session,
 		// which is resolution rather than authorization, so their audit obligation
 		// is discharged directly through Events.
 		// WebAuthn / passkeys (#54). The three start ceremonies and the credential
@@ -172,7 +172,7 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/auth/workspace/approve":       {Events: []string{"EventRemoteHandoffFailed"}},
 		// Redeem carries two shapes, because a redemption is two acts: an
 		// establishment ISSUES a workspace session, while a step-up ELEVATES the one
-		// it was bound to and mints nothing — the trail records that as the ordinary
+		// it was bound to and mints nothing; the trail records that as the ordinary
 		// reauthentication it is, on the session that was elevated.
 		"http:POST /api/v1/auth/workspace/redeem": {Events: []string{"EventRemoteWorkspaceSessionIssued", "EventAuthReauthenticated", "EventRemoteHandoffFailed"}},
 		// Multi-instance handoff (#71). These three carry the workspace tier's
@@ -243,7 +243,7 @@ var reviewedWireExtras = wireExtras{
 	},
 	Entries: map[string]wireRow{
 		"cli:about": {Class: "ClassUnauthenticated"},
-		// `access` reaches BOTH classes — the org/project/env grant routes are
+		// `access` reaches BOTH classes; the org/project/env grant routes are
 		// tenant-class, the instance-scope ones are instance-class. It is
 		// classified instance because that is the WEAKER probe contract of the
 		// two: a verb that can reach a grant-refusal route must not ride in under
@@ -256,7 +256,7 @@ var reviewedWireExtras = wireExtras{
 		"cli:adapter": {Class: "ClassTenant"},
 		// `hikyo admin create`: the bootstrap member of the closed local-authority
 		// exception set. System class, whose probe contract is network
-		// unreachability — the totality invariant asserts it by finding no HTTP
+		// unreachability; the totality invariant asserts it by finding no HTTP
 		// route, which is the guarantee that matters here: a first-administrator
 		// endpoint reachable from the network is the trust-on-first-use race the
 		// ADR rejected outright.
@@ -286,7 +286,7 @@ var reviewedWireExtras = wireExtras{
 		// `hikyo backup` and `hikyo restore` (#76): the operator lifecycle, on the
 		// server's own host. System class, and the probe contract that matters is
 		// exactly the one the totality invariant asserts by finding no HTTP route
-		// — a restore endpoint reachable from the network would be an instance
+		//; a restore endpoint reachable from the network would be an instance
 		// replacement one request away, and the reconciliation that follows a
 		// restore is unreachable by any other means anyway, because a restore
 		// leaves no principal able to authorize anything.
@@ -303,7 +303,7 @@ var reviewedWireExtras = wireExtras{
 		"cli:folder":      {Class: "ClassTenant"},
 		// `import` (#68) reaches the tenant-scoped phase-1 presence route and the
 		// tenant-scoped phase-2 import route, and nothing else. Its class flipped
-		// off ClassStub in the same change that registered its operations — the
+		// off ClassStub in the same change that registered its operations; the
 		// totality invariant refuses a stub verb that already has operations, which
 		// is exactly the "implementation rides in on a stale class" case.
 		"cli:import":          {Class: "ClassTenant"},
@@ -380,7 +380,7 @@ var reviewedWireExtras = wireExtras{
 		// `scim` reaches ONLY tenant-class routes: every SCIM administration
 		// operation is org-addressed, so a binding the caller may not reach answers
 		// exactly like one that is not there. The wire routes are tenant-class too,
-		// but no CLI verb reaches them — they are the identity provider's.
+		// but no CLI verb reaches them; they are the identity provider's.
 		"cli:scim": {Class: "ClassTenant"},
 		// Process entry points with no principal: boot (server) and migration.
 		// Their system-proof mint sites are enumerated in systemSites; the probe
@@ -397,7 +397,7 @@ var reviewedWireExtras = wireExtras{
 		"cli:update": {Class: "ClassUnauthenticated"},
 		// `values` reaches only the tenant-scoped value routes.
 		"cli:values": {Class: "ClassTenant"},
-		// Local product-information commands print build metadata — no principal,
+		// Local product-information commands print build metadata; no principal,
 		// no server, no store; the pre-auth contract is trivially total.
 		"cli:version":                   {Class: "ClassUnauthenticated"},
 		"cli:welcome":                   {Class: "ClassUnauthenticated"},
@@ -423,7 +423,7 @@ var reviewedWireExtras = wireExtras{
 // authorization posture the router does not have.
 //
 // Identity-protocol endpoints are unauthenticated-class: their probe
-// contract is enumeration uniformity — no pre-authentication path may
+// contract is enumeration uniformity; no pre-authentication path may
 // distinguish an existing account, session or authority from a missing
 // one. `logout` and `whoami` take an artifact but are classified here
 // too, because an unresolvable artifact is exactly the case they must not
@@ -434,8 +434,8 @@ var reviewedWireExtras = wireExtras{
 // list: it projects the caller's OWN grant rows onto the organisations
 // they name, reaches no chokepoint operation and can disclose nothing the
 // caller does not already hold. Its probe contract is therefore
-// enumeration uniformity — an unresolvable session must be
-// indistinguishable from one whose grants name no org — not tenancy.
+// enumeration uniformity; an unresolvable session must be
+// indistinguishable from one whose grants name no org; not tenancy.
 
 // http:GET /api/v1/auth/methods
 // A successful consume mints a recovery-issued credential-establishment
@@ -454,8 +454,8 @@ var reviewedWireExtras = wireExtras{
 // SCIM provisioning (#73). Every route is tenant-class at org depth: a
 // binding a caller may not reach answers byte-identically to one that is
 // not there, which is what keeps the mount from being a cross-org oracle.
-// The wire routes are protocol paths — the same closed exception class the
-// authentication ceremonies belong to — and are parity-exempt, but they are
+// The wire routes are protocol paths; the same closed exception class the
+// authentication ceremonies belong to; and are parity-exempt, but they are
 // NOT unauthenticated: each one presents a provisioning credential.
 
 // http:GET /api/v1/instance/oidc-providers
@@ -464,7 +464,7 @@ var reviewedWireExtras = wireExtras{
 // http:GET /api/v1/orgs
 // Org creation and enumeration are instance-scoped: the probe contract is
 // grant refusal, not tenancy, because no tenant object exists whose
-// nonexistence could be mimicked — a create has no parent tenant and a
+// nonexistence could be mimicked; a create has no parent tenant and a
 // list of every org spans all of them.
 
 // http:GET /api/v1/orgs/{org}
@@ -476,7 +476,7 @@ var reviewedWireExtras = wireExtras{
 // http:GET /api/v1/instance/grants
 // The access surface (#55): grants, role templates, membership inspection
 // and the two `project-settings` knobs. One entry per addressed depth,
-// because the formula differs per depth — the instance ones are
+// because the formula differs per depth; the instance ones are
 // instance-class (grant refusal, no tenant object to mimic), every other
 // one is tenant-class (uniform nonexistent).
 // The access surface (#55). Each route reaches exactly one operation: the
@@ -512,7 +512,7 @@ var reviewedWireExtras = wireExtras{
 
 // http:GET /api/v1/instance/federation-issuers
 // OIDC federation (#62). Issuer configuration is instance-class under
-// `instance-config` — the same siting as OIDC and SAML provider
+// `instance-config`; the same siting as OIDC and SAML provider
 // administration, and for the same reason #16 gave: an org-scoped issuer
 // would let an org admin add a provider and mint identities authenticating
 // into the instance.
@@ -527,7 +527,7 @@ var reviewedWireExtras = wireExtras{
 // http:GET /api/v1/orgs/{org}/projects/{project}/keys
 // The key catalogue (#49). Every route is tenant-class at project depth:
 // a key is declared once per project, and a key the caller cannot reach
-// answers byte-identically to one that is not there — including the two
+// answers byte-identically to one that is not there; including the two
 // reveal-gated routes, whose refusal must be indistinguishable or the gate
 // itself becomes the one-bit oracle it exists to close.
 
