@@ -80,7 +80,7 @@ func adapterCLISession(t *testing.T, db *store.DB) string {
 func adapterServiceDB(t *testing.T) *store.DB {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "adapter-service.db")}
-	db, err := openServiceFixture(t, cfg)
+	db, err := openPreparedServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
