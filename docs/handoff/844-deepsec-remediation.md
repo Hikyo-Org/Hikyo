@@ -432,3 +432,13 @@ CI settings or race detection. A first diagnostic overlapped removal of a
 temporary pin extractor and is not passing evidence; final checks run after
 the complete Go source tree is frozen. The new pushed head's remote CI remains
 a separate required delivery check.
+
+The next head exposed an exact-expiry test-fixture mismatch on Linux. The
+direct SQLite query used variable-width nanoseconds while the production
+wrapper correctly uses canonical fixed-width microseconds. A deterministic
+nanosecond clock reproduces the failure on macOS too. The corrected fixture
+matches both production bindings and checks one microsecond before, exactly
+at, and one microsecond after expiry, plus the equivalent untruncated input.
+Both-engine race checks pass three repetitions (46 seconds), and the compiled
+Linux test passes three SQLite repetitions in an isolated Docker container.
+No production expiry predicate, timestamp codec, query or reviewed pin changed.

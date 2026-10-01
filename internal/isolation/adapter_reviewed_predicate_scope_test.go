@@ -95,17 +95,28 @@ func TestAdapterRetireCredentialJobsBindsAdapterAndOwningChain(t *testing.T) {
 func TestAdapterWorkerLockCustodyTargetBindsLiveLeaseAndOwningChain(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		seedGitLabMoves(t, db, "staging")
-		at := time.Now().UTC()
+		// More precision than storage supports reproduces Linux clocks on every
+		// platform, rather than relying on time.Now's platform-specific precision.
+		at := time.Date(2026, 10, 1, 12, 0, 0, 123456789, time.UTC)
 		runtime := generatedAdapterRuntime(db)
 		job, ok, err := runtime.ClaimDue(t.Context(), "review_lock", at, at.Add(adapter.LeaseTime))
 		if err != nil || !ok {
 			t.Fatalf("claim=%v %v", ok, err)
 		}
+		leaseExpires := store.CanonTime(at.Add(adapter.LeaseTime))
+		if db.Engine() == store.EngineSQLite {
+			if got := queryString(t, db, `SELECT lease_expires_at FROM adapter_outbox WHERE id='job_gitlab'`); got != leaseExpires.Format("2006-01-02T15:04:05.000000Z") {
+				t.Fatalf("stored lease timestamp=%q; want canonical fixed-width deadline", got)
+			}
+		}
 		lock := func(job adapter.Job, at time.Time) (int64, error) {
+			// Match the production custody wrapper: both engines truncate to
+			// microseconds; SQLite additionally requires fixed-width text order.
+			at = store.CanonTime(at)
 			if db.Engine() == store.EnginePostgres {
 				return pggen.New(db.PG()).AdapterWorkerLockCustodyTarget(t.Context(), pggen.AdapterWorkerLockCustodyTargetParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, Now: pgtype.Timestamptz{Time: at, Valid: true}})
 			}
-			return sqlitegen.New(db.SQLiteWrite()).AdapterWorkerLockCustodyTarget(t.Context(), sqlitegen.AdapterWorkerLockCustodyTargetParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, Now: sql.NullString{String: at.Format(time.RFC3339Nano), Valid: true}})
+			return sqlitegen.New(db.SQLiteWrite()).AdapterWorkerLockCustodyTarget(t.Context(), sqlitegen.AdapterWorkerLockCustodyTargetParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, Now: sql.NullString{String: at.Format("2006-01-02T15:04:05.000000Z"), Valid: true}})
 		}
 		if n, err := lock(job, at); err != nil || n != 1 {
 			t.Fatalf("own lock=%d %v", n, err)
@@ -126,8 +137,19 @@ func TestAdapterWorkerLockCustodyTargetBindsLiveLeaseAndOwningChain(t *testing.T
 				t.Fatalf("foreign lock=%d %v", n, err)
 			}
 		}
-		if n, err := lock(job, at.Add(adapter.LeaseTime)); err != nil || n != 0 {
-			t.Fatalf("expired lock=%d %v", n, err)
+		for _, boundary := range []struct {
+			name string
+			at   time.Time
+			want int64
+		}{
+			{"before_expiry", leaseExpires.Add(-time.Microsecond), 1},
+			{"exact_expiry", leaseExpires, 0},
+			{"after_expiry", leaseExpires.Add(time.Microsecond), 0},
+			{"untruncated_expiry", at.Add(adapter.LeaseTime), 0},
+		} {
+			if n, err := lock(job, boundary.at); err != nil || n != boundary.want {
+				t.Fatalf("%s lock=%d %v; want %d", boundary.name, n, err, boundary.want)
+			}
 		}
 		execRealAdoption(t, db, `UPDATE adapter_targets SET paused_at=$1 WHERE id='tgt_gitlab_a'`, at.Format(time.RFC3339Nano))
 		if n, err := lock(job, at); err != nil || n != 0 {
