@@ -127,6 +127,9 @@ export const Disclosure: Story = {
     await expect(
       await canvas.findByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
     ).toBeVisible();
+    await expect(
+      canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
+    ).not.toBeRequired();
     await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
   },
 };
@@ -153,7 +156,7 @@ export const Adapter: Story = {
     await expect(await canvas.findByText('adapter.configure')).toBeVisible();
     await expect(
       canvas.getByLabelText(/authenticator code \(optional; leave empty to use a passkey\)/i),
-    ).toBeRequired();
+    ).not.toBeRequired();
     await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
   },
 };
