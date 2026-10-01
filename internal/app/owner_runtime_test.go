@@ -146,6 +146,17 @@ func TestOwnerRuntimeRefusesPasswordCostChangeAfterCredentialEstablishment(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = srv.Close() })
+	// Complete bootstrap before starting the reconciler: seed discovery can
+	// refuse a seed refreshed after it captures its clock. That independent
+	// bootstrap race must not obscure the password admission regression.
+	boot, err := srv.owner.current.graph.auth.BootstrapAdmin(t.Context(), "kdf-admin", "KDF Admin", "terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.selfConfig.ReconcileRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	startOwnerServer(t, srv)
 	old := srv.owner.current.graph
 	candidate := ownerCandidate(t, srv, func(values map[string]string) { values["HIKYO_ARGON2_TIME"] = "4" })
@@ -154,10 +165,6 @@ func TestOwnerRuntimeRefusesPasswordCostChangeAfterCredentialEstablishment(t *te
 		t.Fatal(err)
 	}
 	defer prepared.Close()
-	boot, err := old.auth.BootstrapAdmin(t.Context(), "kdf-admin", "KDF Admin", "terminal")
-	if err != nil {
-		t.Fatal(err)
-	}
 	password := "correct horse battery staple runtime KDF guard"
 	if err := old.auth.EstablishCredential(t.Context(), boot.Authority, password); err != nil {
 		t.Fatal(err)
