@@ -24,6 +24,11 @@ func openServiceFixture(t testing.TB, cfg store.Config) (*store.DB, error) {
 		return nil, err
 	}
 	admission := gatefixture.Prepare(t, upgrade.Config{Engine: releaseidentity.Engine(cfg.Engine), Path: cfg.Path, DSN: cfg.DSN}, store.MigrationsFS, "migrations/"+string(cfg.Engine), bytes.Clone(root))
+	return openAdmittedServiceFixture(t, cfg, root, admission)
+}
+
+func openAdmittedServiceFixture(t testing.TB, cfg store.Config, root []byte, admission upgrade.Admission) (*store.DB, error) {
+	t.Helper()
 	db, err := store.Open(t.Context(), cfg, admission)
 	if err != nil {
 		crypto.Zero(root)
