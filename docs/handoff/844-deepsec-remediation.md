@@ -442,3 +442,12 @@ at, and one microsecond after expiry, plus the equivalent untruncated input.
 Both-engine race checks pass three repetitions (46 seconds), and the compiled
 Linux test passes three SQLite repetitions in an isolated Docker container.
 No production expiry predicate, timestamp codec, query or reviewed pin changed.
+
+The real Vault/OpenBao contract still expected automatic replay after a lost
+write response. It now requires the approved operator-review hold: ordinary
+sync and teardown preserve values, version history, markers and journal custody.
+A fresh plan supplies the exact positive version witness; explicit adoption
+authorizes a new acknowledged CAS, not ownership of the earlier version.
+Both pinned provider contracts pass three race repetitions each. Acknowledged
+convergence, foreign-writer conflicts, pruning and retained history remain
+covered; production logic and least-privilege value-read denial are unchanged.
