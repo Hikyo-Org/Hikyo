@@ -2,8 +2,15 @@ package dynamic
 
 import (
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 )
+
+// Pin the public material contracts independently of the production constants
+// and membership helpers, so generator and validator cannot drift together.
+var passwordContract = regexp.MustCompile(`^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{32}$`)
+var roleNameContract = regexp.MustCompile(`^hikyo_[a-z0-9]{1,57}$`)
 
 // TestProviderInterfaceIsPinned freezes the security-load-bearing property of
 // the provider seam: no method returns a string. The whole argument for the
@@ -30,8 +37,8 @@ func TestGeneratePasswordShape(t *testing.T) {
 		if err != nil {
 			t.Fatalf("generate: %v", err)
 		}
-		if !ValidPassword(pw) {
-			t.Fatalf("generated password %q fails its own charset contract", pw)
+		if !passwordContract.MatchString(pw) {
+			t.Fatalf("generated password fails the independent 32-character alphabet contract")
 		}
 		if seen[pw] {
 			t.Fatalf("duplicate password across draws: %q", pw)
@@ -41,7 +48,7 @@ func TestGeneratePasswordShape(t *testing.T) {
 }
 
 func TestValidPasswordRejectsOffCharset(t *testing.T) {
-	base, _ := GeneratePassword()
+	base := strings.Repeat("A", 32)
 	for _, bad := range []string{
 		"",                       // empty
 		base[:len(base)-1],       // too short
@@ -57,14 +64,20 @@ func TestValidPasswordRejectsOffCharset(t *testing.T) {
 }
 
 func TestRoleNameShape(t *testing.T) {
-	for _, leaseID := range []string{
-		"dlease_0192f3a4-b5c6-7d8e-9fa0-b1c2d3e4f5a6",
-		"dlease_UPPER-Case_ID",
-		"x",
+	for _, tc := range []struct{ leaseID, want string }{
+		{"dlease_0192f3a4-b5c6-7d8e-9fa0-b1c2d3e4f5a6", "hikyo_dlease0192f3a4b5c67d8e9fa0b1c2d3e4f5a6"},
+		{"dlease_0192f3a4-b5c6-7d8e-9fa0-b1c2d3e4f5a7", "hikyo_dlease0192f3a4b5c67d8e9fa0b1c2d3e4f5a7"},
+		{"dlease_UPPER-Case_ID", "hikyo_dleaseuppercaseid"},
+		{"x", "hikyo_x"},
+		{"'\";_-", "hikyo_role"},
+		{strings.Repeat("a", 57), "hikyo_" + strings.Repeat("a", 56)},
 	} {
-		name := RoleName(leaseID)
-		if !ValidRoleName(name) {
-			t.Errorf("RoleName(%q)=%q fails ValidRoleName", leaseID, name)
+		name := RoleName(tc.leaseID)
+		if name != tc.want {
+			t.Errorf("RoleName(%q)=%q, want %q", tc.leaseID, name, tc.want)
+		}
+		if !roleNameContract.MatchString(name) {
+			t.Errorf("RoleName(%q)=%q fails the independent role-name contract", tc.leaseID, name)
 		}
 	}
 }
@@ -75,6 +88,7 @@ func TestValidRoleNameRejectsInjection(t *testing.T) {
 		"hikyo_",                    // prefix only
 		"admin",                     // missing prefix
 		"hikyo_a b",                 // space
+		"hikyo_o'hare",              // single quote alone, without other invalid bytes
 		"hikyo_a\"; DROP ROLE x;--", // identifier break attempt
 		"hikyo_" + string(make([]byte, 70)),
 	} {
@@ -84,30 +98,23 @@ func TestValidRoleNameRejectsInjection(t *testing.T) {
 	}
 }
 
-// FuzzGeneratedMaterialCharset asserts the generator never emits a byte outside
-// its declared alphabet, and that the validators agree with the generators.
+// FuzzValidators checks both acceptance and rejection against independently
+// pinned contracts, including valid inputs an always-false validator would miss.
 func FuzzValidators(f *testing.F) {
-	f.Add("hikyo_abc123")
-	f.Add("ABCdef456789ABCdef456789ABCdef45")
+	for _, seed := range []string{
+		"", "hikyo_", "hikyo_abc123", "hikyo_o'hare", "hikyo_UPPER", "other_abc",
+		"hikyo_" + strings.Repeat("a", 57), "hikyo_" + strings.Repeat("a", 58),
+		strings.Repeat("A", 31), strings.Repeat("A", 32), strings.Repeat("A", 33),
+		strings.Repeat("A", 31) + "'", strings.Repeat("A", 31) + "0",
+	} {
+		f.Add(seed)
+	}
 	f.Fuzz(func(t *testing.T, s string) {
-		// A validator must never panic and must be self-consistent with the
-		// alphabet membership it claims.
-		if ValidPassword(s) {
-			if len(s) != passwordLength {
-				t.Fatalf("ValidPassword true but wrong length: %q", s)
-			}
-			for i := 0; i < len(s); i++ {
-				if !inAlphabet(s[i]) {
-					t.Fatalf("ValidPassword true but byte %d off-alphabet: %q", i, s)
-				}
-			}
+		if got, want := ValidPassword(s), passwordContract.MatchString(s); got != want {
+			t.Fatalf("ValidPassword(%q)=%t, want %t", s, got, want)
 		}
-		if ValidRoleName(s) {
-			for i := len(roleNamePrefix); i < len(s); i++ {
-				if !inRoleAlphabet(s[i]) {
-					t.Fatalf("ValidRoleName true but byte %d off-alphabet: %q", i, s)
-				}
-			}
+		if got, want := ValidRoleName(s), roleNameContract.MatchString(s); got != want {
+			t.Fatalf("ValidRoleName(%q)=%t, want %t", s, got, want)
 		}
 	})
 }
