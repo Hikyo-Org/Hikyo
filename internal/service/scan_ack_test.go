@@ -22,7 +22,7 @@ import (
 func ackTestKeyring(t testing.TB) *crypto.Keyring {
 	t.Helper()
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "ack.db")}
-	db, err := openServiceFixture(t, cfg)
+	db, err := openPreparedServiceFixture(t, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
