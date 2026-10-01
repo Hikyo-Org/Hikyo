@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
@@ -24,7 +25,7 @@ type offlineReceiptClaims struct {
 	ExpiresAt      time.Time `json:"expires_at"`
 }
 
-func (s *Delivery) issueOfflineReceipt(scope domain.Scope, principal domain.PrincipalID, out FetchResult, key DeliveredKey) (string, error) {
+func (s *Delivery) issueOfflineReceipt(signer *crypto.DeliveryTokenSnapshot, principal domain.PrincipalID, out FetchResult, key DeliveredKey) (string, error) {
 	claims, err := json.Marshal(offlineReceiptClaims{
 		Principal: string(principal), Credential: out.CredentialID,
 		KeyID: key.KeyID, Name: key.Name, Classification: key.Classification,
@@ -35,14 +36,11 @@ func (s *Delivery) issueOfflineReceipt(scope domain.Scope, principal domain.Prin
 	if err != nil {
 		return "", err
 	}
-	signature, err := s.Keyring.OfflineSnapshotReceipt(string(scope.Org), string(scope.Project), string(scope.Env), claims)
-	if err != nil {
-		return "", err
-	}
+	signature := signer.Sign(claims)
 	return "sr1:" + base64.RawURLEncoding.EncodeToString(claims) + "." + signature, nil
 }
 
-func (s *Delivery) verifyOfflineReceipt(scope domain.Scope, principal domain.PrincipalID, record OfflineRecord, now time.Time) (offlineReceiptClaims, error) {
+func (s *Delivery) verifyOfflineReceipt(signer *crypto.DeliveryTokenSnapshot, principal domain.PrincipalID, record OfflineRecord, now time.Time) (offlineReceiptClaims, error) {
 	refuse := func() (offlineReceiptClaims, error) {
 		return offlineReceiptClaims{}, invalidDetail("offline snapshot receipt is missing, invalid, or does not authorize this record; fetch online to refresh the snapshot")
 	}
@@ -57,11 +55,7 @@ func (s *Delivery) verifyOfflineReceipt(scope domain.Scope, principal domain.Pri
 	if err != nil {
 		return refuse()
 	}
-	valid, err := s.Keyring.VerifyOfflineSnapshotReceipt(string(scope.Org), string(scope.Project), string(scope.Env), encoded, signature)
-	if err != nil {
-		return offlineReceiptClaims{}, err
-	}
-	if !valid {
+	if !signer.Verify(encoded, signature) {
 		return refuse()
 	}
 	var claims offlineReceiptClaims

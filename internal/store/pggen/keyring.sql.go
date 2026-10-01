@@ -217,6 +217,29 @@ func (q *Queries) GetActiveTier3Key(ctx context.Context, arg GetActiveTier3KeyPa
 	return i, err
 }
 
+const getActiveTokenKeyForReceipt = `-- name: GetActiveTokenKeyForReceipt :one
+SELECT id, purpose, org_id, project_id, version, master_key_version, state, blob, created_at
+FROM tier3_keys WHERE purpose = 'token' AND org_id = '' AND project_id = '' AND state = 'active'
+FOR SHARE
+`
+
+func (q *Queries) GetActiveTokenKeyForReceipt(ctx context.Context) (Tier3Key, error) {
+	row := q.db.QueryRow(ctx, getActiveTokenKeyForReceipt)
+	var i Tier3Key
+	err := row.Scan(
+		&i.ID,
+		&i.Purpose,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.Version,
+		&i.MasterKeyVersion,
+		&i.State,
+		&i.Blob,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getTier3Versions = `-- name: GetTier3Versions :many
 SELECT id, purpose, org_id, project_id, version, master_key_version, state, blob, created_at
 FROM tier3_keys

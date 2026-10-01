@@ -299,7 +299,8 @@ export function Members({ scope }: { scope: MembersScope }) {
         ruleItems.some((rule) => rule.principal_id === person.id)),
   );
   const rulesPanelVisible = !instance && grants.isSuccess;
-  const canEditRules = rulesPanelVisible && rules.isSuccess && topologyReady;
+  const canEditRules = rulesPanelVisible && rules.isSuccess && !rules.isFetching && topologyReady
+    && !ruleMutations.save.isPending && !ruleMutations.remove.isPending;
   // The prototype's compact project presentation never applies at instance
   // scope: there is no project to be compact about.
   const compactPresentation = projectId !== '' || (prototypeMode && !instance);
@@ -740,7 +741,10 @@ export function Members({ scope }: { scope: MembersScope }) {
                 setEditing(null);
                 feedback.ok(`Removed the rule from ${memberName(rule.member)}. Removing a rule ends their sessions.`);
               },
-              onError: (error) => setEditorFailure(ruleFailureText(error)),
+              onError: (error) => {
+                setEditing(null);
+                feedback.report(new RuleRefusal(error));
+              },
             });
           }}
           onSave={(draft) => {
@@ -757,9 +761,10 @@ export function Members({ scope }: { scope: MembersScope }) {
                   );
                 },
                 onError: (error) => {
-                  // Half an edit stands: close the editor and say so on the page,
-                  // since saving the same draft again would not be the same act.
-                  if (error instanceof RuleSaveFailure && error.stage !== 'create') {
+                  // An unconfirmed create can have committed without returning
+                  // its ID. Never retry a stale draft, even after rollback of
+                  // every confirmed create; reopen only the refreshed listing.
+                  if (error instanceof RuleSaveFailure) {
                     setEditing(null);
                     feedback.report(new RuleRefusal(error));
                     return;

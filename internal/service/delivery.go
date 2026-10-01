@@ -402,10 +402,19 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if err != nil {
 			return err
 		}
-		changeToken, err := s.Keyring.ChangeToken(string(scope.Org), string(scope.Project), string(scope.Env), parameterizedManifest(manifest, opts.Parameters))
+		// One database-locked key snapshot binds the conditional token, cursor
+		// and any disclosure receipts. A replica's boot-time handle is not
+		// evidence that its token key is still active.
+		row, err := r.Keys().ActiveTokenKeyForReceipt(ctx, p)
 		if err != nil {
 			return err
 		}
+		signer, err := s.Keyring.DeliveryTokenSnapshot(row, string(scope.Org), string(scope.Project), string(scope.Env))
+		if err != nil {
+			return err
+		}
+		defer signer.Close()
+		changeToken := signer.ChangeToken(parameterizedManifest(manifest, opts.Parameters))
 
 		// The other two non-content components.
 		revisionOfAuthority, err := az.PrincipalGeneration(ctx, caller.Principal)
@@ -426,8 +435,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if pinnedNonCurrent {
 			pinnedHistoricalRevision = out.PinnedRevision
 		}
-		computed, err := s.Keyring.DeliveryCursor(
-			string(scope.Org), string(scope.Project), string(scope.Env),
+		computed := signer.DeliveryCursor(
 			delivery.EncodeCursor(delivery.Cursor{
 				ChangeToken:              changeToken,
 				Projection:               projectionOf(grants, scope, revealGeneration),
@@ -436,10 +444,6 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 				Mode:                     mode,
 				PinnedHistoricalRevision: pinnedHistoricalRevision,
 			}))
-		if err != nil {
-			return err
-		}
-
 		// Constant-time, like every other comparison against a
 		// caller-controlled value in this codebase. A cursor is not a secret,
 		// but it is a value an attacker can guess at, and a byte-at-a-time
@@ -464,7 +468,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 				if out.Keys[i].Value == nil {
 					continue
 				}
-				receipt, err := s.issueOfflineReceipt(scope, caller.Principal, out, out.Keys[i])
+				receipt, err := s.issueOfflineReceipt(signer, caller.Principal, out, out.Keys[i])
 				if err != nil {
 					return err
 				}
@@ -628,8 +632,17 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 				servedCredentials[credential.ID] = true
 			}
 		}
+		row, err := r.Keys().ActiveTokenKeyForReceipt(ctx, p)
+		if err != nil {
+			return err
+		}
+		signer, err := s.Keyring.DeliveryTokenSnapshot(row, string(scope.Org), string(scope.Project), string(scope.Env))
+		if err != nil {
+			return err
+		}
+		defer signer.Close()
 		for _, record := range records {
-			claims, err := s.verifyOfflineReceipt(scope, caller.Principal, record, s.now())
+			claims, err := s.verifyOfflineReceipt(signer, caller.Principal, record, s.now())
 			if err != nil {
 				return err
 			}

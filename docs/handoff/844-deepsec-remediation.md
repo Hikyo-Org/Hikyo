@@ -4,7 +4,7 @@
 
 The original DeepSec finding set was remediated across the Go services,
 CLI, web client, operator, deployment chart, CI, and release tooling. The
-2026-10-01 refresh merges main through `cb744509a` and adds the fixes below.
+2026-10-01 refresh merges main through `6305b79a6` and adds the fixes below.
 Final DeepSec revalidation and exact-head remote CI remain separate gates.
 
 The final medium finding no longer sends CLI passwords or bearer credentials
@@ -88,6 +88,19 @@ closed and require pinned HTTPS.
   separate, ongoing runs; this is not a claim that the whole project is clean.
 - Exact owner-runtime race checks pass all 18 executions, including live HTTP
   admission, password-cost refusal, rollback, drain and activation recovery.
+- Final residual revalidation completed 21/21 verdicts: 17 fixed, one duplicate
+  and three true positives. The true positives are the nightly credential
+  custody gate and the two explicitly pending adapter policy decisions below.
+- Six new protocol/platform helpers were investigated without new findings.
+  Discovery also identified three additional bugs in HA receipt-key freshness
+  and grouped access-rule mutation recovery. Their fixes pass targeted tests;
+  forced DeepSec revalidation and exact-head remote CI are still pending.
+- Two independent replicas pass receipt/fetch/reconciliation race regressions
+  on both engines, three repetitions each. Rotation invalidates old receipts
+  everywhere, with fresh cursor and change-token equality across replicas.
+- Web: final 1,464 unit tests, typecheck and lint pass. Actual generated-transport
+  rule recovery tests cover lost/malformed responses, partial deletion, session
+  refresh refusal and stale cached controls during failed/deferred listing.
 
 ### Earlier checkpoint
 
@@ -144,6 +157,9 @@ is included in this handoff.
   Receipts prove prior server delivery, not the client's asserted later use.
   Audit events label authenticated delivery with `receipt_verified: true` and
   retain the receipt-bound revision and keyed snapshot change token.
+  Issuance and reconciliation use one database-selected, transaction-locked
+  scoped key snapshot, not a replica's cached handle. The cursor, change token
+  and receipt remain purpose-separated and observe the same active key.
 - SCIM subject audit commitments retain the v1 64-hex format but use fresh
   private HMAC keys, preventing bare-hash dictionaries and cross-event equality.
   Existing historic audit disclosures cannot be undone by this source change.

@@ -1121,10 +1121,11 @@ const (
 	// Keyring persistence (#43). These carry no tenant chain: wrapped-key
 	// rows are instance-scoped crypto material, and the scope a tier-3 key
 	// belongs to is part of its AAD, not a tenant predicate.
-	StoreKeysActiveMasterWrappers StoreOp = "keys.ActiveMasterWrappers"
-	StoreKeysActiveTier3          StoreOp = "keys.ActiveTier3"
-	StoreKeysTier3Versions        StoreOp = "keys.Tier3Versions"
-	StoreKeysAllOpenableTier3     StoreOp = "keys.AllOpenableTier3"
+	StoreKeysActiveMasterWrappers     StoreOp = "keys.ActiveMasterWrappers"
+	StoreKeysActiveTier3              StoreOp = "keys.ActiveTier3"
+	StoreKeysActiveTokenKeyForReceipt StoreOp = "keys.ActiveTokenKeyForReceipt"
+	StoreKeysTier3Versions            StoreOp = "keys.Tier3Versions"
+	StoreKeysAllOpenableTier3         StoreOp = "keys.AllOpenableTier3"
 	// StoreKeysAssertActiveDEKVersion is the writer fence, invoked inside every
 	// ciphertext-writing operation's transaction — a read (+ FOR SHARE lock on
 	// postgres) of the sealed DEK version's state. It is in the store sets of the
@@ -1416,6 +1417,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreCatalogueRevisionGet:                 true,
 	StoreKeysActiveMasterWrappers:             true,
 	StoreKeysActiveTier3:                      true,
+	StoreKeysActiveTokenKeyForReceipt:         true,
 	StoreKeysTier3Versions:                    true,
 	StoreKeysAllOpenableTier3:                 true,
 	StoreKeysAssertActiveDEKVersion:           true,
@@ -4158,7 +4160,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreKeysActiveTokenKeyForReceipt: true,
+			StoreSnapshotsLatest:              true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
 			StoreSnapshotsAtRevision: true, StorePinsGetForWorkload: true,
 			// A workload bound to a file target (#164) is delivered that
 			// target's key selection only.
@@ -4175,8 +4178,9 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreAuditClaimOfflineRecord: true,
-			StoreAuditTenantInsert:       true,
+			StoreKeysActiveTokenKeyForReceipt: true,
+			StoreAuditClaimOfflineRecord:      true,
+			StoreAuditTenantInsert:            true,
 		},
 		events: []audit.EventType{
 			audit.EventOfflineRecordsReconciled, audit.EventValueRevealed,

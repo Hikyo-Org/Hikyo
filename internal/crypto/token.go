@@ -25,11 +25,15 @@ const tokenInfoLabel = "wenv/change-token/v1"
 // data and domain-separates each token purpose. Derived per use, never cached or
 // stored; callers zero the returned key after tagging.
 func (k *Keyring) deriveScopedTokenKey(label, orgID, projectID, envID string) ([]byte, error) {
+	return deriveScopedTokenKeyFrom(k.rootTokenKey(), label, orgID, projectID, envID)
+}
+
+func deriveScopedTokenKeyFrom(root []byte, label, orgID, projectID, envID string) ([]byte, error) {
 	info := appendLP(nil, []byte(label))
 	info = appendLP(info, []byte(orgID))
 	info = appendLP(info, []byte(projectID))
 	info = appendLP(info, []byte(envID))
-	key, err := hkdf.Key(sha256.New, k.rootTokenKey(), nil, string(info), KeySize)
+	key, err := hkdf.Key(sha256.New, root, nil, string(info), KeySize)
 	if err != nil {
 		return nil, fmt.Errorf("crypto: derive scoped token key: %w", err)
 	}
