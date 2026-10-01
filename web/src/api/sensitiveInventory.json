@@ -17,7 +17,7 @@
     "api/pki.ts": "8177243a00db941072784acf95f7f8830479ca237389e9f83778c9e6899f3d62",
     "api/remotes.ts": "7d5d47212d595dffd2a4526e593e4a29beaf6112165c8e0e1a7d79bd906df92b",
     "api/revisionDiff.ts": "5dca7d0ddb63c8832d7507eb62ecc1ea7b49080a72a329ad38043e342017d21f",
-    "api/rules.ts": "8ee79e3aa0f1ef3c42c6a5df205926aece13da6499c74831c06d5b5672237074",
+    "api/rules.ts": "a4d95ec972aef88ede6fe675299e4298edbdaa3956e8e03a83b7f4518ef5323d",
     "api/samlProviders.ts": "d1d011dd7762a4f5c6568835fc51ac887309b13b2211d2f6a6fb259ff0cc60ce",
     "api/scim.ts": "58952f12ff55819176d2f03b82c5e98d4cc4dc262606b5353ff5a69cfc93983d",
     "api/selfConfig.ts": "8dce256617e51a4b1cce66ce1eb3821073321fb07980cc5f7c0df1b7a96b233d",

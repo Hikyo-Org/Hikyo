@@ -153,11 +153,11 @@ type wireWriteRaceAPI struct {
 
 func (f *wireWriteRaceAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
 	if f.timing == "before-put" {
-		f.server.ExternalPut(name, "concurrent wire edit")
+		f.server.ExternalPut("prod/app", "concurrent wire edit")
 	}
 	err := f.Client.PutSecretValue(ctx, name, token, value)
 	if err == nil && f.timing == "after-put" {
-		f.server.ExternalPut(name, "concurrent wire edit")
+		f.server.ExternalPut("prod/app", "concurrent wire edit")
 	}
 	return err
 }

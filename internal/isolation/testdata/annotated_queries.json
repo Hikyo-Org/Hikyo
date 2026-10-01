@@ -481,7 +481,8 @@
     "engine": "postgres",
     "name": "CountIncompatiblePasswordKDFs",
     "annotation": "authn-resolution",
-    "hash": "f3db3be13710b63ae1fb63768c28f90b34eb0a3a9012b54afc0ded1e609f6505"
+    "hash": "f3db3be13710b63ae1fb63768c28f90b34eb0a3a9012b54afc0ded1e609f6505",
+    "reason": "Boot admission counts incompatible verifiers without exposing credentials; no tenant authority is exercised."
   },
   {
     "engine": "postgres",
@@ -613,7 +614,8 @@
     "engine": "postgres",
     "name": "DeleteExpiredUnconsumedWebAuthnCeremonies",
     "annotation": "authn-resolution",
-    "hash": "ce7914dd39594c9ecb888e2c9e0ea711e9fd9a43f3a91cb66b3ab08afcf6466b"
+    "hash": "ce7914dd39594c9ecb888e2c9e0ea711e9fd9a43f3a91cb66b3ab08afcf6466b",
+    "reason": "Pre-auth issuance retires only expired unconsumed proofs; no live credential or tenant authority changes."
   },
   {
     "engine": "postgres",
@@ -677,9 +679,23 @@
   },
   {
     "engine": "postgres",
+    "name": "DeletePendingLoginChallengesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "53aadf193c9ef39723872d66b287f6f417d17933dc55a59ffb38103b46f0a7e1",
+    "reason": "Principal-generation revocation retires only unconsumed password proofs for the exact principal whose account security changed."
+  },
+  {
+    "engine": "postgres",
     "name": "DeletePendingTOTPForAccount",
     "annotation": "authn-resolution",
     "hash": "de3e3cf0a2de5c05ab5ec340129598cf840929bc37c322ce0a77360a779df451"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeletePendingWorkspaceHandoffsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "a95c9027468e8b79a5b1e812b3383db1de090f940dd3ef81a0aa216aaaa92fa2",
+    "reason": "Principal-generation revocation retires only unconsumed approvals by the exact principal; consumed handoffs retain session provenance."
   },
   {
     "engine": "postgres",
@@ -739,7 +755,8 @@
     "engine": "postgres",
     "name": "DeleteRestoredRemotes",
     "annotation": "authn-resolution",
-    "hash": "9de916aa030b49d85f876861eaba67c674359d197d7f30d8e2a504dcfc7180ef"
+    "hash": "9de916aa030b49d85f876861eaba67c674359d197d7f30d8e2a504dcfc7180ef",
+    "reason": "Authorized restore removes archive-controlled remote-instance trust and credentials across the instance."
   },
   {
     "engine": "postgres",
@@ -1542,6 +1559,12 @@
   },
   {
     "engine": "postgres",
+    "name": "InvalidateRestoredAdapterRouteMoves",
+    "annotation": "authn-resolution",
+    "hash": "bf1d5e12b6ae738f1414119d9cbcdd694712e35f3e9944b7dd5c6665f931445d"
+  },
+  {
+    "engine": "postgres",
     "name": "InvalidateRestoredDynamicProviderCredentials",
     "annotation": "authn-resolution",
     "hash": "96eaf3c2f40351bf1bed78e2fcc47738a1c166aed7aaec424a4140235019cede"
@@ -1550,13 +1573,15 @@
     "engine": "postgres",
     "name": "InvalidateRestoredOAuth2ProviderCredentials",
     "annotation": "authn-resolution",
-    "hash": "c591683be32ae3260a0c85771690905956fd4a77ea4ebb1a3f864bae1b3c8d86"
+    "hash": "c591683be32ae3260a0c85771690905956fd4a77ea4ebb1a3f864bae1b3c8d86",
+    "reason": "Authorized restore destroys all outbound OAuth2-provider credentials across the restored instance."
   },
   {
     "engine": "postgres",
     "name": "InvalidateRestoredOIDCProviderCredentials",
     "annotation": "authn-resolution",
-    "hash": "fca0fa0a88246519bda590e78563958aff2750092084f84ef74ec76f3b007b2d"
+    "hash": "fca0fa0a88246519bda590e78563958aff2750092084f84ef74ec76f3b007b2d",
+    "reason": "Authorized restore destroys all outbound login-provider credentials across the restored instance."
   },
   {
     "engine": "postgres",
@@ -2145,7 +2170,7 @@
     "engine": "postgres",
     "name": "PKIPublishCRL",
     "annotation": "instance-scoped",
-    "hash": "142be08f1ba6ba03e7e5f8d017adf988135f1052a61724b4e4804d233034908e",
+    "hash": "2e62606978c632f1bf0a6cc9670b4856cade335657cd4118e0f1d03e09feb1f3",
     "reason": "StorePKIIssuersPublishCRL verifies instance-config, or closed PKIRuntime publishes a signed global CA CRL; original active/retiring state and prior-number CAS remain."
   },
   {
@@ -2543,6 +2568,20 @@
   },
   {
     "engine": "postgres",
+    "name": "RetireRestoredApprovedWorkspaceHandoffs",
+    "annotation": "authn-resolution",
+    "hash": "19d047f0fe8b0613568512cd17a5ae4256927099f84403ff095e43b43508c4c4",
+    "reason": "Local-host restore invalidation retires unconsumed approved assurance that lacks an epoch while retaining consumed session provenance."
+  },
+  {
+    "engine": "postgres",
+    "name": "RetireRestoredPendingLoginChallenges",
+    "annotation": "authn-resolution",
+    "hash": "f9e7e42658c8a7c81476f0a8cf32547b13cb39e9d9ea83aa40bb7e65e1665ddb",
+    "reason": "Local-host restore invalidation retires unconsumed password proofs that lack an epoch; no tenant request can authorize this recovery act."
+  },
+  {
+    "engine": "postgres",
     "name": "RevokeAllMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "caa27a4da41e88e24ebcb130419569168a4173c8f5155ed772bbd85a4d9d3801"
@@ -2623,7 +2662,7 @@
     "engine": "postgres",
     "name": "RuntimePKIDueCRLs",
     "annotation": "instance-scoped",
-    "hash": "f7588f2cb3f4eb53929308e384b0c8b9cdae5dbbbba3f9947be2732745647481",
+    "hash": "a52b42aa01986af63087f5de75a546320fd5961a8c0ec6eeae34bea5e02809a4",
     "reason": "Closed PKIRuntime selects global active/retiring CAs with signing keys whose CRLs are missing, half-life due or behind committed revocation sequences."
   },
   {
@@ -3391,7 +3430,8 @@
     "engine": "sqlite",
     "name": "CountIncompatiblePasswordKDFs",
     "annotation": "authn-resolution",
-    "hash": "f3db3be13710b63ae1fb63768c28f90b34eb0a3a9012b54afc0ded1e609f6505"
+    "hash": "f3db3be13710b63ae1fb63768c28f90b34eb0a3a9012b54afc0ded1e609f6505",
+    "reason": "Boot admission counts incompatible verifiers without exposing credentials; no tenant authority is exercised."
   },
   {
     "engine": "sqlite",
@@ -3523,7 +3563,8 @@
     "engine": "sqlite",
     "name": "DeleteExpiredUnconsumedWebAuthnCeremonies",
     "annotation": "authn-resolution",
-    "hash": "282ae3f4e177fb68ab3a7bbb12e3665e283a01bc49139ca277e4982641465ff2"
+    "hash": "282ae3f4e177fb68ab3a7bbb12e3665e283a01bc49139ca277e4982641465ff2",
+    "reason": "Pre-auth issuance retires only expired unconsumed proofs; no live credential or tenant authority changes."
   },
   {
     "engine": "sqlite",
@@ -3587,9 +3628,23 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeletePendingLoginChallengesForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "607aaaaf6de8a6953e0bdc3fad3f2f2c44aec6fa482e850f1b535e0c995a3edc",
+    "reason": "Principal-generation revocation retires only unconsumed password proofs for the exact principal whose account security changed."
+  },
+  {
+    "engine": "sqlite",
     "name": "DeletePendingTOTPForAccount",
     "annotation": "authn-resolution",
     "hash": "9cac0a620bc7fa2b5289015dddd8be9beb8d4c0c5166617f25c6bfffe0351904"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeletePendingWorkspaceHandoffsForPrincipal",
+    "annotation": "authn-resolution",
+    "hash": "4f6bbf6500f04a5ae7b777c6d252eca2022b2a9c824ace78348e8d8bcec5d0f5",
+    "reason": "Principal-generation revocation retires only unconsumed approvals by the exact principal; consumed handoffs retain session provenance."
   },
   {
     "engine": "sqlite",
@@ -3649,7 +3704,8 @@
     "engine": "sqlite",
     "name": "DeleteRestoredRemotes",
     "annotation": "authn-resolution",
-    "hash": "9de916aa030b49d85f876861eaba67c674359d197d7f30d8e2a504dcfc7180ef"
+    "hash": "9de916aa030b49d85f876861eaba67c674359d197d7f30d8e2a504dcfc7180ef",
+    "reason": "Authorized restore removes archive-controlled remote-instance trust and credentials across the instance."
   },
   {
     "engine": "sqlite",
@@ -4452,6 +4508,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "InvalidateRestoredAdapterRouteMoves",
+    "annotation": "authn-resolution",
+    "hash": "bf1d5e12b6ae738f1414119d9cbcdd694712e35f3e9944b7dd5c6665f931445d"
+  },
+  {
+    "engine": "sqlite",
     "name": "InvalidateRestoredDynamicProviderCredentials",
     "annotation": "authn-resolution",
     "hash": "96eaf3c2f40351bf1bed78e2fcc47738a1c166aed7aaec424a4140235019cede"
@@ -4460,13 +4522,15 @@
     "engine": "sqlite",
     "name": "InvalidateRestoredOAuth2ProviderCredentials",
     "annotation": "authn-resolution",
-    "hash": "8d192141eb51a1a1bc085901c893c963f306b35183f31eab02bdca5fc6ca1d47"
+    "hash": "8d192141eb51a1a1bc085901c893c963f306b35183f31eab02bdca5fc6ca1d47",
+    "reason": "Authorized restore destroys all outbound OAuth2-provider credentials across the restored instance."
   },
   {
     "engine": "sqlite",
     "name": "InvalidateRestoredOIDCProviderCredentials",
     "annotation": "authn-resolution",
-    "hash": "c9d3308a178b075fe879a5b82795288af1127a7623028cb8e10db9f865074ad2"
+    "hash": "c9d3308a178b075fe879a5b82795288af1127a7623028cb8e10db9f865074ad2",
+    "reason": "Authorized restore destroys all outbound login-provider credentials across the restored instance."
   },
   {
     "engine": "sqlite",
@@ -5055,7 +5119,7 @@
     "engine": "sqlite",
     "name": "PKIPublishCRL",
     "annotation": "instance-scoped",
-    "hash": "142be08f1ba6ba03e7e5f8d017adf988135f1052a61724b4e4804d233034908e",
+    "hash": "2e62606978c632f1bf0a6cc9670b4856cade335657cd4118e0f1d03e09feb1f3",
     "reason": "StorePKIIssuersPublishCRL verifies instance-config, or closed PKIRuntime publishes a signed global CA CRL; original active/retiring state and prior-number CAS remain."
   },
   {
@@ -5446,6 +5510,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "RetireRestoredApprovedWorkspaceHandoffs",
+    "annotation": "authn-resolution",
+    "hash": "19d047f0fe8b0613568512cd17a5ae4256927099f84403ff095e43b43508c4c4",
+    "reason": "Local-host restore invalidation retires unconsumed approved assurance that lacks an epoch while retaining consumed session provenance."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RetireRestoredPendingLoginChallenges",
+    "annotation": "authn-resolution",
+    "hash": "f9e7e42658c8a7c81476f0a8cf32547b13cb39e9d9ea83aa40bb7e65e1665ddb",
+    "reason": "Local-host restore invalidation retires unconsumed password proofs that lack an epoch; no tenant request can authorize this recovery act."
+  },
+  {
+    "engine": "sqlite",
     "name": "RevokeAllMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "f71e62ec84df2609184945817b0af3783d41cb4fb9dd327f18542dc618901157"
@@ -5526,7 +5604,7 @@
     "engine": "sqlite",
     "name": "RuntimePKIDueCRLs",
     "annotation": "instance-scoped",
-    "hash": "f7588f2cb3f4eb53929308e384b0c8b9cdae5dbbbba3f9947be2732745647481",
+    "hash": "a52b42aa01986af63087f5de75a546320fd5961a8c0ec6eeae34bea5e02809a4",
     "reason": "Closed PKIRuntime selects global active/retiring CAs with signing keys whose CRLs are missing, half-life due or behind committed revocation sequences."
   },
   {

@@ -139,10 +139,17 @@ export function useRuleMutations(org: string) {
   const queries = useQueryClient();
   const settle = async (_result: void, failure: Error | null) => {
     try {
-      await Promise.all([
-        queries.invalidateQueries({ queryKey: ['rules', org] }, { throwOnError: true }),
-        auth.refreshSession(),
-      ]);
+      // The session owner invalidates all queries both before and after
+      // whoami. A concurrent third refetch can inherit a canceled retryer and
+      // report uncertainty even when the authoritative listing succeeded.
+      // Settle the owner first, then confirm this listing before enabling edits.
+      try {
+        await auth.refreshSession();
+      } finally {
+        // An owner refusal is not evidence that the write did not commit.
+        // Still retire the old listing; the outer catch retains the refusal.
+        await queries.invalidateQueries({ queryKey: ['rules', org] }, { throwOnError: true });
+      }
     } catch (error) {
       // The mutation already failed and its caller must abandon the draft.
       // Do not rethrow inside TanStack's error-settlement callback, which

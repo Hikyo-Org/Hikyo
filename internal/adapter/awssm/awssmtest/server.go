@@ -190,6 +190,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := in["SecretId"].(string)
+	if strings.HasPrefix(id, "arn:") {
+		// Full ARNs select one resource identity, not a subsequently
+		// recreated name. A stale ARN must never fall back to a name lookup.
+		for name, secret := range s.secrets {
+			if secret.arn == id {
+				id = name
+				break
+			}
+		}
+	}
 	switch operation {
 	case "CreateSecret":
 		name, _ := in["Name"].(string)

@@ -80,8 +80,9 @@ closed and require pinned HTTPS.
 - Supported archive restore destroys pending adapter move credentials and
   destinations on both engines under race. Reserved-prefix SQLite trigger
   admission and exhausted PostgreSQL sequence validation regressions pass.
-- Native Windows custody execution is pending remote CI. Cross-compilation is
-  successful; it is not evidence that Windows runtime tests have executed.
+- Native Windows custody execution passes on the pushed checkpoint in GitHub
+  CI, including the six new protected-lock/temporary-file tests. This is runtime
+  evidence, not merely successful cross-compilation.
 - Frozen follow-up DeepSec revalidation completed all 67 verdicts: 64 fixed,
   one false positive and two duplicates, with no true positives or uncertain
   results in that batch. Final helper discovery and residual-policy checks are
@@ -104,10 +105,52 @@ closed and require pinned HTTPS.
   refresh refusal and stale cached controls during failed/deferred listing.
 - Full local preflight passes in 111 seconds, including build, vet, format,
   generated contracts, client/web checks and chart/release fixtures. The fresh
-  ordered Go core run has no failures so far; its app tail is still running.
+  ordered Go core run passes all 135 package results, including its app tail.
 - Final key-door discovery investigates four files without new findings. The
   isolated finding inventory contains 265 records: 255 fixed, three false
   positives, four duplicates and the three unresolved policy/custody gates.
+
+### CI follow-up checkpoint
+
+- The annotated SQL inventory now pins the canonical 959 entries. Review covers
+  both dialects, the approved restore fences, pending-proof retirement and
+  canceled credential moves; the inventory guard remains unchanged and passes
+  three race-enabled repetitions.
+- Cursor regression fixtures now follow the authorized manifest: losing secret
+  disclosure changes its full commitment. A separate unchanged config-only
+  projection isolates historical-pin cursor invalidation; read-only delivery
+  isolates machine-reveal generation changes. Both engines pass three
+  race-enabled repetitions without restoring hidden-content commitments.
+- The real CI-pinned Moto lifecycle and four concurrent-write/explicit-consent
+  cases pass three race-enabled repetitions. First-value publication proves
+  the exact owned job version is already current before skipping a redundant
+  empty-predecessor promotion; other writes retain the observed predecessor CAS.
+  Test-only reads explicitly select AWSCURRENT to avoid Moto's stale default
+  version cache. Production never gains a secret-value read operation.
+- Final AWS repairs recheck durable authority before every provider request,
+  preserve custody after partial writes and refuse unmarked replacement names
+  without fresh scope-bound adoption. Untagged resources cannot be pruned.
+  Writes and deletes use a verified complete ARN with exact name correspondence;
+  deleting/recreating an empty name cannot capture a subsequent plaintext write.
+  The real pinned-Moto replacement race and the actual grant-revocation flow on
+  both database engines pass three race-enabled repetitions. Final forced AWS
+  revalidation returns all five verdicts fixed, without uncertainty.
+- Nonce-bearing SPA document checks assert `private, no-cache`, matching the
+  shared-cache exclusion. The actual desktop and mobile deep-link flows pass;
+  web typecheck, lint and 1,466 units pass. Rule settlement waits for the session
+  owner's invalidations before confirming the authoritative listing, preventing
+  canceled concurrent refetches from hiding successful add/remove notices.
+  Session refusal still invalidates stale listings and suppresses success.
+  The unchanged desktop and mobile add/reach/remove flow passes against the
+  final embedded bundle; final rule DeepSec revalidation returns two fixed
+  verdicts without true positives or uncertainty. Refreshed exact-head CI is
+  separate and remains pending.
+- The refreshed isolated inventory contains 267 findings: 257 fixed, three
+  false positives, four duplicates and the same three pending policy/custody
+  gates below. No uncertain or unrevalidated findings remain. Fast local
+  preflight passes in 43 seconds; the full generated-code gate is rerun after
+  committing the intentional SQL comment outputs. Final focused rediscovery and
+  fresh-head GitHub checks remain separate delivery evidence.
 
 ### Earlier checkpoint
 

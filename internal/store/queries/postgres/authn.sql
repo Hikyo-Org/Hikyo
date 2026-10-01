@@ -728,8 +728,9 @@ SET client_secret = decode('', 'hex'), enabled = 0, row_version = row_version + 
 DELETE FROM remotes;
 
 -- A restore can resurrect certificates revoked after the backup was taken, so
--- every restored CA issuer is held (no minting) until an operator releases
--- the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.
+-- every restored CA issuer is held (no fresh certificate or CRL signing) until
+-- an operator reconciles revocations and releases the hold with
+-- `hikyo pki issuer release-hold` (#154, pki ADR D8). Existing CRLs remain readable.
 -- hikyo:authn-resolution
 -- name: HoldRestoredPKIIssuers :exec
 UPDATE pki_issuers SET restore_hold = 1;

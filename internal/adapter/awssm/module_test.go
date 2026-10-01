@@ -42,6 +42,17 @@ func newFakeAPI() *fakeAPI {
 	return &fakeAPI{account: testAccount, secrets: map[string]*fakeSecret{}, failOn: map[string]error{}, failOnce: map[string]error{}}
 }
 
+func (f *fakeAPI) resourceName(id string) string {
+	if strings.HasPrefix(id, "arn:") {
+		for name := range f.secrets {
+			if id == "arn:aws:secretsmanager:"+testRegion+":"+testAccount+":secret:"+name+"-AbCdEf" {
+				return name
+			}
+		}
+	}
+	return id
+}
+
 func (f *fakeAPI) fail(op, name string) error {
 	key := op + ":" + name
 	f.calls = append(f.calls, key)
@@ -62,6 +73,7 @@ func (f *fakeAPI) ResolveIdentity(context.Context) (Identity, error) {
 }
 
 func (f *fakeAPI) DescribeSecret(_ context.Context, name string) (SecretMetadata, error) {
+	name = f.resourceName(name)
 	if err := f.fail("describe", name); err != nil {
 		return SecretMetadata{}, err
 	}
@@ -113,6 +125,7 @@ func (f *fakeAPI) CreateSecret(_ context.Context, input CreateSecretInput) error
 }
 
 func (f *fakeAPI) PutSecretValue(_ context.Context, name, token, value string) error {
+	name = f.resourceName(name)
 	if err := f.fail("put", name); err != nil {
 		return err
 	}
@@ -139,6 +152,7 @@ func (f *fakeAPI) PutSecretValue(_ context.Context, name, token, value string) e
 }
 
 func (f *fakeAPI) UpdateSecretVersionStage(_ context.Context, name, stage, moveTo, removeFrom string) error {
+	name = f.resourceName(name)
 	if err := f.fail("stage-"+stage, name); err != nil {
 		return err
 	}
@@ -178,12 +192,14 @@ func (f *fakeAPI) moveStages(secret *fakeSecret, version string, stages ...strin
 // externalPut is what an operator's `aws secretsmanager put-secret-value`
 // does: it moves only AWSCURRENT.
 func (f *fakeAPI) externalPut(name, version, value string) {
+	name = f.resourceName(name)
 	secret := f.secrets[name]
 	secret.values[version] = value
 	f.moveStages(secret, version, awsCurrent)
 }
 
 func (f *fakeAPI) TagSecret(_ context.Context, name string, tags map[string]string) error {
+	name = f.resourceName(name)
 	if err := f.fail("tag", name); err != nil {
 		return err
 	}
@@ -194,6 +210,7 @@ func (f *fakeAPI) TagSecret(_ context.Context, name string, tags map[string]stri
 }
 
 func (f *fakeAPI) RestoreSecret(_ context.Context, name string) error {
+	name = f.resourceName(name)
 	if err := f.fail("restore", name); err != nil {
 		return err
 	}
@@ -202,6 +219,7 @@ func (f *fakeAPI) RestoreSecret(_ context.Context, name string) error {
 }
 
 func (f *fakeAPI) DeleteSecret(_ context.Context, name string) error {
+	name = f.resourceName(name)
 	if err := f.fail("delete", name); err != nil {
 		return err
 	}
@@ -540,6 +558,38 @@ type lostWriteResponseAPI struct {
 	operation string
 }
 
+type strictFirstPromotionAPI struct {
+	*fakeAPI
+	redundantPromotions int
+}
+
+func (f *strictFirstPromotionAPI) UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error {
+	if stage == awsCurrent && removeFrom == "" {
+		f.redundantPromotions++
+		// CI's pinned Moto refuses even when this exact version is already
+		// current. The protocol must not depend on a redundant no-op being
+		// accepted by either AWS or an AWS-compatible provider.
+		return &ResponseError{Status: 400, Code: "InvalidParameterException"}
+	}
+	return f.fakeAPI.UpdateSecretVersionStage(ctx, name, stage, moveTo, removeFrom)
+}
+
+func TestFirstVersionDoesNotRequireRedundantCurrentPromotion(t *testing.T) {
+	api, journal := &strictFirstPromotionAPI{fakeAPI: newFakeAPI()}, newFakeJournal()
+	req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "first"}
+	if _, err := (&Module{API: api}).Sync(t.Context(), req, journal); err != nil {
+		t.Fatal(err)
+	}
+	if api.redundantPromotions != 0 {
+		t.Fatal("first value depended on a redundant AWSCURRENT promotion")
+	}
+	token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, "prod/app")
+	secret := api.secrets["prod/app"]
+	if secret.tags[VersionTag] != token || !slices.Contains(secret.stages[token], CurrentStage) || !slices.Contains(secret.stages[token], awsCurrent) {
+		t.Fatalf("first value did not settle ownership: tags=%v stages=%v", secret.tags, secret.stages)
+	}
+}
+
 func (f *lostWriteResponseAPI) lost(operation string, err error) error {
 	if err == nil && f.operation == operation {
 		f.operation = ""
@@ -576,7 +626,12 @@ func TestStagedWriteReplayAfterActualLostResponses(t *testing.T) {
 				}
 				wrapped := &lostWriteResponseAPI{fakeAPI: api, operation: operation}
 				req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "lost-response"}
-				if _, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+				_, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal)
+				if !existing && operation == awsCurrent {
+					if err != nil || wrapped.operation != awsCurrent {
+						t.Fatalf("first value redundantly promoted AWSCURRENT: err=%v remaining=%v", err, wrapped.operation)
+					}
+				} else if !errors.Is(err, adapter.ErrIndeterminate) {
 					t.Fatalf("actual committed operation's lost response = %v", err)
 				}
 				req.Ledger = journal.ledger()
@@ -612,7 +667,9 @@ func TestAdoptedSecretIsTaggedBeforeWrite(t *testing.T) {
 	api, journal := newFakeAPI(), newFakeJournal()
 	api.secrets["prod/app"] = &fakeSecret{tags: map[string]string{}, stages: map[string][]string{"v1": {awsCurrent}}, values: map[string]string{"v1": "legacy"}}
 	journal.states["prod/app"] = adapter.Owned // explicit adoption
-	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_1"}, journal); err != nil {
+	ledger := journal.ledger()
+	ledger[0].AdoptionPending = true
+	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: ledger, JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(api.writes(), []string{"tag:prod/app", "put:prod/app", "stage-AWSCURRENT:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) {
@@ -647,7 +704,7 @@ func TestOwnedSecretScheduledForDeletionIsRestored(t *testing.T) {
 	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(api.writes(), []string{"restore:prod/app", "put:prod/app", "stage-AWSCURRENT:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) || api.secrets["prod/app"].deleted {
+	if !slices.Equal(api.writes(), []string{"restore:prod/app", "put:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) || api.secrets["prod/app"].deleted {
 		t.Fatalf("writes = %v", api.writes())
 	}
 }
@@ -791,6 +848,7 @@ func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
 			wrapped := &adoptionTagFailureAPI{fakeAPI: api, landed: landed, failure: failure}
 			module := &Module{API: wrapped}
 			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_adopt"}
+			req.Ledger[0].AdoptionPending = true
 			if _, err := module.Sync(t.Context(), req, journal); err == nil {
 				t.Fatal("tag failure succeeded")
 			}
@@ -798,6 +856,7 @@ func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
 				t.Fatalf("landed=%v: adoption authority or value changed", landed)
 			}
 			req.Ledger = journal.ledger()
+			req.Ledger[0].AdoptionPending = true
 			if _, err := module.Sync(t.Context(), req, journal); err != nil {
 				t.Fatalf("landed=%v: retry: %v", landed, err)
 			}

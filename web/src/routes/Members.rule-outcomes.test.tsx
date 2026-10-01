@@ -169,6 +169,44 @@ it('closes a partially removed grouped rule and reopening removes only the remai
   } finally { await view.unmount(); }
 });
 
+const successfulChanges: readonly ('save' | 'remove')[] = ['save', 'remove'];
+for (const change of successfulChanges) {
+  it(`confirms ${change} after the session owner invalidates the same rule listing twice`, async () => {
+    rows = change === 'remove' ? [row(ruleIDs[0], 'read'), row(ruleIDs[1], 'reveal')] : [];
+    const view = await renderMembers();
+    try {
+      await settleTask();
+      // AuthProvider invalidates at refresh start and again after whoami.
+      // Hold network replies across those two invalidations, as a real network
+      // does. A third concurrently awaited refetch can retain a canceled retryer
+      // instead of the owner's latest successful answer.
+      let releaseListing = () => {};
+      listingWait = new Promise<void>((resolve) => { releaseListing = resolve; });
+      mocks.refresh.mockImplementation(async () => {
+        void view.client.invalidateQueries();
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        void view.client.invalidateQueries();
+        releaseListing();
+      });
+      if (change === 'remove') {
+        await click(view.container, 'Edit');
+        await click(view.container, 'Remove rule');
+        expect(rows).toEqual([]);
+        expect(deleted).toEqual(ruleIDs);
+      } else {
+        await click(view.container, '+ Add rule');
+        await click(view.container, 'Application');
+        await click(view.container, 'Save');
+        expect(rows).toHaveLength(1);
+        expect(deleted).toEqual([]);
+      }
+      expect(view.container.querySelector('dialog')).toBeNull();
+      expect(view.container.textContent).toContain(change === 'remove' ? 'Removed the rule from Dana.' : 'Added a rule for Dana.');
+      expect(view.container.textContent).not.toContain('current rules or session could not be confirmed');
+    } finally { await view.unmount(); }
+  });
+}
+
 it('closes a committed-create editor when the post-write session refresh cannot be confirmed', async () => {
   mocks.refresh.mockRejectedValue(new Error('Session refresh refused.'));
   const view = await renderMembers();
@@ -183,6 +221,8 @@ it('closes a committed-create editor when the post-write session refresh cannot 
     expect(view.container.textContent).toContain('current rules or session could not be confirmed');
     expect(view.container.textContent).not.toContain('Nothing changed');
     expect(view.container.textContent).not.toContain('Added a rule for');
+    expect(listingCount).toBeGreaterThan(1);
+    expect([...view.container.querySelectorAll('#members-rules button')].map((button) => button.textContent)).toContain('Edit rule 1 of Dana');
   } finally { await view.unmount(); }
 });
 

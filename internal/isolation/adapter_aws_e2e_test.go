@@ -46,6 +46,18 @@ type awsTestLoader struct {
 	build   func(adapter.Config, string) (*adapter.ModuleLease, error)
 }
 
+type awsRevokeAfterCreateClient struct {
+	*awssm.Client
+	afterCreate func(context.Context) error
+}
+
+func (client *awsRevokeAfterCreateClient) CreateSecret(ctx context.Context, input awssm.CreateSecretInput) error {
+	if err := client.Client.CreateSecret(ctx, input); err != nil {
+		return err
+	}
+	return client.afterCreate(ctx)
+}
+
 func (l awsTestLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Journal) (adapter.LoadedSync, error) {
 	if err := journal.Gate(ctx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "manifest", Disposition: adapter.Update}); err != nil {
 		return adapter.LoadedSync{}, err
@@ -99,6 +111,7 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	t.Cleanup(emulator.Close)
 	roots := x509.NewCertPool()
 	roots.AddCert(emulator.Certificate())
+	var afterCreate func(context.Context) error
 	build := func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		client, err := awssm.NewClient(awssm.ClientConfig{
 			Origin: config.Origin, Credential: credential, Deadline: 5 * time.Second,
@@ -108,7 +121,11 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 		if err != nil {
 			return nil, err
 		}
-		return adapter.NewModuleLease(&awssm.Module{API: client}, client.Forget)
+		var api awssm.API = client
+		if afterCreate != nil {
+			api = &awsRevokeAfterCreateClient{Client: client, afterCreate: afterCreate}
+		}
+		return adapter.NewModuleLease(&awssm.Module{API: api}, client.Forget)
 	}
 	kr := probeKeyring(t, db)
 	svc := &service.Adapters{
@@ -307,6 +324,46 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	if linked < 3 {
 		t.Fatalf("per-key INTENT/OUTCOME pairs = %d, want create, update, and delete", linked)
 	}
+
+	t.Run("revocation-after-create-stops-plaintext", func(t *testing.T) {
+		// The provider accepted creation, but authority is independently
+		// withdrawn before its response reaches apply's next request boundary.
+		// Exercise the real durable gate, not a simulated journal refusal.
+		revoked, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+			EnvironmentID: string(envA1), DestinationKind: string(adapter.JSONObject),
+			DestinationOwner: awsAccount, DestinationName: "prod/revoked", KeySelection: selection,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		requestsAtRevocation := -1
+		afterCreate = func(context.Context) error {
+			execRaw(t, db, `DELETE FROM grants WHERE id='g_aws_reveal'`)
+			requestsAtRevocation = len(emulator.Operations())
+			afterCreate = nil
+			return nil
+		}
+		defer func() {
+			afterCreate = nil
+			execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_aws_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',`+ts+`)`)
+		}()
+		if _, err := svc.SyncTarget(ctx, operator, scope, revoked.ID); err != nil {
+			t.Fatal(err)
+		}
+		drain()
+		if requestsAtRevocation < 0 || len(emulator.Operations()) != requestsAtRevocation {
+			t.Fatalf("provider requests continued after real grant revocation: at=%d operations=%v", requestsAtRevocation, emulator.Operations())
+		}
+		if _, delivered := emulator.Value("prod/revoked"); delivered {
+			t.Fatal("plaintext delivered after real grant revocation")
+		}
+		if emulator.Tag("prod/revoked", adapter.SentinelName) != revoked.ID {
+			t.Fatal("fixture did not actually create the tagged provider resource")
+		}
+		if count := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND effective_name='prod/revoked' AND state='dispatched'`, revoked.ID)); count != 1 {
+			t.Fatalf("partially created resource lost durable custody: %d rows", count)
+		}
+	})
 }
 
 func TestAdapterAWSSecretsManagerLifecycle(t *testing.T) {
