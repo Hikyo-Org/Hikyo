@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -109,4 +110,39 @@ func TestDomainTypeFamiliesCannotUseGenericFallbacks(t *testing.T) {
 	sqlite.Results = []apiField{{Name: "ExpiresAt", Type: "sql.NullString"}}
 	postgres.Results = []apiField{{Name: "ExpiresAt", Type: "pgtype.Text"}}
 	assertFindings(t, compareQueryContracts(query.Name, query, query, sqlite, postgres), []string{"result types differ"})
+}
+
+func TestEmbeddedModelFieldsRemainInGeneratedAPIPin(t *testing.T) {
+	dir := t.TempDir()
+	source := `package fixture
+import "context"
+type Queries struct{}
+type TransitKey struct { ID string; MaxVersion int64 }
+type GetKeyRow struct { TransitKey TransitKey }
+const getKey = "SELECT id,max_version FROM transit_keys WHERE id=$1"
+func (q *Queries) GetKey(ctx context.Context,id string) (GetKeyRow,error) { q.db.QueryRow(ctx,getKey,id); panic("fixture") }
+`
+	path := filepath.Join(dir, "queries.sql.go")
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	apis, err := readGeneratedContracts(dir, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := apis["GetKey"]
+	if got, want := fieldNames(initial.Results), []string{"TransitKey.ID", "TransitKey.MaxVersion"}; !slices.Equal(got, want) {
+		t.Fatalf("embedded model contract: %v", got)
+	}
+	changed := strings.Replace(source, "MaxVersion int64", "MaxVersion int32", 1)
+	if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	apis, err = readGeneratedContracts(dir, "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.hash() == apis["GetKey"].hash() {
+		t.Fatal("embedded field drift escaped API pin")
+	}
 }

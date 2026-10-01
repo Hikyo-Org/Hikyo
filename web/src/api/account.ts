@@ -26,6 +26,7 @@ import {
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useSensitiveMutation, useSensitiveState } from './sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, parsed } from './client.ts';
@@ -553,22 +554,19 @@ export function passkeyCreationOptions(blob: unknown): PublicKeyCredentialCreati
  */
 export function accountFailureText(error: unknown): string {
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The account change request was invalid or would leave the account in a forbidden state.';
-      case 401:
-        return 'That did not authorise the change: the password or code was not accepted, or this session has ended.';
-      case 403:
-        return 'This account change is not permitted for the current session assurance.';
-      case 404:
-        return 'There is nothing here to change.';
-      case 409:
-        return 'The requested change conflicts with the account’s current security state. Reload and review it before trying again.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return `The account surface answered an error (${error.status}); whether the change applied is unknown: reload to check.`;
-    }
+    return statusText(
+      error,
+      {
+        400: (error) =>
+          error.detail ?? 'The account change request was invalid or would leave the account in a forbidden state.',
+        401: 'That did not authorise the change: the password or code was not accepted, or this session has ended.',
+        403: 'This account change is not permitted for the current session assurance.',
+        404: 'There is nothing here to change.',
+        409: 'The requested change conflicts with the account’s current security state. Reload and review it before trying again.',
+        429: commonRefusalText.attempts,
+      },
+      `The account surface answered an error (${error.status}); whether the change applied is unknown: reload to check.`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The authenticator ceremony was dismissed or timed out. Nothing was changed.';

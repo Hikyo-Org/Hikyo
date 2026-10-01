@@ -1,5 +1,5 @@
 import type { SamlMetadataDiff, SamlMetadataSource, SamlProvider } from '@hikyo/client';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { ApiError } from '../api/client.ts';
 import {
@@ -503,10 +503,10 @@ function ProviderCreateForm({
   const [enabled, setEnabled] = useState(true);
   const [clientErrors, setClientErrors] = useState<readonly string[]>([]);
   // The pending diff carries the EXACT draft it was computed for. Confirming
-  // resends that snapshot, never the live form state, so an edit made while a
-  // preview is in flight can never be applied under an earlier diff's
-  // confirmation (it forces a fresh preview instead).
+  // resends that snapshot, never the live form state. Every edit invalidates
+  // its preview, and the generation guard rejects stale preview responses.
   const [pending, setPending] = useState<{ diff: PendingDiff; draft: SamlProviderInputDraft } | null>(null);
+  const draftGeneration = useRef(0);
 
   // Never leave the write-only metadata document in the form, the pending
   // snapshot, or React Query's mutation variables once the ceremony ends.
@@ -519,7 +519,10 @@ function ProviderCreateForm({
     finish();
     onCancel();
   };
-  const clearPending = () => setPending(null);
+  const clearPending = () => {
+    draftGeneration.current += 1;
+    setPending(null);
+  };
 
   const preview = () => {
     const errors = samlProviderInputErrors({
@@ -561,12 +564,17 @@ function ProviderCreateForm({
   };
 
   const submit = (draft: SamlProviderInputDraft) => {
+    const generation = draftGeneration.current;
     put.mutate(draft, {
       onSuccess: (result) => {
         if (result.applied) {
           const created = draft.slug;
           finish();
           onCreated(created);
+          return;
+        }
+        if (generation !== draftGeneration.current) {
+          put.reset();
           return;
         }
         setPending({
@@ -587,19 +595,19 @@ function ProviderCreateForm({
       <h3>Configure a SAML provider</h3>
       <div className="field">
         <label htmlFor={ids.slug}>Slug (immutable; addresses this provider)</label>
-        <input id={ids.slug} className="mono" value={slug} onChange={(event) => { clearPending(); setSlug(event.target.value); }} />
+        <input id={ids.slug} disabled={put.isPending} className="mono" value={slug} onChange={(event) => { clearPending(); setSlug(event.target.value); }} />
       </div>
       <div className="field">
         <label htmlFor={ids.name}>Display name</label>
-        <input id={ids.name} value={displayName} onChange={(event) => { clearPending(); setDisplayName(event.target.value); }} />
+        <input id={ids.name} disabled={put.isPending} value={displayName} onChange={(event) => { clearPending(); setDisplayName(event.target.value); }} />
       </div>
       <div className="field">
         <label htmlFor={ids.entity}>IdP entityID (byte-exact; immutable after create)</label>
-        <input id={ids.entity} className="mono" value={entityId} onChange={(event) => { clearPending(); setEntityId(event.target.value); }} />
+        <input id={ids.entity} disabled={put.isPending} className="mono" value={entityId} onChange={(event) => { clearPending(); setEntityId(event.target.value); }} />
       </div>
       <div className="field">
         <label htmlFor={ids.source}>Metadata source</label>
-        <select id={ids.source} value={metadataSource} onChange={(event) => { clearPending(); setMetadataSource(metadataSourceOf(event.target.value)); }}>
+        <select id={ids.source} disabled={put.isPending} value={metadataSource} onChange={(event) => { clearPending(); setMetadataSource(metadataSourceOf(event.target.value)); }}>
           <option value="file">file: paste XML</option>
           <option value="url">url: one-shot https fetch</option>
         </select>
@@ -607,21 +615,21 @@ function ProviderCreateForm({
       {metadataSource === 'file' ? (
         <div className="field">
           <label htmlFor={ids.document}>Metadata XML</label>
-          <textarea id={ids.document} className="mono" rows={4} value={metadataDocument} onChange={(event) => { clearPending(); setMetadataDocument(event.target.value); }} />
+          <textarea id={ids.document} disabled={put.isPending} className="mono" rows={4} value={metadataDocument} onChange={(event) => { clearPending(); setMetadataDocument(event.target.value); }} />
         </div>
       ) : (
         <div className="field">
           <label htmlFor={ids.url}>Metadata URL (https only)</label>
-          <input id={ids.url} className="mono" value={metadataUrl} onChange={(event) => { clearPending(); setMetadataUrl(event.target.value); }} />
+          <input id={ids.url} disabled={put.isPending} className="mono" value={metadataUrl} onChange={(event) => { clearPending(); setMetadataUrl(event.target.value); }} />
         </div>
       )}
       <div className="field">
         <label htmlFor={ids.assurance}>Accepted AuthnContextClassRef values (one per line; empty = single-factor)</label>
-        <textarea id={ids.assurance} className="mono" rows={2} value={assurance} onChange={(event) => setAssurance(event.target.value)} />
+        <textarea id={ids.assurance} disabled={put.isPending} className="mono" rows={2} value={assurance} onChange={(event) => { clearPending(); setAssurance(event.target.value); }} />
       </div>
-      <Checkbox label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
-      <Checkbox label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
-      <Checkbox label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+      <Checkbox disabled={put.isPending} label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => { clearPending(); setAllowEmail(event.target.checked); }} />
+      <Checkbox disabled={put.isPending} label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => { clearPending(); setForceSign(event.target.checked); }} />
+      <Checkbox disabled={put.isPending} label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => { clearPending(); setEnabled(event.target.checked); }} />
       {clientErrors.length > 0 ? <Alert>{clientErrors.join(' ')}</Alert> : null}
       {pending ? <MetadataDiff diff={pending.diff.diff} /> : null}
       <div className="panel__actions">

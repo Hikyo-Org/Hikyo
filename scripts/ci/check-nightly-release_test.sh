@@ -16,7 +16,10 @@ fail() {
 
 [ -f "$workflow" ] || fail 'nightly workflow is missing'
 grep -F 'cron: "0 2 * * *"' "$workflow" >/dev/null || fail '02:00 UTC schedule is missing'
-grep -F 'ref: refs/heads/main' "$workflow" >/dev/null || fail 'nightly checkout is not pinned to main'
+grep -F 'ref: ${{ github.sha }}' "$workflow" >/dev/null || fail 'nightly checkout is not pinned to the triggering SHA'
+if grep -F 'ref: refs/heads/main' "$workflow" >/dev/null; then
+	fail 'nightly checkout follows moving main'
+fi
 grep -F 'COMMIT: ${{ steps.source.outputs.commit }}' "$workflow" >/dev/null || fail 'nightly does not use the checked-out main SHA'
 grep -F './scripts/release/latest-nightly-tag.sh' "$workflow" >/dev/null || fail 'published nightly discovery is missing'
 grep -F 'git/ref/tags/$latest_tag' "$workflow" >/dev/null || fail 'nightly deduplication trusts target_commitish instead of resolving the tag'
@@ -124,6 +127,7 @@ for required in \
 	'./scripts/release/nightly-image.sh prepare' \
 	'./scripts/release/nightly-image.sh resolve' \
 	'./scripts/release/nightly-image.sh promote' \
+	"IMAGE_BUILT: \${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}" \
 	'file: Dockerfile.release' \
 	'platforms: linux/amd64,linux/arm64' \
 	'tags: ${{ steps.inputs.outputs.image }}:${{ needs.publish.outputs.version }}'; do

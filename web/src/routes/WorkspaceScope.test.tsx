@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
+import { renderForm } from '../testkit/renderForm.tsx';
 import { QueryClient } from '@tanstack/react-query';
 import { act, type ReactNode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,8 +29,6 @@ vi.mock('../api/workspace.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/workspace.ts')>();
   return { ...actual, assertCompatible: workspace.assertCompatible };
 });
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const bearer: WorkspaceBearer = {
   origin,
@@ -60,7 +58,7 @@ describe('ConnectedWorkspace disposal', () => {
     expect(cancel).not.toHaveBeenCalled();
     expect(clear).not.toHaveBeenCalled();
 
-    await unmount(mounted.root);
+    await mounted.unmount();
 
     expect(cancel).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledOnce();
@@ -78,30 +76,21 @@ describe('ConnectedWorkspace disposal', () => {
     const request = workspace.assertCompatible.mock.calls[0]?.[1];
     expect(request?.signal.aborted).toBe(false);
 
-    await unmount(mounted.root);
+    await mounted.unmount();
 
     expect(request?.signal.aborted).toBe(true);
   });
 });
 
 async function render(children: ReactNode) {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () =>
-    root.render(
-      <MemoryRouter>
-        <WorkspaceScope remote="remote">{children}</WorkspaceScope>
-      </MemoryRouter>,
-    ),
+  const { container, unmount } = await renderForm(
+    <MemoryRouter>
+      <WorkspaceScope remote="remote">{children}</WorkspaceScope>
+    </MemoryRouter>,
   );
-  return { container, root };
+  return { container, unmount };
 }
 
 async function settle(): Promise<void> {
   await act(async () => Promise.resolve());
-}
-
-async function unmount(root: Root): Promise<void> {
-  await act(async () => root.unmount());
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"net/netip"
+	"net/url"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
@@ -116,17 +117,14 @@ func awsConstructionError(err error) error {
 }
 
 // egressOrigin is the operator egress-policy key for an adapter origin. The
-// policy is keyed by bare https origins; a Vault/OpenBao origin may carry a
-// namespace path, which does not change where the adapter dials.
-func egressOrigin(provider adapter.Provider, origin string) string {
-	if provider != adapter.VaultKVProvider {
+// policy is keyed by bare https origins. Provider API roots and namespaces
+// remain in the request URL but do not change where the adapter dials.
+func egressOrigin(_ adapter.Provider, origin string) string {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return origin
 	}
-	parsed, err := vaultkv.ParseOrigin(origin)
-	if err != nil {
-		return origin
-	}
-	return parsed.Base
+	return parsed.Scheme + "://" + parsed.Host
 }
 
 func newAdapterModuleFactory(egressPolicy map[string][]netip.Prefix, endpoints sealedWebhookEndpoints, policy adapterProviderPolicy) *adapterModuleFactory {

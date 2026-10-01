@@ -1,13 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { clearNotification, ToastViewport } from '../app/notifications.tsx';
 import type { UpdateStatus } from '../api/updates.ts';
 import { FleetUpdateNotice, ProfileUpdateBadge } from './Shell.tsx';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 beforeEach(() => {
   const values = new Map<string, string>();
@@ -34,9 +32,6 @@ afterEach(() => {
 
 describe('update notification', () => {
   it('leaves the profile badge visible after the update toast is dismissed', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
     const version = '1.1.0-nightly.20260824.42.g176e6e67';
     const status: UpdateStatus = {
       available: true,
@@ -56,9 +51,7 @@ describe('update notification', () => {
       </>
     );
 
-    await act(async () => {
-      root.render(updateUI('usr_alice'));
-    });
+    const { container, unmount, rerender } = await renderForm(updateUI('usr_alice'));
 
     expect(container.querySelector('[role="status"]')?.textContent).toContain(
       '1.1.0-nightly.20260824.42.g176e6e67',
@@ -74,22 +67,19 @@ describe('update notification', () => {
       '1.1.0-nightly.20260824.42.g176e6e67',
     );
     expect(window.localStorage.length).toBe(1);
-    await act(async () => root.render(null));
-    await act(async () => root.render(updateUI('usr_alice')));
+    await rerender(null);
+    await rerender(updateUI('usr_alice'));
     expect(container.querySelector('.toast')).toBeNull();
     expect(container.querySelector('.account-update-badge')).not.toBeNull();
 
-    await act(async () => root.render(null));
-    await act(async () => root.render(updateUI('usr_bob')));
+    await rerender(null);
+    await rerender(updateUI('usr_bob'));
     expect(container.querySelector('.toast')?.textContent).toContain(version);
 
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('notifies for an administered remote and keeps the aggregate profile badge after dismissal', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
     const updates: Array<{ origin: string; status: UpdateStatus }> = [
       {
         origin: 'https://remote.example',
@@ -106,15 +96,13 @@ describe('update notification', () => {
       },
     ];
 
-    await act(async () => {
-      root.render(
-        <>
-          <FleetUpdateNotice local={null} remotes={updates} principalId="usr_admin" />
-          <ProfileUpdateBadge version="https://remote.example: 1.1.0" />
-          <ToastViewport />
-        </>,
-      );
-    });
+    const { container, unmount } = await renderForm(
+      <>
+        <FleetUpdateNotice local={null} remotes={updates} principalId="usr_admin" />
+        <ProfileUpdateBadge version="https://remote.example: 1.1.0" />
+        <ToastViewport />
+      </>,
+    );
     expect(container.querySelector('.toast')?.textContent).toContain('remote.example');
     const dismiss = container.querySelector('button[aria-label="Dismiss notification"]');
     if (!(dismiss instanceof HTMLButtonElement)) {
@@ -126,13 +114,10 @@ describe('update notification', () => {
       'remote.example',
     );
     expect(window.localStorage.length).toBe(1);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('combines local and remote updates into one fleet toast', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
     const local: UpdateStatus = {
       apply_supported: true,
       apply_backend: 'compose',
@@ -149,23 +134,21 @@ describe('update notification', () => {
       current_version: '1.0.1',
     };
 
-    await act(async () => {
-      root.render(
-        <>
-          <FleetUpdateNotice
-            local={local}
-            remotes={[{ origin: 'https://remote.example', status: remote }]}
-            principalId="usr_admin"
-          />
-          <ToastViewport />
-        </>,
-      );
-    });
+    const { container, unmount } = await renderForm(
+      <>
+        <FleetUpdateNotice
+          local={local}
+          remotes={[{ origin: 'https://remote.example', status: remote }]}
+          principalId="usr_admin"
+        />
+        <ToastViewport />
+      </>,
+    );
 
     expect(container.querySelectorAll('.toast')).toHaveLength(1);
     expect(container.querySelector('.toast')?.textContent).toContain(
       '2 Hikyo environments have updates available',
     );
-    await act(async () => root.unmount());
+    await unmount();
   });
 });

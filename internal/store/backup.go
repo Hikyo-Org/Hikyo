@@ -46,6 +46,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/pathutil"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 	"github.com/jackc/pgx/v5"
@@ -909,14 +910,14 @@ func restorePostgresChecked(ctx context.Context, db *DB, archive io.Reader, plan
 	// Referential integrity is untouched: foreign keys are internal triggers,
 	// which `DISABLE TRIGGER USER` does not reach, so the manifest's
 	// parents-first order still has to be right.
-	if err := setUserTriggers(ctx, tx, quoted, "DISABLE"); err != nil {
+	if err := setUserTriggers(ctx, tx, m.Tables, false); err != nil {
 		return Manifest{}, err
 	}
 	loaded, err := copyMembersIn(ctx, tx, tr, m.Tables)
 	if err != nil {
 		return Manifest{}, err
 	}
-	if err := setUserTriggers(ctx, tx, quoted, "ENABLE"); err != nil {
+	if err := setUserTriggers(ctx, tx, m.Tables, true); err != nil {
 		return Manifest{}, err
 	}
 	for _, table := range m.Tables {
@@ -997,8 +998,8 @@ func assertOnlyMigrationSeeds(ctx context.Context, tx pgx.Tx, tables []string) e
 		if table == "ops_diagnostics" {
 			// Only the migration's untouched public metadata row is replaceable.
 			// A later escrow verification or reencrypt completion is real state.
-			var occupied bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM ops_diagnostics WHERE escrow_verified_at IS NOT NULL OR escrow_instance_id<>'' OR escrow_incarnation<>'' OR escrow_root_epoch<>0 OR last_reencrypt_success IS NOT NULL)`).Scan(&occupied); err != nil {
+			occupied, err := pggen.New(tx).RestoreDiagnosticsSeedOccupied(ctx)
+			if err != nil {
 				return fmt.Errorf("store: check restore diagnostics seed: %w", err)
 			}
 			if occupied {
@@ -1022,8 +1023,13 @@ func assertOnlyMigrationSeeds(ctx context.Context, tx pgx.Tx, tables []string) e
 
 // setUserTriggers flips every restored table's user triggers. It runs inside
 // the restore transaction, so an aborted restore leaves them enabled.
-func setUserTriggers(ctx context.Context, tx pgx.Tx, quotedTables []string, action string) error {
-	for _, table := range quotedTables {
+func setUserTriggers(ctx context.Context, tx pgx.Tx, tables []string, enabled bool) error {
+	action := "DISABLE"
+	if enabled {
+		action = "ENABLE"
+	}
+	for _, name := range tables {
+		table := pgIdent(name)
 		if _, err := tx.Exec(ctx, "ALTER TABLE "+table+" "+action+" TRIGGER USER"); err != nil {
 			return fmt.Errorf("store: %s triggers on %s during restore: %w", strings.ToLower(action), table, err)
 		}

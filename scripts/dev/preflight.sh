@@ -92,11 +92,14 @@ if [ "$full" = true ]; then
 	go tool sqlc generate || fail 'sqlc generate'
 	go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml || fail 'oapi-codegen'
 	go run ./internal/scanning/gen || fail 'scanning gen'
+	go run ./internal/authz/gen || fail 'authz gen'
 	./scripts/gen-crds.sh || fail 'gen-crds'
 	git diff --exit-code -- internal/store/sqlitegen internal/store/pggen api/apigen \
-		internal/scanning/rules_gen.go chart/hikyo/crds internal/operator/api || fail 'generated drift'
+		internal/scanning/rules_gen.go internal/authz/forwarders_gen.go internal/authz/wire_registry_gen.go \
+		chart/hikyo/crds internal/operator/api || fail 'generated drift'
 	test -z "$(git status --porcelain --untracked-files=all -- \
 		internal/store/sqlitegen internal/store/pggen api/apigen internal/scanning/rules_gen.go \
+		internal/authz/forwarders_gen.go internal/authz/wire_registry_gen.go \
 		chart/hikyo/crds internal/operator/api)" || fail 'generated untracked drift'
 
 	# Supply-chain / release fixtures (CI job: supply-chain-checks).

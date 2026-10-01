@@ -288,6 +288,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 	}
 
 	var out FetchResult
+	principalCharged := false
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		resetDeliveryAttempt(&out)
 		if s.FetchProbe != nil {
@@ -311,6 +312,11 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		caller, p, err := authorize(ctx, az, actor, authz.OpDeliveryFetch, scope, issuedAt)
 		if err != nil {
 			return err
+		}
+		if domain.IsServiceAccountKind(caller.Class) {
+			if err := s.Budget.chargeMachineFetchOnce(&principalCharged, caller.Principal); err != nil {
+				return err
+			}
 		}
 
 		var selected *store.Snapshot

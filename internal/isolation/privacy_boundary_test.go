@@ -19,8 +19,10 @@ func TestPrivacyLocalAuthorityCallSites(t *testing.T) {
 		allowed[name] = map[string]bool{"internal/app/privacy.go": true, "internal/service/privacy.go": true}
 	}
 	for _, name := range []string{"CorrectPrivacyAccount", "PrivacyAccount", "PrivacyActivity", "PrivacySessions", "RestrictPrivacyPrincipal", "ErasePrivacyAccount"} {
-		allowed[name] = map[string]bool{"internal/service/privacy.go": true, "internal/authz/privacy.go": true, "internal/store/authn/privacy.go": true}
+		allowed[name] = map[string]bool{"internal/service/privacy.go": true, "internal/authz/forwarders_gen.go": true, "internal/store/authn/privacy.go": true}
 	}
+	// The public result alias lives here; the resolver applies the activity cap.
+	allowed["PrivacyActivity"]["internal/authz/privacy.go"] = true
 	for _, name := range []string{"NewHistoricalRecoverySQLite", "NewHistoricalRecoveryPG"} {
 		allowed[name] = map[string]bool{"internal/store/tx/recovery.go": true}
 	}

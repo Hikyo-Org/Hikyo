@@ -182,8 +182,9 @@ export function useMoveKeysToFolders(ref: MatrixRef) {
   const transport = useTransport();
   const workspace = useWorkspaceContext();
   const live = useRef(true);
-  useEffect(() => () => {
-    live.current = false;
+  useEffect(() => {
+    live.current = true;
+    return () => { live.current = false; };
   }, []);
   return useMutation({
     mutationFn: async (input: {

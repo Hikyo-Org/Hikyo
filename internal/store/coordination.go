@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // Coordination is the installation-wide, proof-free coordination surface for
@@ -75,29 +78,9 @@ func (c *coordinationTx) ClaimLease(ctx context.Context, name, owner string, now
 	}
 	switch c.db.engine {
 	case EnginePostgres:
-		err = c.db.pool.QueryRow(ctx,
-			`INSERT INTO singleton_leases (name, owner, fence_token, acquired_at, expires_at)
-			 VALUES ($1, $2, 1, $3, $4)
-			 ON CONFLICT (name) DO UPDATE
-			   SET owner = EXCLUDED.owner,
-			       fence_token = singleton_leases.fence_token + 1,
-			       acquired_at = EXCLUDED.acquired_at,
-			       expires_at = EXCLUDED.expires_at
-			   WHERE singleton_leases.expires_at <= $3
-			 RETURNING fence_token`,
-			name, owner, now, expires).Scan(&fence)
+		fence, err = pggen.New(c.db.pool).CoordinationClaimLease(ctx, pggen.CoordinationClaimLeaseParams{Name: name, Owner: owner, Now: pgtype.Timestamptz{Time: now, Valid: true}, Expires: pgtype.Timestamptz{Time: expires, Valid: true}})
 	case EngineSQLite:
-		err = c.db.sqWrite.QueryRowContext(ctx,
-			`INSERT INTO singleton_leases (name, owner, fence_token, acquired_at, expires_at)
-			 VALUES (?, ?, 1, ?, ?)
-			 ON CONFLICT (name) DO UPDATE
-			   SET owner = excluded.owner,
-			       fence_token = singleton_leases.fence_token + 1,
-			       acquired_at = excluded.acquired_at,
-			       expires_at = excluded.expires_at
-			   WHERE singleton_leases.expires_at <= ?
-			 RETURNING fence_token`,
-			name, owner, fixedStamp(now), fixedStamp(expires), fixedStamp(now)).Scan(&fence)
+		fence, err = sqlitegen.New(c.db.sqWrite).CoordinationClaimLease(ctx, sqlitegen.CoordinationClaimLeaseParams{Name: name, Owner: owner, Now: fixedStamp(now), Expires: fixedStamp(expires)})
 	default:
 		return 0, false, fmt.Errorf("store: coordination lease claim on unknown engine %q", c.db.engine)
 	}
@@ -127,25 +110,14 @@ func (c *coordinationTx) RenewLease(ctx context.Context, name, owner string, fen
 	var affected int64
 	switch c.db.engine {
 	case EnginePostgres:
-		tag, e := c.db.pool.Exec(ctx,
-			`UPDATE singleton_leases SET expires_at = $1
-			 WHERE name = $2 AND owner = $3 AND fence_token = $4 AND expires_at > $5`,
-			expires, name, owner, fence, now)
-		if e != nil {
-			return false, fmt.Errorf("store: renew lease %q: %w", name, e)
-		}
-		affected = tag.RowsAffected()
+		affected, err = pggen.New(c.db.pool).CoordinationRenewLease(ctx, pggen.CoordinationRenewLeaseParams{Expires: pgtype.Timestamptz{Time: expires, Valid: true}, Name: name, Owner: owner, Fence: fence, Now: pgtype.Timestamptz{Time: now, Valid: true}})
 	case EngineSQLite:
-		res, e := c.db.sqWrite.ExecContext(ctx,
-			`UPDATE singleton_leases SET expires_at = ?
-			 WHERE name = ? AND owner = ? AND fence_token = ? AND expires_at > ?`,
-			fixedStamp(expires), name, owner, fence, fixedStamp(now))
-		if e != nil {
-			return false, fmt.Errorf("store: renew lease %q: %w", name, e)
-		}
-		affected, _ = res.RowsAffected()
+		affected, err = sqlitegen.New(c.db.sqWrite).CoordinationRenewLease(ctx, sqlitegen.CoordinationRenewLeaseParams{Expires: fixedStamp(expires), Name: name, Owner: owner, Fence: fence, Now: fixedStamp(now)})
 	default:
 		return false, fmt.Errorf("store: coordination lease renew on unknown engine %q", c.db.engine)
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: renew lease %q: %w", name, err)
 	}
 	return affected == 1, nil
 }
@@ -160,13 +132,9 @@ func (c *coordinationTx) ReleaseLease(ctx context.Context, name, owner string, f
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx,
-			`UPDATE singleton_leases SET expires_at = $1 WHERE name = $2 AND owner = $3 AND fence_token = $4`,
-			accountWindow, name, owner, fence)
+		err = pggen.New(c.db.pool).CoordinationReleaseLease(ctx, pggen.CoordinationReleaseLeaseParams{Expires: pgtype.Timestamptz{Time: accountWindow, Valid: true}, Name: name, Owner: owner, Fence: fence})
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx,
-			`UPDATE singleton_leases SET expires_at = ? WHERE name = ? AND owner = ? AND fence_token = ?`,
-			fixedStamp(accountWindow), name, owner, fence)
+		err = sqlitegen.New(c.db.sqWrite).CoordinationReleaseLease(ctx, sqlitegen.CoordinationReleaseLeaseParams{Expires: fixedStamp(accountWindow), Name: name, Owner: owner, Fence: fence})
 	default:
 		return fmt.Errorf("store: coordination lease release on unknown engine %q", c.db.engine)
 	}
@@ -183,14 +151,14 @@ func (c *coordinationTx) ReleaseLease(ctx context.Context, name, owner string, f
 func (c *coordinationTx) Now(ctx context.Context) (time.Time, error) {
 	switch c.db.engine {
 	case EnginePostgres:
-		var now time.Time
 		// now()/transaction_timestamp() (frozen at BEGIN), NOT clock_timestamp():
 		// every lease comparison inside one transaction reads a single stable
 		// instant. AuditExportSnapshotTime deliberately uses the opposite clock.
-		if err := c.db.pool.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		now, err := pggen.New(c.db.pool).CoordinationNow(ctx)
+		if err != nil {
 			return time.Time{}, fmt.Errorf("store: datastore clock: %w", err)
 		}
-		return now.UTC(), nil
+		return now.Time.UTC(), nil
 	case EngineSQLite:
 		return time.Now().UTC(), nil
 	default:
@@ -203,31 +171,25 @@ func (c *coordinationTx) Now(ctx context.Context) (time.Time, error) {
 func (c *coordinationTx) LeaseHolder(ctx context.Context, name string, now time.Time) (owner string, acquiredAt time.Time, live bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
-		var expires time.Time
-		err = c.db.pool.QueryRow(ctx,
-			`SELECT owner, acquired_at, expires_at FROM singleton_leases WHERE name = $1`, name).
-			Scan(&owner, &acquiredAt, &expires)
-		if isNoRows(err) {
+		row, e := pggen.New(c.db.pool).CoordinationLeaseHolder(ctx, name)
+		if isNoRows(e) {
 			return "", time.Time{}, false, nil
 		}
-		if err != nil {
-			return "", time.Time{}, false, fmt.Errorf("store: lease holder %q: %w", name, err)
+		if e != nil {
+			return "", time.Time{}, false, fmt.Errorf("store: lease holder %q: %w", name, e)
 		}
-		return owner, acquiredAt.UTC(), expires.After(now), nil
+		return row.Owner, row.AcquiredAt.Time.UTC(), row.ExpiresAt.Time.After(now), nil
 	case EngineSQLite:
-		var acquiredStr, expiresStr string
-		err = c.db.sqRead.QueryRowContext(ctx,
-			`SELECT owner, acquired_at, expires_at FROM singleton_leases WHERE name = ?`, name).
-			Scan(&owner, &acquiredStr, &expiresStr)
-		if isNoRows(err) {
+		row, e := sqlitegen.New(c.db.sqRead).CoordinationLeaseHolder(ctx, name)
+		if isNoRows(e) {
 			return "", time.Time{}, false, nil
 		}
-		if err != nil {
-			return "", time.Time{}, false, fmt.Errorf("store: lease holder %q: %w", name, err)
+		if e != nil {
+			return "", time.Time{}, false, fmt.Errorf("store: lease holder %q: %w", name, e)
 		}
-		acquiredAt, _ = parseStamp(acquiredStr)
-		expires, _ := parseStamp(expiresStr)
-		return owner, acquiredAt.UTC(), expires.After(now), nil
+		acquiredAt, _ = parseStamp(row.AcquiredAt)
+		expires, _ := parseStamp(row.ExpiresAt)
+		return row.Owner, acquiredAt.UTC(), expires.After(now), nil
 	default:
 		return "", time.Time{}, false, fmt.Errorf("store: coordination lease holder on unknown engine %q", c.db.engine)
 	}
@@ -254,25 +216,9 @@ func (c *coordinationTx) UpsertNode(ctx context.Context, n HANode) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx,
-			`INSERT INTO ha_nodes (node_id, binary_version, schema_version, root_key_fingerprint, started_at, heartbeat_at)
-			 VALUES ($1, $2, $3, $4, $5, $6)
-			 ON CONFLICT (node_id) DO UPDATE
-			   SET binary_version = EXCLUDED.binary_version,
-			       schema_version = EXCLUDED.schema_version,
-			       root_key_fingerprint = EXCLUDED.root_key_fingerprint,
-			       heartbeat_at = EXCLUDED.heartbeat_at`,
-			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, n.StartedAt, n.HeartbeatAt)
+		err = pggen.New(c.db.pool).CoordinationUpsertNode(ctx, pggen.CoordinationUpsertNodeParams{NodeID: n.NodeID, BinaryVersion: n.BinaryVersion, SchemaVersion: n.SchemaVersion, RootKeyFingerprint: n.RootKeyFingerprint, StartedAt: pgtype.Timestamptz{Time: n.StartedAt, Valid: true}, HeartbeatAt: pgtype.Timestamptz{Time: n.HeartbeatAt, Valid: true}})
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx,
-			`INSERT INTO ha_nodes (node_id, binary_version, schema_version, root_key_fingerprint, started_at, heartbeat_at)
-			 VALUES (?, ?, ?, ?, ?, ?)
-			 ON CONFLICT (node_id) DO UPDATE
-			   SET binary_version = excluded.binary_version,
-			       schema_version = excluded.schema_version,
-			       root_key_fingerprint = excluded.root_key_fingerprint,
-			       heartbeat_at = excluded.heartbeat_at`,
-			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, fixedStamp(n.StartedAt), fixedStamp(n.HeartbeatAt))
+		err = sqlitegen.New(c.db.sqWrite).CoordinationUpsertNode(ctx, sqlitegen.CoordinationUpsertNodeParams{NodeID: n.NodeID, BinaryVersion: n.BinaryVersion, SchemaVersion: n.SchemaVersion, RootKeyFingerprint: n.RootKeyFingerprint, StartedAt: fixedStamp(n.StartedAt), HeartbeatAt: fixedStamp(n.HeartbeatAt)})
 	default:
 		return fmt.Errorf("store: coordination node upsert on unknown engine %q", c.db.engine)
 	}
@@ -303,28 +249,17 @@ func (c *coordinationTx) RegisterNodeChecked(ctx context.Context, n HANode, sinc
 	switch c.db.engine {
 	case EnginePostgres:
 		tx := c.db.pool
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, coordinationAdvisoryNamespace, haRegisterAdvisoryClass); err != nil {
+		if err := pggen.New(tx).CoordinationLock(ctx, pggen.CoordinationLockParams{Namespace: int32(coordinationAdvisoryNamespace), Class: int32(haRegisterAdvisoryClass)}); err != nil {
 			return fmt.Errorf("store: register node: lock: %w", err)
 		}
-		var foreign int
-		if err := tx.QueryRow(ctx,
-			`SELECT COUNT(*) FROM ha_nodes
-			 WHERE node_id <> $1 AND root_key_fingerprint <> $2 AND heartbeat_at >= $3`,
-			n.NodeID, n.RootKeyFingerprint, since).Scan(&foreign); err != nil {
+		foreign, err := pggen.New(tx).CoordinationCountForeignNodes(ctx, pggen.CoordinationCountForeignNodesParams{NodeID: n.NodeID, Fingerprint: n.RootKeyFingerprint, Since: pgtype.Timestamptz{Time: since, Valid: true}})
+		if err != nil {
 			return fmt.Errorf("store: register node: check: %w", err)
 		}
 		if foreign > 0 {
 			return ErrMixedRootKey
 		}
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO ha_nodes (node_id, binary_version, schema_version, root_key_fingerprint, started_at, heartbeat_at)
-			 VALUES ($1, $2, $3, $4, $5, $6)
-			 ON CONFLICT (node_id) DO UPDATE
-			   SET binary_version = EXCLUDED.binary_version,
-			       schema_version = EXCLUDED.schema_version,
-			       root_key_fingerprint = EXCLUDED.root_key_fingerprint,
-			       heartbeat_at = EXCLUDED.heartbeat_at`,
-			n.NodeID, n.BinaryVersion, n.SchemaVersion, n.RootKeyFingerprint, n.StartedAt, n.HeartbeatAt); err != nil {
+		if err := pggen.New(tx).CoordinationUpsertNode(ctx, pggen.CoordinationUpsertNodeParams{NodeID: n.NodeID, BinaryVersion: n.BinaryVersion, SchemaVersion: n.SchemaVersion, RootKeyFingerprint: n.RootKeyFingerprint, StartedAt: pgtype.Timestamptz{Time: n.StartedAt, Valid: true}, HeartbeatAt: pgtype.Timestamptz{Time: n.HeartbeatAt, Valid: true}}); err != nil {
 			return fmt.Errorf("store: register node: upsert: %w", err)
 		}
 		return nil
@@ -344,22 +279,20 @@ func (c *coordinationTx) RegisterNodeChecked(ctx context.Context, n HANode, sinc
 
 // CountLiveNodes counts nodes whose heartbeat is at or after since.
 func (c *coordinationTx) CountLiveNodes(ctx context.Context, since time.Time) (int, error) {
-	var count int
+	var count int64
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		err = c.db.pool.QueryRow(ctx,
-			`SELECT COUNT(*) FROM ha_nodes WHERE heartbeat_at >= $1`, since).Scan(&count)
+		count, err = pggen.New(c.db.pool).CoordinationCountLiveNodes(ctx, pgtype.Timestamptz{Time: since, Valid: true})
 	case EngineSQLite:
-		err = c.db.sqRead.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM ha_nodes WHERE heartbeat_at >= ?`, fixedStamp(since)).Scan(&count)
+		count, err = sqlitegen.New(c.db.sqRead).CoordinationCountLiveNodes(ctx, fixedStamp(since))
 	default:
 		return 0, fmt.Errorf("store: coordination live-node count on unknown engine %q", c.db.engine)
 	}
 	if err != nil {
 		return 0, fmt.Errorf("store: count live nodes: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }
 
 // PruneNodes drops registry rows whose heartbeat fell before cutoff, so a
@@ -368,9 +301,9 @@ func (c *coordinationTx) PruneNodes(ctx context.Context, cutoff time.Time) error
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < $1`, cutoff)
+		err = pggen.New(c.db.pool).CoordinationPruneNodes(ctx, pgtype.Timestamptz{Time: cutoff, Valid: true})
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx, `DELETE FROM ha_nodes WHERE heartbeat_at < ?`, fixedStamp(cutoff))
+		err = sqlitegen.New(c.db.sqWrite).CoordinationPruneNodes(ctx, fixedStamp(cutoff))
 	default:
 		return fmt.Errorf("store: coordination node prune on unknown engine %q", c.db.engine)
 	}
@@ -390,42 +323,19 @@ func (c *coordinationTx) PruneNodes(ctx context.Context, cutoff time.Time) error
 // nodes' rows.
 func (c *coordinationTx) ForeignRootKeyFingerprints(ctx context.Context, nodeID, fingerprint string, since time.Time) ([]string, error) {
 	var others []string
+	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		r, err := c.db.pool.Query(ctx,
-			`SELECT DISTINCT root_key_fingerprint FROM ha_nodes
-			 WHERE node_id <> $1 AND root_key_fingerprint <> $2 AND heartbeat_at >= $3`, nodeID, fingerprint, since)
-		if err != nil {
-			return nil, fmt.Errorf("store: foreign root fingerprints: %w", err)
-		}
-		defer r.Close()
-		for r.Next() {
-			var fp string
-			if err := r.Scan(&fp); err != nil {
-				return nil, fmt.Errorf("store: foreign root fingerprints scan: %w", err)
-			}
-			others = append(others, fp)
-		}
-		return others, r.Err()
+		others, err = pggen.New(c.db.pool).CoordinationForeignRootKeyFingerprints(ctx, pggen.CoordinationForeignRootKeyFingerprintsParams{NodeID: nodeID, Fingerprint: fingerprint, Since: pgtype.Timestamptz{Time: since, Valid: true}})
 	case EngineSQLite:
-		r, err := c.db.sqRead.QueryContext(ctx,
-			`SELECT DISTINCT root_key_fingerprint FROM ha_nodes
-			 WHERE node_id <> ? AND root_key_fingerprint <> ? AND heartbeat_at >= ?`, nodeID, fingerprint, fixedStamp(since))
-		if err != nil {
-			return nil, fmt.Errorf("store: foreign root fingerprints: %w", err)
-		}
-		defer r.Close()
-		for r.Next() {
-			var fp string
-			if err := r.Scan(&fp); err != nil {
-				return nil, fmt.Errorf("store: foreign root fingerprints scan: %w", err)
-			}
-			others = append(others, fp)
-		}
-		return others, r.Err()
+		others, err = sqlitegen.New(c.db.sqRead).CoordinationForeignRootKeyFingerprints(ctx, sqlitegen.CoordinationForeignRootKeyFingerprintsParams{NodeID: nodeID, Fingerprint: fingerprint, Since: fixedStamp(since)})
 	default:
 		return nil, fmt.Errorf("store: coordination foreign fingerprints on unknown engine %q", c.db.engine)
 	}
+	if err != nil {
+		return nil, fmt.Errorf("store: foreign root fingerprints: %w", err)
+	}
+	return others, nil
 }
 
 // ---- Admission counters ----------------------------------------------------
@@ -438,21 +348,9 @@ func (c *coordinationTx) BumpWindow(ctx context.Context, bucket, subject string,
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		err = c.db.pool.QueryRow(ctx,
-			`INSERT INTO admission_counters (bucket, subject, window_start, hits)
-			 VALUES ($1, $2, $3, 1)
-			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET hits = admission_counters.hits + 1
-			 RETURNING hits`,
-			bucket, subject, windowStart).Scan(&count)
+		count, err = pggen.New(c.db.pool).CoordinationBumpWindow(ctx, pggen.CoordinationBumpWindowParams{Bucket: bucket, Subject: subject, WindowStart: pgtype.Timestamptz{Time: windowStart, Valid: true}})
 	case EngineSQLite:
-		err = c.db.sqWrite.QueryRowContext(ctx,
-			`INSERT INTO admission_counters (bucket, subject, window_start, hits)
-			 VALUES (?, ?, ?, 1)
-			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET hits = admission_counters.hits + 1
-			 RETURNING hits`,
-			bucket, subject, fixedStamp(windowStart)).Scan(&count)
+		count, err = sqlitegen.New(c.db.sqWrite).CoordinationBumpWindow(ctx, sqlitegen.CoordinationBumpWindowParams{Bucket: bucket, Subject: subject, WindowStart: fixedStamp(windowStart)})
 	default:
 		return 0, fmt.Errorf("store: coordination window bump on unknown engine %q", c.db.engine)
 	}
@@ -488,31 +386,30 @@ func (c *coordinationTx) AcquireMCP(ctx context.Context, callID, principalID, or
 func (c *coordinationTx) acquireMCPPostgres(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
 	tx := c.db.pool
 	var err error
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, coordinationAdvisoryNamespace, mcpAdmissionAdvisoryClass); err != nil {
+	if err := pggen.New(tx).CoordinationLock(ctx, pggen.CoordinationLockParams{Namespace: int32(coordinationAdvisoryNamespace), Class: int32(mcpAdmissionAdvisoryClass)}); err != nil {
 		return fmt.Errorf("store: MCP admission lock: %w", err)
 	}
-	var now time.Time
-	if err := tx.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+	stamp, err := pggen.New(tx).CoordinationNow(ctx)
+	if err != nil {
 		return fmt.Errorf("store: MCP admission clock: %w", err)
 	}
-	now = now.UTC()
-	if _, err := tx.Exec(ctx, `DELETE FROM mcp_inflight WHERE expires_at <= $1`, now); err != nil {
+	now := stamp.Time.UTC()
+	if err := pggen.New(tx).CoordinationPruneMCPClaims(ctx, pgtype.Timestamptz{Time: now, Valid: true}); err != nil {
 		return fmt.Errorf("store: prune MCP claims: %w", err)
 	}
-	var principalCount, orgCount, instanceCount int64
-	if err := tx.QueryRow(ctx, `SELECT
-		COUNT(*) FILTER (WHERE principal_id = $1),
-		COUNT(*) FILTER (WHERE org_id = $2),
-		COUNT(*)
-		FROM mcp_inflight`, principalID, orgID).Scan(&principalCount, &orgCount, &instanceCount); err != nil {
+	counts, err := pggen.New(tx).CoordinationCountMCPClaims(ctx, pggen.CoordinationCountMCPClaimsParams{PrincipalID: principalID, OrgID: orgID})
+	if err != nil {
 		return fmt.Errorf("store: count MCP claims: %w", err)
 	}
-	if principalCount >= MCPPrincipalLimit || orgCount >= MCPOrganizationLimit || instanceCount >= MCPInstanceLimit {
+	if counts.PrincipalCount >= MCPPrincipalLimit || counts.OrgCount >= MCPOrganizationLimit || counts.InstanceCount >= MCPInstanceLimit {
 		return ErrMCPAdmissionLimited
 	}
 
 	nextAt := now
-	err = tx.QueryRow(ctx, `SELECT next_at FROM mcp_rate_buckets WHERE principal_id = $1 FOR UPDATE`, principalID).Scan(&nextAt)
+	nextStamp, err := pggen.New(tx).CoordinationMCPRateBucket(ctx, principalID)
+	if err == nil {
+		nextAt = nextStamp.Time
+	}
 	if err != nil && !isNoRows(err) {
 		return fmt.Errorf("store: read MCP rate bucket: %w", err)
 	}
@@ -523,12 +420,10 @@ func (c *coordinationTx) acquireMCPPostgres(ctx context.Context, callID, princip
 		nextAt = now
 	}
 	nextAt = nextAt.Add(MCPRateRefillInterval)
-	if _, err := tx.Exec(ctx, `INSERT INTO mcp_rate_buckets (principal_id, next_at) VALUES ($1, $2)
-		ON CONFLICT (principal_id) DO UPDATE SET next_at = EXCLUDED.next_at`, principalID, nextAt); err != nil {
+	if err := pggen.New(tx).CoordinationSetMCPRateBucket(ctx, pggen.CoordinationSetMCPRateBucketParams{PrincipalID: principalID, NextAt: pgtype.Timestamptz{Time: nextAt, Valid: true}}); err != nil {
 		return fmt.Errorf("store: update MCP rate bucket: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO mcp_inflight (call_id, principal_id, org_id, expires_at) VALUES ($1, $2, $3, $4)`,
-		callID, principalID, orgID, now.Add(ttl)); err != nil {
+	if err := pggen.New(tx).CoordinationInsertMCPClaim(ctx, pggen.CoordinationInsertMCPClaimParams{CallID: callID, PrincipalID: principalID, OrgID: orgID, ExpiresAt: pgtype.Timestamptz{Time: now.Add(ttl), Valid: true}}); err != nil {
 		return fmt.Errorf("store: insert MCP claim: %w", err)
 	}
 	return nil
@@ -536,26 +431,21 @@ func (c *coordinationTx) acquireMCPPostgres(ctx context.Context, callID, princip
 
 func (c *coordinationTx) acquireMCPSQLite(ctx context.Context, callID, principalID, orgID string, ttl time.Duration) error {
 	tx := c.db.sqWrite
-	var err error
 	now := time.Now().UTC()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM mcp_inflight WHERE expires_at <= ?`, fixedStamp(now)); err != nil {
+	if err := sqlitegen.New(tx).CoordinationPruneMCPClaims(ctx, fixedStamp(now)); err != nil {
 		return fmt.Errorf("store: prune MCP claims: %w", err)
 	}
-	var principalCount, orgCount, instanceCount int64
-	if err := tx.QueryRowContext(ctx, `SELECT
-		COALESCE(SUM(CASE WHEN principal_id = ? THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN org_id = ? THEN 1 ELSE 0 END), 0),
-		COUNT(*)
-		FROM mcp_inflight`, principalID, orgID).Scan(&principalCount, &orgCount, &instanceCount); err != nil {
+	counts, err := sqlitegen.New(tx).CoordinationCountMCPClaims(ctx, sqlitegen.CoordinationCountMCPClaimsParams{PrincipalID: principalID, OrgID: orgID})
+	if err != nil {
 		return fmt.Errorf("store: count MCP claims: %w", err)
 	}
-	if principalCount >= MCPPrincipalLimit || orgCount >= MCPOrganizationLimit || instanceCount >= MCPInstanceLimit {
+	if counts.PrincipalCount >= MCPPrincipalLimit || counts.OrgCount >= MCPOrganizationLimit || counts.InstanceCount >= MCPInstanceLimit {
 		return ErrMCPAdmissionLimited
 	}
 
 	nextAt := now
 	var nextRaw string
-	err = tx.QueryRowContext(ctx, `SELECT next_at FROM mcp_rate_buckets WHERE principal_id = ?`, principalID).Scan(&nextRaw)
+	nextRaw, err = sqlitegen.New(tx).CoordinationMCPRateBucket(ctx, principalID)
 	switch {
 	case isNoRows(err):
 	case err != nil:
@@ -573,12 +463,10 @@ func (c *coordinationTx) acquireMCPSQLite(ctx context.Context, callID, principal
 		nextAt = now
 	}
 	nextAt = nextAt.Add(MCPRateRefillInterval)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO mcp_rate_buckets (principal_id, next_at) VALUES (?, ?)
-		ON CONFLICT (principal_id) DO UPDATE SET next_at = excluded.next_at`, principalID, fixedStamp(nextAt)); err != nil {
+	if err := sqlitegen.New(tx).CoordinationSetMCPRateBucket(ctx, sqlitegen.CoordinationSetMCPRateBucketParams{PrincipalID: principalID, NextAt: fixedStamp(nextAt)}); err != nil {
 		return fmt.Errorf("store: update MCP rate bucket: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO mcp_inflight (call_id, principal_id, org_id, expires_at) VALUES (?, ?, ?, ?)`,
-		callID, principalID, orgID, fixedStamp(now.Add(ttl))); err != nil {
+	if err := sqlitegen.New(tx).CoordinationInsertMCPClaim(ctx, sqlitegen.CoordinationInsertMCPClaimParams{CallID: callID, PrincipalID: principalID, OrgID: orgID, ExpiresAt: fixedStamp(now.Add(ttl))}); err != nil {
 		return fmt.Errorf("store: insert MCP claim: %w", err)
 	}
 	return nil
@@ -593,9 +481,9 @@ func (c *coordinationTx) ReleaseMCP(ctx context.Context, callID string) error {
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx, `DELETE FROM mcp_inflight WHERE call_id = $1`, callID)
+		err = pggen.New(c.db.pool).CoordinationReleaseMCP(ctx, callID)
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx, `DELETE FROM mcp_inflight WHERE call_id = ?`, callID)
+		err = sqlitegen.New(c.db.sqWrite).CoordinationReleaseMCP(ctx, callID)
 	default:
 		return fmt.Errorf("store: MCP admission release on unknown engine %q", c.db.engine)
 	}
@@ -615,37 +503,31 @@ func (c *coordinationTx) ReleaseMCP(ctx context.Context, callID string) error {
 func (c *coordinationTx) AccountFailureState(ctx context.Context, subject string) (failures int64, lastFailure, dbNow time.Time, ok bool, err error) {
 	switch c.db.engine {
 	case EnginePostgres:
-		var until sql.NullTime
-		e := c.db.pool.QueryRow(ctx,
-			`SELECT failures, until_at, now() FROM admission_counters WHERE bucket = $1 AND subject = $2 AND window_start = $3`,
-			AccountBucket, subject, accountWindow).Scan(&failures, &until, &dbNow)
+		row, e := pggen.New(c.db.pool).CoordinationAccountFailureState(ctx, pggen.CoordinationAccountFailureStateParams{Bucket: AccountBucket, Subject: subject, WindowStart: pgtype.Timestamptz{Time: accountWindow, Valid: true}})
 		if isNoRows(e) {
 			return 0, time.Time{}, time.Time{}, false, nil
 		}
 		if e != nil {
 			return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
-		if until.Valid {
-			lastFailure = until.Time.UTC()
+		if row.UntilAt.Valid {
+			lastFailure = row.UntilAt.Time.UTC()
 		}
-		return failures, lastFailure, dbNow.UTC(), true, nil
+		return row.Failures, lastFailure, row.DbNow.Time.UTC(), true, nil
 	case EngineSQLite:
-		var until sql.NullString
-		e := c.db.sqRead.QueryRowContext(ctx,
-			`SELECT failures, until_at FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
-			AccountBucket, subject, fixedStamp(accountWindow)).Scan(&failures, &until)
+		row, e := sqlitegen.New(c.db.sqRead).CoordinationAccountFailureState(ctx, sqlitegen.CoordinationAccountFailureStateParams{Bucket: AccountBucket, Subject: subject, WindowStart: fixedStamp(accountWindow)})
 		if isNoRows(e) {
 			return 0, time.Time{}, time.Time{}, false, nil
 		}
 		if e != nil {
 			return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: account failure state %s: %w", subject, e)
 		}
-		if until.Valid && until.String != "" {
-			lastFailure, _ = parseStamp(until.String)
+		if row.UntilAt.Valid && row.UntilAt.String != "" {
+			lastFailure, _ = parseStamp(row.UntilAt.String)
 			lastFailure = lastFailure.UTC()
 		}
 		// sqlite is single-node, so the process clock is the datastore clock.
-		return failures, lastFailure, time.Now().UTC(), true, nil
+		return row.Failures, lastFailure, time.Now().UTC(), true, nil
 	default:
 		return 0, time.Time{}, time.Time{}, false, fmt.Errorf("store: coordination account failure state on unknown engine %q", c.db.engine)
 	}
@@ -663,23 +545,9 @@ func (c *coordinationTx) RecordAccountFailure(ctx context.Context, subject strin
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		err = c.db.pool.QueryRow(ctx,
-			`INSERT INTO admission_counters (bucket, subject, window_start, failures, until_at)
-			 VALUES ($1, $2, $3, 1, now())
-			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET failures = admission_counters.failures + 1,
-			       until_at = GREATEST(admission_counters.until_at, now())
-			 RETURNING failures`,
-			AccountBucket, subject, accountWindow).Scan(&failures)
+		failures, err = pggen.New(c.db.pool).CoordinationRecordAccountFailure(ctx, pggen.CoordinationRecordAccountFailureParams{Bucket: AccountBucket, Subject: subject, WindowStart: pgtype.Timestamptz{Time: accountWindow, Valid: true}})
 	case EngineSQLite:
-		err = c.db.sqWrite.QueryRowContext(ctx,
-			`INSERT INTO admission_counters (bucket, subject, window_start, failures, until_at)
-			 VALUES (?, ?, ?, 1, ?)
-			 ON CONFLICT (bucket, subject, window_start) DO UPDATE
-			   SET failures = admission_counters.failures + 1,
-			       until_at = max(admission_counters.until_at, ?)
-			 RETURNING failures`,
-			AccountBucket, subject, fixedStamp(accountWindow), fixedStamp(now), fixedStamp(now)).Scan(&failures)
+		failures, err = sqlitegen.New(c.db.sqWrite).CoordinationRecordAccountFailure(ctx, sqlitegen.CoordinationRecordAccountFailureParams{Bucket: AccountBucket, Subject: subject, WindowStart: fixedStamp(accountWindow), Now: sql.NullString{String: fixedStamp(now), Valid: true}})
 	default:
 		return 0, fmt.Errorf("store: coordination record failure on unknown engine %q", c.db.engine)
 	}
@@ -696,13 +564,9 @@ func (c *coordinationTx) PruneAccountBackoff(ctx context.Context, cutoff time.Ti
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx,
-			`DELETE FROM admission_counters WHERE bucket = $1 AND (until_at IS NULL OR until_at < $2)`,
-			AccountBucket, cutoff)
+		err = pggen.New(c.db.pool).CoordinationPruneAccountBackoff(ctx, pggen.CoordinationPruneAccountBackoffParams{Bucket: AccountBucket, Cutoff: pgtype.Timestamptz{Time: cutoff, Valid: true}})
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx,
-			`DELETE FROM admission_counters WHERE bucket = ? AND (until_at IS NULL OR until_at < ?)`,
-			AccountBucket, fixedStamp(cutoff))
+		err = sqlitegen.New(c.db.sqWrite).CoordinationPruneAccountBackoff(ctx, sqlitegen.CoordinationPruneAccountBackoffParams{Bucket: AccountBucket, Cutoff: sql.NullString{String: fixedStamp(cutoff), Valid: true}})
 	default:
 		return fmt.Errorf("store: coordination account prune on unknown engine %q", c.db.engine)
 	}
@@ -717,13 +581,9 @@ func (c *coordinationTx) ClearAccount(ctx context.Context, subject string) error
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx,
-			`DELETE FROM admission_counters WHERE bucket = $1 AND subject = $2 AND window_start = $3`,
-			AccountBucket, subject, accountWindow)
+		err = pggen.New(c.db.pool).CoordinationClearAccount(ctx, pggen.CoordinationClearAccountParams{Bucket: AccountBucket, Subject: subject, WindowStart: pgtype.Timestamptz{Time: accountWindow, Valid: true}})
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx,
-			`DELETE FROM admission_counters WHERE bucket = ? AND subject = ? AND window_start = ?`,
-			AccountBucket, subject, fixedStamp(accountWindow))
+		err = sqlitegen.New(c.db.sqWrite).CoordinationClearAccount(ctx, sqlitegen.CoordinationClearAccountParams{Bucket: AccountBucket, Subject: subject, WindowStart: fixedStamp(accountWindow)})
 	default:
 		return fmt.Errorf("store: coordination clear account on unknown engine %q", c.db.engine)
 	}
@@ -740,13 +600,9 @@ func (c *coordinationTx) PruneAdmissionWindows(ctx context.Context, cutoff time.
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
-		_, err = c.db.pool.Exec(ctx,
-			`DELETE FROM admission_counters WHERE bucket <> $1 AND window_start < $2`,
-			AccountBucket, cutoff)
+		err = pggen.New(c.db.pool).CoordinationPruneAdmissionWindows(ctx, pggen.CoordinationPruneAdmissionWindowsParams{Bucket: AccountBucket, Cutoff: pgtype.Timestamptz{Time: cutoff, Valid: true}})
 	case EngineSQLite:
-		_, err = c.db.sqWrite.ExecContext(ctx,
-			`DELETE FROM admission_counters WHERE bucket <> ? AND window_start < ?`,
-			AccountBucket, fixedStamp(cutoff))
+		err = sqlitegen.New(c.db.sqWrite).CoordinationPruneAdmissionWindows(ctx, sqlitegen.CoordinationPruneAdmissionWindowsParams{Bucket: AccountBucket, Cutoff: fixedStamp(cutoff)})
 	default:
 		return fmt.Errorf("store: coordination prune on unknown engine %q", c.db.engine)
 	}

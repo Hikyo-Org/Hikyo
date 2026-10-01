@@ -53,8 +53,8 @@ describe('scopeOf', () => {
   it('reads one environment-scoped grant as reach on that environment only', () => {
     const scope = scopeOf([grant('mp_a', 'read', { environment_id: 'env_dev' })], 'mp_a', ENVS);
     expect(scope).toEqual([
-      { id: 'env_dev', name: 'development', read: true, reveal: false, report: false, origins: [] },
-      { id: 'env_prod', name: 'production', read: false, reveal: false, report: false, origins: [] },
+      { id: 'env_dev', name: 'development', read: true, reveal: false, revealHistory: false, report: false, origins: [] },
+      { id: 'env_prod', name: 'production', read: false, reveal: false, revealHistory: false, report: false, origins: [] },
     ]);
   });
 
@@ -97,6 +97,24 @@ describe('scopeOf', () => {
 });
 
 describe('postStateReach', () => {
+  it('includes historical-only reach and combines both classes once per environment', () => {
+    const scope = scopeOf([
+      grant('mp_a', 'read', { environment_id: 'env_dev' }),
+      grant('mp_a', 'reveal-history', { environment_id: 'env_dev' }),
+      grant('mp_a', 'read', { environment_id: 'env_prod' }),
+      grant('mp_a', 'reveal', { environment_id: 'env_prod' }),
+      grant('mp_a', 'reveal-history', { environment_id: 'env_prod' }),
+    ], 'mp_a', ENVS);
+    expect(postStateReach(scope)).toEqual([
+      { id: 'env_dev', name: 'development', current: false, historical: true },
+      { id: 'env_prod', name: 'production', current: true, historical: true },
+    ]);
+  });
+
+  it('requires read for historical reach as well as current reach', () => {
+    const scope = scopeOf([grant('mp_a', 'reveal-history', {})], 'mp_a', ENVS);
+    expect(postStateReach(scope)).toEqual([]);
+  });
   it('is empty without reveal, however read is granted', () => {
     // The state every workload principal is in today: the permission model's
     // machine allowlist admits `read` and nothing else, so nothing this
@@ -125,6 +143,32 @@ describe('postStateReach', () => {
 });
 
 describe('grantWideningReach', () => {
+  it('restoring read newly reaches historical-only plaintext', () => {
+    const scope = scopeOf([grant('mp_a', 'reveal-history', { environment_id: 'env_dev' })], 'mp_a', ENVS);
+    expect(grantWideningReach(scope, 'env_dev', 'read')).toEqual([
+      { id: 'env_dev', name: 'development', current: false, historical: true },
+    ]);
+  });
+
+  it('does not let existing historical reach hide a new current disclosure delta', () => {
+    const scope = scopeOf([
+      grant('mp_a', 'read', { environment_id: 'env_dev' }),
+      grant('mp_a', 'reveal-history', { environment_id: 'env_dev' }),
+    ], 'mp_a', ENVS);
+    expect(grantWideningReach(scope, 'env_dev', 'reveal')).toEqual([
+      { id: 'env_dev', name: 'development', current: true, historical: false },
+    ]);
+  });
+
+  it('combines two new disclosure classes into one ceremony environment', () => {
+    const scope = scopeOf([
+      grant('mp_a', 'reveal', { environment_id: 'env_dev' }),
+      grant('mp_a', 'reveal-history', { environment_id: 'env_dev' }),
+    ], 'mp_a', ENVS);
+    expect(grantWideningReach(scope, 'env_dev', 'read')).toEqual([
+      { id: 'env_dev', name: 'development', current: true, historical: true },
+    ]);
+  });
   // The mint's conjunct for a GRANT is the DELTA, not the whole post-state:
   // `checkMachineWidening` computes exactly that server-side, so a client
   // asking for a ceremony over everything the account already reaches would

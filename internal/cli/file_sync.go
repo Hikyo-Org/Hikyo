@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -553,21 +552,33 @@ func fileSyncDoctor(ios IO, f Format, cfg *filesync.Config, policy filesync.Poli
 		}
 	}
 	s := &fileSyncSession{cfg: cfg, policy: policy, stateDir: stateDir}
-	if c := s.loadCursor(); c != nil {
+	c := s.loadCursor()
+	if c != nil {
 		add("ok", "applied", fmt.Sprintf("revision %d (target generation %d) at %s", c.Revision, c.TargetGeneration, c.AppliedAt))
 	}
-	if fi, err := os.Stat(filepath.Join(stateDir, "snapshot.bin")); err == nil {
-		age := ios.now().Sub(fi.ModTime()).Round(time.Second)
-		switch {
-		case !cfg.Snapshot.OfflineServe:
-			add("ok", "snapshot", fmt.Sprintf("saved %s ago; offline serve is off", age))
-		case age > cfg.SnapshotMaxAge():
-			add("warn", "snapshot", fmt.Sprintf("saved %s ago, past the %s maximum: offline serve will refuse", age, cfg.SnapshotMaxAge()))
-		default:
-			add("ok", "snapshot", fmt.Sprintf("saved %s ago", age))
+	if cfg.Snapshot.OfflineServe {
+		if c == nil || c.Credential == "" {
+			add("warn", "snapshot", "no recorded delivery credential; render once to establish an authenticated offline snapshot")
+		} else {
+			binding, err := crypto.NewSnapshotBinding(crypto.SnapshotBindingScope{
+				StorageDir: stateDir, InstanceOrigin: cfg.Instance,
+				OrgID: cfg.Org, ProjectID: cfg.Project, EnvironmentID: cfg.Environment,
+				CredentialFingerprint: c.Credential, TargetNames: []string{fileSyncSnapshotTarget + ":" + cfg.Target},
+			})
+			if err == nil {
+				var keys *crypto.LocalKeys
+				keys, err = crypto.LoadOrCreateLocalKey(stateDir)
+				if err == nil {
+					_, binding, err = compose.LoadSnapshot(keys, binding, ios.now(), cfg.SnapshotMaxAge())
+				}
+			}
+			if err != nil {
+				add("warn", "snapshot", "offline serve will refuse: "+err.Error())
+			} else {
+				aad, _ := binding.AAD() // LoadSnapshot validated this authenticated header.
+				add("ok", "snapshot", "authenticated offline snapshot issued at "+aad.IssuedAt)
+			}
 		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		add("error", "snapshot", err.Error())
 	}
 	report := composeDoctorReport{Status: "ok", Findings: findings}
 	rows := make([][]string, 0, len(findings))

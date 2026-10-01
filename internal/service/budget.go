@@ -107,6 +107,9 @@ type Budget struct {
 	// inflight holds live concurrency counts, keyed the same way. An entry is
 	// deleted when it reaches zero so the map does not accumulate dead keys.
 	inflight map[string]int
+	// Machine fetches share one token bucket across every credential for a
+	// service-account principal, including federated credentials.
+	machineFetch map[domain.PrincipalID]machineFetchBucket
 }
 
 // rateBucket is one subject's hit timestamps under one rule's window.
@@ -160,8 +163,10 @@ const (
 	BudgetAdapterRatePerMin     = 10
 	BudgetAdapterOrgConcurrency = 4
 	// § 179 machine-fetch aggregates, on top of § 5's per-principal 30/min.
-	BudgetMachineFetchOrgPerMin      = 300
-	BudgetMachineFetchInstancePerMin = 1000
+	BudgetMachineFetchOrgPerMin       = 300
+	BudgetMachineFetchInstancePerMin  = 1000
+	BudgetMachineFetchPrincipalPerMin = 30
+	BudgetMachineFetchPrincipalBurst  = 60
 	// § 179 fail-closed default for any category not named above.
 	BudgetDefaultRatePerMin     = 60
 	BudgetDefaultOrgConcurrency = 8
@@ -594,7 +599,7 @@ func (b *Budget) chargeOnce(charged *bool, cat budgetCategory, keys budgetKeys) 
 // per-project bound. charged, owned by the caller outside the closure, keeps the
 // charge idempotent across the retry loop (see chargeOnce). Direct
 // r.Catalogue().BumpSchemaRevision calls are banned outside this helper by
-// TestBumpSchemaRevisionOnlyThroughBudget, so a future call site cannot forget
+// internal/lint.CheckServiceSeams, so a future call site cannot forget
 // the paired charge.
 func bumpSchemaRevision(ctx context.Context, r store.Repos, p authz.Proof, b *Budget, charged *bool, project domain.ProjectID) error {
 	if err := b.chargeOnce(charged, budgetSchemaRevision, budgetKeys{Project: project}); err != nil {

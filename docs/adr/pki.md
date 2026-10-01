@@ -70,7 +70,8 @@ Issuer states (closed):
 | `revoked` | no | no | **destroyed** |
 
 At most one `active` version per name (partial unique index). A `restore_hold`
-flag (D8) suspends minting on any state.
+flag (D8) suspends minting and fresh CRL signing on any state. Existing stored
+CRLs remain readable under the same authenticated read authority.
 
 ### D3. Root, intermediate, offline root
 
@@ -204,11 +205,17 @@ profile to a scope is its own audited operation.
 ### D8. Backup, restore and multi-node
 
 - Backup exports the tables as stored: public inventory and sealed CA keys.
-- `CompleteRestore` sets `restore_hold` on every issuer, which suspends minting,
+- `CompleteRestore` sets `restore_hold` on every issuer, which suspends minting
+  and fresh CRL signing (manual publication and automatic worker refresh),
   because a restore can resurrect certificates that were revoked after the
   backup was taken. The hold clears only through `pki issuer release-hold <name>`
   (`instance-config`, audited), after the operator has re-applied known
-  revocations. This is the credential reconciliation boundary applied to CAs.
+  revocations. Previously stored CRLs remain readable, even if stale; reading
+  them never opens the CA key. Each worker signing act holds runtime admission
+  through a fresh issuer-state check, key access, the revocation snapshot,
+  signing, and publication. Restore maintenance excludes that whole act;
+  publication also rejects a candidate captured before a hold was installed.
+  This is the credential reconciliation boundary applied to CAs.
   Restored principals stay inert until reconciled, as they already are.
   Releasing the hold is a network operation, unlike `restore reconcile`, which
   stays local-host authority: only an operator whose own principal was already

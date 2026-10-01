@@ -181,7 +181,7 @@ func (stubProviderModule) Sync(context.Context, adapter.SyncRequest, adapter.Jou
 	return adapter.SyncResult{}, nil
 }
 
-func TestAdapterEgressOriginDropsVaultNamespaceOnly(t *testing.T) {
+func TestAdapterEgressOriginDropsProviderAPIPaths(t *testing.T) {
 	cases := []struct {
 		provider adapter.Provider
 		origin   string
@@ -189,7 +189,8 @@ func TestAdapterEgressOriginDropsVaultNamespaceOnly(t *testing.T) {
 	}{
 		{adapter.VaultKVProvider, "https://vault.example:8200/team-a/child", "https://vault.example:8200"},
 		{adapter.VaultKVProvider, "https://vault.example:8200", "https://vault.example:8200"},
-		{adapter.GitHubActionsProvider, "https://ghes.example/api/v3", "https://ghes.example/api/v3"},
+		{adapter.GitHubActionsProvider, "https://ghes.example/api/v3", "https://ghes.example"},
+		{adapter.GitLabProvider, "https://gitlab.example/gitlab/api/v4", "https://gitlab.example"},
 		{adapter.ForgejoProvider, "https://forgejo.example", "https://forgejo.example"},
 	}
 	for _, tc := range cases {

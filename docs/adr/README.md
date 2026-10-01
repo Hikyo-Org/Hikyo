@@ -63,6 +63,7 @@ for its ripple register.
 | source-of-truth ADR | [source-of-truth.md](./source-of-truth.md) |
 | signed-upgrade-compatibility ADR | [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md) |
 | system-architecture ADR | [system-architecture.md](./system-architecture.md) |
+| generated-boundaries ADR (proposed) | [generated-boundaries.md](./generated-boundaries.md) |
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |
 | workload-push-delivery ADR (proposed) | [workload-push-delivery.md](./workload-push-delivery.md) |

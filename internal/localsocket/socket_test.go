@@ -60,6 +60,107 @@ func TestSameUserSocketRoundTripAndCustody(t *testing.T) {
 	}
 }
 
+func TestSocketRefusesReplaceableAncestorsBeforeCreatingFiles(t *testing.T) {
+	for _, mode := range []os.FileMode{0o777, 0o770} {
+		t.Run(mode.String(), func(t *testing.T) {
+			ancestor := t.TempDir()
+			if err := os.Chmod(ancestor, mode); err != nil {
+				t.Fatal(err)
+			}
+			parent := filepath.Join(ancestor, "private")
+			if err := os.Mkdir(parent, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(parent, "hikyo.sock")
+			if _, err := Listen(path); err == nil || !strings.Contains(err.Error(), "ancestor") {
+				t.Fatalf("replaceable ancestor error = %v", err)
+			}
+			for _, file := range []string{path, path + ".lock"} {
+				if _, err := os.Lstat(file); !os.IsNotExist(err) {
+					t.Fatalf("refused startup changed %s: %v", file, err)
+				}
+			}
+		})
+	}
+}
+
+func TestSocketAllowsTrustedStickyAncestor(t *testing.T) {
+	ancestor := t.TempDir()
+	if err := os.Chmod(ancestor, 0o777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(ancestor, "private")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePath(filepath.Join(parent, "hikyo.sock")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSocketRefusesHiddenReplaceableSymlinkHop(t *testing.T) {
+	base := t.TempDir()
+	safe := filepath.Join(base, "safe")
+	shared := filepath.Join(base, "shared")
+	parent := filepath.Join(safe, "private")
+	for _, dir := range []string{safe, shared, parent} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(shared, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	hop := filepath.Join(shared, "hop")
+	if err := os.Symlink(safe, hop); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{hop, "../shared/hop"} {
+		t.Run(target, func(t *testing.T) {
+			alias := filepath.Join(safe, "alias")
+			if err := os.Symlink(target, alias); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Remove(alias) })
+			path := filepath.Join(alias, "private", "hikyo.sock")
+			if _, err := Listen(path); err == nil || !strings.Contains(err.Error(), "ancestor") {
+				t.Fatalf("hidden replaceable hop error = %v", err)
+			}
+			for _, file := range []string{filepath.Join(parent, "hikyo.sock"), filepath.Join(parent, "hikyo.sock.lock")} {
+				if _, err := os.Lstat(file); !os.IsNotExist(err) {
+					t.Fatalf("refused startup changed %s: %v", file, err)
+				}
+			}
+		})
+	}
+}
+
+func TestSocketClosePreservesReplacementPath(t *testing.T) {
+	directory, err := os.MkdirTemp("", "hks-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	path := filepath.Join(directory, "hikyo.sock")
+	listener, err := Listen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if err := os.Rename(path, path+".original"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "replacement" {
+		t.Fatalf("close removed replacement: %q, %v", content, err)
+	}
+}
+
 func TestSocketRestartRecoversStaleSocketButPreservesLiveListener(t *testing.T) {
 	directory, err := os.MkdirTemp("", "hks-")
 	if err != nil {

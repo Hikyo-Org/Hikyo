@@ -1,4 +1,5 @@
 import { createClient, createConfig, type Client } from "@hikyo/runtime-core";
+import { boundedWorkspaceEvents } from './workspaceEvents.ts';
 
 import {
   dropWorkspaceSession,
@@ -15,14 +16,9 @@ async function hardenedWorkspaceFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const original = new Request(input, init);
-  // Advisory events are an intentionally long-lived incremental stream. Its
-  // generated reader owns cancellation and never buffers the complete body.
-  if (
+  const events =
     original.method === "GET" &&
-    new URL(original.url).pathname.endsWith("/events")
-  ) {
-    return globalThis.fetch(original);
-  }
+    new URL(original.url).pathname.endsWith("/events");
 
   const deadline = new AbortController();
   const timer = setTimeout(
@@ -32,6 +28,9 @@ async function hardenedWorkspaceFetch(
   const signal = AbortSignal.any([original.signal, deadline.signal]);
   try {
     const response = await globalThis.fetch(new Request(original, { signal }));
+    // Deadline bounds the handshake, not a healthy stream's lifetime. Each
+    // complete or incomplete frame is capped before the generated SSE parser.
+    if (events && response.ok) return boundedWorkspaceEvents(response, signal);
     const body = await readBoundedWorkspaceBody(
       response,
       signal,
@@ -42,7 +41,7 @@ async function hardenedWorkspaceFetch(
     // length on the locally buffered response would describe a different body.
     headers.delete("Content-Encoding");
     headers.set("Content-Length", String(body.byteLength));
-    return new Response(body, {
+    return new Response(response.body === null ? null : body, {
       status: response.status,
       statusText: response.statusText,
       headers,

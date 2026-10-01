@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { deferred } from '../testkit/ceremony.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   assertCompatible,
@@ -44,23 +45,6 @@ function sessionList(): Response {
   );
 }
 
-function deferredResponse(): {
-  readonly promise: Promise<Response>;
-  readonly resolve: (response: Response) => void;
-  readonly reject: (error: Error) => void;
-} {
-  let resolveResponse = (_response: Response): void => {
-    throw new Error("deferred response was not initialized");
-  };
-  let rejectResponse = (_error: Error): void => {
-    throw new Error("deferred response was not initialized");
-  };
-  const promise = new Promise<Response>((resolve, reject) => {
-    resolveResponse = resolve;
-    rejectResponse = reject;
-  });
-  return { promise, resolve: resolveResponse, reject: rejectResponse };
-}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -221,6 +205,25 @@ describe("remoteJSON deadlines", () => {
       readBoundedWorkspaceBody(response, new AbortController().signal, 4),
     ).rejects.toThrow(/exceeded 4 bytes/);
   });
+
+  it('oversize rejection does not wait for a hostile cancellation callback', async () => {
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(5)); },
+      cancel() { return new Promise<void>(() => undefined); },
+    }));
+    await expect(readBoundedWorkspaceBody(response, new AbortController().signal, 4))
+      .rejects.toThrow(/exceeded 4 bytes/);
+  });
+
+  it.each(['invalid', '999999999999999999999'])('invalid declared length %s cancels before reading', async (length) => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }), {
+      headers: { 'Content-Length': length },
+    });
+    await expect(readBoundedWorkspaceBody(response, new AbortController().signal, 4))
+      .rejects.toBeInstanceOf(WorkspaceError);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
 
 // The popup wait keeps the ceremony's own five-minute deadline, but a launcher
@@ -328,13 +331,10 @@ describe("probeWorkspace strike counting", () => {
 // A probe is asynchronous and the human is not. Closing a workspace and opening
 // a new one to the same origin while the old probe is still in flight used to
 // let the old probe's verdict delete the NEW session.
-describe("probeWorkspace session identity", () => {
-  it("ignores a completion about a session that has been replaced", async () => {
-    const response = deferredResponse();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => response.promise),
-    );
+describe('probeWorkspace session identity', () => {
+  it('ignores a completion about a session that has been replaced', async () => {
+    const response = deferred<Response>();
+    vi.stubGlobal('fetch', vi.fn(() => response.promise));
     rememberWorkspace(bearer);
     const inFlight = probeWorkspace(bearer);
 
@@ -356,12 +356,9 @@ describe("probeWorkspace session identity", () => {
   // probe fired with the pre-elevation value must not, on its stale 401, take
   // down the live elevated bearer that shares its session id, the drop is keyed
   // by local epoch, exactly as the transport's kill path is.
-  it("ignores a stale 401 for a value the same session has since rotated", async () => {
-    const response = deferredResponse();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => response.promise),
-    );
+  it('ignores a stale 401 for a value the same session has since rotated', async () => {
+    const response = deferred<Response>();
+    vi.stubGlobal('fetch', vi.fn(() => response.promise));
     rememberWorkspace(bearer);
     const inFlight = probeWorkspace(bearer);
 
@@ -375,12 +372,9 @@ describe("probeWorkspace session identity", () => {
     expect(workspaceBearer(bearer.origin)?.session).toBe("ses_1");
   });
 
-  it("does not report a stale successful probe as health for the replacement session", async () => {
-    const response = deferredResponse();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => response.promise),
-    );
+  it('does not report a stale successful probe as health for the replacement session', async () => {
+    const response = deferred<Response>();
+    vi.stubGlobal('fetch', vi.fn(() => response.promise));
     rememberWorkspace(bearer);
     const inFlight = probeWorkspace(bearer);
 
@@ -391,8 +385,8 @@ describe("probeWorkspace session identity", () => {
     expect(workspaceBearer(bearer.origin)?.session).toBe("ses_2");
   });
 
-  it("does not spend a stale failed probe against a replacement epoch", async () => {
-    const response = deferredResponse();
+  it('does not spend a stale failed probe against a replacement epoch', async () => {
+    const response = deferred<Response>();
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => response.promise)

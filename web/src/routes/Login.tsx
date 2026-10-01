@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { useAuthMethods } from '../api/account.ts';
 import { ApiError, parsed } from '../api/client.ts';
 import { readLastSignIn, rememberLastSignIn } from '../api/lastSignIn.ts';
+import { rememberSAMLTransaction } from '../api/samlTransaction.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
 import {
@@ -28,9 +29,13 @@ import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 /** A SAML provider's login leg: the same artifact as OIDC, over the SP-initiated redirect. */
 function useSAMLLogin() {
   return useSensitiveMutation({
-    mutationFn: (provider: string) =>
+    mutationFn: ({ provider }: { provider: string; returnTo?: string }) =>
       parsed(samlStartOp, { path: { provider }, body: { purpose: 'login' } }),
-    onSuccess: (result) => globalThis.location.assign(result.redirect_url),
+    onSuccess: (result, start) => {
+      const state = new URL(result.redirect_url).searchParams.get('RelayState') ?? '';
+      rememberSAMLTransaction(state, start.returnTo);
+      globalThis.location.assign(result.redirect_url);
+    },
   });
 }
 
@@ -85,7 +90,7 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
  * may address an org with `?org=<id>` (the link the Members panel hands out).
  *
  * Local credentials and configured OIDC or SAML providers establish the same
- * browser session. OIDC callbacks return through OIDCDone.
+ * browser session. Their callbacks return through OIDCDone or SAMLDone.
  *
  * Refusal presentation follows the locked rule that no state is carried by
  * colour alone: the message is text, it is announced through `role="alert"`,
@@ -232,7 +237,7 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
           rememberLastSignIn({ kind: 'provider', providerKind: provider.kind, slug: provider.slug });
           // The row names its protocol (a slug is unique per kind only); the
           // sign-up door admits the OIDC kind alone, so a SAML start signs in.
-          if (provider.kind === 'saml') saml.mutate(provider.slug);
+          if (provider.kind === 'saml') saml.mutate({ provider: provider.slug, ...(returnTo === undefined ? {} : { returnTo }) });
           else oidc.mutate({
             provider: provider.slug,
             intent: startIntent,

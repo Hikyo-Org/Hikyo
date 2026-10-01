@@ -1,10 +1,12 @@
 import { watchProjectEventsOp } from '@hikyo/operations';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { z } from 'zod';
 
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import type { MatrixRef } from './keys.ts';
 import type { TransportOptions } from './transport.tsx';
+import { browserCredentialGeneration, subscribeBrowserCredentials } from './sessionEpoch.ts';
+import { useWorkspaces, workspaceSession } from './workspace.ts';
 
 /**
  * The advisory event stream boundary (#510, system-architecture ADR §
@@ -198,7 +200,8 @@ export function advanceAdvisoryLiveness(
         ? previous
         : { connection, recoveries: previous.recoveries, lost: true };
     case 'connecting':
-      return previous.connection === 'connecting' ? previous : { ...previous, connection };
+      return previous.connection === 'connecting' ? previous
+        : { ...previous, connection, lost: previous.lost || previous.connection === 'healthy' };
     case 'healthy':
       if (previous.connection === 'healthy') {
         return previous;
@@ -322,6 +325,15 @@ export function useAdvisoryStream(
   onEvent: (event: AdvisoryEvent) => void,
   enabled: boolean,
 ): AdvisoryLiveness {
+  const browserGeneration = useSyncExternalStore(
+    subscribeBrowserCredentials, browserCredentialGeneration, browserCredentialGeneration,
+  );
+  // A remote remint publishes its new aggregate epoch through the workspace
+  // store. No bearer text is copied into subscription state or cache keys.
+  useWorkspaces();
+  const workspaceOrigin = transport.client?.getConfig().baseUrl;
+  const generation = workspaceOrigin === undefined ? browserGeneration
+    : workspaceSession(workspaceOrigin)?.epoch;
   const [state, setState] = useState<AdvisoryLiveness>(INITIAL_ADVISORY_LIVENESS);
   const live = useRef({ onEvent, transport });
   useEffect(() => {
@@ -333,7 +345,7 @@ export function useAdvisoryStream(
   // just (re)mounted, so its first connect is never a recovery. Reset during
   // render as the subscription identity changes, ahead of the effect that
   // re-subscribes, rather than with a setState inside the effect body.
-  useResetOnChange(`${enabled}\u0000${org}\u0000${project}`, () =>
+  useResetOnChange(`${enabled}\u0000${org}\u0000${project}\u0000${workspaceOrigin ?? ''}`, () =>
     setState(INITIAL_ADVISORY_LIVENESS),
   );
   useEffect(() => {
@@ -345,7 +357,9 @@ export function useAdvisoryStream(
       { org, project },
       live.current.transport,
       {
-        onEvent: (event) => live.current.onEvent(event),
+        onEvent: (event) => {
+          if (!stopped) live.current.onEvent(event);
+        },
         onState: (connection) => {
           if (!stopped) {
             setState((previous) => advanceAdvisoryLiveness(previous, connection));
@@ -357,7 +371,7 @@ export function useAdvisoryStream(
       stopped = true;
       void handle.stop();
     };
-  }, [enabled, org, project]);
+  }, [enabled, org, project, generation, workspaceOrigin]);
 
   return enabled ? state : INITIAL_ADVISORY_LIVENESS;
 }

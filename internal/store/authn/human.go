@@ -708,9 +708,21 @@ func (r *Resolver) DeleteSessionsForPrincipal(ctx context.Context, p domain.Prin
 // or removal, recovery-code consumption, administrative reset.
 func (r *Resolver) AdvanceGeneration(ctx context.Context, p domain.PrincipalID) error {
 	if r.sq != nil {
-		return r.sq.AdvancePrincipalGeneration(ctx, string(p))
+		if err := r.sq.AdvancePrincipalGeneration(ctx, string(p)); err != nil {
+			return err
+		}
+		if err := r.sq.DeletePendingLoginChallengesForPrincipal(ctx, string(p)); err != nil {
+			return err
+		}
+		return r.sq.DeletePendingWorkspaceHandoffsForPrincipal(ctx, nullString(string(p)))
 	}
-	return r.pg.AdvancePrincipalGeneration(ctx, string(p))
+	if err := r.pg.AdvancePrincipalGeneration(ctx, string(p)); err != nil {
+		return err
+	}
+	if err := r.pg.DeletePendingLoginChallengesForPrincipal(ctx, string(p)); err != nil {
+		return err
+	}
+	return r.pg.DeletePendingWorkspaceHandoffsForPrincipal(ctx, pgText(string(p)))
 }
 
 // nullString and pgText encode structural absence rather than an empty

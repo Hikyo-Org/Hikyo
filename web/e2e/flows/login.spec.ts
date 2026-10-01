@@ -156,6 +156,26 @@ async function expectOIDCDoneSurface(page: Page, theme: 'dark' | 'light') {
   });
 }
 
+async function expectSAMLDoneSurface(page: Page, theme: 'dark' | 'light') {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.goto('/auth/saml/done?state=not-started');
+  const card = page.locator('.login__card');
+  const heading = page.getByRole('heading', { name: 'Returning from your identity provider' });
+  const refusal = card.getByRole('alert');
+  const back = card.getByRole('link', { name: 'Return to sign in' });
+  await expect(refusal).toContainText('transaction is missing or already completed');
+  await expect(back).toHaveAttribute('href', '/login');
+  await expectPinnedAssertionSet(page, {
+    flow: 'login', surface: 'saml-done', theme,
+    text: [heading, refusal],
+    radii: [[card, 'container'], [back, 'control']],
+    fonts: [[heading, 'ui']],
+    colours: [[card, 'backgroundColor', '--bg-raise'], [card, 'borderTopColor', '--line']],
+    hairlines: [card],
+    density: [[back, '--control']],
+  });
+}
+
 async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
   await page.emulateMedia({ colorScheme: theme });
   await page.goto('/establish');
@@ -253,6 +273,9 @@ test.describe('login', () => {
   for (const theme of ['dark', 'light'] as const) {
     test(`OIDC done page meets the pinned assertion set in ${theme} mode`, async ({ page }) => {
       await expectOIDCDoneSurface(page, theme);
+    });
+    test(`SAML done page meets the pinned assertion set in ${theme} mode`, async ({ page }) => {
+      await expectSAMLDoneSurface(page, theme);
     });
   }
   test.beforeEach(async ({ context }) => {

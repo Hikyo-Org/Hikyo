@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
-	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 
@@ -161,57 +160,3 @@ func (a *TxAuthorizer) AuthenticateFederated(ctx context.Context, issuerID, subj
 // chokepoint first — every caller mints a proof through Authorize before
 // reaching here — but the rows are `class=authn`, so the reads and writes ride
 // the resolution surface, exactly as credential administration does.
-
-func (a *TxAuthorizer) CreateFederationIssuer(ctx context.Context, iss NewFederationIssuer) error {
-	return a.r.CreateFederationIssuer(ctx, iss)
-}
-
-// FederationIssuerByIssuer resolves a configuration by its BYTE-EXACT `iss`.
-func (a *TxAuthorizer) FederationIssuerByIssuer(ctx context.Context, issuer string) (FederationIssuer, error) {
-	return a.r.FederationIssuerByIssuer(ctx, issuer)
-}
-
-func (a *TxAuthorizer) FederationIssuerByID(ctx context.Context, id string) (FederationIssuer, error) {
-	return a.r.FederationIssuerByID(ctx, id)
-}
-
-func (a *TxAuthorizer) FederationIssuers(ctx context.Context) ([]FederationIssuer, error) {
-	return a.r.FederationIssuers(ctx)
-}
-
-func (a *TxAuthorizer) UpdateFederationIssuer(ctx context.Context, id string, source jwkssource.KeySource, refused []string, caBundle string, actor domain.PrincipalID, at time.Time) (bool, error) {
-	return a.r.UpdateFederationIssuer(ctx, id, source, refused, caBundle, actor, at)
-}
-
-func (a *TxAuthorizer) DeleteFederationIssuer(ctx context.Context, id string) (bool, error) {
-	return a.r.DeleteFederationIssuer(ctx, id)
-}
-
-// BindingsForIssuer is the delete guard's census: removing the issuer of a
-// live binding is an authorization change wearing a configuration change's
-// clothes.
-func (a *TxAuthorizer) BindingsForIssuer(ctx context.Context, id string) (int64, error) {
-	return a.r.BindingsForIssuer(ctx, id)
-}
-
-// ReactivateBinding records a restore-time re-validation (§ Restore). #76 owns
-// the operator ceremony; the write exists here because the refusal it drives
-// exists now.
-func (a *TxAuthorizer) ReactivateBinding(ctx context.Context, id string, at time.Time) (bool, error) {
-	return a.r.ReactivateBinding(ctx, id, at)
-}
-
-// PinGeneration reads the conditional cursor's pin component.
-func (a *TxAuthorizer) PinGeneration(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (int64, error) {
-	return a.r.PinGeneration(ctx, p, env)
-}
-
-// WorkloadPinState reads the conditional reveal-history admission fact.
-func (a *TxAuthorizer) WorkloadPinState(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (WorkloadPinState, error) {
-	return a.r.WorkloadPinState(ctx, p, env)
-}
-
-// SetPinGeneration advances it. #52 owns pin creation, reassignment and release.
-func (a *TxAuthorizer) SetPinGeneration(ctx context.Context, p domain.PrincipalID, env domain.EnvID, generation int64) error {
-	return a.r.SetPinGeneration(ctx, p, env, generation)
-}

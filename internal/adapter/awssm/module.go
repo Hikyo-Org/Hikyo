@@ -389,7 +389,7 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 		}
 		return change, rowFatal, gateErr
 	}
-	if mutated, err := m.apply(ctx, req, row, plan, token); err != nil {
+	if mutated, err := m.apply(ctx, req, row, plan, state, token); err != nil {
 		status, err := m.finishFailure(ctx, journal, effect, state, mutated, err)
 		if status == rowConflict {
 			change.Disposition = adapter.Conflict
@@ -402,7 +402,7 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 	return change, rowDone, nil
 }
 
-func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter.DesiredRow, plan writePlan, token string) (bool, error) {
+func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter.DesiredRow, plan writePlan, state adapter.LedgerState, token string) (bool, error) {
 	mutated := false
 	tags := map[string]string{adapter.SentinelName: req.Target.ID}
 	if plan.create {
@@ -411,13 +411,18 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
 		if IsExists(err) {
 			// Someone else won the race between DescribeSecret and create, or
-			// a replay of our own create landed. Only the tag can tell.
+			// a replay of our own create landed. Re-evaluate the complete
+			// ownership AND version policy, not merely the ownership tag.
 			meta, found, describeErr := m.describe(ctx, req.Target.Destination, row.EffectiveName)
 			if describeErr != nil {
 				return mutated, describeErr
 			}
 			if !found || meta.Tags[adapter.SentinelName] != req.Target.ID {
 				return mutated, fmt.Errorf("%w: secret %s was created outside Hikyo", adapter.ErrConflict, row.EffectiveName)
+			}
+			plan = decide(meta, true, state, req.Target.ID, token)
+			if plan.conflict != "" {
+				return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, plan.conflict)
 			}
 			mutated = true
 		} else if err != nil {

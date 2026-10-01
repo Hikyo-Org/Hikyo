@@ -4703,6 +4703,11 @@ paths:
         Destination, both Issuer legs, RelayState, InResponseTo and initiator
         binding must all resolve to the same live transaction before an
         ordinary session can be minted, linked or reauthenticated.
+        Successful browser requests accepting HTML continue with a 303 to
+        `/auth/saml/done?state=<validated RelayState>` and the ordinary session
+        and CSRF cookie pair. Requests with no HTML Accept range, including
+        application/json callers, retain the JSON response. Errors never
+        redirect or mint browser cookies.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [none, human-session]
       x-hikyo-min-revision: 1
@@ -4722,6 +4727,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LoginResult"
+        "303":
+          description: Successful browser transaction; continue on the state-bound SPA done page.
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":

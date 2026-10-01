@@ -13,6 +13,18 @@ let epoch = 0;
 let controller = new AbortController();
 let blocked = false;
 let cookie = '';
+let credentialGeneration = 0;
+const credentialListeners = new Set<() => void>();
+
+/** Credential remints restart streams even when their logical owner survives. */
+export function browserCredentialGeneration(): number {
+  return credentialGeneration;
+}
+
+export function subscribeBrowserCredentials(listener: () => void): () => void {
+  credentialListeners.add(listener);
+  return () => { credentialListeners.delete(listener); };
+}
 let onReplacement: (() => void) | undefined;
 let onRefusal: (() => void) | undefined;
 export type ExpectedSessionRotation = {
@@ -65,8 +77,13 @@ export function blockSessionEpoch(): void {
 }
 
 export function settleSessionEpoch(): void {
-  cookie = companion();
+  const nextCookie = companion();
   blocked = false;
+  if (cookie !== nextCookie) {
+    credentialGeneration += 1;
+    cookie = nextCookie;
+    for (const listener of credentialListeners) listener();
+  }
 }
 
 /** Detect cookie replacement even before a queued BroadcastChannel event runs. */

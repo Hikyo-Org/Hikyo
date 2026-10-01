@@ -217,7 +217,8 @@ var (
 // reduced to nothing is never sent.
 //
 // The returned channel closes when ctx ends, when the subscriber falls behind,
-// or when the instance shuts down. It never carries an error: a stream that
+// when its credential no longer authenticates, or when the instance shuts down.
+// It never carries an error: a stream that
 // dies is a reconnect, and a reconnect is a refetch.
 func (s *Revisions) Watch(ctx context.Context, actor Actor, scope domain.Scope) (<-chan AdvisoryEvent, error) {
 	if s.Advisory == nil {
@@ -254,6 +255,12 @@ func (s *Revisions) Watch(ctx context.Context, actor Actor, scope domain.Scope) 
 					Env: domain.EnvID(ev.EnvironmentID),
 				}
 				if err := s.authorize(ctx, actor, authz.OpAdvisoryEvent, envScope); err != nil {
+					if errors.Is(err, domain.ErrUnauthenticated) {
+						// A rotated/revoked credential cannot recover on this
+						// subscription. Close it so clients reconnect with their
+						// current credential and enable their polling fallback.
+						return
+					}
 					// Projection: an unauthorized reference is dropped, and an
 					// event that references only unauthorized objects is
 					// therefore not sent at all. A refusal is not an error on

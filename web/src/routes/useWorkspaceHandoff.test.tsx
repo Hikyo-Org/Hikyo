@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+import { deferred } from '../testkit/ceremony.ts';
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkspaceError, type PreparedWorkspace, type StepUpParams } from '../api/workspace.ts';
@@ -30,8 +31,6 @@ vi.mock('../api/workspace.ts', async (importOriginal) => {
     openPrepared: workspace.openPrepared,
   };
 });
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const origin = 'https://remote.example';
 const prepared: PreparedWorkspace = {
@@ -75,7 +74,7 @@ describe('useWorkspaceHandoff', () => {
 
     await act(async () => authorisation.resolve(undefined));
     expect(authorised).toHaveBeenCalledOnce();
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 
   it('exposes retry after preparation fails and leaves no false contacting state', async () => {
@@ -101,7 +100,7 @@ describe('useWorkspaceHandoff', () => {
       disabled: false,
       textContent: `Continue to ${origin} to sign in`,
     });
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 
   it('does not report a completed handoff after its consumer unmounts', async () => {
@@ -113,7 +112,7 @@ describe('useWorkspaceHandoff', () => {
     const mounted = await renderHandoff(authorised);
     await settle();
     act(() => action(mounted.container).click());
-    await unmount(mounted.root);
+    await mounted.unmount();
     await act(async () => authorisation.resolve(undefined));
 
     expect(authorised).not.toHaveBeenCalled();
@@ -132,7 +131,7 @@ describe('useWorkspaceHandoff', () => {
       'This workspace is no longer connected.',
     );
     expect(action(mounted.container)).toMatchObject({ disabled: false, textContent: 'Try again' });
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 
   it('replaces an in-flight contacting state immediately when preparation becomes unavailable', async () => {
@@ -140,13 +139,11 @@ describe('useWorkspaceHandoff', () => {
     const mounted = await renderHandoff(vi.fn());
     expect(action(mounted.container).textContent).toBe('Contacting…');
 
-    await act(async () =>
-      mounted.root.render(
-        <HandoffHarness
-          onAuthorised={vi.fn()}
-          preparation={{ kind: 'refused', message: 'Workspace disconnected.' }}
-        />,
-      ),
+    await mounted.rerender(
+      <HandoffHarness
+        onAuthorised={vi.fn()}
+        preparation={{ kind: 'refused', message: 'Workspace disconnected.' }}
+      />,
     );
 
     expect(mounted.container.textContent).not.toContain('Contacting…');
@@ -154,7 +151,7 @@ describe('useWorkspaceHandoff', () => {
       'Workspace disconnected.',
     );
     expect(action(mounted.container).textContent).toBe('Try again');
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 
   it('prepares once for stable step-up content and again when the target changes', async () => {
@@ -170,32 +167,28 @@ describe('useWorkspaceHandoff', () => {
     });
     await settle();
 
-    await act(async () =>
-      mounted.root.render(
-        <HandoffHarness
-          onAuthorised={vi.fn()}
-          preparation={{
-            kind: 'step-up',
-            params: { ...prepareArgs, keySet: ['key-1'] },
-          }}
-        />,
-      ),
+    await mounted.rerender(
+      <HandoffHarness
+        onAuthorised={vi.fn()}
+        preparation={{
+          kind: 'step-up',
+          params: { ...prepareArgs, keySet: ['key-1'] },
+        }}
+      />,
     );
     expect(workspace.prepareWorkspace).toHaveBeenCalledOnce();
 
-    await act(async () =>
-      mounted.root.render(
-        <HandoffHarness
-          onAuthorised={vi.fn()}
-          preparation={{
-            kind: 'step-up',
-            params: { ...prepareArgs, keySet: ['key-2'] },
-          }}
-        />,
-      ),
+    await mounted.rerender(
+      <HandoffHarness
+        onAuthorised={vi.fn()}
+        preparation={{
+          kind: 'step-up',
+          params: { ...prepareArgs, keySet: ['key-2'] },
+        }}
+      />,
     );
     expect(workspace.prepareWorkspace).toHaveBeenCalledTimes(2);
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 
   // Each attempt owns an AbortController. Disposal and supersession abort the
@@ -210,7 +203,7 @@ describe('useWorkspaceHandoff', () => {
       const request = workspace.prepareWorkspace.mock.calls[0]?.[1];
       expect(request?.signal.aborted).toBe(false);
 
-      await unmount(mounted.root);
+      await mounted.unmount();
       await settle();
 
       expect(request?.signal.aborted).toBe(true);
@@ -231,14 +224,12 @@ describe('useWorkspaceHandoff', () => {
         preparation: { kind: 'step-up', params },
       });
 
-      await act(async () =>
-        mounted.root.render(
-          <HandoffHarness
-            onAuthorised={vi.fn()}
-            onFailMessage={onFailMessage}
-            preparation={{ kind: 'step-up', params: { ...params, keySet: ['key-2'] } }}
-          />,
-        ),
+      await mounted.rerender(
+        <HandoffHarness
+          onAuthorised={vi.fn()}
+          onFailMessage={onFailMessage}
+          preparation={{ kind: 'step-up', params: { ...params, keySet: ['key-2'] } }}
+        />,
       );
 
       expect(workspace.prepareWorkspace).toHaveBeenCalledTimes(2);
@@ -246,7 +237,7 @@ describe('useWorkspaceHandoff', () => {
       expect(workspace.prepareWorkspace.mock.calls[1]?.[1].signal.aborted).toBe(false);
       expect(onFailMessage).not.toHaveBeenCalled();
       expect(action(mounted.container).textContent).toBe('Contacting…');
-      await unmount(mounted.root);
+      await mounted.unmount();
     });
 
     it('lands a deadline failure in the failed phase with retry available', async () => {
@@ -268,7 +259,7 @@ describe('useWorkspaceHandoff', () => {
       act(() => action(mounted.container).click());
       expect(action(mounted.container)).toMatchObject({ disabled: true, textContent: 'Contacting…' });
       expect(workspace.prepareWorkspace).toHaveBeenCalledTimes(2);
-      await unmount(mounted.root);
+      await mounted.unmount();
     });
 
     it('aborts the ceremony when its consumer unmounts while authorising', async () => {
@@ -283,7 +274,7 @@ describe('useWorkspaceHandoff', () => {
       const request = workspace.openPrepared.mock.calls[0]?.[1];
       expect(request?.signal.aborted).toBe(false);
 
-      await unmount(mounted.root);
+      await mounted.unmount();
       await settle();
 
       expect(request?.signal.aborted).toBe(true);
@@ -341,19 +332,13 @@ async function renderHandoff(
     readonly onFailMessage?: (error: unknown, stage: 'prepare' | 'authorise') => string;
   },
 ) {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () =>
-    root.render(
-      <HandoffHarness
-        onAuthorised={onAuthorised}
-        onFailMessage={options?.onFailMessage}
-        preparation={options?.preparation}
-      />,
-    ),
+  return renderForm(
+    <HandoffHarness
+      onAuthorised={onAuthorised}
+      onFailMessage={options?.onFailMessage}
+      preparation={options?.preparation}
+    />,
   );
-  return { container, root };
 }
 
 function action(container: HTMLElement): HTMLButtonElement {
@@ -364,25 +349,4 @@ function action(container: HTMLElement): HTMLButtonElement {
 
 async function settle(): Promise<void> {
   await act(async () => Promise.resolve());
-}
-
-async function unmount(root: Root): Promise<void> {
-  await act(async () => root.unmount());
-}
-
-function deferred<T>(): {
-  readonly promise: Promise<T>;
-  readonly resolve: (value: T) => void;
-} {
-  let resolvePromise: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
-    resolvePromise = resolve;
-  });
-  return {
-    promise,
-    resolve: (value) => {
-      if (resolvePromise === undefined) throw new Error('deferred promise was not initialised');
-      resolvePromise(value);
-    },
-  };
 }

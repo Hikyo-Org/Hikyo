@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: refs/heads/main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Pin checked-out main commit
         id: source
@@ -468,4 +468,5 @@ jobs:
         env:
           IMAGE: ${{ steps.inputs.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest || steps.existing.outputs.digest }}
+          IMAGE_BUILT: ${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}
         run: ./scripts/release/nightly-image.sh promote

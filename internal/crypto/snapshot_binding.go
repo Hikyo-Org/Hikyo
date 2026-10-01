@@ -119,12 +119,29 @@ func (b SnapshotBinding) StorageDir() (string, error) {
 // StorageKey identifies the complete locally known snapshot scope without
 // exposing any part of it in a filename. Run, render, config-only, credentials,
 // and target sets therefore retain independent offline caches and high-water
-// marks inside the same stack state directory.
+// marks inside the same stack state directory. The directory itself is only a
+// locator and does not affect this identity.
 func (b SnapshotBinding) StorageKey() (string, error) {
+	return b.storageKey(false)
+}
+
+// LegacyStorageKey identifies the former directory-dependent cache slot.
+// It is used only to retain existing high-water marks during migration.
+func (b SnapshotBinding) LegacyStorageKey() (string, error) {
+	return b.storageKey(true)
+}
+
+func (b SnapshotBinding) storageKey(includeLocator bool) (string, error) {
 	if err := b.validateScope(); err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(b.scope)
+	scope := b.scope
+	if !includeLocator {
+		// A filesystem locator is not part of credential or delivery identity.
+		// Moving the complete state directory must retain the same cache slot.
+		scope.StorageDir = ""
+	}
+	raw, err := json.Marshal(scope)
 	if err != nil {
 		return "", fmt.Errorf("crypto: marshal snapshot storage scope: %w", err)
 	}

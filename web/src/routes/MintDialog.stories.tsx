@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { expect, fn } from 'storybook/test';
 
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
-import { MintDialog } from './MachineAccess.tsx';
+import { MintDialog } from './machineAccess/Credentials.tsx';
 import type { MintLifecycle, MintRequest } from './mintLifecycle.ts';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -21,8 +21,8 @@ const request: MintRequest = {
   accountName: 'api-gateway',
   rotating: false,
   reach: [
-    { id: PROD, name: 'production' },
-    { id: STAGING, name: 'staging' },
+    { id: PROD, name: 'production', current: true, historical: false },
+    { id: STAGING, name: 'staging', current: true, historical: false },
   ],
 };
 
@@ -62,7 +62,7 @@ export const Reviewing: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('dialog', { name: 'Mint credential · api-gateway' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Use a passkey and mint' })).toBeEnabled();
-    await expect(canvas.getByText(/decrypts production, staging/)).toBeVisible();
+    await expect(canvas.getByText(/decrypts production \(current plaintext\), staging \(current plaintext\)/)).toBeVisible();
   },
 };
 

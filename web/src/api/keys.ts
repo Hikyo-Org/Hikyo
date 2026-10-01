@@ -17,6 +17,8 @@ export const revisionDetailKey = (env: EnvRef, revision: string) =>
   [...revisionDetailsKey(env), revision] as const;
 export const pinsKey = (env: EnvRef) =>
   ['revision-pins', env.org, env.project, env.environment] as const;
+export const environmentsKey = (ref: MatrixRef): readonly [string, string, string] =>
+  ['environments', ref.org, ref.project];
 export const projectRetentionKey = (ref: MatrixRef) =>
   ['project-retention', ref.org, ref.project] as const;
 export const matrixKeysKey = (ref: MatrixRef) =>

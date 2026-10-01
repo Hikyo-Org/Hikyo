@@ -33538,6 +33538,20 @@ func (response SamlACS200JSONResponse) VisitSamlACSResponse(w http.ResponseWrite
 	return err
 }
 
+type SamlACS303ResponseHeaders struct {
+	Location string
+}
+
+type SamlACS303Response struct {
+	Headers SamlACS303ResponseHeaders
+}
+
+func (response SamlACS303Response) VisitSamlACSResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(303)
+	return nil
+}
+
 type SamlACS400JSONResponse struct{ BadRequestJSONResponse }
 
 func (response SamlACS400JSONResponse) VisitSamlACSResponse(w http.ResponseWriter) error {

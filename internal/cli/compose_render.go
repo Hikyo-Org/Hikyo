@@ -45,6 +45,33 @@ func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags
 	if err != nil {
 		return false, nil, err
 	}
+	lock, err := stack.beginRender()
+	if err != nil {
+		return false, stack, err
+	}
+	defer lock.Close()
+	return composeRenderLocked(ctx, ios, stack, lock)
+}
+
+func (stack *composeStack) beginRender() (*compose.RenderLock, error) {
+	if stack.runtimeErr != nil {
+		return nil, stack.runtimeErr
+	}
+	// Establish and validate the private state directory before flock creates
+	// its file. The render phase reloads these same durable local keys.
+	if _, err := loadLocalKeys(stack.stateDir); err != nil {
+		return nil, err
+	}
+	lock, err := compose.NewWriter(stack.stateDir, nil).BeginRender(stack.cfgDir)
+	if err != nil {
+		return nil, failf(ExitRefused, "another hikyo compose process holds the lock for %s", stack.slug)
+	}
+	return lock, nil
+}
+
+// composeRenderLocked requires a caller-owned project lock. Sync retains it
+// through resolved Docker validation, apply, and applied-state bookkeeping.
+func composeRenderLocked(ctx context.Context, ios IO, stack *composeStack, lock *compose.RenderLock) (bool, *composeStack, error) {
 	snapshotBinding, err := stack.newSnapshotBinding(stack.cfg.TargetNames())
 	if err != nil {
 		return false, stack, failf(ExitRefused, "compose render: snapshot binding: %v", err)
@@ -70,13 +97,6 @@ func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags
 	if err != nil {
 		return false, stack, err
 	}
-
-	w := compose.NewWriter(stack.stateDir, nil)
-	lock, err := w.BeginRender(stack.cfgDir)
-	if err != nil {
-		return false, stack, failf(ExitRefused, "another hikyo compose process holds the lock for %s", stack.slug)
-	}
-	defer lock.Close()
 
 	// 1. Recover incomplete (torn) generations before anything reads them.
 	if err := lock.Recover(stack.runtimeDir); err != nil {

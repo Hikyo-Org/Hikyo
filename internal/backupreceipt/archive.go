@@ -214,7 +214,7 @@ func matchAuthenticatedManifest(plain io.Reader, receipt Receipt) error {
 	// restore. Here only the nested authority is interpreted, without duplicating
 	// or weakening that closed schema in this leaf package.
 	var members map[string]json.RawMessage
-	if definitions.DecodeStrict(raw, &members) != nil {
+	if definitions.RejectDuplicateMembers(raw) != nil || definitions.DecodeStrict(raw, &members) != nil {
 		return errors.New("invalid authenticated manifest JSON")
 	}
 	var format string

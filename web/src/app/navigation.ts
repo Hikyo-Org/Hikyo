@@ -401,6 +401,14 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'public',
     chrome: 'none',
   },
+  {
+    id: 'saml-done',
+    path: '/auth/saml/done',
+    label: 'Returning from identity provider',
+    section: null,
+    mode: 'public',
+    chrome: 'none',
+  },
 ]);
 
 export type Surface = (typeof SURFACES)[number];

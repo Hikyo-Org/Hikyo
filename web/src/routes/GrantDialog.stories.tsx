@@ -6,7 +6,7 @@ import type { z } from 'zod';
 import type { MachineEnvScope } from '../api/identities.ts';
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { serviceAccount as account } from '../testkit/machineAccess.ts';
-import { GrantDialog } from './MachineAccess.tsx';
+import { GrantDialog } from './machineAccess/EnvironmentGrants.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
@@ -57,6 +57,7 @@ const env = (n: number, name: string, read: boolean, reveal: boolean): MachineEn
   name,
   read,
   reveal,
+  revealHistory: false,
   report: false,
   origins: read ? [{ kind: 'direct', subject: 'dana@example.com' }] : [],
 });

@@ -13,10 +13,6 @@ package authz
 // and host access is operator-equivalent under the threat model already.
 
 import (
-	"context"
-	"time"
-
-	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 
@@ -25,41 +21,3 @@ type RestoreState = authn.RestoreState
 
 // PrincipalRef names a principal awaiting reconciliation.
 type PrincipalRef = authn.PrincipalRef
-
-// RestoreState reads the instance's restore posture.
-func (a *TxAuthorizer) RestoreState(ctx context.Context) (RestoreState, error) {
-	return a.r.RestoreState(ctx)
-}
-
-// AdvanceRestoreEpoch performs the restore's invalidation.
-func (a *TxAuthorizer) AdvanceRestoreEpoch(ctx context.Context, now time.Time) error {
-	return a.r.AdvanceRestoreEpoch(ctx, now)
-}
-
-func (a *TxAuthorizer) InvalidateRestoredAdapterCredentials(ctx context.Context) error {
-	return a.r.InvalidateRestoredAdapterCredentials(ctx)
-}
-
-func (a *TxAuthorizer) InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error {
-	return a.r.InvalidateRestoredExternalCredentials(ctx, now)
-}
-
-func (a *TxAuthorizer) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
-	return a.r.InvalidateRestoredDynamicProviderCredentials(ctx)
-}
-
-func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {
-	return a.r.HoldRestoredPKIIssuers(ctx)
-}
-
-// ReconcilePrincipal commits ONE principal's reconciliation. The signature is
-// the guarantee: one id in, one answer out. There is no set-taking sibling of
-// this method anywhere in the module, and the drill asserts that.
-func (a *TxAuthorizer) ReconcilePrincipal(ctx context.Context, p domain.PrincipalID) (bool, error) {
-	return a.r.ReconcilePrincipal(ctx, p)
-}
-
-// UnreconciledPrincipals lists who is still inert.
-func (a *TxAuthorizer) UnreconciledPrincipals(ctx context.Context) ([]PrincipalRef, error) {
-	return a.r.UnreconciledPrincipals(ctx)
-}

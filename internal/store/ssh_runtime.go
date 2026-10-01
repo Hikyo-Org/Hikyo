@@ -41,27 +41,7 @@ type SSHSweepCandidate struct {
 // ListLiveCertificates pages through issued, unexpired certificates by id.
 func (r *SSHRuntime) ListLiveCertificates(ctx context.Context, now time.Time, afterID string, limit int) ([]SSHSweepCandidate, error) {
 	return dbReadResult(ctx, r.db, func(db adapterDB) ([]SSHSweepCandidate, error) {
-		query := db.SQL(`SELECT c.id,c.org_id,c.project_id,c.environment_id,c.profile_id,c.serial,c.requester_principal_id,c.requester_class,
-CASE WHEN q.principal_id IS NULL THEN 0 ELSE 1 END
-FROM ssh_certificates c
-LEFT JOIN ssh_profile_requesters q ON q.profile_id=c.profile_id AND q.principal_id=c.requester_principal_id AND q.org_id=c.org_id AND q.project_id=c.project_id AND q.environment_id=c.environment_id
-WHERE c.state='issued' AND c.valid_before>? AND c.id>? ORDER BY c.id LIMIT ?`)
-		rows, err := db.Query(ctx, query, db.Stamp(now), afterID, limit)
-		if err != nil {
-			return nil, err
-		}
-		defer closeAdapterRows(rows)
-		var out []SSHSweepCandidate
-		for rows.Next() {
-			var c SSHSweepCandidate
-			var listed int
-			if err := rows.Scan(&c.ID, &c.OrgID, &c.ProjectID, &c.EnvironmentID, &c.ProfileID, &c.Serial, &c.RequesterPrincipalID, &c.RequesterClass, &listed); err != nil {
-				return nil, err
-			}
-			c.RequesterListed = listed == 1
-			out = append(out, c)
-		}
-		return out, rows.Err()
+		return db.sshQueries().sshLiveCertificates(ctx, now, afterID, limit)
 	})
 }
 
@@ -77,8 +57,7 @@ func (r *SSHRuntime) RevokeForAuthority(ctx context.Context, c SSHSweepCandidate
 	var changed bool
 	err := dbTransaction(ctx, r.db, func(tx adapterDBTX) error {
 		changed = false
-		update := tx.SQL(`UPDATE ssh_certificates SET state='revoked',revoked_at=?,revocation_reason='authority-withdrawn' WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='issued'`)
-		n, err := tx.Exec(ctx, update, tx.Stamp(at), c.ID, c.OrgID, c.ProjectID, c.EnvironmentID)
+		n, err := tx.sshQueries().sshRevokeForAuthority(ctx, c, at)
 		if err != nil {
 			return err
 		}
@@ -90,13 +69,7 @@ func (r *SSHRuntime) RevokeForAuthority(ctx context.Context, c SSHSweepCandidate
 		if err != nil {
 			return err
 		}
-		insert := tx.SQLPerEngine(
-			`INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES (?,?,1,?,0,?,NULL,'system',?,'env',?,?,?,'ssh-certificate',?,'success',?,'system',?)`,
-			`INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES ($1,$2,1,$3,false,$4,NULL,'system',$5,'env',$6,$7,$8,'ssh-certificate',$9,'success',$10,'system',$11)`)
-		stamp := tx.Stamp(at)
-		_, err = tx.Exec(ctx, insert, "sau_"+uuid.Must(uuid.NewV7()).String(), "ssh.certificate_revoked", stamp, stamp,
-			c.RequesterPrincipalID, c.OrgID, c.ProjectID, c.EnvironmentID, c.ID, c.ID, string(payload))
-		return err
+		return tx.sshQueries().sshRevocationAudit(ctx, c, at, "sau_"+uuid.Must(uuid.NewV7()).String(), string(payload))
 	})
 	return changed, err
 }
@@ -106,12 +79,9 @@ func (r *SSHRuntime) RevokeForAuthority(ctx context.Context, c SSHSweepCandidate
 // signed by a key hosts still trust).
 func (r *SSHRuntime) Gauges(ctx context.Context, now time.Time) (active, krlEntries int64, err error) {
 	err = dbRead(ctx, r.db, func(db adapterDB) error {
-		stamp := db.Stamp(now)
-		if err := db.QueryRow(ctx, db.SQL(`SELECT COUNT(*) FROM ssh_certificates WHERE state='issued' AND valid_before>?`), stamp).Scan(&active); err != nil {
-			return err
-		}
-		return db.QueryRow(ctx, db.SQL(`SELECT COUNT(*) FROM ssh_certificates c JOIN ssh_ca_keys k ON k.id=c.ca_key_id
-WHERE c.state='revoked' AND c.valid_before>? AND (k.state='active' OR (k.state='retiring' AND k.retire_after>?))`), stamp, stamp).Scan(&krlEntries)
+		var err error
+		active, krlEntries, err = db.sshQueries().sshGauges(ctx, now)
+		return err
 	})
 	if err != nil {
 		return 0, 0, err

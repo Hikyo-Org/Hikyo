@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+import { deferred } from '../testkit/ceremony.ts';
 import { act, createRef, type ReactNode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -33,8 +34,6 @@ vi.mock('../api/workspace.ts', async (importOriginal) => {
     openPrepared: workspace.openPrepared,
   };
 });
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const origin = 'https://remote.example';
 const prepared: PreparedWorkspace = {
@@ -91,7 +90,7 @@ describe('workspace handoff consumers', () => {
     expect(buttonNamed(mounted.container, `Continue to ${origin} to authorise`)).toMatchObject({
       disabled: false,
     });
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 
   it('keeps WorkspaceScope disabled while sign-in is pending without preparing twice', async () => {
@@ -112,16 +111,12 @@ describe('workspace handoff consumers', () => {
     expect(workspace.openPrepared).toHaveBeenCalledOnce();
 
     await act(async () => authorisation.resolve(undefined));
-    await unmount(mounted.root);
+    await mounted.unmount();
   });
 });
 
 async function render(element: ReactNode) {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => root.render(element));
-  return { container, root };
+  return renderForm(element);
 }
 
 function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
@@ -134,25 +129,4 @@ function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
 
 async function settle(): Promise<void> {
   await act(async () => Promise.resolve());
-}
-
-async function unmount(root: Root): Promise<void> {
-  await act(async () => root.unmount());
-}
-
-function deferred<T>(): {
-  readonly promise: Promise<T>;
-  readonly resolve: (value: T) => void;
-} {
-  let resolvePromise: ((value: T) => void) | undefined;
-  const promise = new Promise<T>((resolve) => {
-    resolvePromise = resolve;
-  });
-  return {
-    promise,
-    resolve: (value) => {
-      if (resolvePromise === undefined) throw new Error('deferred promise was not initialised');
-      resolvePromise(value);
-    },
-  };
 }

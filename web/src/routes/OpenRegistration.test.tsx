@@ -153,6 +153,28 @@ afterEach(() => {
 });
 
 describe("OpenRegistrationPanel", () => {
+  it('retires editor drafts and proof gates when organisation scope changes', async () => {
+    const onChanged = vi.fn();
+    const panel = (org: string) => <OpenRegistrationPanel
+      scope={{ kind: 'org', org }} scopeName={org} origin="https://hikyo.example"
+      authorityName={(principal) => principal} onChanged={onChanged}
+    />;
+    const { container, rerender, unmount } = await renderForm(panel('org_first'));
+    await click(buttonNamed(container, 'Open registration…'));
+    expect(container.textContent).toContain('Corporate IdP');
+    await rerender(panel('org_second'));
+    expect(container.textContent).not.toContain('Corporate IdP');
+    expect(container.textContent).toContain('org_second');
+    mocks.policy.data = policyOf({});
+    await rerender(panel('org_second'));
+    await click(buttonNamed(container, 'Close registration'));
+    expect(container.textContent).toContain('To close registration');
+    await rerender(panel('org_third'));
+    expect(container.textContent).not.toContain('To close registration');
+    expect(mocks.put).not.toHaveBeenCalled();
+    expect(mocks.del).not.toHaveBeenCalled();
+    await unmount();
+  });
   it("shows a closed scope and refuses an empty policy before any proof is asked", async () => {
     const { rendered } = mount({ kind: "org", org: "org_acme" });
     const { container, unmount } = await rendered;

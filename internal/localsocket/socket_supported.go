@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,8 +18,8 @@ import (
 )
 
 // ValidatePath requires an absolute canonical socket path inside an existing,
-// euid-owned 0700 directory. The private parent prevents another local user
-// from replacing the pathname between validation and bind or dial.
+// euid-owned 0700 directory. Every ancestor must also prevent another local
+// user from replacing the directory entry, including through symbolic links.
 func ValidatePath(path string) error {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return errors.New("local CLI socket path must be absolute and canonical")
@@ -36,6 +37,64 @@ func ValidatePath(path string) error {
 	}
 	if err := requireOwner(parent, info); err != nil {
 		return err
+	}
+	if err := validateAncestors(parent); err != nil {
+		return err
+	}
+	resolved, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return fmt.Errorf("resolve local CLI socket parent: %w", err)
+	}
+	return validateAncestors(resolved)
+}
+
+// Root and this euid are trusted custodians. Sticky directories owned by
+// either (for example /tmp) protect the next owned entry against other users.
+// Inspect every symlink target hierarchy, not just the final resolved path:
+// a trusted alias may reach a safe directory through a replaceable middle hop.
+func validateAncestors(parent string) error {
+	return validateAncestorTargets(parent, make(map[string]bool), 0)
+}
+
+func validateAncestorTargets(parent string, checked map[string]bool, depth int) error {
+	if depth > 40 {
+		return errors.New("local CLI socket ancestor symlink chain is too deep")
+	}
+	if checked[parent] {
+		return nil
+	}
+	checked[parent] = true
+	current := string(filepath.Separator)
+	for _, component := range append([]string{""}, strings.Split(strings.TrimPrefix(parent, current), current)...) {
+		// Preserve dot segments until the kernel resolves them. Cleaning a
+		// relative link containing ".." can hide the hierarchy it traverses.
+		if component != "" {
+			current = strings.TrimSuffix(current, string(filepath.Separator)) + string(filepath.Separator) + component
+		}
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("inspect local CLI socket ancestor: %w", err)
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || (stat.Uid != 0 && uint32(stat.Uid) != uint32(os.Geteuid())) {
+			return fmt.Errorf("local CLI socket ancestor %s must be owned by root or uid %d", current, os.Geteuid())
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(current)
+			if err != nil {
+				return fmt.Errorf("read local CLI socket ancestor link: %w", err)
+			}
+			if !filepath.IsAbs(target) {
+				target = current[:strings.LastIndex(current, string(filepath.Separator))+1] + target
+			}
+			if err := validateAncestorTargets(target, checked, depth+1); err != nil {
+				return err
+			}
+			continue
+		}
+		if !info.IsDir() || (info.Mode().Perm()&0o022 != 0 && info.Mode()&os.ModeSticky == 0) {
+			return fmt.Errorf("local CLI socket ancestor %s permits another user to replace path entries", current)
+		}
 	}
 	return nil
 }
@@ -59,16 +118,35 @@ func Listen(path string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	listener.SetUnlinkOnClose(true)
-	if err := os.Chmod(path, 0o600); err != nil {
+	listener.SetUnlinkOnClose(false)
+	created, err := os.Lstat(path)
+	if err != nil {
 		_ = listener.Close()
-		return nil, fmt.Errorf("secure local CLI socket: %w", err)
+		return nil, fmt.Errorf("inspect created local CLI socket: %w", err)
 	}
-	if err := validateSocket(path); err != nil {
+	if created.Mode()&os.ModeSocket == 0 || created.Mode()&os.ModeSymlink != 0 {
+		_ = listener.Close()
+		return nil, errors.New("created local CLI socket pathname was replaced")
+	}
+	if err := requireOwner(path, created); err != nil {
 		_ = listener.Close()
 		return nil, err
 	}
-	return &sameUserListener{Listener: listener, uid: uint32(os.Geteuid())}, nil
+	secure := &sameUserListener{Listener: listener, uid: uint32(os.Geteuid()), path: path, created: created}
+	if err := unix.Fchmodat(unix.AT_FDCWD, path, 0o600, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		_ = secure.Close()
+		return nil, fmt.Errorf("secure local CLI socket: %w", err)
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(created, current) {
+		_ = secure.Close()
+		return nil, errors.New("local CLI socket changed while securing it")
+	}
+	if err := validateSocket(path); err != nil {
+		_ = secure.Close()
+		return nil, err
+	}
+	return secure, nil
 }
 
 // Keep the lock inode after release: unlinking it would let a concurrent
@@ -150,7 +228,19 @@ func DialContext(ctx context.Context, path string) (net.Conn, error) {
 
 type sameUserListener struct {
 	net.Listener
-	uid uint32
+	uid     uint32
+	path    string
+	created os.FileInfo
+}
+
+func (l *sameUserListener) Close() error {
+	err := l.Listener.Close()
+	if current, statErr := os.Lstat(l.path); statErr == nil && os.SameFile(l.created, current) {
+		if removeErr := os.Remove(l.path); err == nil {
+			err = removeErr
+		}
+	}
+	return err
 }
 
 func (l *sameUserListener) Accept() (net.Conn, error) {

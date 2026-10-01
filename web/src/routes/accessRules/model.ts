@@ -564,6 +564,13 @@ export function selfSaveRefusal(before: Rule | null, draft: Rule, actingPrincipa
   return 'This change needs multiple requests, but the first would end your session before the rest finish. Ask another administrator to change your access.';
 }
 
+/** Separate creates and revokes cannot represent one atomic authority change. */
+export function replacementSaveRefusal(before: Rule | null, draft: Rule): string | null {
+  const plan = savePlan(before, draft);
+  if (plan.create.length === 0 || plan.revoke.length === 0) return null;
+  return 'This edit requires atomic rule replacement, which this server does not provide. No changes were sent. Keep the existing rule until atomic replacement is available; separate requests could expose combined permissions.';
+}
+
 /** A multi-part self-removal has the same partial-commit risk as a self-edit. */
 export function selfRemoveRefusal(rule: Rule, actingPrincipal: string): string | null {
   if (rule.member !== actingPrincipal || rule.source.kind !== 'rule' || rule.source.parts.length <= 1) return null;

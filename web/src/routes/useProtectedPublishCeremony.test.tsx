@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 import { act, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RevealWindow } from '../api/values.ts';
 import { deferred, revealWindow } from '../testkit/ceremony.ts';
-import { settle } from '../testkit/renderForm.tsx';
+import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 
 const mocks = vi.hoisted(() => ({
@@ -51,10 +50,7 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
     mocks.fetchRevealWindow
       .mockImplementationOnce(() => firstWindow.promise)
       .mockImplementationOnce(() => secondWindow.promise);
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { container, unmount } = await renderForm(<Harness />);
     const firstComplete = vi.fn();
     const secondComplete = vi.fn();
     const target = [{
@@ -76,15 +72,12 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
     expect(secondComplete).toHaveBeenCalledTimes(1);
     expect(firstComplete).not.toHaveBeenCalled();
     expect(container.textContent).toBe('idle');
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('keeps current-task ceremony success behavior', async () => {
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(false));
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { container, unmount } = await renderForm(<Harness />);
     const complete = vi.fn();
 
     await act(async () => {
@@ -99,15 +92,12 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
 
     expect(complete).toHaveBeenCalledTimes(1);
     expect(container.textContent).toBe('idle');
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('keeps current-task refusal feedback', async () => {
     mocks.fetchRevealWindow.mockRejectedValueOnce(new Error('window unavailable'));
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { unmount } = await renderForm(<Harness />);
 
     await act(async () => {
       await guard().run([{
@@ -118,7 +108,7 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
     });
 
     expect(guard().error).toBe('guard failed: window unavailable');
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('skips an unprotected merge ceremony', async () => {
@@ -126,10 +116,7 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
       ...revealWindow(false),
       protected: false,
     });
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { unmount } = await renderForm(<Harness />);
     const complete = vi.fn();
 
     await act(async () => {
@@ -143,7 +130,7 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
 
     expect(complete).toHaveBeenCalledTimes(1);
     expect(guard().request).toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('requires an approve ceremony even in an unprotected environment', async () => {
@@ -151,10 +138,7 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
       ...revealWindow(false),
       protected: false,
     });
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { unmount } = await renderForm(<Harness />);
     const complete = vi.fn();
 
     await act(async () => {
@@ -168,16 +152,13 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
 
     expect(guard().request?.purpose).toBe('approve');
     expect(complete).not.toHaveBeenCalled();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('does not reuse a live operation-bound workspace window', async () => {
     mocks.transport.client = {};
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { unmount } = await renderForm(<Harness />);
     const complete = vi.fn();
 
     await act(async () => {
@@ -191,6 +172,6 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
 
     expect(guard().request?.purpose).toBe('restore');
     expect(complete).not.toHaveBeenCalled();
-    await act(async () => root.unmount());
+    await unmount();
   });
 });

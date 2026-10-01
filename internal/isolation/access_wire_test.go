@@ -7,11 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -595,41 +592,5 @@ func runProjectListingDoesNotReadSiblings(t *testing.T, db *store.DB) {
 	}
 	if orgLines < before+20 {
 		t.Fatalf("the org listing saw %d rows, want at least %d — the sibling seeding did not land", orgLines, before+20)
-	}
-}
-
-// TestQueryObserverIsTestOnly pins the claim each observation seam's own doc
-// comment makes: no production call site. A production caller
-// would install a global mutable on the resolution surface and pay a callback
-// on every query — a real cost and a real shared-state hazard, for a hook that
-// exists only so the acceptance suite can measure the service path.
-func TestQueryObserverIsTestOnly(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return err
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		// The declaration itself lives in the package that owns the seam;
-		// every other non-test mention is a production call site.
-		for seam, home := range map[string]string{
-			"SetQueryObserver":           filepath.Join("internal", "store", "authn", "authn.go"),
-			"SetMutationFailureObserver": filepath.Join("internal", "store", "authn", "authn.go"),
-			"SetSCIMPhaseObserver":       filepath.Join("internal", "service", "scim.go"),
-		} {
-			if bytes.Contains(body, []byte(seam)) && !strings.HasSuffix(path, home) {
-				t.Errorf("%s names %s outside a test — the seam is test-only", path, seam)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }

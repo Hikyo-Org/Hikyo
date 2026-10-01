@@ -97,6 +97,9 @@ func runSelfConfig(ctx context.Context, ios IO, sub string, args []string) error
 		} else if to != "" {
 			return failf(ExitUsage, "--to is only valid for test-email")
 		} else {
+			// Emit the exact retry key before the first durable request. A
+			// preparation or browser failure must not hide a live job's key.
+			fmt.Fprintf(ios.Stderr, "Apply retry key: --idempotency-key %s (revision %d, expected generation %d).\n", idempotency, revision, expected)
 			prepareOnly := true
 			request := apigen.InstanceConfigApplyRequest{
 				Revision: revision, ExpectedGeneration: expected, SchemaVersion: target.SchemaVersion,
@@ -107,7 +110,7 @@ func runSelfConfig(ctx context.Context, ios IO, sub string, args []string) error
 				return err
 			}
 			if prepared.Job == nil || prepared.Job.Prepared == nil || !*prepared.Job.Prepared {
-				return failf(ExitRefused, "instance-config apply did not finish preparing the exact deployment plan; retry with the same --idempotency-key")
+				return failf(ExitRefused, "instance-config apply did not finish preparing the exact deployment plan; retry with --idempotency-key %s", idempotency)
 			}
 			request.PrepareOnly = nil
 			request.PlanDigest = prepared.Job.PlanDigest

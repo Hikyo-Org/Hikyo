@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MachineEnvScope, ServiceAccount } from '../api/identities.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
-import { GrantDialog } from './MachineAccess.tsx';
+import { GrantDialog } from './machineAccess/EnvironmentGrants.tsx';
+
+const passkey = vi.hoisted(() => vi.fn<() => Promise<void>>());
+vi.mock('../api/values.ts', async (original) => ({
+  ...(await original<typeof import('../api/values.ts')>()),
+  runPasskeyCeremony: passkey,
+}));
 
 const ACCOUNT: ServiceAccount = {
   id: 'svc_a',
@@ -54,11 +60,42 @@ describe('GrantDialog with nothing to widen', () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  passkey.mockReset();
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
+
+it.each([false, true])('reauthenticates once for a read grant that newly reaches historical plaintext (current=%s)', async (current) => {
+  const environment = 'env_123e4567-e89b-12d3-a456-426614174010';
+  const order: string[] = [];
+  passkey.mockImplementation(async () => { order.push('reauth'); });
+  vi.stubGlobal('fetch', vi.fn((input: Parameters<typeof fetch>[0]) => {
+    const request = input instanceof Request ? input : new Request(input);
+    if (request.method === 'POST' && new URL(request.url).pathname.endsWith('/grants')) {
+      order.push('grant');
+      return Promise.resolve(jsonResponse({ grant_id: 'grt_123e4567-e89b-12d3-a456-426614174030', capability: 'read', outcome: 'created' }));
+    }
+    return Promise.resolve(jsonResponse({ items: [], count: 0, schema_revision: 1 }));
+  }));
+  document.cookie = '__Host-hikyo-csrf=token';
+  const { container, unmount } = await renderForm(<GrantDialog
+    project={{ org: 'org_acme', project: 'prj_payments' }} account={ACCOUNT}
+    scope={[{ id: environment, name: 'production', read: false, reveal: current, revealHistory: true, report: false, origins: [] }]}
+    machineReveal mayGrantReporting={false} liveCredentials={1} onClose={vi.fn()} onGranted={vi.fn()}
+  />);
+  await settleTask();
+  expect(container.textContent).toContain(current ? 'current and historical plaintext' : 'historical plaintext');
+  const button = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Grant read');
+  if (button === undefined) throw new Error('The reviewed read grant has no submit button.');
+  expect(button.disabled).toBe(false);
+  await act(async () => button.click());
+  await settleTask();
+  expect(passkey).toHaveBeenCalledExactlyOnceWith({ operation: 'mint', environmentId: environment, keyIds: [] });
+  expect(order).toEqual(['reauth', 'grant']);
+  await unmount();
+});
 
 describe('GrantDialog while a grant is in flight', () => {
   // A report-only grant can take the last grantable option. The grant
@@ -76,6 +113,7 @@ describe('GrantDialog while a grant is in flight', () => {
       name: 'production',
       read: true,
       reveal: false,
+      revealHistory: false,
       report: false,
       origins: [],
     };

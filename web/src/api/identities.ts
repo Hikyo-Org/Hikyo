@@ -15,6 +15,7 @@ import { zGrantList, zKeyList, zMachineCredentialList, zServiceAccountList } fro
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { useTransport } from './transport.tsx';
 
@@ -393,6 +394,8 @@ export type MachineEnvScope = {
   readonly read: boolean;
   /** `reveal` is the standing decryption capability, the ◆ in the prototype. */
   readonly reveal: boolean;
+  /** Historical plaintext is a separate standing capability, requiring read as well. */
+  readonly revealHistory: boolean;
   /** `report-delivery-status`: the controller may send value-free status reports (#790). */
   readonly report: boolean;
   /** Every origin behind the grant rows that reach this environment, deduplicated. */
@@ -423,6 +426,7 @@ export function scopeOf(
     const rows = [
       ...reaching('read', env.id),
       ...reaching('reveal', env.id),
+      ...reaching('reveal-history', env.id),
       ...reaching('report-delivery-status', env.id),
     ];
     const origins = new Map(
@@ -433,6 +437,7 @@ export function scopeOf(
       name: env.name,
       read: reaching('read', env.id).length > 0,
       reveal: reaching('reveal', env.id).length > 0,
+      revealHistory: reaching('reveal-history', env.id).length > 0,
       report: reaching('report-delivery-status', env.id).length > 0,
       origins: [...origins.values()].map(({ kind, subject }) => ({ kind, subject })),
     };
@@ -443,12 +448,32 @@ export function scopeOf(
  * postStateReach is the environments a credential of this account can decrypt:
  * the set the mint's disclosure conjunct ranges over.
  *
- * `read` is required as well as `reveal`, mirroring the server: no read means
+ * `read` is required as well as `reveal` or `reveal-history`, mirroring the server: no read means
  * no delivery at all, so neither disclosure capability reaches plaintext
  * however it is granted.
  */
-export function postStateReach(scope: readonly MachineEnvScope[]): MachineEnvScope[] {
-  return scope.filter((s) => s.read && s.reveal);
+export type MachineDisclosureReach = {
+  readonly id: string;
+  readonly name: string;
+  readonly current: boolean;
+  readonly historical: boolean;
+};
+
+export function disclosureReachText(reach: readonly MachineDisclosureReach[]): string {
+  return reach.map((environment) => {
+    const classes = environment.current && environment.historical
+      ? 'current and historical plaintext'
+      : environment.historical ? 'historical plaintext' : 'current plaintext';
+    return `${environment.name} (${classes})`;
+  }).join(', ');
+}
+
+export function postStateReach(scope: readonly MachineEnvScope[]): MachineDisclosureReach[] {
+  return scope.flatMap((environment) => {
+    const current = environment.read && environment.reveal;
+    const historical = environment.read && environment.revealHistory;
+    return current || historical ? [{ id: environment.id, name: environment.name, current, historical }] : [];
+  });
 }
 
 /**
@@ -461,22 +486,24 @@ export function postStateReach(scope: readonly MachineEnvScope[]): MachineEnvSco
  * this server-side, and a client that asked for a ceremony over the whole
  * post-state would prompt for authority the server never consumes.
  *
- * For a `read` grant the delta is empty unless the account already holds
- * `reveal` there, which is why it is vacuous today: the machine allowlist
- * admits `read` and nothing else on a workload principal.
+ * A `read` grant can newly activate either existing disclosure capability.
+ * Current and historical deltas are separate even when they share an environment.
  */
 export function grantWideningReach(
   scope: readonly MachineEnvScope[],
   environmentId: string,
   capability: MachineGrantCapability,
-): MachineEnvScope[] {
-  const after = scope.map((s) =>
-    s.id === environmentId
-      ? { ...s, read: s.read || capability === 'read', reveal: s.reveal || capability === 'reveal' }
-      : s,
-  );
-  const before = new Set(postStateReach(scope).map((s) => s.id));
-  return postStateReach(after).filter((s) => !before.has(s.id));
+): MachineDisclosureReach[] {
+  return scope.flatMap((environment) => {
+    const selected = environment.id === environmentId;
+    const read = environment.read || (selected && capability === 'read');
+    const reveal = environment.reveal || (selected && capability === 'reveal');
+    // Diff the classes independently. Existing historical reach does not make
+    // a newly added current-plaintext path (or vice versa) vacuous.
+    const current = read && reveal && !(environment.read && environment.reveal);
+    const historical = read && environment.revealHistory && !(environment.read && environment.revealHistory);
+    return current || historical ? [{ id: environment.id, name: environment.name, current, historical }] : [];
+  });
 }
 
 /** The capabilities the machine-access grant dialog hands out. */
@@ -830,25 +857,14 @@ export function serviceAccountNameRefusal(name: string): string | null {
  * the wrong place.
  */
 export function createServiceAccountRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'The server refused that name: it must be 1–64 bytes. Nothing was created.';
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before creating a service account.';
-      case 403:
-        return 'Creating a service account needs manage-identities on this project. Nothing was created.';
-      case 404:
-        return 'This project is no longer here, or you may not administer its identities. Nothing was created.';
-      case 409:
-        return 'That name is already used by a live service account here, or this project has reached a service-account limit. Choose another name. Nothing was created.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The service account could not be created (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The service account could not be created.';
+  return statusText(error, {
+    400: 'The server refused that name: it must be 1–64 bytes. Nothing was created.',
+    401: 'The session could not be authenticated. Reload and sign in before creating a service account.',
+    403: 'Creating a service account needs manage-identities on this project. Nothing was created.',
+    404: 'This project is no longer here, or you may not administer its identities. Nothing was created.',
+    409: 'That name is already used by a live service account here, or this project has reached a service-account limit. Choose another name. Nothing was created.',
+    429: commonRefusalText.requests,
+  }, 'The service account could not be created.', (error) => `The service account could not be created (server error ${String(error.status)}).`);
 }
 
 /**
@@ -859,21 +875,12 @@ export function createServiceAccountRefusalText(error: unknown): string {
  * contract. A 404 is the concurrent-deletion case: already gone.
  */
 export function deleteServiceAccountRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before deleting a service account.';
-      case 403:
-        return 'Deleting a service account needs manage-identities on this project.';
-      case 404:
-        return 'That service account is no longer here; someone may have deleted it already.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The service account could not be deleted (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The service account could not be deleted.';
+  return statusText(error, {
+    401: 'The session could not be authenticated. Reload and sign in before deleting a service account.',
+    403: 'Deleting a service account needs manage-identities on this project.',
+    404: 'That service account is no longer here; someone may have deleted it already.',
+    429: commonRefusalText.requests,
+  }, 'The service account could not be deleted.', (error) => `The service account could not be deleted (server error ${String(error.status)}).`);
 }
 
 /**
@@ -913,20 +920,17 @@ export function deleteServiceAccountFailureText(error: unknown): string {
  */
 export function identityRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'The server refused that as malformed. Check the issuer, subject, audience and the pinned claims; every one of them is matched byte-for-byte.';
-      case 403:
-        return 'The server refused this act. Minting or binding needs a disclosure capability over every environment the account reaches in the resulting state, plus a fresh reauthentication.';
-      case 404:
-        return 'That service account is no longer here.';
-      case 409:
-        return 'The server refused this as a conflict: the live-credential ceiling, or an identical binding that already exists.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The act could not be completed (server error ${String(error.status)}).`;
-    }
+    return statusText(
+      error,
+      {
+        400: 'The server refused that as malformed. Check the issuer, subject, audience and the pinned claims; every one of them is matched byte-for-byte.',
+        403: 'The server refused this act. Minting or binding needs a disclosure capability over every environment the account reaches in the resulting state, plus a fresh reauthentication.',
+        404: 'That service account is no longer here.',
+        409: 'The server refused this as a conflict: the live-credential ceiling, or an identical binding that already exists.',
+        429: commonRefusalText.requests,
+      },
+      `The act could not be completed (server error ${String(error.status)}).`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed or timed out. Nothing was minted.';

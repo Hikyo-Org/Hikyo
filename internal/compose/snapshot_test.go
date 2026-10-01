@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,40 @@ func snapAAD(issued, expires string) crypto.SnapshotAAD {
 		Projection: []string{"read", "reveal"}, ConfigOnly: false,
 		TargetNames: []string{"api"},
 		IssuedAt:    issued, ExpiresAt: expires,
+	}
+}
+
+func TestConcurrentSnapshotSavesKeepNewestWatermark(t *testing.T) {
+	state, keys := snapState(t)
+	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	const count = 40
+	var workers sync.WaitGroup
+	start := make(chan struct{})
+	for index := range count {
+		issued := base.Add(time.Duration(index) * time.Second)
+		binding := snapBinding(t, state, snapAAD(issued.Format(time.RFC3339), base.Add(time.Hour).Format(time.RFC3339)))
+		workers.Go(func() {
+			<-start
+			err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Name: "TOKEN", Value: issued.Format(time.RFC3339)}}})
+			if err != nil && !errors.Is(err, ErrSnapshotRollback) {
+				t.Errorf("concurrent save: %v", err)
+			}
+		})
+	}
+	close(start)
+	workers.Wait()
+	payload, binding, err := LoadSnapshot(keys, snapScope(t, state, "env_1"), base.Add(time.Minute), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aad, _ := binding.AAD()
+	want := base.Add((count - 1) * time.Second).Format(time.RFC3339)
+	if aad.IssuedAt != want || len(payload.Rows) != 1 || payload.Rows[0].Value != want {
+		t.Fatalf("snapshot/watermark regressed: issuance=%s rows=%d", aad.IssuedAt, len(payload.Rows))
+	}
+	older := snapBinding(t, state, snapAAD(base.Format(time.RFC3339), base.Add(time.Hour).Format(time.RFC3339)))
+	if err := SaveSnapshot(keys, older, SnapshotPayload{}); !errors.Is(err, ErrSnapshotRollback) {
+		t.Fatalf("older issuance accepted after concurrent commits: %v", err)
 	}
 }
 
@@ -326,6 +361,136 @@ func TestSnapshotTamperedContainerFailsAEAD(t *testing.T) {
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	if _, _, err := LoadSnapshot(keys, snapScope(t, state, "env_1"), now, DefaultSnapshotMaxAge); !errors.Is(err, crypto.ErrDecrypt) {
 		t.Fatalf("tampered container err = %v, want ErrDecrypt", err)
+	}
+}
+
+func legacySnapPaths(t *testing.T, binding crypto.SnapshotBinding) (string, string) {
+	t.Helper()
+	state, err := binding.StorageDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := binding.LegacyStorageKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(state, "snapshot-"+key+".bin"), filepath.Join(state, "snapshot-"+key+".hwm")
+}
+
+func TestSnapshotRelocationPreservesNewAndFormerHashedSlots(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "stable", true: "former-hashed"}[legacy], func(t *testing.T) {
+			state, _ := snapState(t)
+			keys, err := crypto.LoadOrCreateLocalKey(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			aad := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
+			binding := snapBinding(t, state, aad)
+			if err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Name: "TOKEN", Value: "preserved"}}}); err != nil {
+				t.Fatal(err)
+			}
+			if legacy {
+				current, mark := snapPaths(t, binding)
+				former, formerMark := legacySnapPaths(t, binding)
+				if err := os.Rename(current, former); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(mark, formerMark); err != nil {
+					t.Fatal(err)
+				}
+			}
+			moved := filepath.Join(t.TempDir(), "moved-state")
+			if err := os.Rename(state, moved); err != nil {
+				t.Fatal(err)
+			}
+			keys, err = crypto.LoadOrCreateLocalKey(moved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+			got, _, err := LoadSnapshot(keys, snapScope(t, moved, "env_1"), now, DefaultSnapshotMaxAge)
+			if err != nil || len(got.Rows) != 1 || got.Rows[0].Value != "preserved" {
+				t.Fatalf("relocated snapshot = %+v, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestSnapshotFormerHashedWatermarkWithoutRecordGuardsSave(t *testing.T) {
+	state, keys := snapState(t)
+	newer := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
+	binding := snapBinding(t, state, newer)
+	if err := SaveSnapshot(keys, binding, SnapshotPayload{}); err != nil {
+		t.Fatal(err)
+	}
+	current, mark := snapPaths(t, binding)
+	_, formerMark := legacySnapPaths(t, binding)
+	if err := os.Rename(mark, formerMark); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(current); err != nil {
+		t.Fatal(err)
+	}
+	older := newer
+	older.IssuedAt = "2026-08-18T10:00:00Z"
+	if err := SaveSnapshot(keys, snapBinding(t, state, older), SnapshotPayload{}); !errors.Is(err, ErrSnapshotRollback) {
+		t.Fatalf("migration save ignored retained former watermark: %v", err)
+	}
+}
+
+func TestSnapshotFormerHashedWatermarkSurvivesRelocationAndMigration(t *testing.T) {
+	for _, kind := range []string{"older-issuance", "same-issuance-different-header"} {
+		for _, stable := range []bool{false, true} {
+			t.Run(kind+map[bool]string{false: "/former-slot", true: "/stable-slot"}[stable], func(t *testing.T) {
+				state, keys := snapState(t)
+				newer := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
+				binding := snapBinding(t, state, newer)
+				if err := SaveSnapshot(keys, binding, SnapshotPayload{}); err != nil {
+					t.Fatal(err)
+				}
+				current, mark := snapPaths(t, binding)
+				former, formerMark := legacySnapPaths(t, binding)
+				if err := os.Rename(current, former); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(mark, formerMark); err != nil {
+					t.Fatal(err)
+				}
+				moved := filepath.Join(t.TempDir(), "moved-state")
+				if err := os.Rename(state, moved); err != nil {
+					t.Fatal(err)
+				}
+				older := newer
+				if kind == "older-issuance" {
+					older.IssuedAt = "2026-08-18T10:00:00Z"
+				} else {
+					older.ChangeToken = "v1:different-header"
+				}
+				if err := SaveSnapshot(keys, snapBinding(t, moved, older), SnapshotPayload{}); !errors.Is(err, ErrSnapshotRollback) {
+					t.Fatalf("migration save ignored former watermark: %v", err)
+				}
+				header, err := older.Canonical()
+				if err != nil {
+					t.Fatal(err)
+				}
+				sealed, err := keys.SealSnapshot(header, mustJSON(SnapshotPayload{}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(moved, filepath.Base(former))
+				if stable {
+					path, _ = snapPaths(t, snapScope(t, moved, "env_1"))
+				}
+				if err := atomicWrite(path, frameSnapshot(header, sealed), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+				if _, _, err := LoadSnapshot(keys, snapScope(t, moved, "env_1"), now, DefaultSnapshotMaxAge); !errors.Is(err, ErrSnapshotRollback) {
+					t.Fatalf("migration load ignored former watermark: %v", err)
+				}
+			})
+		}
 	}
 }
 

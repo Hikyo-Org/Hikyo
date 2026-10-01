@@ -96,8 +96,10 @@ sign)
 verify)
 	[ "$2" = --certificate-identity ] && [ "$3" = "https://github.com/$REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" ]
 	[ "$4" = --certificate-oidc-issuer ] && [ "$5" = https://token.actions.githubusercontent.com ]
-	[ "$6" = "ghcr.io/hikyo-org/hikyo@$IMAGE_DIGEST" ]
+	[ "$6" = --certificate-github-workflow-sha ] && [ "$7" = "$COMMIT" ]
+	[ "$8" = "ghcr.io/hikyo-org/hikyo@$IMAGE_DIGEST" ]
 	[ "${FAIL_SIGNATURE:-false}" = false ]
+	[ "${SIGNATURE_COMMIT:-$COMMIT}" = "$7" ]
 	printf '[]\n'
 	;;
 *) exit 94 ;;
@@ -136,6 +138,12 @@ reject() {
 	if run "$@" >"$work/rejected.log" 2>&1; then printf 'unexpected success: %s\n' "$*" >&2; exit 1; fi
 }
 not_promoted() { if grep -F 'imagetools create' "$work/log" >/dev/null; then echo 'unexpected moving tag mutation' >&2; exit 1; fi; }
+not_consumed_or_signed() {
+	if grep -E 'docker (pull|create)|^smoke |^cosign sign |imagetools create' "$work/log" >/dev/null; then
+		echo 'unverified reused image was consumed, signed or promoted' >&2
+		exit 1
+	fi
+}
 ( FAIL_VERIFY=true reject prepare )
 [ ! -e image-root ]
 ( TAG_COMMIT=0000000000000000000000000000000000000000 reject prepare )
@@ -160,24 +168,49 @@ grep -Fx 'exists=false' "$GITHUB_OUTPUT"
 run resolve
 grep -Fx 'exists=true' "$GITHUB_OUTPUT"
 grep -Fx "digest=$IMAGE_DIGEST" "$GITHUB_OUTPUT"
+# Reused images default to requiring existing source-bound authentication.
+# Neither unsigned nor authentic-but-wrong-source images may reach any pull,
+# execution, new signature, or moving-tag operation.
+for failure in unsigned wrong-source; do
+	: >"$work/log"
+	case "$failure" in
+	unsigned) ( FAIL_SIGNATURE=true reject promote ) ;;
+	wrong-source) ( SIGNATURE_COMMIT=0000000000000000000000000000000000000000 reject promote ) ;;
+	esac
+	not_consumed_or_signed
+done
+: >"$work/log"
+( IMAGE_BUILT=untrusted reject promote )
+not_consumed_or_signed
+# Payload failures still refuse both build and promotion. Signing failures
+# apply only to a fresh build, never to an authenticated reused image.
 for failure in ARM_ARCH IMAGE_VERSION WRONG_BINARY FAIL_SMOKE FAIL_SIGN FAIL_SIGNATURE; do
 	: >"$work/log"
 	case "$failure" in
-	ARM_ARCH) ( ARM_ARCH=amd64 reject promote ) ;;
-	IMAGE_VERSION) ( IMAGE_VERSION=wrong reject promote ) ;;
-	WRONG_BINARY) ( WRONG_BINARY=true reject promote ) ;;
-	FAIL_SMOKE) ( FAIL_SMOKE=true reject promote ) ;;
-	FAIL_SIGN) ( FAIL_SIGN=true reject promote ) ;;
-	FAIL_SIGNATURE) ( FAIL_SIGNATURE=true reject promote ) ;;
+	ARM_ARCH) ( IMAGE_BUILT=true ARM_ARCH=amd64 reject promote ) ;;
+	IMAGE_VERSION) ( IMAGE_BUILT=true IMAGE_VERSION=wrong reject promote ) ;;
+	WRONG_BINARY) ( IMAGE_BUILT=true WRONG_BINARY=true reject promote ) ;;
+	FAIL_SMOKE) ( IMAGE_BUILT=true FAIL_SMOKE=true reject promote ) ;;
+	FAIL_SIGN) ( IMAGE_BUILT=true FAIL_SIGN=true reject promote ) ;;
+	FAIL_SIGNATURE) ( IMAGE_BUILT=true FAIL_SIGNATURE=true reject promote ) ;;
 	esac
 	not_promoted
 done
 : >"$work/log"
-run promote
+( IMAGE_BUILT=true run promote )
 grep -F 'imagetools create --tag ghcr.io/hikyo-org/hikyo:nightly' "$work/log"
+sign_line=$(grep -n '^cosign sign ' "$work/log" | cut -d: -f1)
+verify_line=$(grep -n '^cosign verify ' "$work/log" | cut -d: -f1)
+[ "$sign_line" -lt "$verify_line" ]
 # An interrupted run reuses immutable digest and completes promotion.
+: >"$work/log"
 run resolve
 run promote
+verify_line=$(grep -n '^cosign verify ' "$work/log" | cut -d: -f1)
+pull_line=$(grep -n '^docker pull ' "$work/log" | head -n1 | cut -d: -f1)
+[ "$verify_line" -lt "$pull_line" ]
+if grep '^cosign sign ' "$work/log" >/dev/null; then echo 'reused image was re-signed' >&2; exit 1; fi
+grep -F 'imagetools create --tag ghcr.io/hikyo-org/hikyo:nightly' "$work/log"
 # API ordering cannot make a republished old release downgrade the moving tag.
 jq -n --arg tag "$TAG" '[[{tag_name:$tag,draft:false,prerelease:true},{tag_name:"v0.0.1-nightly.20260914.40.g12345678",draft:false,prerelease:true}]]' >"$work/releases.json"
 : >"$work/log"

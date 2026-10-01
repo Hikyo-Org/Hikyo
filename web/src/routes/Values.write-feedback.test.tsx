@@ -1,12 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
 import { deferred, revealWindow } from '../testkit/ceremony.ts';
-import { settle, typeInto } from '../testkit/renderForm.tsx';
+import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { Values } from './Values.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -83,18 +82,13 @@ function App() {
   );
 }
 
-async function renderValues(): Promise<{ container: HTMLElement; root: Root }> {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <MemoryRouter initialEntries={['/orgs/org-a/projects/project-a/environments/env-a/values']}>
-        <App />
-      </MemoryRouter>,
-    );
-  });
-  return { container, root };
+async function renderValues() {
+  const { container, unmount } = await renderForm(
+    <MemoryRouter initialEntries={['/orgs/org-a/projects/project-a/environments/env-a/values']}>
+      <App />
+    </MemoryRouter>,
+  );
+  return { container, unmount };
 }
 
 function button(container: HTMLElement, name: string): HTMLButtonElement {
@@ -113,7 +107,7 @@ beforeEach(() => {
 describe('Values write feedback', () => {
   it('confirms a staged value and closes the editor after the server accepts it', async () => {
     mocks.setValue.mockResolvedValueOnce({ id: 'pending-a' });
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'KEY_A').click());
     const input = container.querySelector<HTMLInputElement>('#edit-key-a');
@@ -125,7 +119,7 @@ describe('Values write feedback', () => {
     expect(mocks.setValue).toHaveBeenCalledWith({ key: 'KEY_A', value: 'replacement' });
     expect(container.querySelector('#edit-key-a')).toBeNull();
     expect(container.textContent).toContain('KEY_A staged.');
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('shows a refusal, clears the submitted plaintext, and retries only with fresh input', async () => {
@@ -137,7 +131,7 @@ describe('Values write feedback', () => {
           rejectWrite = reject;
         }),
     );
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'KEY_A').click());
     const input = container.querySelector<HTMLInputElement>('#edit-key-a');
@@ -163,11 +157,11 @@ describe('Values write feedback', () => {
     await settle();
     expect(mocks.setValue).toHaveBeenCalledTimes(2);
     expect(mocks.setValue).toHaveBeenLastCalledWith({ key: 'KEY_A', value: 'freshly entered value' });
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('leaves an empty submission unchanged without issuing a write', async () => {
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'KEY_A').click());
     await act(async () => button(container, 'Save draft').click());
@@ -175,13 +169,13 @@ describe('Values write feedback', () => {
 
     expect(mocks.setValue).not.toHaveBeenCalled();
     expect(container.querySelector('#edit-key-a')).not.toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('does not report a write that settles after navigation', async () => {
     const pending = deferred<{ id: string }>();
     mocks.setValue.mockImplementationOnce(() => pending.promise);
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
     await act(async () => button(container, 'KEY_A').click());
     const input = container.querySelector<HTMLInputElement>('#edit-key-a');
@@ -194,6 +188,6 @@ describe('Values write feedback', () => {
 
     expect(container.textContent).not.toContain('KEY_A staged.');
     expect(container.querySelector('#edit-key-a')).toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 });

@@ -1,4 +1,6 @@
 import { listValues } from "@hikyo/client";
+import { getMetaOp, logoutOp, watchProjectEventsOp } from '@hikyo/operations';
+import { ok, parsed, parsedPick } from './client.ts';
 import { afterEach, expect, test, vi } from "vitest";
 
 import { createWorkspaceClient } from "./workspaceClient.ts";
@@ -201,4 +203,85 @@ test("ordinary remote calls reject an oversized declared response before parsing
   const result = await createWorkspaceClient(ORIGIN).get({ url: "/api/v1/x" });
 
   expect(result.error).toBeInstanceOf(WorkspaceError);
+});
+
+test.each(['parsed', 'parsedPick', 'ok'])("%s preserves workspace response limits", async (wrapper) => {
+  seed('secret-1', 'ses_1');
+  const cancel = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({ cancel }), {
+    status: 400,
+    headers: { 'Content-Length': String(WORKSPACE_DATA_RESPONSE_MAX_BYTES + 1) },
+  }));
+  const options = { client: createWorkspaceClient(ORIGIN) };
+  const pending = wrapper === 'ok' ? ok(logoutOp, options)
+    : wrapper === 'parsedPick' ? parsedPick(getMetaOp, options, { api_revision: true })
+    : parsed(getMetaOp, options);
+  await expect(pending).rejects.toThrow();
+  expect(cancel).toHaveBeenCalledOnce();
+});
+
+test('generated bodyless workspace operations accept 204 without inventing a body', async () => {
+  seed('secret-1', 'ses_1');
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  await expect(ok(logoutOp, { client: createWorkspaceClient(ORIGIN) })).resolves.toBeUndefined();
+});
+
+test('shared wrapper deadline stays active while a remote body stalls', async () => {
+  vi.useFakeTimers();
+  seed('secret-1', 'ses_1');
+  const cancel = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({ cancel }), {
+    headers: { 'Content-Type': 'application/json' },
+  }));
+  const pending = parsed(getMetaOp, { client: createWorkspaceClient(ORIGIN) });
+  const refused = expect(pending).rejects.toThrow();
+  await vi.advanceTimersByTimeAsync(HANDOFF_REQUEST_TIMEOUT_MS);
+  await refused;
+  expect(cancel).toHaveBeenCalledOnce();
+});
+
+test('shared wrapper bounds chunked error responses before the generated parser', async () => {
+  seed('secret-1', 'ses_1');
+  const cancel = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(WORKSPACE_DATA_RESPONSE_MAX_BYTES));
+      controller.enqueue(new Uint8Array(1));
+    },
+    cancel,
+  }), { status: 400 }));
+  await expect(parsed(getMetaOp, { client: createWorkspaceClient(ORIGIN) })).rejects.toThrow();
+  expect(cancel).toHaveBeenCalledOnce();
+});
+
+test('real generated SSE requests preserve bearer and keep healthy streams beyond the handshake deadline', async () => {
+  vi.useFakeTimers();
+  seed('secret-1', 'ses_1');
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let request: Request | undefined;
+  const cancelled = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    if (!(input instanceof Request)) throw new Error('expected a workspace Request');
+    request = input;
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) { streamController = controller; },
+      cancel: cancelled,
+    }), { headers: { 'Content-Type': 'text/event-stream' } });
+  });
+  const controller = new AbortController();
+  const result = await watchProjectEventsOp.call({
+    path: { org: 'org_a', project: 'proj_b' },
+    client: createWorkspaceClient(ORIGIN),
+    signal: controller.signal,
+  });
+  const first = result.stream.next();
+  await vi.advanceTimersByTimeAsync(HANDOFF_REQUEST_TIMEOUT_MS + 1);
+  expect(request?.signal.aborted).toBe(false);
+  expect(request?.credentials).toBe('omit');
+  expect(request?.headers.get('Authorization')).toBe('Bearer secret-1');
+  streamController?.enqueue(new TextEncoder().encode('data: {"sequence":1}\r\n\r\n'));
+  await expect(first).resolves.toMatchObject({ done: false, value: { sequence: 1 } });
+  controller.abort();
+  await result.stream.return(undefined);
+  expect(cancelled).toHaveBeenCalledOnce();
 });

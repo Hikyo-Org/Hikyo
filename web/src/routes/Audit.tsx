@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 
+import { formatWhen } from '../lib/formatWhen.ts';
 import { useProjectEnvironments } from '../api/adapters.ts';
 import {
   AUDIT_OUTCOMES,
@@ -44,12 +45,6 @@ function Outcome({ outcome }: { readonly outcome: AuditEvent['outcome'] }) {
       {outcome}
     </Badge>
   );
-}
-
-/** A stored UTC timestamp rendered in the operator's locale, or the raw value. */
-function when(value: string): string {
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? value : at.toLocaleString();
 }
 
 function refusalText(error: unknown, scope: AuditScope): string {
@@ -319,7 +314,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                     <span className="audit__row-op mono">{event.type}</span>
                     <Outcome outcome={event.outcome} />
                     <span className="audit__row-actor">{event.actor_name ?? event.actor_id ?? event.actor_class}</span>
-                    <span className="audit__row-when">{when(event.recorded_at)}</span>
+                    <span className="audit__row-when">{formatWhen(event.recorded_at)}</span>
                   </button>
                 </li>
               ))}
@@ -372,8 +367,8 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                   <Outcome outcome={selected.outcome} />
                 </dd>
               </div>
-              <AuditFact label="Recorded" value={when(selected.recorded_at)} />
-              <AuditFact label="Occurred" value={when(selected.occurred_at)} />
+              <AuditFact label="Recorded" value={formatWhen(selected.recorded_at)} />
+              <AuditFact label="Occurred" value={formatWhen(selected.occurred_at)} />
               <AuditFact label="Principal" value={selected.actor_name ?? selected.actor_id ?? 'absent'} />
               {selected.actor_name !== undefined ? <AuditFact label="Principal ID" value={selected.actor_id ?? 'absent'} /> : null}
               <AuditFact label="Actor class" value={selected.actor_class} />

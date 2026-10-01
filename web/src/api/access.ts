@@ -22,6 +22,7 @@ import { zGrantList, type zInvitationResult } from '@hikyo/zod';
 import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   expandTemplate,
@@ -51,7 +52,7 @@ export type { Level };
  *     single "create" call to get wrong.
  *  2. **A capability may only be granted at or above its DEEPEST level.**
  *     `manage-projects` on one environment is a row nothing can evaluate, so
- *     the checklist offers, per scope, exactly the atoms that scope admits, 
+ *     the checklist offers, per scope, exactly the atoms that scope admits,
  *     the same table `internal/domain`'s `capabilityLevels` holds, transcribed
  *     with the ADR's own "Covers" wording as the explanation each `(?)` shows.
  *  3. **Each checked capability becomes its own revocable line.** The modal
@@ -779,23 +780,18 @@ export async function resetCredential(principal: string): Promise<IssuedAuthorit
  * yours".
  */
 export function inviteFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The invitation was refused: check the username and the template.';
-      case 401:
-        return 'Your session ended. Sign in again to invite members.';
-      case 403:
-        return 'Inviting members needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.';
-      case 409:
-        return 'That username is already taken.';
-    }
-  }
-  return (
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ?? 'The invitation was refused: check the username and the template.',
+      401: 'Your session ended. Sign in again to invite members.',
+      403: 'Inviting members needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      404: 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.',
+      409: 'That username is already taken.',
+    },
     transportRefusalText(error) ??
-    'The invitation could not be sent, or the answer did not match the contract. Nothing was issued.'
+    'The invitation could not be sent, or the answer did not match the contract. Nothing was issued.',
   );
 }
 
@@ -843,50 +839,37 @@ export function grantFailureText(error: unknown, context: GrantFailureContext = 
       `${error.failedCapability} was refused: ${grantFailureText(error.cause, context)}`
     );
   }
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return (
-          error.detail ??
-          'That grant was refused: the capability cannot be held at this scope, or this principal may not hold it.'
-        );
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-        return context.scope === 'instance'
-          ? 'This session may not manage instance members, or its required assurance is missing. Sign in again and verify the account has instance manage-members authority.'
-          : 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.';
-      case 409:
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ??
+          'That grant was refused: the capability cannot be held at this scope, or this principal may not hold it.',
+      401: commonRefusalText.sessionEnded,
+      403: context.scope === 'instance'
+        ? 'This session may not manage instance members, or its required assurance is missing. Sign in again and verify the account has instance manage-members authority.'
+        : 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      404: 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.',
+      409: (error) => {
         if (error.detail !== undefined) return error.detail;
         if (context.operation === 'revoke' && (context.scope === 'org' || context.scope === 'instance')) {
           return 'Refused: this would leave this scope with nobody able to manage its members.';
         }
         return 'The grant conflicts with this principal, scope, capability, or current authorization state. Reload and review the requested grant.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
-    }
-  }
-  return 'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.';
+      },
+      429: commonRefusalText.attempts,
+    },
+    'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.',
+    (error) =>
+      `The server failed (${error.status}); whether the change applied is unknown: reload to check.`,
+  );
 }
 
 export function membershipFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'Your session ended. Sign in again to read this membership listing.';
-      case 403:
-        return 'This membership listing needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'This organisation does not exist, or it is not available to you. The two are deliberately the same answer.';
-      case 429:
-        return 'Too many membership reads right now. Wait a moment and reload.';
-      default:
-        return `The server failed while reading memberships (${error.status}). Reload to try again.`;
-    }
-  }
-  return 'The membership listing could not be reached, or its response did not match the contract. Reload to try again.';
+  return statusText(error, {
+    401: 'Your session ended. Sign in again to read this membership listing.',
+    403: 'This membership listing needs a second factor. Sign in again and present your passkey or a code, then retry.',
+    404: 'This organisation does not exist, or it is not available to you. The two are deliberately the same answer.',
+    429: 'Too many membership reads right now. Wait a moment and reload.',
+  }, 'The membership listing could not be reached, or its response did not match the contract. Reload to try again.', (error) => `The server failed while reading memberships (${error.status}). Reload to try again.`);
 }

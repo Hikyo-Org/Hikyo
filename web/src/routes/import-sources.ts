@@ -163,6 +163,7 @@ export function safeName(value: string): string {
     } else {
       out += char;
     }
+    if (out.length >= MAX_SHOWN_NAME_BYTES) return `${out.slice(0, MAX_SHOWN_NAME_BYTES)}..."`;
   }
   out += '"';
   return out.length <= MAX_SHOWN_NAME_BYTES ? out : `${out.slice(0, MAX_SHOWN_NAME_BYTES)}..."`;
@@ -574,6 +575,9 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
     if (name === '') {
       refuse(`the Secret in ${where} carries no metadata.name; one Secret maps onto one folder named after it`);
     }
+    if (byteLength(name) > MAX_KEY_NAME_BYTES) {
+      refuse(`the Secret metadata.name in ${where} exceeds the ${MAX_KEY_NAME_BYTES}-byte source-name bound`);
+    }
     names.push(name);
     const merged = new Map<string, { value: string; byteLength: number; binary: boolean }>();
     const data = manifest.data;
@@ -678,7 +682,7 @@ function decodeK8sData(
   let value = '';
   let binary = bytes.includes(0);
   try {
-    value = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    value = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     binary = true;
   }
@@ -723,7 +727,14 @@ function readInfisical(text: string, budget: Budget): { records: SourceRecord[];
     if (!isJsonObject(raw)) {
       refuse(`the ${where} is not a secret object`);
     }
-    const entry = raw;
+    // Go's typed JSON decoder matches modeled fields case-insensitively.
+    // Resolve those spellings before type checks, never discard a Value/VALUE.
+    const entry: { [key: string]: JsonValue } = Object.create(null);
+    const fields = ['key', 'value', 'type', 'secretPath', '_id'];
+    for (const [name, value] of Object.entries(raw)) {
+      const modeled = fields.find((field) => foldJSONMember(field) === foldJSONMember(name));
+      if (modeled !== undefined) entry[modeled] = value;
+    }
     // Mirror Go's typed `json.Unmarshal`: a field present with the wrong JSON
     // type refuses the WHOLE export (before mapping and before the personal-skip
     // branch), never coerces. Coercing a non-string `value` to `""`, the

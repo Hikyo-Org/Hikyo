@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { templatesAt } from "../api/access.ts";
@@ -46,20 +46,27 @@ import { Panel } from "./Sections.tsx";
  * purged. The inactive cause renders here and only here; the public login
  * page says only "Sign-up is paused." (#587 d3).
  */
-export function OpenRegistrationPanel({
-  scope,
-  scopeName,
-  origin,
-  authorityName,
-  onChanged,
-}: {
+type RegistrationPanelProps = {
   scope: RegistrationScope;
   scopeName: string;
   origin: string;
   /** Renders a principal id for a human (the member list's names). */
   authorityName: (principal: string) => string;
   onChanged: (text: string) => void;
-}) {
+};
+
+export function OpenRegistrationPanel(props: RegistrationPanelProps) {
+  const key = props.scope.kind === 'org' ? `org\u0000${props.scope.org}` : 'instance';
+  return <ScopedOpenRegistrationPanel key={key} {...props} />;
+}
+
+function ScopedOpenRegistrationPanel({
+  scope,
+  scopeName,
+  origin,
+  authorityName,
+  onChanged,
+}: RegistrationPanelProps) {
   const policy = useRegistrationPolicy(scope, true);
   const queries = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -71,10 +78,15 @@ export function OpenRegistrationPanel({
   const [gatePending, setGatePending] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const current = policy.data ?? null;
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => { live.current = false; };
+  }, []);
 
   const refresh = async (text: string) => {
     await queries.invalidateQueries({ queryKey: registrationKey(scope) });
-    onChanged(text);
+    if (live.current) onChanged(text);
   };
   const openGate = (what: string, run: (proof: string) => Promise<string>) => {
     setGateFailure(null);

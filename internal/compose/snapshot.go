@@ -12,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/gofrs/flock"
 )
 
 // Offline snapshot store (compose-integration ADR § "Offline behaviour",
@@ -117,8 +119,13 @@ func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payloa
 	if err != nil {
 		return err
 	}
+	lock, err := lockSnapshots(binding)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 
-	mark, err := readHWM(hwmPath)
+	mark, err := snapshotHWM(keys, binding)
 	if err != nil {
 		return err
 	}
@@ -172,17 +179,38 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 	if err != nil {
 		return zeroP, zeroB, err
 	}
+	lock, err := lockSnapshots(expect)
+	if err != nil {
+		return zeroP, zeroB, err
+	}
+	defer lock.Close()
 
-	snapshotPath, hwmPath, err := snapshotPaths(expect)
+	snapshotPath, _, err := snapshotPaths(expect)
 	if err != nil {
 		return zeroP, zeroB, err
 	}
 	record, err := os.ReadFile(snapshotPath)
 	if errors.Is(err, os.ErrNotExist) {
+		// Older hashed slots may include the former state-directory path. Find
+		// them by their authenticated scope, never by their cleartext header alone.
+		compatible, lookupErr := compatibleSnapshots(keys, expect)
+		if lookupErr != nil {
+			return zeroP, zeroB, lookupErr
+		}
+		var newest time.Time
+		for _, candidate := range compatible {
+			if candidate.issued.After(newest) {
+				snapshotPath = candidate.path
+				record = candidate.record
+				err = nil
+				newest = candidate.issued
+			}
+		}
+	}
+	if errors.Is(err, os.ErrNotExist) {
 		// One-release compatibility for the former shared slot. ContextMatches
 		// below still authenticates and refuses a snapshot from another scope.
 		snapshotPath = filepath.Join(stateDir, snapshotFile)
-		hwmPath = filepath.Join(stateDir, hwmFile)
 		record, err = os.ReadFile(snapshotPath)
 	}
 	if err != nil {
@@ -214,7 +242,7 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 		return zeroP, binding, fmt.Errorf("compose: snapshot expires_at %q is not RFC3339: %w", aad.ExpiresAt, err)
 	}
 
-	mark, err := readHWM(hwmPath)
+	mark, err := snapshotHWM(keys, expect)
 	if err != nil {
 		return zeroP, binding, err
 	}
@@ -253,6 +281,20 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 	return payload, binding, nil
 }
 
+// Serialize the complete snapshot/watermark transaction across processes.
+// The directory-wide lock also covers compatibility slots after relocation.
+func lockSnapshots(binding crypto.SnapshotBinding) (*flock.Flock, error) {
+	dir, err := binding.StorageDir()
+	if err != nil {
+		return nil, err
+	}
+	lock := flock.New(filepath.Join(dir, "snapshots.lock"), flock.SetPermissions(0o600))
+	if err := lock.Lock(); err != nil {
+		return nil, fmt.Errorf("compose: lock snapshot state: %w", err)
+	}
+	return lock, nil
+}
+
 func headerDigest(header []byte) string {
 	sum := sha256.Sum256(header)
 	return hex.EncodeToString(sum[:])
@@ -283,7 +325,7 @@ func unframeSnapshot(record []byte) (header, sealed []byte, err error) {
 	return record[pos : pos+n], record[pos+n:], nil
 }
 
-// readHWM returns the recorded high-water mark, or nil if none.
+// snapshotPaths locates the directory-independent scope's cache and watermark.
 func snapshotPaths(binding crypto.SnapshotBinding) (string, string, error) {
 	stateDir, err := binding.StorageDir()
 	if err != nil {
@@ -296,6 +338,135 @@ func snapshotPaths(binding crypto.SnapshotBinding) (string, string, error) {
 	return filepath.Join(stateDir, "snapshot-"+key+".bin"), filepath.Join(stateDir, "snapshot-"+key+".hwm"), nil
 }
 
+type compatibleSnapshot struct {
+	path   string
+	record []byte
+	issued time.Time
+}
+
+// compatibleSnapshots admits former cache slots only after their complete
+// scope matches and AEAD authenticates that header. The old pathname is not
+// available after relocation, so enumerating local slots is intentional.
+func compatibleSnapshots(keys *crypto.LocalKeys, expect crypto.SnapshotBinding) ([]compatibleSnapshot, error) {
+	stateDir, err := expect.StorageDir()
+	if err != nil {
+		return nil, err
+	}
+	current, _, err := snapshotPaths(expect)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(stateDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("compose: discover prior snapshot slots: %w", err)
+	}
+	var out []compatibleSnapshot
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != snapshotFile {
+			if !strings.HasPrefix(name, "snapshot-") || !strings.HasSuffix(name, ".bin") {
+				continue
+			}
+			key := strings.TrimSuffix(strings.TrimPrefix(name, "snapshot-"), ".bin")
+			if decoded, err := hex.DecodeString(key); err != nil || len(decoded) != sha256.Size {
+				continue
+			}
+		}
+		path := filepath.Join(stateDir, name)
+		if path == current || !entry.Type().IsRegular() {
+			continue
+		}
+		record, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("compose: read prior snapshot slot: %w", err)
+		}
+		header, sealed, err := unframeSnapshot(record)
+		if err != nil {
+			continue
+		}
+		binding, err := crypto.ParseSnapshotBinding(stateDir, header)
+		if err != nil || binding.ContextMatches(expect) != nil {
+			continue
+		}
+		plaintext, err := keys.OpenSnapshot(header, sealed)
+		if err != nil {
+			continue
+		}
+		clear(plaintext) // discovery authenticates metadata, never retains values
+		aad, err := binding.AAD()
+		if err != nil {
+			return nil, err
+		}
+		issued, err := time.Parse(time.RFC3339, aad.IssuedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, compatibleSnapshot{path: path, record: record, issued: issued})
+	}
+	return out, nil
+}
+
+// snapshotHWM keeps the newest mark across the stable slot and all authenticated
+// compatibility slots. Keeping old files is safe: neither loading nor saving a
+// new-format slot can ignore the paired watermark of a moved old-format slot.
+func snapshotHWM(keys *crypto.LocalKeys, binding crypto.SnapshotBinding) (*hwm, error) {
+	_, currentMark, err := snapshotPaths(binding)
+	if err != nil {
+		return nil, err
+	}
+	stateDir, err := binding.StorageDir()
+	if err != nil {
+		return nil, err
+	}
+	legacyKey, err := binding.LegacyStorageKey()
+	if err != nil {
+		return nil, err
+	}
+	paths := []string{currentMark, filepath.Join(stateDir, "snapshot-"+legacyKey+".hwm")}
+	compatible, err := compatibleSnapshots(keys, binding)
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range compatible {
+		if filepath.Base(candidate.path) == snapshotFile {
+			paths = append(paths, filepath.Join(stateDir, hwmFile))
+		} else {
+			paths = append(paths, strings.TrimSuffix(candidate.path, ".bin")+".hwm")
+		}
+	}
+	var newest *hwm
+	var newestTime time.Time
+	var marks []*hwm
+	for _, path := range paths {
+		mark, err := readHWM(path)
+		if err != nil {
+			return nil, err
+		}
+		if mark == nil {
+			continue
+		}
+		issued, err := time.Parse(time.RFC3339, mark.IssuedAt)
+		if err != nil {
+			return nil, fmt.Errorf("compose: high-water mark %q is not RFC3339: %w", mark.IssuedAt, err)
+		}
+		marks = append(marks, mark)
+		if newest == nil || issued.After(newestTime) {
+			newest, newestTime = mark, issued
+		}
+	}
+	for _, mark := range marks {
+		issued, _ := time.Parse(time.RFC3339, mark.IssuedAt) // validated above
+		if issued.Equal(newestTime) && mark.Digest != newest.Digest {
+			return nil, fmt.Errorf("%w (equal high-water issuances have different header identities)", ErrSnapshotRollback)
+		}
+	}
+	return newest, nil
+}
+
+// readHWM returns the recorded high-water mark, or nil if none.
 func readHWM(name string) (*hwm, error) {
 	b, err := os.ReadFile(name)
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
 
 // SSH certificate request-path store (#155). Every method is proof-carrying:
@@ -202,12 +204,16 @@ type SSHRepo interface {
 }
 
 type sshQueries struct {
-	db  adapterDB
-	tok *authz.TxToken
+	queries sshStoreQueries
+	tok     *authz.TxToken
 }
 
-func (r sqliteRepos) SSH() SSHRepo { return sshQueries{db: sqliteAdoptDB{db: r.db}, tok: r.tok} }
-func (r pgRepos) SSH() SSHRepo     { return sshQueries{db: pgAdoptDB{db: r.db}, tok: r.tok} }
+func (r sqliteRepos) SSH() SSHRepo {
+	return sshQueries{queries: sqliteSSHStoreQueries{queries: sqlitegen.New(r.db)}, tok: r.tok}
+}
+func (r pgRepos) SSH() SSHRepo {
+	return sshQueries{queries: pgSSHStoreQueries{queries: pggen.New(r.db)}, tok: r.tok}
+}
 
 // ErrSSHNoActiveKey reports a CA with no signing key (it was deleted).
 var ErrSSHNoActiveKey = errors.New("store: ssh CA has no active signing key")
@@ -254,8 +260,7 @@ func (r sshQueries) CreateCA(ctx context.Context, p authz.Proof, m SSHCACreate) 
 	if err != nil {
 		return err
 	}
-	query := r.db.SQL(`INSERT INTO ssh_cas (id,org_id,project_id,environment_id,name,state,authority_principal_id,created_at) VALUES (?,?,?,?,?, 'active', ?, ?)`)
-	_, err = r.db.Exec(ctx, query, m.ID, chain.Org, chain.Project, string(chain.Env), m.Name, m.AuthorityPrincipalID, r.db.Stamp(m.At))
+	_, err = r.queries.sshCreateCA(ctx, chain, m)
 	return mapSSHUnique(err)
 }
 
@@ -264,10 +269,7 @@ func (r sshQueries) InsertCAKey(ctx context.Context, p authz.Proof, m SSHCAKeyCr
 	if err != nil {
 		return err
 	}
-	query := r.db.SQL(`INSERT INTO ssh_ca_keys (id,org_id,project_id,environment_id,ca_id,algorithm,public_key,fingerprint,origin,private_key_ciphertext,state,created_at)
-SELECT ?,org_id,project_id,environment_id,id,?,?,?,?,?, 'active', ? FROM ssh_cas WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='active'`)
-	rows, err := r.db.Exec(ctx, query, m.ID, m.Algorithm, m.PublicKey, m.Fingerprint, m.Origin, m.Ciphertext, r.db.Stamp(m.At),
-		m.CAID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshInsertCAKey(ctx, chain, m)
 	if err != nil {
 		return mapSSHUnique(err)
 	}
@@ -277,58 +279,25 @@ SELECT ?,org_id,project_id,environment_id,id,?,?,?,?,?, 'active', ? FROM ssh_cas
 	return nil
 }
 
-const sshCAColumns = `id,name,state,authority_principal_id,created_at`
-const sshCAKeyColumns = `id,ca_id,algorithm,public_key,fingerprint,origin,state,created_at,retiring_at,retire_after,retired_at`
-
-func scanSSHCA(row interface{ Scan(...any) error }) (SSHCA, error) {
-	var out SSHCA
-	var created adapterStoredTime
-	err := row.Scan(&out.ID, &out.Name, &out.State, &out.AuthorityPrincipalID, &created)
-	if isNoRows(err) {
-		return SSHCA{}, ErrNotFound
-	}
-	if err != nil {
-		return SSHCA{}, err
-	}
-	out.CreatedAt = created.value
-	return out, nil
-}
-
-func scanSSHCAKey(row interface{ Scan(...any) error }) (SSHCAKey, error) {
-	var out SSHCAKey
-	var created, retiring, retireAfter, retired adapterStoredTime
-	if err := row.Scan(&out.ID, &out.CAID, &out.Algorithm, &out.PublicKey, &out.Fingerprint, &out.Origin, &out.State, &created, &retiring, &retireAfter, &retired); err != nil {
-		return SSHCAKey{}, err
-	}
-	out.CreatedAt, out.RetiringAt, out.RetireAfter, out.RetiredAt = created.value, retiring.value, retireAfter.value, retired.value
-	return out, nil
-}
-
 func (r sshQueries) keysFor(ctx context.Context, chain domain.Scope, caIDs []string) (map[string][]SSHCAKey, error) {
 	out := map[string][]SSHCAKey{}
 	if len(caIDs) == 0 {
 		return out, nil
 	}
-	query := r.db.SQL(`SELECT ` + sshCAKeyColumns + ` FROM ssh_ca_keys WHERE org_id=? AND project_id=? AND environment_id=? ORDER BY created_at DESC, id DESC`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, string(chain.Env))
+	keys, err := r.queries.sshCAKeys(ctx, chain)
 	if err != nil {
 		return nil, err
 	}
-	defer closeAdapterRows(rows)
 	want := map[string]bool{}
 	for _, id := range caIDs {
 		want[id] = true
 	}
-	for rows.Next() {
-		key, err := scanSSHCAKey(rows)
-		if err != nil {
-			return nil, err
-		}
+	for _, key := range keys {
 		if want[key.CAID] {
 			out[key.CAID] = append(out[key.CAID], key)
 		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (r sshQueries) GetCA(ctx context.Context, p authz.Proof, caID string) (SSHCA, error) {
@@ -336,8 +305,7 @@ func (r sshQueries) GetCA(ctx context.Context, p authz.Proof, caID string) (SSHC
 	if err != nil {
 		return SSHCA{}, err
 	}
-	query := r.db.SQL(`SELECT ` + sshCAColumns + ` FROM ssh_cas WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='active'`)
-	ca, err := scanSSHCA(r.db.QueryRow(ctx, query, caID, chain.Org, chain.Project, string(chain.Env)))
+	ca, err := r.queries.sshGetCA(ctx, chain, caID)
 	if err != nil {
 		return SSHCA{}, err
 	}
@@ -354,22 +322,7 @@ func (r sshQueries) ListCAs(ctx context.Context, p authz.Proof) ([]SSHCA, error)
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT ` + sshCAColumns + ` FROM ssh_cas WHERE org_id=? AND project_id=? AND environment_id=? AND state='active' ORDER BY name, id`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, string(chain.Env))
-	if err != nil {
-		return nil, err
-	}
-	var out []SSHCA
-	for rows.Next() {
-		ca, err := scanSSHCA(rows)
-		if err != nil {
-			closeAdapterRows(rows)
-			return nil, err
-		}
-		out = append(out, ca)
-	}
-	err = rows.Err()
-	closeAdapterRows(rows)
+	out, err := r.queries.sshListCAs(ctx, chain)
 	if err != nil {
 		return nil, err
 	}
@@ -392,13 +345,7 @@ func (r sshQueries) ActiveCAKey(ctx context.Context, p authz.Proof, caID string)
 	if err != nil {
 		return SSHActiveKey{}, err
 	}
-	query := r.db.SQL(`SELECT k.id,k.algorithm,k.public_key,k.private_key_ciphertext FROM ssh_ca_keys k JOIN ssh_cas c ON c.id=k.ca_id AND c.org_id=k.org_id AND c.project_id=k.project_id AND c.environment_id=k.environment_id
-WHERE k.ca_id=? AND k.org_id=? AND k.project_id=? AND k.environment_id=? AND k.state='active' AND c.state='active'`)
-	var out SSHActiveKey
-	err = r.db.QueryRow(ctx, query, caID, chain.Org, chain.Project, string(chain.Env)).Scan(&out.KeyID, &out.Algorithm, &out.PublicKey, &out.Ciphertext)
-	if isNoRows(err) {
-		return SSHActiveKey{}, ErrNotFound
-	}
+	out, err := r.queries.sshActiveCAKey(ctx, chain, caID)
 	if err != nil {
 		return SSHActiveKey{}, err
 	}
@@ -416,16 +363,14 @@ func (r sshQueries) RetireActiveCAKey(ctx context.Context, p authz.Proof, caID s
 	if err != nil {
 		return "", err
 	}
-	selectQuery := r.db.SQL(`SELECT id FROM ssh_ca_keys WHERE ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND state='active'`)
-	var keyID string
-	if err := r.db.QueryRow(ctx, selectQuery, caID, chain.Org, chain.Project, string(chain.Env)).Scan(&keyID); err != nil {
-		if isNoRows(err) {
-			return "", ErrNotFound
-		}
+	keyID, err := r.queries.sshActiveCAKeyID(ctx, chain, caID)
+	if isNoRows(err) {
+		return "", ErrNotFound
+	}
+	if err != nil {
 		return "", err
 	}
-	query := r.db.SQL(`UPDATE ssh_ca_keys SET state='retiring',private_key_ciphertext=NULL,retiring_at=?,retire_after=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='active'`)
-	rows, err := r.db.Exec(ctx, query, r.db.Stamp(at), r.db.Stamp(retireAfter), keyID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshRetireActiveCAKey(ctx, chain, keyID, at, retireAfter)
 	if err != nil {
 		return "", err
 	}
@@ -441,15 +386,13 @@ func (r sshQueries) RetireCAKey(ctx context.Context, p authz.Proof, caID, keyID 
 	if err != nil {
 		return err
 	}
-	query := r.db.SQL(`UPDATE ssh_ca_keys SET state='retired',retired_at=? WHERE id=? AND ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND state='retiring'`)
-	rows, err := r.db.Exec(ctx, query, r.db.Stamp(at), keyID, caID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshRetireCAKey(ctx, chain, keyID, caID, at)
 	if err != nil {
 		return err
 	}
 	if rows != 1 {
-		existsQuery := r.db.SQL(`SELECT COUNT(*) FROM ssh_ca_keys WHERE id=? AND ca_id=? AND org_id=? AND project_id=? AND environment_id=?`)
-		var n int
-		if err := r.db.QueryRow(ctx, existsQuery, keyID, caID, chain.Org, chain.Project, string(chain.Env)).Scan(&n); err != nil {
+		n, err := r.queries.sshCAKeyExists(ctx, chain, keyID, caID)
+		if err != nil {
 			return err
 		}
 		if n == 0 {
@@ -467,16 +410,14 @@ func (r sshQueries) DeleteCA(ctx context.Context, p authz.Proof, caID string, at
 	if err != nil {
 		return err
 	}
-	query := r.db.SQL(`UPDATE ssh_cas SET state='tombstoned' WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='active'`)
-	rows, err := r.db.Exec(ctx, query, caID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshDeleteCA(ctx, chain, caID)
 	if err != nil {
 		return err
 	}
 	if rows != 1 {
 		return ErrNotFound
 	}
-	keys := r.db.SQL(`UPDATE ssh_ca_keys SET state='retired',private_key_ciphertext=NULL,retired_at=? WHERE ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'retired'`)
-	_, err = r.db.Exec(ctx, keys, r.db.Stamp(at), caID, chain.Org, chain.Project, string(chain.Env))
+	_, err = r.queries.sshRetireAllCAKeys(ctx, chain, caID, at)
 	return err
 }
 
@@ -485,10 +426,8 @@ func (r sshQueries) CountLiveProfilesForCA(ctx context.Context, p authz.Proof, c
 	if err != nil {
 		return 0, err
 	}
-	query := r.db.SQL(`SELECT COUNT(*) FROM ssh_profiles WHERE ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'tombstoned'`)
-	var n int
-	err = r.db.QueryRow(ctx, query, caID, chain.Org, chain.Project, string(chain.Env)).Scan(&n)
-	return n, err
+	n, err := r.queries.sshCountLiveProfiles(ctx, chain, caID)
+	return int(n), err
 }
 
 // ActiveKeyLastExpiry returns the latest valid_before among the live issued
@@ -500,59 +439,13 @@ func (r sshQueries) ActiveKeyLastExpiry(ctx context.Context, p authz.Proof, caID
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT MAX(c.valid_before) FROM ssh_certificates c
-JOIN ssh_ca_keys k ON k.id=c.ca_key_id AND k.org_id=c.org_id AND k.project_id=c.project_id AND k.environment_id=c.environment_id
-WHERE c.ca_id=? AND c.org_id=? AND c.project_id=? AND c.environment_id=? AND k.state='active' AND c.state='issued' AND c.valid_before>?`)
-	var last adapterStoredTime
-	if err := r.db.QueryRow(ctx, query, caID, chain.Org, chain.Project, string(chain.Env), r.db.Stamp(now)).Scan(&last); err != nil {
-		return nil, err
-	}
-	return last.Time()
+	return r.queries.sshActiveKeyLastExpiry(ctx, chain, caID, now)
 }
 
 // ---- Profiles ---------------------------------------------------------------
 
-const sshProfileColumns = `id,ca_id,name,principals,force_command,source_addresses,extensions,key_algorithms,default_ttl_seconds,max_ttl_seconds,state,created_at,updated_at`
-
-func scanSSHProfile(row interface{ Scan(...any) error }) (SSHProfile, error) {
-	var out SSHProfile
-	var principals, sources, extensions, algorithms string
-	var created, updated adapterStoredTime
-	err := row.Scan(&out.ID, &out.CAID, &out.Name, &principals, &out.ForceCommand, &sources, &extensions, &algorithms, &out.DefaultTTLSeconds, &out.MaxTTLSeconds, &out.State, &created, &updated)
-	if isNoRows(err) {
-		return SSHProfile{}, ErrNotFound
-	}
-	if err != nil {
-		return SSHProfile{}, err
-	}
-	for _, f := range []struct {
-		src string
-		dst *[]string
-	}{{principals, &out.Principals}, {sources, &out.SourceAddresses}, {extensions, &out.Extensions}, {algorithms, &out.KeyAlgorithms}} {
-		if *f.dst, err = decodeSSHList(f.src); err != nil {
-			return SSHProfile{}, err
-		}
-	}
-	out.CreatedAt, out.UpdatedAt = created.value, updated.value
-	return out, nil
-}
-
 func (r sshQueries) requestersFor(ctx context.Context, chain domain.Scope) (map[string][]string, error) {
-	query := r.db.SQL(`SELECT profile_id,principal_id FROM ssh_profile_requesters WHERE org_id=? AND project_id=? AND environment_id=? ORDER BY profile_id, principal_id`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, string(chain.Env))
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	out := map[string][]string{}
-	for rows.Next() {
-		var profile, principal string
-		if err := rows.Scan(&profile, &principal); err != nil {
-			return nil, err
-		}
-		out[profile] = append(out[profile], principal)
-	}
-	return out, rows.Err()
+	return r.queries.sshRequesters(ctx, chain)
 }
 
 func (r sshQueries) GetProfile(ctx context.Context, p authz.Proof, profileID string) (SSHProfile, error) {
@@ -560,8 +453,7 @@ func (r sshQueries) GetProfile(ctx context.Context, p authz.Proof, profileID str
 	if err != nil {
 		return SSHProfile{}, err
 	}
-	query := r.db.SQL(`SELECT ` + sshProfileColumns + ` FROM ssh_profiles WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'tombstoned'`)
-	profile, err := scanSSHProfile(r.db.QueryRow(ctx, query, profileID, chain.Org, chain.Project, string(chain.Env)))
+	profile, err := r.queries.sshGetProfile(ctx, chain, profileID)
 	if err != nil {
 		return SSHProfile{}, err
 	}
@@ -578,22 +470,7 @@ func (r sshQueries) ListProfiles(ctx context.Context, p authz.Proof) ([]SSHProfi
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT ` + sshProfileColumns + ` FROM ssh_profiles WHERE org_id=? AND project_id=? AND environment_id=? AND state<>'tombstoned' ORDER BY name, id`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, string(chain.Env))
-	if err != nil {
-		return nil, err
-	}
-	var out []SSHProfile
-	for rows.Next() {
-		profile, err := scanSSHProfile(rows)
-		if err != nil {
-			closeAdapterRows(rows)
-			return nil, err
-		}
-		out = append(out, profile)
-	}
-	err = rows.Err()
-	closeAdapterRows(rows)
+	out, err := r.queries.sshListProfiles(ctx, chain)
 	if err != nil {
 		return nil, err
 	}
@@ -642,12 +519,8 @@ func (r sshQueries) CreateProfile(ctx context.Context, p authz.Proof, m SSHProfi
 	if err != nil {
 		return err
 	}
-	stamp := r.db.Stamp(m.At)
 	// The CA must be live in this same environment; the SELECT binds it.
-	query := r.db.SQL(`INSERT INTO ssh_profiles (id,org_id,project_id,environment_id,ca_id,name,principals,force_command,source_addresses,extensions,key_algorithms,default_ttl_seconds,max_ttl_seconds,state,created_at,updated_at)
-SELECT ?,org_id,project_id,environment_id,id,?,?,?,?,?,?,?,?,?,?,? FROM ssh_cas WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='active'`)
-	rows, err := r.db.Exec(ctx, query, m.ID, m.Name, lists[0], m.ForceCommand, lists[1], lists[2], lists[3], m.DefaultTTLSeconds, m.MaxTTLSeconds, profileState(m.Enabled), stamp, stamp,
-		m.CAID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshCreateProfile(ctx, chain, m, lists)
 	if err != nil {
 		return mapSSHUnique(err)
 	}
@@ -668,10 +541,7 @@ func (r sshQueries) UpdateProfile(ctx context.Context, p authz.Proof, m SSHProfi
 	}
 	// The CA is immutable on update (a profile never moves between CAs): the
 	// predicate asserts the caller's CAID is the stored one.
-	query := r.db.SQL(`UPDATE ssh_profiles SET name=?,principals=?,force_command=?,source_addresses=?,extensions=?,key_algorithms=?,default_ttl_seconds=?,max_ttl_seconds=?,state=?,updated_at=?
-WHERE id=? AND ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'tombstoned'`)
-	rows, err := r.db.Exec(ctx, query, m.Name, lists[0], m.ForceCommand, lists[1], lists[2], lists[3], m.DefaultTTLSeconds, m.MaxTTLSeconds, profileState(m.Enabled), r.db.Stamp(m.At),
-		m.ID, m.CAID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshUpdateProfile(ctx, chain, m, lists)
 	if err != nil {
 		return mapSSHUnique(err)
 	}
@@ -682,13 +552,11 @@ WHERE id=? AND ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND st
 }
 
 func (r sshQueries) replaceRequesters(ctx context.Context, chain domain.Scope, profileID string, requesters []string, at time.Time) error {
-	del := r.db.SQL(`DELETE FROM ssh_profile_requesters WHERE profile_id=? AND org_id=? AND project_id=? AND environment_id=?`)
-	if _, err := r.db.Exec(ctx, del, profileID, chain.Org, chain.Project, string(chain.Env)); err != nil {
+	if _, err := r.queries.sshDeleteRequesters(ctx, chain, profileID); err != nil {
 		return err
 	}
-	ins := r.db.SQL(`INSERT INTO ssh_profile_requesters (org_id,project_id,environment_id,profile_id,principal_id,created_at) VALUES (?,?,?,?,?,?)`)
 	for _, principal := range requesters {
-		if _, err := r.db.Exec(ctx, ins, chain.Org, chain.Project, string(chain.Env), profileID, principal, r.db.Stamp(at)); err != nil {
+		if _, err := r.queries.sshInsertRequester(ctx, chain, profileID, principal, at); err != nil {
 			return err
 		}
 	}
@@ -700,8 +568,7 @@ func (r sshQueries) DeleteProfile(ctx context.Context, p authz.Proof, profileID 
 	if err != nil {
 		return err
 	}
-	query := r.db.SQL(`UPDATE ssh_profiles SET state='tombstoned',updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'tombstoned'`)
-	rows, err := r.db.Exec(ctx, query, r.db.Stamp(at), profileID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshDeleteProfile(ctx, chain, profileID, at)
 	if err != nil {
 		return err
 	}
@@ -719,12 +586,8 @@ func (r sshQueries) IsRequester(ctx context.Context, p authz.Proof, profileID, p
 	if err != nil {
 		return false, err
 	}
-	query := r.db.SQL(`SELECT COUNT(*) FROM ssh_profile_requesters WHERE profile_id=? AND principal_id=? AND org_id=? AND project_id=? AND environment_id=?`)
-	var n int
-	if err := r.db.QueryRow(ctx, query, profileID, principalID, chain.Org, chain.Project, string(chain.Env)).Scan(&n); err != nil {
-		return false, err
-	}
-	return n == 1, nil
+	n, err := r.queries.sshIsRequester(ctx, chain, profileID, principalID)
+	return n == 1, err
 }
 
 // ---- Certificates -----------------------------------------------------------
@@ -741,13 +604,7 @@ func (r sshQueries) InsertCertificate(ctx context.Context, p authz.Proof, m SSHC
 	// The row is written only while its signing key is still the CA's active
 	// key and its profile still enabled, inside the issuing transaction: this
 	// is the fence a node that lost a race with rotation or disable hits.
-	query := r.db.SQL(`INSERT INTO ssh_certificates (id,org_id,project_id,environment_id,ca_id,ca_key_id,profile_id,serial,key_id,principals,public_key_fingerprint,key_algorithm,key_origin,valid_after,valid_before,requester_principal_id,requester_class,state,created_at)
-SELECT ?,k.org_id,k.project_id,k.environment_id,k.ca_id,k.id,pr.id,?,?,?,?,?,?,?,?,?,?, 'issued', ?
-FROM ssh_ca_keys k JOIN ssh_profiles pr ON pr.ca_id=k.ca_id AND pr.org_id=k.org_id AND pr.project_id=k.project_id AND pr.environment_id=k.environment_id
-WHERE k.id=? AND k.ca_id=? AND k.state='active' AND pr.id=? AND pr.state='enabled' AND k.org_id=? AND k.project_id=? AND k.environment_id=?`)
-	rows, err := r.db.Exec(ctx, query, m.ID, m.Serial, m.KeyID, principals, m.PublicKeyFingerprint, m.KeyAlgorithm, m.KeyOrigin,
-		r.db.Stamp(m.ValidAfter), r.db.Stamp(m.ValidBefore), m.RequesterPrincipalID, m.RequesterClass, r.db.Stamp(m.At),
-		m.CAKeyID, m.CAID, m.ProfileID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshInsertCertificate(ctx, chain, m, principals)
 	if err != nil {
 		return mapSSHUnique(err)
 	}
@@ -757,42 +614,12 @@ WHERE k.id=? AND k.ca_id=? AND k.state='active' AND pr.id=? AND pr.state='enable
 	return nil
 }
 
-const sshCertificateColumns = `c.id,c.ca_id,c.ca_key_id,c.profile_id,c.serial,c.key_id,c.principals,c.public_key_fingerprint,c.key_algorithm,c.key_origin,c.valid_after,c.valid_before,c.requester_principal_id,c.requester_class,c.state,c.revoked_at,c.revocation_reason,c.created_at,k.state,k.retire_after,a.state`
-
-const sshCertificateFrom = ` FROM ssh_certificates c
-JOIN ssh_ca_keys k ON k.id=c.ca_key_id AND k.org_id=c.org_id AND k.project_id=c.project_id AND k.environment_id=c.environment_id
-JOIN ssh_cas a ON a.id=c.ca_id AND a.org_id=c.org_id AND a.project_id=c.project_id AND a.environment_id=c.environment_id`
-
-func scanSSHCertificate(row interface{ Scan(...any) error }) (SSHCertificate, error) {
-	var out SSHCertificate
-	var principals string
-	var reason *string
-	var validAfter, validBefore, revokedAt, created, retireAfter adapterStoredTime
-	err := row.Scan(&out.ID, &out.CAID, &out.CAKeyID, &out.ProfileID, &out.Serial, &out.KeyID, &principals, &out.PublicKeyFingerprint, &out.KeyAlgorithm, &out.KeyOrigin,
-		&validAfter, &validBefore, &out.RequesterPrincipalID, &out.RequesterClass, &out.State, &revokedAt, &reason, &created, &out.CAKeyState, &retireAfter, &out.CAState)
-	if isNoRows(err) {
-		return SSHCertificate{}, ErrNotFound
-	}
-	if err != nil {
-		return SSHCertificate{}, err
-	}
-	if out.Principals, err = decodeSSHList(principals); err != nil {
-		return SSHCertificate{}, err
-	}
-	if reason != nil {
-		out.RevocationReason = *reason
-	}
-	out.ValidAfter, out.ValidBefore, out.RevokedAt, out.CreatedAt, out.CAKeyRetireAfter = validAfter.value, validBefore.value, revokedAt.value, created.value, retireAfter.value
-	return out, nil
-}
-
 func (r sshQueries) GetCertificate(ctx context.Context, p authz.Proof, certID string) (SSHCertificate, error) {
 	chain, err := r.envChain(p, authz.StoreSSHGetCertificate)
 	if err != nil {
 		return SSHCertificate{}, err
 	}
-	query := r.db.SQL(`SELECT ` + sshCertificateColumns + sshCertificateFrom + ` WHERE c.id=? AND c.org_id=? AND c.project_id=? AND c.environment_id=?`)
-	return scanSSHCertificate(r.db.QueryRow(ctx, query, certID, chain.Org, chain.Project, string(chain.Env)))
+	return r.queries.sshGetCertificate(ctx, chain, certID)
 }
 
 func (r sshQueries) ListCertificates(ctx context.Context, p authz.Proof, limit int) ([]SSHCertificate, error) {
@@ -800,21 +627,7 @@ func (r sshQueries) ListCertificates(ctx context.Context, p authz.Proof, limit i
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT ` + sshCertificateColumns + sshCertificateFrom + ` WHERE c.org_id=? AND c.project_id=? AND c.environment_id=? ORDER BY c.created_at DESC, c.id DESC LIMIT ?`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, string(chain.Env), limit)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []SSHCertificate
-	for rows.Next() {
-		cert, err := scanSSHCertificate(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, cert)
-	}
-	return out, rows.Err()
+	return r.queries.sshListCertificates(ctx, chain, limit)
 }
 
 func (r sshQueries) RevokeCertificate(ctx context.Context, p authz.Proof, certID, reason string, at time.Time) (bool, error) {
@@ -822,8 +635,7 @@ func (r sshQueries) RevokeCertificate(ctx context.Context, p authz.Proof, certID
 	if err != nil {
 		return false, err
 	}
-	query := r.db.SQL(`UPDATE ssh_certificates SET state='revoked',revoked_at=?,revocation_reason=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='issued'`)
-	rows, err := r.db.Exec(ctx, query, r.db.Stamp(at), reason, certID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.sshRevokeCertificate(ctx, chain, certID, reason, at)
 	if err != nil {
 		return false, err
 	}
@@ -842,31 +654,19 @@ func (r sshQueries) RevokeProfileCertificates(ctx context.Context, p authz.Proof
 	for _, principal := range keepRequesters {
 		keep[principal] = true
 	}
-	selectQuery := r.db.SQL(`SELECT id,serial,requester_principal_id FROM ssh_certificates WHERE profile_id=? AND org_id=? AND project_id=? AND environment_id=? AND state='issued' AND valid_before>? ORDER BY id`)
-	rows, err := r.db.Query(ctx, selectQuery, profileID, chain.Org, chain.Project, string(chain.Env), r.db.Stamp(at))
+	rows, err := r.queries.sshProfileRevocationCandidates(ctx, chain, profileID, at)
 	if err != nil {
 		return nil, err
 	}
 	var candidates []SSHRevokedCertificate
-	for rows.Next() {
-		var c SSHRevokedCertificate
-		if err := rows.Scan(&c.ID, &c.Serial, &c.RequesterPrincipalID); err != nil {
-			closeAdapterRows(rows)
-			return nil, err
-		}
+	for _, c := range rows {
 		if all || !keep[c.RequesterPrincipalID] {
 			candidates = append(candidates, c)
 		}
 	}
-	err = rows.Err()
-	closeAdapterRows(rows)
-	if err != nil {
-		return nil, err
-	}
-	update := r.db.SQL(`UPDATE ssh_certificates SET state='revoked',revoked_at=?,revocation_reason=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='issued'`)
 	var out []SSHRevokedCertificate
 	for _, c := range candidates {
-		n, err := r.db.Exec(ctx, update, r.db.Stamp(at), reason, c.ID, chain.Org, chain.Project, string(chain.Env))
+		n, err := r.queries.sshRevokeCertificate(ctx, chain, c.ID, reason, at)
 		if err != nil {
 			return nil, err
 		}
@@ -886,26 +686,7 @@ func (r sshQueries) RevokedSerials(ctx context.Context, p authz.Proof, caID stri
 	if err != nil {
 		return nil, err
 	}
-	stamp := r.db.Stamp(now)
-	query := r.db.SQL(`SELECT k.public_key,c.serial FROM ssh_certificates c
-JOIN ssh_ca_keys k ON k.id=c.ca_key_id AND k.org_id=c.org_id AND k.project_id=c.project_id AND k.environment_id=c.environment_id
-WHERE c.ca_id=? AND c.org_id=? AND c.project_id=? AND c.environment_id=? AND c.state='revoked' AND c.valid_before>?
-AND (k.state='active' OR (k.state='retiring' AND k.retire_after>?))
-ORDER BY k.id, c.serial LIMIT ?`)
-	rows, err := r.db.Query(ctx, query, caID, chain.Org, chain.Project, string(chain.Env), stamp, stamp, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []SSHRevokedSerial
-	for rows.Next() {
-		var s SSHRevokedSerial
-		if err := rows.Scan(&s.CAKeyPublicKey, &s.Serial); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
+	return r.queries.sshRevokedSerials(ctx, chain, caID, now, limit)
 }
 
 // ---- Reencrypt ---------------------------------------------------------------
@@ -915,22 +696,7 @@ func (r sshQueries) ListCAKeysForReencrypt(ctx context.Context, p authz.Proof, c
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT id, private_key_ciphertext FROM ssh_ca_keys WHERE org_id=? AND project_id=? AND id>? AND private_key_ciphertext IS NOT NULL ORDER BY id LIMIT ?`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, cursor, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []ReencryptFieldRow
-	for rows.Next() {
-		var id string
-		var ct []byte
-		if err := rows.Scan(&id, &ct); err != nil {
-			return nil, err
-		}
-		out = append(out, ReencryptFieldRow{ID: id, Owner: id, Ciphertext: ct})
-	}
-	return out, rows.Err()
+	return r.queries.sshListKeysForReencrypt(ctx, chain, cursor, limit)
 }
 
 func (r sshQueries) ReencryptCAKey(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
@@ -938,8 +704,7 @@ func (r sshQueries) ReencryptCAKey(ctx context.Context, p authz.Proof, id string
 	if err != nil {
 		return false, err
 	}
-	query := r.db.SQL(`UPDATE ssh_ca_keys SET private_key_ciphertext=? WHERE org_id=? AND project_id=? AND id=? AND private_key_ciphertext=?`)
-	rows, err := r.db.Exec(ctx, query, newCiphertext, chain.Org, chain.Project, id, oldCiphertext)
+	rows, err := r.queries.sshReencryptCAKey(ctx, chain, id, newCiphertext, oldCiphertext)
 	if err != nil {
 		return false, err
 	}
@@ -959,20 +724,14 @@ func (r sshQueries) PurgeEnvironment(ctx context.Context, p authz.Proof) error {
 	if err != nil {
 		return err
 	}
-	env := string(chain.Env)
-	var live int
-	if err := r.db.QueryRow(ctx, r.db.SQL(`SELECT COUNT(*) FROM ssh_cas WHERE org_id=? AND project_id=? AND environment_id=? AND state='active'`), chain.Org, chain.Project, env).Scan(&live); err != nil {
+	live, err := r.queries.sshCountLiveCAs(ctx, chain)
+	if err != nil {
 		return err
 	}
 	if live > 0 {
 		return ErrSSHLiveCA
 	}
-	for _, table := range []string{"ssh_certificates", "ssh_profile_requesters", "ssh_profiles", "ssh_ca_keys", "ssh_cas"} {
-		if _, err := r.db.Exec(ctx, r.db.SQL(`DELETE FROM `+table+` WHERE org_id=? AND project_id=? AND environment_id=?`), chain.Org, chain.Project, env); err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.queries.sshPurgeEnvironment(ctx, chain)
 }
 
 // mapSSHUnique turns a uniqueness violation (a live name taken, or the

@@ -1,3 +1,4 @@
+import { commonRefusalText, statusText } from './statusText.ts';
 import {
   compromiseRetireSamlSpKeyOp,
   deleteSamlProviderOp,
@@ -13,7 +14,7 @@ import type { SamlMetadataSource, SamlProviderPatch } from '@hikyo/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
-import { ApiError, ok, parsed } from './client.ts';
+import { ok, parsed } from './client.ts';
 
 /**
  * The SAML administrative surface (#500): provider inventory and lifecycle plus
@@ -209,31 +210,20 @@ export type SamlAction =
 
 /** Map each refusal to a sentence, keyed to the action that hit it. */
 export function samlFailureText(error: unknown, action: SamlAction): string {
-  if (!(error instanceof ApiError)) {
-    return 'The server failed; whether the change applied is unknown: reload to check.';
-  }
-  switch (error.status) {
-    case 400:
-      return error.detail ?? invalidText(action);
-    case 401:
-      return 'Your session ended. Sign in again to continue.';
-    case 403:
-      // A 403 on an instance-config operation is uniform: either the session's
-      // assurance is inadequate for this MFA-mandatory operation, or the
-      // principal does not hold the capability. The contract does not
-      // distinguish them, so the copy must not claim it is only step-up.
-      return `${samlAction(action)} needs a second factor and this authority. If you hold it, present your authenticator code or passkey in the banner above, then try again.`;
-    case 404:
-      return 'This is not disclosed to this session.';
-    case 409:
-      // Only a 400 carries a caller-safe detail; a 409 never does, so never
-      // render one.
-      return conflictText(action);
-    case 429:
-      return 'Too many attempts right now. Wait a moment and try again.';
-    default:
-      return 'The server failed; whether the change applied is unknown: reload to check.';
-  }
+  return statusText(
+    error,
+    {
+      400: (error) => error.detail ?? invalidText(action),
+      401: commonRefusalText.sessionEnded,
+      // A uniform 403 covers assurance and capability; do not imply only step-up.
+      403: `${samlAction(action)} needs a second factor and this authority. If you hold it, present your authenticator code or passkey in the banner above, then try again.`,
+      404: 'This is not disclosed to this session.',
+      // Only a 400 carries caller-safe detail. Never render a 409 detail.
+      409: conflictText(action),
+      429: commonRefusalText.attempts,
+    },
+    'The server failed; whether the change applied is unknown: reload to check.',
+  );
 }
 
 function samlAction(action: SamlAction): string {

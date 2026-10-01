@@ -312,6 +312,19 @@ describe('restoreCeremonyUnit', () => {
     ).toEqual(['k_secret']);
   });
 
+  it('includes current sticky sensitivity only for a set value with a historical target', () => {
+    for (const set of [true, false]) {
+      expect(restoreCeremonyUnit({
+        revisionKeys,
+        currentCells: [
+          { keyId: 'k_config', classification: 'config', sensitive: true, set },
+          { keyId: 'k_absent_from_target', classification: 'config', sensitive: true, set: true },
+        ],
+        keyId: null,
+      }).map((entry) => entry.id)).toEqual(set ? ['k_secret', 'k_config'] : ['k_secret']);
+    }
+  });
+
   it('narrows to one key for a per-key restore', () => {
     expect(restoreCeremonyUnit({ revisionKeys, currentCells: [], keyId: 'k_config' })).toEqual([]);
     expect(

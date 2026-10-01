@@ -445,7 +445,7 @@ func (s *SCIM) mutateUser(
 			// A PUT that EXPLICITLY supplies a different subject value is still
 			// refused; that is a real migration attempt and the rebinding
 			// hazard the identity model exists to prevent.
-			subjectSourced := c.binding.SubjectSource == domain.SubjectSourceExternalID
+			subjectSourced := strings.EqualFold(c.binding.SubjectSource, domain.SubjectSourceExternalID)
 			sourceTouched := desiredUserTouchesSubjectSource(desired, c.binding.SubjectSource)
 			if replacement == nil {
 				sourceTouched = userPatchTouchesSubjectSource(commands, c.binding.SubjectSource)
@@ -572,10 +572,8 @@ func (s *SCIM) mutateUser(
 }
 
 // deprovision is the `active: true -> false` transition (§5.3): every `scim`
-// origin this binding holds for the user is released under §2.4, and the user's
-// session generation advances UNCONDITIONALLY — even when no grant row changed,
-// because the IdP has declared this human gone and surviving sessions must
-// re-prove.
+// origin this binding holds for the user is released under §2.4. Current grants
+// are rechecked immediately; the binding cannot retire instance-wide sessions.
 //
 // Manual grants in this org SURVIVE — the IdP was not their source — and the
 // binding raises the loud per-user attention flag. Stated honestly, as the ADR
@@ -605,7 +603,7 @@ func (s *SCIM) deprovision(
 			return k.Binding == c.binding.ID && !keep[k.MappingRow]
 		},
 		cause: cause,
-	}, advanceAlways, now)
+	}, now)
 	if err != nil {
 		return nil, err
 	}
@@ -897,8 +895,9 @@ func extractAttribute(body map[string]any, path string) string {
 	}
 	if i := strings.LastIndex(path, ":"); i >= 0 {
 		schema, attr := path[:i], path[i+1:]
-		nested, ok := body[schema].(map[string]any)
-		if !ok {
+		value, found := unambiguousAttribute(body, schema)
+		nested, ok := value.(map[string]any)
+		if !found || !ok {
 			return ""
 		}
 		return extractAttribute(nested, attr)
@@ -906,14 +905,35 @@ func extractAttribute(body map[string]any, path string) string {
 	cursor := body
 	parts := strings.Split(path, ".")
 	for _, part := range parts[:len(parts)-1] {
-		next, ok := cursor[part].(map[string]any)
-		if !ok {
+		value, found := unambiguousAttribute(cursor, part)
+		next, ok := value.(map[string]any)
+		if !found || !ok {
 			return ""
 		}
 		cursor = next
 	}
-	v, _ := cursor[parts[len(parts)-1]].(string)
+	value, found := unambiguousAttribute(cursor, parts[len(parts)-1])
+	if !found {
+		return ""
+	}
+	v, _ := value.(string)
 	return v
+}
+
+// Attribute names are case-insensitive, but ambiguous spellings must not
+// select an identity nondeterministically through Go map iteration.
+func unambiguousAttribute(values map[string]any, name string) (any, bool) {
+	var value any
+	found := false
+	for key, candidate := range values {
+		if strings.EqualFold(key, name) {
+			if found {
+				return nil, false
+			}
+			value, found = candidate, true
+		}
+	}
+	return value, found
 }
 
 // Unsupported is the authenticated refusal of a feature this provider

@@ -22,6 +22,7 @@ import {
   projectName,
   selfRemoveRefusal,
   selfSaveRefusal,
+  replacementSaveRefusal,
   setMode,
   tapped,
   toggleItems,
@@ -77,7 +78,8 @@ export function RuleEditorDialog({
   const editing = rule.source.kind === 'rule';
   const unreadable = chosen.filter((p) => projectById(world, p)?.keys === null);
   const singleKeys = keyChoices(world, chosen, draft);
-  const saveRefusal = selfSaveRefusal(editing ? rule : null, draft, actingPrincipal);
+  const saveRefusal = replacementSaveRefusal(editing ? rule : null, draft)
+    ?? selfSaveRefusal(editing ? rule : null, draft, actingPrincipal);
   const removeRefusal = selfRemoveRefusal(rule, actingPrincipal);
   const cancel = () => {
     if (!busy) onCancel();

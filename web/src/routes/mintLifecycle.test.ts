@@ -39,7 +39,7 @@ const request = (id: number, accountId = 'mch_first'): MintRequest => ({
   accountId,
   accountName: accountId === 'mch_first' ? 'first worker' : 'second worker',
   rotating: false,
-  reach: [{ id: 'env_prod', name: 'production' }],
+  reach: [{ id: 'env_prod', name: 'production', current: true, historical: false }],
 });
 
 function submitting(input: MintRequest): MintLifecycle {

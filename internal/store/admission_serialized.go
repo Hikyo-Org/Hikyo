@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/jackc/pgx/v5"
 )
@@ -27,7 +28,7 @@ func (d *DB) BeginPostgresSerialized(ctx context.Context, namespace, key int32) 
 		defer cancel()
 		_ = raw.Close(cleanup)
 	}
-	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1,$2)", namespace, key); err != nil {
+	if err := pggen.New(conn).AdmissionSerializedLock(ctx, pggen.AdmissionSerializedLockParams{Namespace: namespace, Key: key}); err != nil {
 		discard()
 		return nil, err
 	}
@@ -37,8 +38,7 @@ func (d *DB) BeginPostgresSerialized(ctx context.Context, namespace, key int32) 
 		once.Do(func() {
 			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 			defer cancel()
-			var unlocked bool
-			err := conn.QueryRow(cleanup, "SELECT pg_advisory_unlock($1,$2)", namespace, key).Scan(&unlocked)
+			unlocked, err := pggen.New(conn).AdmissionSerializedUnlock(cleanup, pggen.AdmissionSerializedUnlockParams{Namespace: namespace, Key: key})
 			if err != nil || !unlocked {
 				discard()
 				cleanupErr = errors.Join(err, errors.New("store: serialized owner unlock was not confirmed"))

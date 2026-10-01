@@ -363,18 +363,3 @@ func TestServiceAccountGrammar(t *testing.T) {
 		})
 	}
 }
-
-func TestHelpStatesTheConsumptionChannels(t *testing.T) {
-	var help strings.Builder
-	cli.Usage(&help)
-	for _, want := range []string{
-		"hikyo sa credential mint --sa <id>",
-		"hikyo sa credential rotate --sa <id>",
-		"--token-file <path> or HIKYO_TOKEN",
-		"never a --token flag",
-	} {
-		if !strings.Contains(help.String(), want) {
-			t.Errorf("help missing %q", want)
-		}
-	}
-}

@@ -71,6 +71,7 @@ WHERE consumed_at IS NULL AND expires_at <= ?
 // Expired, unconsumed challenges have no provenance value and cannot be
 // referenced by a session or reauthentication window. Remove them before
 // creating the next ceremony so sustained starts cannot grow storage forever.
+// hikyo:reason Pre-auth issuance retires only expired unconsumed proofs; no live credential or tenant authority changes.
 // hikyo:authn-resolution
 func (q *Queries) DeleteExpiredUnconsumedWebAuthnCeremonies(ctx context.Context, expiresAt string) (int64, error) {
 	result, err := q.db.ExecContext(ctx, deleteExpiredUnconsumedWebAuthnCeremonies, expiresAt)

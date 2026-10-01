@@ -164,19 +164,41 @@ describe("SamlProvidersPanel metadata ceremony", () => {
     expect(container.textContent).toContain("changes trust state");
     expect(container.textContent).toContain("sha256:AAA");
 
+    // Every policy field invalidates trust confirmation, not only metadata.
+    const assurance = container.querySelectorAll<HTMLTextAreaElement>('.saml-editor textarea')[1];
+    if (assurance === undefined) throw new Error('assurance field missing');
+    const policyEdits = [
+      () => setNativeValue(assurance, 'https://idp.example/mfa'),
+      ...[...container.querySelectorAll<HTMLInputElement>('.saml-editor input[type="checkbox"]')].map(
+        (checkbox) => () => checkbox.click(),
+      ),
+    ];
+    expect(policyEdits).toHaveLength(4);
+    for (const edit of policyEdits) {
+      await act(async () => edit());
+      expect(container.textContent).not.toContain('Confirm trust and configure provider');
+      await act(async () => button(container, 'Preview and configure').click());
+      await settleTask();
+      expect(container.textContent).toContain('Confirm trust and configure provider');
+    }
+
     await act(async () =>
       button(container, "Confirm trust and configure provider").click(),
     );
     await settleTask();
 
     // The second request carried the confirmed material copied from required_*.
-    const secondBody = bodies[1];
+    const secondBody = bodies.at(-1);
     if (secondBody === undefined)
       throw new Error("confirm request was never sent");
     const confirmBody: unknown = JSON.parse(secondBody);
     expect(confirmBody).toMatchObject({
       confirmed_fingerprints: ["sha256:AAA"],
       confirmed_endpoints: ["https://idp.example/acme/sso"],
+      assurance_policy: ['https://idp.example/mfa'],
+      allow_email_nameid: true,
+      force_sign_requests: true,
+      enabled: false,
     });
     expect(container.textContent).toContain("Configured SAML provider acme");
     // The write-only metadata never survives a successful apply in the DOM…
@@ -195,7 +217,7 @@ describe("SamlProvidersPanel metadata ceremony", () => {
     await unmount();
   });
 
-  it("confirms the exact previewed document even if the form is edited while the preview is in flight", async () => {
+  it("disables editing in flight and refuses stale previews if the draft changes", async () => {
     const bodies: string[] = [];
     let releasePreview: (() => void) | undefined;
     const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
@@ -290,6 +312,11 @@ describe("SamlProvidersPanel metadata ceremony", () => {
       ".saml-editor textarea",
     );
     if (liveTextarea === null) throw new Error("textarea vanished mid-preview");
+    expect(liveTextarea.disabled).toBe(true);
+    expect([...container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      '.saml-editor input, .saml-editor select, .saml-editor textarea',
+    )].every((field) => field.disabled)).toBe(true);
+    // A synthetic/programmatic edit must also invalidate the older response.
     await act(async () => setNativeValue(liveTextarea, "DOCUMENT_B"));
 
     // Now let the preview land; the pending diff is restored despite the edit.
@@ -298,19 +325,9 @@ describe("SamlProvidersPanel metadata ceremony", () => {
       await Promise.resolve();
     });
     await settleTask();
-    await act(async () =>
-      button(container, "Confirm trust and configure provider").click(),
-    );
-    await settleTask();
-
-    // The confirm request must carry the previewed document A, never the edit B.
-    const confirmBody = bodies.find((body) =>
-      body.includes("confirmed_fingerprints"),
-    );
-    if (confirmBody === undefined)
-      throw new Error("confirm request was never sent");
-    expect(confirmBody).toContain("DOCUMENT_A");
-    expect(confirmBody).not.toContain("DOCUMENT_B");
+    expect(container.textContent).not.toContain('Confirm trust and configure provider');
+    expect(button(container, 'Preview and configure').disabled).toBe(false);
+    expect(bodies).toHaveLength(1);
     await unmount();
   });
 });

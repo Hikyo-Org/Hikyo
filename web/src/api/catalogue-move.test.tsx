@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, useEffect } from 'react';
+import { act, StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -86,9 +86,9 @@ async function run(
   }
   await act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
+      <StrictMode><QueryClientProvider client={client}>
         <Harness />
-      </QueryClientProvider>,
+      </QueryClientProvider></StrictMode>,
     );
   });
   const mutate = holder.mutate;

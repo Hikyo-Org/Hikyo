@@ -806,6 +806,15 @@ func (s *Workspace) ApproveHandoff(ctx context.Context, actor Actor, state strin
 		if err != nil {
 			return err
 		}
+		// Serialize approval with generation revocation, then re-resolve the
+		// session so old assurance cannot survive behind a newer generation.
+		if err := az.LockTargetPrincipal(ctx, caller.Principal); err != nil {
+			return err
+		}
+		caller, err = az.Authenticate(ctx, actor.bearer, now)
+		if err != nil {
+			return err
+		}
 		h, err := az.WorkspaceHandoffByState(ctx, crypto.ArtifactVerifier(state))
 		if err != nil {
 			return s.handoffFailure(ctx, az, caller.Principal, "", "", "callback", "unknown-transaction")
@@ -1094,6 +1103,15 @@ func (s *Workspace) RedeemHandoff(ctx context.Context, code, pkceVerifier, origi
 		}
 		if h.PrincipalID == "" {
 			return s.handoffFailure(ctx, az, h.PrincipalID, h.ID, h.Origin, "redeem", "never-approved")
+		}
+		if err := az.LockTargetPrincipal(ctx, h.PrincipalID); err != nil {
+			return err
+		}
+		// A revocation that won the lock deleted pending approvals. Reload
+		// under that same lock before consuming or stamping a new session.
+		h, err = az.WorkspaceHandoffByCode(ctx, crypto.ArtifactVerifier(code))
+		if err != nil || !h.Live(now) {
+			return s.handoffFailure(ctx, az, "", "", canonical, "redeem", "revoked-approval")
 		}
 		if pkceS256(pkceVerifier) != h.PKCEChallenge {
 			return s.handoffFailure(ctx, az, h.PrincipalID, h.ID, h.Origin, "redeem", "pkce-mismatch")

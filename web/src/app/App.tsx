@@ -26,6 +26,7 @@ const EnrolmentGate = lazy(() =>
 );
 const CLIReauth = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.CLIReauth })));
 const OIDCDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.OIDCDone })));
+const SAMLDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.SAMLDone })));
 const WorkspaceApprove = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.WorkspaceApprove })));
 const WorkspaceCallback = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.WorkspaceCallback })));
 
@@ -125,6 +126,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   'workspace-approve': withRouteFallback(<WorkspaceApprove />),
   'workspace-callback': withRouteFallback(<WorkspaceCallback />),
   'oidc-done': withRouteFallback(<OIDCDone />),
+  'saml-done': withRouteFallback(<SAMLDone />),
 };
 
 /**

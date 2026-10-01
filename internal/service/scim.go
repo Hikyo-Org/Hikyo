@@ -482,7 +482,10 @@ func (s *SCIM) applyMappings(
 			if _, err := lockAndClassify(ctx, az, target, capability, scope, s.now); err != nil {
 				return nil, 0, err
 			}
-			out, err := writeGrantRow(ctx, az, spec, origin, now)
+			// A binding controls only this org's grants. It must not retire
+			// an instance-wide login or pending proof when policy moves here.
+			// Every authorized operation reads current grants in its transaction.
+			out, err := writeGrantRowState(ctx, az, spec, origin, now)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -777,8 +780,8 @@ func sanitizedList(in []string, max int) []string {
 // a wrong one that happens to converge.
 //
 // It is nil in production and costs one atomic load per phase. The same shape
-// as the resolution surface's query seam, and pinned by the same test
-// (TestQueryObserverIsTestOnly): it must have no production installer.
+// as the resolution surface's query seam. internal/lint.CheckTestObservers
+// enforces that production code never references either installer.
 var scimPhaseObserver atomic.Pointer[func(string, map[string]int)]
 
 // SetSCIMPhaseObserver installs the observer and returns a restore func. It is

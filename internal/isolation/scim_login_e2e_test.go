@@ -631,15 +631,14 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	if held(t, db, goesPrincipal, domain.CapRead, scope) {
 		t.Fatal("the post-backup deprovision must release the grant it authorized")
 	}
-	// §5.3: the deprovision advances the generation UNCONDITIONALLY, so the
-	// session minted before it is already dead — and this is the exact denial
-	// the restore must not undo.
+	// §5.3 amended: deprovision removes this org's capability immediately,
+	// without retiring an instance-wide login or touching unrelated orgs.
 	if after := queryInt(t, db,
-		`SELECT session_generation FROM principals WHERE id = '`+string(goesPrincipal)+`'`); after <= generationBefore {
-		t.Fatalf("the deprovision must advance the generation: %d -> %d", generationBefore, after)
+		`SELECT session_generation FROM principals WHERE id = '`+string(goesPrincipal)+`'`); after != generationBefore {
+		t.Fatalf("the deprovision must preserve the generation: %d -> %d", generationBefore, after)
 	}
-	if err := protectedOp(goesSession); !isUnauth(err) {
-		t.Fatalf("the pre-backup session must die with the deprovision, got %v", err)
+	if err := protectedOp(goesSession); err == nil || isUnauth(err) {
+		t.Fatalf("the live pre-backup session must lose the withdrawn capability, got %v", err)
 	}
 
 	// THE RESTORE. Two things happen at once, and the drill needs both:

@@ -82,17 +82,22 @@ func samlStartUnauthenticated() apigen.SamlStartResponseObject {
 }
 
 type samlACSResponse struct {
-	inner         apigen.SamlACSResponseObject
-	clearCookie   *http.Cookie
-	sessionCookie *http.Cookie
+	inner    apigen.SamlACSResponseObject
+	cookies  []*http.Cookie
+	location string
 }
 
 func (r samlACSResponse) VisitSamlACSResponse(w http.ResponseWriter) error {
-	if r.clearCookie != nil {
-		writeHTTPOnlyCookie(w, r.clearCookie)
+	if r.location != "" {
+		w.Header().Set("Location", r.location)
+		return writeJSONWithCookies(w, r.cookies, http.StatusSeeOther, nil)
 	}
-	if r.sessionCookie != nil {
-		writeHTTPOnlyCookie(w, r.sessionCookie)
+	for _, cookie := range r.cookies {
+		if cookie.Name == browserCSRFCookie {
+			writeScriptReadableCookie(w, cookie)
+		} else {
+			writeHTTPOnlyCookie(w, cookie)
+		}
 	}
 	return r.inner.VisitSamlACSResponse(w)
 }
@@ -125,14 +130,17 @@ func (a *API) SamlACS(ctx context.Context, req apigen.SamlACSRequestObject) (api
 		default:
 			inner = apigen.SamlACS401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}
 		}
-		return samlACSResponse{inner: inner, clearCookie: clear}, nil
+		return samlACSResponse{inner: inner, cookies: []*http.Cookie{clear}}, nil
 	}
-	response := samlACSResponse{inner: apigen.SamlACS200JSONResponse(loginResultOf(result)), clearCookie: clear}
-	if result.Artifact == service.ArtifactBrowser && result.SessionToken != "" {
-		response.sessionCookie = &http.Cookie{
-			Name: browserSessionCookie, Value: result.SessionToken,
-			Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		}
+	response := samlACSResponse{
+		inner:   apigen.SamlACS200JSONResponse(loginResultOf(result)),
+		cookies: append([]*http.Cookie{clear}, sessionResponse(result).cookies...),
+	}
+	if request := requestFrom(ctx); request != nil && wantsHTML(request) && result.Artifact == service.ArtifactBrowser && result.SessionToken != "" {
+		// SAMLACS has already authenticated the response, RelayState and
+		// initiator. The URL carries only that validated one-shot correlation
+		// value; session and CSRF tokens stay in the shared cookie channel.
+		response.location = "/auth/saml/done?" + url.Values{"state": {relayState}}.Encode()
 	}
 	return response, nil
 }

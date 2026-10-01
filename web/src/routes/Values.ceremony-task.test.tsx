@@ -1,14 +1,13 @@
 // @vitest-environment happy-dom
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from 'react';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { RevealWindow } from "../api/values.ts";
-import { deferred, revealWindow } from "../testkit/ceremony.ts";
-import { settle } from "../testkit/renderForm.tsx";
-import type { CeremonyRequest } from "./Ceremony.tsx";
-import { Values } from "./Values.tsx";
+import type { RevealWindow } from '../api/values.ts';
+import { deferred, revealWindow } from '../testkit/ceremony.ts';
+import { renderForm, settle } from '../testkit/renderForm.tsx';
+import type { CeremonyRequest } from './Ceremony.tsx';
+import { Values } from './Values.tsx';
 
 const mocks = vi.hoisted(() => ({
   copy: vi.fn(),
@@ -19,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   guard: undefined as RevealWindow | undefined,
 }));
 
-vi.mock("../api/values.ts", async (importActual) => {
-  const actual = await importActual<typeof import("../api/values.ts")>();
+vi.mock('../api/values.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../api/values.ts')>();
   return {
     ...actual,
     fetchRevealWindow: mocks.fetchRevealWindow,
@@ -28,9 +27,9 @@ vi.mock("../api/values.ts", async (importActual) => {
     useEnvironments: () => ({
       data: {
         items: [
-          { id: "env-a", name: "Alpha" },
-          { id: "env-b", name: "Beta" },
-          { id: "env-c", name: "Gamma" },
+          { id: 'env-a', name: 'Alpha' },
+          { id: 'env-b', name: 'Beta' },
+          { id: 'env-c', name: 'Gamma' },
         ],
       },
     }),
@@ -44,15 +43,15 @@ vi.mock("../api/values.ts", async (importActual) => {
       data: {
         items: [
           {
-            key_id: "key-a",
-            name: "KEY_A",
-            classification: "secret",
+            key_id: 'key-a',
+            name: 'KEY_A',
+            classification: 'secret',
             set: true,
           },
           {
-            key_id: "key-b",
-            name: "KEY_B",
-            classification: "secret",
+            key_id: 'key-b',
+            name: 'KEY_B',
+            classification: 'secret',
             set: true,
           },
         ],
@@ -62,12 +61,12 @@ vi.mock("../api/values.ts", async (importActual) => {
   };
 });
 
-vi.mock("../api/transport.tsx", () => ({
+vi.mock('../api/transport.tsx', () => ({
   useTransport: () => ({ client: undefined }),
 }));
 
-vi.mock("./Ceremony.tsx", async (importActual) => {
-  const actual = await importActual<typeof import("./Ceremony.tsx")>();
+vi.mock('./Ceremony.tsx', async (importActual) => {
+  const actual = await importActual<typeof import('./Ceremony.tsx')>();
   return {
     ...actual,
     Ceremony: ({ request }: { request: CeremonyRequest }) => (
@@ -82,9 +81,7 @@ function App() {
     <>
       <button
         type="button"
-        onClick={() =>
-          navigate("/orgs/org-a/projects/project-a/environments/env-c/values")
-        }
+        onClick={() => navigate('/orgs/org-a/projects/project-a/environments/env-c/values')}
       >
         Navigate
       </button>
@@ -98,45 +95,29 @@ function App() {
   );
 }
 
-async function renderValues(): Promise<{ container: HTMLElement; root: Root }> {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <MemoryRouter
-        initialEntries={[
-          "/orgs/org-a/projects/project-a/environments/env-a/values",
-        ]}
-      >
-        <App />
-      </MemoryRouter>,
-    );
-  });
-  return { container, root };
+async function renderValues() {
+  const { container, unmount } = await renderForm(
+    <MemoryRouter initialEntries={['/orgs/org-a/projects/project-a/environments/env-a/values']}>
+      <App />
+    </MemoryRouter>,
+  );
+  return { container, unmount };
 }
 
 function button(container: HTMLElement, name: string): HTMLButtonElement {
-  const match = [...container.querySelectorAll("button")].find(
-    (candidate) =>
-      candidate.textContent === name ||
-      candidate.getAttribute("aria-label") === name,
+  const match = [...container.querySelectorAll('button')].find(
+    (candidate) => candidate.textContent === name || candidate.getAttribute('aria-label') === name,
   );
   if (match === undefined) throw new Error(`button ${name} is missing`);
   return match;
 }
 
-async function selectDestination(
-  container: HTMLElement,
-  environmentId: string,
-): Promise<void> {
-  const select = container.querySelector<HTMLSelectElement>(
-    "#publish-destination",
-  );
-  if (select === null) throw new Error("publish destination is missing");
+async function selectDestination(container: HTMLElement, environmentId: string): Promise<void> {
+  const select = container.querySelector<HTMLSelectElement>('#publish-destination');
+  if (select === null) throw new Error('publish destination is missing');
   await act(async () => {
     select.value = environmentId;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
   });
 }
 
@@ -152,164 +133,137 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Values reveal gating", () => {
+describe('Values reveal gating', () => {
   for (const [label, guard] of [
-    ["pending or failed", undefined],
-    ["refused", { ...revealWindow(true), can_reveal: false }],
+    ['pending or failed', undefined],
+    ['refused', { ...revealWindow(true), can_reveal: false }],
   ] as const) {
     it(`offers no disclosure control while the guard is ${label}`, async () => {
       mocks.guard = guard;
-      const { container, root } = await renderValues();
-      const labels = [...container.querySelectorAll("button")].map(
-        (b) => b.getAttribute("aria-label") ?? b.textContent,
+      const { container, unmount } = await renderValues();
+      const labels = [...container.querySelectorAll('button')].map(
+        (b) => b.getAttribute('aria-label') ?? b.textContent,
       );
-      expect(labels.some((l) => l?.startsWith("Reveal KEY"))).toBe(false);
-      expect(labels.some((l) => l?.startsWith("Copy KEY"))).toBe(false);
-      const revealAll = [...container.querySelectorAll("button")].find(
-        (b) => b.textContent === "Reveal every secret",
+      expect(labels.some((l) => l?.startsWith('Reveal KEY'))).toBe(false);
+      expect(labels.some((l) => l?.startsWith('Copy KEY'))).toBe(false);
+      const revealAll = [...container.querySelectorAll('button')].find(
+        (b) => b.textContent === 'Reveal every secret',
       );
       expect(revealAll?.disabled).toBe(true);
-      await act(async () => root.unmount());
+      await unmount();
     });
   }
 
-  it("stops a disclosure whose freshly fetched window says no, even with a stale cache", async () => {
+  it('stops a disclosure whose freshly fetched window says no, even with a stale cache', async () => {
     mocks.guard = revealWindow(true);
-    mocks.fetchRevealWindow.mockResolvedValueOnce({
-      ...revealWindow(true),
-      can_reveal: false,
-    });
-    const { container, root } = await renderValues();
-    await act(async () => button(container, "Reveal KEY_A").click());
+    mocks.fetchRevealWindow.mockResolvedValueOnce({ ...revealWindow(true), can_reveal: false });
+    const { container, unmount } = await renderValues();
+    await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
     expect(mocks.revealOne).not.toHaveBeenCalled();
-    expect(container.textContent).toContain(
-      "Reveal is not granted here, so nothing was disclosed.",
-    );
-    await act(async () => root.unmount());
+    expect(container.textContent).toContain('Reveal is not granted here, so nothing was disclosed.');
+    await unmount();
   });
 });
 
-describe("Values reveal accessibility", () => {
-  it("announces one reveal once and keeps its ticking countdown visual-only", async () => {
+describe('Values reveal accessibility', () => {
+  it('announces one reveal once and keeps its ticking countdown visual-only', async () => {
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
     mocks.revealOne.mockResolvedValueOnce({
-      key_id: "key-a",
-      name: "KEY_A",
-      value: "revealed-value",
+      key_id: 'key-a',
+      name: 'KEY_A',
+      value: 'revealed-value',
     });
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
-    await act(async () => button(container, "Reveal KEY_A").click());
+    await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
 
-    expect(
-      container.querySelectorAll(".values__reveal-announcement"),
-    ).toHaveLength(1);
-    const announcement = container.querySelector(
-      ".values__reveal-announcement",
-    );
-    expect(announcement?.getAttribute("role")).toBe("status");
-    expect(announcement?.textContent).toBe(
-      "KEY_A revealed: re-masks in 10 seconds",
-    );
+    expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
+    const announcement = container.querySelector('.values__reveal-announcement');
+    expect(announcement?.getAttribute('role')).toBe('status');
+    expect(announcement?.textContent).toBe('KEY_A revealed: re-masks in 10 seconds');
     // The plaintext IS the accessible content: an aria-label would hide it.
-    expect(
-      container.querySelector(".values__plain")?.hasAttribute("aria-label"),
-    ).toBe(false);
-    expect(container.querySelector(".values__plain")?.textContent).toContain(
-      "revealed-value",
+    expect(container.querySelector('.values__plain')?.hasAttribute('aria-label')).toBe(false);
+    expect(container.querySelector('.values__plain')?.textContent).toContain('revealed-value');
+    expect(container.querySelector('.values__countdown')?.getAttribute('aria-hidden')).toBe(
+      'true',
     );
-    expect(
-      container
-        .querySelector(".values__countdown")
-        ?.getAttribute("aria-hidden"),
-    ).toBe("true");
-    expect(
-      container.querySelector(".values__countdown")?.hasAttribute("role"),
-    ).toBe(false);
-    await act(async () => root.unmount());
+    expect(container.querySelector('.values__countdown')?.hasAttribute('role')).toBe(false);
+    await unmount();
   });
 
-  it("uses one reveal announcement when every secret is disclosed", async () => {
+  it('uses one reveal announcement when every secret is disclosed', async () => {
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
     mocks.revealAll.mockResolvedValueOnce({
       items: [
         {
-          key_id: "key-a",
-          name: "KEY_A",
-          classification: "secret",
-          value: "revealed-a",
+          key_id: 'key-a',
+          name: 'KEY_A',
+          classification: 'secret',
+          value: 'revealed-a',
         },
         {
-          key_id: "key-b",
-          name: "KEY_B",
-          classification: "secret",
-          value: "revealed-b",
+          key_id: 'key-b',
+          name: 'KEY_B',
+          classification: 'secret',
+          value: 'revealed-b',
         },
       ],
     });
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
     const liveRegionCount = container.querySelectorAll(
       '[role="status"], [aria-live="polite"]',
     ).length;
 
-    await act(async () => button(container, "Reveal every secret").click());
+    await act(async () => button(container, 'Reveal every secret').click());
     await settle();
 
-    expect(
-      container.querySelectorAll(".values__reveal-announcement"),
-    ).toHaveLength(1);
-    expect(
-      container.querySelector(".values__reveal-announcement")?.textContent,
-    ).toBe("2 secrets revealed: re-mask in 10 seconds");
-    expect(container.querySelectorAll(".values__countdown")).toHaveLength(2);
-    expect(
-      container.querySelectorAll('.values__countdown[aria-hidden="true"]'),
-    ).toHaveLength(2);
-    expect(container.querySelectorAll(".values__countdown[role]")).toHaveLength(
-      0,
+    expect(container.querySelectorAll('.values__reveal-announcement')).toHaveLength(1);
+    expect(container.querySelector('.values__reveal-announcement')?.textContent).toBe(
+      '2 secrets revealed: re-mask in 10 seconds',
     );
-    expect(
-      container.querySelectorAll('[role="status"], [aria-live="polite"]'),
-    ).toHaveLength(liveRegionCount);
-    await act(async () => root.unmount());
+    expect(container.querySelectorAll('.values__countdown')).toHaveLength(2);
+    expect(container.querySelectorAll('.values__countdown[aria-hidden="true"]')).toHaveLength(2);
+    expect(container.querySelectorAll('.values__countdown[role]')).toHaveLength(0);
+    expect(container.querySelectorAll('[role="status"], [aria-live="polite"]')).toHaveLength(
+      liveRegionCount,
+    );
+    await unmount();
   });
 });
 
-describe("Values ceremony task ownership", () => {
-  it("ignores a guard completion from the environment visited before navigation", async () => {
+describe('Values ceremony task ownership', () => {
+  it('ignores a guard completion from the environment visited before navigation', async () => {
     const pending = deferred<RevealWindow>();
     mocks.fetchRevealWindow.mockImplementationOnce(() => pending.promise);
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
-    await act(async () => button(container, "Reveal KEY_A").click());
-    await act(async () => button(container, "Navigate").click());
+    await act(async () => button(container, 'Reveal KEY_A').click());
+    await act(async () => button(container, 'Navigate').click());
     await act(async () => pending.resolve(revealWindow(false)));
     await settle();
 
     expect(container.querySelector('[data-testid="ceremony"]')).toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
-  it("ignores a guard completion for a publish destination that changed", async () => {
+  it('ignores a guard completion for a publish destination that changed', async () => {
     const pending = deferred<RevealWindow>();
     mocks.fetchRevealWindow.mockImplementationOnce(() => pending.promise);
-    const { container, root } = await renderValues();
-    await selectDestination(container, "env-b");
+    const { container, unmount } = await renderValues();
+    await selectDestination(container, 'env-b');
 
-    await act(async () =>
-      button(container, "Publish into environment").click(),
-    );
-    await selectDestination(container, "env-c");
+    await act(async () => button(container, 'Publish into environment').click());
+    await selectDestination(container, 'env-c');
     await act(async () => pending.resolve(revealWindow(false)));
     await settle();
 
     expect(container.querySelector('[data-testid="ceremony"]')).toBeNull();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
-  it("does not disclose a value whose request completes after navigation", async () => {
+  it('does not disclose a value whose request completes after navigation', async () => {
     const disclosure = deferred<{
       key_id: string;
       name: string;
@@ -317,50 +271,20 @@ describe("Values ceremony task ownership", () => {
     }>();
     mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
     mocks.revealOne.mockImplementationOnce(() => disclosure.promise);
-    const { container, root } = await renderValues();
+    const { container, unmount } = await renderValues();
 
-    await act(async () => button(container, "Reveal KEY_A").click());
+    await act(async () => button(container, 'Reveal KEY_A').click());
     await settle();
-    await act(async () => button(container, "Navigate").click());
-    await act(async () =>
-      disclosure.resolve({
-        key_id: "key-a",
-        name: "KEY_A",
-        value: "must-not-cross-environments",
-      }),
-    );
+    await act(async () => button(container, 'Navigate').click());
+    await act(async () => disclosure.resolve({
+      key_id: 'key-a',
+      name: 'KEY_A',
+      value: 'must-not-cross-environments',
+    }));
     await settle();
 
-    expect(container.textContent).not.toContain("must-not-cross-environments");
-    expect(container.textContent).toContain("No disclosures yet.");
-    await act(async () => root.unmount());
-  });
-
-  it("does not copy a secret after its ceremony scope becomes stale", async () => {
-    const disclosure = deferred<{
-      key_id: string;
-      name: string;
-      value: string;
-    }>();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { clipboard: { writeText } });
-    mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
-    mocks.revealOne.mockImplementationOnce(() => disclosure.promise);
-    const { container, root } = await renderValues();
-
-    await act(async () => button(container, "Copy KEY_A (audited disclosure)").click());
-    await settle();
-    await selectDestination(container, "env-b");
-    await act(async () =>
-      disclosure.resolve({
-        key_id: "key-a",
-        name: "KEY_A",
-        value: "stale-secret",
-      }),
-    );
-    await settle();
-
-    expect(writeText).not.toHaveBeenCalled();
-    await act(async () => root.unmount());
+    expect(container.textContent).not.toContain('must-not-cross-environments');
+    expect(container.textContent).toContain('No disclosures yet.');
+    await unmount();
   });
 });

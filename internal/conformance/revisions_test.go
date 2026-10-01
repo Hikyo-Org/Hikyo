@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Revisions, drafts and publishing (#51) — the cross-engine acceptance corpus
@@ -46,6 +48,7 @@ func init() {
 		scenario{"required_in_absent_vetoes_publish", scenarioRequiredInVeto},
 		scenario{"revision_ciphertext_is_owner_bound", scenarioRevisionCiphertextBinding},
 		scenario{"advisory_projects_authorization_per_event", scenarioAdvisoryAuthorization},
+		scenario{"advisory_revoked_credential_closes_stream", scenarioAdvisoryRevokedCredential},
 		scenario{"historical_export_takes_reveal_history_not_reveal", scenarioHistoricalExportFormula},
 		scenario{"historical_export_masks_sticky_secret_occurrences", scenarioHistoricalExportStickySecrecy},
 		scenario{"restore_of_superseded_secret_takes_reveal_history", scenarioRestoreSupersededSecret},
@@ -1340,6 +1343,12 @@ func scenarioAdvisoryAuthorization(t *testing.T, db *store.DB) {
 		(id, principal_id, capability, org_id, project_id, env_id, created_at)
 		VALUES ($1, $2, 'read', $3, $4, $5, '2026-01-01T00:00:00Z')`,
 		"grt_advisory_scoped_"+string(scope.Project), string(reader), string(scope.Org), string(scope.Project), string(dev.Env))
+	if err := tx.Read(t.Context(), db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, err := az.Authorize(ctx, authz.Identity{Principal: reader}, authz.OpAdvisoryEvent, prod)
+		return err
+	}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("object-level advisory refusal = %v, want masked ErrNotFound", err)
+	}
 
 	prodDraft, err := values.Set(t.Context(), actor, prod, "NOTICE", "hidden", nil)
 	if err != nil {
@@ -1373,6 +1382,64 @@ func scenarioAdvisoryAuthorization(t *testing.T, db *store.DB) {
 		case <-deadline.C:
 			t.Fatal("authorized dev advisory did not arrive")
 		}
+	}
+}
+
+func scenarioAdvisoryRevokedCredential(t *testing.T, db *store.DB) {
+	who, scope, values, envs, keys := valueFixture(t, db, "advisoryrevoked")
+	actor := service.LocalPrincipal(who)
+	dev := mustEnv(t, envs, actor, scope, "dev")
+	mustKey(t, keys, actor, scope, "NOTICE", string(schema.Config), schema.DefaultPresenceRules())
+	reader := newPrincipal(t, db, "usr_advisory_revoked_"+string(scope.Project), []grantSpec{
+		{"read", scope},
+	})
+	artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	err = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		generation, err := az.PrincipalGeneration(ctx, reader)
+		if err != nil {
+			return err
+		}
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		return az.MintSession(ctx, authz.NewSession{
+			ID: "ses_advisory_revoked", PrincipalID: reader, Verifier: verifier,
+			Artifact: "cli", SessionGeneration: generation, CredentialEpoch: epoch,
+			AuthMethod: "local-password", Factors: `["password"]`,
+			AuthenticatedAt: now, CreatedAt: now,
+			IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(24 * time.Hour),
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advisory := service.NewAdvisory()
+	values.Advisory = advisory
+	revisions := &service.Revisions{DB: db, Keyring: sharedKeyring(t, db), Advisory: advisory}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events, err := revisions.Watch(ctx, service.Bearer(artifact), scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (&service.Auth{DB: db}).Logout(t.Context(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := values.Set(t.Context(), actor, dev, "NOTICE", "after-revocation", nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev, ok := <-events:
+		if ok {
+			t.Fatalf("revoked credential stream delivered an event instead of closing: %+v", ev)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("revoked credential stream stayed open after per-event authentication failed")
 	}
 }
 

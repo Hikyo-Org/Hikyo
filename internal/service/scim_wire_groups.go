@@ -158,15 +158,6 @@ func (s *SCIM) mutateGroup(
 			if next.DisplayName != row.DisplayName || next.ExternalID != row.ExternalID {
 				dirty = true
 			}
-			if dirty {
-				if err := r.SCIM().UpdateGroup(ctx, c.proof, store.SCIMGroupUpdate{
-					ID: id, BindingID: bindingID, DisplayName: next.DisplayName,
-					DisplayNameLower: next.DisplayNameLower, ExternalID: next.ExternalID,
-					UpdatedAt: now,
-				}); err != nil {
-					return nil, err
-				}
-			}
 			var events []grantEventInput
 			var added, removed []string
 			if touchesMembers {
@@ -175,6 +166,15 @@ func (s *SCIM) mutateGroup(
 					return nil, err
 				}
 				events, added, removed = evs, a, rm
+			}
+			if dirty || len(added) > 0 || len(removed) > 0 {
+				if err := r.SCIM().UpdateGroup(ctx, c.proof, store.SCIMGroupUpdate{
+					ID: id, BindingID: bindingID, DisplayName: next.DisplayName,
+					DisplayNameLower: next.DisplayNameLower, ExternalID: next.ExternalID,
+					UpdatedAt: now,
+				}); err != nil {
+					return nil, err
+				}
 			}
 			out, err = s.renderGroup(ctx, r, c, bindingID, id)
 			if err != nil {
@@ -322,7 +322,7 @@ func (s *SCIM) releaseGroupOrigins(
 	outcome, events, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
 		binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID),
 		match: matchGroup(c.binding.ID, groupID), cause: cause,
-	}, advanceIfAuthorityChanged, now)
+	}, now)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -424,6 +424,10 @@ func (s *SCIM) ListGroups(ctx context.Context, actor Actor, org domain.OrgID, bi
 	total := 0
 	err := s.wireTx(ctx, actor, org, bindingID, authz.OpSCIMGroupList,
 		func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext, now time.Time) ([]grantEventInput, error) {
+			// Each retried transaction renders its own page. A failed commit
+			// must not leave rows or audit counts for the successful attempt.
+			out = nil
+			total = 0
 			selected := store.SCIMListFilter{}
 			switch filter.Shape {
 			case scimproto.FilterNone:

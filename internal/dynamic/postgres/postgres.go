@@ -83,11 +83,7 @@ func newWithDialer(cfg Config, resolver netpolicy.Resolver, dialer netpolicy.Dia
 		return nil, fmt.Errorf("postgres: egress policy: %w", err)
 	}
 	connConfig.DialFunc = publicDialer.DialContext
-	connConfig.BuildFrontend = func(r io.Reader, w io.Writer) *pgproto3.Frontend {
-		frontend := pgproto3.NewFrontend(r, w)
-		frontend.SetMaxBodyLen(maxPostgresMessageBody)
-		return frontend
-	}
+	connConfig.BuildFrontend = boundedFrontend
 	// verify-full: sslmode in the DSN already made pgx build a verifying
 	// tls.Config with the right ServerName; only the trust root is overridden
 	// here when the operator supplied a bundle. A nil TLSConfig would mean the
@@ -101,6 +97,15 @@ func newWithDialer(cfg Config, resolver netpolicy.Resolver, dialer netpolicy.Dia
 		connConfig.TLSConfig.RootCAs = cfg.RootCAs
 	}
 	return &Provider{connConfig: connConfig, deadline: cfg.Deadline, password: cfg.Password}, nil
+}
+
+// boundedFrontend owns only the external provider's PostgreSQL wire decoder.
+// The constructor installs this callback without exposing a frontend or a
+// general SQL execution path to callers.
+func boundedFrontend(r io.Reader, w io.Writer) *pgproto3.Frontend {
+	frontend := pgproto3.NewFrontend(r, w)
+	frontend.SetMaxBodyLen(maxPostgresMessageBody)
+	return frontend
 }
 
 // canonicalDSN rejects anything but an exact postgres URL with a user, host and

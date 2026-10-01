@@ -26,46 +26,6 @@ type RegistrationSignupRef = authn.RegistrationSignupRef
 // NewRegistrationSignup is the pending-row insert carrier.
 type NewRegistrationSignup = authn.NewRegistrationSignup
 
-// RegistrationPolicyFor resolves the policy of one scope ("" = instance).
-func (a *TxAuthorizer) RegistrationPolicyFor(ctx context.Context, org domain.OrgID) (RegistrationPolicy, error) {
-	return a.r.RegistrationPolicyFor(ctx, org)
-}
-
-// CreateRegistrationPolicy inserts a policy; a second one per scope is ErrConflict.
-func (a *TxAuthorizer) CreateRegistrationPolicy(ctx context.Context, p RegistrationPolicy) error {
-	return a.r.CreateRegistrationPolicy(ctx, p)
-}
-
-// ReplaceRegistrationPolicy compare-and-swaps a policy and replaces its children.
-func (a *TxAuthorizer) ReplaceRegistrationPolicy(ctx context.Context, p RegistrationPolicy, expected int64) (bool, error) {
-	return a.r.ReplaceRegistrationPolicy(ctx, p, expected)
-}
-
-// DeleteRegistrationPolicy removes a policy at an expected row version.
-func (a *TxAuthorizer) DeleteRegistrationPolicy(ctx context.Context, id string, expected int64) (bool, error) {
-	return a.r.DeleteRegistrationPolicy(ctx, id, expected)
-}
-
-// CountRegistrationPolicyOrgs counts the live orgs a policy minted.
-func (a *TxAuthorizer) CountRegistrationPolicyOrgs(ctx context.Context, policyID string) (int64, error) {
-	return a.r.CountRegistrationPolicyOrgs(ctx, policyID)
-}
-
-// CreateRegistrationSignup inserts a pending local sign-up row.
-func (a *TxAuthorizer) CreateRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error {
-	return a.r.CreateRegistrationSignup(ctx, n)
-}
-
-// RegistrationSignupsForPolicy lists a policy's pending local sign-ups.
-func (a *TxAuthorizer) RegistrationSignupsForPolicy(ctx context.Context, policyID string) ([]RegistrationSignupRef, error) {
-	return a.r.RegistrationSignupsForPolicy(ctx, policyID)
-}
-
-// DeleteRegistrationSignup deletes one pending local sign-up row.
-func (a *TxAuthorizer) DeleteRegistrationSignup(ctx context.Context, id string) (bool, error) {
-	return a.r.DeleteRegistrationSignup(ctx, id)
-}
-
 // RegistrationAuthorityHolds re-checks a policy's standing delegation (#579
 // d4): does the recorded authority principal's CURRENT grant set satisfy op's
 // formula at scope? It is a pure evaluation. It records no operation and no

@@ -73,6 +73,28 @@ func machineState(t *testing.T, origin string, pins ...string) (*State, string) 
 	return st, stateDir
 }
 
+func closedPinnedMachineState(t *testing.T) (string, string) {
+	t.Helper()
+	server := httptest.NewTLSServer(http.NotFoundHandler())
+	origin, pin := server.URL, SPKIFingerprint(server.Certificate())
+	server.Close()
+	_, stateDir := machineState(t, origin, pin)
+	return origin, stateDir
+}
+
+// Current scope-separated slots cannot be opened by the other delivery mode.
+// Preserve the explicit context-refusal test against the supported old slot.
+func useLegacySnapshotSlot(t *testing.T, stateDir string) {
+	t.Helper()
+	slots, err := filepath.Glob(filepath.Join(stateDir, "snapshot-*.bin"))
+	if err != nil || len(slots) != 1 {
+		t.Fatalf("seeded snapshot slots=%d err=%v", len(slots), err)
+	}
+	if err := os.Rename(slots[0], filepath.Join(stateDir, "snapshot.bin")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func composeCommonFlags(t *testing.T, operation AuthOperation) commonFlags {
 	t.Helper()
 	flags, err := commonFlagsForOperation(string(operation))
@@ -406,10 +428,9 @@ func TestComposeRenderCursorEligibility(t *testing.T) {
 func TestRunStaleLineOnOfflineServe(t *testing.T) {
 	// Save a snapshot + offline meta, then point the fetch at a closed server so
 	// the offline path serves and prints the stale line.
-	origin := "http://127.0.0.1:1" // closed port
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 
 	// Pre-seed the snapshot for slug "acme".
 	slug := "acme"
@@ -432,10 +453,9 @@ func TestRunStaleLineOnOfflineServe(t *testing.T) {
 }
 
 func TestRunOfflineExpiredRefused(t *testing.T) {
-	origin := "http://127.0.0.1:1"
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 	seedRunSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token")
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
@@ -458,12 +478,12 @@ func TestRunOfflineExpiredRefused(t *testing.T) {
 // even fully offline, with nothing mutable on disk supplying the expectation
 // (R1-3). No `server-credential` record exists to rewrite.
 func TestRunOfflineRefusesRotatedToken(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed port → offline path
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 	// Snapshot bound to token A.
 	seedRunSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "token-A")
+	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	// Present token B offline.
 	ios, _, stderr := composeIO(stateDir, dir, "token-B", nil)
@@ -485,7 +505,7 @@ func TestRunOfflineRefusesRotatedToken(t *testing.T) {
 // present in the sealed payload rows. A configured key absent from the snapshot
 // is refused BY ID (R1-3, the render-target set check at key granularity).
 func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
-	origin := "http://127.0.0.1:1"
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	// The config target declares key_1 AND key_absent; the seeded snapshot only
@@ -496,7 +516,6 @@ func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, origin)
 	seedRenderSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token", "api",
 		[]compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
 
@@ -511,11 +530,10 @@ func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
 }
 
 func TestRunOfflineNotEnabledRefused(t *testing.T) {
-	origin := "http://127.0.0.1:1"
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	// offline_serve defaults false.
 	writeComposeConfig(t, dir, origin, "org_1", "prj_1", "env_1", "", "acme")
-	_, stateDir := machineState(t, origin)
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"run", "--", "true"})
 	if code != ExitUnavailable {
@@ -670,7 +688,7 @@ func TestComposeRenderCursorRebindsOnCredentialChange(t *testing.T) {
 // render (and the context refusal is by name) — the snapshot's TargetNames bind
 // its delivery mode (finding 3).
 func TestOfflineSnapshotModeBinding(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	// Explicit runtime_dir so render does not stop at runtime resolution / the
 	// default-tmpfs gate before it reaches the snapshot's context check.
@@ -681,9 +699,9 @@ func TestOfflineSnapshotModeBinding(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, origin)
 	// Seed a RUN snapshot (TargetNames ["__run__"]) at the render slug.
 	seedRunSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token")
+	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render"})
@@ -1166,7 +1184,7 @@ func TestComposeApplyPendingWriteFailureRemainsRetryVisible(t *testing.T) {
 // refused by name on offline render BEFORE any offline record is written
 // (finding 6).
 func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	// No acknowledge_loader_control for the target.
@@ -1176,7 +1194,6 @@ func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, origin)
 	sd := filepath.Join(stateDir, "compose", "acme")
 	seedRenderSnapshot(t, sd, origin, "wl_token", "api",
 		[]compose.SnapshotRow{{Name: "LD_PRELOAD", KeyID: "key_ld", Classification: "config", Value: "/evil.so"}})
@@ -1199,13 +1216,13 @@ func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
 // RENDER snapshot (target-selected rows) must NOT be served to offline `run`,
 // which would bypass run's full-manifest all-or-nothing check (finding 3).
 func TestOfflineRenderSnapshotRefusedForRun(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 	// Seed a RENDER snapshot (TargetNames ["api"]) at the run slug.
 	seedRenderSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token", "api",
 		[]compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
+	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	ios.Exec = func(_ string, _, _ []string) error { t.Fatal("run must not exec off a render snapshot"); return nil }

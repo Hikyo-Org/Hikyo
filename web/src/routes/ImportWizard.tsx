@@ -1,4 +1,13 @@
+import { listKeysOp } from '@hikyo/operations';
 import { useMemo, useRef, useState } from 'react';
+
+import { parsed } from '../api/client.ts';
+import { useTransport } from '../api/transport.tsx';
+import { useNavigationGuard } from '../app/useNavigationGuard.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
+import { Ceremony } from './Ceremony.tsx';
+import { useCeremonyTask } from './useCeremonyTask.ts';
+import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
@@ -162,6 +171,11 @@ export function ImportWizard({
   const occurrences = useListValueOccurrences(matrixRef);
   const createKey = useCreateKey(matrixRef);
   const importValues = useImportValues(matrixRef);
+  const transport = useTransport();
+  const workflow = useCeremonyTask([matrixRef.org, matrixRef.project]);
+  const publish = useProtectedPublishCeremony(matrixRef, [matrixRef.org, matrixRef.project, 'import']);
+  const [workflowPending, setWorkflowPending] = useState(false);
+  const pendingPublish = useRef<((cause: unknown) => void) | null>(null);
 
   const [step, setStep] = useState<Step>('pick');
   const [journey, setJourney] = useState<Journey | null>(null);
@@ -187,8 +201,20 @@ export function ImportWizard({
   const [outcomes, setOutcomes] = useState<readonly EnvironmentOutcome[]>([]);
   const [declaredKeys, setDeclaredKeys] = useState<readonly string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  useResetOnChange(workflow.scopeKey, () => {
+    readSeq.current += 1;
+    parseVersion.current += 1;
+    setWorkflowPending(false);
+    setParse(null);
+    setSource(null);
+    setJourney(null);
+    setStep('pick');
+    setError(null);
+  });
 
-  const busy = occurrences.isPending || createKey.isPending || importValues.isPending;
+  const busy = workflowPending || occurrences.isPending || createKey.isPending || importValues.isPending;
+  const close = () => { if (!workflowPending) onClose(); };
+  useNavigationGuard(workflowPending, () => {});
 
   // The one shape everything downstream reads. `.env` folders onto the root and
   // is its own source name; the connectors carry their mapped folder and rename.
@@ -336,106 +362,145 @@ export function ImportWizard({
   };
 
   const runImport = async () => {
+    const task = workflow.begin(['import']);
+    setWorkflowPending(true);
     setError(null);
-    // Declare new keys first (skipped entirely where the caller cannot declare). A
-    // declaration failure drops that key from the import rather than failing the
-    // whole batch by name at phase 2. Each new key carries its connector folder.
-    const declared: string[] = [];
-    const declareFailures: string[] = [];
-    if (canDeclareKeys) {
-      for (const name of newKeys) {
-        const declaration = declarations.get(name) ?? { classification: 'secret', type: 'string' };
-        try {
-          await createKey.mutateAsync({
-            name,
-            classification: declaration.classification,
-            rule: { type: declaration.type },
-            folderPath: folderByKey.get(name) ?? '',
-            required: { mode: 'none', environmentIds: [] },
-            forbidden: { mode: 'none', environmentIds: [] },
-          });
-          declared.push(name);
-        } catch {
-          declareFailures.push(name);
+    try {
+      // Declare new keys first (skipped entirely where the caller cannot declare). A
+      // declaration failure drops that key from the import rather than failing the
+      // whole batch by name at phase 2. Each new key carries its connector folder.
+      const declared: string[] = [];
+      const declareFailures: string[] = [];
+      if (canDeclareKeys) {
+        for (const name of newKeys) {
+          if (!workflow.isCurrent(task)) return;
+          const declaration = declarations.get(name) ?? { classification: 'secret', type: 'string' };
+          try {
+            await createKey.mutateAsync({
+              name,
+              classification: declaration.classification,
+              rule: { type: declaration.type },
+              folderPath: folderByKey.get(name) ?? '',
+              required: { mode: 'none', environmentIds: [] },
+              forbidden: { mode: 'none', environmentIds: [] },
+            });
+            if (!workflow.isCurrent(task)) return;
+            declared.push(name);
+          } catch {
+            if (!workflow.isCurrent(task)) return;
+            declareFailures.push(name);
+          }
         }
       }
-    }
-    setDeclaredKeys(declared);
-    const failedDeclarations = new Set([...excluded, ...declareFailures]);
+      setDeclaredKeys(declared);
+      const failedDeclarations = new Set([...excluded, ...declareFailures]);
 
-    const results: EnvironmentOutcome[] = [];
-    for (const environment of selectedEnvironments) {
-      const chosen = overwrite.get(environment.id) ?? new Set<string>();
-      const presenceList = presence.get(environment.id);
-      const index = presenceList === undefined
-        ? indexOccurrences([])
-        : indexOccurrences(presenceList.items);
-      const plan = planEnvironment(importableEntries, index, chosen);
-      // Only keys that will actually be written are sent: a `set` key without an
-      // overwrite is skipped BY OMISSION, exactly as the CLI's values file omits
-      // it, its plaintext never leaves the browser. Report those from the plan,
-      // since the server never sees them.
-      const written = new Set(plan.imported.filter((name) => !failedDeclarations.has(name)));
-      const toSend = importableEntries.filter((entry) => written.has(entry.key));
-      const skippedNames = [
-        ...plan.skipped,
-        ...plan.imported.filter((name) => failedDeclarations.has(name)),
-      ];
-      const base: Omit<EnvironmentOutcome, 'imported' | 'findingRules' | 'error'> = {
-        environmentId: environment.id,
-        name: environment.name,
-        skipped: skippedNames,
-      };
-      if (toSend.length === 0) {
-        results.push({ ...base, imported: [], findingRules: [], error: null });
-        continue;
-      }
-      try {
-        const list = bindings.get(environment.id);
-        if (list === undefined) {
-          throw new Error('review binding is missing for this environment');
+      const results: EnvironmentOutcome[] = [];
+      for (const environment of selectedEnvironments) {
+        if (!workflow.isCurrent(task)) return;
+        const chosen = overwrite.get(environment.id) ?? new Set<string>();
+        const presenceList = presence.get(environment.id);
+        const index = presenceList === undefined
+          ? indexOccurrences([])
+          : indexOccurrences(presenceList.items);
+        const plan = planEnvironment(importableEntries, index, chosen);
+        // Only keys that will actually be written are sent: a `set` key without an
+        // overwrite is skipped BY OMISSION, exactly as the CLI's values file omits
+        // it, its plaintext never leaves the browser. Report those from the plan,
+        // since the server never sees them.
+        const written = new Set(plan.imported.filter((name) => !failedDeclarations.has(name)));
+        const toSend = importableEntries.filter((entry) => written.has(entry.key));
+        const skippedNames = [
+          ...plan.skipped,
+          ...plan.imported.filter((name) => failedDeclarations.has(name)),
+        ];
+        const base: Omit<EnvironmentOutcome, 'imported' | 'findingRules' | 'error'> = {
+          environmentId: environment.id,
+          name: environment.name,
+          skipped: skippedNames,
+        };
+        if (toSend.length === 0) {
+          results.push({ ...base, imported: [], findingRules: [], error: null });
+          continue;
         }
-        const tokens = indexOccurrences(list.items);
-        const result = await importValues.mutateAsync({
-          environment: environment.id,
-          entries: toSend.map((entry) => ({ key: entry.key, value: entry.value })),
-          // Overwrite consent lists only keys this run carries, naming an
-          // uncarried key is refused, so it is built from `toSend`.
-          overwrite: toSend.map((entry) => entry.key).filter((name) => chosen.has(name)),
-          precondition: {
-            definitions_revision: revisionNumber(list.definitions_revision),
-            environment_ids: [environment.id],
-            occurrences: toSend.flatMap((entry) => {
-              const occurrence = tokens.get(entry.key);
-              return occurrence === undefined
-                ? []
-                : [{ key: entry.key, environment_id: environment.id, token: occurrence.token }];
-            }),
-          },
-        });
-        results.push({
-          ...base,
-          imported: result.imported,
-          // Findings are redacted (rule id + surface + locator, never the value);
-          // the wizard shows only the rule ids, warn-not-block.
-          findingRules: (result.findings ?? []).map((finding) => finding.rule_id),
-          error: null,
-        });
-      } catch (caught) {
-        results.push({
-          ...base,
-          imported: [],
-          findingRules: [],
-          error: matrixMutationError(asError(caught), 'import'),
-        });
+        try {
+          const catalogue = await parsed(listKeysOp, { path: matrixRef, client: transport.client, signal: task.signal });
+          if (!workflow.isCurrent(task)) return;
+          const keys = toSend.map((entry) => {
+            const key = catalogue.items.find((candidate) => candidate.name === entry.key);
+            if (key === undefined) throw new Error(`The declaration for ${entry.key} could not be confirmed. Review the import again.`);
+            return { id: key.id, name: key.name, classification: key.classification };
+          });
+          await new Promise<void>((resolve, reject) => {
+            const aborted = () => reject(new DOMException('The import surface has closed.', 'AbortError'));
+            task.signal.addEventListener('abort', aborted, { once: true });
+            const refuse = (cause: unknown) => { task.signal.removeEventListener('abort', aborted); pendingPublish.current = null; reject(cause); };
+            pendingPublish.current = refuse;
+            void publish.run([{ environmentId: environment.id, environmentName: environment.name, keys }], () => {
+              task.signal.removeEventListener('abort', aborted);
+              pendingPublish.current = null;
+              resolve();
+            }, 'Import publish ceremony refused', refuse).catch(refuse);
+          });
+          if (!workflow.isCurrent(task)) return;
+          const list = bindings.get(environment.id);
+          if (list === undefined) {
+            throw new Error('review binding is missing for this environment');
+          }
+          const tokens = indexOccurrences(list.items);
+          const result = await importValues.mutateAsync({
+            environment: environment.id,
+            entries: toSend.map((entry) => ({ key: entry.key, value: entry.value })),
+            // Overwrite consent lists only keys this run carries, naming an
+            // uncarried key is refused, so it is built from `toSend`.
+            overwrite: toSend.map((entry) => entry.key).filter((name) => chosen.has(name)),
+            precondition: {
+              definitions_revision: revisionNumber(list.definitions_revision),
+              environment_ids: [environment.id],
+              occurrences: toSend.flatMap((entry) => {
+                const occurrence = tokens.get(entry.key);
+                return occurrence === undefined
+                  ? []
+                  : [{ key: entry.key, environment_id: environment.id, token: occurrence.token }];
+              }),
+            },
+          });
+          if (!workflow.isCurrent(task)) return;
+          results.push({
+            ...base,
+            imported: result.imported,
+            // Findings are redacted (rule id + surface + locator, never the value);
+            // the wizard shows only the rule ids, warn-not-block.
+            findingRules: (result.findings ?? []).map((finding) => finding.rule_id),
+            error: null,
+          });
+        } catch (caught) {
+          if (!workflow.isCurrent(task)) return;
+          results.push({
+            ...base,
+            imported: [],
+            findingRules: [],
+            error: caught instanceof DOMException && caught.name === 'AbortError'
+              ? 'Import canceled. No further values were sent. Declarations and earlier completed environments remain.'
+              : matrixMutationError(asError(caught), 'import'),
+          });
+          if (caught instanceof DOMException && caught.name === 'AbortError') {
+            setOutcomes([...results, ...declareFailures.map((name) => declareFailureOutcome(name))]);
+            setParse(null);
+            setStep('result');
+            return;
+          }
+        }
       }
+      setOutcomes([
+        ...results,
+        ...declareFailures.map((name) => declareFailureOutcome(name)),
+      ]);
+      setParse(null);
+      setStep('result');
+    } finally {
+      if (workflow.commit(task, () => setWorkflowPending(false))) workflow.finish(task);
     }
-    setOutcomes([
-      ...results,
-      ...declareFailures.map((name) => declareFailureOutcome(name)),
-    ]);
-    setParse(null);
-    setStep('result');
   };
 
   const toggle = (set: ReadonlySet<string>, id: string): Set<string> => {
@@ -467,6 +532,7 @@ export function ImportWizard({
   const heading = journeyHeading(journey);
 
   return (
+    <>
     <Dialog
       title={heading}
       lede="Reviewed on this device; values are sent only when you start the import."
@@ -474,9 +540,9 @@ export function ImportWizard({
       className="import-wizard"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        close();
       }}
-      onBackdropClick={onClose}
+      onBackdropClick={close}
     >
       {/* Each step owns its own action row, and every row is the last thing in
           the dialog, so they stay in the children rather than in `actions`. */}
@@ -514,6 +580,10 @@ export function ImportWizard({
                 : renderResult()}
       </form>
     </Dialog>
+    {publish.request === null ? null : <Ceremony key={publish.requestKey} request={publish.request}
+      onAuthorised={publish.onAuthorised}
+      onCancel={() => { publish.onCancel(); pendingPublish.current?.(new DOMException('The import publish ceremony was canceled. No further values were sent.', 'AbortError')); }} />}
+    </>
   );
 
   function renderPick() {
@@ -537,7 +607,7 @@ export function ImportWizard({
           </ul>
         </fieldset>
         <footer className="dialog__actions">
-          <Button type="button" onClick={onClose}>
+          <Button type="button" disabled={workflowPending} onClick={close}>
             Cancel
           </Button>
         </footer>
@@ -573,7 +643,7 @@ export function ImportWizard({
           <Button type="button" onClick={() => setStep('pick')}>
             Back
           </Button>
-          <Button type="button" variant="primary" onClick={onClose}>
+          <Button type="button" variant="primary" disabled={workflowPending} onClick={close}>
             Close
           </Button>
         </footer>
@@ -665,7 +735,7 @@ export function ImportWizard({
         </fieldset>
         {renderTargets()}
         <footer className="dialog__actions">
-          <Button type="button" onClick={onClose}>
+          <Button type="button" disabled={workflowPending} onClick={close}>
             Cancel
           </Button>
           <Button type="button" onClick={() => setStep('pick')}>
@@ -766,7 +836,7 @@ export function ImportWizard({
         </fieldset>
         {renderTargets()}
         <footer className="dialog__actions">
-          <Button type="button" onClick={onClose}>
+          <Button type="button" disabled={workflowPending} onClick={close}>
             Cancel
           </Button>
           <Button type="button" onClick={() => setStep('pick')}>
@@ -895,7 +965,7 @@ export function ImportWizard({
         )}
 
         <footer className="dialog__actions">
-          <Button type="button" onClick={onClose}>
+          <Button type="button" disabled={workflowPending} onClick={close}>
             Cancel
           </Button>
           <Button type="button" onClick={() => setStep('source')}>
@@ -913,6 +983,7 @@ export function ImportWizard({
     const anySendable = importableEntries.length > 0;
     return (
       <>
+        <p className="settings-note">Import publishes values immediately. Each protected destination requires a publish ceremony over exactly the keys this review will write. Once started, keep this window open until its partial or complete result is shown.</p>
         {sourceSkipped.length === 0 ? null : (
           <p className="import-wizard__summary" role="status">
             {`${String(sourceSkipped.length)} entr${sourceSkipped.length === 1 ? 'y' : 'ies'} skipped at the source ` +
@@ -947,7 +1018,7 @@ export function ImportWizard({
             overwrite.get(environment.id) ?? new Set<string>(),
           );
           return (
-            <fieldset key={environment.id}>
+            <fieldset key={environment.id} disabled={busy}>
               <legend>{environment.name}</legend>
               <p className="import-wizard__summary">
                 {`${String(plan.imported.length)} to import` +
@@ -982,10 +1053,10 @@ export function ImportWizard({
         })}
 
         <footer className="dialog__actions">
-          <Button type="button" onClick={onClose}>
+          <Button type="button" disabled={workflowPending} onClick={close}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => setStep('classify')}>
+          <Button type="button" disabled={busy} onClick={() => setStep('classify')}>
             Back
           </Button>
           <Button
@@ -1030,7 +1101,7 @@ export function ImportWizard({
           ))}
         </ul>
         <footer className="dialog__actions">
-          <Button type="button" variant="primary" onClick={onClose}>
+          <Button type="button" variant="primary" disabled={workflowPending} onClick={close}>
             Done
           </Button>
         </footer>

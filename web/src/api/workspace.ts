@@ -240,6 +240,7 @@ export async function probeWorkspace(
   // Only a 401 is the session dying (revoked, expired, origin-binding mismatch,
   // all ErrUnauthenticated).
   if (response.status === 401) {
+    void response.body?.cancel().catch(() => undefined);
     dropWorkspaceSession(session);
     return false;
   }
@@ -251,6 +252,7 @@ export async function probeWorkspace(
   // session, so a forbidden never becomes a false reconnect. It does not clear
   // the strike count either: it is not the clean answer that proves liveness.
   if (response.status === 403) {
+    void response.body?.cancel().catch(() => undefined);
     return isCurrentWorkspaceSession(session);
   }
   // ONLY A WELL-FORMED SUCCESS CLEARS THE STRIKE COUNT. Anything else is a
@@ -260,6 +262,7 @@ export async function probeWorkspace(
   // ends up claiming a workspace nobody can use, which is the exact failure the
   // strike counter exists to prevent.
   if (!response.ok) {
+    void response.body?.cancel().catch(() => undefined);
     return strike(session);
   }
   try {
@@ -364,9 +367,15 @@ export async function readBoundedWorkspaceBody(
   signal: AbortSignal,
   maxBytes: number,
 ): Promise<ArrayBuffer> {
-  const declared = declaredResponseLength(response);
-  if (declared !== undefined && declared > maxBytes) {
-    throw new WorkspaceError(`The remote response exceeded ${maxBytes} bytes.`);
+  try {
+    const declared = declaredResponseLength(response);
+    if (declared !== undefined && declared > maxBytes) {
+      throw new WorkspaceError(`The remote response exceeded ${maxBytes} bytes.`);
+    }
+    signal.throwIfAborted();
+  } catch (error) {
+    void response.body?.cancel(error).catch(() => undefined);
+    throw error;
   }
   if (response.body === null) {
     return new ArrayBuffer(0);
@@ -383,7 +392,6 @@ export async function readBoundedWorkspaceBody(
       }
       total += value.byteLength;
       if (total > maxBytes) {
-        await reader.cancel();
         throw new WorkspaceError(
           `The remote response exceeded ${maxBytes} bytes.`,
         );
@@ -465,6 +473,7 @@ async function remoteJSON<T>(
     throw failed();
   }
   if (!response.ok) {
+    void response.body?.cancel().catch(() => undefined);
     throw new WorkspaceError(
       response.status === 403
         ? `${origin} refused the handoff. Its administrator has to allowlist this origin first.`

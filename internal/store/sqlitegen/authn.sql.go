@@ -350,6 +350,7 @@ type CountIncompatiblePasswordKDFsParams struct {
 }
 
 // Boot/configuration admission only; returns no identifiers or verifier bytes.
+// hikyo:reason Boot admission counts incompatible verifiers without exposing credentials; no tenant authority is exercised.
 // hikyo:authn-resolution
 func (q *Queries) CountIncompatiblePasswordKDFs(ctx context.Context, arg CountIncompatiblePasswordKDFsParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countIncompatiblePasswordKDFs, arg.MemoryKib, arg.TimeCost, arg.Parallelism)
@@ -388,6 +389,18 @@ func (q *Queries) DeleteOriginlessGrantsForPrincipal(ctx context.Context, princi
 	return result.RowsAffected()
 }
 
+const deletePendingLoginChallengesForPrincipal = `-- name: DeletePendingLoginChallengesForPrincipal :exec
+DELETE FROM login_challenges WHERE consumed_at IS NULL
+AND account_id IN (SELECT id FROM accounts WHERE principal_id = ?)
+`
+
+// hikyo:reason Principal-generation revocation retires only unconsumed password proofs for the exact principal whose account security changed.
+// hikyo:authn-resolution
+func (q *Queries) DeletePendingLoginChallengesForPrincipal(ctx context.Context, principalID string) error {
+	_, err := q.db.ExecContext(ctx, deletePendingLoginChallengesForPrincipal, principalID)
+	return err
+}
+
 const deletePendingTOTPForAccount = `-- name: DeletePendingTOTPForAccount :exec
 DELETE FROM totp_credentials WHERE account_id = ? AND confirmed_at IS NULL
 `
@@ -395,6 +408,17 @@ DELETE FROM totp_credentials WHERE account_id = ? AND confirmed_at IS NULL
 // hikyo:authn-resolution
 func (q *Queries) DeletePendingTOTPForAccount(ctx context.Context, accountID string) error {
 	_, err := q.db.ExecContext(ctx, deletePendingTOTPForAccount, accountID)
+	return err
+}
+
+const deletePendingWorkspaceHandoffsForPrincipal = `-- name: DeletePendingWorkspaceHandoffsForPrincipal :exec
+DELETE FROM workspace_handoffs WHERE consumed_at IS NULL AND principal_id = ?
+`
+
+// hikyo:reason Principal-generation revocation retires only unconsumed approvals by the exact principal; consumed handoffs retain session provenance.
+// hikyo:authn-resolution
+func (q *Queries) DeletePendingWorkspaceHandoffsForPrincipal(ctx context.Context, principalID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deletePendingWorkspaceHandoffsForPrincipal, principalID)
 	return err
 }
 
@@ -417,6 +441,7 @@ const deleteRestoredRemotes = `-- name: DeleteRestoredRemotes :exec
 DELETE FROM remotes
 `
 
+// hikyo:reason Authorized restore removes archive-controlled remote-instance trust and credentials across the instance.
 // hikyo:authn-resolution
 func (q *Queries) DeleteRestoredRemotes(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteRestoredRemotes)
@@ -1844,6 +1869,7 @@ UPDATE oauth2_providers
 SET client_secret = X'', enabled = 0, row_version = row_version + 1, updated_at = ?
 `
 
+// hikyo:reason Authorized restore destroys all outbound OAuth2-provider credentials across the restored instance.
 // hikyo:authn-resolution
 func (q *Queries) InvalidateRestoredOAuth2ProviderCredentials(ctx context.Context, updatedAt string) error {
 	_, err := q.db.ExecContext(ctx, invalidateRestoredOAuth2ProviderCredentials, updatedAt)
@@ -1859,6 +1885,7 @@ SET client_secret = X'', enabled = 0, row_version = row_version + 1, updated_at 
 // authenticate to systems outside Hikyo's credential epoch. Disable providers,
 // destroy their secret ciphertext, and remove remotes so no restored material
 // can be presented to an archive-controlled endpoint.
+// hikyo:reason Authorized restore destroys all outbound login-provider credentials across the restored instance.
 // hikyo:authn-resolution
 func (q *Queries) InvalidateRestoredOIDCProviderCredentials(ctx context.Context, updatedAt string) error {
 	_, err := q.db.ExecContext(ctx, invalidateRestoredOIDCProviderCredentials, updatedAt)

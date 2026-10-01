@@ -29,8 +29,8 @@ type Rotation struct {
 	// root rotation both re-read it here rather than holding it in memory. Nil
 	// refuses those two rotations loudly.
 	RootKey RootKeySource
-	// Budget applies the §179 fail-closed default to master-key rotation, which
-	// rewraps every project DEK (project-proportional). Nil disables it.
+	// Budget applies the §179 fail-closed default to master-key rewrapping and
+	// root-key source I/O/hierarchy-lock contention. Nil disables limits only.
 	Budget *Budget
 	Now    func() time.Time
 }
@@ -288,6 +288,23 @@ type RootKeyRotation struct {
 // finalize retires the old wrapper. A crash at any point leaves the instance
 // bootable under either root until finalize.
 func (s *Rotation) RotateRootKey(ctx context.Context, actor Actor, phase RootKeyRotationPhase) (RootKeyRotation, error) {
+	// Phase state and root-source availability are privileged facts. Authorize
+	// before reading either or contending for the shared hierarchy lock, even
+	// when a focused build disables operation budgets. The mutation transaction
+	// still resolves and authorizes again so revocation between phases wins.
+	if s.Budget == nil {
+		if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+			_, _, err := authorize(ctx, az, actor, authz.OpRotateRootKey, domain.Scope{}, s.now())
+			return err
+		}); err != nil {
+			return RootKeyRotation{}, err
+		}
+	}
+	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpRotateRootKey, authz.OpRotateRootKey, domain.Scope{}, s.now)
+	if err != nil {
+		return RootKeyRotation{}, err
+	}
+	defer release()
 	if s.Keyring == nil {
 		return RootKeyRotation{}, errors.New("service: root rotation requires a keyring")
 	}

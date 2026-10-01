@@ -3,16 +3,17 @@ import type { zRuleList } from '@hikyo/zod';
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
-import { createBody, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
+import { createBody, replacementSaveRefusal, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 
 /**
  * Member access rules (member-access-rules ADR) as the Members surface reads
  * and writes them. The server stores one capability per rule; the page edits
- * the set sharing one Where, so a save is a short sequence of creates and
- * revokes (see `savePlan`). There is no rule update on the server: an edit is
- * a create plus a revoke.
+ * the set sharing one Where. Add-only and removal-only saves are monotonic.
+ * Mixed replacements cannot be safely expressed by separate requests, so they
+ * are refused until the server provides an atomic replacement operation.
  */
 
 type RuleList = z.infer<typeof zRuleList>;
@@ -73,12 +74,16 @@ export class RuleSaveFailure extends Error {
   }
 }
 
+class AtomicRuleReplacementRequired extends Error {}
+
 /**
- * saveRule makes the server's rules match the draft. Creates come first: when
- * one is refused, the ones already created are revoked again, so the member's
- * access is what it was. Only then are the replaced rows revoked.
+ * saveRule permits only monotonic changes. A mixed create/revoke plan is
+ * refused before dispatch; its intermediate union could grant unintended
+ * authority. Failed add-only runs attempt to undo their newly created rows.
  */
 export async function saveRule(org: string, before: Rule | null, draft: Rule): Promise<void> {
+  const refusal = replacementSaveRefusal(before, draft);
+  if (refusal !== null) throw new AtomicRuleReplacementRequired(refusal);
   const plan = savePlan(before, draft);
   const created: string[] = [];
   try {
@@ -118,29 +123,26 @@ export function useRuleMutations(org: string) {
 }
 
 function refusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The server refused this rule: check where it applies and what it gives.';
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-        return 'Managing access needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'You do not manage access on every project this rule names, or something it names no longer exists. The two are deliberately the same answer.';
-      case 409:
-        return error.detail ?? 'The server refused this change as it stands.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
-    }
-  }
-  return transportRefusalText(error) ?? 'The rules could not be reached, or the answer did not match the contract. Whether the change applied is unknown: reload to check.';
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ?? 'The server refused this rule: check where it applies and what it gives.',
+      401: commonRefusalText.sessionEnded,
+      403: 'Managing access needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      404: 'You do not manage access on every project this rule names, or something it names no longer exists. The two are deliberately the same answer.',
+      409: (error) => error.detail ?? 'The server refused this change as it stands.',
+      429: commonRefusalText.attempts,
+    },
+    transportRefusalText(error) ?? 'The rules could not be reached, or the answer did not match the contract. Whether the change applied is unknown: reload to check.',
+    (error) =>
+      `The server failed (${error.status}); whether the change applied is unknown: reload to check.`,
+  );
 }
 
 /** A save or remove failure in words, saying which half of an edit stands. */
 export function ruleFailureText(error: unknown): string {
+  if (error instanceof AtomicRuleReplacementRequired) return error.message;
   if (error instanceof RuleSaveFailure) {
     switch (error.stage) {
       case 'create':

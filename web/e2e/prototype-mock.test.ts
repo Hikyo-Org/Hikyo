@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   createPrototypeSessionTimes,
   prototypeReadFixture,
-  prototypeSessionTimes,
 } from '../prototype/mock-api.ts';
 
 describe('prototype mock session', () => {
@@ -17,13 +16,6 @@ describe('prototype mock session', () => {
     expect(Date.parse(times.absolute_expires_at)).toBeGreaterThan(
       Date.parse(times.idle_expires_at),
     );
-  });
-
-  it('keeps the assurance identity stable across successive reads', () => {
-    const firstRead = { ...prototypeSessionTimes };
-    const secondRead = { ...prototypeSessionTimes };
-
-    expect(secondRead).toEqual(firstRead);
   });
 
   it('serves every read needed by the finalized non-matrix app chrome', () => {
@@ -52,6 +44,12 @@ describe('prototype mock session', () => {
 });
 
 describe('prototype mock contract shape', () => {
+  it('serves an identity the browser can validate before opening the app', async () => {
+    const { zWhoAmI } = await import('../../clients/ts/src/generated/zod.gen.ts');
+    const fixture = prototypeReadFixture('/api/v1/auth/whoami');
+    expect(fixture?.status).toBe(200);
+    expect(zWhoAmI.safeParse(fixture?.body).success).toBe(true);
+  });
   it('keeps the prototype interactive with the runtime status contract', async () => {
     const { zRuntimeStatus } = await import('../../clients/ts/src/generated/zod.gen.ts');
     const fixture = prototypeReadFixture('/api/v1/runtime/status');

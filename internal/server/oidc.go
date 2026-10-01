@@ -316,7 +316,7 @@ func (a *API) ListOidcProviders(ctx context.Context, _ apigen.ListOidcProvidersR
 	if err != nil {
 		return nil, err
 	}
-	out := apigen.OidcProviderList{}
+	out := apigen.OidcProviderList{Providers: make([]apigen.OidcProvider, 0, len(rows))}
 	for _, v := range rows {
 		out.Providers = append(out.Providers, providerViewWire(v))
 	}

@@ -1,3 +1,4 @@
+import { commonRefusalText, statusText } from './statusText.ts';
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import {
   loginChallengeWebauthnFinishOp,
@@ -27,28 +28,27 @@ import { requestOptions, toBase64URL } from './values.ts';
  * that only ever asks for a password.
  */
 export function hasSecondFactor(session: WhoAmI): boolean {
-  return session.session.assurance.factors.some(
-    (factor) => factor === 'totp' || factor === 'webauthn',
-  );
+  // Match authz.AdequateAssurance, including provider-recorded OIDC/SAML MFA.
+  const factors = session.session.assurance.factors;
+  return factors.includes('webauthn') || new Set(factors).size >= 2;
 }
 
 /** stepUpFailureText names the refusal without inventing a cause. */
 export function stepUpFailureText(error: unknown): string {
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'No authenticator stands on this account, so there is no code to present. Enrol one under Account & security first.';
-      case 401:
-        return 'That code was not accepted. A code is valid for one time step and is used once: wait for the next code and try again.';
-      case 409:
-        return error.detail !== undefined && error.detail !== ''
+    return statusText(
+      error,
+      {
+        400: 'No authenticator stands on this account, so there is no code to present. Enrol one under Account & security first.',
+        401: 'That code was not accepted. A code is valid for one time step and is used once: wait for the next code and try again.',
+        409: (error) =>
+          error.detail !== undefined && error.detail !== ''
           ? `${error.detail}.`
-          : 'That code was already used for its time step: wait for the next code and try again.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return `The step-up could not be completed (server error ${error.status}). Try again shortly.`;
-    }
+          : 'That code was already used for its time step: wait for the next code and try again.',
+        429: commonRefusalText.attempts,
+      },
+      `The step-up could not be completed (server error ${error.status}). Try again shortly.`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed. Nothing changed.';
@@ -62,15 +62,15 @@ export function stepUpFailureText(error: unknown): string {
  * it must not send the human looking for an authenticator code.
  */
 export function passkeyFailureText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'No passkey can be used here: passkeys are not configured on this instance, or the account holds none.';
-      case 401:
-        return 'That passkey was not accepted. Sign in another way, then remove and add it again under Account & security.';
-    }
-  }
-  return stepUpFailureText(error);
+  return statusText(
+    error,
+    {
+      400: 'No passkey can be used here: passkeys are not configured on this instance, or the account holds none.',
+      401: 'That passkey was not accepted. Sign in another way, then remove and add it again under Account & security.',
+    },
+    stepUpFailureText(error),
+    (error) => stepUpFailureText(error),
+  );
 }
 
 /**

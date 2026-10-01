@@ -130,28 +130,33 @@ func readVerifiedKey(f *os.File, dir string) ([]byte, error) {
 	return key, nil
 }
 
-// createKeyFileRoot creates local.key relative to root with O_EXCL and 0600,
-// fills it with fresh randomness, and fsyncs it before use.
+// createKeyFileRoot prepares and syncs an owner-only temporary key, then
+// atomically links it to local.key without overwriting a concurrent winner.
 func createKeyFileRoot(root *os.Root, dir string) ([]byte, error) {
 	key := make([]byte, KeySize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		Zero(key)
 		return nil, fmt.Errorf("crypto: randomness unavailable, refusing to create local key: %w", err)
 	}
-	f, err := root.OpenFile(localKeyName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	temporary := ".local.key-" + rand.Text()
+	f, err := root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		Zero(key)
 		return nil, fmt.Errorf("crypto: create %s/%s: %w", dir, localKeyName, err)
 	}
+	defer root.Remove(temporary)
 	// Umask-independent: 0600 exactly whatever the process umask was.
 	if err := f.Chmod(0o600); err != nil {
 		f.Close()
 		Zero(key)
 		return nil, fmt.Errorf("crypto: chmod %s/%s: %w", dir, localKeyName, err)
 	}
-	if _, err := f.Write(key); err != nil {
+	if written, err := f.Write(key); err != nil || written != len(key) {
 		f.Close()
 		Zero(key)
+		if err == nil {
+			err = io.ErrShortWrite
+		}
 		return nil, fmt.Errorf("crypto: write %s/%s: %w", dir, localKeyName, err)
 	}
 	if err := f.Sync(); err != nil {
@@ -162,6 +167,28 @@ func createKeyFileRoot(root *os.Root, dir string) ([]byte, error) {
 	if err := f.Close(); err != nil {
 		Zero(key)
 		return nil, fmt.Errorf("crypto: close %s/%s: %w", dir, localKeyName, err)
+	}
+	if err := root.Link(temporary, localKeyName); err != nil {
+		Zero(key)
+		if !errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("crypto: publish %s/%s: %w", dir, localKeyName, err)
+		}
+		winner, err := root.OpenFile(localKeyName, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return nil, fmt.Errorf("crypto: open concurrent local key: %w", err)
+		}
+		defer winner.Close()
+		return readVerifiedKey(winner, dir)
+	}
+	parent, err := root.Open(".")
+	if err != nil {
+		Zero(key)
+		return nil, fmt.Errorf("crypto: open state directory for sync: %w", err)
+	}
+	defer parent.Close()
+	if err := parent.Sync(); err != nil {
+		Zero(key)
+		return nil, fmt.Errorf("crypto: sync published local key: %w", err)
 	}
 	return key, nil
 }

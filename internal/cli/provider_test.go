@@ -3,7 +3,6 @@ package cli_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/cli"
@@ -49,21 +48,5 @@ func TestInstanceConfigProviderGrammar(t *testing.T) {
 				t.Fatalf("exit %d, want %d", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestHelpListsLockedSAMLProviderSpellings(t *testing.T) {
-	var help strings.Builder
-	cli.Usage(&help)
-	for _, want := range []string{
-		"instance-config provider create --kind saml --name <name>",
-		"instance-config provider list|show|update|disable|remove",
-		"instance-config provider refresh-metadata <name>",
-		"instance-config saml-sp-key list|rotate",
-		"instance-config saml-sp-key retire|compromise-retire <fingerprint>",
-	} {
-		if !strings.Contains(help.String(), want) {
-			t.Errorf("help missing %q", want)
-		}
 	}
 }

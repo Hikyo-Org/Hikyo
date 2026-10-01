@@ -97,6 +97,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, $10, NULL, $11);
 -- Expired, unconsumed challenges have no provenance value and cannot be
 -- referenced by a session or reauthentication window. Remove them before
 -- creating the next ceremony so sustained starts cannot grow storage forever.
+-- hikyo:reason Pre-auth issuance retires only expired unconsumed proofs; no live credential or tenant authority changes.
 -- hikyo:authn-resolution
 -- name: DeleteExpiredUnconsumedWebAuthnCeremonies :execrows
 DELETE FROM webauthn_ceremonies

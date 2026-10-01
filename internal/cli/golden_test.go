@@ -82,6 +82,28 @@ func TestHelpOutputIsFrozen(t *testing.T) {
 	golden(t, "help.txt", buf.Bytes())
 }
 
+// These public spellings and credential channels are policy, not updateable snapshots.
+func TestHelpPreservesPublicCommandsAndCredentialChannels(t *testing.T) {
+	var out bytes.Buffer
+	cli.Usage(&out)
+	for _, want := range []string{
+		"hikyo doctor",
+		"hikyo sa credential mint --sa <id>",
+		"hikyo sa credential rotate --sa <id>",
+		"--token-file <path> or HIKYO_TOKEN",
+		"never a --token flag",
+		"instance-config provider create --kind saml --name <name>",
+		"instance-config provider list|show|update|disable|remove",
+		"instance-config provider refresh-metadata <name>",
+		"instance-config saml-sp-key list|rotate",
+		"instance-config saml-sp-key retire|compromise-retire <fingerprint>",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("help missing required public contract %q", want)
+		}
+	}
+}
+
 func TestEveryVerbHasHelp(t *testing.T) {
 	// A verb that dispatches but has no line in the frozen help is invisible
 	// to `hikyo <verb> --help`; this keeps the two tables in step.

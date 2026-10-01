@@ -131,7 +131,7 @@ func (h *cliWizardHost) ReadSource(source string, sel importer.Selector) (import
 	}
 	diagnostics.Printf(h.ctx, 2, "import: parsed records=%d skipped=%d", len(res.Records), len(res.Skipped))
 	h.sourceFiles = append(h.sourceFiles, sel.File)
-	return importer.SourceRead{Result: res, FileDigest: importer.Digest(in.Data), EnvSlug: sel.EnvSlug}, nil
+	return importer.SourceRead{Result: res, FileDigest: importer.SourceFileReference(source, in.Data, res.Records), EnvSlug: sel.EnvSlug}, nil
 }
 
 // ExistingEnvironments lists the project's environments the actor can read.
@@ -461,14 +461,7 @@ func writeProjectArtifacts(ios IO, outDir string, plan *importer.ProjectPlan) (v
 // buckets, the artifact table, and the plaintext-still-on-disk warning.
 func reportProject(ios IO, plan *importer.ProjectPlan, outDir string, sourceFiles, valuesPaths []string) error {
 	w := ios.Stderr
-	for _, r := range plan.Renames {
-		fmt.Fprintf(w, "rename: %s -> %s (%s)\n",
-			importer.QuoteName(r.From), importer.QuoteName(r.To), r.Transform)
-	}
-	for _, n := range plan.NearMisses {
-		fmt.Fprintf(w, "near miss: %s is one edit from the declared key %s\n",
-			importer.QuoteName(n.Imported), importer.QuoteName(n.Declared))
-	}
+	reportImportNames(w, plan.Renames, plan.NearMisses)
 	if len(plan.SkippedBySource) > 0 {
 		fmt.Fprintf(w, "skipped at the source: %s\n", quoteImportNames(plan.SkippedBySource))
 	}
@@ -488,17 +481,7 @@ func reportProject(ios IO, plan *importer.ProjectPlan, outDir string, sourceFile
 		fmt.Fprintf(w, "environment %s (%s): %d new, %d already set\n", ref, verb, len(env.New), len(env.Set))
 	}
 
-	rows := [][]string{
-		{"bundle", filepath.Join(outDir, bundleFile), "committable"},
-		{"mapping", filepath.Join(outDir, mappingFile), "committable"},
-		{"manifest", filepath.Join(outDir, manifestFile), "committable"},
-	}
-	for _, path := range valuesPaths {
-		rows = append(rows, []string{"values", path, "NEVER commit"})
-	}
-	if err := Render(ios.Stdout, FormatTable, Table{
-		Columns: []string{"ARTIFACT", "PATH", "HANDLING"}, Rows: rows,
-	}); err != nil {
+	if err := reportImportArtifacts(ios.Stdout, outDir, valuesPaths); err != nil {
 		return err
 	}
 

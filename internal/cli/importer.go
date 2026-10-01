@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/dotenv"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 // `hikyo import` (#68, import-paths ADR § Grammar join).
@@ -28,9 +30,8 @@ import (
 // the emitted artifacts are files under the existing secret-file discipline,
 // and nothing this verb prints is a secret value.
 //
-// THREE ENTRY MODES ARE SPECIFIED; TWO SHIP HERE. Flag mode and replay are
-// below. The wizard (TTY, no source arguments) is not served by this build and
-// refuses by name rather than hanging on a prompt that does not exist.
+// Flag mode and replay are below. The interactive wizard (TTY, no source
+// arguments) is served by import_wizard.go.
 //
 // EVERY IMPORT AUTHORS ARTIFACTS AND STOPS. There is no flag that turns
 // two-phase off, and this file has no write path to the server at all: phase 2
@@ -244,7 +245,7 @@ func runImport(ctx context.Context, ios IO, args []string) error {
 	// without knowing which names this run will propose.
 	fileDigest := ""
 	if !*live {
-		fileDigest = importer.Digest(in.Data)
+		fileDigest = importer.SourceFileReference(source, in.Data, result.Records)
 	}
 	planIn := importer.PlanInput{
 		Source: source, Records: result.Records, Skipped: result.Skipped,
@@ -458,14 +459,7 @@ func reportImport(ios IO, plan *importer.Plan, sourceResolution, sourcePath, val
 	if sourceResolution != "" {
 		fmt.Fprintf(w, "source resolution: %s\n", sourceResolution)
 	}
-	for _, r := range plan.Renames {
-		fmt.Fprintf(w, "rename: %s -> %s (%s)\n",
-			importer.QuoteName(r.From), importer.QuoteName(r.To), r.Transform)
-	}
-	for _, n := range plan.NearMisses {
-		fmt.Fprintf(w, "near miss: %s is one edit from the declared key %s\n",
-			importer.QuoteName(n.Imported), importer.QuoteName(n.Declared))
-	}
+	reportImportNames(w, plan.Renames, plan.NearMisses)
 	if len(plan.SkippedBySource) > 0 {
 		reason := "connector exclusions"
 		switch plan.Template.Source {
@@ -491,17 +485,11 @@ func reportImport(ios IO, plan *importer.Plan, sourceResolution, sourcePath, val
 	}
 	fmt.Fprintf(w, "%d new, %d already set; artifacts in %s\n", len(plan.New), len(plan.Set), outDir)
 
-	rows := [][]string{
-		{"bundle", filepath.Join(outDir, bundleFile), "committable"},
-		{"mapping", filepath.Join(outDir, mappingFile), "committable"},
-		{"manifest", filepath.Join(outDir, manifestFile), "committable"},
-	}
+	var valuesPaths []string
 	if valuesPath != "" {
-		rows = append(rows, []string{"values", valuesPath, "NEVER commit"})
+		valuesPaths = []string{valuesPath}
 	}
-	if err := Render(ios.Stdout, FormatTable, Table{
-		Columns: []string{"ARTIFACT", "PATH", "HANDLING"}, Rows: rows,
-	}); err != nil {
+	if err := reportImportArtifacts(ios.Stdout, outDir, valuesPaths); err != nil {
 		return err
 	}
 	if valuesPath == "" {
@@ -516,6 +504,31 @@ func reportImport(ios IO, plan *importer.Plan, sourceResolution, sourcePath, val
 		plan.Values.Environment, valuesPath, filepath.Join(outDir, manifestFile))
 	fmt.Fprintln(w, importer.PlaintextWarning(sourcePath, []string{valuesPath}))
 	return nil
+}
+
+func reportImportNames(w io.Writer, renames []importer.Rename, nearMisses []importer.NearMiss) {
+	for _, r := range renames {
+		fmt.Fprintf(w, "rename: %s -> %s (%s)\n",
+			importer.QuoteName(r.From), importer.QuoteName(r.To), r.Transform)
+	}
+	for _, n := range nearMisses {
+		fmt.Fprintf(w, "near miss: %s is one edit from the declared key %s\n",
+			importer.QuoteName(n.Imported), importer.QuoteName(n.Declared))
+	}
+}
+
+func reportImportArtifacts(w io.Writer, outDir string, valuesPaths []string) error {
+	rows := [][]string{
+		{"bundle", filepath.Join(outDir, bundleFile), "committable"},
+		{"mapping", filepath.Join(outDir, mappingFile), "committable"},
+		{"manifest", filepath.Join(outDir, manifestFile), "committable"},
+	}
+	for _, path := range valuesPaths {
+		rows = append(rows, []string{"values", path, "NEVER commit"})
+	}
+	return Render(w, FormatTable, Table{
+		Columns: []string{"ARTIFACT", "PATH", "HANDLING"}, Rows: rows,
+	})
 }
 
 func quoteImportNames(names []string) string {
@@ -778,12 +791,12 @@ func runValuesImport(ctx context.Context, ios IO, args []string) error {
 	// reviewed STATE, not the plaintext), and for a tokenless created environment
 	// there is no token at all. A digest mismatch means the file is not the one
 	// this manifest reviewed.
-	if manifest != nil && len(manifest.ValuesDigests) > 0 {
+	if manifest != nil {
 		ref := env
 		if createdEnvFile {
 			ref = values.EnvironmentName
 		}
-		reencoded, err := importer.Encode(values)
+		commitment, err := importer.ValuesCommitment(values)
 		if err != nil {
 			return err
 		}
@@ -799,7 +812,7 @@ func runValuesImport(ctx context.Context, ios IO, args []string) error {
 			return failf(ExitRefused,
 				"the run manifest records no values digest for %s; pair the values file with the manifest from the same run", ref)
 		}
-		if importer.Digest(reencoded) != recorded {
+		if commitment != recorded {
 			return failf(ExitRefused,
 				"the values file does not match the run manifest's recorded digest for %s; it is not the values file this manifest reviewed", ref)
 		}
@@ -971,31 +984,7 @@ func markImportedWithWriter(path, envID string, writeTemp func(*os.File, []byte)
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	keepTemp := true
-	defer func() {
-		if keepTemp {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := writeTemp(tmp, updated); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return err
-	}
-	keepTemp = false
-	return nil
+	return securefile.WriteAtomicPrepared(path, nil, info.Mode().Perm(), func(tmp *os.File) error {
+		return writeTemp(tmp, updated)
+	})
 }

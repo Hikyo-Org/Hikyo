@@ -466,6 +466,9 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		}
 		// Re-read under the write transaction: the credential must not have
 		// moved while we were deriving.
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
 		current, err := az.PasswordCredentialFor(ctx, account.ID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {

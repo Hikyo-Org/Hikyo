@@ -357,6 +357,7 @@ export type HistorySnapshotKey = {
 export type HistoryCurrentCell = {
   readonly keyId: string;
   readonly classification: 'config' | 'secret';
+  readonly sensitive?: boolean;
   readonly set: boolean;
 };
 
@@ -388,7 +389,8 @@ export function restoreCeremonyUnit(input: {
         return true;
       }
       const current = currentByKey.get(key.keyId);
-      return current !== undefined && current.set && current.classification === 'secret';
+      return current !== undefined && current.set &&
+        (current.sensitive === true || current.classification === 'secret');
     })
     .map((key) => ({ id: key.keyId, name: key.name }));
 }

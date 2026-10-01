@@ -56,6 +56,7 @@ export function useProtectedPublishCeremony(
     targets: readonly ProtectedPublishTarget[],
     onComplete: () => void,
     failureMessage: string,
+    onRefusal?: (cause: unknown) => void,
   ): Promise<void> => {
     for (const target of targets) {
       if (target.keys.length === 0) {
@@ -127,6 +128,7 @@ export function useProtectedPublishCeremony(
       } catch (cause) {
         if (ceremony.commit(task, () => {
           setError(`${failureMessage}: ${errorMessage(cause)}`);
+          onRefusal?.(cause);
         })) {
           ceremony.finish(task);
         }

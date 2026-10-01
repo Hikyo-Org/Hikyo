@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
@@ -37,6 +38,8 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { useCeremonyTask } from './useCeremonyTask.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -1113,7 +1116,7 @@ function freshDraft(options: readonly ScopeOption[], principal = ''): GrantDraft
  * composition away would train people to click through it, which is the exact
  * opposite of what a blast-radius warning is for.
  */
-function GrantModal({
+export function GrantModal({
   orgName,
   options,
   draft,
@@ -1152,6 +1155,9 @@ function GrantModal({
   const applyTemplate = useApplyTemplate();
   const principalId = useId();
   const [enterPrincipalId, setEnterPrincipalId] = useState(false);
+  const [workflowPending, setWorkflowPending] = useState(false);
+  const workflow = useCeremonyTask([orgName, effectiveScope, draft.principal, draft.mode, draft.template, ...draft.capabilities]);
+  useResetOnChange(workflow.scopeKey, () => setWorkflowPending(false));
 
   const chosen = optionByValue(options, effectiveScope);
   const atoms = projectContext && prototypeMode
@@ -1160,7 +1166,7 @@ function GrantModal({
       )
     : chosen === undefined ? [] : capabilitiesAt(chosen.level);
   const templates = chosen === undefined ? [] : templatesAt(chosen.level);
-  const mutationPending = create.isPending || applyTemplate.isPending;
+  const mutationPending = workflowPending || create.isPending || applyTemplate.isPending;
   const submitBlocked = mutationPending || !topologyReady;
 
   const selectedTemplate = ROLE_TEMPLATES.find((template) => template.id === draft.template);
@@ -1233,60 +1239,71 @@ function GrantModal({
       return;
     }
     void (async () => {
-      // A grant that newly lets a MACHINE principal decrypt an environment is a
-      // widening: the server refuses it until this session has reauthenticated
-      // over exactly that environment (grants.go checkMachineWidening), naming
-      // the environment in the refusal. Answer each named environment with the
-      // mint-purpose passkey ceremony the machine-access page uses, then retry
-      // the capabilities that have not landed yet; completed lines stay live.
-      // Bounded by the DISTINCT environments the refusals name: an environment
-      // named twice means the ceremony did not satisfy the server, and asking
-      // the human again would be a loop, not a remedy.
-      let pending: readonly string[] = draft.capabilities;
-      const done: GrantOutcomeView[] = [];
-      const reauthenticated = new Set<string>();
-      const total = draft.capabilities.length;
-      const refused = (capability: string, text: string) =>
-        done.length === 0
-          ? text
-          : `Completed ${String(done.length)} of ${String(total)} (live and listed below). ${grantOutcomeSummary(done)} ${capability} was refused: ${text}`;
-      for (;;) {
-        try {
-          done.push(...(await create.mutateAsync({ scope, principal, capabilities: pending })));
-          onDone(
-            `Grant results for ${principalName(principal)} on ${chosen.label}: ${grantOutcomeSummary(done)} Each grant line remains independently revocable.`,
-          );
-          return;
-        } catch (error) {
-          const partial = error instanceof GrantPartialFailure ? error : null;
-          const cause = partial === null ? error : partial.cause;
-          if (partial !== null) {
-            done.push(...partial.completed);
-            pending = pending.slice(partial.completed.length);
-          }
-          const capability = pending[0] ?? '';
-          const widened = wideningEnvironment(cause);
-          if (widened === null) {
-            onStage('grant');
-            setFailure(refused(capability, grantFailureText(cause, { operation: 'create', scope: scope.kind })));
-            return;
-          }
-          if (reauthenticated.has(widened)) {
-            onStage('grant');
-            setFailure(
-              refused(capability, 'The reauthentication over that environment was not accepted for this grant. Reload and try again.'),
+      const task = workflow.begin([principal, ...draft.capabilities]);
+      setWorkflowPending(true);
+      try {
+        // A grant that newly lets a MACHINE principal decrypt an environment is a
+        // widening: the server refuses it until this session has reauthenticated
+        // over exactly that environment (grants.go checkMachineWidening), naming
+        // the environment in the refusal. Answer each named environment with the
+        // mint-purpose passkey ceremony the machine-access page uses, then retry
+        // the capabilities that have not landed yet; completed lines stay live.
+        // Bounded by the DISTINCT environments the refusals name: an environment
+        // named twice means the ceremony did not satisfy the server, and asking
+        // the human again would be a loop, not a remedy.
+        let pending: readonly string[] = draft.capabilities;
+        const done: GrantOutcomeView[] = [];
+        const reauthenticated = new Set<string>();
+        const total = draft.capabilities.length;
+        const refused = (capability: string, text: string) =>
+          done.length === 0
+            ? text
+            : `Completed ${String(done.length)} of ${String(total)} (live and listed below). ${grantOutcomeSummary(done)} ${capability} was refused: ${text}`;
+        for (;;) {
+          if (!workflow.isCurrent(task)) return;
+          try {
+            done.push(...(await create.mutateAsync({ scope, principal, capabilities: pending })));
+            if (!workflow.isCurrent(task)) return;
+            onDone(
+              `Grant results for ${principalName(principal)} on ${chosen.label}: ${grantOutcomeSummary(done)} Each grant line remains independently revocable.`,
             );
             return;
-          }
-          reauthenticated.add(widened);
-          try {
-            await runPasskeyCeremony({ operation: 'mint', environmentId: widened, keyIds: [] });
-          } catch (ceremonyError) {
-            onStage('grant');
-            setFailure(refused(capability, grantFailureText(ceremonyError, { operation: 'create', scope: scope.kind })));
-            return;
+          } catch (error) {
+            if (!workflow.isCurrent(task)) return;
+            const partial = error instanceof GrantPartialFailure ? error : null;
+            const cause = partial === null ? error : partial.cause;
+            if (partial !== null) {
+              done.push(...partial.completed);
+              pending = pending.slice(partial.completed.length);
+            }
+            const capability = pending[0] ?? '';
+            const widened = wideningEnvironment(cause);
+            if (widened === null) {
+              onStage('grant');
+              setFailure(refused(capability, grantFailureText(cause, { operation: 'create', scope: scope.kind })));
+              return;
+            }
+            if (reauthenticated.has(widened)) {
+              onStage('grant');
+              setFailure(
+                refused(capability, 'The reauthentication over that environment was not accepted for this grant. Reload and try again.'),
+              );
+              return;
+            }
+            reauthenticated.add(widened);
+            try {
+              await runPasskeyCeremony({ operation: 'mint', environmentId: widened, keyIds: [] });
+              if (!workflow.isCurrent(task)) return;
+            } catch (ceremonyError) {
+              if (!workflow.isCurrent(task)) return;
+              onStage('grant');
+              setFailure(refused(capability, grantFailureText(ceremonyError, { operation: 'create', scope: scope.kind })));
+              return;
+            }
           }
         }
+      } finally {
+        if (workflow.commit(task, () => setWorkflowPending(false))) workflow.finish(task);
       }
     })();
   };
@@ -1339,15 +1356,10 @@ function GrantModal({
             ))}
           </ul>
         )}
-        <p className="ceremony__cap" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            Narrower option: grant on one project, or on one environment. Production protection
-            rests on granting narrowly, not on the protected flag alone.
-          </span>
-        </p>
+        <CeremonyNotice>
+          Narrower option: grant on one project, or on one environment. Production protection
+          rests on granting narrowly, not on the protected flag alone.
+        </CeremonyNotice>
         {failure !== null ? <Alert>{failure}</Alert> : null}
       </Dialog>
     );
@@ -1395,6 +1407,7 @@ function GrantModal({
         {projectContext && prototypeMode ? (
           <select
             id={principalId}
+            disabled={mutationPending}
             value={draft.principal}
             onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
           >
@@ -1410,6 +1423,7 @@ function GrantModal({
             {enterPrincipalId ? (
               <input
                 id={principalId}
+                disabled={mutationPending}
                 value={draft.principal}
                 autoComplete="off"
                 spellCheck={false}
@@ -1418,6 +1432,7 @@ function GrantModal({
             ) : (
               <select
                 id={principalId}
+                disabled={mutationPending}
                 value={draft.principal}
                 onChange={(event) => onDraft({ ...draft, principal: event.target.value })}
               >
@@ -1430,7 +1445,7 @@ function GrantModal({
                 ))}
               </select>
             )}
-            <Button type="button" variant="quiet" onClick={() => {
+            <Button type="button" variant="quiet" disabled={mutationPending} onClick={() => {
               setEnterPrincipalId(!enterPrincipalId);
               onDraft({ ...draft, principal: '' });
             }}>
@@ -1446,7 +1461,7 @@ function GrantModal({
       </div>
 
       {projectContext ? null : (
-        <fieldset className="grant-modal__mode">
+        <fieldset className="grant-modal__mode" disabled={mutationPending}>
           <legend>What to grant</legend>
           <Radio
             name="grant-mode"
@@ -1470,6 +1485,7 @@ function GrantModal({
               <Checkbox
                 mono
                 label={atom.id}
+                disabled={mutationPending}
                 checked={draft.capabilities.includes(atom.id)}
                 onChange={(event) =>
                   onDraft({
@@ -1487,6 +1503,7 @@ function GrantModal({
       ) : (
         <Select
           label="Role template"
+          disabled={mutationPending}
           value={draft.template}
           onChange={(event) => onDraft({ ...draft, template: event.target.value })}
           hint={
@@ -1506,6 +1523,7 @@ function GrantModal({
 
       <Select
         label="Scope"
+        disabled={mutationPending}
         value={effectiveScope}
         onChange={(event) => {
           const next = optionByValue(options, event.target.value);

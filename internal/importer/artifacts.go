@@ -2,15 +2,16 @@ package importer
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
-	"unicode"
 
+	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
 
@@ -28,10 +29,13 @@ import (
 // written by a newer build and silently truncated by an older one would replay
 // a migration under choices nobody made.
 
-// FormatVersion is the artifact format version carried by the three
-// importer-owned artifacts. The definitions bundle owns its version in
-// internal/definitions.
+// FormatVersion is the mapping-template version. Run manifests and protected
+// values files use RunArtifactFormatVersion; definitions owns its own version.
 const FormatVersion = 1
+
+// RunArtifactFormatVersion v2 blinds values commitments with a private key
+// carried only in the protected values artifact. Mapping templates stay v1.
+const RunArtifactFormatVersion = 2
 
 // ConnectorContractVersion is the connector-behaviour version. It advances when
 // a connector's mapping changes — a replay recorded against a different mapping
@@ -179,8 +183,9 @@ type ManifestOccurrence struct {
 // same (project, environment) could be mispaired — run B's values imported under
 // run A's manifest, or run A's completion marker stamped for run B — because
 // project and environment alone do not distinguish runs. The digest is over the
-// canonical values-file serialization, so it is deterministic: a wizard session
-// and a flag run with coinciding choices produce the same digest.
+// canonical values-file serialization, authenticated with the private random
+// key stored only in that values file. Separate runs have different commitments
+// even when every imported value and choice is identical.
 type ValuesDigest struct {
 	Environment string `json:"environment"`
 	Digest      string `json:"digest"`
@@ -228,6 +233,7 @@ type ValuesEntry struct {
 // `definitions apply` creates the environment.
 type ValuesFile struct {
 	FormatVersion   int           `json:"format_version"`
+	CommitmentKey   string        `json:"commitment_key,omitempty"`
 	Project         string        `json:"project"`
 	Environment     string        `json:"environment,omitempty"`
 	EnvironmentName string        `json:"environment_name,omitempty"`
@@ -257,6 +263,51 @@ func Encode(v any) ([]byte, error) {
 func Digest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// SourceFileReference is informational provenance, never an integrity proof.
+// Plaintext exports must not publish a password-guessing oracle. Only fully
+// encrypted SOPS input retains its ciphertext digest; partial SOPS is private.
+func SourceFileReference(source string, data []byte, records []Record) string {
+	if source == sopsSource {
+		for _, record := range records {
+			if record.PlaintextHint {
+				return "file-export"
+			}
+		}
+		return Digest(data)
+	}
+	return "file-export"
+}
+
+// NewValuesCommitmentKey creates private blinding material for one values file.
+// Never copy this key into a committable manifest or template.
+func NewValuesCommitmentKey() (string, error) {
+	key := make([]byte, sha256.Size)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("import: generate private values commitment key: %w", err)
+	}
+	defer clear(key)
+	return hex.EncodeToString(key), nil
+}
+
+// ValuesCommitment binds the canonical values content without exposing a
+// public offline password oracle. Its key exists only in the secret file.
+func ValuesCommitment(values ValuesFile) (string, error) {
+	key, err := hex.DecodeString(values.CommitmentKey)
+	if err != nil || len(key) != sha256.Size {
+		return "", failure("import", CodeMalformed, "values file", "a v2 values file needs a 256-bit private commitment_key; regenerate the import artifacts")
+	}
+	defer clear(key)
+	values.CommitmentKey = ""
+	body, err := Encode(values)
+	if err != nil {
+		return "", err
+	}
+	defer clear(body)
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write(body)
+	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil)), nil
 }
 
 // ParseTemplate reads a mapping template strictly.
@@ -329,8 +380,17 @@ func ParseManifest(raw []byte) (Manifest, error) {
 	if err := strictDecode(raw, "run-manifest.json", &m); err != nil {
 		return Manifest{}, err
 	}
-	if err := checkVersions("run-manifest.json", m.FormatVersion, m.ConnectorContractVersion); err != nil {
+	if m.FormatVersion != RunArtifactFormatVersion {
+		return Manifest{}, failure("import", CodeVersion, "run-manifest.json", "format_version %d is not this build's %d: version mismatch; regenerate the import artifacts to replace unkeyed values commitments", m.FormatVersion, RunArtifactFormatVersion)
+	}
+	if err := checkVersions("run-manifest.json", FormatVersion, m.ConnectorContractVersion); err != nil {
 		return Manifest{}, err
+	}
+	for _, digest := range m.ValuesDigests {
+		decoded, err := hex.DecodeString(strings.TrimPrefix(digest.Digest, "hmac-sha256:"))
+		if !strings.HasPrefix(digest.Digest, "hmac-sha256:") || err != nil || len(decoded) != sha256.Size {
+			return Manifest{}, failure("import", CodeMalformed, "run-manifest.json", "values commitments must use hmac-sha256; regenerate the import artifacts")
+		}
 	}
 	if m.Target.Project == "" {
 		return Manifest{}, failure("import", CodeMalformed, "run-manifest.json",
@@ -363,9 +423,12 @@ func ParseValuesFile(raw []byte) (ValuesFile, error) {
 	if err := strictDecode(raw, "values file", &v); err != nil {
 		return ValuesFile{}, err
 	}
-	if v.FormatVersion != FormatVersion {
+	if v.FormatVersion != RunArtifactFormatVersion {
 		return ValuesFile{}, failure("import", CodeVersion, "values file",
-			"format version %d is not this build's %d: version mismatch", v.FormatVersion, FormatVersion)
+			"format version %d is not this build's %d: version mismatch; regenerate the import artifacts with private values commitments", v.FormatVersion, RunArtifactFormatVersion)
+	}
+	if _, err := ValuesCommitment(v); err != nil {
+		return ValuesFile{}, err
 	}
 	if v.Project == "" {
 		return ValuesFile{}, failure("import", CodeMalformed, "values file",
@@ -394,104 +457,34 @@ func ParseValuesFile(raw []byte) (ValuesFile, error) {
 }
 
 func strictDecode(raw []byte, what string, into any) error {
-	if err := rejectDuplicateMembers(raw, "import", what); err != nil {
-		return err
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(into); err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "unknown field") {
-			return failure("import", CodeVersion, what,
-				"it carries a field this build does not know (%s): version mismatch — "+
-					"this artifact was written by a different Hikyo version", msg)
-		}
-		return failure("import", CodeMalformed, what, "it is not a well-formed artifact of this kind")
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return failure("import", CodeMalformed, what, "trailing content after the document")
-	}
-	return nil
+	return artifactDecodeError(definitions.DecodeStrict(raw, into), "import", what)
 }
 
-// rejectDuplicateMembers walks the raw JSON token stream before decoding into
-// a Go value. encoding/json otherwise accepts duplicate object members with
-// last-one-wins semantics, which is unsafe for reviewed artifacts.
 func rejectDuplicateMembers(raw []byte, source, what string) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := walkJSONValue(dec, source, what); err != nil {
-		return err
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return failure(source, CodeMalformed, what, "trailing content after the document")
-	}
-	return nil
+	return artifactDecodeError(definitions.RejectDuplicateMembers(raw), source, what)
 }
 
-func walkJSONValue(dec *json.Decoder, source, what string) error {
-	tok, err := dec.Token()
-	if err != nil {
-		return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-	}
-	delim, ok := tok.(json.Delim)
-	if !ok {
+// artifactDecodeError preserves the import refusal taxonomy around the shared
+// closed-schema decoder, including safe member names and version diagnostics.
+func artifactDecodeError(err error, source, what string) error {
+	if err == nil {
 		return nil
 	}
-	switch delim {
-	case '{':
-		seen := map[string]struct{}{}
-		for dec.More() {
-			member, err := dec.Token()
-			if err != nil {
-				return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-			}
-			key, ok := member.(string)
-			if !ok {
-				return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-			}
-			folded := foldJSONMember(key)
-			if _, duplicate := seen[folded]; duplicate {
-				return failure(source, CodeDuplicateKey, what,
-					"object member %s appears more than once", quoteName(key))
-			}
-			seen[folded] = struct{}{}
-			if err := walkJSONValue(dec, source, what); err != nil {
-				return err
-			}
-		}
-		end, err := dec.Token()
-		if err != nil || end != json.Delim('}') {
-			return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-		}
-	case '[':
-		for dec.More() {
-			if err := walkJSONValue(dec, source, what); err != nil {
-				return err
-			}
-		}
-		end, err := dec.Token()
-		if err != nil || end != json.Delim(']') {
-			return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
-		}
+	var duplicate *definitions.DuplicateMemberError
+	var unknown *definitions.UnknownFieldError
+	switch {
+	case errors.As(err, &duplicate):
+		return failure(source, CodeDuplicateKey, what,
+			"object member %s appears more than once", quoteName(duplicate.Member))
+	case errors.As(err, &unknown):
+		return failure(source, CodeVersion, what,
+			"it carries a field this build does not know (json: unknown field %q): version mismatch - "+
+				"this artifact was written by a different Hikyo version", unknown.Field)
+	case errors.Is(err, definitions.ErrTrailing):
+		return failure(source, CodeMalformed, what, "trailing content after the document")
 	default:
 		return failure(source, CodeMalformed, what, "it is not a well-formed artifact of this kind")
 	}
-	return nil
-}
-
-// foldJSONMember mirrors encoding/json's case-insensitive struct-field match.
-// Exact and case-variant spellings must occupy one logical member slot before
-// the later struct decode can apply last-value-wins semantics to them.
-func foldJSONMember(name string) string {
-	return strings.Map(func(r rune) rune {
-		for {
-			next := unicode.SimpleFold(r)
-			if next <= r {
-				return next
-			}
-			r = next
-		}
-	}, name)
 }
 
 func checkVersions(what string, format, contract int) error {

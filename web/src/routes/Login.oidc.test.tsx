@@ -1,29 +1,25 @@
 // @vitest-environment happy-dom
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 
 import { installMemoryStorage } from '../testkit/storage.ts';
 import { Login } from './Login.tsx';
 
-function mount(container: HTMLElement, page: { intent?: 'sign-in' | 'sign-up'; url?: string } = {}) {
-  const root = createRoot(container);
+async function mount(
+  container: HTMLElement,
+  page: { intent?: 'sign-in' | 'sign-up'; url?: string; returnTo?: string } = {},
+) {
+  const node = () => (
+    <MemoryRouter initialEntries={[page.url ?? '/login']}>
+      <Login intent={page.intent} returnTo={page.returnTo} />
+    </MemoryRouter>
+  );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return {
-    render: () =>
-      act(async () =>
-        root.render(
-          <QueryClientProvider client={client}>
-            <MemoryRouter initialEntries={[page.url ?? '/login']}>
-              <Login intent={page.intent} />
-            </MemoryRouter>
-          </QueryClientProvider>,
-        ),
-      ),
-    unmount: () => act(async () => root.unmount()),
-  };
+  const view = await renderForm(node(), { client, container });
+  return { render: () => view.rerender(node()), unmount: view.unmount };
 }
 
 /** One sign-in leg's hook surface, as the route consumes it. */
@@ -43,7 +39,12 @@ type Mocks = {
   methods: {
     data: {
       local_login_enabled: boolean;
-      providers: { kind: string; slug: string; display_name: string; brand?: 'google' | 'microsoft' }[];
+      providers: {
+        kind: string;
+        slug: string;
+        display_name: string;
+        brand?: 'google' | 'microsoft';
+      }[];
       signup_open: boolean;
       signup_paused: boolean;
       signup_methods: ({ kind: string; slug: string } | 'local')[];
@@ -153,8 +154,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 it('offers each configured OIDC and SAML provider and starts the selected login', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   const button = [...container.querySelectorAll('button')].find(
     (candidate) => candidate.textContent === 'Continue with Corporate IdP',
   );
@@ -169,8 +169,7 @@ it('offers each configured OIDC and SAML provider and starts the selected login'
 
 it('opens the password form from its row, and comes back to the rows', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   expect(container.querySelector('form')).toBeNull();
   expect(container.querySelector('h1')?.textContent).toBe('Sign in to Hikyo');
   await act(async () => buttonNamed(container, 'Passwordusername')?.click());
@@ -184,8 +183,7 @@ it('opens the password form from its row, and comes back to the rows', async () 
 it('badges the row this browser used last time, and remembers the one chosen now', async () => {
   globalThis.localStorage.setItem('hikyo.last-sign-in', 'provider:saml:sso');
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   const badged = [...container.querySelectorAll('button')].filter((button) =>
     button.textContent?.includes('Last used'),
   );
@@ -198,14 +196,12 @@ it('badges the row this browser used last time, and remembers the one chosen now
 
 it('starts a SAML login through the SP-initiated redirect', async () => {
   const fetchMock = vi.fn((_request: RequestInfo | URL) =>
-    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso' })),
+    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso?RelayState=saml-state' })),
   );
   vi.stubGlobal('fetch', fetchMock);
-  const assign = vi.fn();
-  vi.stubGlobal('location', { ...globalThis.location, assign });
+  const assign = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   const button = [...container.querySelectorAll('button')].find(
     (candidate) => candidate.textContent === 'Continue with SAML SSO',
   );
@@ -218,7 +214,10 @@ it('starts a SAML login through the SP-initiated redirect', async () => {
     expect(new URL(request.url).pathname).toBe('/api/v1/auth/saml/sso/start');
     expect(await request.json()).toEqual({ purpose: 'login' });
   }
-  expect(assign).toHaveBeenCalledWith('https://idp.example/sso');
+  expect(assign).toHaveBeenCalledWith('https://idp.example/sso?RelayState=saml-state');
+  expect(JSON.parse(globalThis.sessionStorage.getItem('hikyo-saml-transaction:saml-state') ?? 'null')).toEqual({
+    purpose: 'login', returnTo: '/',
+  });
   await unmount();
 });
 
@@ -229,27 +228,25 @@ it.each([
   mocks.passkeysAvailable = true;
   setPending();
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
+    const { unmount } = await mount(container);
 
-  await render();
+    // Step one of the staged entry: the password row, the passkey row, and one
+    // row per provider. A ceremony ends in a redirect or a session change; a
+    // second start racing it is the failure mode, and the busy label says why.
+    const buttons = container.querySelectorAll('button');
+    expect(buttons.length).toBe(4);
+    for (const button of buttons) {
+      expect(button.disabled).toBe(true);
+    }
+    expect(container.querySelectorAll('input').length).toBe(0);
 
-  // Step one of the staged entry: the password row, the passkey row, and one
-  // row per provider. A ceremony ends in a redirect or a session change; a
-  // second start racing it is the failure mode, and the busy label says why.
-  const buttons = container.querySelectorAll('button');
-  expect(buttons.length).toBe(4);
-  for (const button of buttons) {
-    expect(button.disabled).toBe(true);
-  }
-  expect(container.querySelectorAll('input').length).toBe(0);
-
-  await unmount();
-});
+    await unmount();
+  },
+);
 
 it('keys the busy label on the provider being contacted, not on every provider', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { render, unmount } = await mount(container);
   mocks.oidc.mutate.mockImplementation(() => {
     mocks.oidc.isPending = true;
   });
@@ -268,15 +265,13 @@ it('keys the busy label on the provider being contacted, not on every provider',
 
 it('says only "Sign-up is paused." while the registration policy is inactive', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   expect(container.textContent).not.toContain('Sign-up is paused.');
   await unmount();
 
   mocks.methods.data.signup_paused = true;
   const paused = document.createElement('div');
-  const second = mount(paused);
-  await second.render();
+  const second = await mount(paused);
   const line = paused.querySelector('.login__card .login__paused');
   expect(line?.textContent).toBe('Sign-up is paused.');
   expect(line?.getAttribute('role')).toBe('status');
@@ -290,16 +285,14 @@ it('says only "Sign-up is paused." while the registration policy is inactive', a
 it('shows a loading line while the sign-in methods are pending', async () => {
   mocks.methods.isPending = true;
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   expect(container.querySelector('[role="status"]')?.textContent).toBe('Loading sign-in methods…');
   await unmount();
 });
 
 it('demotes the setup and recovery links to quiet links', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   const links = [...container.querySelectorAll('.login__links a')];
   expect(links.map((link) => link.textContent)).toEqual([
     'Have a setup authority? Establish your credential',
@@ -312,9 +305,7 @@ it('demotes the setup and recovery links to quiet links', async () => {
 it('shows and retries an identity-provider discovery failure', async () => {
   mocks.methods.isError = true;
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-
-  await render();
+  const { unmount } = await mount(container);
 
   expect(container.textContent).toContain('Identity provider options could not be loaded.');
   const retry = [...container.querySelectorAll('button')].find(
@@ -336,9 +327,7 @@ it.each([
   mocks.passkeysAvailable = true;
   fail();
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-
-  await render();
+  const { unmount } = await mount(container);
 
   const alert = container.querySelector('.login__card [role="alert"]');
   expect(alert?.textContent).toContain(text);
@@ -353,8 +342,7 @@ it('replaces a stale password refusal with the provider refusal that followed it
     mocks.login.isError = false;
   });
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { render, unmount } = await mount(container);
   expect(container.textContent).toContain('Sign-in failed.');
 
   mocks.oidc.mutate.mockImplementation(() => {
@@ -384,8 +372,7 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
     vi.fn(() => Promise.reject(new Error('The identity provider refused.'))),
   );
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { render, unmount } = await mount(container);
 
   const named = (text: string) =>
     [...container.querySelectorAll('button')].find((button) => button.textContent === text);
@@ -428,8 +415,7 @@ async function answerWithChallenge(container: HTMLElement, factors: string[]) {
 it('presents a passkey as the second factor when one is enrolled and the platform can assert', async () => {
   mocks.passkeysAvailable = true;
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   await answerWithChallenge(container, ['totp', 'webauthn']);
 
   expect(container.textContent).toContain('Present your second factor');
@@ -444,8 +430,7 @@ it('presents a passkey as the second factor when one is enrolled and the platfor
 it('offers no passkey button when the challenge does not accept one', async () => {
   mocks.passkeysAvailable = true;
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   await answerWithChallenge(container, ['totp']);
 
   expect(container.textContent).toContain('Present your second factor');
@@ -458,8 +443,7 @@ it('shows the passkey leg refusal in the challenge slot', async () => {
   mocks.challengePasskey.isError = true;
   mocks.challengePasskey.error = new Error('dismissed');
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   await answerWithChallenge(container, ['webauthn']);
 
   expect(container.querySelector('.login__card [role="alert"]')?.textContent).toContain('Passkey failed.');
@@ -471,8 +455,7 @@ it('names an expired challenge instead of a server error', async () => {
   mocks.challengeTotp.isError = true;
   mocks.challengeTotp.error = new ApiError(404, 'not found');
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   await answerWithChallenge(container, ['totp']);
 
   expect(container.querySelector('.login__card [role="alert"]')?.textContent).toContain(
@@ -485,8 +468,7 @@ it('shows the password form only after the password row is chosen, and goes back
   const container = document.createElement('div');
   // Attached, so focus can land in it.
   document.body.append(container);
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   expect(container.querySelector('input')).toBeNull();
   await openPassword(container);
   expect(container.querySelectorAll('input').length).toBe(2);
@@ -505,8 +487,7 @@ it('shows the password form only after the password row is chosen, and goes back
 
 it('renders no sign-up door while registration is closed', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
   // The page rendered (the absence below is not vacuous).
   expect(container.querySelector('h1')?.textContent).toBe('Sign in to Hikyo');
   expect(buttonNamed(container, 'Continue with Corporate IdP')).toBeDefined();
@@ -520,8 +501,7 @@ it('opens the door, confirms, and starts a sign-up only from the confirmation st
   mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'strict' }];
   mocks.methods.data.signup_landing = 'fresh-org';
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
 
   await act(async () => buttonNamed(container, 'Create an account')?.click());
   expect(container.querySelector('h1')?.textContent).toBe('Create an account');
@@ -545,8 +525,7 @@ it('addresses the org door from /signup?org= and carries the org into the start'
   mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'strict' }, 'local'];
   mocks.methods.data.signup_landing = 'org-template';
   const container = document.createElement('div');
-  const { render, unmount } = mount(container, { intent: 'sign-up', url: '/signup?org=org_acme' });
-  await render();
+  const { unmount } = await mount(container, { intent: 'sign-up', url: '/signup?org=org_acme' });
 
   expect(methodsFor).toHaveBeenCalledWith('org_acme');
   expect(container.querySelector('h1')?.textContent).toBe('Create an account');
@@ -567,8 +546,7 @@ it('starts an OIDC sign-up even when a SAML provider shares the slug', async () 
   mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'corp' }];
   mocks.methods.data.signup_landing = 'none';
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
 
   await act(async () => buttonNamed(container, 'Create an account')?.click());
   expect(container.textContent).not.toContain('Corp SAML');
@@ -591,8 +569,7 @@ it('falls back to the sign-up door when the refreshed door drops the chosen prov
   ];
   mocks.methods.data.signup_landing = 'none';
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { render, unmount } = await mount(container);
 
   await act(async () => buttonNamed(container, 'Create an account')?.click());
   await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
@@ -622,8 +599,7 @@ it('starts an OIDC sign-in, and marks only its row, when a SAML provider shares 
     mocks.oidc.isPending = true;
   });
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { render, unmount } = await mount(container);
 
   await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
   await render();
@@ -638,13 +614,12 @@ it('starts an OIDC sign-in, and marks only its row, when a SAML provider shares 
 it('starts a SAML sign-in when an OIDC provider shares the slug', async () => {
   mocks.methods.data.providers = sharedSlug;
   const fetchMock = vi.fn((_request: RequestInfo | URL) =>
-    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso' })),
+    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso?RelayState=saml-state' })),
   );
   vi.stubGlobal('fetch', fetchMock);
-  vi.stubGlobal('location', { ...globalThis.location, assign: vi.fn() });
+  vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
 
   await act(async () => buttonNamed(container, 'Continue with Corp SAML')?.click());
   for (let round = 0; round < 10; round += 1) await act(async () => Promise.resolve());
@@ -655,10 +630,24 @@ it('starts a SAML sign-in when an OIDC provider shares the slug', async () => {
   await unmount();
 });
 
+it('binds a SAML workspace approval continuation to the returned RelayState', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({
+    redirect_url: 'https://idp.example/sso?RelayState=workspace-login',
+  }))));
+  vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
+  const container = document.createElement('div');
+  const { unmount } = await mount(container, { returnTo: '/workspace/approve?state=workspace-state' });
+  await act(async () => buttonNamed(container, 'Continue with SAML SSO')?.click());
+  for (let round = 0; round < 10; round += 1) await act(async () => Promise.resolve());
+  expect(JSON.parse(globalThis.sessionStorage.getItem('hikyo-saml-transaction:workspace-login') ?? 'null')).toEqual({
+    purpose: 'login', returnTo: '/workspace/approve?state=workspace-state',
+  });
+  await unmount();
+});
+
 it('opens /signup on sign-in when the addressed door is closed', async () => {
   const container = document.createElement('div');
-  const { render, unmount } = mount(container, { intent: 'sign-up', url: '/signup?org=org_nope' });
-  await render();
+  const { unmount } = await mount(container, { intent: 'sign-up', url: '/signup?org=org_nope' });
   expect(container.querySelector('h1')?.textContent).toBe('Sign in to Hikyo');
   await unmount();
 });
@@ -673,8 +662,7 @@ it('follows the providers’ published button rules', async () => {
   mocks.methods.data.signup_open = true;
   mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'google' }, { kind: 'oidc', slug: 'contoso' }];
   const container = document.createElement('div');
-  const { render, unmount } = mount(container);
-  await render();
+  const { unmount } = await mount(container);
 
   // The tenant span is inline-block, so the accessible name reads "Microsoft ·
   // Contoso" while the raw text runs together; the rows are compared as read.

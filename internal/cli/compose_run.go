@@ -218,6 +218,19 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 		return err
 	}
 	if cfg != nil {
+		// A human session must agree with the repository's instance declaration,
+		// just like a machine credential. Reject before disclosure or reauth I/O.
+		if strings.TrimSpace(cfg.Instance) != "" {
+			cfgOrigin, err := CanonicalOrigin(cfg.Instance)
+			if err != nil {
+				return err
+			}
+			if session.Origin != cfgOrigin {
+				return failf(ExitUsage,
+					"instance %q resolves to origin %s but %s names %s; refusing rather than picking one",
+					session.Instance, session.Origin, composeConfigName, cfgOrigin)
+			}
+		}
 		for _, d := range []struct {
 			dim Dimension
 			val string

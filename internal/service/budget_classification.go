@@ -95,6 +95,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDefinitionsExport, authz.OpDefinitionsCheck, authz.OpDeliveryReconcileOffline)
 	add(budgetClassDefaultExpensive, "master-key rotation rewraps every project DEK (project-proportional)",
 		authz.OpRotateMasterKey)
+	add(budgetClassDefaultExpensive, "root-key rotation reads privileged sources and contends for the process-wide hierarchy lock; authorization and budget precede phase inspection",
+		authz.OpRotateRootKey)
 	add(budgetClassDefaultExpensive, "dynamic secret: in-request external PostgreSQL round-trip (provider connection test / synchronous lease mint)",
 		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
 	add(budgetClassDefaultExpensive, "ssh certificates: in-request key generation (RSA-3072 is the costly case) and signing",
@@ -122,7 +124,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 	add(budgetClassExempt, "outbox worker push; §12 outbox concurrency (1/target, 4/org) bounds it",
 		authz.OpAdapterPush)
 	add(budgetClassExempt, "O(1) key-hierarchy rotation (one DEK / the master / one token key); the row-proportional rework is the separately-budgeted reencrypt (OpReencrypt*). Master-key rotation, which rewraps every project DEK, is default-expensive above",
-		authz.OpRotateDEK, authz.OpRotateRootKey,
+		authz.OpRotateDEK,
 		authz.OpRotateTokenKey, authz.OpRotateScanningKey)
 
 	// The large remainder: single-row or paged CRUD/reads and admin config

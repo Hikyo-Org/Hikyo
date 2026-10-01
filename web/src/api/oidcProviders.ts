@@ -12,7 +12,8 @@ import {
 } from '@tanstack/react-query';
 import { z } from 'zod';
 
-import { ApiError, ok, parsed } from './client.ts';
+import { commonRefusalText, statusText } from './statusText.ts';
+import { ok, parsed } from './client.ts';
 
 /**
  * OIDC provider administration (#499), riding the instance provider API
@@ -279,32 +280,24 @@ export type OidcProviderOperation =
  * issuer, malformed policy JSON) never reach here: they are refused as field
  * errors before submit.
  */
-export function oidcProviderRefusalText(
-  error: unknown,
-  operation: OidcProviderOperation,
-): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return (
-          error.detail ??
-          'The server refused this provider. If the issuer is new, its OpenID configuration must be reachable and its discovered issuer must match exactly; if the slug is already in use, choose another.'
-        );
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-        return 'You are not permitted to administer identity providers: that needs instance-config, which is MFA-mandatory. Present your second factor.';
-      case 404:
-        return operation === 'list-oidc-providers'
+export function oidcProviderRefusalText(error: unknown, operation: OidcProviderOperation): string {
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ??
+          'The server refused this provider. If the issuer is new, its OpenID configuration must be reachable and its discovered issuer must match exactly; if the slug is already in use, choose another.',
+      401: commonRefusalText.sessionEnded,
+      403: 'You are not permitted to administer identity providers: that needs instance-config, which is MFA-mandatory. Present your second factor.',
+      404:
+        operation === 'list-oidc-providers'
           ? 'The identity-provider directory is not disclosed to this session.'
-          : 'This identity provider is unavailable or does not exist.';
-      case 409:
-        return 'This identity provider changed underneath you. Reload the provider list before retrying.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-    }
-  }
-  return operation === 'delete-oidc-provider'
+          : 'This identity provider is unavailable or does not exist.',
+      409: 'This identity provider changed underneath you. Reload the provider list before retrying.',
+      429: commonRefusalText.attempts,
+    },
+    operation === 'delete-oidc-provider'
     ? 'The server failed; whether the provider was deleted is unknown: reload to check.'
-    : 'The server failed; whether the change applied is unknown: reload to check.';
+    : 'The server failed; whether the change applied is unknown: reload to check.',
+  );
 }

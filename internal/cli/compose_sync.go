@@ -49,19 +49,34 @@ func runComposeSync(ctx context.Context, ios IO, args []string) error {
 	}
 
 	// (2) Render (conditional).
-	moved, stack, err := composeRenderCore(ctx, ios, st, flags, projectDir, false)
+	stack, err := openComposeStack(st, ios, flags, composeStackOptions{projectDir: projectDir, requireConfig: true})
+	if err != nil {
+		return err
+	}
+	lock, err := stack.beginRender()
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	moved, _, err := composeRenderLocked(ctx, ios, stack, lock)
 	if err != nil {
 		return err
 	}
 	// Generated env files now exist. Resolve the real Compose configuration at
 	// this boundary, before deciding there is nothing to apply and before Docker
 	// can replace any running container.
-	dockerFindings, _, _ := doctorDocker(ctx, ios, stack.cfgDir)
-	if hasAnyError(dockerFindings) {
-		if rerr := renderComposeFindings(ios.Stderr, FormatTable, dockerFindings); rerr != nil {
-			return failf(ExitInternal, "hikyo compose sync: rendering post-render Docker findings: %v", rerr)
+	// Foreign .env assignments or Compose overrides may still resolve an older
+	// generation after render. Repeat the canonical structural checks before
+	// apply; only server agreement is unavailable to this local validation.
+	findings, err = composeDoctorGather(ctx, ios, st, flags, projectDir, false)
+	if err != nil {
+		return err
+	}
+	if hasAnyError(findings) {
+		if err := renderComposeFindings(ios.Stderr, FormatTable, findings); err != nil {
+			return failf(ExitInternal, "hikyo compose sync: rendering post-render findings: %v", err)
 		}
-		return failf(ExitRefused, "hikyo compose sync: Docker configuration remains invalid after rendering")
+		return failf(ExitRefused, "hikyo compose sync: resolved Docker configuration disagrees with the rendered generation")
 	}
 
 	// (3) Apply through `docker compose up -d` when a stamp moved, a prior sync

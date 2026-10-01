@@ -1405,11 +1405,13 @@ func runRecoveryCodes(ctx context.Context, ios IO, args []string) (returnErr err
 		apigen.RecoveryProofRequest{Proof: proof}, &result); err != nil {
 		return err
 	}
-	if _, err := sink.WriteOnce("recovery codes (single-use)", strings.Join(result.RecoveryCodes, "\n")); err != nil {
-		return failf(ExitRefused, "disclosing the recovery codes: %v", err)
-	}
+	// The old bearer is already revoked. Preserve its replacement before
+	// fallible display-once output can strand the authenticated caller.
 	if err := persistRotatedSession(st, session, result.Login); err != nil {
 		return err
+	}
+	if _, err := sink.WriteOnce("recovery codes (single-use)", strings.Join(result.RecoveryCodes, "\n")); err != nil {
+		return failf(ExitRefused, "disclosing the recovery codes: %v", err)
 	}
 	fmt.Fprintf(ios.Stderr, "recovery codes regenerated; the previous batch is now void\n")
 	return nil

@@ -493,7 +493,12 @@ func TestPKILifecycle(t *testing.T) {
 		if _, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "web", CSRPEM: csrPEM, DNSNames: []string{"held.svc.example.com"}}); !errors.Is(err, service.ErrPKIIssuerHeld) {
 			t.Fatalf("issuance from a held issuer: %v", err)
 		}
-		// A restore hold blocks issuance but must retain revocation coverage.
+		// A restore hold retains stored CRL reads but forbids signing a fresh
+		// snapshot until the operator reconciles post-backup revocations.
+		beforeHoldDER, err := svc.IssuerCRL(ctx, op, "issuing", 2)
+		if err != nil {
+			t.Fatal(err)
+		}
 		clock.Advance(24 * time.Hour)
 		sweepPKI(t, svc)
 		heldDER, err := svc.IssuerCRL(ctx, op, "issuing", 2)
@@ -504,14 +509,21 @@ func TestPKILifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !heldCRL.NextUpdate.After(clock.Now()) {
-			t.Fatal("held issuer CRL was not refreshed by the worker")
+		beforeHoldCRL, err := x509.ParseRevocationList(beforeHoldDER)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if _, err := svc.PublishIssuerCRL(ctx, op, "issuing", 2); err != nil {
-			t.Fatalf("manual held issuer CRL publication: %v", err)
+		if heldCRL.Number.Cmp(beforeHoldCRL.Number) != 0 {
+			t.Fatal("held issuer CRL was refreshed by the worker")
+		}
+		if _, err := svc.PublishIssuerCRL(ctx, op, "issuing", 2); !errors.Is(err, service.ErrPKIIssuerHeld) {
+			t.Fatalf("manual held issuer CRL publication did not refuse: %v", err)
 		}
 		if _, err := svc.ReleaseIssuerHold(ctx, op, "issuing"); err != nil {
 			t.Fatalf("release hold: %v", err)
+		}
+		if _, err := svc.PublishIssuerCRL(ctx, op, "issuing", 2); err != nil {
+			t.Fatalf("CRL publication after revocation reconciliation: %v", err)
 		}
 		afterHold, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "web", CSRPEM: csrPEM, DNSNames: []string{"held.svc.example.com"}})
 		if err != nil {

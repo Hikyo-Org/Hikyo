@@ -20,6 +20,7 @@ import {
 } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { useTransport } from './transport.tsx';
 
@@ -333,28 +334,17 @@ function withDetail(base: string, error: unknown): string {
  * or the credential was refused", the detail says which.
  */
 export function createProviderRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail(
-          'The server refused the provider: its origin, grant role or credential was rejected, or PostgreSQL could not be reached and authenticated with them. Nothing was created.',
-          error,
-        );
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before configuring a provider.';
-      case 403:
-        return 'Configuring a provider needs manage-identities on this project. Nothing was created.';
-      case 404:
-        return 'This project is no longer here, or you may not administer its identities. Nothing was created.';
-      case 409:
-        return withDetail('The server refused that as a conflict. Nothing was created.', error);
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The provider could not be created (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The provider could not be created.';
+  return statusText(error, {
+    400: (error) => withDetail(
+      'The server refused the provider: its origin, grant role or credential was rejected, or PostgreSQL could not be reached and authenticated with them. Nothing was created.',
+      error,
+    ),
+    401: 'The session could not be authenticated. Reload and sign in before configuring a provider.',
+    403: 'Configuring a provider needs manage-identities on this project. Nothing was created.',
+    404: 'This project is no longer here, or you may not administer its identities. Nothing was created.',
+    409: (error) => withDetail('The server refused that as a conflict. Nothing was created.', error),
+    429: commonRefusalText.requests,
+  }, 'The provider could not be created.', (error) => `The provider could not be created (server error ${String(error.status)}).`);
 }
 
 /**
@@ -362,45 +352,26 @@ export function createProviderRefusalText(error: unknown): string {
  * 400 is the unreachable/refused-credential case, exactly as create.
  */
 export function setCredentialRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail(
-          'The server refused the credential: PostgreSQL could not be reached and authenticated with it. The stored credential is unchanged.',
-          error,
-        );
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before replacing the credential.';
-      case 403:
-        return 'Replacing the credential needs manage-identities on this project.';
-      case 404:
-        return 'That provider is no longer here: someone may have deleted it.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The credential could not be set (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The credential could not be set.';
+  return statusText(error, {
+    400: (error) => withDetail(
+      'The server refused the credential: PostgreSQL could not be reached and authenticated with it. The stored credential is unchanged.',
+      error,
+    ),
+    401: 'The session could not be authenticated. Reload and sign in before replacing the credential.',
+    403: 'Replacing the credential needs manage-identities on this project.',
+    404: 'That provider is no longer here: someone may have deleted it.',
+    429: commonRefusalText.requests,
+  }, 'The credential could not be set.', (error) => `The credential could not be set (server error ${String(error.status)}).`);
 }
 
 /** revokeCredentialRefusalText names a credential-revoke refusal. */
 export function revokeCredentialRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in first.';
-      case 403:
-        return 'Revoking the credential needs manage-identities on this project.';
-      case 404:
-        return 'That provider is no longer here: someone may have deleted it.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The credential could not be revoked (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The credential could not be revoked.';
+  return statusText(error, {
+    401: commonRefusalText.unauthenticated,
+    403: 'Revoking the credential needs manage-identities on this project.',
+    404: 'That provider is no longer here: someone may have deleted it.',
+    429: commonRefusalText.requests,
+  }, 'The credential could not be revoked.', (error) => `The credential could not be revoked (server error ${String(error.status)}).`);
 }
 
 /**
@@ -408,23 +379,13 @@ export function revokeCredentialRefusalText(error: unknown): string {
  * live-leases guard: the operator must confirm the cascade to proceed.
  */
 export function deleteProviderRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before deleting a provider.';
-      case 403:
-        return 'Deleting a provider needs manage-identities on this project.';
-      case 404:
-        return 'That provider is no longer here: someone may have deleted it already.';
-      case 409:
-        return 'This provider still has live leases. Confirm the cascade to revoke them as part of the delete.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The provider could not be deleted (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The provider could not be deleted.';
+  return statusText(error, {
+    401: 'The session could not be authenticated. Reload and sign in before deleting a provider.',
+    403: 'Deleting a provider needs manage-identities on this project.',
+    404: 'That provider is no longer here: someone may have deleted it already.',
+    409: 'This provider still has live leases. Confirm the cascade to revoke them as part of the delete.',
+    429: commonRefusalText.requests,
+  }, 'The provider could not be deleted.', (error) => `The provider could not be deleted (server error ${String(error.status)}).`);
 }
 
 /**
@@ -435,23 +396,21 @@ export function deleteProviderRefusalText(error: unknown): string {
  */
 export function leaseMintRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail('The server refused that mint request as malformed.', error);
-      case 403:
-        return 'The server refused this mint. A human mint needs a disclosure capability over this environment and a fresh reauthentication; a machine mint needs the project machine-reveal opt-in.';
-      case 404:
-        return 'That provider or environment is no longer here.';
-      case 409:
-        return withDetail(
+    return statusText(
+      error,
+      {
+        400: (error) => withDetail('The server refused that mint request as malformed.', error),
+        403: 'The server refused this mint. A human mint needs a disclosure capability over this environment and a fresh reauthentication; a machine mint needs the project machine-reveal opt-in.',
+        404: 'That provider or environment is no longer here.',
+        409: (error) =>
+          withDetail(
           'The mint could not be completed: the provider refused it, or is not in a state that can mint. No credential was issued.',
           error,
-        );
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The mint could not be completed (server error ${String(error.status)}).`;
-    }
+        ),
+        429: commonRefusalText.requests,
+      },
+      `The mint could not be completed (server error ${String(error.status)}).`,
+    );
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed or timed out. Nothing was minted.';
@@ -479,29 +438,26 @@ export function leaseActionRefusalText(
   verb: 'renew' | 'revoke' | 'settle',
   error: unknown,
 ): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in first.';
-      case 403:
-        return verb === 'renew'
+  return statusText(
+    error,
+    {
+      401: commonRefusalText.unauthenticated,
+      403:
+        verb === 'renew'
           ? 'The server refused the renewal. Renewing re-checks read over this environment: a principal that lost it cannot renew.'
-          : `The server refused to ${verb} this lease.`;
-      case 404:
-        return 'That lease is no longer here.';
-      case 409:
-        return {
+          : `The server refused to ${verb} this lease.`,
+      404: 'That lease is no longer here.',
+      409: {
           renew: 'This lease is not active, so it cannot be renewed. Reload to see its current state.',
           revoke:
             'This lease is already terminal or being revoked. Reload to see its current state.',
           settle:
             'This lease is not awaiting reconcile, so there is nothing to settle. Reload to see its current state.',
-        }[verb];
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`} (server error ${String(error.status)}).`;
-    }
-  }
-  return `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`}.`;
+        }[verb],
+      429: commonRefusalText.requests,
+    },
+    `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`}.`,
+    (error) =>
+      `The lease could not be ${verb === 'settle' ? 'settled' : `${verb}d`} (server error ${String(error.status)}).`,
+  );
 }

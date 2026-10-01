@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 
+import { formatWhen } from '../lib/formatWhen.ts';
 import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
 import {
@@ -36,8 +37,7 @@ import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 /** Formats a timestamp in the operator's locale; missing values use '-', invalid ones pass through. */
 function when(value: string | undefined): string {
   if (value === undefined) return '-';
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? value : at.toLocaleString();
+  return formatWhen(value);
 }
 
 /** A duration in seconds as the largest whole unit a human reads. */

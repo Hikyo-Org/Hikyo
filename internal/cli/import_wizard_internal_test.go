@@ -66,7 +66,7 @@ func TestImportNoTerminalIsAHardError(t *testing.T) {
 // before any server contact.
 func TestValuesImportRefusesOverwriteForCreatedEnvFile(t *testing.T) {
 	body, err := importer.Encode(importer.ValuesFile{
-		FormatVersion: importer.FormatVersion, Project: "prj_x", EnvironmentName: "staging",
+		FormatVersion: importer.RunArtifactFormatVersion, CommitmentKey: strings.Repeat("ab", 32), Project: "prj_x", EnvironmentName: "staging",
 		Entries: []importer.ValuesEntry{{Key: "API_KEY", Value: "v"}},
 	})
 	if err != nil {
@@ -103,7 +103,7 @@ func TestValuesImportRefusesOverwriteForCreatedEnvFile(t *testing.T) {
 func TestValuesImportRefusesMismatchedManifestProject(t *testing.T) {
 	dir := t.TempDir()
 	valuesBody, err := importer.Encode(importer.ValuesFile{
-		FormatVersion: importer.FormatVersion, Project: "prj_P", Environment: "env_staging",
+		FormatVersion: importer.RunArtifactFormatVersion, CommitmentKey: strings.Repeat("ab", 32), Project: "prj_P", Environment: "env_staging",
 		Entries: []importer.ValuesEntry{{Key: "API_KEY", Value: "v"}},
 	})
 	if err != nil {
@@ -114,7 +114,7 @@ func TestValuesImportRefusesMismatchedManifestProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifestBody, err := importer.Encode(importer.Manifest{
-		FormatVersion: importer.FormatVersion, ConnectorContractVersion: importer.ConnectorContractVersion,
+		FormatVersion: importer.RunArtifactFormatVersion, ConnectorContractVersion: importer.ConnectorContractVersion,
 		Target:          importer.Target{Project: "prj_Q", Environments: []string{"env_staging"}},
 		PhaseCompletion: importer.PhaseCompletion{Authored: true, Imported: map[string]bool{"env_staging": false}},
 	})

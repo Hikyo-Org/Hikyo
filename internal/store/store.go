@@ -31,6 +31,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
@@ -1072,17 +1073,17 @@ func (d *DB) AuditExportSnapshotTime(ctx context.Context) (time.Time, error) {
 			return time.Time{}, err
 		}
 		defer tx.Rollback(ctx)
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1464159830, 85)"); err != nil {
+		if err := pggen.New(tx).AuditExportWriterBarrier(ctx); err != nil {
 			return time.Time{}, err
 		}
-		var now time.Time
-		if err := tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
+		now, err := pggen.New(tx).AuditExportSnapshotClock(ctx)
+		if err != nil {
 			return time.Time{}, fmt.Errorf("store: postgres audit export snapshot time: %w", err)
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return time.Time{}, err
 		}
-		return CanonTime(now), nil
+		return CanonTime(now.Time), nil
 	case EngineSQLite:
 		// SQLite audit timestamps are assigned under the single writer. Capture
 		// this cutoff under that same writer lock, before allowing another prune.
@@ -1123,7 +1124,7 @@ func (d *DB) AwaitAuditExportWriters(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1464159830, 85)"); err != nil {
+	if err := pggen.New(tx).AuditExportWriterBarrier(ctx); err != nil {
 		return fmt.Errorf("store: postgres audit export writer barrier: %w", err)
 	}
 	return tx.Commit(ctx)

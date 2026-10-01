@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
+import { renderForm } from '../testkit/renderForm.tsx';
 import { act, StrictMode, useEffect, useRef } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -11,8 +11,6 @@ import {
 import { useCeremonyTask } from './useCeremonyTask.ts';
 
 type CeremonyController = ReturnType<typeof useCeremonyTask>;
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 function Harness({
   scope,
@@ -55,42 +53,33 @@ async function render(
   pending: Deferred<void>,
   committed: string[],
   onReady?: (controller: CeremonyController) => void,
-): Promise<{ container: HTMLElement; root: Root }> {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <Harness scope={scope} pending={pending} committed={committed} onReady={onReady} />,
-    );
-  });
-  return { container, root };
+) {
+  const { container, unmount, rerender } = await renderForm(
+    <Harness scope={scope} pending={pending} committed={committed} onReady={onReady} />,
+  );
+  return { container, unmount, rerender };
 }
 
 describe('useCeremonyTask scope ownership', () => {
   it('ignores a deferred completion after navigation changes the scope', async () => {
     const pending = deferred<void>();
     const committed: string[] = [];
-    const { container, root } = await render('environment-a', pending, committed);
+    const { container, unmount, rerender } = await render('environment-a', pending, committed);
 
-    await act(async () => {
-      root.render(
-        <Harness scope="environment-b" pending={pending} committed={committed} />,
-      );
-    });
+    await rerender(<Harness scope="environment-b" pending={pending} committed={committed} />);
     await act(async () => pending.resolve(undefined));
 
     expect(container.textContent).toBe('idle');
     expect(committed).toEqual([]);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('ignores a deferred completion after the owning surface unmounts', async () => {
     const pending = deferred<void>();
     const committed: string[] = [];
-    const { root } = await render('environment-a', pending, committed);
+    const { unmount } = await render('environment-a', pending, committed);
 
-    await act(async () => root.unmount());
+    await unmount();
     await act(async () => pending.resolve(undefined));
 
     expect(committed).toEqual([]);
@@ -100,14 +89,9 @@ describe('useCeremonyTask scope ownership', () => {
     const pending = deferred<void>();
     const committed: string[] = [];
     let controller: CeremonyController | undefined;
-    const { container, root } = await render(
-      'environment-a',
-      pending,
-      committed,
-      (next) => {
-        controller = next;
-      },
-    );
+    const { container, unmount } = await render('environment-a', pending, committed, (next) => {
+      controller = next;
+    });
     await act(async () => pending.resolve(undefined));
     const active = controller;
     if (active === undefined) throw new Error('ceremony controller was not exposed');
@@ -118,21 +102,16 @@ describe('useCeremonyTask scope ownership', () => {
 
     expect(container.textContent).toBe('idle');
     expect(committed).toEqual([]);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('executes the current staged continuation once', async () => {
     const pending = deferred<void>();
     const committed: string[] = [];
     let controller: CeremonyController | undefined;
-    const { container, root } = await render(
-      'environment-a',
-      pending,
-      committed,
-      (next) => {
-        controller = next;
-      },
-    );
+    const { container, unmount } = await render('environment-a', pending, committed, (next) => {
+      controller = next;
+    });
     await act(async () => pending.resolve(undefined));
     const active = controller;
     if (active === undefined) throw new Error('ceremony controller was not exposed');
@@ -142,21 +121,20 @@ describe('useCeremonyTask scope ownership', () => {
 
     expect(container.textContent).toBe('idle');
     expect(committed).toEqual(['environment-a']);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('remains live after the StrictMode effect probe', async () => {
     let controller: CeremonyController | undefined;
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <ManualHarness onReady={(next) => { controller = next; }} />
-        </StrictMode>,
-      );
-    });
+    const { container, unmount } = await renderForm(
+      <StrictMode>
+        <ManualHarness
+          onReady={(next) => {
+            controller = next;
+          }}
+        />
+      </StrictMode>,
+    );
     const active = controller;
     if (active === undefined) throw new Error('ceremony controller was not exposed');
 
@@ -166,18 +144,19 @@ describe('useCeremonyTask scope ownership', () => {
     });
 
     expect(container.textContent).toBe('strict-scope');
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('does not let an obsolete modal callback authorise the newer task', async () => {
     let controller: CeremonyController | undefined;
     const committed: string[] = [];
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(<ManualHarness onReady={(next) => { controller = next; }} />);
-    });
+    const { container, unmount } = await renderForm(
+      <ManualHarness
+        onReady={(next) => {
+          controller = next;
+        }}
+      />,
+    );
     const firstController = controller;
     if (firstController === undefined) throw new Error('ceremony controller was not exposed');
     await act(async () => {
@@ -207,6 +186,6 @@ describe('useCeremonyTask scope ownership', () => {
     if (stagedSecondController === undefined) throw new Error('second ceremony controller was lost');
     await act(async () => stagedSecondController.onAuthorised());
     expect(committed).toEqual(['second']);
-    await act(async () => root.unmount());
+    await unmount();
   });
 });

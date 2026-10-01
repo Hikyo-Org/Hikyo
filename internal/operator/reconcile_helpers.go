@@ -477,9 +477,25 @@ func (r *HikyoSecretReconciler) ensureFinalizer(ctx context.Context, cr *hikyov1
 // (decision 2), never `update` of the whole object. mutate is
 // controllerutil.AddFinalizer or RemoveFinalizer.
 func (r *HikyoSecretReconciler) patchFinalizers(ctx context.Context, cr *hikyov1.HikyoSecret, mutate func(client.Object, string) bool) error {
-	base := cr.DeepCopy()
-	mutate(cr, hikyov1.OrphanFinalizer)
-	return r.Patch(ctx, cr, client.MergeFrom(base))
+	// Finalizers are shared with other controllers. Read the authoritative list
+	// and fence both object identity and resourceVersion before replacing it.
+	var fresh hikyov1.HikyoSecret
+	if err := r.Reader.Get(ctx, client.ObjectKeyFromObject(cr), &fresh); err != nil {
+		return fmt.Errorf("operator: read CR before finalizer patch: %w", err)
+	}
+	if fresh.UID != cr.UID {
+		return fmt.Errorf("operator: refusing finalizer patch after CR UID changed")
+	}
+	base := fresh.DeepCopy()
+	if !mutate(&fresh, hikyov1.OrphanFinalizer) {
+		return nil
+	}
+	if err := r.Patch(ctx, &fresh, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{})); err != nil {
+		return err
+	}
+	cr.Finalizers = append([]string(nil), fresh.Finalizers...)
+	cr.ResourceVersion = fresh.ResourceVersion
+	return nil
 }
 
 // finalize handles CR deletion: an Orphan CR strips the managed Secret's

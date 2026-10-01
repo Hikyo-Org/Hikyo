@@ -6,7 +6,7 @@ import {
   zProjectRetentionPolicy,
   zRetentionPolicy,
 } from '@hikyo/zod';
-import { expect } from 'storybook/test';
+import { expect, userEvent } from 'storybook/test';
 import type { z } from 'zod';
 
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
@@ -123,6 +123,22 @@ export const Administrable: Story = {
     await expect(canvas.getByLabelText('Retention mode')).toBeVisible();
     // The Danger zone exists only because the project grants can_delete.
     await expect(canvas.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeVisible();
+  },
+};
+
+export const UnlimitedRetentionOverride: Story = {
+  parameters: { app: { auth: true, path: PATH, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: administrableProject },
+    { url: ORG_RETENTION_URL, body: { mode: 'unlimited' } satisfies z.input<typeof zRetentionPolicy> },
+    { url: PROJECT_RETENTION_URL, body: { inherited: true, mode: 'unlimited' } satisfies z.input<typeof zProjectRetentionPolicy> },
+    ...commonResponses,
+  ] } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText('inherits the org default: unlimited retention; follows org changes')).toBeVisible();
+    await userEvent.selectOptions(canvas.getByLabelText('Retention mode'), 'custom');
+    await expect(canvas.getByLabelText('Maximum retention age (seconds)')).toBeVisible();
+    await expect(canvas.getByLabelText('Revisions kept per environment')).toBeVisible();
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Choose a positive maximum age in seconds and revision count');
   },
 };
 
