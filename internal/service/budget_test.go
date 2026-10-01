@@ -23,9 +23,16 @@ func (c *clock) add(d time.Duration) {
 }
 
 func newTestBudget(c *clock) *Budget {
-	b := NewBudget()
-	b.now = c.now
-	return b
+	return NewBudgetWithClock(c.now)
+}
+
+func TestBudgetWithClockRequiresClock(t *testing.T) {
+	defer func() {
+		if got := recover(); got != "service: budget requires a clock" {
+			t.Fatalf("nil budget clock panic = %v", got)
+		}
+	}()
+	NewBudgetWithClock(nil)
 }
 
 func principalKeys(p, org, project string) budgetKeys {

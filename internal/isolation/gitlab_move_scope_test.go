@@ -3,6 +3,7 @@ package isolation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,6 +14,99 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
+
+func TestGitLabPendingReservationUsesExactDestinationScope(t *testing.T) {
+	for _, scope := range []string{"production", "staging"} {
+		t.Run(scope, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				seedGitLabMoves(t, db, scope)
+				runtime := generatedAdapterRuntime(db)
+				now := time.Now().UTC()
+				queued, err := runtime.Enqueue(t.Context(), adapter.Job{OrgID: "org_gitlab", ProjectID: "prj_gitlab", EnvironmentID: "env_gitlab_second", TargetID: "tgt_gitlab_b", Kind: adapter.Converge, AuthorityPrincipal: "usr_gitlab"}, now.Add(-time.Second))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := gitLabMoveWrite(t, db, func(ctx context.Context, r store.Repos, p authz.Proof) error {
+					_, err := r.Adapters().MoveTarget(ctx, p, store.AdapterRouteMoveMutation{MoveID: "arm_reserve_scope", Target: gitLabPendingTarget("tgt_gitlab_a", "production", "new-api"), ExpectedGeneration: 1, AuthorityPrincipalID: "usr_gitlab", KeepRemote: true, At: now})
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+				// Reproduce the provider-name collision independently of configure
+				// preflight, including its same-scope refusal control.
+				execRealAdoption(t, db, `UPDATE adapter_targets SET destination_name='new-api',destination_id=99 WHERE id='tgt_gitlab_b'`)
+				job, ok, err := runtime.ClaimDue(t.Context(), "scope-reserve", now.Add(time.Second), now.Add(time.Minute))
+				if err != nil || !ok || job.ID != queued.ID {
+					t.Fatalf("claim reservation: %+v %v %v", job, ok, err)
+				}
+				effect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "P_TOKEN", Disposition: adapter.Create, KeyID: "key_gitlab_move"}
+				journal := runtime.Journal(job)
+				if err := journal.Gate(t.Context(), effect); err != nil {
+					t.Fatalf("reservation authority gate: %v", err)
+				}
+				state, err := journal.Reserve(t.Context(), effect)
+				if scope == "production" {
+					if !errors.Is(err, adapter.ErrConflict) {
+						t.Fatalf("same-scope reservation accepted: %s %v", state, err)
+					}
+					if n := queryInt(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_gitlab_b'`); n != 0 {
+						t.Fatalf("refused reservation wrote custody: %d", n)
+					}
+				} else if err != nil || state != adapter.Reserved {
+					t.Fatalf("distinct-scope reservation refused: %s %v", state, err)
+				} else if got := queryString(t, db, `SELECT destination_scope FROM adapter_ledger WHERE target_id='tgt_gitlab_b'`); got != scope {
+					t.Fatalf("reservation scope=%q want %q", got, scope)
+				}
+			})
+		})
+	}
+}
+
+func TestGitLabActivationUsesExactConfiguredAndLedgerScope(t *testing.T) {
+	for _, scope := range []string{"production", "staging"} {
+		t.Run(scope, func(t *testing.T) {
+			forEngines(t, func(t *testing.T, db *store.DB) {
+				seedGitLabMoves(t, db, scope)
+				now := time.Now().UTC()
+				if err := gitLabMoveWrite(t, db, func(ctx context.Context, r store.Repos, p authz.Proof) error {
+					_, err := r.Adapters().MoveTarget(ctx, p, store.AdapterRouteMoveMutation{MoveID: "arm_activate_scope", Target: gitLabPendingTarget("tgt_gitlab_a", "production", "new-api"), ExpectedGeneration: 1, AuthorityPrincipalID: "usr_gitlab", KeepRemote: true, At: now})
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+				execRealAdoption(t, db, `UPDATE adapter_targets SET destination_name='new-api',destination_id=99 WHERE id='tgt_gitlab_b'`)
+				execRealAdoption(t, db, fmt.Sprintf(`INSERT INTO adapter_ledger(id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,destination_scope,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_scope_control','org_gitlab','prj_gitlab','env_gitlab_second','tgt_gitlab_b','https://gitlab.old.example','repository',0,99,'%s','secret','P_TOKEN','P_TOKEN','owned','2026-10-01T00:00:00Z')`, scope))
+				runtime := generatedAdapterRuntime(db)
+				job, ok, err := runtime.ClaimDue(t.Context(), "scope-activate", now.Add(time.Second), now.Add(time.Minute))
+				if err != nil || !ok || job.Kind != adapter.Activate {
+					t.Fatalf("claim activation: %+v %v %v", job, ok, err)
+				}
+				if err := runtime.Journal(job).Gate(t.Context(), adapter.Effect{}); err != nil {
+					t.Fatalf("activation authority gate: %v", err)
+				}
+				if _, err := runtime.LoadActivation(t.Context(), job); err != nil {
+					t.Fatalf("load pending route: %v", err)
+				}
+				err = runtime.Activate(t.Context(), job, adapter.Connection{Version: "scope-fixture", DestinationID: 99}, now.Add(2*time.Second))
+				if scope == "production" {
+					if !errors.Is(err, adapter.ErrConflict) {
+						t.Fatalf("same-scope activation accepted: %v", err)
+					}
+					if got := queryString(t, db, `SELECT state FROM adapter_outbox WHERE route_move_id='arm_activate_scope'`); got != "running" {
+						t.Fatalf("refused activation did not roll back: %s", got)
+					}
+				} else if err != nil {
+					t.Fatalf("distinct-scope activation refused: %v", err)
+				} else if got := queryString(t, db, `SELECT state FROM adapter_route_moves WHERE id='arm_activate_scope'`); got != "completed" {
+					t.Fatalf("distinct-scope activation unfinished: %s", got)
+				}
+				if got := queryString(t, db, `SELECT state||':'||destination_scope FROM adapter_ledger WHERE id='led_scope_control'`); got != "owned:"+scope {
+					t.Fatalf("activation changed sibling custody: %s", got)
+				}
+			})
+		})
+	}
+}
 
 func seedGitLabMoves(t *testing.T, db *store.DB, secondScope string) {
 	t.Helper()

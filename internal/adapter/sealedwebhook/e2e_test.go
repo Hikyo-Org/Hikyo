@@ -550,7 +550,8 @@ func TestEgressRefusesPrivateLinkLocalAndMetadataDestinations(t *testing.T) {
 		t.Run(addr, func(t *testing.T) {
 			m := h.newModule(h.endpoint, nil, staticResolver{netip.MustParseAddr(addr)})
 			_, err := m.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: h.target().Destination, Gate: func(context.Context) error { return nil }})
-			if err == nil || !strings.Contains(err.Error(), "non-public") {
+			var transportError *url.Error
+			if !errors.Is(err, ErrNoAck) || !errors.As(err, &transportError) || !strings.Contains(transportError.Err.Error(), "non-public") {
 				t.Fatalf("error = %v, want non-public refusal", err)
 			}
 		})

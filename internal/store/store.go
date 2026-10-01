@@ -614,8 +614,9 @@ type DefinitionsRepo interface {
 }
 
 type AdapterConflictEntry struct {
-	Surface       string
-	EffectiveName string
+	Surface                 string
+	EffectiveName           string
+	ObservedProviderVersion *int64
 }
 
 type AdapterConflictArtifact struct {
@@ -906,6 +907,7 @@ type AdapterPlanMaterial struct {
 
 type AdapterRepo interface {
 	AdapterReader
+	ConfigurationForUpdate(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error)
 	Create(ctx context.Context, p authz.Proof, mutation AdapterCreate) (AdapterRecord, AdapterTarget, error)
 	BeginConfigureEffect(ctx context.Context, p authz.Proof, fence AdapterConfigureFence) error
 	FinishConfigureEffect(ctx context.Context, p authz.Proof, targetID, effectID, outcome string, at time.Time) error

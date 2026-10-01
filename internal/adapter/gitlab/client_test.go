@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -162,7 +163,8 @@ func TestClientSPKIPinMismatchRefusesBeforeAnyRequest(t *testing.T) {
 	wrong := base64.StdEncoding.EncodeToString(make([]byte, sha256.Size))
 	client := testClient(t, server, wrong)
 	_, err := client.CreateVariable(t.Context(), project(), Variable{Key: "MODE", Value: "x"})
-	if err == nil || !strings.Contains(err.Error(), "SPKI pin") || len(*calls) != 0 {
+	var transportError *url.Error
+	if !errors.As(err, &transportError) || !strings.Contains(transportError.Err.Error(), "SPKI pin") || len(*calls) != 0 {
 		t.Fatalf("err=%v calls=%d; want pin refusal before request", err, len(*calls))
 	}
 }
@@ -222,7 +224,9 @@ func TestClientRefusesRedirects(t *testing.T) {
 	server, _ := tlsServer(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://evil.example/", http.StatusFound)
 	})
-	if _, err := testClient(t, server, "").Version(t.Context()); err == nil || !strings.Contains(err.Error(), "redirects are refused") {
+	_, err := testClient(t, server, "").Version(t.Context())
+	var transportError *url.Error
+	if !errors.As(err, &transportError) || !strings.Contains(transportError.Err.Error(), "redirects are refused") {
 		t.Fatalf("err = %v", err)
 	}
 }

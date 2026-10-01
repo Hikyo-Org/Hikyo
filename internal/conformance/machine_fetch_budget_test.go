@@ -2,7 +2,9 @@ package conformance
 
 import (
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -42,7 +44,10 @@ func scenarioMachineFetchPrincipalBudget(t *testing.T, db *store.DB) {
 		return out
 	}
 	shared, independent := create("shared-fetch-budget", 2), create("independent-fetch-budget", 1)
-	fetch := &service.Delivery{DB: db, Keyring: sharedKeyring(t, db), Budget: service.NewBudget()}
+	// Database work and scheduling may take arbitrarily long under CI load.
+	// Only explicit clock advances may refill the allowance being asserted.
+	budgetNow := time.Now()
+	fetch := &service.Delivery{DB: db, Keyring: sharedKeyring(t, db), Budget: service.NewBudgetWithClock(func() time.Time { return budgetNow })}
 	// A syntactically valid but unminted artifact authenticates nobody.
 	// Such attempts cannot spend either the tenant or principal allowance.
 	unminted, _, err := crypto.NewArtifact(crypto.ArtifactWorkload)
@@ -62,28 +67,36 @@ func scenarioMachineFetchPrincipalBudget(t *testing.T, db *store.DB) {
 			t.Fatalf("authorized burst fetch %d = keys:%d err:%v", index+1, len(result.Keys), err)
 		}
 	}
-	// Allow a bounded amount of real-clock refill on slow race-test machines.
-	// A credential-keyed implementation would allow at least two full bursts.
-	limited := false
-	for index := range service.BudgetMachineFetchPrincipalBurst / 2 {
-		_, err := fetch.FetchAs(t.Context(), shared[index%len(shared)], env, "", service.FetchOptions{})
-		if errors.Is(err, admission.ErrOverloaded) {
-			limited = true
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !limited {
-		t.Fatal("two credentials bypassed the shared principal fetch bucket")
-	}
+	// Concurrent sibling requests must both observe exhaustion, even while
+	// real database I/O and scheduling contend. Neither gets its own burst.
+	var siblings sync.WaitGroup
+	refusals := make(chan error, len(shared))
 	for _, credential := range shared {
-		if _, err := fetch.FetchAs(t.Context(), credential, env, "", service.FetchOptions{}); !errors.Is(err, admission.ErrOverloaded) {
+		siblings.Go(func() {
+			_, err := fetch.FetchAs(t.Context(), credential, env, "", service.FetchOptions{})
+			refusals <- err
+		})
+	}
+	siblings.Wait()
+	close(refusals)
+	for err := range refusals {
+		if !errors.Is(err, admission.ErrOverloaded) {
 			t.Fatalf("sibling credential escaped exhausted principal bucket: %v", err)
 		}
 	}
 	if result, err := fetch.FetchAs(t.Context(), independent[0], env, "", service.FetchOptions{}); err != nil || len(result.Keys) != 1 {
 		t.Fatalf("independent principal inherited another principal's debt: keys:%d err:%v", len(result.Keys), err)
+	}
+	// At 30/min one token refills every two seconds. Let each credential
+	// consume that shared token in turn; its sibling must remain refused.
+	for index := range shared {
+		budgetNow = budgetNow.Add(2 * time.Second)
+		result, err := fetch.FetchAs(t.Context(), shared[index], env, "", service.FetchOptions{})
+		if err != nil || len(result.Keys) != 1 {
+			t.Fatalf("two-second shared refill for credential %d = keys:%d err:%v", index, len(result.Keys), err)
+		}
+		if _, err := fetch.FetchAs(t.Context(), shared[(index+1)%len(shared)], env, "", service.FetchOptions{}); !errors.Is(err, admission.ErrOverloaded) {
+			t.Fatalf("sibling received a second refill token: %v", err)
+		}
 	}
 }

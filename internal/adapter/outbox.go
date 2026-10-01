@@ -11,8 +11,37 @@ import (
 const (
 	RetryFloor = 30 * time.Second
 	RetryCap   = time.Hour
-	LeaseTime  = 2 * time.Minute
+	// AttemptTimeout bounds one claimed attempt, not the lifetime of its job.
+	AttemptTimeout = 2 * time.Minute
+	// LeaseTime reserves a bounded settlement grace after execution cancels.
+	// Reclaim and completion retain their exact owner/effect fences.
+	LeaseTime = AttemptTimeout + 5*time.Second
 )
+
+var errAttemptDeadline = errors.New("adapter: outbox attempt deadline")
+
+// attemptJournal keeps admission and dispatch on the attempt context. Only a
+// completed provider call's OUTCOME may outlive our own deadline, so its known
+// or unknown custody is durably recorded before the worker yields. A parent
+// shutdown or a separately canceled module context never gains this fallback.
+type attemptJournal struct {
+	Journal
+	parent        context.Context
+	attempt       context.Context
+	inputRevision int64
+}
+
+func (j attemptJournal) Prepare(ctx context.Context, effect Effect, prior LedgerState) error {
+	effect.InputRevision = j.inputRevision
+	return j.Journal.Prepare(ctx, effect, prior)
+}
+
+func (j attemptJournal) Finish(ctx context.Context, effect Effect, completion Completion) error {
+	if context.Cause(j.attempt) == errAttemptDeadline && context.Cause(ctx) == errAttemptDeadline && j.parent.Err() == nil {
+		ctx = j.parent
+	}
+	return j.Journal.Finish(ctx, effect, completion)
+}
 
 func JobKinds() []JobKind {
 	return []JobKind{Converge, Scrub, Activate}
@@ -144,16 +173,24 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	if w.Store == nil || w.Loader == nil || w.ID == "" {
 		return false, errors.New("adapter: worker requires store, loader, and id")
 	}
+	attemptCtx, cancel := context.WithTimeoutCause(ctx, AttemptTimeout, errAttemptDeadline)
+	defer cancel()
+	executionDeadline, _ := attemptCtx.Deadline()
+	settlementCtx, cancelSettlement := context.WithDeadline(ctx, executionDeadline.Add(5*time.Second))
+	defer cancelSettlement()
+	// Only durable settlement uses this bounded parent. All admission,
+	// plaintext loading, provider execution and waits retain attemptCtx.
+	ctx = settlementCtx
 	now := w.now()
 	leaseDeadline := now.Add(LeaseTime)
 	leaseSafeDeadline := leaseDeadline.Add(-5 * time.Second)
-	job, ok, err := w.Store.ClaimDue(ctx, w.ID, now, leaseDeadline)
+	job, ok, err := w.Store.ClaimDue(attemptCtx, w.ID, now, leaseDeadline)
 	if err != nil || !ok {
 		return ok, err
 	}
-	journal := w.Store.Journal(job)
-	if err := journal.Gate(ctx, Effect{Surface: Secret, EffectiveName: "*", Disposition: Update}); err != nil {
-		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
+	journal := attemptJournal{Journal: w.Store.Journal(job), parent: ctx, attempt: attemptCtx}
+	if err := journal.Gate(attemptCtx, Effect{Surface: Secret, EffectiveName: "*", Disposition: Update}); err != nil {
+		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) || errors.Is(err, ErrOperatorReview) {
 			return true, w.Store.Fail(ctx, job, 0, w.now(), err)
 		}
 		due := retryDue(w.now(), job.Attempt, w.Jitter, err)
@@ -169,11 +206,11 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 			return true, w.Store.Fail(ctx, job, 0, w.now(), errors.New("adapter: activation store is not configured"))
 		}
 		for {
-			loaded, loadErr := loader.LoadActivation(ctx, job, journal)
+			loaded, loadErr := loader.LoadActivation(attemptCtx, job, journal)
 			err = loadErr
 			if err == nil {
 				var connection Connection
-				connection, err = loaded.Module.TestConnection(ctx, loaded.Request)
+				connection, err = loaded.Module.TestConnection(attemptCtx, loaded.Request)
 				if loaded.Release != nil {
 					loaded.Release()
 				}
@@ -188,7 +225,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 			if !rateLimited || !retryAt.After(w.now()) || retryAt.After(leaseSafeDeadline) {
 				break
 			}
-			if waitErr := w.wait(ctx, retryAt.Sub(w.now())); waitErr != nil {
+			if waitErr := w.wait(attemptCtx, retryAt.Sub(w.now())); waitErr != nil {
 				err = waitErr
 				break
 			}
@@ -196,7 +233,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
 			return true, w.Store.Fail(ctx, job, 0, w.now(), err)
 		}
-		if errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrConflict) || errors.Is(err, ErrAckForged) {
+		if errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrConflict) || errors.Is(err, ErrAckForged) || errors.Is(err, ErrOperatorReview) {
 			return true, w.Store.Fail(ctx, job, 0, w.now(), err)
 		}
 		due := retryDue(w.now(), job.Attempt, w.Jitter, err)
@@ -206,20 +243,28 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	var result SyncResult
 	var revision int64
 	for {
-		loaded, loadErr := w.Loader.Load(ctx, job, journal)
+		loaded, loadErr := w.Loader.Load(attemptCtx, job, journal)
 		if loadErr != nil {
 			err = loadErr
-			if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) || errors.Is(err, ErrProviderAuth) {
+			if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) || errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrOperatorReview) {
 				return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 			}
 			due := retryDue(w.now(), job.Attempt, w.Jitter, err)
 			return true, w.Store.Retry(ctx, job, due, revision, nil, nil, err)
 		}
+		if revision != loaded.Revision {
+			// A rate wait can span a new source revision. Only acknowledgements
+			// for the newly admitted source may suppress provider writes.
+			completed = nil
+		}
 		revision = loaded.Revision
+		journal.inputRevision = revision
 		loaded.Request.Teardown = job.Kind == Scrub
 		loaded.Request.JobID = job.ID
-		loaded.Request.Completed = append([]Change(nil), completed...)
-		result, err = loaded.Module.Sync(ctx, loaded.Request, journal)
+		loaded.Request.Completed = append(append([]Change(nil), loaded.Request.Completed...), completed...)
+		// Module execution is synchronous: cancellation must return through the
+		// module before buffers are released or the leased job is settled.
+		result, err = loaded.Module.Sync(attemptCtx, loaded.Request, journal)
 		if loaded.Release != nil {
 			loaded.Release()
 		}
@@ -242,7 +287,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 				completed = append(completed, change)
 			}
 		}
-		if waitErr := w.wait(ctx, retryAt.Sub(w.now())); waitErr != nil {
+		if waitErr := w.wait(attemptCtx, retryAt.Sub(w.now())); waitErr != nil {
 			err = waitErr
 			break
 		}
@@ -250,7 +295,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
 		return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 	}
-	if errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrAckForged) {
+	if errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrAckForged) || errors.Is(err, ErrOperatorReview) {
 		return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 	}
 	due := retryDue(w.now(), job.Attempt, w.Jitter, err)

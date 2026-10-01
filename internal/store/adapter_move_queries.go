@@ -255,7 +255,7 @@ func (q sqliteAdapterMoveQueries) beginOriginTargets(ctx context.Context, mutati
 		return nil, err
 	}
 	return mapRows(row, func(row sqlitegen.AdapterMoveBeginOriginTargetsRow) (adapterMoveBeginOriginTargetsRow, error) {
-		return adapterMoveBeginOriginTargetsRow{Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: []byte(row.SelectedRepositoryIds), Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: []byte(row.OrphanedNames)}, nil
+		return adapterMoveBeginOriginTargetsRow{Paused: row.Paused != 0, Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: []byte(row.SelectedRepositoryIds), Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: []byte(row.OrphanedNames)}, nil
 	})
 }
 
@@ -307,7 +307,7 @@ func (q sqliteAdapterMoveQueries) beginTarget(ctx context.Context, stamp time.Ti
 	if err != nil {
 		return adapterMoveBeginTargetRow{}, err
 	}
-	return adapterMoveBeginTargetRow{AdapterID: row.AdapterID, Origin: row.Origin, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, ProviderBusy: int(row.ProviderBusy), OrphanRaw: []byte(row.OrphanedNames)}, nil
+	return adapterMoveBeginTargetRow{Paused: row.Paused != 0, AdapterID: row.AdapterID, Origin: row.Origin, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, ProviderBusy: int(row.ProviderBusy), OrphanRaw: []byte(row.OrphanedNames)}, nil
 }
 
 func (q sqliteAdapterMoveQueries) insertTargetMove(ctx context.Context, mutationMoveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, currentAdapterID string, mutationTargetID string, mutationAuthorityPrincipalID string, moveState string, mutationKeepRemote bool, stamp time.Time) (int64, error) {
@@ -534,7 +534,7 @@ func (q pgAdapterMoveQueries) beginOriginTargets(ctx context.Context, mutationAd
 		return nil, err
 	}
 	return mapRows(row, func(row pggen.AdapterMoveBeginOriginTargetsRow) (adapterMoveBeginOriginTargetsRow, error) {
-		return adapterMoveBeginOriginTargetsRow{Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: row.SelectedRepositoryIds, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: row.OrphanedNames}, nil
+		return adapterMoveBeginOriginTargetsRow{Paused: row.Paused != 0, Id: row.ID, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, RepositoryID: row.RepositoryID, Visibility: row.Visibility, SelectedRaw: row.SelectedRepositoryIds, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, OrphanRaw: row.OrphanedNames}, nil
 	})
 }
 
@@ -586,7 +586,7 @@ func (q pgAdapterMoveQueries) beginTarget(ctx context.Context, stamp time.Time, 
 	if err != nil {
 		return adapterMoveBeginTargetRow{}, err
 	}
-	return adapterMoveBeginTargetRow{AdapterID: row.AdapterID, Origin: row.Origin, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, ProviderBusy: int(row.ProviderBusy), OrphanRaw: row.OrphanedNames}, nil
+	return adapterMoveBeginTargetRow{Paused: row.Paused != 0, AdapterID: row.AdapterID, Origin: row.Origin, EnvironmentID: row.EnvironmentID, Kind: row.Kind, Owner: row.Owner, Name: row.Name, DestinationEnvironment: row.DestinationEnvironment, DestinationScope: row.DestinationScope, DestinationID: row.DestinationID, Prefix: row.Prefix, Generation: row.Generation, ActiveJob: row.ActiveJob, ProviderBusy: int(row.ProviderBusy), OrphanRaw: row.OrphanedNames}, nil
 }
 
 func (q pgAdapterMoveQueries) insertTargetMove(ctx context.Context, mutationMoveID string, chainOrg domain.OrgID, chainProject domain.ProjectID, currentAdapterID string, mutationTargetID string, mutationAuthorityPrincipalID string, moveState string, mutationKeepRemote bool, stamp time.Time) (int64, error) {

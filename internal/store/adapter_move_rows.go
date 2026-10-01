@@ -45,6 +45,7 @@ type adapterMoveBeginOriginAdapterRow struct {
 }
 
 type adapterMoveBeginOriginTargetsRow struct {
+	Paused                 bool
 	Id                     string
 	EnvironmentID          string
 	Kind                   string
@@ -63,6 +64,7 @@ type adapterMoveBeginOriginTargetsRow struct {
 }
 
 type adapterMoveBeginTargetRow struct {
+	Paused                 bool
 	AdapterID              string
 	Origin                 string
 	EnvironmentID          string

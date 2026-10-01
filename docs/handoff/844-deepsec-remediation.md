@@ -227,12 +227,159 @@ is included in this handoff.
   values survive. Ambiguous first adoption requires fresh version-bound consent.
 - Vault marker repair is allowed only for unconsumed explicit adoption provenance
   bound to the current scope, destination and target generation. Ordinary owned
-  entries never adopt a later unmarked value. The ADR's ambiguous-crash recovery
-  residual remains unchanged pending a separate operator policy decision.
+  entries never adopt a later unmarked value. The operator approved replacing
+  ambiguous automatic recovery with an explicit review hold on 2026-10-01.
 
-Two proposed policy amendments await operator decisions: a two-minute bound on
-each adapter attempt, preserving indefinite retries, and stopping ambiguous
-Vault crash recovery for operator review. They are not silently implemented.
+The operator approved both adapter policy amendments on 2026-10-01. Their
+implementation replaces the earlier two adapter policy residuals above:
+
+- Each outbox execution attempt has a two-minute deadline and a bounded
+  five-second durable-settlement grace. Parent shutdown cancels both. Retries
+  continue indefinitely with the existing backoff; infrastructure timeouts are
+  not misclassified as authorization denial. Successful per-name progress is
+  reused only for the same job, generation and immutable worker-bound input
+  revision, proven by the scoped INTENT audit record. Legacy records without
+  that witness do not authorize skipping delivery.
+- Vault ambiguous dispatched writes stop for operator review. A coincidentally
+  matching version or marker cannot prove Hikyo wrote it. Custody remains held
+  across resync; a fresh conflict plan and version-bound explicit adoption
+  authorize a new CAS attempt, not ownership of a previous unknown write.
+- AWS interrupted legacy adoption preserves the operator-approved predecessor
+  before staging. Lost ownership tags on a held name are surfaced by a fresh
+  conflict plan, so explicit re-adoption is possible without releasing custody
+  or overwriting a concurrent foreign version.
+- GitLab adoption records the real destination scope. Migration 72 pauses
+  legacy targets with incorrect blank-scope claims, marks them for operator
+  review and releases only those claims. It does not copy ownership or delete
+  provider data. It also detaches exact old-generation terminal job pointers
+  without rewriting their outcomes or touching provider effect fences. For
+  interrupted moves, it holds the containing move at attention-required and
+  retires its pending sibling jobs. An operator can cancel the move, preserving
+  the repair pause, then explicitly resume with fresh full-environment consent.
+- Service mutation retries refresh their security clock inside every new
+  transaction. GitHub recipient preflight consumes the org concurrency slot
+  and one principal rate charge before provider contact, including requests
+  whose later reauthentication ceremony refuses the mutation.
+
+Vault best-effort token cleanup also inherits the operation context, so it
+cannot start fresh background provider work after the execution deadline.
+Secret material is still dropped synchronously. Paused teardown remains
+claimable, and final scrub erases provider credentials only when no retained
+target or pending scrub needs them. Credential changes retire pending jobs and
+detach their pointers without rewriting terminal outcomes. Shared-environment
+adoption consumes each single-decision reauthentication window only once.
+
+Current local evidence: all app, service, store, adapter and audit owner tests
+pass, including the app upgrade/recovery tail in 289 seconds. Both-engine race
+checks cover deadline/progress/publication changes (231 seconds), credential
+and teardown lifecycle (445 seconds), GitLab scope collisions (181 seconds),
+operator cancel/resume (47 seconds), and interrupted migration recovery
+(30 seconds). Service security controls pass three race repetitions. Final
+fast preflight passes in 61 seconds; isolation guard races pass, and the reviewed
+annotated-query pin changes are limited to the two dialects' paused-tombstoned
+scrub claim predicate. The development schema artifact exactly matches fresh
+SQLite and PostgreSQL generation. Cleanup discovery reports zero new findings;
+all 11 final forced verdicts are fixed without uncertainty.
+
+The refreshed isolated checkpoint contains 282 findings: 274 fixed, three false
+positives, four duplicates and one true positive, the human-only nightly key
+custody gate below. No uncertain or unrevalidated findings remain at this
+checkpoint. Frozen-source rediscovery, the committed full generated-code gate
+and new exact-head remote CI are separate delivery evidence; earlier inventories
+above describe their own checkpoints.
+
+The subsequent lifecycle checkpoint contains 289 findings: 279 fixed, three
+false positives, four duplicates, one human-only custody gate and two newly
+discovered origin/configuration findings awaiting their final fix verdicts.
+All four repository findings and both runtime findings are revalidated fixed.
+Discovery of seven repository/runtime helper and SQL files reports zero new
+findings. Actual SQLite and PostgreSQL regression tests cover stale custody
+workers, deadline preparation rollback, concurrent target-lock removal,
+unfinished-move deletion refusal and released-row adoption recovery. Existing
+scrub fixtures now create real authorized teardown jobs rather than rewriting
+a converge job's kind while leaving its target active. The query guard still
+has only the two reviewed claim-selector hash changes, now including the
+operational parent/target lifecycle restriction without a new exception.
+
+The final full app/service/store/adapter/audit owner run passed app and service
+plus adapters, audit and migration packages; its two invalid scrub fixtures
+were subsequently repaired and pass three race repetitions. The full service
+race suite repeated three times reached its 12-minute bound during unrelated
+self-configuration origin-recovery tests, without an earlier assertion
+failure. This timed-out run is not a pass. Changed adapter/service controls
+retain focused race coverage; refreshed owner tests and exact-head CI remain
+separate required delivery evidence.
+
+### Final origin, authorization and transport checkpoint
+
+Canonical provider origins are now shared by the service, application factory
+and all seven provider clients. Host case, IDNA, IP forms and default ports
+cannot create independent custody for the same supported provider endpoint.
+Meaningful provider paths and Vault namespaces remain distinct. New inputs are
+normalized before persistence; stored legacy aliases fail closed until an
+operator performs the supported keep-remote recovery. Keep-remote preserves
+old Vault/AWS ownership markers, so recreating a target can require an explicit
+destination-side marker handoff rather than assuming the new target owns it.
+
+AWS regional, FIPS and verified AWS-owned VPC endpoint aliases share custody
+within their real account, region and partition without changing transport.
+Different regions remain independent. Untrusted custom endpoints cannot prove
+account identity merely by returning a matching STS response or ARN, so their
+custody remains endpoint-scoped. Both JSON-object and per-key destinations use
+the same physical secret namespace, including configuration inputs. Held
+claims block the opposite mode before provider creation or INTENT recording.
+
+The narrowly reviewed metadata-only held-custody candidate query covers the
+exact provider, destination, repository, scope, surface and normalized name.
+It is private, paged and caller-context bounded; partial scans never authorize
+writes. Its two dialects are the only new instance-scoped query exceptions.
+The earlier two claim-selector hash changes remain independently reviewed.
+Actual SQLite execution caught an unsupported sqlc macro shape despite
+successful generation; the final equality-based query passes actual execution
+on both engines and the exact query pins pass three race repetitions.
+
+Fresh actual-database evidence covers canonical/cross-kind concurrent adoption
+(134 seconds) and production AWS publication, direct preparation and concurrent
+reservation (178 seconds), each with three race repetitions per engine. Full
+service and store owner tests passed in 73 and 132 seconds at that checkpoint.
+Adoption also rechecks the live session and every environment after custody
+scans and row-lock waits, before transaction commit. Expiry rolls back custody,
+jobs, audit and staged consent without consuming valid consent twice. Its
+service race tests pass in 41 seconds and actual both-engine grant expiry plus
+unchanged PostgreSQL row-lock/session expiry races pass in 53 seconds.
+
+The final seam discovery contained five further findings covering credential
+text in transport errors, paused-target route moves and endpoint-specific
+repository identity recovery. Final forced verdicts mark all five fixed. The
+refreshed export contains 295 findings: 287 fixed, three false positives, four
+duplicates and one human-only custody gate, with no uncertain or unrevalidated
+findings. Eleven service/client findings and four move/AWS-client findings
+have final forced fixed verdicts; discovery of the new shared transport-error
+helper reports zero new findings.
+
+All seven clients use safe public transport-error text while preserving typed
+cancellation, timeout and egress-refusal predicates. Actual TLS redirect and
+malformed response probes reproduce the credential leak before the fix. Full
+provider suites pass three race repetitions; vet and pinned import formatting
+pass. AWS also hides receiver-controlled response codes in public error text,
+including STS and credential-source refusals; the typed code and existing
+auth/throttle/not-found classifications remain unchanged. Actual header, body,
+credential-provider and STS regression probes pass with the full provider race
+suites. Paused destination moves and any origin move containing a paused target
+refuse atomically before jobs, custody release or remote cleanup. The operator
+must explicitly resume the target first. Origin creation and replacement clear
+endpoint-specific pending repository and destination pins, then activation
+resolves and persists both identities from the new endpoint. Old cleanup-route
+identities remain intact. Actual both-engine move races pass in 308 seconds;
+the latest full service/store owner suites pass in 75 and 147 seconds.
+
+The prior pushed head `7f65616c6` failed core conformance because wall-clock
+elapsed time refilled a token bucket during its shared-principal assertion.
+The regression now uses an explicit clock without changing production rates;
+unit races and actual both-engine conformance races pass three repetitions.
+All race shards, including shard 2, passed on that old head. The new signed
+commit's full generated-code preflight and exact-head remote CI are separate
+delivery checks; old-head or local green results are not their substitutes.
 
 Claude reviews are skipped at the operator's request, not reported as clean.
 Main's current base-controlled gate permits same-repository workflow edits.

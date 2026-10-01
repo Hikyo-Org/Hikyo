@@ -3313,6 +3313,7 @@ var registry = map[EventType]TypeSpec{
 			"surface":        {Kind: KindString, Required: true, Enum: []string{"secret", "variable", "environment"}},
 			"effective_name": {Kind: KindString, Required: true},
 			"disposition":    {Kind: KindString, Required: true, Enum: []string{"create", "update", "delete"}},
+			"input_revision": {Kind: KindInt, NonNegative: true},
 		},
 	},
 	EventAdapterPushOutcome: {

@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -40,24 +41,43 @@ func ParseProvider(raw string) (Provider, error) {
 // ModuleLease binds one constructed module to its idempotent cleanup.
 type ModuleLease struct {
 	Module  Module
-	release func()
+	release func(context.Context)
 }
 
 // NewModuleLease transfers module cleanup ownership to one release-once value.
 func NewModuleLease(module Module, release func()) (*ModuleLease, error) {
+	var cleanup func(context.Context)
+	if release != nil {
+		cleanup = func(context.Context) { release() }
+	}
+	return NewModuleLeaseWithContext(module, cleanup)
+}
+
+// NewModuleLeaseWithContext transfers cleanup ownership without detaching
+// provider work from the request or worker attempt that constructed it.
+func NewModuleLeaseWithContext(module Module, release func(context.Context)) (*ModuleLease, error) {
 	if module == nil {
 		return nil, fmt.Errorf("adapter: provider factory returned no module")
 	}
 	if release == nil {
-		release = func() {}
+		release = func(context.Context) {}
 	}
-	return &ModuleLease{Module: module, release: sync.OnceFunc(release)}, nil
+	var once sync.Once
+	return &ModuleLease{Module: module, release: func(ctx context.Context) {
+		once.Do(func() { release(ctx) })
+	}}, nil
 }
 
 // Release drops provider resources exactly once.
 func (l *ModuleLease) Release() {
+	l.ReleaseContext(context.Background())
+}
+
+// ReleaseContext drops resources exactly once, even when ctx is canceled.
+// Context-aware provider cleanup may not revive canceled network work.
+func (l *ModuleLease) ReleaseContext(ctx context.Context) {
 	if l != nil && l.release != nil {
-		l.release()
+		l.release(ctx)
 	}
 }
 

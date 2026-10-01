@@ -12,6 +12,11 @@ import (
 )
 
 type adapterRuntimeQueries interface {
+	adapterWorkerLockCustodyTarget(context.Context, adapter.Job, time.Time) (int64, error)
+	adapterWorkerLockCustodyJob(context.Context, adapter.Job, time.Time) (int64, error)
+	adapterWorkerDetachSupersededJob(context.Context, adapter.Job) (int64, error)
+	adapterWorkerLoadExecutionCompletedQuery(ctx context.Context, job adapter.Job, revision int64) ([]adapter.Change, error)
+	adapterWorkerPrepareExplicitRecovery(ctx context.Context, now time.Time, chainOrg, chainProject, chainEnv, targetID, surface, normalizedName string) (int64, error)
 	adapterWorkerPinExecutionRevision(ctx context.Context, revision int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
 	adapterWorkerPinExecutionLease(ctx context.Context, jobID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (int64, error)
 	adapterWorkerLoadExecutionQuery(ctx context.Context, jobID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (adapterWorkerLoadExecutionQueryRow, error)
@@ -102,6 +107,59 @@ type adapterRuntimeQueries interface {
 	adapterWorkerFinishDeadCredentialScrubErase(ctx context.Context, adapterID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerCheckProviderSwitchQuery(ctx context.Context) (int64, error)
 }
+
+func (q sqliteAdapterRuntimeQueries) adapterWorkerLockCustodyTarget(ctx context.Context, job adapter.Job, now time.Time) (int64, error) {
+	return q.queries.AdapterWorkerLockCustodyTarget(ctx, sqlitegen.AdapterWorkerLockCustodyTargetParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, Now: runtimeSQLiteStamp(now)})
+}
+
+func (q pgAdapterRuntimeQueries) adapterWorkerLockCustodyTarget(ctx context.Context, job adapter.Job, now time.Time) (int64, error) {
+	return q.queries.AdapterWorkerLockCustodyTarget(ctx, pggen.AdapterWorkerLockCustodyTargetParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, Now: pgRequiredTime(now)})
+}
+
+func (q sqliteAdapterRuntimeQueries) adapterWorkerLockCustodyJob(ctx context.Context, job adapter.Job, now time.Time) (int64, error) {
+	return q.queries.AdapterWorkerLockCustodyJob(ctx, sqlitegen.AdapterWorkerLockCustodyJobParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, Now: runtimeSQLiteStamp(now)})
+}
+
+func (q pgAdapterRuntimeQueries) adapterWorkerLockCustodyJob(ctx context.Context, job adapter.Job, now time.Time) (int64, error) {
+	return q.queries.AdapterWorkerLockCustodyJob(ctx, pggen.AdapterWorkerLockCustodyJobParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation, JobKind: string(job.Kind), JobID: job.ID, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, Now: pgRequiredTime(now)})
+}
+
+func (q sqliteAdapterRuntimeQueries) adapterWorkerDetachSupersededJob(ctx context.Context, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerDetachSupersededJob(ctx, sqlitegen.AdapterWorkerDetachSupersededJobParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, JobID: sql.NullString{String: job.ID, Valid: true}})
+}
+
+func (q pgAdapterRuntimeQueries) adapterWorkerDetachSupersededJob(ctx context.Context, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerDetachSupersededJob(ctx, pggen.AdapterWorkerDetachSupersededJobParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, JobID: pgtype.Text{String: job.ID, Valid: true}})
+}
+
+func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionCompletedQuery(ctx context.Context, job adapter.Job, revision int64) ([]adapter.Change, error) {
+	rows, err := q.queries.AdapterWorkerLoadExecutionCompletedQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionCompletedQueryParams{JobID: job.ID, TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: sql.NullString{String: job.ProjectID, Valid: true}, ChainEnv: sql.NullString{String: job.EnvironmentID, Valid: true}, Generation: job.Generation, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, AuthorityPrincipal: job.AuthorityPrincipal, InputRevision: revision})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row sqlitegen.AdapterWorkerLoadExecutionCompletedQueryRow) (adapter.Change, error) {
+		return adapter.Change{Surface: adapter.Surface(row.Surface), EffectiveName: row.EffectiveName, Disposition: adapter.Disposition(row.Disposition)}, nil
+	})
+}
+
+func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionCompletedQuery(ctx context.Context, job adapter.Job, revision int64) ([]adapter.Change, error) {
+	rows, err := q.queries.AdapterWorkerLoadExecutionCompletedQuery(ctx, pggen.AdapterWorkerLoadExecutionCompletedQueryParams{JobID: job.ID, TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: pgtype.Text{String: job.ProjectID, Valid: true}, ChainEnv: pgtype.Text{String: job.EnvironmentID, Valid: true}, Generation: job.Generation, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, AuthorityPrincipal: job.AuthorityPrincipal, InputRevision: revision})
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, func(row pggen.AdapterWorkerLoadExecutionCompletedQueryRow) (adapter.Change, error) {
+		return adapter.Change{Surface: adapter.Surface(row.Surface), EffectiveName: row.EffectiveName, Disposition: adapter.Disposition(row.Disposition)}, nil
+	})
+}
+
+func (q sqliteAdapterRuntimeQueries) adapterWorkerPrepareExplicitRecovery(ctx context.Context, now time.Time, chainOrg, chainProject, chainEnv, targetID, surface, normalizedName string) (int64, error) {
+	return q.queries.AdapterWorkerPrepareExplicitRecovery(ctx, sqlitegen.AdapterWorkerPrepareExplicitRecoveryParams{Now: fixedStamp(now), ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, TargetID: targetID, Surface: surface, NormalizedName: normalizedName})
+}
+
+func (q pgAdapterRuntimeQueries) adapterWorkerPrepareExplicitRecovery(ctx context.Context, now time.Time, chainOrg, chainProject, chainEnv, targetID, surface, normalizedName string) (int64, error) {
+	return q.queries.AdapterWorkerPrepareExplicitRecovery(ctx, pggen.AdapterWorkerPrepareExplicitRecoveryParams{Now: pgRequiredTime(now), ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, TargetID: targetID, Surface: surface, NormalizedName: normalizedName})
+}
+
 type adapterWorkerLoadExecutionQueryRow struct {
 	Provider               string
 	Origin                 string
@@ -132,6 +190,7 @@ type adapterWorkerLoadExecutionLedgerQueryRow struct {
 	State           string
 	Missing         bool
 	AdoptionPending bool
+	AdoptionVersion *int64
 }
 type adapterWorkerLoadExecutionSnapshotQueryRow struct {
 	ID                string
@@ -266,7 +325,7 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx c
 		return nil, err
 	}
 	return mapRows(value, func(c sqlitegen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
-		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0), AdoptionPending: c.AdoptionPending != 0}, nil
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0), AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
 	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {
@@ -600,7 +659,7 @@ func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx conte
 		return nil, err
 	}
 	return mapRows(value, func(c pggen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
-		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0}, nil
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
 	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {

@@ -232,6 +232,7 @@ Tightening a lifetime ceiling enumerates affected credentials before clamping (l
 | Value | Default |
 |---|---|
 | Outbox retry curve | exponential **30 s → 1 h cap, jittered**; retries do not give up (matches the no-staleness-scrub stance) but **> 1 h failing = loud condition** on the target + ops-log |
+| Outbox attempt deadline | **2 min** total execution per claimed converge, scrub, or activation attempt, including loading and in-attempt waits; cancel synchronously, settle custody, then yield. The durable lease reserves **5 s** additional settlement grace, never extra provider execution. Transient timeouts retry indefinitely under the existing curve; operator-review refusals require fresh explicit consent, not automatic retry. |
 | Outbox depth | **1 000 entries per target**; overflow refuses new syncs loud (a target that far behind needs an operator, not a deeper queue) |
 | Outbox concurrency | **1 per target** (the exclusive per-target lease is locked; this states it as the concurrency), **4 targets in flight per org** (§ 10 budget) |
 | Provider response body cap | **1 MiB** read limit on every Forgejo API response |

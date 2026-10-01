@@ -196,6 +196,7 @@ func (r adapterQueries) Adopt(ctx context.Context, p authz.Proof, adoption Adapt
 }
 
 type adapterDB interface {
+	adapterOriginQueries() adapterOriginQueries
 	pkiStoreQueries() pkiStoreQueries
 	transitStoreQueries() transitStoreQueries
 	adapterMoveQueries() adapterMoveQueries
@@ -222,6 +223,9 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 	if providerBusy == 1 {
 		return AdapterAdoptionResult{}, adapter.ErrProviderBusy
 	}
+	if err := requireCanonicalAdapterOrigin(row.provider, row.origin); err != nil {
+		return AdapterAdoptionResult{}, err
+	}
 	for i, entry := range adoption.Entries {
 		conflictRows, err := db.adapterStoreQueries().adoptionConflictCount(ctx, chain, adoption, row, entry)
 		if err != nil {
@@ -230,11 +234,32 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 		if conflictRows != 1 {
 			return AdapterAdoptionResult{}, fmt.Errorf("%w: stale or mismatched adapter conflict artifact", ErrConflict)
 		}
-		if rows, err := db.adapterStoreQueries().adoptionInsertLedger(ctx, chain, adoption, row, entry, adoption.LedgerIDs[i]); err != nil || rows != 1 {
+		if err := guardAdapterOriginCustody(ctx, db.adapterOriginQueries(), adapterOriginRoute{provider: row.provider, origin: row.origin, destinationKind: row.destinationKind, destinationScope: row.destinationScope, repositoryID: row.repositoryID, destinationID: row.destinationID}, adoption.TargetID, entry.Surface, strings.ToUpper(entry.EffectiveName)); err != nil {
+			return AdapterAdoptionResult{}, err
+		}
+		var heldRows int64
+		if row.provider == "vault-kv" || row.provider == "aws-secrets-manager" {
+			heldRows, err = db.adapterStoreQueries().adoptionUpdateHeldLedger(ctx, chain, adoption, row, entry)
 			if err != nil {
 				return AdapterAdoptionResult{}, constraint(err)
 			}
-			return AdapterAdoptionResult{}, ErrConflict
+		}
+		if heldRows == 0 {
+			// Released history is not ownership, but still occupies this
+			// target's unique name. Only the verified, unconsumed current
+			// conflict above permits reclaiming it on the current route.
+			heldRows, err = db.adapterStoreQueries().adoptionReclaimReleasedLedger(ctx, chain, adoption, row, entry)
+			if err != nil {
+				return AdapterAdoptionResult{}, constraint(err)
+			}
+		}
+		if heldRows == 0 {
+			if rows, err := db.adapterStoreQueries().adoptionInsertLedger(ctx, chain, adoption, row, entry, adoption.LedgerIDs[i]); err != nil || rows != 1 {
+				if err != nil {
+					return AdapterAdoptionResult{}, constraint(err)
+				}
+				return AdapterAdoptionResult{}, ErrConflict
+			}
 		}
 		if rows, err := db.adapterStoreQueries().adoptionMarkConflict(ctx, chain, adoption, row, entry); err != nil || rows != 1 {
 			if err != nil {
@@ -498,6 +523,15 @@ func (r adapterQueries) TeardownAdapter(ctx context.Context, p authz.Proof, adap
 	if err != nil {
 		return AdapterTeardownBatch{}, err
 	}
+	// The adapter lock serializes this invariant with route-move creation.
+	// Never tombstone a parent while a moving child can still activate.
+	unfinished, err := r.db.adapterStoreQueries().teardownUnfinishedMoves(ctx, chain, adapterID)
+	if err != nil {
+		return AdapterTeardownBatch{}, err
+	}
+	if unfinished != 0 {
+		return AdapterTeardownBatch{}, fmt.Errorf("%w: finish or cancel the adapter route move before deletion", ErrConflict)
+	}
 	targets, err := r.db.adapterStoreQueries().teardownTargets(ctx, chain, adapterID, at)
 	if err != nil {
 		return AdapterTeardownBatch{}, err
@@ -614,6 +648,9 @@ func replaceAdapterCredential(ctx context.Context, db adapterDB, chain domain.Sc
 	if rows != 1 {
 		return AdapterCredentialResult{}, ErrNotFound
 	}
+	if _, err := db.adapterStoreQueries().retireCredentialJobs(ctx, chain, mutation.AdapterID, mutation.At); err != nil {
+		return AdapterCredentialResult{}, err
+	}
 	rows, err = db.adapterStoreQueries().replaceCredentialBump(ctx, chain, mutation.AdapterID, mutation.At)
 	if err != nil {
 		return AdapterCredentialResult{}, err
@@ -649,6 +686,9 @@ func revokeAdapterCredential(ctx context.Context, db adapterDB, chain domain.Sco
 	}
 	if rows != 1 {
 		return AdapterCredentialResult{}, ErrNotFound
+	}
+	if _, err := db.adapterStoreQueries().retireCredentialJobs(ctx, chain, adapterID, at); err != nil {
+		return AdapterCredentialResult{}, err
 	}
 	rows, err = db.adapterStoreQueries().revokeCredentialBump(ctx, chain, adapterID)
 	if err != nil {

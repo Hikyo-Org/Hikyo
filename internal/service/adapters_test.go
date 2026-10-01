@@ -1368,7 +1368,7 @@ func TestAdapterOriginMoveKeepsOldRouteAndCredentialThroughScrubBarrier(t *testi
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", "https://git.next.example", []byte("new-token"), false)
+	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", "https://GIT.next.example:443/", []byte("new-token"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1516,7 +1516,7 @@ func TestAdapterPendingOriginReplacementAuditsTransactionAuthorityTransition(t *
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	resumed, err := svc.ResumeOriginMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "move_origin_resume", "https://git.fixed.example", []byte("fixed-token"))
+	resumed, err := svc.ResumeOriginMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "move_origin_resume", "https://GIT.fixed.example:443/", []byte("fixed-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1944,15 +1944,38 @@ func TestAdapterCredentialReplaceAndRevokeFenceWithoutAutoConverge(t *testing.T)
 	}
 	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
 	now := time.Now().UTC()
-	job, ok, err := runtime.ClaimDue(t.Context(), "worker_revoke", now, now.Add(adapter.LeaseTime))
-	if err != nil || !ok {
-		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
+	var retired int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id WHERE j.id='job_before_revoke' AND j.state='superseded' AND j.finished_at IS NOT NULL AND j.lease_owner IS NULL AND j.lease_expires_at IS NULL AND t.active_job_id IS NULL`).Scan(&retired); err != nil {
+		t.Fatal(err)
 	}
-	gateErr := runtime.Journal(job).Gate(t.Context(), adapter.Effect{})
-	if !errors.Is(gateErr, adapter.ErrSuperseded) {
-		t.Fatalf("revoked queued job Gate() = %v, want generation stop", gateErr)
+	if retired != 1 {
+		t.Fatalf("revoked pending job not atomically retired and detached: %d", retired)
 	}
-	if err := runtime.Fail(t.Context(), job, 0, now, gateErr); err != nil {
+	if job, ok, err := runtime.ClaimDue(t.Context(), "worker_revoke", now, now.Add(adapter.LeaseTime)); err != nil || ok {
+		t.Fatalf("retired queued job was claimable: %+v, %v, %v", job, ok, err)
+	}
+	if _, err := svc.ReplaceCredential(t.Context(), LocalPrincipal("usr_adapter"), scope, "adp_1", []byte("replacement-token")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox WHERE target_id IN ('tgt_one','tgt_two')`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 {
+		t.Fatalf("credential restoration auto-enqueued work: %d", jobs)
+	}
+	queued, err := svc.SyncTarget(t.Context(), LocalPrincipal("usr_adapter"), scope, "tgt_one")
+	if err != nil {
+		t.Fatalf("explicit sync after credential restoration: %v", err)
+	}
+	now = time.Now().UTC()
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_restored", now, now.Add(adapter.LeaseTime))
+	if err != nil || !ok || job.ID != queued.JobID {
+		t.Fatalf("restored explicit sync ClaimDue() = %+v, %v, %v; want %s", job, ok, err, queued.JobID)
+	}
+	if err := runtime.Journal(job).Gate(t.Context(), adapter.Effect{}); err != nil {
+		t.Fatalf("restored explicit sync Gate() = %v", err)
+	}
+	if err := runtime.Succeed(t.Context(), job, 0, nil, now); err != nil {
 		t.Fatal(err)
 	}
 }

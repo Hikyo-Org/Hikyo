@@ -125,6 +125,22 @@ func (s *Server) Seed(name, value string, tags map[string]string) {
 	sec.versions["seed"] = &version{value: value, stages: []string{"AWSCURRENT"}}
 }
 
+// RemoveTag models an operator removing ownership without replacing values.
+func (s *Server) RemoveTag(name, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.secrets[name].tags, key)
+}
+
+// Recreate replaces a named resource with a new ARN and an unowned value.
+func (s *Server) Recreate(name, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sec := s.newSecret(name, "", nil)
+	sec.arn = "arn:aws:secretsmanager:" + s.Region + ":" + s.Account + ":secret:" + name + "-Gh56Ij"
+	sec.versions["seed"] = &version{value: value, stages: []string{"AWSCURRENT"}}
+}
+
 // ExternalPut writes a new version the way an operator console edit does:
 // it moves only AWSCURRENT.
 func (s *Server) ExternalPut(name, value string) {

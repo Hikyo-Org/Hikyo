@@ -98,7 +98,7 @@ func TestAWSSTSUsesItsOwnExactOriginEgressPolicy(t *testing.T) {
 			"https://sts.internal.example":     {stsPrefix},
 		},
 		providers: map[adapter.Provider]providerConstructor{
-			adapter.AWSSecretsManagerProvider: func(_ adapter.Config, _ string, allowed, stsAllowed []netip.Prefix) (adapter.Module, func(), error) {
+			adapter.AWSSecretsManagerProvider: func(_ adapter.Config, _ string, allowed, stsAllowed []netip.Prefix) (adapter.Module, func(context.Context), error) {
 				gotSecrets = append([]netip.Prefix(nil), allowed...)
 				gotSTS = append([]netip.Prefix(nil), stsAllowed...)
 				return stubProviderModule{}, nil, nil
@@ -121,8 +121,8 @@ func TestAdapterModuleFactoryReleasesPartialConstructionOnce(t *testing.T) {
 	releases := 0
 	factory := &adapterModuleFactory{
 		providers: map[adapter.Provider]providerConstructor{
-			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(), error) {
-				return nil, func() { releases++ }, wantErr
+			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(context.Context), error) {
+				return nil, func(context.Context) { releases++ }, wantErr
 			},
 		},
 	}
@@ -138,8 +138,8 @@ func TestAdapterModuleLeaseReleasesSuccessOnce(t *testing.T) {
 	releases := 0
 	factory := &adapterModuleFactory{
 		providers: map[adapter.Provider]providerConstructor{
-			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(), error) {
-				return stubProviderModule{}, func() { releases++ }, nil
+			adapter.ForgejoProvider: func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(context.Context), error) {
+				return stubProviderModule{}, func(context.Context) { releases++ }, nil
 			},
 		},
 	}

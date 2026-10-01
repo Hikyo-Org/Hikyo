@@ -125,14 +125,7 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 }
 
 func canonicalOrigin(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("forgejo: parse origin: %w", err)
-	}
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("forgejo: origin must be a bare https origin")
-	}
-	return "https://" + u.Host, nil
+	return adapter.CanonicalOrigin(adapter.ForgejoProvider, raw)
 }
 
 type ResponseError struct {
@@ -167,7 +160,7 @@ func (c *Client) doWithBudget(ctx context.Context, op operation, path string, bo
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("forgejo: provider request: %w", err)
+		return fmt.Errorf("forgejo: provider request: %w", adapter.SafeTransportError(err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseCap+1))

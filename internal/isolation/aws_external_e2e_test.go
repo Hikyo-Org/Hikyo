@@ -95,6 +95,7 @@ func TestAWSSecretsManagerEmulatorLifecycle(t *testing.T) {
 	runExternalAWSLifecycle(t, env)
 	runExternalAWSConcurrentWrites(t, env)
 	runExternalAWSReplacementRace(t, env)
+	runExternalAWSAdoptionReplay(t, env)
 }
 
 func TestAWSSecretsManagerRealSmoke(t *testing.T) {
@@ -418,6 +419,111 @@ func runExternalAWSReplacementRace(t *testing.T, env externalAWS) {
 			t.Fatalf("empty replacement received a plaintext value version: stages=%v", after.Stages)
 		}
 	})
+}
+
+type externalAWSInterruptedAdoptionAPI struct {
+	awssm.API
+	interruption string
+	injected     bool
+}
+
+func (api *externalAWSInterruptedAdoptionAPI) PutSecretValue(ctx context.Context, id, token, value string) error {
+	if err := api.API.PutSecretValue(ctx, id, token, value); err != nil {
+		return err
+	}
+	if !api.injected && api.interruption == "lost-put-response" {
+		api.injected = true
+		return errors.New("connection closed after provider accepted staged value")
+	}
+	return nil
+}
+
+func (api *externalAWSInterruptedAdoptionAPI) UpdateSecretVersionStage(ctx context.Context, id, stage, moveTo, removeFrom string) error {
+	if !api.injected && api.interruption == "pre-promotion-cancellation" && stage == "AWSCURRENT" {
+		api.injected = true
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		// Invoke the real signed client with a canceled request, after the
+		// provider already accepted staging but before promotion can land.
+		return api.API.UpdateSecretVersionStage(canceled, id, stage, moveTo, removeFrom)
+	}
+	return api.API.UpdateSecretVersionStage(ctx, id, stage, moveTo, removeFrom)
+}
+
+func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
+	t.Helper()
+	for _, interruption := range []string{"lost-put-response", "pre-promotion-cancellation"} {
+		for _, foreign := range []bool{false, true} {
+			t.Run(fmt.Sprintf("adoption/%s/foreign=%v", interruption, foreign), func(t *testing.T) {
+				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+				if err != nil {
+					t.Fatal(err)
+				}
+				client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, STSAllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(client.Forget)
+				run := strings.ToLower(strconv.FormatInt(time.Now().UnixNano(), 36))
+				name := "hikyo-e2e-" + run + "/adoption"
+				if err := externalAWSCall(t.Context(), env, "CreateSecret", map[string]string{"Name": name, "SecretString": "approved legacy", "ClientRequestToken": strings.Repeat("c", 64)}, nil); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil {
+						t.Errorf("force-delete %s: %v", name, err)
+					}
+				})
+				before, err := client.DescribeSecret(t.Context(), name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				journal := newForgejoLifecycleJournal()
+				journal.states[forgejoLifecycleEffectKey(adapter.Effect{Surface: adapter.Secret, EffectiveName: name})] = adapter.Owned
+				req := adapter.SyncRequest{Target: adapter.Target{ID: "tgt_adoption_" + run, Environment: "external", Generation: 1, Destination: adapter.Destination{Kind: adapter.JSONObject, Owner: env.account, Name: name}}, Manifest: []adapter.ManifestEntry{{KeyID: "key_e2e", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "Hikyo value"}}, Ledger: journal.ledger(), JobID: "adoption_" + run}
+				req.Ledger[0].AdoptionPending = true
+				module := &awssm.Module{API: &externalAWSInterruptedAdoptionAPI{API: client, interruption: interruption}}
+				if _, err := module.Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+					t.Fatalf("interrupted adoption = %v, want indeterminate", err)
+				}
+				staged, err := client.DescribeSecret(t.Context(), name)
+				if err != nil || len(staged.Stages) != 2 || staged.ARN != before.ARN || staged.Tags[awssm.VersionTag] != strings.Repeat("c", 64) {
+					t.Fatalf("approved predecessor not durably retained: stages=%v tags=%v err=%v", staged.Stages, staged.Tags, err)
+				}
+				if foreign {
+					if err := externalAWSCall(t.Context(), env, "PutSecretValue", map[string]string{"SecretId": name, "SecretString": "later external value", "ClientRequestToken": strings.Repeat("e", 64)}, nil); err != nil {
+						t.Fatal(err)
+					}
+				}
+				module.API, req.Ledger = client, journal.ledger()
+				if req.Ledger[0].State != adapter.Dispatched || req.Ledger[0].AdoptionPending {
+					t.Fatal("fixture did not lose pending adoption exposure after ambiguous staging")
+				}
+				_, err = module.Sync(t.Context(), req, journal)
+				want := `{"TOKEN":"Hikyo value"}`
+				if foreign {
+					want = "later external value"
+					if !errors.Is(err, adapter.ErrConflict) {
+						t.Fatalf("foreign current was accepted: %v", err)
+					}
+				} else if err != nil {
+					t.Fatalf("approved unchanged predecessor could not resume: %v", err)
+				}
+				var current struct{ SecretString string }
+				if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": name, "VersionStage": "AWSCURRENT"}, &current); err != nil || current.SecretString != want {
+					t.Fatalf("replay current = %q, want %q: %v", current.SecretString, want, err)
+				}
+				if !foreign {
+					settled, err := client.DescribeSecret(t.Context(), name)
+					if err != nil || len(settled.Stages) != 2 || settled.ARN != before.ARN {
+						t.Fatalf("replay duplicated a value/resource: stages=%v ARN=%q err=%v", settled.Stages, settled.ARN, err)
+					}
+				}
+			})
+		}
+	}
 }
 
 // externalAWSCall is the test-only oracle and cleanup path. It signs any

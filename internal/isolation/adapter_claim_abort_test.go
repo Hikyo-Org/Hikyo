@@ -55,6 +55,9 @@ func TestAdapterClaimedGenerationAbortPreservesChainAndLeaseOwner(t *testing.T) 
 				if targetSnapshot() != beforeTarget {
 					t.Fatal("old claimed job changed the new target generation or outcome")
 				}
+				if got := queryInt(t, db, fmt.Sprintf("SELECT COUNT(*) FROM adapter_targets WHERE id='%s' AND active_job_id IS NULL", job.TargetID)); got != 1 {
+					t.Fatal("old claimed job's terminal pointer was not detached")
+				}
 				types := []string{"adapter.abort"}
 				if kind == adapter.Scrub {
 					types = append(types, "adapter.scrub")

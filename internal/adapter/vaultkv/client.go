@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -198,21 +197,25 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 // (best effort, bounded by one request deadline), and every secret-bearing
 // field is dropped. An operator-supplied static token is never revoked.
 func (c *Client) Forget() {
+	c.ForgetContext(context.Background())
+}
+
+// ForgetContext always drops secret material. Revocation is best effort only
+// while the originating operation remains live, bounded by its deadline.
+func (c *Client) ForgetContext(ctx context.Context) {
 	c.mu.Lock()
 	minted := c.loggedIn && c.token != ""
 	token := c.token
-	c.mu.Unlock()
-	if minted {
-		ctx, cancel := context.WithTimeout(context.Background(), c.deadline)
-		_ = c.send(ctx, operationRegistry["token-revoke"], nil, token, nil, nil)
-		cancel()
-	}
-	c.mu.Lock()
 	c.token = ""
 	c.loggedIn = false
 	c.credential.forget()
 	c.mu.Unlock()
-	c.http.CloseIdleConnections()
+	defer c.http.CloseIdleConnections()
+	if minted && ctx.Err() == nil {
+		revokeCtx, cancel := context.WithTimeout(ctx, c.deadline)
+		defer cancel()
+		_ = c.send(revokeCtx, operationRegistry["token-revoke"], nil, token, nil, nil)
+	}
 }
 
 // Origin is the parsed adapter origin: the HTTPS base address plus an
@@ -223,51 +226,17 @@ type Origin struct {
 	Namespace string
 }
 
-var namespaceSegment = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-
 // ParseOrigin accepts https://host[:port] optionally followed by /ns[/child].
 func ParseOrigin(raw string) (Origin, error) {
-	u, err := url.Parse(raw)
+	canonical, err := adapter.CanonicalOrigin(adapter.VaultKVProvider, raw)
 	if err != nil {
-		return Origin{}, errors.New("vault-kv: origin is not a URL")
+		return Origin{}, err
 	}
-	if u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" {
-		return Origin{}, errors.New("vault-kv: origin must be https://host[:port] optionally followed by /<namespace>")
+	u, err := url.Parse(canonical)
+	if err != nil {
+		return Origin{}, err
 	}
-	namespace := strings.Trim(u.Path, "/")
-	if namespace != "" {
-		if strings.HasSuffix(u.Path, "/") {
-			return Origin{}, errors.New("vault-kv: origin namespace must not end with a slash")
-		}
-		for _, segment := range strings.Split(namespace, "/") {
-			if !namespaceSegment.MatchString(segment) {
-				return Origin{}, errors.New("vault-kv: origin namespace segments must be letters, digits, '-' or '_'")
-			}
-		}
-		if namespace == "root" {
-			return Origin{}, errors.New("vault-kv: omit the namespace for the root namespace")
-		}
-	} else if u.Path != "" && u.Path != "/" {
-		return Origin{}, errors.New("vault-kv: origin path must name a namespace")
-	}
-	host := strings.ToLower(u.Hostname())
-	port := u.Port()
-	if strings.HasSuffix(u.Host, ":") {
-		return Origin{}, errors.New("vault-kv: origin port must be between 1 and 65535")
-	}
-	if port != "" {
-		number, err := strconv.ParseUint(port, 10, 16)
-		if err != nil || number == 0 {
-			return Origin{}, errors.New("vault-kv: origin port must be between 1 and 65535")
-		}
-		port = strconv.FormatUint(number, 10)
-	}
-	if port != "" && port != "443" {
-		host = net.JoinHostPort(host, port)
-	} else if strings.Contains(host, ":") {
-		host = "[" + host + "]"
-	}
-	return Origin{Base: "https://" + host, Namespace: namespace}, nil
+	return Origin{Base: u.Scheme + "://" + u.Host, Namespace: strings.TrimPrefix(u.Path, "/")}, nil
 }
 
 // CanonicalOrigin is the persisted spelling of an origin.
@@ -535,14 +504,10 @@ func (c *Client) retryAt(header http.Header) time.Time {
 	return now.Add(defaultRateBackoff)
 }
 
-// redactURLError drops the request URL from transport errors. Paths are
-// names, not values, but keeping transport errors URL-free keeps them uniform.
+// redactURLError hides receiver-controlled request URLs and HTTP parser text
+// while preserving the original chain for typed cancellation/timeout checks.
 func redactURLError(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return urlErr.Err
-	}
-	return err
+	return adapter.SafeTransportError(err)
 }
 
 // escapePath URL-escapes each path segment while preserving slash separators.

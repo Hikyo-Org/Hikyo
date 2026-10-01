@@ -158,12 +158,14 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		return adapter.Plan{}, err
 	}
 	existing := map[string]bool{}
+	metadata := map[string]SecretMetadata{}
 	if destination.Kind == adapter.JSONObject {
-		_, found, err := m.describe(ctx, destination, destination.Name)
+		meta, found, err := m.describe(ctx, destination, destination.Name)
 		if err != nil {
 			return adapter.Plan{}, err
 		}
 		existing[destination.Name] = found
+		metadata[destination.Name] = meta
 	} else {
 		names, err := m.API.ListSecretNames(ctx, destination.Name+req.Target.NamePrefix, 0)
 		if err != nil {
@@ -181,7 +183,31 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	if err != nil {
 		return adapter.Plan{}, err
 	}
-	return adapter.Plan{Changes: adapter.PlanChanges(desired, ledger, existing)}, nil
+	changes := adapter.PlanChanges(desired, ledger, existing)
+	for i := range changes {
+		change := &changes[i]
+		record, held := ledger[adapter.NewLedgerKey(change.Surface, change.EffectiveName)]
+		if change.Disposition == adapter.Delete || !held || (record.State != adapter.Owned && record.State != adapter.Dispatched) {
+			continue
+		}
+		meta, inspected := metadata[change.EffectiveName]
+		found := existing[change.EffectiveName]
+		if !inspected {
+			if err := req.Gate(ctx); err != nil {
+				return adapter.Plan{}, err
+			}
+			meta, found, err = m.describe(ctx, destination, change.EffectiveName)
+			if err != nil {
+				return adapter.Plan{}, err
+			}
+		}
+		// Historical custody is not current provider ownership. Surface the
+		// same refusal as Sync so a fresh scoped artifact can renew adoption.
+		if found && meta.Tags[adapter.SentinelName] != req.Target.ID {
+			change.Disposition = adapter.Conflict
+		}
+	}
+	return adapter.Plan{Changes: changes}, nil
 }
 
 // rowStatus says how one name's failure affects the rest of the sync.
@@ -357,6 +383,11 @@ func decide(meta SecretMetadata, found bool, state adapter.LedgerState, adoption
 	if current != "" && !ours && (written || meta.Tags[VersionTag] != "" || (tagged && state != adapter.Owned)) {
 		return writePlan{conflict: "AWSCURRENT version " + current + " was written outside Hikyo; tag the secret " + VersionTag + "=" + current + " to let Hikyo overwrite it"}
 	}
+	if adoptionPending && state == adapter.Owned && current != "" && !ours {
+		// Persist the approved predecessor even if an earlier interrupted
+		// ownership-tag request already installed the target tag.
+		plan.tag = true
+	}
 	if ours && current == token {
 		plan.put = false
 		plan.promote = false
@@ -478,6 +509,14 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 	if plan.tag {
 		if err := beforeRequest(); err != nil {
 			return mutated, err
+		}
+		if plan.previousCurrent != "" {
+			// Adoption approves this resource's observed current version, not
+			// whichever version appears after an interrupted attempt. Record
+			// ownership and that existing version-consent marker together on
+			// the verified ARN before staging plaintext. A Dispatched retry
+			// can then resume only while this exact predecessor remains current.
+			tags[VersionTag] = plan.previousCurrent
 		}
 		if err := m.API.TagSecret(ctx, plan.resourceID, tags); err != nil {
 			return mutated, errors.Join(errOwnershipTag, err)

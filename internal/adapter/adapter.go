@@ -172,6 +172,9 @@ type LedgerEntry struct {
 	// successful provider write for this scoped name. Owned alone is not consent
 	// to take over a path whose provider ownership markers disappeared.
 	AdoptionPending bool
+	// AdoptionVersion is the non-secret provider version observed by the fresh
+	// plan artifact, never a value hash or a guessed write outcome.
+	AdoptionVersion *int64
 }
 
 type Disposition string
@@ -188,6 +191,9 @@ type Change struct {
 	Surface       Surface
 	EffectiveName string
 	Disposition   Disposition
+	// ObservedProviderVersion remains internal to plan/adoption custody. The
+	// public API still carries only the opaque plan artifact and name selection.
+	ObservedProviderVersion *int64
 }
 
 type PlanRequest struct {
@@ -245,6 +251,12 @@ type Effect struct {
 	EffectiveName string
 	Disposition   Disposition
 	KeyID         string
+	// RequireExplicitRecovery durably marks Vault custody uncertain BEFORE a
+	// provider mutation. Process death cannot leave an Owned replay authority.
+	RequireExplicitRecovery bool
+	// InputRevision is worker-bound provenance for acknowledged progress. The
+	// worker overrides module input with the admitted loaded source revision.
+	InputRevision int64
 }
 
 type Outcome string
@@ -727,12 +739,15 @@ var (
 	ErrUnauthorized  = errors.New("adapter: recorded authority no longer authorized")
 	ErrProviderAuth  = errors.New("adapter: provider credential was refused")
 	ErrIndeterminate = errors.New("adapter: provider outcome indeterminate")
-	ErrVersionFloor  = errors.New("adapter: Forgejo requires version >= 1.21")
-	ErrDestinationID = errors.New("adapter: destination numeric id changed")
-	ErrProviderBusy  = errors.New("adapter: provider write is still in flight")
-	ErrQueueFull     = errors.New("adapter: target outbox queue limit reached")
-	ErrLedgerFull    = errors.New("adapter: target ownership ledger limit reached")
-	ErrRateLimited   = errors.New("adapter: provider rate limited")
+	// ErrOperatorReview stops automatic attempts when provider write provenance
+	// cannot be established safely. Fresh explicit consent is needed to resume.
+	ErrOperatorReview = errors.New("adapter: provider outcome requires operator review")
+	ErrVersionFloor   = errors.New("adapter: Forgejo requires version >= 1.21")
+	ErrDestinationID  = errors.New("adapter: destination numeric id changed")
+	ErrProviderBusy   = errors.New("adapter: provider write is still in flight")
+	ErrQueueFull      = errors.New("adapter: target outbox queue limit reached")
+	ErrLedgerFull     = errors.New("adapter: target ownership ledger limit reached")
+	ErrRateLimited    = errors.New("adapter: provider rate limited")
 	// ErrAckForged means a provider answered with an acknowledgement that
 	// failed signature or binding verification. It is terminal: the attempt
 	// is not retried and the target needs operator attention.

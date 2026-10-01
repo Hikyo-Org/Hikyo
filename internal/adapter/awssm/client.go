@@ -214,19 +214,16 @@ func (c *Client) Forget() {
 	c.stsHTTP.CloseIdleConnections()
 }
 
-// ResponseError is a refused Secrets Manager request. Code is AWS's closed
-// error type name; the message is dropped because a provider can echo request
-// material, and request material may be plaintext.
+// ResponseError is a refused Secrets Manager request. Code is a bounded,
+// receiver-controlled identifier retained only for typed classification. Neither
+// it nor the provider message is formatted: either can echo protected input.
 type ResponseError struct {
 	Status int
 	Code   string
 }
 
 func (e *ResponseError) Error() string {
-	if e.Code == "" {
-		return "aws-secrets-manager: provider refused request with status " + strconv.Itoa(e.Status)
-	}
-	return "aws-secrets-manager: provider refused request with " + e.Code + " (status " + strconv.Itoa(e.Status) + ")"
+	return "aws-secrets-manager: provider refused request with status " + strconv.Itoa(e.Status)
 }
 
 // Definite reports that AWS answered and refused, so nothing was applied.
@@ -300,7 +297,7 @@ func (c *Client) do(ctx context.Context, operation string, in, out any) error {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("aws-secrets-manager: provider request: %w", err)
+		return fmt.Errorf("aws-secrets-manager: provider request: %w", adapter.SafeTransportError(err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseCap+1))
@@ -382,9 +379,9 @@ func credentialError(err error) error {
 	if errors.As(err, &api) {
 		code := errorCode(api.ErrorCode())
 		if throttleCodes[code] {
-			return errors.Join(adapter.ErrRateLimited, fmt.Errorf("aws-secrets-manager: credential source throttled (%s)", code))
+			return errors.Join(adapter.ErrRateLimited, errors.New("aws-secrets-manager: credential source throttled"))
 		}
-		return errors.Join(adapter.ErrProviderAuth, fmt.Errorf("aws-secrets-manager: credential source refused (%s)", code))
+		return errors.Join(adapter.ErrProviderAuth, errors.New("aws-secrets-manager: credential source refused"))
 	}
 	if errors.Is(err, ErrWorkloadIdentityDisabled) {
 		return errors.Join(adapter.ErrProviderAuth, ErrWorkloadIdentityDisabled)

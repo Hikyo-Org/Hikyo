@@ -122,7 +122,17 @@ type rateBucket struct {
 
 // NewBudget constructs an enabled budget on the real clock.
 func NewBudget() *Budget {
-	return &Budget{now: time.Now, rate: map[string]rateBucket{}, inflight: map[string]int{}}
+	return NewBudgetWithClock(time.Now)
+}
+
+// NewBudgetWithClock constructs an enabled budget with an owner-supplied
+// clock, so integration tests can prove rate boundaries without elapsed-time
+// refill. The clock must be non-nil and safe for concurrent budget requests.
+func NewBudgetWithClock(now func() time.Time) *Budget {
+	if now == nil {
+		panic("service: budget requires a clock")
+	}
+	return &Budget{now: now, rate: map[string]rateBucket{}, inflight: map[string]int{}}
 }
 
 // SetDevelopmentDisabled changes enforcement without resetting rate history or

@@ -810,18 +810,35 @@ func TestAdapterEnqueueSupersedesAndBumpsGenerationAtomically(t *testing.T) {
 	}
 }
 
-func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) {
-	db := adapterRuntimeDB(t)
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_outbox SET kind='scrub' WHERE id='job_1'`); err != nil {
+func teardownRuntimeTargetForScrub(t *testing.T, db *store.DB, at time.Time) store.AdapterTeardownResult {
+	t.Helper()
+	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO grants(id,principal_id,capability,org_id,project_id,created_at) VALUES ('gr_runtime_scrub','usr_adapter','manage-adapters','org_adapter','prj_adapter','2026-08-17T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
+	var result store.AdapterTeardownResult
+	if err := storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+		proof, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adapter", Class: domain.ClassHuman}, authz.OpAdapterDelete, domain.Scope{Org: "org_adapter", Project: "prj_adapter"})
+		if err != nil {
+			return err
+		}
+		result, err = repos.Adapters().TeardownTarget(ctx, proof, "tgt_1", false, at)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) {
+	db := adapterRuntimeDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_id,surface,effective_name,normalized_name,state,missing,updated_at) VALUES ('led_1','org_adapter','prj_adapter','env_adapter','tgt_1','https://git.example',42,'secret','TOKEN','TOKEN','owned',1,'2026-08-17T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	runtime := store.NewAdapterRuntime(db, nil)
 	now := time.Now().UTC()
+	teardown := teardownRuntimeTargetForScrub(t, db, now)
 	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", now, now.Add(adapter.LeaseTime))
-	if err != nil || !ok {
+	if err != nil || !ok || job.ID != teardown.JobID || job.Kind != adapter.Scrub {
 		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
 	}
 	if _, err := runtime.LoadExecution(t.Context(), job); !errors.Is(err, adapter.ErrProviderAuth) {
@@ -834,7 +851,7 @@ func TestAdapterDeadCredentialScrubTerminatesAndEnumeratesOrphans(t *testing.T) 
 	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT state,sync_status,failure_names FROM adapter_targets WHERE id='tgt_1'`).Scan(&targetState, &syncStatus, &failureNames); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT outcome,payload FROM audit_tenant_events WHERE type='adapter.scrub' AND correlation_id='job_1'`).Scan(&outcome, &payload); err != nil {
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT outcome,payload FROM audit_tenant_events WHERE type='adapter.scrub' AND correlation_id=?`, teardown.JobID).Scan(&outcome, &payload); err != nil {
 		t.Fatal(err)
 	}
 	var ledgerState string
@@ -855,13 +872,11 @@ func TestAdapterScrubLoadsLastTrustedSourceRevision(t *testing.T) {
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_targets SET converged_revision=7,last_attempted_revision=9 WHERE id='tgt_1'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_outbox SET kind='scrub' WHERE id='job_1'`); err != nil {
-		t.Fatal(err)
-	}
 	runtime := store.NewAdapterRuntime(db, nil)
 	now := time.Now().UTC()
+	teardown := teardownRuntimeTargetForScrub(t, db, now)
 	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", now, now.Add(adapter.LeaseTime))
-	if err != nil || !ok {
+	if err != nil || !ok || job.ID != teardown.JobID || job.Kind != adapter.Scrub {
 		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
 	}
 	execution, err := runtime.LoadExecution(t.Context(), job)
@@ -1009,12 +1024,9 @@ func TestAdapterStampsCompareLexicallyAcrossBridges(t *testing.T) {
 
 func TestAdapterGateRechecksAuthorityAndGeneration(t *testing.T) {
 	db := adapterRuntimeDB(t)
-	authorized := true
+	var authorizationError error
 	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error {
-		if !authorized {
-			return errors.New("revoked")
-		}
-		return nil
+		return authorizationError
 	})
 	now := time.Now().UTC()
 	job, ok, err := runtime.ClaimDue(t.Context(), "worker_1", now, now.Add(adapter.LeaseTime))
@@ -1026,11 +1038,19 @@ func TestAdapterGateRechecksAuthorityAndGeneration(t *testing.T) {
 	if err := journal.Gate(t.Context(), effect); err != nil {
 		t.Fatal(err)
 	}
-	authorized = false
-	if err := journal.Gate(t.Context(), effect); !errors.Is(err, adapter.ErrUnauthorized) {
-		t.Fatalf("revoked authority Gate() = %v", err)
+	for _, refusal := range []error{domain.ErrNotFound, domain.ErrUnauthenticated, domain.ErrUnauthorized} {
+		authorizationError = refusal
+		if err := journal.Gate(t.Context(), effect); !errors.Is(err, adapter.ErrUnauthorized) {
+			t.Fatalf("resolved authority refusal %v: Gate() = %v", refusal, err)
+		}
 	}
-	authorized = true
+	for _, operational := range []error{context.DeadlineExceeded, context.Canceled, errors.New("authority transport unavailable")} {
+		authorizationError = operational
+		if err := journal.Gate(t.Context(), effect); !errors.Is(err, operational) || errors.Is(err, adapter.ErrUnauthorized) {
+			t.Fatalf("operational failure %v: Gate() = %v", operational, err)
+		}
+	}
+	authorizationError = nil
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapter_targets SET generation=2 WHERE id='tgt_1'`); err != nil {
 		t.Fatal(err)
 	}

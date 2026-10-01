@@ -18,7 +18,7 @@ func TestAdapterModuleFactorySelectsPrivateEgressByExactOrigin(t *testing.T) {
 	factory := &adapterModuleFactory{
 		egressPolicy: map[string][]netip.Prefix{"https://git.internal.example": {want}},
 		providers: map[adapter.Provider]providerConstructor{
-			adapter.ForgejoProvider: func(_ adapter.Config, _ string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+			adapter.ForgejoProvider: func(_ adapter.Config, _ string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 				seen = append([]netip.Prefix(nil), allowed...)
 				return stubProviderModule{}, nil, nil
 			},

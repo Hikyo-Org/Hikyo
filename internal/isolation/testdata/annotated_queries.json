@@ -8,6 +8,13 @@
   },
   {
     "engine": "postgres",
+    "name": "AdapterOriginHeldCandidates",
+    "annotation": "instance-scoped",
+    "hash": "98f53fb60a337dda2ad29956a5eda74c7c81cc62416788e92dc1609946a12876",
+    "reason": "Authorized adapter custody checks read only held origin metadata within the exact provider and resolved destination, repository, scope, surface and normalized name, including the current target's historical claim. Canonical-origin comparison stays in the private store owner; paged candidates do not expose tenant identifiers or values and prevent legacy aliases from bypassing the global held-custody constraint."
+  },
+  {
+    "engine": "postgres",
     "name": "AdapterWorkerCheckProviderSwitchQuery",
     "annotation": "instance-scoped",
     "hash": "b47e4b0ddb1d793caefcf5fa3558f828d65a3cc853fb1a5b3124ee27aba5a61a",
@@ -17,7 +24,7 @@
     "engine": "postgres",
     "name": "AdapterWorkerClaimDueSelectQuery",
     "annotation": "instance-scoped",
-    "hash": "af2d8d3906ff1c2c47a022c230322575ff8fc166d2c98f620b95142ea76a195c",
+    "hash": "c73c1f34871323a86eaf9181639d78cc84e4d7fa559a6a78c5f7fd0188e1fbe5",
     "reason": "Closed adapter worker claim authority selects one due or expired leased job installation-wide, enforcing per-org concurrency and same-target exclusion under the PostgreSQL row lock; the claimed row supplies the downstream tenant chain."
   },
   {
@@ -3013,6 +3020,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "AdapterOriginHeldCandidates",
+    "annotation": "instance-scoped",
+    "hash": "52ea48d0a1cb7b5e839f47b09ca0b59f26b7d37113ab30bfc04fcd600f3fee8f",
+    "reason": "Authorized adapter custody checks read only held origin metadata within the exact provider and resolved destination, repository, scope, surface and normalized name, including the current target's historical claim. Canonical-origin comparison stays in the private store owner; paged candidates do not expose tenant identifiers or values and prevent legacy aliases from bypassing the global held-custody constraint."
+  },
+  {
+    "engine": "sqlite",
     "name": "AdapterWorkerCheckProviderSwitchQuery",
     "annotation": "instance-scoped",
     "hash": "b47e4b0ddb1d793caefcf5fa3558f828d65a3cc853fb1a5b3124ee27aba5a61a",
@@ -3022,7 +3036,7 @@
     "engine": "sqlite",
     "name": "AdapterWorkerClaimDueSelectQuery",
     "annotation": "instance-scoped",
-    "hash": "b843e82c2d371b392ed442ee97f8c16cfa94016cdfb4ecf12a5d136c640f36fe",
+    "hash": "2c5087c7125059939c77b820f678dbf96b40e910e5382bb7fbb4d11a5b5a5bec",
     "reason": "Closed adapter worker claim authority selects one due or expired leased job installation-wide, enforcing per-org concurrency and same-target exclusion under the PostgreSQL row lock; the claimed row supplies the downstream tenant chain."
   },
   {

@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"net/url"
 	"time"
@@ -17,7 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
-type providerConstructor func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(), error)
+type providerConstructor func(adapter.Config, string, []netip.Prefix, []netip.Prefix) (adapter.Module, func(context.Context), error)
 
 type adapterModuleFactory struct {
 	egressPolicy map[string][]netip.Prefix
@@ -38,35 +40,35 @@ type sealedWebhookEndpoints map[string]*sealedwebhook.Endpoint
 
 func deploymentProviderRegistry(endpoints sealedWebhookEndpoints, policy adapterProviderPolicy) map[adapter.Provider]providerConstructor {
 	return map[adapter.Provider]providerConstructor{
-		adapter.ForgejoProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.ForgejoProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			client, err := forgejo.NewClient(forgejo.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second})
 			if err != nil {
 				return nil, nil, err
 			}
-			return &forgejo.Module{API: client}, client.Forget, nil
+			return &forgejo.Module{API: client}, func(context.Context) { client.Forget() }, nil
 		},
-		adapter.GitHubActionsProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.GitHubActionsProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			client, err := githubactions.NewClient(githubactions.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second})
 			if err != nil {
 				return nil, nil, err
 			}
-			return &githubactions.Module{API: client}, client.Forget, nil
+			return &githubactions.Module{API: client}, func(context.Context) { client.Forget() }, nil
 		},
-		adapter.GitLabProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.GitLabProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			client, err := gitlab.NewClient(gitlab.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second, SPKIPin: config.SPKIPin, CABundlePEM: config.CABundlePEM})
 			if err != nil {
 				return nil, nil, err
 			}
-			return &gitlab.Module{API: client}, client.Forget, nil
+			return &gitlab.Module{API: client}, func(context.Context) { client.Forget() }, nil
 		},
-		adapter.AWSSecretsManagerProvider: func(config adapter.Config, credential string, allowed, stsAllowed []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.AWSSecretsManagerProvider: func(config adapter.Config, credential string, allowed, stsAllowed []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			client, err := awssm.NewClient(awssm.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, STSAllowedCIDRs: stsAllowed, Deadline: 15 * time.Second, WorkloadIdentity: policy.awsWorkloadIdentity})
 			if err != nil {
 				return nil, nil, awsConstructionError(err)
 			}
-			return &awssm.Module{API: client}, client.Forget, nil
+			return &awssm.Module{API: client}, func(context.Context) { client.Forget() }, nil
 		},
-		adapter.SealedWebhookProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.SealedWebhookProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			endpoint := endpoints[config.Origin]
 			if endpoint == nil {
 				return nil, nil, errors.New("sealed-webhook: origin is not an instance-admin configured endpoint")
@@ -80,23 +82,23 @@ func deploymentProviderRegistry(endpoints sealedWebhookEndpoints, policy adapter
 			if err != nil {
 				return nil, nil, err
 			}
-			return &sealedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, client.Forget, nil
+			return &sealedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, func(context.Context) { client.Forget() }, nil
 		},
-		adapter.VaultKVProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.VaultKVProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			// Five sequential requests (mount check, metadata read, mark, CAS
 			// write, finalize) plus a possible login must fit the write lease.
 			client, err := vaultkv.NewClient(vaultkv.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 10 * time.Second})
 			if err != nil {
 				return nil, nil, err
 			}
-			return &vaultkv.Module{API: client}, client.Forget, nil
+			return &vaultkv.Module{API: client}, client.ForgetContext, nil
 		},
-		adapter.CloudflareProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(), error) {
+		adapter.CloudflareProvider: func(config adapter.Config, credential string, allowed, _ []netip.Prefix) (adapter.Module, func(context.Context), error) {
 			client, err := cloudflare.NewClient(cloudflare.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second})
 			if err != nil {
 				return nil, nil, err
 			}
-			return &cloudflare.Module{API: client}, client.Forget, nil
+			return &cloudflare.Module{API: client}, func(context.Context) { client.Forget() }, nil
 		},
 	}
 }
@@ -143,6 +145,14 @@ func (f *adapterModuleFactory) Build(provider adapter.Provider, config adapter.C
 	if constructor == nil {
 		return nil, errors.New("app: unsupported deployment adapter provider")
 	}
+	canonical, err := adapter.CanonicalOrigin(provider, config.Origin)
+	if err != nil {
+		return nil, errors.Join(adapter.ErrOperatorReview, err)
+	}
+	if canonical != config.Origin {
+		return nil, fmt.Errorf("%w: stored provider origin requires canonical endpoint review; use explicit keep-remote retirement", adapter.ErrOperatorReview)
+	}
+	config.Origin = canonical
 	if provider != adapter.GitLabProvider && config.HasProviderOptions() {
 		// A pin or trust bundle that a provider would silently ignore is a
 		// configuration error, never a no-op.
@@ -160,14 +170,14 @@ func (f *adapterModuleFactory) Build(provider adapter.Provider, config adapter.C
 	module, release, err := constructor(config, credential, allowed, secondaryAllowed)
 	if err != nil {
 		if release != nil {
-			release()
+			release(context.Background())
 		}
 		return nil, err
 	}
-	lease, err := adapter.NewModuleLease(module, release)
+	lease, err := adapter.NewModuleLeaseWithContext(module, release)
 	if err != nil {
 		if release != nil {
-			release()
+			release(context.Background())
 		}
 		return nil, err
 	}

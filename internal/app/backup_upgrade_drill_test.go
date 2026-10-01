@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 70, while the
+// The runtime-created fixture includes migrations 45 through 72, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+26 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 70 only")
+	if len(current.Entries) != len(legacy.Entries)+28 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 72 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -274,6 +274,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM self_config_rollout_sequences",
 		"SELECT COUNT(*) FROM cli_reauth_handoffs",
 		"SELECT COUNT(*) FROM adapters",
+		"SELECT COUNT(*) FROM adapter_conflicts WHERE observed_provider_version IS NOT NULL",
 		"SELECT COUNT(*) FROM adapter_effects WHERE finding <> ''",
 		"SELECT COUNT(*) FROM accounts WHERE email <> ''",
 		"SELECT COUNT(*) FROM federation_issuers WHERE ca_bundle_pem <> ''",
@@ -333,7 +334,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target or member-access-rule evidence", query, err)
 		}
 	}
-	// Reverse 00070 (member access rules) first: newest migration first,
+	// 00072 only repairs adapter custody data. The empty adapter evidence above
+	// excludes every affected row. Reverse 00071's value-blind version witness
+	// only after proving no witness is being discarded.
+	drillExec(t, db, "ALTER TABLE adapter_conflicts DROP COLUMN observed_provider_version")
+	// Reverse 00070 (member access rules): newest migration first,
 	// children before parents.
 	for _, table := range []string{"rule_items", "rules"} {
 		drillExec(t, db, "DROP TABLE "+table)
@@ -517,7 +522,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72)",
 	} {
 		drillExec(t, db, query)
 	}

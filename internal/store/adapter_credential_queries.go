@@ -13,6 +13,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func (q sqliteAdapterStoreQueries) retireCredentialJobs(ctx context.Context, chain domain.Scope, adapterID string, at time.Time) (int64, error) {
+	return q.queries.AdapterRetireCredentialJobs(ctx, sqlitegen.AdapterRetireCredentialJobsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), AdapterID: adapterID, At: sql.NullString{String: fixedStamp(at), Valid: true}})
+}
+
+func (q pgAdapterStoreQueries) retireCredentialJobs(ctx context.Context, chain domain.Scope, adapterID string, at time.Time) (int64, error) {
+	return q.queries.AdapterRetireCredentialJobs(ctx, pggen.AdapterRetireCredentialJobsParams{ChainOrg: string(chain.Org), ChainProject: string(chain.Project), AdapterID: adapterID, At: pgRequiredTime(at)})
+}
+
 func checkedAdapterTargetCount(value int64) (int, error) {
 	if value < 0 || value > math.MaxInt {
 		return 0, fmt.Errorf("store: adapter target count out of range: %d", value)

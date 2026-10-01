@@ -20,7 +20,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -140,17 +139,7 @@ func (c *Client) Forget() { c.http.CloseIdleConnections() }
 // CanonicalOrigin accepts only a bare https origin: no userinfo, path, query,
 // or fragment. The protocol path is fixed and appended by the client.
 func CanonicalOrigin(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", errors.New("sealed-webhook: origin does not parse")
-	}
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || u.Opaque != "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
-		return "", errors.New("sealed-webhook: origin must be an exact https origin with no path, query, or credentials")
-	}
-	if u.Hostname() == "" || (u.Port() != "" && u.Port() == "0") {
-		return "", errors.New("sealed-webhook: origin must name a host")
-	}
-	return "https://" + u.Host, nil
+	return adapter.CanonicalOrigin(adapter.SealedWebhookProvider, raw)
 }
 
 // Deliver posts one envelope and verifies the answer. Classification:
@@ -196,12 +185,8 @@ func (c *Client) Deliver(ctx context.Context, d Delivery) (sealedhook.Ack, error
 	}
 }
 
-// sanitizeTransport keeps the error chain (timeouts, egress refusals) but
-// never includes a URL, which could only ever name the fixed configured path.
+// sanitizeTransport preserves typed error classification without formatting
+// any receiver-controlled redirect, status-line or header text.
 func sanitizeTransport(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return urlErr.Err
-	}
-	return err
+	return adapter.SafeTransportError(err)
 }

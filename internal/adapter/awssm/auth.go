@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -180,14 +181,7 @@ type route struct {
 
 // canonicalOrigin accepts only a bare https origin.
 func canonicalOrigin(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", errors.New("aws-secrets-manager: origin is not a URL")
-	}
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("aws-secrets-manager: origin must be a bare https origin")
-	}
-	return "https://" + strings.ToLower(u.Host), nil
+	return adapter.CanonicalOrigin(adapter.AWSSecretsManagerProvider, raw)
 }
 
 // ValidateOrigin checks an adapter origin without a descriptor. AWS regional

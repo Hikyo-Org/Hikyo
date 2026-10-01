@@ -33,13 +33,16 @@ func TestVaultKVAdapterCreatePersistsMountIdentityAndMapsPaths(t *testing.T) {
 		return &vaultkv.Module{API: connectionOnlyKV{}}, nil, nil
 	})}
 	request := CreateAdapterRequest{
-		Provider: "vault-kv", Origin: "https://vault.example:8200/", Credential: []byte("hvs.static"),
+		Provider: "vault-kv", Origin: "https://VAULT.example:08200/team-a", Credential: []byte("hvs.static"),
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "secret", DestinationName: "apps/pay", NamePrefix: "PROD_", KeyIDs: []string{"key_vault"}},
 	}
-	if _, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, request); err == nil || !strings.Contains(err.Error(), "canonically") {
-		t.Fatalf("non-canonical origin = %v, want refusal", err)
+	for _, origin := range []string{"https://vault.example:8200/team-a/", "https://vault.example:8200/team%2Da", "https://vault.example:8200/team-a?unsafe=1"} {
+		invalid := request
+		invalid.Origin = origin
+		if _, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, invalid); err == nil {
+			t.Fatalf("unsafe origin %q accepted", origin)
+		}
 	}
-	request.Origin = "https://vault.example:8200/team-a"
 	request.Target.DestinationKind = "organization"
 	if _, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, request); err == nil {
 		t.Fatal("organization destination accepted for vault-kv")

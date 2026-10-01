@@ -60,7 +60,7 @@ func (q *Queries) AdapterWorkerActivateApplyTarget(ctx context.Context, arg Adap
 }
 
 const adapterWorkerActivateCollisionQuery = `-- name: AdapterWorkerActivateCollisionQuery :one
-SELECT (SELECT COUNT(*) FROM adapter_route_move_claims c JOIN adapter_targets other ON other.org_id=c.org_id AND other.project_id=c.project_id AND other.id<>c.target_id AND other.state='active' JOIN adapters oa ON oa.id=other.adapter_id AND oa.org_id=other.org_id AND oa.project_id=other.project_id LEFT JOIN adapter_target_keys tk ON tk.target_id=other.id AND tk.org_id=other.org_id AND tk.project_id=other.project_id AND tk.environment_id=other.environment_id LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE c.move_id=$1 AND c.target_id=$2 AND oa.origin=$3 AND other.destination_kind=$4 AND other.repository_id=$5 AND other.destination_id=$6 AND (c.effective_name=other.name_prefix||$7 OR c.effective_name=other.name_prefix||k.name))+(SELECT COUNT(*) FROM adapter_route_move_claims c JOIN adapter_ledger l ON l.provider_origin=$3 AND l.destination_kind=$4 AND l.repository_id=$5 AND l.destination_id=$6 AND l.surface=c.surface AND l.normalized_name=c.normalized_name AND l.state<>'released' AND l.target_id<>c.target_id WHERE c.move_id=$1 AND c.target_id=$2)
+SELECT (SELECT COUNT(*) FROM adapter_route_move_claims c JOIN adapter_targets other ON other.org_id=c.org_id AND other.project_id=c.project_id AND other.id<>c.target_id AND other.state='active' JOIN adapters oa ON oa.id=other.adapter_id AND oa.org_id=other.org_id AND oa.project_id=other.project_id LEFT JOIN adapter_target_keys tk ON tk.target_id=other.id AND tk.org_id=other.org_id AND tk.project_id=other.project_id AND tk.environment_id=other.environment_id LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id WHERE c.move_id=$1 AND c.target_id=$2 AND oa.origin=$3 AND other.destination_kind=$4 AND other.repository_id=$5 AND other.destination_id=$6 AND other.destination_scope=c.destination_scope AND (c.effective_name=other.name_prefix||$7 OR c.effective_name=other.name_prefix||k.name))+(SELECT COUNT(*) FROM adapter_route_move_claims c JOIN adapter_ledger l ON l.provider_origin=$3 AND l.destination_kind=$4 AND l.repository_id=$5 AND l.destination_id=$6 AND l.destination_scope=c.destination_scope AND l.surface=c.surface AND l.normalized_name=c.normalized_name AND l.state<>'released' AND l.target_id<>c.target_id WHERE c.move_id=$1 AND c.target_id=$2)
 `
 
 type AdapterWorkerActivateCollisionQueryParams struct {
@@ -251,7 +251,7 @@ func (q *Queries) AdapterWorkerActivateInsertKeys(ctx context.Context, arg Adapt
 }
 
 const adapterWorkerActivateLookup = `-- name: AdapterWorkerActivateLookup :one
-SELECT t.adapter_id,t.environment_id,mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.visibility,mt.selected_repository_ids,mt.name_prefix,m.kind,COALESCE(m.pending_origin,a.origin) FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=$1 AND m.org_id=t.org_id AND m.project_id=t.project_id AND m.adapter_id=t.adapter_id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.environment_id=$5 AND t.generation=$6 AND t.state='moving' AND m.state='activating' AND (m.kind='origin' OR (m.kind='target' AND m.target_id=t.id)) FOR UPDATE OF t,a,m,mt
+SELECT t.adapter_id,t.environment_id,mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.visibility,mt.selected_repository_ids,mt.name_prefix,m.kind,COALESCE(m.pending_origin,a.origin) FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=$1 AND m.org_id=t.org_id AND m.project_id=t.project_id AND m.adapter_id=t.adapter_id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.environment_id=$5 AND t.generation=$6 AND t.state='moving' AND m.state='activating' AND (m.kind='origin' OR (m.kind='target' AND m.target_id=t.id)) AND a.state IN ('active','moving') AND t.paused_at IS NULL FOR UPDATE OF t,a,m,mt
 `
 
 type AdapterWorkerActivateLookupParams struct {
@@ -722,10 +722,12 @@ func (q *Queries) AdapterWorkerCheckProviderSwitchQuery(ctx context.Context) (in
 const adapterWorkerClaimDueSelectQuery = `-- name: AdapterWorkerClaimDueSelectQuery :one
 SELECT j.id,j.org_id,j.project_id,j.environment_id,j.target_id,j.kind,COALESCE(j.route_move_id,'') AS route_move_id,j.authority_principal_id,j.generation,j.attempt_count,j.created_at
              FROM adapter_outbox j
-             JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id AND t.paused_at IS NULL
+             JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id AND (t.paused_at IS NULL OR (j.kind='scrub' AND t.state='tombstoned'))
+             JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
              WHERE ((j.state='queued' AND j.next_attempt_at<=$1) OR (j.state='running' AND j.lease_expires_at<=$1))
                AND (SELECT COUNT(*) FROM adapter_outbox x WHERE x.org_id=j.org_id AND x.state='running' AND x.lease_expires_at>$1) < 4
                AND NOT EXISTS (SELECT 1 FROM adapter_outbox x WHERE x.target_id=j.target_id AND x.id<>j.id AND x.state='running' AND x.lease_expires_at>$1)
+               AND ((j.kind='converge' AND t.state='active' AND a.state='active' AND t.paused_at IS NULL) OR (j.kind='activate' AND t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL) OR (j.kind='scrub' AND (t.state='tombstoned' OR (t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL AND j.route_move_id IS NOT NULL))))
              ORDER BY j.next_attempt_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1
 `
 
@@ -942,8 +944,36 @@ func (q *Queries) AdapterWorkerCompleteJob(ctx context.Context, arg AdapterWorke
 	return result.RowsAffected(), nil
 }
 
+const adapterWorkerDetachSupersededJob = `-- name: AdapterWorkerDetachSupersededJob :execrows
+UPDATE adapter_targets SET active_job_id=NULL WHERE id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND active_job_id=$5
+`
+
+type AdapterWorkerDetachSupersededJobParams struct {
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	JobID        pgtype.Text
+}
+
+// Only the just-settled old job's pointer is detached; replacement pointers
+// and all provider effect fences survive a superseded-generation abort.
+func (q *Queries) AdapterWorkerDetachSupersededJob(ctx context.Context, arg AdapterWorkerDetachSupersededJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerDetachSupersededJob,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.JobID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adapterWorkerFinishDeadCredentialScrubErase = `-- name: AdapterWorkerFinishDeadCredentialScrubErase :execrows
-UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL WHERE adapters.id=$1 AND adapters.org_id=$2 AND adapters.project_id=$3 AND adapters.state='tombstoned' AND NOT EXISTS (SELECT 1 FROM adapter_targets retained WHERE retained.adapter_id=$1 AND retained.state<>'tombstoned') AND NOT EXISTS (SELECT 1 FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE t.adapter_id=$1 AND j.kind='scrub' AND j.state IN ('queued','running'))
+UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL,credential_expires_at=NULL WHERE adapters.id=$1 AND adapters.org_id=$2 AND adapters.project_id=$3 AND NOT EXISTS (SELECT 1 FROM adapter_targets retained WHERE retained.adapter_id=adapters.id AND retained.org_id=adapters.org_id AND retained.project_id=adapters.project_id AND retained.state<>'tombstoned') AND NOT EXISTS (SELECT 1 FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE t.adapter_id=adapters.id AND t.org_id=adapters.org_id AND t.project_id=adapters.project_id AND j.kind='scrub' AND j.state IN ('queued','running'))
 `
 
 type AdapterWorkerFinishDeadCredentialScrubEraseParams struct {
@@ -1056,7 +1086,7 @@ func (q *Queries) AdapterWorkerFinishJobAttention(ctx context.Context, arg Adapt
 }
 
 const adapterWorkerFinishJobErase = `-- name: AdapterWorkerFinishJobErase :execrows
-UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL WHERE adapters.id=$1 AND adapters.org_id=$2 AND adapters.project_id=$3 AND adapters.state='tombstoned' AND NOT EXISTS (SELECT 1 FROM adapter_targets retained WHERE retained.adapter_id=$1 AND retained.state<>'tombstoned') AND NOT EXISTS (SELECT 1 FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE t.adapter_id=$1 AND j.kind='scrub' AND j.state IN ('queued','running'))
+UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL,credential_expires_at=NULL WHERE adapters.id=$1 AND adapters.org_id=$2 AND adapters.project_id=$3 AND NOT EXISTS (SELECT 1 FROM adapter_targets retained WHERE retained.adapter_id=adapters.id AND retained.org_id=adapters.org_id AND retained.project_id=adapters.project_id AND retained.state<>'tombstoned') AND NOT EXISTS (SELECT 1 FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE t.adapter_id=adapters.id AND t.org_id=adapters.org_id AND t.project_id=adapters.project_id AND j.kind='scrub' AND j.state IN ('queued','running'))
 `
 
 type AdapterWorkerFinishJobEraseParams struct {
@@ -1658,7 +1688,7 @@ func (q *Queries) AdapterWorkerFinishUpdateEffect(ctx context.Context, arg Adapt
 }
 
 const adapterWorkerGateQuery = `-- name: AdapterWorkerGateQuery :one
-SELECT COUNT(*) FROM adapter_targets t JOIN adapter_outbox j ON j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.environment_id=$4 AND t.generation=$5 AND j.id=$6 AND j.state='running' AND j.lease_owner=$7 AND j.lease_expires_at>$8
+SELECT COUNT(*) FROM adapter_targets t JOIN adapter_outbox j ON j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.environment_id=$4 AND t.generation=$5 AND j.id=$6 AND j.state='running' AND j.lease_owner=$7 AND j.lease_expires_at>$8 AND ((j.kind='converge' AND t.state='active' AND a.state='active' AND t.paused_at IS NULL) OR (j.kind='activate' AND t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL) OR (j.kind='scrub' AND (t.state='tombstoned' OR (t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL AND j.route_move_id IS NOT NULL))))
 `
 
 type AdapterWorkerGateQueryParams struct {
@@ -1794,7 +1824,7 @@ func (q *Queries) AdapterWorkerInsertConflictInsert(ctx context.Context, arg Ada
 }
 
 const adapterWorkerLoadActivationQuery = `-- name: AdapterWorkerLoadActivationQuery :one
-SELECT a.provider,COALESCE(m.pending_origin,a.origin),a.id,COALESCE(m.pending_credential_ciphertext,a.credential_ciphertext),mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.destination_id,mt.repository_id,mt.visibility,mt.selected_repository_ids,mt.name_prefix,t.generation,a.spki_pin,a.ca_bundle_pem,CAST(CASE WHEN a.allow_personal_token THEN 1 ELSE 0 END AS INTEGER) AS allow_personal_token,t.destination_scope,CAST(CASE WHEN t.variable_protected THEN 1 ELSE 0 END AS INTEGER) AS variable_protected,CAST(CASE WHEN t.variable_hidden THEN 1 ELSE 0 END AS INTEGER) AS variable_hidden,CAST(CASE WHEN t.variable_expand THEN 1 ELSE 0 END AS INTEGER) AS variable_expand FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=j.route_move_id AND m.org_id=j.org_id AND m.project_id=j.project_id AND m.adapter_id=a.id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE j.id=$1 AND j.route_move_id=$2 AND j.target_id=$3 AND j.org_id=$4 AND j.project_id=$5 AND j.environment_id=$6 AND j.generation=$7 AND j.kind='activate' AND j.state='running' AND j.lease_owner=$8 AND m.state='activating' AND t.state='moving'
+SELECT a.provider,COALESCE(m.pending_origin,a.origin),a.id,COALESCE(m.pending_credential_ciphertext,a.credential_ciphertext),mt.environment_id,mt.destination_kind,mt.destination_owner,mt.destination_name,mt.destination_environment,mt.destination_id,mt.repository_id,mt.visibility,mt.selected_repository_ids,mt.name_prefix,t.generation,a.spki_pin,a.ca_bundle_pem,CAST(CASE WHEN a.allow_personal_token THEN 1 ELSE 0 END AS INTEGER) AS allow_personal_token,t.destination_scope,CAST(CASE WHEN t.variable_protected THEN 1 ELSE 0 END AS INTEGER) AS variable_protected,CAST(CASE WHEN t.variable_hidden THEN 1 ELSE 0 END AS INTEGER) AS variable_hidden,CAST(CASE WHEN t.variable_expand THEN 1 ELSE 0 END AS INTEGER) AS variable_expand FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_moves m ON m.id=j.route_move_id AND m.org_id=j.org_id AND m.project_id=j.project_id AND m.adapter_id=a.id JOIN adapter_route_move_targets mt ON mt.move_id=m.id AND mt.target_id=t.id AND mt.org_id=t.org_id AND mt.project_id=t.project_id WHERE j.id=$1 AND j.route_move_id=$2 AND j.target_id=$3 AND j.org_id=$4 AND j.project_id=$5 AND j.environment_id=$6 AND j.generation=$7 AND j.kind='activate' AND j.state='running' AND j.lease_owner=$8 AND m.state='activating' AND t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL
 `
 
 type AdapterWorkerLoadActivationQueryParams struct {
@@ -1872,6 +1902,70 @@ func (q *Queries) AdapterWorkerLoadActivationQuery(ctx context.Context, arg Adap
 	return i, err
 }
 
+const adapterWorkerLoadExecutionCompletedQuery = `-- name: AdapterWorkerLoadExecutionCompletedQuery :many
+SELECT DISTINCT e.surface,e.effective_name,e.disposition
+FROM adapter_effects e
+JOIN adapter_outbox j ON j.id=e.job_id AND j.target_id=e.target_id AND j.org_id=e.org_id AND j.project_id=e.project_id AND j.environment_id=e.environment_id
+JOIN adapter_targets t ON t.id=e.target_id AND t.org_id=e.org_id AND t.project_id=e.project_id AND t.environment_id=e.environment_id AND t.generation=j.generation
+JOIN adapter_ledger l ON l.target_id=e.target_id AND l.org_id=e.org_id AND l.project_id=e.project_id AND l.environment_id=e.environment_id AND l.surface=e.surface AND l.effective_name=e.effective_name AND l.state='owned' AND l.missing=false
+JOIN audit_tenant_events i ON i.id=e.intent_audit_id AND i.org_id=$1 AND i.project_id=$2 AND i.env_id=$3
+WHERE e.job_id=$4 AND e.target_id=$5 AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3
+AND j.generation=$6 AND j.kind='converge' AND j.state='running' AND j.lease_owner=$7 AND j.authority_principal_id=$8
+AND e.outcome='success' AND e.disposition IN ('create','update') AND i.type='adapter.push_intent' AND i.outcome='intent' AND i.schema_version=1 AND i.actor_id IS NULL AND i.actor_class='system' AND i.authority_id=$8 AND i.scope_class='env' AND i.origin='adapter-job' AND i.object_type='adapter-target' AND i.object_id=e.target_id AND i.correlation_id=e.job_id
+AND CAST($9 AS BIGINT)>0 AND CASE WHEN jsonb_typeof(i.payload::jsonb->'input_revision')='number' AND (i.payload::jsonb->>'input_revision') ~ '^[0-9]{1,19}$' THEN (i.payload::jsonb->>'input_revision')::numeric ELSE NULL END=CAST($9 AS numeric)
+ORDER BY e.surface,e.effective_name,e.disposition
+`
+
+type AdapterWorkerLoadExecutionCompletedQueryParams struct {
+	ChainOrg           string
+	ChainProject       pgtype.Text
+	ChainEnv           pgtype.Text
+	JobID              string
+	TargetID           string
+	Generation         int64
+	LeaseOwner         pgtype.Text
+	AuthorityPrincipal string
+	InputRevision      int64
+}
+
+type AdapterWorkerLoadExecutionCompletedQueryRow struct {
+	Surface       string
+	EffectiveName string
+	Disposition   string
+}
+
+// Successful names resume only this leased job's exact loaded source. Legacy
+// INTENTs without the worker-bound numeric revision never authorize skipping.
+func (q *Queries) AdapterWorkerLoadExecutionCompletedQuery(ctx context.Context, arg AdapterWorkerLoadExecutionCompletedQueryParams) ([]AdapterWorkerLoadExecutionCompletedQueryRow, error) {
+	rows, err := q.db.Query(ctx, adapterWorkerLoadExecutionCompletedQuery,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.JobID,
+		arg.TargetID,
+		arg.Generation,
+		arg.LeaseOwner,
+		arg.AuthorityPrincipal,
+		arg.InputRevision,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdapterWorkerLoadExecutionCompletedQueryRow
+	for rows.Next() {
+		var i AdapterWorkerLoadExecutionCompletedQueryRow
+		if err := rows.Scan(&i.Surface, &i.EffectiveName, &i.Disposition); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const adapterWorkerLoadExecutionEntryQuery = `-- name: AdapterWorkerLoadExecutionEntryQuery :many
 SELECT e.id,e.snapshot_id,e.key_id,e.key_name,e.classification,e.ciphertext FROM snapshot_entries e JOIN adapter_target_keys k ON k.key_id=e.key_id AND k.target_id=$1 AND k.org_id=e.org_id AND k.project_id=e.project_id AND k.environment_id=e.environment_id WHERE e.snapshot_id=$2 AND e.org_id=$3 AND e.project_id=$4 AND e.environment_id=$5 ORDER BY e.key_name
 `
@@ -1927,7 +2021,7 @@ func (q *Queries) AdapterWorkerLoadExecutionEntryQuery(ctx context.Context, arg 
 }
 
 const adapterWorkerLoadExecutionLedgerQuery = `-- name: AdapterWorkerLoadExecutionLedgerQuery :many
-SELECT l.surface,l.effective_name,l.state,l.missing,CAST(CASE WHEN l.state='owned' AND EXISTS (SELECT 1 FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at)) THEN 1 ELSE 0 END AS INTEGER) AS adoption_pending FROM adapter_ledger l JOIN adapter_targets t ON t.id=l.target_id AND t.org_id=$1 AND t.project_id=$2 AND t.environment_id=$3 AND t.generation=$4 WHERE l.target_id=$5 AND l.org_id=$1 AND l.project_id=$2 AND l.environment_id=$3 AND l.state<>'released' ORDER BY l.surface,l.normalized_name
+SELECT l.surface,l.effective_name,l.state,l.missing,CAST(CASE WHEN l.state='owned' AND EXISTS (SELECT 1 FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at)) THEN 1 ELSE 0 END AS INTEGER) AS adoption_pending,(SELECT c.observed_provider_version FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at) AND c.observed_provider_version IS NOT NULL ORDER BY c.adopted_at DESC,c.id DESC LIMIT 1) AS adoption_version FROM adapter_ledger l JOIN adapter_targets t ON t.id=l.target_id AND t.org_id=$1 AND t.project_id=$2 AND t.environment_id=$3 AND t.generation=$4 WHERE l.target_id=$5 AND l.org_id=$1 AND l.project_id=$2 AND l.environment_id=$3 AND l.state<>'released' ORDER BY l.surface,l.normalized_name
 `
 
 type AdapterWorkerLoadExecutionLedgerQueryParams struct {
@@ -1944,6 +2038,7 @@ type AdapterWorkerLoadExecutionLedgerQueryRow struct {
 	State           string
 	Missing         bool
 	AdoptionPending int32
+	AdoptionVersion pgtype.Int8
 }
 
 func (q *Queries) AdapterWorkerLoadExecutionLedgerQuery(ctx context.Context, arg AdapterWorkerLoadExecutionLedgerQueryParams) ([]AdapterWorkerLoadExecutionLedgerQueryRow, error) {
@@ -1967,6 +2062,7 @@ func (q *Queries) AdapterWorkerLoadExecutionLedgerQuery(ctx context.Context, arg
 			&i.State,
 			&i.Missing,
 			&i.AdoptionPending,
+			&i.AdoptionVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -1979,7 +2075,7 @@ func (q *Queries) AdapterWorkerLoadExecutionLedgerQuery(ctx context.Context, arg
 }
 
 const adapterWorkerLoadExecutionQuery = `-- name: AdapterWorkerLoadExecutionQuery :one
-SELECT a.provider,a.origin,a.id,a.credential_ciphertext,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,CAST(CASE WHEN COALESCE(t.last_attempted_revision,0)>=COALESCE(t.converged_revision,0) THEN COALESCE(t.last_attempted_revision,0) ELSE COALESCE(t.converged_revision,0) END AS BIGINT) AS revision,a.spki_pin,a.ca_bundle_pem,CAST(CASE WHEN a.allow_personal_token THEN 1 ELSE 0 END AS INTEGER) AS allow_personal_token,t.destination_scope,CAST(CASE WHEN t.variable_protected THEN 1 ELSE 0 END AS INTEGER) AS variable_protected,CAST(CASE WHEN t.variable_hidden THEN 1 ELSE 0 END AS INTEGER) AS variable_hidden,CAST(CASE WHEN t.variable_expand THEN 1 ELSE 0 END AS INTEGER) AS variable_expand FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_outbox j ON j.id=$1 AND j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.environment_id=$5 AND t.generation=$6 AND j.state='running' AND j.lease_owner=$7
+SELECT a.provider,a.origin,a.id,a.credential_ciphertext,t.destination_kind,t.destination_owner,t.destination_name,t.destination_environment,t.destination_id,t.repository_id,t.visibility,t.selected_repository_ids,t.name_prefix,t.generation,CAST(CASE WHEN COALESCE(t.last_attempted_revision,0)>=COALESCE(t.converged_revision,0) THEN COALESCE(t.last_attempted_revision,0) ELSE COALESCE(t.converged_revision,0) END AS BIGINT) AS revision,a.spki_pin,a.ca_bundle_pem,CAST(CASE WHEN a.allow_personal_token THEN 1 ELSE 0 END AS INTEGER) AS allow_personal_token,t.destination_scope,CAST(CASE WHEN t.variable_protected THEN 1 ELSE 0 END AS INTEGER) AS variable_protected,CAST(CASE WHEN t.variable_hidden THEN 1 ELSE 0 END AS INTEGER) AS variable_hidden,CAST(CASE WHEN t.variable_expand THEN 1 ELSE 0 END AS INTEGER) AS variable_expand FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_outbox j ON j.id=$1 AND j.target_id=t.id AND j.org_id=t.org_id AND j.project_id=t.project_id AND j.environment_id=t.environment_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.environment_id=$5 AND t.generation=$6 AND j.state='running' AND j.lease_owner=$7 AND ((j.kind='converge' AND t.state='active' AND a.state='active' AND t.paused_at IS NULL) OR (j.kind='activate' AND t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL) OR (j.kind='scrub' AND (t.state='tombstoned' OR (t.state='moving' AND a.state IN ('active','moving') AND t.paused_at IS NULL AND j.route_move_id IS NOT NULL))))
 `
 
 type AdapterWorkerLoadExecutionQueryParams struct {
@@ -2078,6 +2174,78 @@ func (q *Queries) AdapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, a
 	return i, err
 }
 
+const adapterWorkerLockCustodyJob = `-- name: AdapterWorkerLockCustodyJob :execrows
+UPDATE adapter_outbox SET lease_owner=lease_owner WHERE id=$1 AND target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND generation=$6 AND kind=$7 AND state='running' AND lease_owner=$8 AND lease_expires_at>$9
+`
+
+type AdapterWorkerLockCustodyJobParams struct {
+	JobID        string
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+	JobKind      string
+	LeaseOwner   pgtype.Text
+	Now          pgtype.Timestamptz
+}
+
+func (q *Queries) AdapterWorkerLockCustodyJob(ctx context.Context, arg AdapterWorkerLockCustodyJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerLockCustodyJob,
+		arg.JobID,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+		arg.JobKind,
+		arg.LeaseOwner,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const adapterWorkerLockCustodyTarget = `-- name: AdapterWorkerLockCustodyTarget :execrows
+UPDATE adapter_targets SET generation=adapter_targets.generation WHERE adapter_targets.id=$1 AND adapter_targets.org_id=$2 AND adapter_targets.project_id=$3 AND adapter_targets.environment_id=$4 AND adapter_targets.generation=$5
+AND EXISTS (SELECT 1 FROM adapters a WHERE a.id=adapter_targets.adapter_id AND a.org_id=adapter_targets.org_id AND a.project_id=adapter_targets.project_id AND ((CAST($6 AS TEXT)='converge' AND adapter_targets.state='active' AND a.state='active' AND adapter_targets.paused_at IS NULL) OR (CAST($6 AS TEXT)='scrub' AND (adapter_targets.state='tombstoned' OR (adapter_targets.state='moving' AND a.state IN ('active','moving') AND adapter_targets.paused_at IS NULL))) OR (CAST($6 AS TEXT)='activate' AND adapter_targets.state='moving' AND a.state IN ('active','moving') AND adapter_targets.paused_at IS NULL)))
+AND EXISTS (SELECT 1 FROM adapter_outbox j WHERE j.id=$7 AND j.target_id=$1 AND j.org_id=$2 AND j.project_id=$3 AND j.environment_id=$4 AND j.generation=$5 AND j.kind=$6 AND j.state='running' AND j.lease_owner=$8 AND j.lease_expires_at>$9)
+`
+
+type AdapterWorkerLockCustodyTargetParams struct {
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+	JobKind      string
+	JobID        string
+	LeaseOwner   pgtype.Text
+	Now          pgtype.Timestamptz
+}
+
+// Lock target before outbox, matching teardown and provider preparation.
+// No custody mutation can revive a superseded or inadmissible lifecycle.
+func (q *Queries) AdapterWorkerLockCustodyTarget(ctx context.Context, arg AdapterWorkerLockCustodyTargetParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerLockCustodyTarget,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+		arg.JobKind,
+		arg.JobID,
+		arg.LeaseOwner,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adapterWorkerPinExecutionLease = `-- name: AdapterWorkerPinExecutionLease :execrows
 UPDATE adapter_outbox SET lease_owner=lease_owner WHERE id=$1 AND target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND generation=$6 AND state='running' AND lease_owner=$7
 `
@@ -2129,6 +2297,38 @@ func (q *Queries) AdapterWorkerPinExecutionRevision(ctx context.Context, arg Ada
 		arg.ChainProject,
 		arg.ChainEnv,
 		arg.Generation,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const adapterWorkerPrepareExplicitRecovery = `-- name: AdapterWorkerPrepareExplicitRecovery :execrows
+UPDATE adapter_ledger SET state='dispatched',updated_at=$1 WHERE org_id=$2 AND project_id=$3 AND environment_id=$4 AND target_id=$5 AND surface=$6 AND normalized_name=$7 AND state IN ('reserved','dispatched','owned')
+`
+
+type AdapterWorkerPrepareExplicitRecoveryParams struct {
+	Now            pgtype.Timestamptz
+	ChainOrg       string
+	ChainProject   string
+	ChainEnv       string
+	TargetID       string
+	Surface        string
+	NormalizedName string
+}
+
+// Explicit Vault recovery keeps held custody but forbids writer inference
+// after process death, including a mutation of a previously owned path.
+func (q *Queries) AdapterWorkerPrepareExplicitRecovery(ctx context.Context, arg AdapterWorkerPrepareExplicitRecoveryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerPrepareExplicitRecovery,
+		arg.Now,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.TargetID,
+		arg.Surface,
+		arg.NormalizedName,
 	)
 	if err != nil {
 		return 0, err
@@ -2538,7 +2738,7 @@ func (q *Queries) AdapterWorkerReserveLookup(ctx context.Context, arg AdapterWor
 }
 
 const adapterWorkerReservePendingQuery = `-- name: AdapterWorkerReservePendingQuery :one
-SELECT COUNT(*) FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_move_claims c ON c.provider_origin=a.origin AND c.destination_kind=t.destination_kind AND c.destination_owner=t.destination_owner AND c.destination_name=t.destination_name AND c.destination_environment=t.destination_environment WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.environment_id=$4 AND c.target_id<>t.id AND c.surface=$5 AND c.normalized_name=$6
+SELECT COUNT(*) FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id JOIN adapter_route_move_claims c ON c.provider_origin=a.origin AND c.destination_kind=t.destination_kind AND c.destination_owner=t.destination_owner AND c.destination_name=t.destination_name AND c.destination_environment=t.destination_environment AND c.destination_scope=t.destination_scope WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.environment_id=$4 AND c.target_id<>t.id AND c.surface=$5 AND c.normalized_name=$6
 `
 
 type AdapterWorkerReservePendingQueryParams struct {

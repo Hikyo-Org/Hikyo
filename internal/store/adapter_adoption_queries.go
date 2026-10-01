@@ -13,19 +13,35 @@ import (
 )
 
 type adapterAdoptionTarget struct {
-	adapterID, environmentID, origin, destinationKind, priorJob string
-	repositoryID, destinationID, generation, providerBusy       int64
+	adapterID, environmentID, origin, destinationKind, destinationScope, priorJob, provider string
+	repositoryID, destinationID, generation, providerBusy                                   int64
+}
+
+func (q sqliteAdapterStoreQueries) adoptionReclaimReleasedLedger(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
+	return q.queries.AdapterAdoptionReclaimReleasedLedger(ctx, sqlitegen.AdapterAdoptionReclaimReleasedLedgerParams{UpdatedAt: fixedStamp(adoption.AuditAt), TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, DestinationScope: row.destinationScope, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, EffectiveName: entry.EffectiveName, NormalizedName: strings.ToUpper(entry.EffectiveName)})
+}
+
+func (q pgAdapterStoreQueries) adoptionReclaimReleasedLedger(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
+	return q.queries.AdapterAdoptionReclaimReleasedLedger(ctx, pggen.AdapterAdoptionReclaimReleasedLedgerParams{UpdatedAt: pgRequiredTime(adoption.AuditAt), TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, DestinationScope: row.destinationScope, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, EffectiveName: entry.EffectiveName, NormalizedName: strings.ToUpper(entry.EffectiveName)})
+}
+
+func (q sqliteAdapterStoreQueries) adoptionUpdateHeldLedger(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
+	return q.queries.AdapterAdoptionUpdateHeldLedger(ctx, sqlitegen.AdapterAdoptionUpdateHeldLedgerParams{UpdatedAt: fixedStamp(adoption.AuditAt), TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, DestinationScope: row.destinationScope, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, NormalizedName: strings.ToUpper(entry.EffectiveName)})
+}
+
+func (q pgAdapterStoreQueries) adoptionUpdateHeldLedger(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
+	return q.queries.AdapterAdoptionUpdateHeldLedger(ctx, pggen.AdapterAdoptionUpdateHeldLedgerParams{UpdatedAt: pgRequiredTime(adoption.AuditAt), TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, DestinationScope: row.destinationScope, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, NormalizedName: strings.ToUpper(entry.EffectiveName)})
 }
 
 func (q sqliteAdapterStoreQueries) adoptionTarget(ctx context.Context, chain domain.Scope, adoption AdapterAdoption) (adapterAdoptionTarget, error) {
 	c, err := q.queries.AdapterAdoptionTarget(ctx, sqlitegen.AdapterAdoptionTargetParams{At: runtimeSQLiteStamp(adoption.AuditAt), TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
-	return adapterAdoptionTarget{adapterID: c.AdapterID, environmentID: c.EnvironmentID, origin: c.Origin, destinationKind: c.DestinationKind, priorJob: c.PriorJob, repositoryID: c.RepositoryID, destinationID: c.DestinationID, generation: c.Generation, providerBusy: c.ProviderBusy}, err
+	return adapterAdoptionTarget{adapterID: c.AdapterID, environmentID: c.EnvironmentID, origin: c.Origin, destinationKind: c.DestinationKind, destinationScope: c.DestinationScope, priorJob: c.PriorJob, provider: c.Provider, repositoryID: c.RepositoryID, destinationID: c.DestinationID, generation: c.Generation, providerBusy: c.ProviderBusy}, err
 }
 func (q sqliteAdapterStoreQueries) adoptionConflictCount(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
-	return q.queries.AdapterAdoptionConflictCount(ctx, sqlitegen.AdapterAdoptionConflictCountParams{ArtifactID: adoption.ArtifactID, TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Generation: row.generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName})
+	return q.queries.AdapterAdoptionConflictCount(ctx, sqlitegen.AdapterAdoptionConflictCountParams{ArtifactID: adoption.ArtifactID, TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Generation: row.generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, RequireVersion: adapterRequireVersion(row.provider)})
 }
 func (q sqliteAdapterStoreQueries) adoptionInsertLedger(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry, ledgerID string) (int64, error) {
-	return adapterAffected(q.queries.AdapterAdoptionInsertLedger(ctx, sqlitegen.AdapterAdoptionInsertLedgerParams{LedgerID: ledgerID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, TargetID: adoption.TargetID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, EffectiveName: entry.EffectiveName, NormalizedName: strings.ToUpper(entry.EffectiveName), UpdatedAt: fixedStamp(adoption.AuditAt)}))
+	return adapterAffected(q.queries.AdapterAdoptionInsertLedger(ctx, sqlitegen.AdapterAdoptionInsertLedgerParams{LedgerID: ledgerID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, TargetID: adoption.TargetID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, DestinationScope: row.destinationScope, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, EffectiveName: entry.EffectiveName, NormalizedName: strings.ToUpper(entry.EffectiveName), UpdatedAt: fixedStamp(adoption.AuditAt)}))
 }
 func (q sqliteAdapterStoreQueries) adoptionMarkConflict(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
 	return adapterAffected(q.queries.AdapterAdoptionMarkConflict(ctx, sqlitegen.AdapterAdoptionMarkConflictParams{AdoptedAt: runtimeSQLiteStamp(adoption.AuditAt), ArtifactID: adoption.ArtifactID, TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, Surface: entry.Surface, EffectiveName: entry.EffectiveName}))
@@ -44,13 +60,13 @@ func (q sqliteAdapterStoreQueries) adoptionUpdateAuthority(ctx context.Context, 
 }
 func (q pgAdapterStoreQueries) adoptionTarget(ctx context.Context, chain domain.Scope, adoption AdapterAdoption) (adapterAdoptionTarget, error) {
 	c, err := q.queries.AdapterAdoptionTarget(ctx, pggen.AdapterAdoptionTargetParams{At: pgRequiredTime(adoption.AuditAt), TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
-	return adapterAdoptionTarget{adapterID: c.AdapterID, environmentID: c.EnvironmentID, origin: c.Origin, destinationKind: c.DestinationKind, priorJob: c.PriorJob, repositoryID: c.RepositoryID, destinationID: c.DestinationID, generation: c.Generation, providerBusy: c.ProviderBusy}, err
+	return adapterAdoptionTarget{adapterID: c.AdapterID, environmentID: c.EnvironmentID, origin: c.Origin, destinationKind: c.DestinationKind, destinationScope: c.DestinationScope, priorJob: c.PriorJob, provider: c.Provider, repositoryID: c.RepositoryID, destinationID: c.DestinationID, generation: c.Generation, providerBusy: c.ProviderBusy}, err
 }
 func (q pgAdapterStoreQueries) adoptionConflictCount(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
-	return q.queries.AdapterAdoptionConflictCount(ctx, pggen.AdapterAdoptionConflictCountParams{ArtifactID: adoption.ArtifactID, TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Generation: row.generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName})
+	return q.queries.AdapterAdoptionConflictCount(ctx, pggen.AdapterAdoptionConflictCountParams{ArtifactID: adoption.ArtifactID, TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Generation: row.generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, RequireVersion: int32(adapterRequireVersion(row.provider))})
 }
 func (q pgAdapterStoreQueries) adoptionInsertLedger(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry, ledgerID string) (int64, error) {
-	return adapterAffected(q.queries.AdapterAdoptionInsertLedger(ctx, pggen.AdapterAdoptionInsertLedgerParams{LedgerID: ledgerID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, TargetID: adoption.TargetID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, EffectiveName: entry.EffectiveName, NormalizedName: strings.ToUpper(entry.EffectiveName), UpdatedAt: pgRequiredTime(adoption.AuditAt)}))
+	return adapterAffected(q.queries.AdapterAdoptionInsertLedger(ctx, pggen.AdapterAdoptionInsertLedgerParams{LedgerID: ledgerID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, TargetID: adoption.TargetID, ProviderOrigin: row.origin, DestinationKind: row.destinationKind, DestinationScope: row.destinationScope, RepositoryID: row.repositoryID, DestinationID: row.destinationID, Surface: entry.Surface, EffectiveName: entry.EffectiveName, NormalizedName: strings.ToUpper(entry.EffectiveName), UpdatedAt: pgRequiredTime(adoption.AuditAt)}))
 }
 func (q pgAdapterStoreQueries) adoptionMarkConflict(ctx context.Context, chain domain.Scope, adoption AdapterAdoption, row adapterAdoptionTarget, entry AdapterConflictEntry) (int64, error) {
 	return adapterAffected(q.queries.AdapterAdoptionMarkConflict(ctx, pggen.AdapterAdoptionMarkConflictParams{AdoptedAt: pgRequiredTime(adoption.AuditAt), ArtifactID: adoption.ArtifactID, TargetID: adoption.TargetID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: row.environmentID, Surface: entry.Surface, EffectiveName: entry.EffectiveName}))
