@@ -94,13 +94,20 @@ closed and require pinned HTTPS.
 - Six new protocol/platform helpers were investigated without new findings.
   Discovery also identified three additional bugs in HA receipt-key freshness
   and grouped access-rule mutation recovery. Their fixes pass targeted tests;
-  forced DeepSec revalidation and exact-head remote CI are still pending.
+  final forced DeepSec revalidation records all six follow-up verdicts fixed,
+  with no true positives or uncertainty. Exact-head remote CI remains pending.
 - Two independent replicas pass receipt/fetch/reconciliation race regressions
   on both engines, three repetitions each. Rotation invalidates old receipts
   everywhere, with fresh cursor and change-token equality across replicas.
 - Web: final 1,464 unit tests, typecheck and lint pass. Actual generated-transport
   rule recovery tests cover lost/malformed responses, partial deletion, session
   refresh refusal and stale cached controls during failed/deferred listing.
+- Full local preflight passes in 111 seconds, including build, vet, format,
+  generated contracts, client/web checks and chart/release fixtures. The fresh
+  ordered Go core run has no failures so far; its app tail is still running.
+- Final key-door discovery investigates four files without new findings. The
+  isolated finding inventory contains 265 records: 255 fixed, three false
+  positives, four duplicates and the three unresolved policy/custody gates.
 
 ### Earlier checkpoint
 
