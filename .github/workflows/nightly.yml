@@ -23,6 +23,10 @@ env:
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
+    # Required operator gate: this environment must allow only main, and the
+    # app private key must exist here, never as a repository-scoped secret.
+    # See docs/handoff/nightly-release-custody.md before enabling publication.
+    environment: nightly-release
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.identity.outputs.tag }}

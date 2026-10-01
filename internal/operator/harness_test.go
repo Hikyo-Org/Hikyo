@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 	opclient "github.com/Hikyo-Org/hikyo/internal/operator/client"
 )
@@ -57,14 +58,15 @@ const (
 // It also serves `/meta` and the delivery-target report and tombstone routes;
 // requests counts delivery fetches only.
 type deliveryStub struct {
-	mu             sync.Mutex
-	status         int
-	json           string
-	lastCursor     string
-	lastAck        string
-	lastProjection string
-	requests       int
-	bearers        []string
+	mu              sync.Mutex
+	status          int
+	json            string
+	unmarkedRefusal bool
+	lastCursor      string
+	lastAck         string
+	lastProjection  string
+	requests        int
+	bearers         []string
 
 	meta         string
 	metaRequests int
@@ -122,6 +124,11 @@ func (s *deliveryStub) handler(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	w.Header().Set("Content-Type", "application/json")
+	// The normal fixture models Hikyo's matched canonical delivery route.
+	// Unmatched/older-server refusals deliberately omit this authority marker.
+	if status == http.StatusNotFound && !s.unmarkedRefusal {
+		w.Header().Set(delivery.RefusalHeader, delivery.RefusalVersion)
+	}
 	w.WriteHeader(status)
 	if s.json != "" {
 		_, _ = io.WriteString(w, s.json)

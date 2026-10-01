@@ -231,8 +231,9 @@ func (s *composeStack) renderOffline(ctx context.Context, ios IO, lock *compose.
 			}
 			records = append(records, compose.OfflineRecord{
 				RecordID: id, KeyID: row.KeyID, KeyName: row.Name, Classification: row.Classification,
-				OccurredAt: ios.now().UTC().Format(time.RFC3339), CredentialID: aad.CredentialID,
+				OccurredAt: ios.now().UTC().Format(time.RFC3339Nano), CredentialID: aad.CredentialID,
 				Generation: stamp, ServedFrom: aad.IssuedAt,
+				SnapshotReceipt: row.Receipt,
 			})
 		}
 	}
@@ -314,6 +315,7 @@ func liveRenderInput(cfg *compose.Config, configOnly bool, keys []apigen.Deliver
 	for _, key := range keys {
 		row := compose.RenderSourceRow{
 			KeyID: key.KeyId, Name: key.Name, Classification: string(key.Classification),
+			Receipt: deliveryReceipt(key),
 		}
 		switch {
 		case !configOnly && isUnrevealedSecret(key):
@@ -335,6 +337,7 @@ func offlineRenderInput(cfg *compose.Config, configOnly bool, rows []compose.Sna
 		sourceRows = append(sourceRows, compose.RenderSourceRow{
 			KeyID: row.KeyID, Name: row.Name, Classification: row.Classification,
 			State: compose.RenderRowValued, Value: row.Value,
+			Receipt: row.Receipt,
 		})
 	}
 	return renderInput(cfg, configOnly, compose.AbsentKeyRefuseNotInSnapshot, sourceRows)

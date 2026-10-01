@@ -15,7 +15,7 @@ type adapterRuntimeQueries interface {
 	adapterWorkerPinExecutionRevision(ctx context.Context, revision int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
 	adapterWorkerPinExecutionLease(ctx context.Context, jobID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (int64, error)
 	adapterWorkerLoadExecutionQuery(ctx context.Context, jobID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (adapterWorkerLoadExecutionQueryRow, error)
-	adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) ([]adapterWorkerLoadExecutionLedgerQueryRow, error)
+	adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) ([]adapterWorkerLoadExecutionLedgerQueryRow, error)
 	adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error)
 	adapterWorkerLoadExecutionEntryQuery(ctx context.Context, targetID string, snapshotID string, chainOrg string, chainProject string, chainEnv string) ([]adapterWorkerLoadExecutionEntryQueryRow, error)
 	adapterWorkerLoadActivationQuery(ctx context.Context, jobID string, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (adapterWorkerLoadActivationQueryRow, error)
@@ -127,10 +127,11 @@ type adapterWorkerLoadExecutionQueryRow struct {
 	VariableExpand         int64
 }
 type adapterWorkerLoadExecutionLedgerQueryRow struct {
-	Surface       string
-	EffectiveName string
-	State         string
-	Missing       bool
+	Surface         string
+	EffectiveName   string
+	State           string
+	Missing         bool
+	AdoptionPending bool
 }
 type adapterWorkerLoadExecutionSnapshotQueryRow struct {
 	ID                string
@@ -259,13 +260,13 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionQuery(ctx context
 	}
 	return adapterWorkerLoadExecutionQueryRow{Provider: value.Provider, Origin: value.Origin, ID: value.ID, CredentialCiphertext: value.CredentialCiphertext, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, DestinationID: value.DestinationID, RepositoryID: value.RepositoryID, Visibility: value.Visibility, SelectedRepositoryIds: []byte(value.SelectedRepositoryIds), NamePrefix: value.NamePrefix, Generation: value.Generation, Revision: value.Revision, SpkiPin: value.SpkiPin, CaBundlePem: value.CaBundlePem, AllowPersonalToken: value.AllowPersonalToken, DestinationScope: value.DestinationScope, VariableProtected: value.VariableProtected, VariableHidden: value.VariableHidden, VariableExpand: value.VariableExpand}, nil
 }
-func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) ([]adapterWorkerLoadExecutionLedgerQueryRow, error) {
-	value, err := q.queries.AdapterWorkerLoadExecutionLedgerQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionLedgerQueryParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
+func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) ([]adapterWorkerLoadExecutionLedgerQueryRow, error) {
+	value, err := q.queries.AdapterWorkerLoadExecutionLedgerQuery(ctx, sqlitegen.AdapterWorkerLoadExecutionLedgerQueryParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
 	if err != nil {
 		return nil, err
 	}
 	return mapRows(value, func(c sqlitegen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
-		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0)}, nil
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0), AdoptionPending: c.AdoptionPending != 0}, nil
 	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {
@@ -593,13 +594,13 @@ func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionQuery(ctx context.Con
 	}
 	return adapterWorkerLoadExecutionQueryRow{Provider: value.Provider, Origin: value.Origin, ID: value.ID, CredentialCiphertext: value.CredentialCiphertext, DestinationKind: value.DestinationKind, DestinationOwner: value.DestinationOwner, DestinationName: value.DestinationName, DestinationEnvironment: value.DestinationEnvironment, DestinationID: value.DestinationID, RepositoryID: value.RepositoryID, Visibility: value.Visibility, SelectedRepositoryIds: value.SelectedRepositoryIds, NamePrefix: value.NamePrefix, Generation: value.Generation, Revision: value.Revision, SpkiPin: value.SpkiPin, CaBundlePem: value.CaBundlePem, AllowPersonalToken: int64(value.AllowPersonalToken), DestinationScope: value.DestinationScope, VariableProtected: int64(value.VariableProtected), VariableHidden: int64(value.VariableHidden), VariableExpand: int64(value.VariableExpand)}, nil
 }
-func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) ([]adapterWorkerLoadExecutionLedgerQueryRow, error) {
-	value, err := q.queries.AdapterWorkerLoadExecutionLedgerQuery(ctx, pggen.AdapterWorkerLoadExecutionLedgerQueryParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
+func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) ([]adapterWorkerLoadExecutionLedgerQueryRow, error) {
+	value, err := q.queries.AdapterWorkerLoadExecutionLedgerQuery(ctx, pggen.AdapterWorkerLoadExecutionLedgerQueryParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
 	if err != nil {
 		return nil, err
 	}
 	return mapRows(value, func(c pggen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
-		return adapterWorkerLoadExecutionLedgerQueryRow(c), nil
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0}, nil
 	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {

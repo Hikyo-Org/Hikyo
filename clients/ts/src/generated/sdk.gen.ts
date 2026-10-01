@@ -2025,6 +2025,11 @@ export const samlStart = <ThrowOnError extends boolean = false>(options: Options
  * Destination, both Issuer legs, RelayState, InResponseTo and initiator
  * binding must all resolve to the same live transaction before an
  * ordinary session can be minted, linked or reauthenticated.
+ * Successful browser requests accepting HTML continue with a 303 to
+ * `/auth/saml/done?state=<validated RelayState>` and the ordinary session
+ * and CSRF cookie pair. Requests with no HTML Accept range, including
+ * application/json callers, retain the JSON response. Errors never
+ * redirect or mint browser cookies.
  *
  */
 export const samlAcs = <ThrowOnError extends boolean = false>(options: Options<SamlAcsData, ThrowOnError>) => (options.client ?? client).post<SamlAcsResponses, SamlAcsErrors, ThrowOnError>({
@@ -2947,6 +2952,9 @@ export const fetchDelivery = <ThrowOnError extends boolean = false>(options: Opt
  * Accepts records fsynced by a client before offline plaintext release.
  * Idempotency is scoped to the presenting principal and record id. A live
  * credential may reconcile records served by a credential since revoked.
+ * Each record requires the authenticated snapshot receipt returned with
+ * that key's plaintext. Unsigned legacy records are refused; the client
+ * must fetch online to regenerate a receipt-backed offline snapshot.
  *
  */
 export const reconcileOfflineRecords = <ThrowOnError extends boolean = false>(options: Options<ReconcileOfflineRecordsData, ThrowOnError>) => (options.client ?? client).post<ReconcileOfflineRecordsResponses, ReconcileOfflineRecordsErrors, ThrowOnError>({

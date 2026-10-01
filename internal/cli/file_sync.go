@@ -242,7 +242,7 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 	for _, k := range resp.Keys {
 		rows = append(rows, filesync.Row{KeyID: k.KeyId, Name: k.Name, Classification: string(k.Classification), Value: k.Value})
 		if k.Value != nil {
-			snapshotRows = append(snapshotRows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value})
+			snapshotRows = append(snapshotRows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value, Receipt: deliveryReceipt(k)})
 		}
 	}
 	res, err := s.publish(ctx, dest, rows)
@@ -456,8 +456,9 @@ func (s *fileSyncSession) offline(ctx context.Context, ios IO, dest *filesync.De
 		}
 		records = append(records, compose.OfflineRecord{
 			RecordID: id, KeyID: r.KeyID, KeyName: r.Name, Classification: r.Classification,
-			OccurredAt: ios.now().UTC().Format(time.RFC3339), CredentialID: aad.CredentialID,
+			OccurredAt: ios.now().UTC().Format(time.RFC3339Nano), CredentialID: aad.CredentialID,
 			Generation: stamp, ServedFrom: aad.IssuedAt,
+			SnapshotReceipt: r.Receipt,
 		})
 	}
 	if err := compose.Append(s.stateDir, records); err != nil {

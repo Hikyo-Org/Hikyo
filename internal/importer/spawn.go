@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 )
 
 // The shared sanitized subprocess spawn path (import-paths ADR § Trust, rule 4:
@@ -34,7 +36,7 @@ import (
 const hikyoEnvPrefix = "HIKYO_"
 
 const (
-	internalSubprocessMode = "__hikyo-import-subprocess"
+	internalSubprocessMode = multicall.ImportSubprocess
 	subprocessSpecEnv      = "HIKYO_IMPORT_SUBPROCESS_SPEC"
 	subprocessExitTimeout  = 124
 	subprocessExitOverflow = 125

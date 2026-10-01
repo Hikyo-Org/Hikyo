@@ -234,6 +234,23 @@ describe('Values reveal accessibility', () => {
 });
 
 describe('Values ceremony task ownership', () => {
+  it('clears a pending native clipboard disclosure completed after navigation, without read permission', async () => {
+    const pending = deferred<void>();
+    const writeText = vi.fn((value: string) => value === 'pending-secret' ? pending.promise : Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
+    mocks.revealOne.mockResolvedValueOnce({ key_id: 'key-a', name: 'KEY_A', value: 'pending-secret' });
+    const { container, unmount } = await renderValues();
+    await act(async () => button(container, 'Copy KEY_A (audited disclosure)').click());
+    await settle();
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('pending-secret');
+    await act(async () => button(container, 'Navigate').click());
+    await act(async () => pending.resolve());
+    await settle();
+    expect(writeText.mock.calls.map(([value]) => value)).toEqual(['pending-secret', '']);
+    expect(container.textContent).not.toContain('Copied, and recorded');
+    await unmount();
+  });
   it('ignores a guard completion from the environment visited before navigation', async () => {
     const pending = deferred<RevealWindow>();
     mocks.fetchRevealWindow.mockImplementationOnce(() => pending.promise);

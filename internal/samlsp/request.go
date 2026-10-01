@@ -92,6 +92,16 @@ func validateAuthnRequestConfig(config AuthnRequestConfig) error {
 			return ErrInvalidAuthnRequestConfig
 		}
 	}
+	endpoint, _ := url.Parse(config.IDPSSOURL)
+	query, err := url.ParseQuery(endpoint.RawQuery)
+	if err != nil {
+		return ErrInvalidAuthnRequestConfig
+	}
+	for _, parameter := range []string{"SAMLRequest", "SAMLResponse", "RelayState", "SigAlg", "Signature"} {
+		if query.Has(parameter) {
+			return ErrInvalidAuthnRequestConfig
+		}
+	}
 	if !config.Sign {
 		return nil
 	}

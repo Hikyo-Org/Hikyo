@@ -2,8 +2,6 @@ package importer
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -283,8 +282,8 @@ func SourceFileReference(source string, data []byte, records []Record) string {
 // NewValuesCommitmentKey creates private blinding material for one values file.
 // Never copy this key into a committable manifest or template.
 func NewValuesCommitmentKey() (string, error) {
-	key := make([]byte, sha256.Size)
-	if _, err := rand.Read(key); err != nil {
+	key, err := crypto.NewImportCommitmentKey()
+	if err != nil {
 		return "", fmt.Errorf("import: generate private values commitment key: %w", err)
 	}
 	defer clear(key)
@@ -305,9 +304,11 @@ func ValuesCommitment(values ValuesFile) (string, error) {
 		return "", err
 	}
 	defer clear(body)
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write(body)
-	return "hmac-sha256:" + hex.EncodeToString(mac.Sum(nil)), nil
+	digest, err := crypto.ImportValuesCommitment(key, body)
+	if err != nil {
+		return "", err
+	}
+	return "hmac-sha256:" + hex.EncodeToString(digest), nil
 }
 
 // ParseTemplate reads a mapping template strictly.

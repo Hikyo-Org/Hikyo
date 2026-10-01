@@ -40,10 +40,11 @@ const (
 )
 
 type composeRig struct {
-	origin   string
-	db       *store.DB
-	stateDir string
-	credID   string
+	origin    string
+	db        *store.DB
+	stateDir  string
+	credID    string
+	cliSocket string
 }
 
 func bootComposeRig(t *testing.T, engine store.Engine) *composeRig {
@@ -77,7 +78,7 @@ func bootComposeRig(t *testing.T, engine store.Engine) *composeRig {
 
 	stateDir := t.TempDir()
 	writeTrustStore(t, stateDir, origin, cfg.CLISocket)
-	return &composeRig{origin: origin, db: db, stateDir: stateDir}
+	return &composeRig{origin: origin, db: db, stateDir: stateDir, cliSocket: cfg.CLISocket}
 }
 
 // seedComposeCatalogue lays down a minimal catalogue with valid prefixed-UUID
@@ -478,28 +479,65 @@ func TestComposeCLISyncApplyPendingRetry(t *testing.T) {
 }
 
 func TestComposeCLIReconcile(t *testing.T) {
-	rig := bootComposeRig(t, store.EngineSQLite)
+	runComposeCLIReconcile(t, store.EngineSQLite)
+}
+
+func TestComposeCLIReconcilePostgres(t *testing.T) {
+	runComposeCLIReconcile(t, store.EnginePostgres)
+}
+
+func runComposeCLIReconcile(t *testing.T, engine store.Engine) {
+	rig := bootComposeRig(t, engine)
 	_, tokenFile := rig.mintWorkload(t)
 	work := t.TempDir()
 	runtimeDir := tmpfsRuntimeDir(t)
 	writeRenderConfig(t, work, rig.origin, runtimeDir)
 
-	// Buffer an offline-served disclosure record under the stack's state dir.
-	sd := filepath.Join(rig.stateDir, "compose", "acme")
-	if err := os.MkdirAll(sd, 0o700); err != nil {
-		t.Fatal(err)
+	// Receive real server-authenticated receipts through the production CLI
+	// fetch and encrypted snapshot writer, not a synthetic unsigned record.
+	if code, _, stderr := rig.runCLI(t, work, nil, "compose", "render", "--token-file", tokenFile); code != cli.ExitOK {
+		t.Fatalf("initial receipt-bearing render exit=%d; stderr=%s", code, stderr)
 	}
-	rid, err := composeNewRecordID(t)
+	configPath := filepath.Join(work, "hikyo-compose.yaml")
+	config, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := composeOfflineRecord(rid, cKeyURL, "DATABASE_URL", rig.credID)
-	if err := appendOffline(sd, rec); err != nil {
+	config = append(config, []byte("\nsnapshot:\n  offline_serve: true\n")...)
+	if err := os.WriteFile(configPath, config, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Temporarily move only this test-owned Unix listener pathname. The live
+	// server and origin remain unchanged, so restoring it permits reconciliation
+	// of the same receipts after a genuinely unavailable CLI transport.
+	offlineSocket := rig.cliSocket + ".offline"
+	if err := os.Rename(rig.cliSocket, offlineSocket); err != nil {
+		t.Fatal(err)
+	}
+	restored := false
+	defer func() {
+		if !restored {
+			if err := os.Rename(offlineSocket, rig.cliSocket); err != nil {
+				t.Errorf("restore test socket: %v", err)
+			}
+		}
+	}()
+	sd := filepath.Join(rig.stateDir, "compose", "acme")
+	code, _, stderr := rig.runCLI(t, work, nil, "compose", "render", "--token-file", tokenFile)
+	if code != cli.ExitOK || !strings.Contains(stderr, "serving stale") {
+		t.Fatalf("offline receipt-bearing render exit=%d; stderr=%s", code, stderr)
+	}
+	records, _, err := compose.Pending(sd)
+	if err != nil || len(records) != 1 || records[0].KeyID != cKeyURL || records[0].SnapshotReceipt == "" || records[0].CredentialID != rig.credID {
+		t.Fatalf("real offline receipt missing: records=%d err=%v", len(records), err)
+	}
+	if err := os.Rename(offlineSocket, rig.cliSocket); err != nil {
+		t.Fatal(err)
+	}
+	restored = true
 
 	// A live render flushes the buffered records before fetching.
-	code, _, stderr := rig.runCLI(t, work, nil, "compose", "render", "--token-file", tokenFile)
+	code, _, stderr = rig.runCLI(t, work, nil, "compose", "render", "--token-file", tokenFile)
 	if code != cli.ExitOK {
 		t.Fatalf("render exit=%d; stderr=%s", code, stderr)
 	}
@@ -707,23 +745,6 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
-}
-
-func composeNewRecordID(t *testing.T) (string, error) {
-	t.Helper()
-	return compose.NewRecordID()
-}
-
-func composeOfflineRecord(rid, keyID, name, credID string) compose.OfflineRecord {
-	now := "2026-08-19T10:00:00Z"
-	return compose.OfflineRecord{
-		RecordID: rid, KeyID: keyID, KeyName: name, Classification: "config",
-		OccurredAt: now, CredentialID: credID, Generation: "v1-00000000000000000000000000000000", ServedFrom: now,
-	}
-}
-
-func appendOffline(stateDir string, rec compose.OfflineRecord) error {
-	return compose.Append(stateDir, []compose.OfflineRecord{rec})
 }
 
 func countOfflineFiles(t *testing.T, stateDir string) int {

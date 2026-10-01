@@ -24,6 +24,7 @@ import {
   templatesAt,
   whoCan,
   type ProjectNode,
+  type GrantFailureContext,
 } from './access.ts';
 import { ApiError } from './client.ts';
 import type { Grant } from './identities.ts';
@@ -369,8 +370,10 @@ describe('grant refusals', () => {
     expect(grantFailureText(new ApiError(403, 'x'), { operation: 'create', scope: 'org' })).toContain('second factor');
   });
 
-  it('reads a 409 on revoke as the lockout invariant', () => {
-    expect(grantFailureText(new ApiError(409, 'x'), { operation: 'revoke', scope: 'org' })).toContain('manage its members');
+  it.each(['org', 'instance'] satisfies NonNullable<GrantFailureContext['scope']>[])('does not invent a lockout cause for a detail-free %s revoke conflict', (scope) => {
+    const message = grantFailureText(new ApiError(409, 'x'), { operation: 'revoke', scope });
+    expect(message).toContain('origins');
+    expect(message).not.toContain('would leave');
   });
 
   it('does not invent MFA or lockout remedies for instance and create refusals', () => {

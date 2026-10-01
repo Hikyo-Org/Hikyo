@@ -668,7 +668,10 @@ const (
 	// declared here rather than deferred: every field required unless the
 	// schema says otherwise, ids are the rows' own ids, IdP-originated strings
 	// are sanitized and bounded free text, and the derived subject NEVER
-	// appears in plaintext — `subject_digest` is its SHA-256 hex.
+	// appears in plaintext. `subject_digest` is a per-event privately blinded
+	// HMAC-SHA256 commitment, not a guessable bare subject hash. Immutable
+	// resource/account IDs provide correlation. Historical bare hashes remain
+	// sensitive; new commitments retain the same 64-character hex spelling.
 	//
 	// One entry the ADR table names is deliberately ABSENT: `scim.binding_updated`.
 	// See the handoff — the locked administration surface fixes no
@@ -1647,6 +1650,8 @@ var registry = map[EventType]TypeSpec{
 		"served_credential_id": {Kind: KindString},
 		"generation":           {Kind: KindString},
 		"served_from":          {Kind: KindString},
+		"receipt_verified":     {Kind: KindBool},
+		"snapshot_commitment":  {Kind: KindString},
 	}),
 	EventValuesExported: hierarchyEvent(Schema{
 		"parameters": {Kind: KindFreeTextMap, MaxLen: 32, MaxBytes: 256, Required: true},

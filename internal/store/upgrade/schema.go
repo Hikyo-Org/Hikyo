@@ -144,10 +144,17 @@ func inspectAppliedWith(ctx context.Context, queryRows catalogQuery, engine rele
 	return applied, nil
 }
 
-// SQLite reserves the literal "sqlite_" prefix for its own schema objects.
-// Do not use LIKE here: its underscore wildcard would also hide attacker-added
-// objects named sqliteX..., allowing them to escape the catalog digest.
-const sqliteCatalogSQL = `SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema WHERE substr(name,1,7) <> 'sqlite_' ORDER BY type,name`
+// Reserved names are not an admission boundary when loading database bytes:
+// writable_schema can plant executable sqlite_-prefixed triggers. Exclude only
+// real engine bookkeeping definitions, never arbitrary reserved-prefix SQL.
+// Preserve the existing digest for legitimate databases and ANALYZE statistics.
+const sqliteCatalogSQL = `SELECT json_array(type,name,tbl_name,sql) FROM sqlite_schema
+WHERE NOT (type='index' AND sql IS NULL AND substr(name,1,17)='sqlite_autoindex_')
+AND NOT (type='table' AND (
+ (name='sqlite_sequence' AND sql='CREATE TABLE sqlite_sequence(name,seq)') OR
+ (name='sqlite_stat1' AND sql='CREATE TABLE sqlite_stat1(tbl,idx,stat)') OR
+ (name='sqlite_stat4' AND sql='CREATE TABLE sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample)')
+)) ORDER BY type,name`
 
 // PostgreSQL catalog output excludes OIDs and schema owners so independently
 // created databases with the same migration bytes compare exactly. Include

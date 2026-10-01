@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
-const rootKeyStageMode = "__hikyo-stage-root-key"
+const rootKeyStageMode = multicall.RootKeyStage
 
 func runRootKeyStageMode(args []string) (bool, int) {
 	if len(args) == 0 || args[0] != rootKeyStageMode {

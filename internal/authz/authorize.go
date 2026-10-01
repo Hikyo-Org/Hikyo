@@ -41,9 +41,10 @@ func NewTxAuthorizer(r *authn.Resolver, tok *TxToken) *TxAuthorizer {
 //
 //   - Tenant-scoped operation, chain missing at any level OR formula denied:
 //     domain.ErrNotFound — unauthorized ≡ nonexistent, one error, one code
-//     path, and exactly one chain-resolution query either way (the grant
-//     lookup is skipped when the chain is missing; a probe cannot count its
-//     way to which level failed).
+//     path, and exactly one chain-resolution query either way. Missing chains
+//     also perform caller grant/rule and applicable decoy key reads, matching
+//     the refusal work for an existing inaccessible chain without minting a
+//     proof from unresolved or decoy data.
 //   - Instance-scoped operation, formula denied: domain.ErrUnauthorized —
 //     the grant-refusal contract; there is no tenant object whose
 //     nonexistence could be mimicked.
@@ -171,6 +172,9 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		// claims). Any other resolver error is a loud bug, not a probe
 		// outcome, and mints no event.
 		if errors.Is(err, domain.ErrNotFound) {
+			if workErr := a.missingScopeRefusalWork(ctx, caller, spec, key); workErr != nil {
+				return nil, workErr
+			}
 			a.captureDenial(ctx, principal, op, spec, resolutionUnresolvable, domain.Scope{}, scope)
 		}
 		return nil, err
@@ -261,6 +265,30 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		return nil, domain.ErrUnauthorized
 	}
 	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected, key: bound}, nil
+}
+
+// missingScopeRefusalWork equalizes application-controlled query work with a
+// resolvable grant denial. Only the authenticated caller's grants/rules are
+// read; key metadata uses an empty decoy chain, never caller-asserted ancestry.
+// All results are discarded. The caller retains the original missing result
+// and cannot enter formula evaluation or proof construction from this helper.
+func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Identity, spec authorizationSpec, key *KeyTarget) error {
+	if _, err := a.r.Grants(ctx, caller.Principal); err != nil {
+		return err
+	}
+	if !rulesApply(caller) || !ruleSatisfiable(spec.formula) {
+		return nil
+	}
+	if _, err := a.r.Rules(ctx, caller.Principal); err != nil {
+		return err
+	}
+	if key != nil {
+		_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 // machineRevealWithdrawn reports whether a machine caller is reaching for a

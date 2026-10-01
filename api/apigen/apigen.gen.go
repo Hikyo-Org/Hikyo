@@ -6159,6 +6159,11 @@ type DeliveredKey struct {
 	// the snapshot does not carry.
 	Presence DeliveredKeyPresence `json:"presence"`
 
+	// SnapshotReceipt Authenticated server receipt for this delivered value, present only
+	// with value. Store inside the encrypted offline snapshot. Required
+	// for later offline disclosure reconciliation; never log it.
+	SnapshotReceipt *string `json:"snapshot_receipt,omitempty"`
+
 	// Value The delivered plaintext. Present ONLY when the caller was
 	// authorized to receive it (see the schema description); absent for a
 	// presence-only key. The maxLength matches the value-write bound.
@@ -7955,6 +7960,12 @@ type OfflineDeliveryRecord struct {
 
 	// ServedFrom RFC 3339 UTC, microsecond precision.
 	ServedFrom Timestamp `json:"served_from"`
+
+	// SnapshotReceipt Receipt delivered with this key's plaintext. Authenticates scope,
+	// principal, serving credential, key metadata, snapshot identity and
+	// issuance window. Unsigned legacy claims are refused. The later
+	// offline serving time and local generation remain client assertions.
+	SnapshotReceipt string `json:"snapshot_receipt"`
 }
 
 // OidcProvider defines model for OidcProvider.

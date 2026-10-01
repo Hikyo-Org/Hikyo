@@ -73,6 +73,7 @@ type SnapshotRow struct {
 	KeyID          string `json:"key_id"`
 	Classification string `json:"classification"`
 	Value          string `json:"value"`
+	Receipt        string `json:"snapshot_receipt"`
 }
 
 // SnapshotPayload is the plaintext a snapshot seals: the delivered rows and the
@@ -95,6 +96,9 @@ type hwm struct {
 // advances snapshot.hwm to (issued_at, header-digest) and REFUSES to save an
 // issuance older than the current high-water mark (a rollback attempt).
 func SaveSnapshot(keys *crypto.LocalKeys, binding crypto.SnapshotBinding, payload SnapshotPayload) error {
+	if err := payload.validateReceipts(); err != nil {
+		return err
+	}
 	header, err := binding.CanonicalAAD()
 	if err != nil {
 		return err
@@ -278,7 +282,19 @@ func LoadSnapshot(keys *crypto.LocalKeys, expect crypto.SnapshotBinding, now tim
 	if err := dec.Decode(&payload); err != nil {
 		return zeroP, binding, fmt.Errorf("compose: parse snapshot payload: %w", err)
 	}
+	if err := payload.validateReceipts(); err != nil {
+		return zeroP, binding, err
+	}
 	return payload, binding, nil
+}
+
+func (p SnapshotPayload) validateReceipts() error {
+	for _, row := range p.Rows {
+		if strings.TrimSpace(row.Receipt) == "" {
+			return errors.New("compose: snapshot lacks server-authenticated delivery receipts; refresh online to regenerate the snapshot before offline use")
+		}
+	}
+	return nil
 }
 
 // Serialize the complete snapshot/watermark transaction across processes.

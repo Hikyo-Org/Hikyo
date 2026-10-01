@@ -208,12 +208,20 @@ func TestStateSerializesConcurrentSessionAndContextMutations(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			name := fmt.Sprintf("instance-%d", i)
-			errs <- state.PutSession(SessionArtifact{Instance: name, Origin: "https://example.test", Token: "token"})
+			if err := state.PutSession(SessionArtifact{Instance: name, Origin: "https://example.test", Token: "token"}); err != nil {
+				errs <- fmt.Errorf("PutSession %s: %w", name, err)
+			} else {
+				errs <- nil
+			}
 		}()
 		go func() {
 			defer wg.Done()
 			name := fmt.Sprintf("context-%d", i)
-			errs <- state.PutContext(Context{Name: name, Instance: "local"})
+			if err := state.PutContext(Context{Name: name, Instance: "local"}); err != nil {
+				errs <- fmt.Errorf("PutContext %s: %w", name, err)
+			} else {
+				errs <- nil
+			}
 		}()
 	}
 	wg.Wait()

@@ -28,6 +28,11 @@ func strPtr(s string) *string { return &s }
 // deliveryJSON marshals a DeliveryResponse the fake server returns.
 func deliveryJSON(t *testing.T, resp apigen.DeliveryResponse) string {
 	t.Helper()
+	for index := range resp.Keys {
+		if resp.Keys[index].Value != nil && resp.Keys[index].SnapshotReceipt == nil {
+			resp.Keys[index].SnapshotReceipt = strPtr("server-receipt-" + resp.Keys[index].KeyId)
+		}
+	}
 	b, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatal(err)
@@ -450,6 +455,24 @@ func TestRunStaleLineOnOfflineServe(t *testing.T) {
 	if !slices.Contains(captured, "DATABASE_URL=postgres://cached") {
 		t.Fatalf("offline value not delivered to child env: %v", captured)
 	}
+	records, _, err := compose.Pending(sd)
+	if err != nil || len(records) != 1 || records[0].SnapshotReceipt != "server-receipt" {
+		t.Fatalf("offline run dropped receipt: records=%+v err=%v", records, err)
+	}
+}
+
+func TestDeliveryReceiptsSurviveSnapshotAndReconciliationAdapters(t *testing.T) {
+	rows := deliveredRows([]apigen.DeliveredKey{
+		{KeyId: "key_valued", Name: "TOKEN", Classification: apigen.KeyClassificationSecret, Value: strPtr("value"), SnapshotReceipt: strPtr("authenticated-receipt")},
+		{KeyId: "key_presence", Name: "PRESENCE", Classification: apigen.KeyClassificationSecret},
+	})
+	if len(rows) != 1 || rows[0].Receipt != "authenticated-receipt" {
+		t.Fatalf("delivered receipt lost: %+v", rows)
+	}
+	records := toAPIRecords([]compose.OfflineRecord{{SnapshotReceipt: rows[0].Receipt}})
+	if len(records) != 1 || records[0].SnapshotReceipt != "authenticated-receipt" {
+		t.Fatalf("reconciliation receipt lost: %+v", records)
+	}
 }
 
 func TestRunOfflineExpiredRefused(t *testing.T) {
@@ -517,7 +540,7 @@ func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedRenderSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token", "api",
-		[]compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
+		[]compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render"})
@@ -878,6 +901,7 @@ func TestComposeRenderFlushesBeforeFetch(t *testing.T) {
 		RecordID: rid, KeyID: "key_1", KeyName: "DATABASE_URL", Classification: "config",
 		OccurredAt: "2026-08-19T10:00:00Z", CredentialID: "cred_1",
 		Generation: "v1-00000000000000000000000000000000", ServedFrom: "2026-08-19T10:00:00Z",
+		SnapshotReceipt: "server-receipt-key_1",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1072,7 +1096,7 @@ func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T)
 	origin := "https://hikyo.example"
 	projectDir := t.TempDir()
 	stateDir := filepath.Join(t.TempDir(), "compose-state")
-	rows := []compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://x"}}
+	rows := []compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://x"}}
 	seedRenderSnapshot(t, stateDir, origin, "wl_token", "api", rows)
 	keys, err := crypto.LoadOrCreateLocalKey(stateDir)
 	if err != nil {
@@ -1111,7 +1135,7 @@ func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T)
 	if pendingErr != nil {
 		t.Fatal(pendingErr)
 	}
-	if len(records) != 1 || records[0].KeyID != "key_1" {
+	if len(records) != 1 || records[0].KeyID != "key_1" || records[0].SnapshotReceipt != rows[0].Receipt {
 		t.Fatalf("pending offline records = %+v after err=%v, want disclosure durable before publish", records, err)
 	}
 	if stamps, stampErr := compose.CurrentStamps(projectDir); stampErr != nil || len(stamps) != 0 {
@@ -1196,7 +1220,7 @@ func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
 	}
 	sd := filepath.Join(stateDir, "compose", "acme")
 	seedRenderSnapshot(t, sd, origin, "wl_token", "api",
-		[]compose.SnapshotRow{{Name: "LD_PRELOAD", KeyID: "key_ld", Classification: "config", Value: "/evil.so"}})
+		[]compose.SnapshotRow{{Receipt: "server-receipt", Name: "LD_PRELOAD", KeyID: "key_ld", Classification: "config", Value: "/evil.so"}})
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render"})
@@ -1221,7 +1245,7 @@ func TestOfflineRenderSnapshotRefusedForRun(t *testing.T) {
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
 	// Seed a RENDER snapshot (TargetNames ["api"]) at the run slug.
 	seedRenderSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token", "api",
-		[]compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
+		[]compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
 	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
@@ -1346,11 +1370,19 @@ func TestLiveAndOfflineRenderAdaptersAreEquivalent(t *testing.T) {
 				{KeyId: "key_cfg", Name: "APP_MODE", Classification: apigen.KeyClassificationConfig, Value: strPtr("production")},
 				{KeyId: "key_unset", Name: "OPTIONAL", Classification: apigen.KeyClassificationConfig},
 			},
-			offline: []compose.SnapshotRow{{Name: "APP_MODE", KeyID: "key_cfg", Classification: "config", Value: "production"}},
+			offline: []compose.SnapshotRow{{Receipt: "server-receipt", Name: "APP_MODE", KeyID: "key_cfg", Classification: "config", Value: "production"}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			for index := range tt.live {
+				if tt.live[index].Value != nil {
+					tt.live[index].SnapshotReceipt = strPtr("server-receipt-" + tt.live[index].KeyId)
+				}
+			}
+			for index := range tt.offline {
+				tt.offline[index].Receipt = "server-receipt-" + tt.offline[index].KeyID
+			}
 			cfg := &compose.Config{Targets: map[string]compose.Target{"api": tt.target}}
 			live, err := compose.BuildRenderPlan(liveRenderInput(cfg, tt.configOnly, tt.live))
 			if err != nil {
@@ -1466,7 +1498,7 @@ func seedRunSnapshot(t *testing.T, stateDir, origin, token string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := []compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}}
+	rows := []compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}}
 	// run's generation stamp is keyed to the run generation sentinel.
 	stamp := compose.TargetStamp(keys, runGenerationKey, canonicalRows(rows))
 	issued := time.Now().UTC().Add(-time.Hour)

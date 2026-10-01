@@ -299,10 +299,7 @@ func (c *Client) dialThroughProxy(ctx context.Context, addr string) (net.Conn, e
 		NetDialer: &net.Dialer{Timeout: c.cfg.Deadline},
 		Config:    &tls.Config{MinVersion: tls.VersionTLS12, ServerName: c.cfg.Proxy.Hostname()},
 	}
-	host := c.cfg.Proxy.Host
-	if c.cfg.Proxy.Port() == "" {
-		host = net.JoinHostPort(host, "443")
-	}
+	host := proxyDialAddress(c.cfg.Proxy)
 	dials.Add(1)
 	conn, err := dialer.DialContext(ctx, "tcp", host)
 	if err != nil {
@@ -313,6 +310,14 @@ func (c *Client) dialThroughProxy(ctx context.Context, addr string) (net.Conn, e
 		return nil, err
 	}
 	return tunnel, nil
+}
+
+func proxyDialAddress(proxy *url.URL) string {
+	port := proxy.Port()
+	if port == "" {
+		port = "443"
+	}
+	return net.JoinHostPort(proxy.Hostname(), port)
 }
 
 // establishCONNECT owns conn until a tunnel is established. Both blocking

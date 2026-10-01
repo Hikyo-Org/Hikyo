@@ -1,6 +1,16 @@
 {
   "_comment": "Name-pinned exemptions from the audit completeness invariant (audit-model ADR CI invariant 2). The ADR's default-deny rule refuses `audited: none` to unauthenticated- and system-class operations, but declares no event types for health probes, or local product/build prints; the demonstration org reads are #44 scaffolding whose real surface (#48) must map them. Every entry here is a reviewed deviation, not a hole: removing an entry without mapping the operation fails the build.",
   "wire": {
+	"cli:__hikyo-stage-root-key": "local container custody-file staging only; no datastore or network operation, and no server audit vocabulary declares a filesystem staging event",
+	"cli:__hikyo-stage-tls": "local container TLS certificate/key file staging only; no datastore or network operation, and no server audit vocabulary declares a filesystem staging event",
+	"cli:__hikyo-stage-rollout-authority": "local container deployment-authority file staging only; no datastore or network operation, and no server audit vocabulary declares a filesystem staging event",
+	"cli:__hikyo-import-subprocess": "client-local sanitized library subprocess with bounded output and deadline; no Hikyo datastore authority; imported changes use the existing server-side audited import/set routes",
+	"cli:operator": "separate Kubernetes reconciler process with no server keyring or datastore; delivery fetch/report/tombstone and offline reconciliation carry their existing remote operation audit mappings",
+	"cli:updater": "retired legacy mode refuses before reading configuration, datastore, custody material, or deployment credentials; no mutation occurs",
+	"cli:upgrade": "host-local signed deployment bundle activation and operator rotation use their dedicated durable upgrade-state records and receipts, not ordinary tenant authority; no separate tenant/instance audit event is declared for these host custody operations",
+	"cli:config-rollout": "operator-enrolled Kubernetes configuration rollout with its own deployment authority and controller conditions; loads no Hikyo datastore/keyring and performs no separate Hikyo audit operation",
+	"cli:--version": "machine-readable local build metadata print, no server or datastore",
+	"cli:--upgrade-bundle-formats": "local supported bundle format print, no server or datastore",
     "cli:about": "local product-information and build-metadata print: no server, no store",
     "cli:access": "client transport for the /grants routes at every depth, whose operations carry the audit mapping (grant.created / grant.modified / grant.revoked / grant.template_applied / grant.membership_read)",
     "cli:adapter": "client transport for the tenant-scoped deployment-adapter routes, whose operations carry the complete adapter.* audit mapping; the local browser handoff opens no separate server-side act",

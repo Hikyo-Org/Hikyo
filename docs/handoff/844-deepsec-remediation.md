@@ -2,8 +2,10 @@
 
 ## Outcome
 
-The complete DeepSec finding set has been remediated across the Go services,
-CLI, web client, operator, deployment chart, CI, and release tooling.
+The original DeepSec finding set was remediated across the Go services,
+CLI, web client, operator, deployment chart, CI, and release tooling. The
+2026-10-01 refresh merges main through `cb744509a` and adds the fixes below.
+Final DeepSec revalidation and exact-head remote CI remain separate gates.
 
 The final medium finding no longer sends CLI passwords or bearer credentials
 over loopback TCP. Local CLI authentication now uses a Unix-domain socket with
@@ -35,13 +37,59 @@ closed and require pinned HTTPS.
 
 - Legacy CRD objects compare absent creation policies as the `Owner` default.
 - Pinned loopback HTTPS is accepted without a Unix socket; HTTP still requires one.
-- Restore holds prevent certificate issuance while worker and manual CRL
-  publication continue protecting revocation coverage.
+- Restore holds prevent certificate issuance and all fresh CRL signing.
+  Existing CRLs remain readable. Signing resumes only after operator
+  revocation reconciliation. Worker key use, signing and publication share
+  one restore-admission guard; stale captured work cannot bypass the hold.
 - Optional authenticator input no longer announces itself as required.
 - CLI help names Forgejo federation refusal, workflow fixtures pin each protected
   condition, and fuzz classification tolerates toolchain diagnostics around JSON.
 
 ## Validation
+
+### 2026-10-01 merged checkpoint
+
+- Web: 1,431 unit tests, typecheck, lint and production build pass. Targeted
+  desktop and mobile regressions pass 18 tests each. Light stories pass 71
+  checks, with 14 targeted dark checks. SAML success is covered at the SPA
+  unit and actual server-router boundary, not by a live external IdP login.
+- Pending login/workspace proof retirement and protected import regressions
+  pass on SQLite and PostgreSQL under the race detector. Both lock winners
+  are exercised; old proofs cannot mint fresh-generation sessions.
+- Restored-issuer CRL hold, existing-read, reconciliation-resume and
+  restore-admission exclusion checks pass on both engines under race.
+- Full compose, crypto, importer and CLI race suites pass at the client-state
+  checkpoint. The importer commitment primitive now lives under
+  `internal/crypto`; the crypto ownership gate and affected full race suites
+  pass again after that move.
+- Complete merged Go checks and forced DeepSec revalidation are in progress.
+  Earlier counts below describe earlier checkpoints, not this head.
+
+### Follow-up security checkpoint
+
+- SCIM: all 66 top-level lifecycle/race cases pass on SQLite and PostgreSQL,
+  including same-session org-A withdrawal with org-B continuity.
+- Web: 1,454 units pass, with fresh typecheck/lint/build and real initial
+  password/second-factor and passkey login document-refresh checks.
+- Actual CLI online fetch, encrypted snapshot, unavailable owned Unix socket,
+  offline rendering, durable receipt and authenticated reconciliation pass on
+  both engines. The complete eight-case Compose CLI race suite passes.
+- Receipt-forgery and blinded SCIM subject audit regressions pass on both engines
+  under race. Hidden-secret value and occurrence changes no longer move a
+  presence-only caller's cursor; visible value/presence changes still do.
+- Supported archive restore destroys pending adapter move credentials and
+  destinations on both engines under race. Reserved-prefix SQLite trigger
+  admission and exhausted PostgreSQL sequence validation regressions pass.
+- Native Windows custody execution is pending remote CI. Cross-compilation is
+  successful; it is not evidence that Windows runtime tests have executed.
+- Frozen follow-up DeepSec revalidation completed all 67 verdicts: 64 fixed,
+  one false positive and two duplicates, with no true positives or uncertain
+  results in that batch. Final helper discovery and residual-policy checks are
+  separate, ongoing runs; this is not a claim that the whole project is clean.
+- Exact owner-runtime race checks pass all 18 executions, including live HTTP
+  admission, password-cost refusal, rollback, drain and activation recovery.
+
+### Earlier checkpoint
 
 - Full Go suite: 8,485 tests passed across 134 packages.
 - Isolation suite: 2,002 tests passed.
@@ -60,3 +108,75 @@ widened conditions independently on the trusted validation job and step.
 
 GitHub CI and human review remain required before merge. No merge authorization
 is included in this handoff.
+
+## Fresh finding repairs and compatibility
+
+- SCIM changes remain org-scoped, including grant additions, deprovision/delete
+  and lockout-retention cure. They do not kill instance-wide sessions or pending
+  proofs. Each operation rechecks current grants immediately; unrelated org
+  authority and manual origins survive. This policy amendment was explicitly
+  approved on 2026-10-01 and is recorded in the SCIM and human-auth ADRs.
+- Local sockets verify every ancestor and intermediate symlink target, including
+  relative paths with `..`. Socket mode changes and cleanup are bound to the
+  created inode. Compose snapshot/watermark updates serialize project writers;
+  local key creation is atomic and retries recover interrupted creation.
+- New import run artifacts use v2 keyed commitments. Regenerate old v1 run
+  artifacts into a fresh directory; existing templates remain readable, and no
+  existing artifact is modified or deleted. Plaintext input hashes are no longer
+  published. Rotate low-entropy secrets if historical exposed hashes leaked.
+- Mixed access-rule replacement refuses before any create/revoke until an
+  atomic backend replacement exists. Pure additions/removals remain supported.
+  Protected immediate imports require exact-key publish ceremonies. Canceled
+  import/grant work cannot continue; untouched retention inputs follow fresh
+  policy; SAML browser completion refreshes the authenticated session.
+- Machine fetches share a 30/min, burst-60 principal token bucket across
+  credentials, in addition to org/instance limits. AWS create collisions recheck
+  current-version consent. Reused nightly images require source-SHA-bound
+  verification before any execution and cannot be newly signed by a replay.
+- Human API admission applies 300/min sustained, burst 600, per live human
+  session. One request is charged once across retries and nested operations;
+  authorization still rechecks current grants. Anonymous SPA documents no
+  longer reveal configured remote origins in their CSP.
+- API revision 9 requires authenticated per-value offline snapshot receipts.
+  Unsigned legacy snapshots and records fail closed with online-refresh
+  guidance; pending evidence is not deleted. A revoked serving credential may
+  still reconcile through a live same-account presenter with its valid receipt.
+  Receipts prove prior server delivery, not the client's asserted later use.
+  Audit events label authenticated delivery with `receipt_verified: true` and
+  retain the receipt-bound revision and keyed snapshot change token.
+- SCIM subject audit commitments retain the v1 64-hex format but use fresh
+  private HMAC keys, preventing bare-hash dictionaries and cross-event equality.
+  Existing historic audit disclosures cannot be undone by this source change.
+- Windows trust/session custody verifies owner, DACL and reparse-point state;
+  atomic temporary files receive a protected DACL before their first byte.
+  Passphrase archive restore caps age's scrypt logN at 18 (256 MiB), matching
+  Hikyo exports. Larger untrusted headers are refused before key derivation.
+- File-sync retries finish interrupted pruning/collection without removing the
+  current generation or foreign files. Identical legacy generations republish
+  once to establish durable predecessor metadata.
+- Operator scrubbing requires a matched canonical delivery-refusal marker,
+  not an arbitrary JSON 404. Older unmarked servers fail safe by retaining data.
+- AWS publication promotes the observed version using an exact previous-version
+  compare-and-swap before advancing Hikyo ownership markers. Concurrent external
+  values survive. Ambiguous first adoption requires fresh version-bound consent.
+- Vault marker repair is allowed only for unconsumed explicit adoption provenance
+  bound to the current scope, destination and target generation. Ordinary owned
+  entries never adopt a later unmarked value. The ADR's ambiguous-crash recovery
+  residual remains unchanged pending a separate operator policy decision.
+
+Two proposed policy amendments await operator decisions: a two-minute bound on
+each adapter attempt, preserving indefinite retries, and stopping ambiguous
+Vault crash recovery for operator review. They are not silently implemented.
+
+Claude reviews are skipped at the operator's request, not reported as clean.
+Main's current base-controlled gate permits same-repository workflow edits.
+The approved universal gate admits same-repository workflow edits only with a
+current independent maintainer's approval on the exact PR head. Fork workflow
+edits remain blocked. This is not a current bootstrap blocker for PR 844.
+
+The nightly signing-key custody finding remains a human-only configuration
+gate: move the repository-scoped secret to a protected main-only environment
+and remove its repository-scoped copy. The workflow now names that environment,
+but source guards cannot protect an existing repository-wide private key.
+Use [the custody handoff](nightly-release-custody.md); no repository settings or
+secrets were mutated by this remediation.

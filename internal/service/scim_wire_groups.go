@@ -39,6 +39,10 @@ type SCIMGroupResource struct {
 var ErrSCIMNoTarget = fmt.Errorf(
 	"%w: service: the members filter names no member of this group", domain.ErrNotFound)
 
+// ErrSCIMGroupMemberLimit exposes the repository refusal at the service boundary
+// without requiring the wire transport to import the datastore.
+var ErrSCIMGroupMemberLimit = store.ErrSCIMGroupMemberLimit
+
 // dedupe keeps the first occurrence of each id, in order. An identity provider
 // repeating a reference in one request must not make the second insertion a
 // unique-key violation that rolls back the whole valid desired set — and it
@@ -207,6 +211,9 @@ func (s *SCIM) setMembers(
 	// second insertion a unique-key violation that rolled back the whole valid
 	// desired set. One guard at the reconciler covers create, PUT and PATCH.
 	desired = dedupe(desired)
+	if len(desired) > store.MaxSCIMGroupMembers {
+		return nil, nil, nil, store.ErrSCIMGroupMemberLimit
+	}
 	current, err := r.SCIM().GroupMembers(ctx, c.proof, c.binding.ID, groupID)
 	if err != nil {
 		return nil, nil, nil, err

@@ -3,8 +3,8 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -14,68 +14,96 @@ import (
 const trustFileLimit = 1 << 20
 
 func readTrustFile(dir string) ([]byte, error) {
-	if !filepath.IsAbs(dir) {
-		return nil, fmt.Errorf("trust store directory must be absolute: %s", dir)
-	}
-	dirInfo, err := os.Lstat(dir)
-	if err != nil {
-		return nil, err
-	}
-	if !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("trust store directory %s must be a real directory", dir)
-	}
-	path := filepath.Join(dir, "trust.json")
-	before, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("trust store file %s must be a regular file", path)
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	after, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !os.SameFile(before, after) {
-		return nil, fmt.Errorf("trust store file %s changed while opening", path)
-	}
-	raw, err := io.ReadAll(io.LimitReader(file, trustFileLimit+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(raw) > trustFileLimit {
-		return nil, fmt.Errorf("trust store file %s exceeds 1 MiB", path)
-	}
-	return raw, nil
+	return readPrivateStateFile(dir, "trust.json")
 }
 
 func ensureTrustStateDir(dir string) error {
 	if !filepath.IsAbs(dir) {
 		return fmt.Errorf("trust store directory must be absolute: %s", dir)
 	}
-	return os.MkdirAll(dir, 0o700)
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+			return err
+		}
+		attributes, err := privateWindowsAttributes(true)
+		if err != nil {
+			return err
+		}
+		name, err := windows.UTF16PtrFromString(dir)
+		if err != nil {
+			return err
+		}
+		if err := windows.CreateDirectory(name, attributes); err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	// Tightening a directory can propagate inherited ACLs to children. Never
+	// launder a pre-existing unsafe trust/session file into apparent custody.
+	for _, name := range []string{"trust.json", "sessions.json"} {
+		file, err := openPrivateWindowsFile(filepath.Join(dir, name), false, false)
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+	file, err := openPrivateWindowsFile(dir, true, true)
+	if err != nil {
+		return err
+	}
+	return file.Close()
 }
 
 func lockStateDir(dir string) (func(), error) {
 	if err := ensureTrustStateDir(dir); err != nil {
 		return nil, err
 	}
-	lock, err := os.OpenFile(filepath.Join(dir, "state.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	directory, err := openPrivateWindowsFile(dir, true, false)
 	if err != nil {
+		return nil, err
+	}
+	name, err := windows.UTF16PtrFromString(filepath.Join(dir, "state.lock"))
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	attributes, err := privateWindowsAttributes(false)
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, attributes, windows.OPEN_ALWAYS, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	lock := os.NewFile(uintptr(handle), filepath.Join(dir, "state.lock"))
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil || info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		_ = lock.Close()
+		_ = directory.Close()
+		return nil, fmt.Errorf("state lock must be a regular non-reparse file")
+	}
+	if err := verifyWindowsCustody(windows.Handle(lock.Fd()), false); err != nil {
+		_ = lock.Close()
+		_ = directory.Close()
 		return nil, err
 	}
 	overlapped := new(windows.Overlapped)
 	if err := windows.LockFileEx(windows.Handle(lock.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, overlapped); err != nil {
 		_ = lock.Close()
+		_ = directory.Close()
 		return nil, err
 	}
 	return func() {
 		_ = windows.UnlockFileEx(windows.Handle(lock.Fd()), 0, 1, 0, overlapped)
 		_ = lock.Close()
+		_ = directory.Close()
 	}, nil
 }

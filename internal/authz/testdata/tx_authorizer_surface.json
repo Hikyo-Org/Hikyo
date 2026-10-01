@@ -180,7 +180,6 @@
   "RegistrationPolicyFor": "func(ctx context.Context, org domain.OrgID) (RegistrationPolicy, error)",
   "RegistrationSignupsForPolicy": "func(ctx context.Context, policyID string) ([]RegistrationSignupRef, error)",
   "ReleaseGrantOrigin": "func(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error)",
-  "RemoteOrigins": "func(ctx context.Context) ([]string, error)",
   "RemoveExternalIdentity": "func(ctx context.Context, id string) error",
   "RemoveTOTPForAccount": "func(ctx context.Context, accountID string) error",
   "RemoveWorkspaceOrigin": "func(ctx context.Context, origin string) (bool, error)",

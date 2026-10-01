@@ -3388,6 +3388,13 @@ export type FederatedBinding = {
  *
  */
 export type DeliveredKey = {
+    /**
+     * Authenticated server receipt for this delivered value, present only
+     * with value. Store inside the encrypted offline snapshot. Required
+     * for later offline disclosure reconciliation; never log it.
+     *
+     */
+    snapshot_receipt?: string;
     key_id: Id;
     name: string;
     classification: KeyClassification;
@@ -3495,6 +3502,14 @@ export type DeliveryResponse = {
 };
 
 export type OfflineDeliveryRecord = {
+    /**
+     * Receipt delivered with this key's plaintext. Authenticates scope,
+     * principal, serving credential, key metadata, snapshot identity and
+     * issuance window. Unsigned legacy claims are refused. The later
+     * offline serving time and local generation remain client assertions.
+     *
+     */
+    snapshot_receipt: string;
     record_id: string;
     key_id: string;
     key_name: string;

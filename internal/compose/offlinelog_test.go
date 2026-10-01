@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,6 +26,7 @@ func rec(t *testing.T, name string) OfflineRecord {
 		RecordID: id, KeyID: "key_" + name, KeyName: name,
 		Classification: "secret", OccurredAt: "2026-08-19T10:00:00Z",
 		CredentialID: "cred_1", Generation: "v1-" + hex32(), ServedFrom: "snapshot",
+		SnapshotReceipt: "server-receipt-" + name,
 	}
 }
 
@@ -92,6 +94,7 @@ func TestOfflineAppendRefusesInvalidRecords(t *testing.T) {
 		"empty-key-id":     func(r *OfflineRecord) { r.KeyID = "" },
 		"empty-credential": func(r *OfflineRecord) { r.CredentialID = "" },
 		"empty-served":     func(r *OfflineRecord) { r.ServedFrom = "" },
+		"empty-receipt":    func(r *OfflineRecord) { r.SnapshotReceipt = "" },
 		"bad-class":        func(r *OfflineRecord) { r.Classification = "other" },
 		"bad-time":         func(r *OfflineRecord) { r.OccurredAt = "yesterday" },
 		"bad-generation":   func(r *OfflineRecord) { r.Generation = "not-a-stamp" },
@@ -101,6 +104,31 @@ func TestOfflineAppendRefusesInvalidRecords(t *testing.T) {
 		if err := Append(state, []OfflineRecord{bad}); err == nil {
 			t.Errorf("%s: expected refusal", name)
 		}
+	}
+}
+
+func TestOfflinePendingRefusesLegacyMissingReceiptWithoutDeletingRecord(t *testing.T) {
+	state := offlineState(t)
+	legacy := rec(t, "legacy")
+	legacy.SnapshotReceipt = ""
+	raw, err := json.Marshal([]OfflineRecord{legacy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(state, offlineDir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "legacy.json")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	records, handles, err := Pending(state)
+	if err == nil || len(records) != 0 || len(handles) != 0 {
+		t.Fatalf("legacy records exposed: records=%d handles=%d err=%v", len(records), len(handles), err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("legacy record lost: %v", err)
 	}
 }
 

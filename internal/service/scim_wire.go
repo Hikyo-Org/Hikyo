@@ -11,6 +11,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -200,6 +201,9 @@ func (s *SCIM) CreateUser(ctx context.Context, actor Actor, org domain.OrgID, bi
 			if in.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
 			}
+			if err := checkSCIMAttributeNames(in.Attributes, 0); err != nil {
+				return nil, err
+			}
 			subject, err := s.deriveSubject(c, subjectMaterial(c, in))
 			if err != nil {
 				return nil, err
@@ -262,12 +266,16 @@ func (s *SCIM) CreateUser(ctx context.Context, actor Actor, org domain.OrgID, bi
 			if err != nil {
 				return nil, err
 			}
+			digest, err := crypto.SCIMSubjectDigest(c.binding.OrgID, bindingID, c.binding.ProviderIssuer, subject)
+			if err != nil {
+				return nil, err // No unkeyed/plaintext fallback; roll back the mutation.
+			}
 			return append(events, grantEventInput{
 				typ:    audit.EventSCIMUserProvisioned,
 				object: audit.Object{Type: "scim-user", ID: id},
 				payload: audit.Payload{
 					"binding": bindingID, "resource_id": id, "account_id": accountID,
-					"disposition": disposition, "subject_digest": subjectDigest(subject),
+					"disposition": disposition, "subject_digest": digest,
 				},
 			}), nil
 		})
@@ -404,6 +412,9 @@ func (s *SCIM) mutateUser(
 			}
 			if desired.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
+			}
+			if err := checkSCIMAttributeNames(desired.Attributes, 0); err != nil {
+				return nil, err
 			}
 			next := row
 			var changed []string
@@ -784,18 +795,25 @@ func (s *SCIM) renderUser(ctx context.Context, r store.Repos, c scimContext, row
 }
 
 // mergeAttributes applies a PATCH delta: a present key assigns, a NIL value
-// clears, an absent key leaves the stored value alone.
+// clears, an absent key leaves the stored value alone. Attribute names are
+// case-insensitive, including stored names from an earlier request.
 func mergeAttributes(stored, delta map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range stored {
 		out[k] = v
 	}
 	for k, v := range delta {
+		storedKey := k
+		for existing := range out {
+			if strings.EqualFold(existing, k) {
+				storedKey = existing
+				delete(out, existing)
+			}
+		}
 		if v == nil {
-			delete(out, k)
 			continue
 		}
-		out[k] = v
+		out[storedKey] = v
 	}
 	return out
 }

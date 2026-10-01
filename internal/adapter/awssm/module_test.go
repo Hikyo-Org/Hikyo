@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -128,8 +129,42 @@ func (f *fakeAPI) PutSecretValue(_ context.Context, name, token, value string) e
 		}
 		return nil
 	}
+	first := len(secret.values) == 0
 	secret.values[token] = value
-	f.moveStages(secret, token, awsCurrent, CurrentStage)
+	f.moveStages(secret, token, PendingStage)
+	if first {
+		f.moveStages(secret, token, awsCurrent)
+	}
+	return nil
+}
+
+func (f *fakeAPI) UpdateSecretVersionStage(_ context.Context, name, stage, moveTo, removeFrom string) error {
+	if err := f.fail("stage-"+stage, name); err != nil {
+		return err
+	}
+	secret, ok := f.secrets[name]
+	if !ok {
+		return &ResponseError{Status: 400, Code: "ResourceNotFoundException"}
+	}
+	if secret.deleted {
+		return &ResponseError{Status: 400, Code: "InvalidRequestException"}
+	}
+	if _, exists := secret.values[moveTo]; !exists {
+		return &ResponseError{Status: 400, Code: "InvalidParameterException"}
+	}
+	owner := ""
+	for id, stages := range secret.stages {
+		if slices.Contains(stages, stage) {
+			owner = id
+		}
+	}
+	if (owner != "" && owner != moveTo && removeFrom != owner) || (removeFrom != "" && removeFrom != owner) {
+		return &ResponseError{Status: 400, Code: "InvalidParameterException"}
+	}
+	f.moveStages(secret, moveTo, stage)
+	if stage == awsCurrent && owner != "" && owner != moveTo {
+		f.moveStages(secret, owner, "AWSPREVIOUS")
+	}
 	return nil
 }
 
@@ -441,6 +476,127 @@ func TestExternalUpdateFailsLoudWithoutOverwrite(t *testing.T) {
 	}
 }
 
+type writeRaceAPI struct {
+	*fakeAPI
+	beforePut bool
+	afterPut  bool
+}
+
+func (f *writeRaceAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	if f.beforePut {
+		f.beforePut = false
+		f.externalPut(name, "concurrent-edit", "concurrent external value")
+	}
+	err := f.fakeAPI.PutSecretValue(ctx, name, token, value)
+	if err == nil && f.afterPut {
+		f.afterPut = false
+		f.externalPut(name, "concurrent-edit", "concurrent external value")
+	}
+	return err
+}
+
+func TestConcurrentExternalWriteIsNotOverwritten(t *testing.T) {
+	for _, timing := range []string{"before-put", "after-put"} {
+		t.Run(timing, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}, journal); err != nil {
+				t.Fatal(err)
+			}
+			oldVersion := api.secrets["prod/app"].tags[VersionTag]
+			race := &writeRaceAPI{fakeAPI: api, beforePut: timing == "before-put", afterPut: timing == "after-put"}
+			result, err := (&Module{API: race}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "next"}, journal)
+			if !errors.Is(err, adapter.ErrConflict) || len(result.Conflicts) != 1 || api.current("prod/app") != "concurrent external value" {
+				t.Fatalf("concurrent edit overwritten or silently accepted: err=%v result=%+v current=%q", err, result, api.current("prod/app"))
+			}
+			if !slices.Contains(api.secrets["prod/app"].stages[oldVersion], CurrentStage) || api.secrets["prod/app"].tags[VersionTag] != oldVersion {
+				t.Fatal("refused promotion discarded the previous Hikyo ownership evidence")
+			}
+			api.secrets["prod/app"].tags[VersionTag] = "concurrent-edit"
+			if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "consented"}, journal); err != nil {
+				t.Fatalf("explicit consent to the observed external version failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestConcurrentFirstVersionIsNotOverwritten(t *testing.T) {
+	for _, timing := range []string{"before-put", "after-put"} {
+		t.Run(timing, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			race := &writeRaceAPI{fakeAPI: api, beforePut: timing == "before-put", afterPut: timing == "after-put"}
+			result, err := (&Module{API: race}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}, journal)
+			if !errors.Is(err, adapter.ErrConflict) || len(result.Conflicts) != 1 || api.current("prod/app") != "concurrent external value" {
+				t.Fatalf("first-version concurrent edit lost: err=%v result=%+v current=%q", err, result, api.current("prod/app"))
+			}
+			if api.secrets["prod/app"].tags[VersionTag] != "" {
+				t.Fatal("failed first-version promotion recorded ownership of the external version")
+			}
+		})
+	}
+}
+
+type lostWriteResponseAPI struct {
+	*fakeAPI
+	operation string
+}
+
+func (f *lostWriteResponseAPI) lost(operation string, err error) error {
+	if err == nil && f.operation == operation {
+		f.operation = ""
+		return errors.New("connection closed after committed operation")
+	}
+	return err
+}
+
+func (f *lostWriteResponseAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	return f.lost("put", f.fakeAPI.PutSecretValue(ctx, name, token, value))
+}
+
+func (f *lostWriteResponseAPI) UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error {
+	return f.lost(stage, f.fakeAPI.UpdateSecretVersionStage(ctx, name, stage, moveTo, removeFrom))
+}
+
+func (f *lostWriteResponseAPI) TagSecret(ctx context.Context, name string, tags map[string]string) error {
+	err := f.fakeAPI.TagSecret(ctx, name, tags)
+	if _, versionTag := tags[VersionTag]; versionTag {
+		return f.lost("version-tag", err)
+	}
+	return err
+}
+
+func TestStagedWriteReplayAfterActualLostResponses(t *testing.T) {
+	for _, operation := range []string{"put", awsCurrent, CurrentStage, "version-tag"} {
+		for _, existing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/existing=%v", operation, existing), func(t *testing.T) {
+				api, journal := newFakeAPI(), newFakeJournal()
+				if existing {
+					if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}, journal); err != nil {
+						t.Fatal(err)
+					}
+				}
+				wrapped := &lostWriteResponseAPI{fakeAPI: api, operation: operation}
+				req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "lost-response"}
+				if _, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+					t.Fatalf("actual committed operation's lost response = %v", err)
+				}
+				req.Ledger = journal.ledger()
+				if _, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal); err != nil {
+					t.Fatalf("same-job replay failed: %v", err)
+				}
+				wantVersions := 1
+				if existing {
+					wantVersions++
+				}
+				secret := api.secrets["prod/app"]
+				token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, "prod/app")
+				if len(secret.values) != wantVersions || secret.tags[VersionTag] != token || !slices.Contains(secret.stages[token], CurrentStage) || !slices.Contains(secret.stages[token], awsCurrent) || journal.states["prod/app"] != adapter.Owned {
+					t.Fatalf("replay duplicated a version or failed to settle ownership: versions=%d tags=%v stages=%v state=%v", len(secret.values), secret.tags, secret.stages, journal.states["prod/app"])
+				}
+			})
+		}
+	}
+}
+
 func TestValueWrittenIntoAFreshHikyoSecretIsRefused(t *testing.T) {
 	api, journal := newFakeAPI(), newFakeJournal()
 	// Created by this target (tagged) but written by someone else before
@@ -459,7 +615,7 @@ func TestAdoptedSecretIsTaggedBeforeWrite(t *testing.T) {
 	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(api.writes(), []string{"tag:prod/app", "put:prod/app", "tag:prod/app"}) {
+	if !slices.Equal(api.writes(), []string{"tag:prod/app", "put:prod/app", "stage-AWSCURRENT:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) {
 		t.Fatalf("adoption writes = %v, want ownership tag, put, version tag", api.writes())
 	}
 }
@@ -491,7 +647,7 @@ func TestOwnedSecretScheduledForDeletionIsRestored(t *testing.T) {
 	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(api.writes(), []string{"restore:prod/app", "put:prod/app", "tag:prod/app"}) || api.secrets["prod/app"].deleted {
+	if !slices.Equal(api.writes(), []string{"restore:prod/app", "put:prod/app", "stage-AWSCURRENT:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) || api.secrets["prod/app"].deleted {
 		t.Fatalf("writes = %v", api.writes())
 	}
 }

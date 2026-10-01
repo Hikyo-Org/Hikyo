@@ -15,6 +15,7 @@ fail() {
 }
 
 [ -f "$workflow" ] || fail 'nightly workflow is missing'
+grep -F 'environment: nightly-release' "$workflow" >/dev/null || fail 'nightly publication lacks protected environment custody'
 grep -F 'cron: "0 2 * * *"' "$workflow" >/dev/null || fail '02:00 UTC schedule is missing'
 grep -F 'ref: ${{ github.sha }}' "$workflow" >/dev/null || fail 'nightly checkout is not pinned to the triggering SHA'
 if grep -F 'ref: refs/heads/main' "$workflow" >/dev/null; then

@@ -38,10 +38,12 @@ const (
 	listDeadline       = 30 * time.Second
 	recoveryWindowDays = 30
 	serviceName        = "secretsmanager"
-	// CurrentStage is the staging label Hikyo moves with every write. A value
+	// CurrentStage is the staging label Hikyo moves after promoting a write. A value
 	// written by anyone else moves AWSCURRENT without it, which is how an
 	// external update is detected without reading the value.
 	CurrentStage = "HIKYO_CURRENT"
+	// PendingStage stages a value without replacing an existing AWSCURRENT.
+	PendingStage = "HIKYO_PENDING"
 	// VersionTag names the version Hikyo last wrote. An operator accepts an
 	// overwrite of an external edit by setting it to that edit's version id.
 	VersionTag = "HIKYO_VERSION"
@@ -87,6 +89,7 @@ type API interface {
 	ListSecretNames(ctx context.Context, prefix string, limit int) ([]string, error)
 	CreateSecret(context.Context, CreateSecretInput) error
 	PutSecretValue(ctx context.Context, name, token, value string) error
+	UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error
 	TagSecret(ctx context.Context, name string, tags map[string]string) error
 	RestoreSecret(context.Context, string) error
 	DeleteSecret(context.Context, string) error
@@ -95,13 +98,14 @@ type API interface {
 // operationRegistry is the closed Secrets Manager surface this client can
 // sign. Anything not listed here cannot be sent.
 var operationRegistry = map[string]string{
-	"describe-secret":  "DescribeSecret",
-	"list-secrets":     "ListSecrets",
-	"create-secret":    "CreateSecret",
-	"put-secret-value": "PutSecretValue",
-	"tag-resource":     "TagResource",
-	"restore-secret":   "RestoreSecret",
-	"delete-secret":    "DeleteSecret",
+	"describe-secret":             "DescribeSecret",
+	"list-secrets":                "ListSecrets",
+	"create-secret":               "CreateSecret",
+	"put-secret-value":            "PutSecretValue",
+	"update-secret-version-stage": "UpdateSecretVersionStage",
+	"tag-resource":                "TagResource",
+	"restore-secret":              "RestoreSecret",
+	"delete-secret":               "DeleteSecret",
 }
 
 type ClientConfig struct {
@@ -511,16 +515,29 @@ func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) erro
 	return c.do(ctx, "create-secret", request, nil)
 }
 
-// PutSecretValue writes one version under an idempotency token and moves both
-// AWSCURRENT and CurrentStage to it atomically.
+// PutSecretValue stages an idempotent version without moving an existing
+// AWSCURRENT. AWS automatically makes the very first version current.
 func (c *Client) PutSecretValue(ctx context.Context, name, token, value string) error {
 	request := struct {
 		SecretID           string   `json:"SecretId"`
 		ClientRequestToken string   `json:"ClientRequestToken"`
 		SecretString       string   `json:"SecretString"`
 		VersionStages      []string `json:"VersionStages"`
-	}{SecretID: name, ClientRequestToken: token, SecretString: value, VersionStages: []string{awsCurrent, CurrentStage}}
+	}{SecretID: name, ClientRequestToken: token, SecretString: value, VersionStages: []string{PendingStage}}
 	return c.do(ctx, "put-secret-value", request, nil)
+}
+
+// UpdateSecretVersionStage conditionally moves a metadata label: AWS refuses
+// when the existing label is on a version other than removeFrom. An omitted
+// removeFrom refuses a label already attached to another version.
+func (c *Client) UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error {
+	request := struct {
+		SecretID            string `json:"SecretId"`
+		VersionStage        string `json:"VersionStage"`
+		MoveToVersionID     string `json:"MoveToVersionId"`
+		RemoveFromVersionID string `json:"RemoveFromVersionId,omitempty"`
+	}{SecretID: name, VersionStage: stage, MoveToVersionID: moveTo, RemoveFromVersionID: removeFrom}
+	return c.do(ctx, "update-secret-version-stage", request, nil)
 }
 
 func (c *Client) TagSecret(ctx context.Context, name string, tags map[string]string) error {

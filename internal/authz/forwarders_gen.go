@@ -815,12 +815,6 @@ func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
 }
 
-// RemoteOrigins is the CSP `connect-src` input. See the resolver's doc comment
-// for why this one read of a class=instance table is proof-free.
-func (a *TxAuthorizer) RemoteOrigins(ctx context.Context) ([]string, error) {
-	return a.r.RemoteOrigins(ctx)
-}
-
 // RemoveExternalIdentity removes a link (unlink).
 func (a *TxAuthorizer) RemoveExternalIdentity(ctx context.Context, id string) error {
 	return a.r.DeleteExternalIdentity(ctx, id)

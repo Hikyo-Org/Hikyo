@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -1211,6 +1212,9 @@ func (r scimRepo) GroupMembers(ctx context.Context, p authz.Proof, bindingID, gr
 		if err != nil {
 			return nil, err
 		}
+		if len(rows) > MaxSCIMGroupMembers {
+			return nil, ErrSCIMGroupMemberLimit
+		}
 		for _, row := range rows {
 			m, err := sqliteGroupMember(row)
 			if err != nil {
@@ -1226,11 +1230,21 @@ func (r scimRepo) GroupMembers(ctx context.Context, p authz.Proof, bindingID, gr
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) > MaxSCIMGroupMembers {
+		return nil, ErrSCIMGroupMemberLimit
+	}
 	for _, row := range rows {
 		out = append(out, pgMember(row))
 	}
 	return out, nil
 }
+
+// MaxSCIMGroupMembers bounds both reconciliation work and resource expansion.
+// The generated member queries fetch at most this ceiling plus one sentinel
+// row, and oversized legacy groups fail closed rather than returning a subset.
+const MaxSCIMGroupMembers = 1000
+
+var ErrSCIMGroupMemberLimit = fmt.Errorf("%w: SCIM groups support at most %d distinct members; the identity provider must retire excess provisioned users and reprovision them into smaller groups", domain.ErrInvalid, MaxSCIMGroupMembers)
 
 func (r scimRepo) MembershipsForUser(ctx context.Context, p authz.Proof, bindingID, userID string) ([]SCIMGroupMember, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMMembershipsForUser, r.tok)

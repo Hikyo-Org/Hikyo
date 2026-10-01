@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -312,13 +310,6 @@ func identityKind(b store.SCIMBinding) string {
 		return SAMLKind
 	}
 	return OIDCKind
-}
-
-// subjectDigest is the SHA-256 hex of a derived subject. The subject itself is
-// identity material and never appears in plaintext in the trail (§10).
-func subjectDigest(subject string) string {
-	sum := sha256.Sum256([]byte(subject))
-	return hex.EncodeToString(sum[:])
 }
 
 // scopeObject is §10's `scope` payload type: the DEEPEST level addressed and

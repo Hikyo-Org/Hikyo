@@ -2131,6 +2131,7 @@ func TestCompleteRestoreClearsEveryRestoredOutboundCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		`INSERT INTO adapter_route_moves (id,org_id,project_id,adapter_id,kind,pending_origin,pending_credential_ciphertext,authority_principal_id,state,keep_remote,created_at) VALUES ('move_restore','org_adapter','prj_adapter','adp_1','origin','https://redirect.attacker',X'010203','usr_adapter','activating',0,'2026-08-17T00:00:00Z')`,
 		`INSERT INTO oidc_providers (id,slug,display_name,kind,issuer,client_id,client_secret,scopes,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('oidc_restore','oidc-restore','OIDC Restore','oidc','https://oidc.attacker','client',X'010203','openid','https://hikyo.example/callback',1,1,1,'2026-08-17T00:00:00Z','2026-08-17T00:00:00Z')`,
 		`INSERT INTO oauth2_providers (id,slug,display_name,kind,profile,issuer,client_id,client_secret,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('oauth_restore','oauth-restore','OAuth Restore','oauth2','github','https://oauth.attacker','client',X'040506','https://hikyo.example/callback',1,1,1,'2026-08-17T00:00:00Z','2026-08-17T00:00:00Z')`,
 		`INSERT INTO remotes (id,name,url,spki_pin,credential_sealed,created_at,created_by) VALUES ('remote_restore','restored','https://remote.attacker','pin',X'070809','2026-08-17T00:00:00Z','usr_adapter')`,
@@ -2149,6 +2150,14 @@ func TestCompleteRestoreClearsEveryRestoredOutboundCredential(t *testing.T) {
 	}
 	if credential != nil || setAt != nil {
 		t.Fatalf("restored adapter credential survived: credential=%v set_at=%v", credential, setAt)
+	}
+	var pendingCredential, pendingOrigin any
+	var moveState string
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT pending_credential_ciphertext,pending_origin,state FROM adapter_route_moves WHERE id='move_restore'`).Scan(&pendingCredential, &pendingOrigin, &moveState); err != nil {
+		t.Fatal(err)
+	}
+	if pendingCredential != nil || pendingOrigin != nil || moveState != "canceled" {
+		t.Fatal("restored pending route retained outbound credential or activation authority")
 	}
 	for _, table := range []string{"oidc_providers", "oauth2_providers"} {
 		var secret []byte

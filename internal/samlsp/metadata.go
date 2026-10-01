@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/beevik/etree"
+	"github.com/russellhaering/goxmldsig/etreeutils"
 )
 
 const (
@@ -87,7 +88,17 @@ func ParseMetadata(raw []byte, entityID string) (Metadata, error) {
 		if err != nil {
 			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
 		}
-		verified, _, err := verifyPinnedElement(signedElement, []*x509.Certificate{certificate}, certificate.NotBefore)
+		// Validation copies the element. Materialize inherited namespaces before
+		// that copy detaches a signed child from its metadata aggregate.
+		parentContext, err := etreeutils.NSBuildParentContext(signedElement)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
+		}
+		detached, err := etreeutils.NSDetatch(parentContext, signedElement)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
+		}
+		verified, _, err := verifyPinnedElement(detached, []*x509.Certificate{certificate}, certificate.NotBefore)
 		if err != nil {
 			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
 		}
@@ -101,10 +112,6 @@ func ParseMetadata(raw []byte, entityID string) (Metadata, error) {
 	}
 
 	metadata.EntityID = entityID
-	metadata.ValidUntil, err = effectiveValidUntil(descriptor, extractionRoot)
-	if err != nil {
-		return Metadata{}, err
-	}
 	descriptors := directChildren(descriptor, SAMLMetadataNamespace, "IDPSSODescriptor")
 	var samlDescriptors []*etree.Element
 	for _, candidate := range descriptors {
@@ -120,6 +127,10 @@ func ParseMetadata(raw []byte, entityID string) (Metadata, error) {
 		return Metadata{}, ErrMetadataIDPDescriptor
 	}
 	idp := samlDescriptors[0]
+	metadata.ValidUntil, err = effectiveValidUntil(idp, extractionRoot)
+	if err != nil {
+		return Metadata{}, err
+	}
 	if rawSigned, present := plainAttr(idp, "WantAuthnRequestsSigned"); present {
 		switch rawSigned {
 		case "true", "1":

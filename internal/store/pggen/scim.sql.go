@@ -948,7 +948,7 @@ SELECT id, org_id, binding_id, group_id, user_id, created_at
 FROM scim_group_members
 WHERE org_id = $1 AND binding_id = $2
   AND group_id = $3
-ORDER BY user_id
+ORDER BY user_id LIMIT 1001
 `
 
 type ListSCIMGroupMembersParams struct {

@@ -491,6 +491,21 @@
         "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
       ]
     },
+    "AdapterPlanLedger": {
+      "authority": "PlanMaterial verifies StoreAdaptersPlanMaterial and passes the owning org/project/environment, target ID and current target generation. Every ledger/target/conflict/effect alias carries the same composite chain; target joins additionally bind current generation. Pending consent requires explicit adoption from the immediately preceding target generation and identical destination/repository/surface/normalized name, with no later successful write. Malformed SQLite times deny consent. No provider values are read, and generic Owned is never adoption authority.",
+      "sql_hash": {
+        "postgres": "073bc3dfa63b0646fc0cae063311ab647fd0a644e1bcc9c9b1999c6b27a3744b",
+        "sqlite": "611ef68a29e6ba7d6d999cd4518c922580d50dd2f60a3e6ec8082a753125a2fb"
+      },
+      "api_hash": {
+        "postgres": "894f50766b931c96a5f31e622daa8972da659fb38cbd46de2302e6c6975ad7ad",
+        "sqlite": "a6e132336f2adbfb4b44adacca173e5ba35c62ea9f415f1e8ddd9d1c78401a45"
+      },
+      "tests": [
+        "internal/store/adapter_adoption_provenance_test.go:TestAdapterAdoptionProvenanceSQLite",
+        "internal/store/adapter_adoption_provenance_test.go:TestAdapterAdoptionProvenancePostgres"
+      ]
+    },
     "AdapterPlanManifest": {
       "authority": "PlanMaterial verifies StoreAdaptersPlanMaterial and first fetches the owning target via AdapterGetTarget. Verify-derived org/project plus that immutable target environment bind both latest payload snapshot and entries. Membership joins entry by key/org/project/environment and binds the same target ID. A forged org/project/environment returns no manifest; higher revision in another environment cannot replace the owning snapshot.",
       "sql_hash": {
@@ -655,6 +670,21 @@
       ],
       "flow_tests": [
         "internal/isolation/adapter_runtime_generated_scope_test.go:TestAdapterRuntimeGeneratedJournalScopeAndLeaseRefusal"
+      ]
+    },
+    "AdapterWorkerLoadExecutionLedgerQuery": {
+      "authority": "The worker execution guard pins the claimed job lease, target, generation and owning org/project/environment. Every ledger/target/conflict/effect alias binds that exact composite chain. Pending adoption additionally matches the live target generation to the verified job and consent from generation minus one, exact destination/repository/surface/name, and absence of a later successful write. Failed effects preserve consent; success, stale generation, foreign scope, missing or malformed provenance deny it. No tenant-selected identifiers or provider values are read.",
+      "sql_hash": {
+        "postgres": "2b513472dccb4920ea98e507f96383073b1bd934d8e03c6691571928f4125e79",
+        "sqlite": "663f846e5f006bdaff42ac3d51d9ec0a5d27881d8d921353b5cd9e2751a5f1de"
+      },
+      "api_hash": {
+        "postgres": "eabf2b5047ecd64915c83274310d59f55b2eb03e9a75af13c7a244ec6a8cd640",
+        "sqlite": "4bb9d1e03575245bff20eff5cfcbeb9755585b26ab74c6ac8a5d475f1d98a6de"
+      },
+      "tests": [
+        "internal/store/adapter_adoption_provenance_test.go:TestAdapterAdoptionProvenanceSQLite",
+        "internal/store/adapter_adoption_provenance_test.go:TestAdapterAdoptionProvenancePostgres"
       ]
     },
     "AdapterWorkerLoadExecutionQuery": {
@@ -851,11 +881,25 @@
       "hash": "f5ec9c16a1d8252354e2deb4832e4dd0849ff3d33932abde80ca0eff063642a3",
       "reason": "Historical authenticated-archive catalog probe accepts pre-migration-00064 archives without pki_issuers; existing issuer data update remains a generated query."
     },
+    "internal/store/authn/restore.go:Resolver.InvalidateRestoredAdapterCredentials": {
+      "hash": "b9276860f72c010e8a5578f30a57d0765edb9b57ee200ce349a567e6ce7ea48a",
+      "reason": "Restore probes the fixed adapter_route_moves catalog entry before generated credential destruction and move retirement. The table is absent in older authenticated archives; PostgreSQL must not discover absence through a transaction-aborting write. No tenant rows or request-selected schema identifiers are read.",
+      "callers": {
+        "internal/authz/forwarders_gen.go:TxAuthorizer.InvalidateRestoredAdapterCredentials": "c7ae9e221ce73d170614af8f433d19bf11bca6583f4a507b37b4b38c287850df"
+      }
+    },
     "internal/store/authn/restore.go:Resolver.restoredExternalCredentialTables": {
       "hash": "06d000444fc76f0638b42159474359c247c2af7b517c08b720519a0519724f47",
       "reason": "Historical authenticated-archive catalog probe checks three fixed optional credential tables before generated invalidation writes; prevents undefined-table errors from aborting PostgreSQL restore transactions. Reads only schema metadata, never tenant rows or request-derived table names.",
       "callers": {
         "internal/store/authn/restore.go:Resolver.InvalidateRestoredExternalCredentials": "438d38b825df603f8421372e93cd2c33cc7c471602ef6ed00e44fa052f649351"
+      }
+    },
+    "internal/store/authn/restore.go:Resolver.restoredPendingHumanProofTables": {
+      "hash": "cdb113359d7c32faca85cde71fb3c7b01be3a7dee989b65ab859e07684940101",
+      "reason": "Historical authenticated-archive catalog probe checks two fixed optional pending-proof tables before generated restore retirement writes. Predicates exist from the tables' first migrations, absence must not abort PostgreSQL restoration, no tenant rows or caller-selected table names are read.",
+      "callers": {
+        "internal/store/authn/restore.go:Resolver.retireRestoredPendingHumanProofs": "e800fdaa927c583afcb18837dce8295bf047b1924245fd89fbb8107ae826ce47"
       }
     },
     "internal/store/authn/restore.go:Resolver.restoredPostLegacyTables": {
@@ -866,7 +910,7 @@
       "hash": "74b3e5c01408a18eaee290c571703acbfb0e8e8b11240730a0017922b4ccf325",
       "reason": "Archive restoration checks dynamically discovered historical target tables for non-seed rows under held table locks. The current static ops_diagnostics seed check was migrated separately to RestoreDiagnosticsSeedOccupied.",
       "callers": {
-        "internal/store/backup.go:restorePostgresChecked": "1aff849dfa12a4006b248c6ea58d5efaf064b2575ce7579182d5f810a4e18f0c"
+        "internal/store/backup.go:restorePostgresChecked": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de"
       },
       "dependencies": [
         "internal/store/backup.go:pgIdent"
@@ -876,7 +920,7 @@
       "hash": "cc1332ad39eec406f7a5e9c4db6c9e65f24922c6904ad1d0d93723eb265997f1",
       "reason": "Restore-owned COPY FROM STDIN admits only manifest-listed archive member names, quotes each identifier internally, and retains COPY framing inside the restore transaction.",
       "callers": {
-        "internal/store/backup.go:restorePostgresChecked": "1aff849dfa12a4006b248c6ea58d5efaf064b2575ce7579182d5f810a4e18f0c"
+        "internal/store/backup.go:restorePostgresChecked": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de"
       },
       "dependencies": [
         "internal/store/backup.go:pgIdent"
@@ -993,7 +1037,7 @@
       "hash": "dd1a06885a2222ced0d1e14c94a831e5fa806747fa9cc34c7d46dfc785168065",
       "reason": "Authenticated historical-schema restore enumerates current-schema pg_sequences names and engine bounds before any truncate, COPY or sequence reset. The archive must exactly match catalog inventory and every claimed position must satisfy these bounds; no tenant application rows or caller-selected SQL are admitted.",
       "callers": {
-        "internal/store/backup.go:restorePostgresChecked": "1aff849dfa12a4006b248c6ea58d5efaf064b2575ce7579182d5f810a4e18f0c"
+        "internal/store/backup.go:restorePostgresChecked": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de"
       }
     },
     "internal/store/backup.go:pgSequencePositions": {
@@ -1008,7 +1052,7 @@
       ]
     },
     "internal/store/backup.go:restorePostgresChecked": {
-      "hash": "1aff849dfa12a4006b248c6ea58d5efaf064b2575ce7579182d5f810a4e18f0c",
+      "hash": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de",
       "reason": "Authenticated archive restore dynamically truncates checked historical tables, imports COPY members and resets named sequence positions; runtime generated table statements cannot represent arbitrary accepted archive schemas.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
@@ -1034,6 +1078,7 @@
         "internal/releaseidentity/identity.go:ValidateTarget",
         "internal/store/backup.go:openArchive",
         "internal/store/backup.go:pgIdent",
+        "internal/store/backup.go:validRestoredSequencePosition",
         "internal/store/backup_upgrade_restore.go:matchRestoredUpgradeSnapshot",
         "internal/store/backup_upgrade_restore.go:matchUpgradePlan",
         "internal/store/store.go:postgresPool.Acquire",
@@ -1049,7 +1094,7 @@
       "hash": "2ffb05468daa5e86c6d445899b50640cfd4a6edb9f826f491ce421f6d59c468d",
       "reason": "Archive restore DDL toggles USER triggers on validated, quoted dynamic historical table names while preserving foreign-key enforcement.",
       "callers": {
-        "internal/store/backup.go:restorePostgresChecked": "1aff849dfa12a4006b248c6ea58d5efaf064b2575ce7579182d5f810a4e18f0c"
+        "internal/store/backup.go:restorePostgresChecked": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de"
       },
       "dependencies": [
         "internal/store/backup.go:pgIdent"
@@ -1910,6 +1955,7 @@
         "internal/store/authn/human.go:pgTimestamp",
         "internal/store/authn/restore.go:Resolver.AdvanceRestoreEpoch",
         "internal/store/authn/restore.go:Resolver.restoreNextEpoch",
+        "internal/store/authn/restore.go:Resolver.retireRestoredPendingHumanProofs",
         "internal/store/authn/restore.go:nextEpoch",
         "internal/store/upgrade/acceptance.go:Acceptance.Validate",
         "internal/store/upgrade/lock.go:Session.check",
@@ -2621,14 +2667,16 @@
     "internal/store/authn/human.go:canon": "fc223a200f1a9880e85c01ead3889a66a34a616c779588b70a57c1735ae97260",
     "internal/store/authn/human.go:encodeTime": "06cc0fc636e36926e2ce7c1c715a58f0adfaa117dba698b20b68dfa8638893db",
     "internal/store/authn/human.go:pgTimestamp": "40fe3a7f81fcd765d5877f3e446391b70d49bcd90a0832990c6e33a910fa7b19",
-    "internal/store/authn/restore.go:Resolver.AdvanceRestoreEpoch": "3a95e507484a14152d7b3631abdba81dd5962870672aa90422234d60c9efa91b",
+    "internal/store/authn/restore.go:Resolver.AdvanceRestoreEpoch": "cde49bf263934b802b2b9163bf53d405fb97cc2778eba0ff4d7d4cec673d5ac5",
     "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "bfe63f0a1c371f3210d8c2152ac7ff93578286df56c69fabd070ff36c5e55c1e",
+    "internal/store/authn/restore.go:Resolver.retireRestoredPendingHumanProofs": "e800fdaa927c583afcb18837dce8295bf047b1924245fd89fbb8107ae826ce47",
     "internal/store/authn/restore.go:nextEpoch": "79b068b0a5ca75782267913fe318b89d2eae303c07bd8a26205760ce848e28aa",
     "internal/store/backup.go:isMissingGooseTable": "1281c742cb5d6fe8f7b608f0ff0ff450b5188394bd4e1e7043f991d55d74fd04",
     "internal/store/backup.go:openArchive": "6ac827716511836815ebf834947eaa935229cf24f667766beb92d7679393524f",
     "internal/store/backup.go:pgIdent": "215d5353c4213d0fd47e3a80ddd3868f157a5dfc11afb0216aeddf8c04354eef",
     "internal/store/backup.go:schemaVersionResult": "9f167bfcf31686969db027a9b8edf202a5505778ac941338d8132d49fefa0755",
     "internal/store/backup.go:topoSort": "d705562d3a08af977ee82a0f055f653959956650ad4d26dfb6098ea0f5c96bd7",
+    "internal/store/backup.go:validRestoredSequencePosition": "cd037cc970df599ed2245dd94f08a10558528d8be7bd8c8d84407569f3fe11fa",
     "internal/store/backup.go:writeFileMember": "0f51ece1bd64b42b453e8599e29c2f9f6e33da40b744bb400d71a6dcf65ef1e0",
     "internal/store/backup.go:writeManifest": "68dc0c48e2ef8d96bcae5efb8bab7e62edef4e21a46afa0b029ee192857fb245",
     "internal/store/backup_upgrade.go:UpgradeExportRequest.bind": "7ccd3c6770a31f070a24cdf4b3d94805dd1ece9d23195104974bb8115ae6fa11",
@@ -2691,7 +2739,7 @@
     "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
     "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
     "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
-    "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "7946ef63095b2c66d28753559f5b50ffe6a9ad2caaf89b236e9cb4a8a62e7e4a",
+    "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "102ece97082f7643c91bb18bb72ed388472e10626bc9866bae65cf1e3867d107",
     "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937",
     "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
     "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",

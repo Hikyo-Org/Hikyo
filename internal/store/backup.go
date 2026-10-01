@@ -423,6 +423,20 @@ type pgSequenceBound struct {
 	max int64
 }
 
+// A structurally valid manifest must not place a noncycling counter at (or
+// arbitrarily close to) exhaustion. Reserve at least half the canonical range.
+// Hikyo's BIGINT audit counters retain over 4e18 allocations; restoring a
+// genuinely exhausted installation requires a supported counter migration,
+// not silently admitting an archive that disables future audited mutations.
+func validRestoredSequencePosition(bound pgSequenceBound, value int64) bool {
+	if bound.max <= bound.min || value < bound.min {
+		return false
+	}
+	// Unsigned subtraction avoids overflow for ranges spanning negative values.
+	midpoint := bound.min + int64((uint64(bound.max)-uint64(bound.min))/2)
+	return value <= midpoint
+}
+
 func pgSequenceBounds(ctx context.Context, tx pgx.Tx) (map[string]pgSequenceBound, error) {
 	rows, err := tx.Query(ctx,
 		`SELECT sequencename, min_value, max_value FROM pg_sequences WHERE schemaname = current_schema()`)
@@ -878,8 +892,8 @@ func restorePostgresChecked(ctx context.Context, db *DB, archive io.Reader, plan
 		if !ok {
 			return Manifest{}, errors.New("restore archive sequence inventory differs from target schema")
 		}
-		if value < bound.min || value > bound.max {
-			return Manifest{}, fmt.Errorf("%w: sequence %q value is outside its target bounds", ErrArchiveFormat, name)
+		if !validRestoredSequencePosition(bound, value) {
+			return Manifest{}, fmt.Errorf("%w: sequence %q value is outside its safe restore range", ErrArchiveFormat, name)
 		}
 	}
 	quoted := make([]string, 0, len(m.Tables))

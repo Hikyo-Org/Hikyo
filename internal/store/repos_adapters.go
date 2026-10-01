@@ -98,7 +98,7 @@ func (r adapterQueries) PlanMaterial(ctx context.Context, p authz.Proof, targetI
 	if err != nil {
 		return AdapterPlanMaterial{}, err
 	}
-	out.Ledger, err = r.db.adapterStoreQueries().planLedger(ctx, chain, targetID, target.EnvironmentID)
+	out.Ledger, err = r.db.adapterStoreQueries().planLedger(ctx, chain, targetID, target.EnvironmentID, target.Generation)
 	if err != nil {
 		return AdapterPlanMaterial{}, err
 	}

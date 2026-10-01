@@ -253,8 +253,10 @@ function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof JsonNumber);
 }
 
-function parseJsonLossless(text: string): JsonValue {
-  const parser = new JsonParser(text);
+type JsonParseBudget = { nodes: number };
+
+function parseJsonLossless(text: string, work: JsonParseBudget = { nodes: 0 }): JsonValue {
+  const parser = new JsonParser(text, work);
   const value = parser.parseValue();
   parser.skipWhitespace();
   if (!parser.atEnd()) {
@@ -266,8 +268,7 @@ function parseJsonLossless(text: string): JsonValue {
 class JsonParser {
   private i = 0;
   private depth = 0;
-  private nodes = 0;
-  constructor(private readonly s: string) {}
+  constructor(private readonly s: string, private readonly work: JsonParseBudget) {}
 
   atEnd(): boolean {
     return this.i >= this.s.length;
@@ -443,8 +444,8 @@ class JsonParser {
   }
 
   private chargeNode(): void {
-    this.nodes += 1;
-    if (this.nodes > MAX_PARSE_NODES) {
+    this.work.nodes += 1;
+    if (this.work.nodes > MAX_PARSE_NODES) {
       refuse(`the JSON holds more than the ${MAX_PARSE_NODES}-node parser bound`);
     }
   }
@@ -455,17 +456,22 @@ class JsonParser {
 // Go toolchain's fold table and keeps browser duplicate handling byte-for-byte
 // aligned with the CLI importer.
 const simpleFoldExtras: Readonly<Record<string, string>> = Object.freeze({
-  s: 'S', 'ſ': 'S', 'µ': 'µ', 'ͅ': 'ͅ', 'ΐ': 'ΐ', 'σ': 'Σ', 'ΰ': 'ΰ',
-  'β': 'Β', 'ε': 'Ε', 'θ': 'Θ', 'ι': 'ͅ', 'κ': 'Κ', 'μ': 'µ', 'π': 'Π',
-  'ρ': 'Ρ', 'ς': 'Σ', 'φ': 'Φ', 'ϐ': 'Β', 'ϑ': 'Θ', 'ϕ': 'Φ', 'ϖ': 'Π',
-  'ϰ': 'Κ', 'ϱ': 'Ρ', 'ϵ': 'Ε', 'в': 'В', 'д': 'Д', 'о': 'О', 'с': 'С',
-  'т': 'Т', 'ъ': 'Ъ', 'ѣ': 'Ѣ', 'ᲀ': 'В', 'ᲁ': 'Д', 'ᲂ': 'О', 'ᲃ': 'С',
-  'ᲄ': 'Т', 'ᲅ': 'Т', 'ᲆ': 'Ъ', 'ᲇ': 'Ѣ', 'ᲈ': 'ᲈ', 'ṡ': 'Ṡ', 'ẛ': 'Ṡ',
-  'ι': 'ͅ', 'ΐ': 'ΐ', 'ΰ': 'ΰ', 'ꙋ': 'ᲈ', 'ﬅ': 'ﬅ', 'ﬆ': 'ﬅ',
+  'ſ': 's', 'Ι': 'ͅ', 'Μ': 'µ', 'ι': 'ͅ', 'μ': 'µ', 'ς': 'σ',
+  'ϐ': 'β', 'ϑ': 'θ', 'ϕ': 'φ', 'ϖ': 'π', 'ϰ': 'κ', 'ϱ': 'ρ', 'ϵ': 'ε',
+  'ᲀ': 'в', 'ᲁ': 'д', 'ᲂ': 'о', 'ᲃ': 'с', 'ᲄ': 'т', 'ᲅ': 'т',
+  'ᲆ': 'ъ', 'ᲇ': 'ѣ', 'ẛ': 'ṡ', 'ι': 'ͅ', 'ΐ': 'ΐ', 'ΰ': 'ΰ',
+  'Ꙋ': 'ᲈ', 'ꙋ': 'ᲈ', 'ﬆ': 'ﬅ',
 });
 
 function foldJSONMember(value: string): string {
-  return Array.from(value.toLowerCase(), (char) => simpleFoldExtras[char] ?? char).join('');
+  return Array.from(value, (char) => {
+    const extra = simpleFoldExtras[char];
+    if (extra !== undefined) return extra;
+    const lower = char.toLowerCase();
+    // SimpleFold never expands one rune (notably dotted capital I), nor uses
+    // contextual lowercasing such as final sigma in a whole string.
+    return Array.from(lower).length === 1 ? lower : char;
+  }).join('');
 }
 
 /**
@@ -814,13 +820,15 @@ function readVault(text: string, budget: Budget): { records: SourceRecord[]; ski
     data: { [key: string]: JsonValue };
   };
   const captures: Capture[] = [];
+  // All retained capture graphs share one parser-work bound, not one per line.
+  const work: JsonParseBudget = { nodes: 0 };
   const seen = new Set<string>();
   const lines = text.split('\n');
   for (let index = 0; index < lines.length; index += 1) {
     const raw = (lines[index] ?? '').trim();
     if (raw === '') continue;
     const where = `line ${index + 1}`;
-    const parsed = parseJsonLossless(raw);
+    const parsed = parseJsonLossless(raw, work);
     if (!isJsonObject(parsed)) {
       refuse(
         `the ${where} is not one pinned Vault/OpenBao capture record; see ` +

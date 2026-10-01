@@ -5,8 +5,10 @@
 #
 # This run's result is not a merge gate by itself: the YAML comes from the PR's
 # merge ref. trusted-ci's ci-required (base-controlled) accepts it only when the
-# PR leaves .github/ untouched and this workflow's aggregate gate passed on the
-# exact head (scripts/ci/check-fork-validation.sh). Never add a job named
+# PR leaves .github/ untouched, or a same-repo PR has an independent current
+# maintainer's latest approval on the exact head. Fork workflow edits are never
+# accepted. This workflow's aggregate gate must pass on that same head
+# (scripts/ci/check-fork-validation.sh). Never add a job named
 # ci-required here: a skipped job would satisfy the required check.
 #
 # Only vouched authors get a validation run (.github/VOUCHED.td, read from the
@@ -14,7 +16,8 @@
 # repeats the check; this copy only saves runners for unvouched authors.
 name: fork-ci
 # check-fork-validation.sh binds a run to its PR by this title. The YAML is
-# base-identical whenever that gate accepts, so a fork cannot forge it.
+# base-identical for accepted forks; same-repo YAML edits require the gate's
+# independently checked maintainer review, so a fork cannot forge acceptance.
 run-name: "fork-ci #${{ github.event.pull_request.number }}"
 
 on:

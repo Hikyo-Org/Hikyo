@@ -28,6 +28,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/operator"
 	binaryupdate "github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -54,17 +55,25 @@ func main() {
 }
 
 func run() int {
-	if handled, code := runRolloutAuthorityStage(os.Args[1:]); handled {
-		return code
-	}
-	if handled, code := runRootKeyStageMode(os.Args[1:]); handled {
-		return code
-	}
-	if handled, code := runTLSStageMode(os.Args[1:]); handled {
-		return code
-	}
-	if handled, code := importer.RunInternalSubprocess(os.Args[1:], os.Stdout); handled {
-		return code
+	if len(os.Args) > 1 {
+		// Hidden custody/re-exec modes can run only from the same closed
+		// inventory inspected by classification totality.
+		if mode, known := multicall.Lookup(os.Args[1]); known {
+			switch mode.Name {
+			case multicall.RolloutAuthorityStage:
+				_, code := runRolloutAuthorityStage(os.Args[1:])
+				return code
+			case multicall.RootKeyStage:
+				_, code := runRootKeyStageMode(os.Args[1:])
+				return code
+			case multicall.TLSStage:
+				_, code := runTLSStageMode(os.Args[1:])
+				return code
+			case multicall.ImportSubprocess:
+				_, code := importer.RunInternalSubprocess(os.Args[1:], os.Stdout)
+				return code
+			}
+		}
 	}
 	arguments, verbosity := cli.ParseVerbosity(os.Args[1:])
 	if len(arguments) == 0 {
@@ -76,6 +85,11 @@ func run() int {
 		return code
 	}
 	cmd, args := invocation[0], invocation[1:]
+	if _, known := multicall.Lookup(cmd); !known && !slices.Contains(cli.Verbs, cmd) {
+		fmt.Fprintf(os.Stderr, "hikyo: unknown command %q\n\n", cmd)
+		usage(os.Stderr)
+		return 2
+	}
 	// Datastore and custody commands must reach their gate before any optional
 	// executable housekeeping. Only remote client verbs own CLI update cleanup.
 	if slices.Contains(cli.Verbs, cmd) {

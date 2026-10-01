@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -43,6 +44,7 @@ const (
 	bindingFile   = genDir + "/binding"
 	currentLink   = genDir + "/current"
 	completeName  = ".complete"
+	previousName  = ".previous"
 	tmpLinkPrefix = ".hikyo-link-"
 	retainPrefix  = ".hikyo-retain-"
 	// keptGenerations beyond the new one: the previous generation survives one
@@ -332,17 +334,52 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 		}
 	}
 	removed := setMinus(previous, sortedNames(plan.Files))
+	// A previous attempt may have committed current before pruning. Its new
+	// manifest no longer lists removed names; exact managed links retain them.
+	desiredNames := sortedNames(plan.Files)
+	entries, err := d.readDir(".")
+	if err != nil {
+		return res, err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !fileNameGrammar.MatchString(name) || slices.Contains(desiredNames, name) || slices.Contains(removed, name) {
+			continue
+		}
+		ours, err := d.linkIsOurs(name)
+		if err != nil {
+			return res, err
+		}
+		if ours {
+			removed = append(removed, name)
+		}
+	}
+	slices.Sort(removed)
 	if len(removed) > 0 && plan.Policy.OnRemoved == RemovedRefuse {
 		return res, fmt.Errorf("%w: %s; set destination.on_removed to retain or prune", ErrRemoved, strings.Join(removed, ", "))
 	}
-	if oldGen != "" && len(removed) == 0 {
+	if oldGen != "" {
 		same, err := d.generationMatches(oldGen, plan)
 		if err != nil {
 			return res, err
 		}
 		if same {
-			res.Generation = oldGen
-			return res, d.ensureLinks(plan.Files)
+			prior, err := d.predecessor(oldGen)
+			if err == nil {
+				res.Generation = oldGen
+				if err := d.ensureLinks(plan.Files); err != nil {
+					return res, err
+				}
+				if err := d.pruneRemoved(plan, removed, &res); err != nil {
+					return res, err
+				}
+				return res, d.collect(oldGen, prior)
+			}
+			if !errors.Is(err, fs.ErrNotExist) {
+				return res, err
+			}
+			// Legacy generations have no durable predecessor. Republish the
+			// same content once, preserving this known current as predecessor.
 		}
 	}
 
@@ -351,7 +388,7 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 		return res, err
 	}
 	newGen := plan.Stamp + "-" + suffix
-	if err := d.stage(newGen, plan, probe); err != nil {
+	if err := d.stage(newGen, plan, probe, oldGen); err != nil {
 		// A staging failure (a full disk, a refused chown) removes the partial
 		// generation; `current` was never touched.
 		_ = d.root.RemoveAll(path.Join(genDir, newGen))
@@ -386,24 +423,56 @@ func (d *Destination) Publish(ctx context.Context, plan Plan, probe Probe) (Resu
 	if err := d.ensureLinks(plan.Files); err != nil {
 		return res, err
 	}
+	if err := d.pruneRemoved(plan, removed, &res); err != nil {
+		return res, err
+	}
+	return res, d.collect(newGen, oldGen)
+}
+
+func (d *Destination) predecessor(current string) (string, error) {
+	name := path.Join(genDir, current, previousName)
+	info, err := d.root.Lstat(name)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 64 {
+		return "", errors.New("filesync: invalid predecessor metadata")
+	}
+	file, err := d.root.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(io.LimitReader(file, 65))
+	if err != nil {
+		return "", err
+	}
+	prior := strings.TrimSpace(string(raw))
+	if len(raw) > 64 || (prior != "" && (!genGrammar.MatchString(prior) || prior == current)) {
+		return "", errors.New("filesync: invalid predecessor generation")
+	}
+	return prior, nil
+}
+
+func (d *Destination) pruneRemoved(plan Plan, removed []string, res *Result) error {
 	if plan.Policy.OnRemoved == RemovedPrune {
 		for _, name := range removed {
 			ok, err := d.linkIsOurs(name)
 			if err != nil {
-				return res, err
+				return err
 			}
 			if ok {
 				if err := d.root.Remove(name); err != nil {
-					return res, err
+					return err
 				}
 				res.Pruned = append(res.Pruned, name)
 			}
 		}
 		if err := d.syncDir("."); err != nil {
-			return res, err
+			return err
 		}
 	}
-	return res, d.collect(newGen, oldGen)
+	return nil
 }
 
 // claimBinding records the target on first use and refuses a directory that
@@ -526,7 +595,7 @@ func (d *Destination) generationFiles(gen string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.Name() == completeName {
+		if e.Name() == completeName || e.Name() == previousName {
 			continue
 		}
 		if !e.Type().IsRegular() {
@@ -584,7 +653,7 @@ func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
 // stage writes a complete, fsynced generation. Each file is created O_EXCL
 // with owner-only mode, chowned and chmodded BEFORE any byte is written, so
 // plaintext never exists under a wider mode or the wrong owner.
-func (d *Destination) stage(gen string, plan Plan, probe Probe) error {
+func (d *Destination) stage(gen string, plan Plan, probe Probe, previous string) error {
 	dir := path.Join(genDir, gen)
 	if err := d.root.Mkdir(dir, 0o700); err != nil {
 		return err
@@ -598,6 +667,9 @@ func (d *Destination) stage(gen string, plan Plan, probe Probe) error {
 		if err := d.writeOwned(path.Join(dir, f.Name), f.Content, plan.Policy); err != nil {
 			return fmt.Errorf("filesync: write %s: %w", f.Name, err)
 		}
+	}
+	if err := d.writeFileSynced(path.Join(dir, previousName), []byte(previous+"\n"), 0o600); err != nil {
+		return err
 	}
 	if err := d.writeFileSynced(path.Join(dir, completeName), []byte(plan.Stamp+"\n"), 0o600); err != nil {
 		return err

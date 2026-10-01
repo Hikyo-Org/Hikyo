@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/freetext"
 )
 
@@ -345,7 +346,8 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 		}
 		return nil, OutcomeFetchFailed, fmt.Errorf("operator client: fetch validation failed (400)")
 	case resp.StatusCode == http.StatusNotFound:
-		if strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		markers := resp.Header.Values(delivery.RefusalHeader)
+		if len(markers) == 1 && markers[0] == delivery.RefusalVersion && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
 			payload, err := io.ReadAll(io.LimitReader(resp.Body, (16<<10)+1))
 			if err == nil && len(payload) <= 16<<10 {
 				var envelope struct {

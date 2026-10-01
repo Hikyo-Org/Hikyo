@@ -168,6 +168,10 @@ type LedgerEntry struct {
 	// it. This makes PATCH-404 -> POST crash safe without treating the retry as
 	// an unowned capture attempt.
 	Missing bool
+	// AdoptionPending is durable explicit adoption evidence newer than every
+	// successful provider write for this scoped name. Owned alone is not consent
+	// to take over a path whose provider ownership markers disappeared.
+	AdoptionPending bool
 }
 
 type Disposition string

@@ -280,6 +280,30 @@ describe('infisical connector', () => {
 });
 
 describe('vault/openbao connector', () => {
+  it('charges one parser-work budget across every JSON Lines capture', () => {
+    const lines = Array.from({ length: 15 }, (_, index) => JSON.stringify({
+      path: `apps/path-${index}`, mount: 'secret', engine_version: 1,
+      deleted: false, destroyed: false,
+      data: { VALUE: Array.from({ length: 4000 }, () => 0) },
+    }));
+    expect(refusal(parseSource('vault', lines.join('\n')))).toMatch(/parser bound/);
+  });
+
+  it('refuses the FB05/FB06 duplicate cycle used by the pinned Go CLI', () => {
+    const capture = JSON.stringify({
+      path: 'apps/value', mount: 'secret', engine_version: 1,
+      deleted: false, destroyed: false, data: { VALUE: { 'ﬅ': 1, 'ﬆ': 2 } },
+    });
+    expect(refusal(parseSource('vault', capture))).toMatch(/more than once/i);
+  });
+
+  it('keeps dotted I distinct from its expanded lowercase sequence, like Go', () => {
+    const capture = JSON.stringify({
+      path: 'apps/value', mount: 'secret', engine_version: 1,
+      deleted: false, destroyed: false, data: { VALUE: { 'İ': 1, 'i̇': 2 } },
+    });
+    expect(ok(parseSource('vault', capture)).entries[0]?.value).toBe('{"i̇":2,"İ":1}');
+  });
   it('strips the common prefix to folders, skips deleted, canonicalizes json leaves', () => {
     const capture = [
       '{"path":"apps/db/main","mount":"secret","engine_version":2,"secret_version":4,"deleted":false,"destroyed":false,"data":{"DB_URL":"postgres://fixture","OPTIONS":{"pool":5,"ssl":true}}}',

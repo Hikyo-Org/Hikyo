@@ -470,10 +470,6 @@ type txForwarded interface {
 	// ReleaseGrantOrigin releases one origin, reporting whether it held the row.
 	ReleaseGrantOrigin(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error)
 
-	// RemoteOrigins is the CSP `connect-src` input. See the resolver's doc comment
-	// for why this one read of a class=instance table is proof-free.
-	RemoteOrigins(ctx context.Context) ([]string, error)
-
 	// RemoveExternalIdentity removes a link (unlink).
 	//hikyo:forward DeleteExternalIdentity
 	RemoveExternalIdentity(ctx context.Context, id string) error

@@ -140,6 +140,45 @@ func TestParseMetadataVerifiesSignedDescriptorBeforeExtraction(t *testing.T) {
 	if _, err := ParseMetadata(tampered, "https://idp.example/metadata"); !errors.Is(err, ErrMetadataSignature) {
 		t.Fatalf("tampered ParseMetadata() error = %v, want ErrMetadataSignature", err)
 	}
+
+	// The child remains signed over the same namespace-qualified values when
+	// its namespace declarations come only from the aggregate parent.
+	signed.RemoveAttr("xmlns:md")
+	signed.RemoveAttr("xmlns:ds")
+	aggregate := etree.NewElement("md:EntitiesDescriptor")
+	aggregate.CreateAttr("xmlns:md", SAMLMetadataNamespace)
+	aggregate.CreateAttr("xmlns:ds", XMLDSIGNamespace)
+	aggregate.AddChild(signed)
+	document.SetRoot(aggregate)
+	raw, err = document.WriteToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err = ParseMetadata(raw, "https://idp.example/metadata")
+	if err != nil || !metadata.Signed || metadata.SSOURL != "https://idp.example/sso" {
+		t.Fatalf("inherited namespaces = %+v, error %v", metadata, err)
+	}
+	tampered = []byte(strings.Replace(string(raw), "https://idp.example/sso", "https://attacker.example/sso", 1))
+	if _, err := ParseMetadata(tampered, "https://idp.example/metadata"); !errors.Is(err, ErrMetadataSignature) {
+		t.Fatalf("tampered aggregate error = %v", err)
+	}
+}
+
+func TestMetadataValidityIncludesSelectedRole(t *testing.T) {
+	_, certificate := requestSigningFixture(t)
+	for _, roleValidity := range []string{"2026-08-01T00:00:00Z", "invalid"} {
+		for _, ancestorValidity := range []string{"", ` validUntil="2026-09-01T00:00:00Z"`} {
+			raw := []byte(`<md:EntityDescriptor xmlns:md="` + SAMLMetadataNamespace + `" xmlns:ds="` + XMLDSIGNamespace + `" entityID="x"` + ancestorValidity + `><md:IDPSSODescriptor protocolSupportEnumeration="` + SAMLProtocolNamespace + `" validUntil="` + roleValidity + `">` + metadataKeyDescriptor("signing", certificate.Raw) + `<md:SingleSignOnService Binding="` + BindingHTTPRedirect + `" Location="https://idp.example/sso"/></md:IDPSSODescriptor></md:EntityDescriptor>`)
+			metadata, err := ParseMetadata(raw, "x")
+			if roleValidity == "invalid" {
+				if !errors.Is(err, ErrMetadataValidUntil) {
+					t.Fatalf("malformed role validity error = %v", err)
+				}
+			} else if err != nil || metadata.ValidUntil == nil || metadata.ValidUntil.Format(time.RFC3339) != roleValidity {
+				t.Fatalf("role validity = %v, error %v", metadata.ValidUntil, err)
+			}
+		}
+	}
 }
 
 func metadataKeyDescriptor(use string, certificate []byte) string {

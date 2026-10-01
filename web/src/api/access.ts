@@ -853,7 +853,7 @@ export function grantFailureText(error: unknown, context: GrantFailureContext = 
       409: (error) => {
         if (error.detail !== undefined) return error.detail;
         if (context.operation === 'revoke' && (context.scope === 'org' || context.scope === 'instance')) {
-          return 'Refused: this would leave this scope with nobody able to manage its members.';
+          return 'This grant cannot be revoked in its current authorization or ownership state. Review its origins and remaining member managers. If SCIM owns the grant, change its provisioning mapping instead.';
         }
         return 'The grant conflicts with this principal, scope, capability, or current authorization state. Reload and review the requested grant.';
       },

@@ -30,6 +30,28 @@ async function mount(active: boolean, onAttempt: () => void): Promise<Root> {
 }
 
 describe('useNavigationGuard', () => {
+  it('restores the protected predecessor after skipped Back so finishing does not navigate away', async () => {
+    history.replaceState({ idx: 1 }, '', '/protected-route');
+    const originalState = history.state;
+    const push = vi.spyOn(history, 'pushState');
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {});
+    await mount(true, () => {});
+    push.mockClear();
+    history.replaceState({ idx: 0 }, '', '/older-route');
+    await act(async () => window.dispatchEvent(new PopStateEvent('popstate', { state: history.state })));
+    expect(push).toHaveBeenNthCalledWith(1, originalState, '', expect.stringContaining('/protected-route'));
+    expect(push).toHaveBeenNthCalledWith(2, { hikyoNavigationGuard: expect.any(Number) }, '', expect.stringContaining('/protected-route'));
+    await mount(false, () => {});
+    expect(back).toHaveBeenCalledOnce();
+  });
+
+  it('does not pop unrelated history when its sentinel is no longer current', async () => {
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {});
+    await mount(true, () => {});
+    history.replaceState({}, '', '/unrelated');
+    await mount(false, () => {});
+    expect(back).not.toHaveBeenCalled();
+  });
   it('pushes a history sentinel and registers beforeunload while active', async () => {
     const pushState = vi.spyOn(history, 'pushState').mockImplementation(() => {});
     const addListener = vi.spyOn(window, 'addEventListener');
@@ -46,6 +68,7 @@ describe('useNavigationGuard', () => {
   });
 
   it('re-pushes the sentinel on popstate and routes the attempt to the latest callback', async () => {
+    history.replaceState(null, '', '/protected-route');
     const pushState = vi.spyOn(history, 'pushState').mockImplementation(() => {});
     const first = vi.fn();
     const latest = vi.fn();
@@ -140,7 +163,7 @@ describe('useNavigationGuard', () => {
   });
 
   it('removes its listeners and consumes the sentinel when deactivated', async () => {
-    vi.spyOn(history, 'pushState').mockImplementation(() => {});
+    vi.spyOn(history, 'pushState');
     const back = vi.spyOn(history, 'back').mockImplementation(() => {});
     const removeListener = vi.spyOn(window, 'removeEventListener');
     const onAttempt = vi.fn();

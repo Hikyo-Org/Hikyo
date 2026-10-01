@@ -41,7 +41,7 @@ type adapterStoreQueries interface {
 	mapping(context.Context, domain.Scope, string) ([]adapter.ManifestEntry, error)
 	planCredential(context.Context, domain.Scope, string) ([]byte, AdapterTransport, error)
 	planManifest(context.Context, domain.Scope, string, string) ([]adapter.ManifestEntry, error)
-	planLedger(context.Context, domain.Scope, string, string) ([]adapter.LedgerEntry, error)
+	planLedger(context.Context, domain.Scope, string, string, int64) ([]adapter.LedgerEntry, error)
 	targetEnvironments(context.Context, domain.Scope, string) ([]string, error)
 	environments(context.Context, domain.Scope, string) ([]string, error)
 	conflicts(context.Context, domain.Scope, string) ([]AdapterConflictArtifact, error)
@@ -472,13 +472,13 @@ func (q sqliteAdapterStoreQueries) planCredential(ctx context.Context, chain dom
 	c, err := q.queries.AdapterPlanCredential(ctx, sqlitegen.AdapterPlanCredentialParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 	return c.CredentialCiphertext, AdapterTransport{SPKIPin: c.SpkiPin, CABundlePEM: c.CaBundlePem, AllowPersonalToken: c.AllowPersonalToken == 1}, err
 }
-func (q sqliteAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string) ([]adapter.LedgerEntry, error) {
-	rows, err := q.queries.AdapterPlanLedger(ctx, sqlitegen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+func (q sqliteAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string, generation int64) ([]adapter.LedgerEntry, error) {
+	rows, err := q.queries.AdapterPlanLedger(ctx, sqlitegen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Generation: generation})
 	if err != nil {
 		return nil, err
 	}
 	return mapRows(rows, func(c sqlitegen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
-		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0}, nil
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0, AdoptionPending: c.AdoptionPending != 0}, nil
 	})
 }
 func (q sqliteAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
@@ -541,13 +541,13 @@ func (q pgAdapterStoreQueries) planCredential(ctx context.Context, chain domain.
 	c, err := q.queries.AdapterPlanCredential(ctx, pggen.AdapterPlanCredentialParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 	return c.CredentialCiphertext, AdapterTransport{SPKIPin: c.SpkiPin, CABundlePEM: c.CaBundlePem, AllowPersonalToken: c.AllowPersonalToken == 1}, err
 }
-func (q pgAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string) ([]adapter.LedgerEntry, error) {
-	rows, err := q.queries.AdapterPlanLedger(ctx, pggen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+func (q pgAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string, generation int64) ([]adapter.LedgerEntry, error) {
+	rows, err := q.queries.AdapterPlanLedger(ctx, pggen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Generation: generation})
 	if err != nil {
 		return nil, err
 	}
 	return mapRows(rows, func(c pggen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
-		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing}, nil
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0}, nil
 	})
 }
 func (q pgAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {

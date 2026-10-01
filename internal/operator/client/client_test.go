@@ -217,6 +217,7 @@ func TestFetchStatusMapping(t *testing.T) {
 	for _, tc := range cases {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if tc.status == http.StatusNotFound {
+				w.Header().Set("X-Hikyo-Delivery-Refusal", "v1")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(`{"error":{"code":"not_found"}}`))
@@ -241,6 +242,28 @@ func TestFetchStatusMapping(t *testing.T) {
 		}
 		if err == nil {
 			t.Errorf("status %d: expected a descriptive error", tc.status)
+		}
+	}
+}
+
+func TestUnmarkedJSON404RetainsDeliveredData(t *testing.T) {
+	for _, marker := range []string{"", "v2", "v1, v1"} {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if marker != "" {
+				w.Header().Set("X-Hikyo-Delivery-Refusal", marker)
+			}
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
+		}))
+		c, err := NewClient(srv.URL, caPEM(t, srv), "hikyo-operator/test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, outcome, err := c.Fetch(context.Background(), FetchRequest{Org: "o", Project: "p", Environment: "e", Bearer: "t"})
+		srv.Close()
+		if outcome != OutcomeFetchFailed || err == nil {
+			t.Fatalf("marker %q outcome = %v, error %v", marker, outcome, err)
 		}
 	}
 }

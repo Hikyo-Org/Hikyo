@@ -280,28 +280,29 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 
 // writePlan is the value-blind decision for one desired name.
 type writePlan struct {
-	conflict   string
-	create     bool
-	restore    bool
-	tag        bool
-	put        bool
-	versionTag bool
+	conflict        string
+	create          bool
+	restore         bool
+	tag             bool
+	put             bool
+	promote         bool
+	markCurrent     bool
+	previousCurrent string
+	previousHikyo   string
+	versionTag      bool
 }
 
 // decide inspects metadata only: existence, ownership tag, deletion state,
 // the labels on the version holding AWSCURRENT, and the HIKYO_VERSION tag.
 //
-// A version is Hikyo's when it carries HIKYO_CURRENT (set atomically by the
-// write) or when HIKYO_VERSION names it (set right after the write). Only the
-// AWSCURRENT version's own labels are consulted: AWS-compatible services
-// differ on whether custom labels survive on superseded versions, and the
-// check must not depend on that.
+// HIKYO_PENDING proves a staged version only for this exact job token. Once
+// promoted, HIKYO_CURRENT and HIKYO_VERSION provide lasting ownership evidence.
 func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID, token string) writePlan {
 	if !found {
-		return writePlan{create: true, put: true, versionTag: true}
+		return writePlan{create: true, put: true, promote: true, markCurrent: true, versionTag: true}
 	}
 	owner, tagged := meta.Tags[adapter.SentinelName]
-	plan := writePlan{put: true, versionTag: true}
+	plan := writePlan{put: true, promote: true, markCurrent: true, versionTag: true}
 	switch {
 	case tagged && owner != targetID:
 		return writePlan{conflict: "tagged as owned by another Hikyo target"}
@@ -325,9 +326,14 @@ func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID
 		}
 		if slices.Contains(stages, CurrentStage) {
 			written = true
+			plan.previousHikyo = version
+		}
+		if slices.Contains(stages, PendingStage) {
+			written = true
 		}
 	}
-	ours := current != "" && (slices.Contains(meta.Stages[current], CurrentStage) || meta.Tags[VersionTag] == current)
+	plan.previousCurrent = current
+	ours := current != "" && (slices.Contains(meta.Stages[current], CurrentStage) || meta.Tags[VersionTag] == current || (current == token && slices.Contains(meta.Stages[current], PendingStage)))
 	// Once Hikyo has written a secret, or created it, any AWSCURRENT that is
 	// not Hikyo's was written by someone else. An adopted secret Hikyo never
 	// wrote is the one case where a foreign AWSCURRENT is expected, including
@@ -338,6 +344,8 @@ func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID
 	}
 	if ours && current == token {
 		plan.put = false
+		plan.promote = false
+		plan.markCurrent = plan.previousHikyo != token
 		plan.versionTag = meta.Tags[VersionTag] != token
 	}
 	return plan
@@ -445,6 +453,24 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 	}
 	if plan.put {
 		if err := m.API.PutSecretValue(ctx, row.EffectiveName, token, row.Value); err != nil {
+			return mutated, err
+		}
+		mutated = true
+	}
+	if plan.promote {
+		if err := m.API.UpdateSecretVersionStage(ctx, row.EffectiveName, awsCurrent, token, plan.previousCurrent); err != nil {
+			// A conditional refusal must not advance ownership markers. Preserve
+			// both the old Hikyo version and the concurrent external AWSCURRENT.
+			var response *ResponseError
+			if errors.As(err, &response) && (response.Code == "InvalidParameterException" || response.Code == "InvalidRequestException") {
+				return mutated, fmt.Errorf("%w: secret %s: conditional AWSCURRENT promotion refused; review its current version before consenting to overwrite", adapter.ErrConflict, row.EffectiveName)
+			}
+			return mutated, err
+		}
+		mutated = true
+	}
+	if plan.markCurrent {
+		if err := m.API.UpdateSecretVersionStage(ctx, row.EffectiveName, CurrentStage, token, plan.previousHikyo); err != nil {
 			return mutated, err
 		}
 		mutated = true

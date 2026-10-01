@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"errors"
 	"io"
 	"math/big"
 	"net/url"
@@ -46,6 +47,11 @@ func TestBuildAuthnRequestBuildsSignedRedirectOverExactWireValues(t *testing.T) 
 	}
 	if parsed.Query().Get("RelayState") != "opaque state/+" {
 		t.Fatalf("RelayState = %q", parsed.Query().Get("RelayState"))
+	}
+	for _, parameter := range []string{"SAMLRequest", "RelayState", "SigAlg", "Signature"} {
+		if len(parsed.Query()[parameter]) != 1 {
+			t.Fatalf("%s occurred %d times", parameter, len(parsed.Query()[parameter]))
+		}
 	}
 	if parsed.Query().Get("SigAlg") != SignatureRSASHA256 {
 		t.Fatalf("SigAlg = %q", parsed.Query().Get("SigAlg"))
@@ -109,6 +115,21 @@ func TestBuildAuthnRequestBuildsUnsignedLoginRequest(t *testing.T) {
 	}
 	if parsed.Query().Has("Signature") || parsed.Query().Has("SigAlg") {
 		t.Fatalf("unsigned query = %q", parsed.RawQuery)
+	}
+}
+
+func TestBuildAuthnRequestRejectsReservedEndpointParameters(t *testing.T) {
+	for _, parameter := range []string{"SAMLRequest", "SAMLResponse", "RelayState", "SigAlg", "Signature", "Relay%53tate"} {
+		for _, sign := range []bool{false, true} {
+			_, err := BuildAuthnRequest(AuthnRequestConfig{
+				IDPSSOURL:  "https://idp.example/sso?tenant=example&" + parameter + "=old",
+				SPEntityID: "https://hikyo.example/saml/metadata", ACSURL: "https://hikyo.example/acs",
+				RelayState: "fresh", Sign: sign, Now: time.Now(),
+			})
+			if !errors.Is(err, ErrInvalidAuthnRequestConfig) {
+				t.Fatalf("parameter %s signed %v: %v", parameter, sign, err)
+			}
+		}
 	}
 }
 

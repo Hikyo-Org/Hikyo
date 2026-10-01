@@ -4,6 +4,16 @@
 
 [api-cli-surface.md](../adr/api-cli-surface.md) is the API/CLI spec's skeleton; several later ADRs joined its closed grammar at declared join points and delegated their **exact spellings** to this document. Every spelling here is bound by the locked grammar (noun-verb families, output classes, print triad, exit codes, parity rules) and by the delegating ADR's constraints; a spelling that would violate either is a defect here, not a licence to reinterpret the ADR. Nothing here adds a verb class, an output class, or an endpoint outside the declared join points.
 
+Client trust and session files are private state, not checkout artifacts.
+Unix reads require the current user's private directory and regular 0600
+files, with ownership and inode checked on the opened file. Windows reads
+require current-user ownership and a private DACL, reject reparse points,
+and check security on the same handle used to read. Private Windows atomic
+writes set their DACL at creation, before writing credentials. Unsafe existing
+trust or session files are refused, not silently adopted. If credentials were
+stored with broader access, revoke them and sign in again after restoring
+private state custody; changing permissions cannot undo earlier exposure.
+
 ## 1. SCIM administration ([scim-provisioning.md](../adr/scim-provisioning.md))
 
 Human-session verbs (full UI↔CLI parity: binding CRUD, mapping-table administration, credential mint/rotate/revoke, provisioned directory views; the *wire* endpoints under `/api/v1/orgs/{org}/scim/v2/{binding}/…` are fixed in the ADR and are parity-exempt protocol paths):
@@ -140,7 +150,7 @@ Phase 2 is the existing pipeline, no new grammar: `definitions plan --file` → 
 }
 ```
 
-**`values_digests` binds each environment's values file to this run by content.** Occurrence tokens bind the reviewed server state, not the imported plaintext. Each protected values file now has `format_version: 2` and a fresh 256-bit hex `commitment_key`, stored only in that 0600 values file. The manifest records HMAC-SHA256 over the canonical values serialization with `commitment_key` omitted, keyed by that private material. Verification includes project, environment and every entry. The key never enters the committable template or manifest. Identical imports under independent keys have different public commitments, preventing offline password guessing from repository artifacts.
+**`values_digests` binds each environment's values file to this run by content.** Occurrence tokens bind the reviewed server state, not the imported plaintext. Each protected values file now has `format_version: 2` and a fresh 256-bit hex `commitment_key`, stored only in that 0600 values file. The manifest records HMAC-SHA256 over the `hikyo-import-values-commitment-v2\0` domain prefix followed by the canonical values serialization with `commitment_key` omitted, keyed by that private material. The final prefix byte is NUL. Verification includes project, environment and every entry. The key never enters the committable template or manifest. Identical imports under independent keys have different public commitments, preventing offline password guessing from repository artifacts.
 
 Mapping templates remain version 1. Plaintext file sources use the nonempty `file-export` marker in `scope.file_digest` and `source_identity.context`; this is informational file-mode provenance, not a content hash or an integrity proof. Only fully encrypted SOPS inputs retain their ciphertext digest; partially plaintext SOPS inputs also use the marker.
 
@@ -433,7 +443,12 @@ holding the destination lock, and an expired or rolled-back offline snapshot
 reached current within `refresh.timeout` → **6**; a filesystem failure while
 publishing → **1**. Failures before the `current` symlink swap preserve the
 prior generation. Failures after the swap can leave the new generation current
-and require inspection or repair.
+and require inspection or repair. Repeating the same render completes owned-link
+pruning and obsolete-generation collection even when the generation is unchanged.
+Each new generation records its predecessor in private `.previous` metadata so
+retry cleanup retains the actual current and previous generations. A legacy
+generation without this metadata is republished once with identical content,
+then uses the same bounded retry cleanup. Foreign files and symlinks remain untouched.
 
 ### Stderr strings that are stable surface
 

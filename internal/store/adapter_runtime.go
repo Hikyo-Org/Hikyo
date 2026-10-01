@@ -136,12 +136,12 @@ func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (Ad
 		if err != nil {
 			return AdapterExecution{}, err
 		}
-		ledger, err := q.adapterWorkerLoadExecutionLedgerQuery(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
+		ledger, err := q.adapterWorkerLoadExecutionLedgerQuery(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
 		if err != nil {
 			return AdapterExecution{}, err
 		}
 		for _, entry := range ledger {
-			out.Ledger = append(out.Ledger, adapter.LedgerEntry{Surface: adapter.Surface(entry.Surface), EffectiveName: entry.EffectiveName, State: adapter.LedgerState(entry.State), Missing: entry.Missing})
+			out.Ledger = append(out.Ledger, adapter.LedgerEntry{Surface: adapter.Surface(entry.Surface), EffectiveName: entry.EffectiveName, State: adapter.LedgerState(entry.State), Missing: entry.Missing, AdoptionPending: entry.AdoptionPending})
 		}
 		if job.Kind == adapter.Scrub {
 			return out, nil

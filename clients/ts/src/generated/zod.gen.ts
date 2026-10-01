@@ -3062,6 +3062,7 @@ export const zValueDiff = z.object({
  *
  */
 export const zDeliveredKey = z.object({
+    snapshot_receipt: z.string().min(1).max(4096).optional(),
     key_id: zId,
     name: z.string().max(256),
     classification: zKeyClassification,
@@ -3097,6 +3098,7 @@ export const zDeliveryResponse = z.object({
 });
 
 export const zOfflineDeliveryRecord = z.object({
+    snapshot_receipt: z.string().min(1).max(4096),
     record_id: z.string().min(1).max(64),
     key_id: z.string().min(1).max(64),
     key_name: z.string().min(1).max(256),

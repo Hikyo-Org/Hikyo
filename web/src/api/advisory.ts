@@ -299,6 +299,9 @@ function jitter(ms: number): number {
 
 /** Abort-aware sleep: disposal interrupts a backoff instead of outliving it. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  // A pending fetch can reject only AFTER disposal dispatched its abort event.
+  // The transport then enters this retry sleep with an already-aborted signal.
+  if (signal.aborted) return Promise.resolve();
   return new Promise((resolve) => {
     const timer = setTimeout(finish, ms);
     signal.addEventListener('abort', finish, { once: true });

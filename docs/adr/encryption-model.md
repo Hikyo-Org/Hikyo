@@ -228,6 +228,14 @@ Two consequences, recorded rather than discovered later:
 
 ## Backups and exports
 
+Passphrase exports explicitly use age scrypt work factor 18 (approximately
+256 MiB). Restore rejects larger work factors before deriving a key, including
+before archive authentication: an attacker-controlled header cannot request
+age's otherwise-supported 4 GiB factor 22. Existing Hikyo passphrase exports
+at factor 18 remain compatible; externally produced higher-factor archives
+require an operator to re-encrypt them with supported settings using trusted
+age tooling before Hikyo restore.
+
 `hikyo export` produces an **age-encrypted** archive (`filippo.io/age`) holding the already-field-encrypted datastore export, encrypted to one or more **operator-held recipients**. This restores the research recommendation and conforms to the threat model's trust boundary 5 as originally written.
 
 **Hikyo specifies no container format of its own.** Age supplies the whole of it — X25519 recipient stanzas, `scrypt` passphrase recipients, plugin recipients for hardware tokens, the STREAM chunked payload construction with chunk ordering and truncation detection, and a parser hardened by wide deployment. An earlier revision of this ADR hand-specified an equivalent container over ECDH and later over HPKE; cross-model review correctly called the first version a sketch rather than a specification, and the honest conclusion is that **the pieces it kept getting wrong are exactly the pieces age already gets right**. The threat model mandates minimal dependencies and maintainer review of all crypto contributions; adopting a reviewed format is the cheaper side of that mandate, not the expensive one.

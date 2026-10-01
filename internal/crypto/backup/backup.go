@@ -35,6 +35,9 @@ import (
 const (
 	maxHeaderBytes = 256 << 10
 	maxRecipients  = 256
+	// Match age's existing export default: 256 MiB, instead of allowing
+	// unauthenticated headers to request logN=22 and allocate 4 GiB.
+	maxScryptWorkFactor = 18
 )
 
 // Export and open refusals. Each is its own sentinel because the operator
@@ -103,6 +106,7 @@ func (o Options) recipients() ([]age.Recipient, error) {
 		if err != nil {
 			return nil, fmt.Errorf("backup: passphrase recipient: %w", err)
 		}
+		r.SetWorkFactor(maxScryptWorkFactor)
 		return []age.Recipient{r}, nil
 	}
 	if len(o.Recipients) == 0 {
@@ -128,6 +132,7 @@ func (u Unlock) identity() (age.Identity, error) {
 		if err != nil {
 			return nil, fmt.Errorf("backup: passphrase identity: %w", err)
 		}
+		i.SetMaxWorkFactor(maxScryptWorkFactor)
 		return i, nil
 	default:
 		i, err := age.ParseX25519Identity(strings.TrimSpace(u.Identity))

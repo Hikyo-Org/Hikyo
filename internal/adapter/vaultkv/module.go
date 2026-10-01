@@ -210,7 +210,7 @@ const (
 	// pathLanded: the pending write landed; finalize before anything else.
 	pathLanded
 	// pathUnmarked: present with no Hikyo marker. Unowned unless the ledger
-	// holds it (an explicit adoption).
+	// holds fresh explicit adoption evidence or an unmarked dispatched create.
 	pathUnmarked
 	// pathForeign: marked by another Hikyo target.
 	pathForeign
@@ -283,7 +283,7 @@ func (m *Module) inspect(ctx context.Context, target adapter.Target, name string
 // when this target's own marker shows a released (soft-deleted) earlier
 // delivery; everything else is `exists, unowned`. Claimed paths refuse
 // another target's marker and external version movement.
-func writable(claimed bool, claim adapter.LedgerState, state pathState) bool {
+func writable(claimed bool, claim adapter.LedgerState, adoptionPending bool, state pathState) bool {
 	switch state.kind {
 	case pathAbsent:
 		return true
@@ -291,8 +291,9 @@ func writable(claimed bool, claim adapter.LedgerState, state pathState) bool {
 		return claimed || state.released
 	case pathUnmarked:
 		// A dispatched unmarked create can only have produced version one.
-		// Owned unmarked rows are explicit adoptions and retain that authority.
-		return claimed && (claim == adapter.Owned || state.version == 1)
+		// Generic Owned rows are NOT explicit adoptions. Missing markers after
+		// delivery lose custody, even when the value's version did not change.
+		return claimed && ((claim == adapter.Owned && adoptionPending) || (claim == adapter.Dispatched && state.version == 1))
 	default:
 		return false
 	}
@@ -349,7 +350,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		}
 		disposition := adapter.Create
 		switch {
-		case !writable(owned, record.State, state):
+		case !writable(owned, record.State, record.AdoptionPending, state):
 			disposition = adapter.Conflict
 		case owned && state.kind != pathAbsent:
 			disposition = adapter.Update
@@ -493,7 +494,7 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		return err
 	}
 	conflict := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict}
-	if !writable(owned, record.State, live) {
+	if !writable(owned, record.State, record.AdoptionPending, live) {
 		if state == adapter.Reserved {
 			if err := journal.Refuse(ctx, effect); err != nil {
 				return err
@@ -686,7 +687,7 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 		return gateErr
 	}
 	deleted := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
-	if live.kind == pathUnmarked && row.State == adapter.Dispatched && live.version != 1 {
+	if live.kind == pathUnmarked && !writable(true, row.State, row.AdoptionPending, live) {
 		live.kind = pathMoved
 	}
 	switch live.kind {

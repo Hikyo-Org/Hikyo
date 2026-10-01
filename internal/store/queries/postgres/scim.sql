@@ -207,7 +207,7 @@ SELECT id, org_id, binding_id, group_id, user_id, created_at
 FROM scim_group_members
 WHERE org_id = sqlc.arg(chain_org_id) AND binding_id = sqlc.arg(binding_id)
   AND group_id = sqlc.arg(group_id)
-ORDER BY user_id;
+ORDER BY user_id LIMIT 1001;
 
 -- Which groups a user belongs to: the `groups` attribute is response-only per
 -- RFC 7643, and this is the read that fills it.

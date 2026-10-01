@@ -144,6 +144,7 @@ func TestOfflineRecordReconciliation(t *testing.T) {
 
 func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 	identityFixtures(t, db)
+	seedDeliveryCatalogue(t, db)
 	ident := identitySvc(db)
 	sa, err := ident.CreateServiceAccount(t.Context(), service.LocalPrincipal(identAdmin),
 		prjScope(), "offline-workload", domain.ClassWorkload)
@@ -159,17 +160,65 @@ func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	grantMachineRead(t, db, sa.Principal, envA1)
+	now := time.Date(2026, 8, 19, 12, 0, 0, 123456789, time.UTC)
+	del := deliverySvc(t, db)
+	del.Now = func() time.Time { return now.Add(-time.Hour) }
+	fetched, err := del.Fetch(t.Context(), served.Value, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var delivered service.DeliveredKey
+	for _, key := range fetched.Keys {
+		if key.Name == "DATABASE_URL" {
+			delivered = key
+		}
+		if key.Value == nil && key.SnapshotReceipt != nil {
+			t.Fatal("presence-only secret received a disclosure receipt")
+		}
+	}
+	if delivered.Value == nil || delivered.SnapshotReceipt == nil {
+		t.Fatal("delivered config omitted receipt")
+	}
 	if err := ident.RevokeCredential(t.Context(), service.LocalPrincipal(identAdmin), prjScope(), sa.ID, served.Credential.ID); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	record := service.OfflineRecord{
-		RecordID: "offline-001", KeyID: "key_fed_pw", KeyName: "DATABASE_PASSWORD",
-		Classification: string(schema.Secret), OccurredAt: now.Add(-time.Minute),
+		RecordID: "offline-001", KeyID: delivered.KeyID, KeyName: delivered.Name,
+		Classification: delivered.Classification, OccurredAt: now.Add(-time.Minute),
 		CredentialID: served.Credential.ID, Generation: "v1-0123456789abcdef0123456789abcdef",
-		ServedFrom: now.Add(-time.Hour),
+		ServedFrom:      now.Add(-time.Hour),
+		SnapshotReceipt: *delivered.SnapshotReceipt,
 	}
-	del := deliverySvc(t, db)
+	del.Now = func() time.Time { return now }
+	for name, mutate := range map[string]func(*service.OfflineRecord){
+		"unsigned legacy": func(r *service.OfflineRecord) { r.SnapshotReceipt = "" },
+		"hidden secret": func(r *service.OfflineRecord) {
+			r.KeyID = "key_fed_pw"
+			r.KeyName = "DATABASE_PASSWORD"
+			r.Classification = string(schema.Secret)
+		},
+		"unknown key":        func(r *service.OfflineRecord) { r.KeyID = "forged-key" },
+		"wrong name":         func(r *service.OfflineRecord) { r.KeyName = "FORGED" },
+		"wrong class":        func(r *service.OfflineRecord) { r.Classification = string(schema.Secret) },
+		"sibling credential": func(r *service.OfflineRecord) { r.CredentialID = presenter.Credential.ID },
+		"issuance":           func(r *service.OfflineRecord) { r.ServedFrom = r.ServedFrom.Add(time.Second) },
+		"before issuance":    func(r *service.OfflineRecord) { r.OccurredAt = r.ServedFrom.Add(-time.Second) },
+		"after expiry":       func(r *service.OfflineRecord) { r.OccurredAt = fetched.SnapshotExpiresAt.Add(time.Second) },
+		"future":             func(r *service.OfflineRecord) { r.OccurredAt = now.Add(time.Minute) },
+		"tampered receipt":   func(r *service.OfflineRecord) { r.SnapshotReceipt += "A" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := record
+			bad.RecordID = "forged-record"
+			mutate(&bad)
+			if _, err := del.ReconcileOfflineRecords(t.Context(), presenter.Value, scopeEnv(orgA, prjA1, envA1), []service.OfflineRecord{record, bad}); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("forged batch was not refused: %v", err)
+			}
+			if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='disclosure.value_revealed' AND origin='offline-reconciled'`); got != 0 {
+				t.Fatalf("forged batch committed %d disclosures", got)
+			}
+		})
+	}
 	first, err := del.ReconcileOfflineRecords(t.Context(), presenter.Value,
 		scopeEnv(orgA, prjA1, envA1), []service.OfflineRecord{record})
 	if err != nil || first.Accepted != 1 || first.Duplicates != 0 {
@@ -187,6 +236,9 @@ func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 	if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events
 		WHERE type = 'disclosure.value_revealed' AND origin = 'offline-reconciled' AND `+asserted); got != 1 {
 		t.Fatalf("offline disclosure events = %d, want 1", got)
+	}
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='disclosure.value_revealed' AND origin='offline-reconciled' AND payload LIKE '%"receipt_verified":true%' AND payload LIKE '%"snapshot_commitment"%' AND payload LIKE '%"revision"%'`); got != 1 {
+		t.Fatal("authenticated snapshot evidence was not retained in audit metadata")
 	}
 }
 

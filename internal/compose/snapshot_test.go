@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestConcurrentSnapshotSavesKeepNewestWatermark(t *testing.T) {
 		binding := snapBinding(t, state, snapAAD(issued.Format(time.RFC3339), base.Add(time.Hour).Format(time.RFC3339)))
 		workers.Go(func() {
 			<-start
-			err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Name: "TOKEN", Value: issued.Format(time.RFC3339)}}})
+			err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Receipt: "server-receipt", Name: "TOKEN", Value: issued.Format(time.RFC3339)}}})
 			if err != nil && !errors.Is(err, ErrSnapshotRollback) {
 				t.Errorf("concurrent save: %v", err)
 			}
@@ -122,7 +123,7 @@ func TestSnapshotSaveLoadRoundTrip(t *testing.T) {
 	state, keys := snapState(t)
 	aad := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
 	payload := SnapshotPayload{
-		Rows:             []SnapshotRow{{Name: "API_KEY", KeyID: "key_api", Classification: "secret", Value: "s3cr3t"}},
+		Rows:             []SnapshotRow{{Receipt: "server-receipt", Name: "API_KEY", KeyID: "key_api", Classification: "secret", Value: "s3cr3t"}},
 		GenerationStamps: map[string]string{"api": "v1-" + hex32()},
 	}
 	if err := SaveSnapshot(keys, snapBinding(t, state, aad), payload); err != nil {
@@ -137,7 +138,7 @@ func TestSnapshotSaveLoadRoundTrip(t *testing.T) {
 		t.Errorf("payload = %+v", got)
 	}
 	// KeyID travels inside the sealed payload (subsumes the old cleartext sidecar).
-	if got.Rows[0].KeyID != "key_api" {
+	if got.Rows[0].KeyID != "key_api" || got.Rows[0].Receipt != payload.Rows[0].Receipt {
 		t.Errorf("KeyID not round-tripped inside the sealed payload: %+v", got.Rows[0])
 	}
 	// Server-asserted fields come back from the header, not reconstructed.
@@ -150,7 +151,7 @@ func TestSnapshotSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSnapshotLegacyContainerStillLoads(t *testing.T) {
+func TestSnapshotLegacyContainerWithoutReceiptsRefusesOfflineUse(t *testing.T) {
 	// Fixture was produced by the pre-#221 HKS1 writer with a 32-byte zero local
 	// key. It is literal so framing, HKDF/AAD, or payload drift cannot update both
 	// producer and consumer and leave this test falsely green.
@@ -178,11 +179,8 @@ func TestSnapshotLegacyContainerStillLoads(t *testing.T) {
 
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	got, binding, err := LoadSnapshot(keys, snapScope(t, state, "env_1"), now, DefaultSnapshotMaxAge)
-	if err != nil {
-		t.Fatalf("load legacy container: %v", err)
-	}
-	if len(got.Rows) != 1 || got.Rows[0].Value != "legacy" {
-		t.Fatalf("legacy payload = %+v", got)
+	if err == nil || !strings.Contains(err.Error(), "refresh online") || len(got.Rows) != 0 {
+		t.Fatalf("legacy snapshot did not fail closed: rows=%d err=%v", len(got.Rows), err)
 	}
 	canonical, err := binding.CanonicalAAD()
 	if err != nil {
@@ -190,6 +188,19 @@ func TestSnapshotLegacyContainerStillLoads(t *testing.T) {
 	}
 	if string(canonical) != legacyHeader {
 		t.Fatalf("legacy header changed:\n got %s\nwant %s", canonical, legacyHeader)
+	}
+}
+
+func TestSnapshotSaveRefusesMissingReceiptBeforeWriting(t *testing.T) {
+	state, keys := snapState(t)
+	binding := snapBinding(t, state, snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z"))
+	err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Name: "TOKEN", Value: "uncertified"}}})
+	if err == nil || !strings.Contains(err.Error(), "refresh online") {
+		t.Fatalf("missing receipt accepted: %v", err)
+	}
+	path, _ := snapPaths(t, binding)
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("uncertified snapshot materialized: %v", err)
 	}
 }
 
@@ -293,7 +304,7 @@ func TestSnapshotSameIssuanceRollback(t *testing.T) {
 	issued := "2026-08-19T10:00:00Z"
 	first := snapAAD(issued, "2026-08-26T10:00:00Z")
 	first.PinnedRevision = 0
-	if err := SaveSnapshot(keys, snapBinding(t, state, first), SnapshotPayload{Rows: []SnapshotRow{{Name: "A", Value: "1"}}}); err != nil {
+	if err := SaveSnapshot(keys, snapBinding(t, state, first), SnapshotPayload{Rows: []SnapshotRow{{Receipt: "server-receipt", Name: "A", Value: "1"}}}); err != nil {
 		t.Fatal(err)
 	}
 	// A different current snapshot sharing the timestamp: same (unpinned) revision,
@@ -345,7 +356,7 @@ func TestSnapshotContextMismatchRefused(t *testing.T) {
 func TestSnapshotTamperedContainerFailsAEAD(t *testing.T) {
 	state, keys := snapState(t)
 	aad := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
-	if err := SaveSnapshot(keys, snapBinding(t, state, aad), SnapshotPayload{Rows: []SnapshotRow{{Name: "A", Value: "1"}}}); err != nil {
+	if err := SaveSnapshot(keys, snapBinding(t, state, aad), SnapshotPayload{Rows: []SnapshotRow{{Receipt: "server-receipt", Name: "A", Value: "1"}}}); err != nil {
 		t.Fatal(err)
 	}
 	path, _ := snapPaths(t, snapScope(t, state, "env_1"))
@@ -387,7 +398,7 @@ func TestSnapshotRelocationPreservesNewAndFormerHashedSlots(t *testing.T) {
 			}
 			aad := snapAAD("2026-08-19T10:00:00Z", "2026-08-26T10:00:00Z")
 			binding := snapBinding(t, state, aad)
-			if err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Name: "TOKEN", Value: "preserved"}}}); err != nil {
+			if err := SaveSnapshot(keys, binding, SnapshotPayload{Rows: []SnapshotRow{{Receipt: "server-receipt", Name: "TOKEN", Value: "preserved"}}}); err != nil {
 				t.Fatal(err)
 			}
 			if legacy {
@@ -500,10 +511,10 @@ func TestSnapshotScopesKeepIndependentOfflineState(t *testing.T) {
 	runAAD := renderAAD
 	runAAD.TargetNames = []string{"__run__"}
 	runAAD.ChangeToken = "v1:run-token"
-	if err := SaveSnapshot(keys, snapBinding(t, state, renderAAD), SnapshotPayload{Rows: []SnapshotRow{{Name: "MODE", Value: "render"}}}); err != nil {
+	if err := SaveSnapshot(keys, snapBinding(t, state, renderAAD), SnapshotPayload{Rows: []SnapshotRow{{Receipt: "server-receipt", Name: "MODE", Value: "render"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveSnapshot(keys, snapBinding(t, state, runAAD), SnapshotPayload{Rows: []SnapshotRow{{Name: "MODE", Value: "run"}}}); err != nil {
+	if err := SaveSnapshot(keys, snapBinding(t, state, runAAD), SnapshotPayload{Rows: []SnapshotRow{{Receipt: "server-receipt", Name: "MODE", Value: "run"}}}); err != nil {
 		t.Fatal(err)
 	}
 

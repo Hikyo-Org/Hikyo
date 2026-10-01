@@ -1938,29 +1938,32 @@ func (q *Queries) AdapterWorkerLoadExecutionEntryQuery(ctx context.Context, arg 
 }
 
 const adapterWorkerLoadExecutionLedgerQuery = `-- name: AdapterWorkerLoadExecutionLedgerQuery :many
-SELECT surface,effective_name,state,missing FROM adapter_ledger WHERE target_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state<>'released' ORDER BY surface,normalized_name
+SELECT l.surface,l.effective_name,l.state,l.missing,CAST(CASE WHEN l.state='owned' AND EXISTS (SELECT 1 FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=?1 AND c.project_id=?2 AND c.environment_id=?3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND julianday(c.adopted_at) IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=?1 AND e.project_id=?2 AND e.environment_id=?3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND (julianday(e.finished_at) IS NULL OR julianday(e.finished_at)>=julianday(c.adopted_at)))) THEN 1 ELSE 0 END AS INTEGER) AS adoption_pending FROM adapter_ledger l JOIN adapter_targets t ON t.id=l.target_id AND t.org_id=?1 AND t.project_id=?2 AND t.environment_id=?3 AND t.generation=?4 WHERE l.target_id=?5 AND l.org_id=?1 AND l.project_id=?2 AND l.environment_id=?3 AND l.state<>'released' ORDER BY l.surface,l.normalized_name
 `
 
 type AdapterWorkerLoadExecutionLedgerQueryParams struct {
-	TargetID     string
 	ChainOrg     string
 	ChainProject string
 	ChainEnv     string
+	Generation   int64
+	TargetID     string
 }
 
 type AdapterWorkerLoadExecutionLedgerQueryRow struct {
-	Surface       string
-	EffectiveName string
-	State         string
-	Missing       int64
+	Surface         string
+	EffectiveName   string
+	State           string
+	Missing         int64
+	AdoptionPending int64
 }
 
 func (q *Queries) AdapterWorkerLoadExecutionLedgerQuery(ctx context.Context, arg AdapterWorkerLoadExecutionLedgerQueryParams) ([]AdapterWorkerLoadExecutionLedgerQueryRow, error) {
 	rows, err := q.db.QueryContext(ctx, adapterWorkerLoadExecutionLedgerQuery,
-		arg.TargetID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.ChainEnv,
+		arg.Generation,
+		arg.TargetID,
 	)
 	if err != nil {
 		return nil, err
@@ -1974,6 +1977,7 @@ func (q *Queries) AdapterWorkerLoadExecutionLedgerQuery(ctx context.Context, arg
 			&i.EffectiveName,
 			&i.State,
 			&i.Missing,
+			&i.AdoptionPending,
 		); err != nil {
 			return nil, err
 		}

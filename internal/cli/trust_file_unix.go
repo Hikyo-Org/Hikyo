@@ -46,7 +46,14 @@ func openTrustStateDir(dir string) (*os.File, error) {
 }
 
 func readTrustFile(dir string) ([]byte, error) {
-	path := filepath.Join(dir, "trust.json")
+	return readPrivateStateFile(dir, "trust.json")
+}
+
+func readPrivateStateFile(dir, name string) ([]byte, error) {
+	if name != "trust.json" && name != "sessions.json" {
+		return nil, fmt.Errorf("unsupported private state file")
+	}
+	path := filepath.Join(dir, name)
 	pathInfo, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, os.ErrNotExist
@@ -68,7 +75,7 @@ func readTrustFile(dir string) ([]byte, error) {
 		return nil, err
 	}
 	defer directory.Close()
-	fd, err := unix.Openat(int(directory.Fd()), "trust.json", unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	fd, err := unix.Openat(int(directory.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if errors.Is(err, unix.ENOENT) {
 		return nil, os.ErrNotExist
 	}
@@ -126,16 +133,19 @@ func ensureTrustStateDir(dir string) error {
 
 func lockStateDir(dir string) (func(), error) {
 	if err := ensureTrustStateDir(dir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare state directory: %w", err)
 	}
 	directory, err := openTrustStateDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open state directory: %w", err)
 	}
-	fd, err := unix.Openat(int(directory.Fd()), "state.lock", unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+	fd, err := unix.Openat(int(directory.Fd()), "state.lock", unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+	if errors.Is(err, unix.EEXIST) {
+		fd, err = unix.Openat(int(directory.Fd()), "state.lock", unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	}
 	_ = directory.Close()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open state lock: %w", err)
 	}
 	lock := os.NewFile(uintptr(fd), filepath.Join(dir, "state.lock"))
 	info, err := lock.Stat()
@@ -145,7 +155,7 @@ func lockStateDir(dir string) (func(), error) {
 	}
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
 		_ = lock.Close()
-		return nil, err
+		return nil, fmt.Errorf("acquire state lock: %w", err)
 	}
 	return func() {
 		_ = unix.Flock(int(lock.Fd()), unix.LOCK_UN)

@@ -88,7 +88,7 @@ func (f *fixture) set() string {
 	}
 	var out []string
 	for _, e := range entries {
-		if e.Name() == completeName {
+		if e.Name() == completeName || e.Name() == previousName {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, e.Name()))

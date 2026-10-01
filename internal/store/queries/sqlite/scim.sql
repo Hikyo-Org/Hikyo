@@ -151,7 +151,7 @@ VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: ListSCIMGroupMembers :many
 SELECT id, org_id, binding_id, group_id, user_id, created_at
-FROM scim_group_members WHERE org_id = ? AND binding_id = ? AND group_id = ? ORDER BY user_id;
+FROM scim_group_members WHERE org_id = ? AND binding_id = ? AND group_id = ? ORDER BY user_id LIMIT 1001;
 
 -- Which groups a user belongs to: the `groups` attribute is response-only per
 -- RFC 7643, and this is the read that fills it.

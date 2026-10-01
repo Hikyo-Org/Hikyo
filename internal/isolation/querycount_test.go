@@ -22,8 +22,8 @@ import (
 
 // Query-count instrumentation (acceptance criterion + invariant 3's timing
 // half): authorize() issues exactly ONE query when the addressed chain is
-// missing — at any level — because chain resolution is a single statement
-// and the grant lookup is skipped on a miss. A per-level walk would show 1
+// missing — at any level — because chain resolution is a single statement.
+// Caller grant/rule reads also run on misses, matching foreign denials. A per-level walk would show 1
 // query for a missing org and 3 for a missing environment: a probe-visible
 // oracle. Denials against existing objects issue exactly three (chain +
 // grants + member access rules) for an operation a rule could satisfy,
@@ -71,7 +71,7 @@ func (c countingPGTx) QueryRow(ctx context.Context, q string, args ...interface{
 
 // countedAuthorize runs one Authorize inside a fresh instrumented read
 // transaction and returns (queries issued, outcome).
-func countedAuthorize(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope) (int, error) {
+func countedAuthorize(t *testing.T, db *store.DB, principal domain.PrincipalID, scope domain.Scope, classes ...domain.PrincipalClass) (int, error) {
 	t.Helper()
 	ctx := t.Context()
 	count := 0
@@ -96,7 +96,11 @@ func countedAuthorize(t *testing.T, db *store.DB, principal domain.PrincipalID, 
 		var dbtx sqlitegen.DBTX = countingSqliteTx{tx: sqtx, n: &count}
 		r = authn.NewSQLite(dbtx)
 	}
-	_, err := authz.NewTxAuthorizer(r, tok).Authorize(ctx, authz.Identity{Principal: principal}, authz.OpEnvRead, scope)
+	caller := authz.Identity{Principal: principal}
+	if len(classes) != 0 {
+		caller.Class = classes[0]
+	}
+	_, err := authz.NewTxAuthorizer(r, tok).Authorize(ctx, caller, authz.OpEnvRead, scope)
 	return count, err
 }
 
@@ -142,6 +146,7 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 		{"missing_org", domain.Scope{Org: "org_missing", Project: prjA1, Env: envA1}},
 		{"missing_project", domain.Scope{Org: orgA, Project: "prj_missing", Env: envA1}},
 		{"missing_env", domain.Scope{Org: orgA, Project: prjA1, Env: "env_missing"}},
+		{"mismatched_existing_parent", domain.Scope{Org: orgB, Project: prjA1, Env: envA1}},
 	}
 	for _, m := range misses {
 		t.Run(m.name, func(t *testing.T) {
@@ -149,11 +154,30 @@ func runQueryCountChecks(t *testing.T, db *store.DB) {
 			if !errors.Is(err, domain.ErrNotFound) {
 				t.Fatalf("outcome = %v, want ErrNotFound", err)
 			}
-			if n != 1 {
-				t.Fatalf("chain miss at %s issued %d queries, want exactly 1 regardless of failing level", m.name, n)
+			if n != 3 {
+				t.Fatalf("chain miss at %s issued %d queries, want 3 like an existing foreign denial", m.name, n)
+			}
+			for _, principal := range []domain.PrincipalID{bob, root} {
+				for _, key := range []authz.KeyTarget{authz.KeyByName("SHARED_KEY"), authz.KeyByName("NO_SUCH_KEY")} {
+					n, err := countedAuthorizeKey(t, db, principal, m.scope, key)
+					if !errors.Is(err, domain.ErrNotFound) || n != 4 {
+						t.Fatalf("missing key-aware chain issued %d queries, error=%v; want foreign denial's 4 and never a proof", n, err)
+					}
+				}
 			}
 		})
 	}
+	t.Run("machine_missing_and_foreign_parity", func(t *testing.T) {
+		for _, scope := range []domain.Scope{
+			{Org: orgB, Project: prjB1, Env: envB1},
+			{Org: "org_missing", Project: prjB1, Env: envB1},
+		} {
+			n, err := countedAuthorize(t, db, mchA1, scope, domain.ClassWorkload)
+			if !errors.Is(err, domain.ErrNotFound) || n != 2 {
+				t.Fatalf("machine refusal issued %d queries, error=%v; want chain + grants", n, err)
+			}
+		}
+	})
 	t.Run("cross_org_denial_on_existing", func(t *testing.T) {
 		n, err := countedAuthorize(t, db, bob, domain.Scope{Org: orgA, Project: prjA1, Env: envA1})
 		if !errors.Is(err, domain.ErrNotFound) {

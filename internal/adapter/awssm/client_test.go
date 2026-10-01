@@ -30,7 +30,7 @@ func TestNoValueReadPathExists(t *testing.T) {
 	for i := range typeOf.NumMethod() {
 		got = append(got, typeOf.Method(i).Name)
 	}
-	want := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecretNames", "PutSecretValue", "ResolveIdentity", "RestoreSecret", "TagSecret"}
+	want := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecretNames", "PutSecretValue", "ResolveIdentity", "RestoreSecret", "TagSecret", "UpdateSecretVersionStage"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("linked AWS API operations = %v, want closed value-blind set %v", got, want)
 	}
@@ -39,7 +39,7 @@ func TestNoValueReadPathExists(t *testing.T) {
 		targets = append(targets, target)
 	}
 	slices.Sort(targets)
-	wantTargets := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecrets", "PutSecretValue", "RestoreSecret", "TagResource"}
+	wantTargets := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecrets", "PutSecretValue", "RestoreSecret", "TagResource", "UpdateSecretVersionStage"}
 	if !slices.Equal(targets, wantTargets) {
 		t.Fatalf("operation registry = %v, want %v", targets, wantTargets)
 	}
@@ -142,6 +142,87 @@ func TestSignedWireLifecycleAgainstEmulator(t *testing.T) {
 		if strings.Contains(operation, "GetSecretValue") {
 			t.Fatalf("value read on the wire: %v", server.Operations())
 		}
+	}
+}
+
+type wireWriteRaceAPI struct {
+	*Client
+	server *awssmtest.Server
+	timing string
+}
+
+func (f *wireWriteRaceAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	if f.timing == "before-put" {
+		f.server.ExternalPut(name, "concurrent wire edit")
+	}
+	err := f.Client.PutSecretValue(ctx, name, token, value)
+	if err == nil && f.timing == "after-put" {
+		f.server.ExternalPut(name, "concurrent wire edit")
+	}
+	return err
+}
+
+func TestSignedWireConditionalPromotionRefusesConcurrentEdits(t *testing.T) {
+	for _, timing := range []string{"before-put", "after-put"} {
+		t.Run(timing, func(t *testing.T) {
+			server := awssmtest.New(testAccount, testRegion)
+			defer server.Close()
+			client := emulatorClient(t, server)
+			journal := newFakeJournal()
+			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}
+			if _, err := (&Module{API: client}).Sync(t.Context(), req, journal); err != nil {
+				t.Fatal(err)
+			}
+			previous := server.Tag("prod/app", VersionTag)
+			req.JobID, req.Ledger = "racing", journal.ledger()
+			result, err := (&Module{API: &wireWriteRaceAPI{Client: client, server: server, timing: timing}}).Sync(t.Context(), req, journal)
+			value, _ := server.Value("prod/app")
+			if !errors.Is(err, adapter.ErrConflict) || len(result.Conflicts) != 1 || value != "concurrent wire edit" || server.Tag("prod/app", VersionTag) != previous {
+				t.Fatalf("wire CAS lost concurrent version: result=%+v err=%v value=%q", result, err, value)
+			}
+			metadata, err := client.DescribeSecret(t.Context(), "prod/app")
+			if err != nil || !slices.Contains(metadata.Stages[previous], CurrentStage) {
+				t.Fatalf("previous ownership marker lost: metadata=%+v err=%v", metadata, err)
+			}
+			if !slices.Contains(server.Operations(), "UpdateSecretVersionStage") {
+				t.Fatal("signed metadata-only stage operation was not exercised")
+			}
+		})
+	}
+}
+
+func TestSignedWireStagingPreservesCurrentAndRequiresExactPredecessor(t *testing.T) {
+	server := awssmtest.New(testAccount, testRegion)
+	defer server.Close()
+	client := emulatorClient(t, server)
+	if err := client.CreateSecret(t.Context(), CreateSecretInput{Name: "staging"}); err != nil {
+		t.Fatal(err)
+	}
+	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	if err := client.PutSecretValue(t.Context(), "staging", first, "first value"); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := client.DescribeSecret(t.Context(), "staging")
+	if err != nil || !slices.Contains(metadata.Stages[first], awsCurrent) || !slices.Contains(metadata.Stages[first], PendingStage) {
+		t.Fatalf("AWS first-value automatic AWSCURRENT missing: %+v %v", metadata, err)
+	}
+	if err := client.PutSecretValue(t.Context(), "staging", second, "staged value"); err != nil {
+		t.Fatal(err)
+	}
+	for _, wrongPredecessor := range []string{"", strings.Repeat("c", 64)} {
+		if err := client.UpdateSecretVersionStage(t.Context(), "staging", awsCurrent, second, wrongPredecessor); !IsDefinite(err) {
+			t.Fatalf("missing/wrong conditional predecessor did not refuse: %v", err)
+		}
+		if value, _ := server.Value("staging"); value != "first value" {
+			t.Fatalf("staging or conditional refusal changed current value: %q", value)
+		}
+	}
+	if err := client.UpdateSecretVersionStage(t.Context(), "staging", awsCurrent, second, first); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err = client.DescribeSecret(t.Context(), "staging")
+	if err != nil || !slices.Contains(metadata.Stages[first], "AWSPREVIOUS") || !slices.Contains(metadata.Stages[second], awsCurrent) {
+		t.Fatalf("atomic promotion labels incorrect: %+v %v", metadata, err)
 	}
 }
 

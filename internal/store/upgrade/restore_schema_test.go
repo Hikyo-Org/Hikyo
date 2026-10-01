@@ -112,3 +112,45 @@ func TestSQLiteCatalogExcludesOnlyReservedSQLitePrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSQLiteCatalogIncludesForgedReservedTrigger(t *testing.T) {
+	cfg := testConfig(t, releaseidentity.SQLite)
+	if err := migrateFixture(t, cfg); err != nil {
+		t.Fatal(err)
+	}
+	db, err := open(cfg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`PRAGMA writable_schema=ON`,
+		`INSERT INTO sqlite_schema(type,name,tbl_name,rootpage,sql) VALUES('trigger','sqlite_credential_epoch','auth_instance_state',0,'CREATE TRIGGER sqlite_credential_epoch AFTER UPDATE ON auth_instance_state BEGIN SELECT 1; END')`,
+		`PRAGMA writable_schema=OFF`,
+	} {
+		if _, err := conn.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	conn.Close()
+	db.Close()
+	err = WithLock(t.Context(), cfg, func(s *Session) error {
+		catalog, err := inspectCatalog(t.Context(), s.conn, releaseidentity.SQLite)
+		if err != nil {
+			return err
+		}
+		for _, object := range catalog.Objects {
+			if strings.Contains(object, `"sqlite_credential_epoch"`) {
+				return nil
+			}
+		}
+		t.Fatal("archive-planted reserved-prefix trigger escaped canonical schema admission")
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

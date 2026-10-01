@@ -71,12 +71,24 @@ kept.
 - Every attempt first proves the account (STS) and every DescribeSecret ARN
   proves account and region; mismatch is `ErrDestinationID`.
 - Create: `CreateSecret` without a value but with `MANAGED_BY_HIKYO=<target>`
-  and the KMS key, then `PutSecretValue(ClientRequestToken, VersionStages=[AWSCURRENT, HIKYO_CURRENT])`,
-  then `TagResource(HIKYO_VERSION=<token>)`.
+  and the KMS key, then `PutSecretValue(ClientRequestToken, VersionStages=[HIKYO_PENDING])`.
+  `UpdateSecretVersionStage(AWSCURRENT, MoveToVersionId=<token>, RemoveFromVersionId=<observed current>)`
+  conditionally promotes the staged value. Only after promotion does Hikyo move
+  `HIKYO_CURRENT` and record `TagResource(HIKYO_VERSION=<token>)`. AWS automatically
+  makes its first-ever value current even with explicit custom stages; a missing
+  predecessor still refuses promotion if a concurrent writer became current.
+- Concurrent drift between metadata inspection and either staging or promotion
+  fails the conditional promotion, preserving the external value and previous
+  Hikyo ownership markers. This requires the metadata-only
+  `secretsmanager:UpdateSecretVersionStage` permission. There is no value read.
 - Token = sha256(job id, target, generation, name): stable across retries of
   one outbox job (`SyncRequest.JobID`, set by the worker), new per job. A
-  landed replay is detected (AWSCURRENT == token with HIKYO_CURRENT) and skips
-  the write.
+  landed replay is detected (AWSCURRENT == token with HIKYO_CURRENT,
+  HIKYO_VERSION, or this exact job's HIKYO_PENDING marker) and skips the write,
+  repairing only missing ownership metadata. A staged but unpromoted version
+  does not authorize overwriting a newer external current version. An ambiguous
+  first adoption of an existing foreign value can require a fresh version-bound
+  consent rather than assuming the current foreign version is still the one reviewed.
 - Drift: only the labels of the version holding AWSCURRENT are consulted, plus
   the `HIKYO_VERSION` tag. moto drops custom labels from superseded versions
   while AWS keeps them; the rule holds under both (tested both ways). Consent to

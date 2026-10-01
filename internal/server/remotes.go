@@ -24,7 +24,7 @@ type RemoteService interface {
 	ShowRemote(ctx context.Context, actor service.Actor, name string) (service.RemoteView, error)
 	RenameRemote(ctx context.Context, actor service.Actor, name, newName string) (service.RemoteView, error)
 	RemoveRemote(ctx context.Context, actor service.Actor, name string) error
-	RemoteOrigins(ctx context.Context) ([]string, error)
+	RemoteOrigins(ctx context.Context, actor service.Actor) ([]string, error)
 }
 
 // WorkspaceService is the serving side's seam.
@@ -134,12 +134,16 @@ func (a *API) AddWorkspaceOrigin(ctx context.Context, req apigen.AddWorkspaceOri
 // parameter naming an origin is one review lapse away from a path parameter
 // naming a target, and api/noproxy_test.go refuses that shape by name.
 func (a *API) RemoveWorkspaceOrigin(ctx context.Context, req apigen.RemoveWorkspaceOriginRequestObject) (apigen.RemoveWorkspaceOriginResponseObject, error) {
-	killed, err := a.Workspace.RemoveOrigin(ctx, service.Bearer(bearer(ctx)), req.Body.Origin)
+	origin, err := service.CanonicalOrigin(req.Body.Origin)
+	if err != nil {
+		return nil, err
+	}
+	killed, err := a.Workspace.RemoveOrigin(ctx, service.Bearer(bearer(ctx)), origin)
 	if err != nil {
 		return nil, err
 	}
 	return apigen.RemoveWorkspaceOrigin200JSONResponse{
-		Origin: req.Body.Origin, SessionsRevoked: int(killed),
+		Origin: origin, SessionsRevoked: int(killed),
 	}, nil
 }
 

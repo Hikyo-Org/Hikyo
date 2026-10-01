@@ -47,11 +47,11 @@ func TestBuildRenderPlanGolden(t *testing.T) {
 			{Name: "worker", KeyIDs: []string{"key_bad_name", "key_multiline"}},
 		},
 		Rows: []RenderSourceRow{
-			{KeyID: "key_url", Name: "DATABASE_URL", Classification: "config", State: RenderRowValued, Value: "postgres://db"},
+			{KeyID: "key_url", Name: "DATABASE_URL", Classification: "config", State: RenderRowValued, Value: "postgres://db", Receipt: "receipt-key_url"},
 			{KeyID: "key_unset", Name: "OPTIONAL", Classification: "config", State: RenderRowNoValue},
-			{KeyID: "key_path", Name: "PATH", Classification: "config", State: RenderRowValued, Value: "/srv/bin"},
-			{KeyID: "key_bad_name", Name: "BAD-NAME", Classification: "config", State: RenderRowValued, Value: "x"},
-			{KeyID: "key_multiline", Name: "MULTILINE", Classification: "config", State: RenderRowValued, Value: "a\nb"},
+			{KeyID: "key_path", Name: "PATH", Classification: "config", State: RenderRowValued, Value: "/srv/bin", Receipt: "receipt-key_path"},
+			{KeyID: "key_bad_name", Name: "BAD-NAME", Classification: "config", State: RenderRowValued, Value: "x", Receipt: "receipt-key_bad_name"},
+			{KeyID: "key_multiline", Name: "MULTILINE", Classification: "config", State: RenderRowValued, Value: "a\nb", Receipt: "receipt-key_multiline"},
 		},
 	})
 	if err != nil {

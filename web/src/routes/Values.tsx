@@ -19,7 +19,6 @@ import {
 import type { EnvRef } from "../api/keys.ts";
 import { useTransport } from "../api/transport.tsx";
 import {
-  clearClipboardIfStill,
   writeExpiringClipboard,
 } from "../app/clipboard.ts";
 import { Alert } from "../ui/Alert.tsx";
@@ -447,10 +446,8 @@ function ValuesSurface({
           if (!ceremony.commit(task, () => noteDisclosure([fresh.name]))) {
             return;
           }
-          const message = await writeExpiringClipboard(fresh.value, true);
-          if (!ceremony.commit(task, () => setNotice(message))) {
-            await clearClipboardIfStill(fresh.value);
-          }
+          const message = await writeExpiringClipboard(fresh.value, true, () => ceremony.isCurrent(task));
+          ceremony.commit(task, () => setNotice(message));
         } catch (err) {
           ceremony.commit(task, () => setRefusal(disclosureRefusalText(err)));
         }

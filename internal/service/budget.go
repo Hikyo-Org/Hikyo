@@ -110,6 +110,8 @@ type Budget struct {
 	// Machine fetches share one token bucket across every credential for a
 	// service-account principal, including federated credentials.
 	machineFetch map[domain.PrincipalID]machineFetchBucket
+	// Human network requests share one token bucket per authenticated session.
+	humanAPI map[string]machineFetchBucket
 }
 
 // rateBucket is one subject's hit timestamps under one rule's window.

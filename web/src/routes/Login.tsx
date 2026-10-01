@@ -123,6 +123,13 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
   } | null>(null);
   const challengeTotp = useLoginChallengeTotp(challenge?.id ?? '');
   const challengePasskey = useLoginChallengePasskey(challenge?.id ?? '');
+  const finishLogin = () => {
+    // Cookie authentication changes document CSP authority. API responses and
+    // SPA navigation cannot refresh the active document's connect-src policy.
+    const target = new URL(returnTo ?? '/', globalThis.location.origin);
+    globalThis.location.assign(target.origin === globalThis.location.origin && target.username === '' && target.password === ''
+      ? `${target.pathname}${target.search}${target.hash}` : '/');
+  };
   // The provider being contacted, so only ITS button shows the busy label.
   const [contacting, setContacting] = useState<ProviderIdentity | null>(null);
   // Read once per mount: the badge describes the previous visit, and the row
@@ -186,11 +193,11 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
           }
           onCode={(code) => {
             retireChallengeLegs();
-            challengeTotp.mutate(code);
+            challengeTotp.mutate(code, { onSuccess: finishLogin });
           }}
           onPasskey={() => {
             retireChallengeLegs();
-            challengePasskey.mutate();
+            challengePasskey.mutate(undefined, { onSuccess: finishLogin });
           }}
         />
       </main>
@@ -222,13 +229,18 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
                   factors: outcome.challenge.factors,
                   username: outcome.username,
                 });
+              } else {
+                finishLogin();
               }
             },
           });
         }}
         onPasskey={() => {
           retireEveryLeg();
-          passkey.mutate(undefined, { onSuccess: () => rememberLastSignIn({ kind: 'passkey' }) });
+          passkey.mutate(undefined, { onSuccess: () => {
+            rememberLastSignIn({ kind: 'passkey' });
+            finishLogin();
+          } });
         }}
         onProvider={(provider, startIntent) => {
           retireEveryLeg();

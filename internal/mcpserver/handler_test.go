@@ -612,6 +612,46 @@ func TestLegacyFallbacksAreRejectedBeforeSDKDispatch(t *testing.T) {
 	}
 }
 
+func TestMediaVariantsCannotBypassDiscoveryAdmission(t *testing.T) {
+	registry, _ := testRegistry(t, "echo")
+	h, err := New(Options{
+		Registry: registry, ExternalOrigin: "https://hikyo.example.com",
+		Admission: fixedAdmission(false), Version: "v-test", CursorSealer: testCursorSealer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, accept := range []string{"*/*", "Application/JSON, Text/Event-Stream"} {
+		t.Run(accept, func(t *testing.T) {
+			req := request(http.MethodPost, "https://hikyo.example.com/mcp", "tools/list", "", modernBody(1, "tools/list", "", ""))
+			req.Header.Set("Content-Type", "Application/JSON; charset=utf-8")
+			req.Header.Set("Accept", accept)
+			rec := serve(t, h, req)
+			if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" || rec.Header().Get("Mcp-Session-Id") != "" {
+				t.Fatalf("normalized discovery = %d headers %v body %q", rec.Code, rec.Header(), rec.Body.String())
+			}
+			for _, body := range []string{
+				`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`,
+				`[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}]`,
+			} {
+				req = request(http.MethodPost, "https://hikyo.example.com/mcp", "tools/list", "", []byte(body))
+				req.Header.Set("Content-Type", "Application/JSON")
+				req.Header.Set("Accept", accept)
+				rec = serve(t, h, req)
+				if rec.Code != http.StatusBadRequest || strings.Contains(rec.Body.String(), `"tools":`) || rec.Header().Get("Mcp-Session-Id") != "" {
+					t.Fatalf("legacy media variant = %d %q", rec.Code, rec.Body.String())
+				}
+			}
+			req = request(http.MethodPost, "https://hikyo.example.com/mcp", "tools/list", "", bytes.Repeat([]byte("x"), MaxRequestBytes+1))
+			req.Header.Set("Content-Type", "Application/JSON")
+			req.Header.Set("Accept", accept)
+			if rec := serve(t, h, req); rec.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("media variant body bound = %d", rec.Code)
+			}
+		})
+	}
+}
+
 func TestToolErrorsAreSafeAndExecutionIsBounded(t *testing.T) {
 	registry := NewRegistry()
 	err := Register(registry, ToolSpec{

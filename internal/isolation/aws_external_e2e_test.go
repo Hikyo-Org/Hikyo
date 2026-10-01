@@ -44,7 +44,7 @@ import (
 //     HIKYO_TEST_AWS_REAL_ACCOUNT, HIKYO_TEST_AWS_REAL_REGION,
 //     HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID, HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY,
 //     optional HIKYO_TEST_AWS_REAL_SESSION_TOKEN. The key needs
-//     secretsmanager:{Describe,List,Create,PutSecretValue,Tag,Restore,Delete}
+//     secretsmanager:{Describe,List,Create,PutSecretValue,UpdateSecretVersionStage,Tag,Restore,Delete}
 //     and, for the oracle only, GetSecretValue on the hikyo-e2e-* names.
 //
 // The adapter itself never reads a value; only the oracle below does, and it

@@ -1848,6 +1848,19 @@ func (q *Queries) InvalidateRestoredAdapterCredentials(ctx context.Context) erro
 	return err
 }
 
+const invalidateRestoredAdapterRouteMoves = `-- name: InvalidateRestoredAdapterRouteMoves :exec
+UPDATE adapter_route_moves SET pending_credential_ciphertext = NULL, pending_origin = NULL, state = 'canceled'
+`
+
+// Pending origin moves retain a second copy of externally authenticating PATs.
+// Restore must destroy that custody and retire the move before any reconciled
+// authority can resume activation against an archive-selected destination.
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredAdapterRouteMoves(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, invalidateRestoredAdapterRouteMoves)
+	return err
+}
+
 const invalidateRestoredDynamicProviderCredentials = `-- name: InvalidateRestoredDynamicProviderCredentials :exec
 UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL
 `
@@ -2801,6 +2814,32 @@ func (q *Queries) ResolveProjectChain(ctx context.Context, arg ResolveProjectCha
 	var i ResolveProjectChainRow
 	err := row.Scan(&i.OrgID, &i.ID)
 	return i, err
+}
+
+const retireRestoredApprovedWorkspaceHandoffs = `-- name: RetireRestoredApprovedWorkspaceHandoffs :exec
+DELETE FROM workspace_handoffs WHERE consumed_at IS NULL AND principal_id IS NOT NULL
+`
+
+// Approved handoffs carry old assurance but no credential epoch. Keep consumed
+// rows for workspace-session provenance and unapproved transactions harmless.
+// hikyo:reason Local-host restore invalidation retires unconsumed approved assurance that lacks an epoch while retaining consumed session provenance.
+// hikyo:authn-resolution
+func (q *Queries) RetireRestoredApprovedWorkspaceHandoffs(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, retireRestoredApprovedWorkspaceHandoffs)
+	return err
+}
+
+const retireRestoredPendingLoginChallenges = `-- name: RetireRestoredPendingLoginChallenges :exec
+DELETE FROM login_challenges WHERE consumed_at IS NULL
+`
+
+// Pending password proofs have no epoch stamp. Retire them atomically with
+// restore's epoch bump; consumed challenge history remains intact.
+// hikyo:reason Local-host restore invalidation retires unconsumed password proofs that lack an epoch; no tenant request can authorize this recovery act.
+// hikyo:authn-resolution
+func (q *Queries) RetireRestoredPendingLoginChallenges(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, retireRestoredPendingLoginChallenges)
+	return err
 }
 
 const rotateSessionFactors = `-- name: RotateSessionFactors :exec

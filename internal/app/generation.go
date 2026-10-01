@@ -338,6 +338,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Remotes:        &service.Remotes{DB: db, Keyring: kr, Fetch: fetcher},
 		Workspace:      workspaceSvc,
 		Admission:      limiter,
+		RequestBudget:  budget,
 		Metrics:        metrics,
 		Version:        Version,
 		Log:            log,

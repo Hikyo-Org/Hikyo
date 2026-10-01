@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -112,6 +113,10 @@ func (a *API) writeSCIMRequestError(w http.ResponseWriter, r *http.Request, refu
 // from the first; the contract already has the authoritative one.
 func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err error) {
 	policy := wireErrorFor(err)
+	var refusal *deliveryRefusal
+	if policy.code == apigen.ErrorCodeNotFound && errors.As(err, &refusal) {
+		w.Header().Set(delivery.RefusalHeader, delivery.RefusalVersion)
+	}
 	op, ok := api.OperationFromContext(r.Context())
 	name := op.ID
 	if !ok {

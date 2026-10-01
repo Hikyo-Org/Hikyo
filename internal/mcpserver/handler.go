@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -194,11 +195,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		h.sdk.ServeHTTP(w, r)
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if baseMediaType(r.Header.Get("Content-Type")) != "application/json" || !acceptsMCP(r.Header.Values("Accept")) {
-		h.sdk.ServeHTTP(w, r)
+	if baseMediaType(r.Header.Get("Content-Type")) != "application/json" {
+		http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
+		return
+	}
+	if !acceptsMCP(r.Header.Values("Accept")) {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
@@ -218,7 +224,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if envelope.JSONRPC != "2.0" {
-		h.serveSDK(w, r, envelope.Method, envelope.ID, MaxStaticResponseBytes, nil)
+		writeRPCError(w, http.StatusBadRequest, envelope.ID, -32600, "expected JSON-RPC version 2.0", nil)
 		return
 	}
 
@@ -580,10 +586,11 @@ func (h *handler) sourceIP(r *http.Request) string {
 }
 
 func baseMediaType(value string) string {
-	if before, _, ok := strings.Cut(value, ";"); ok {
-		value = before
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return ""
 	}
-	return strings.TrimSpace(value)
+	return mediaType
 }
 
 func acceptsMCP(values []string) bool {
@@ -591,7 +598,9 @@ func acceptsMCP(values []string) bool {
 	for _, value := range values {
 		for _, part := range strings.Split(value, ",") {
 			switch baseMediaType(part) {
-			case "application/json", "*/*":
+			case "*/*":
+				jsonOK, streamOK = true, true
+			case "application/json":
 				jsonOK = true
 			case "text/event-stream":
 				streamOK = true

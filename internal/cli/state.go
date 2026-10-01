@@ -148,12 +148,12 @@ type SessionArtifact struct {
 
 // Sessions reads the stored artifacts.
 func (s *State) Sessions() (map[string]SessionArtifact, error) {
-	raw, err := os.ReadFile(s.sessionsPath())
+	raw, err := readPrivateStateFile(s.dir, "sessions.json")
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]SessionArtifact{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read private session state: %w", err)
 	}
 	// sessions.json was historically an unversioned map of instance reference
 	// to human session. Keep reading that shape byte-for-byte. A future

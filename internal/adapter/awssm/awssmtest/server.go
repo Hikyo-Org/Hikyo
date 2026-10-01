@@ -275,9 +275,45 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// AWS makes its first value current even with explicit custom stages.
+		if len(sec.versions) == 0 && !slices.Contains(stages, "AWSCURRENT") {
+			stages = append(stages, "AWSCURRENT")
+		}
 		sec.versions[token] = &version{value: value}
 		moveStages(sec, token, stages...)
 		writeJSON(w, map[string]string{"ARN": sec.arn, "VersionId": token})
+	case "UpdateSecretVersionStage":
+		sec, ok := s.secrets[id]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "ResourceNotFoundException", "")
+			return
+		}
+		if sec.deleted {
+			writeError(w, http.StatusBadRequest, "InvalidRequestException", "")
+			return
+		}
+		stage, _ := in["VersionStage"].(string)
+		moveTo, _ := in["MoveToVersionId"].(string)
+		removeFrom, _ := in["RemoveFromVersionId"].(string)
+		if _, exists := sec.versions[moveTo]; !exists || stage == "" {
+			writeError(w, http.StatusBadRequest, "InvalidParameterException", "")
+			return
+		}
+		owner := ""
+		for versionID, v := range sec.versions {
+			if slices.Contains(v.stages, stage) {
+				owner = versionID
+			}
+		}
+		if (owner != "" && owner != moveTo && removeFrom != owner) || (removeFrom != "" && removeFrom != owner) {
+			writeError(w, http.StatusBadRequest, "InvalidParameterException", "")
+			return
+		}
+		moveStages(sec, moveTo, stage)
+		if stage == "AWSCURRENT" && owner != "" && owner != moveTo {
+			moveStages(sec, owner, "AWSPREVIOUS")
+		}
+		writeJSON(w, map[string]string{"ARN": sec.arn, "Name": sec.name})
 	case "TagResource":
 		sec, ok := s.secrets[id]
 		if !ok {

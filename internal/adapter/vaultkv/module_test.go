@@ -352,7 +352,13 @@ func TestAdoptedPathIsTakenOverWithCASOnObservedVersion(t *testing.T) {
 	journal.states["secret:DATABASE_URL"] = adapter.Owned
 	kv.paths["apps/pay/MANAGED_BY_HIKYO"] = &fakePath{current: 1, values: map[int64]string{1: adapter.SentinelName}, deleted: map[int64]bool{}, custom: map[string]string{MarkerKey: "tgt_1", VersionKey: "1"}}
 	target := testTarget(t, kv)
-	if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
+	ledger := journal.ledger()
+	for i := range ledger {
+		if ledger[i].EffectiveName == "DATABASE_URL" {
+			ledger[i].AdoptionPending = true
+		}
+	}
+	if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: ledger}, journal); err != nil {
 		t.Fatal(err)
 	}
 	p := kv.paths["apps/pay/DATABASE_URL"]

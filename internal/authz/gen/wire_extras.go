@@ -1,5 +1,7 @@
 package main
 
+import "github.com/Hikyo-Org/hikyo/internal/multicall"
+
 // reviewedWireExtras is the compile-checked authoring owner for contract-external
 // entries and supplemental authority/audit links. It runs only during generation.
 // OpenAPI owns each HTTP route class and primary operation.
@@ -242,7 +244,17 @@ var reviewedWireExtras = wireExtras{
 		"http:PUT /api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration": {Ops: []string{"OpKeySecretRuleChange"}},
 	},
 	Entries: map[string]wireRow{
-		"cli:about": {Class: "ClassUnauthenticated"},
+		"cli:" + multicall.RootKeyStage:          {Class: "ClassSystem"},
+		"cli:" + multicall.TLSStage:              {Class: "ClassSystem"},
+		"cli:" + multicall.RolloutAuthorityStage: {Class: "ClassSystem"},
+		"cli:" + multicall.ImportSubprocess:      {Class: "ClassTenant"},
+		"cli:operator":                           {Class: "ClassSystem"},
+		"cli:updater":                            {Class: "ClassSystem"},
+		"cli:upgrade":                            {Class: "ClassSystem"},
+		"cli:config-rollout":                     {Class: "ClassSystem"},
+		"cli:--version":                          {Class: "ClassUnauthenticated"},
+		"cli:--upgrade-bundle-formats":           {Class: "ClassUnauthenticated"},
+		"cli:about":                              {Class: "ClassUnauthenticated"},
 		// `access` reaches BOTH classes; the org/project/env grant routes are
 		// tenant-class, the instance-scope ones are instance-class. It is
 		// classified instance because that is the WEAKER probe contract of the

@@ -24,7 +24,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/oidctest"
-	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -1644,12 +1643,30 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 	if _, err := r.del.FetchAs(t.Context(), human, scopeEnv(orgA, prjA1, envA1), res.Cursor, service.FetchOptions{}); err != nil {
 		t.Fatalf("identity.delivery_fetched (current): %v", err)
 	}
-	if _, err := r.del.ReconcileOfflineRecordsAs(t.Context(), human,
+	served, err := r.ident.MintCredential(t.Context(), service.LocalPrincipal(identAdmin), prjScope(), sa.ID, service.MintRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := r.del.Fetch(t.Context(), served.Value, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offlineKey service.DeliveredKey
+	for _, key := range delivered.Keys {
+		if key.Value != nil && key.SnapshotReceipt != nil {
+			offlineKey = key
+			break
+		}
+	}
+	if offlineKey.SnapshotReceipt == nil {
+		t.Fatal("no authenticated delivery receipt")
+	}
+	if _, err := r.del.ReconcileOfflineRecords(t.Context(), served.Value,
 		scopeEnv(orgA, prjA1, envA1), []service.OfflineRecord{{
-			RecordID: "audit-offline-001", KeyID: "key_fed_pw", KeyName: "DATABASE_PASSWORD",
-			Classification: string(schema.Secret), OccurredAt: time.Now().UTC(),
-			CredentialID: binding.CredentialID, Generation: "v1-0123456789abcdef0123456789abcdef",
-			ServedFrom: time.Now().UTC().Add(-time.Minute),
+			RecordID: "audit-offline-001", KeyID: offlineKey.KeyID, KeyName: offlineKey.Name,
+			Classification: offlineKey.Classification, OccurredAt: delivered.IssuedAt,
+			CredentialID: served.Credential.ID, Generation: "v1-0123456789abcdef0123456789abcdef",
+			ServedFrom: delivered.IssuedAt.UTC(), SnapshotReceipt: *offlineKey.SnapshotReceipt,
 		}}); err != nil {
 		t.Fatalf("identity.offline_records_reconciled: %v", err)
 	}

@@ -362,7 +362,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// route, and the classification-totality invariant keeps that true.
 	// Adapter PATs have no Hikyo credential epoch for the remote provider to
 	// enforce, so CompleteRestore must erase them in the same local-host act.
-	"AdvanceRestoreEpoch":                  true,
+	"AdvanceRestoreEpoch": true,
+	// Only AdvanceRestoreEpoch calls this private historical-table retirement
+	// helper. Pending human proofs lack an epoch and must die with the bump.
+	"retireRestoredPendingHumanProofs":     true,
 	"InvalidateRestoredAdapterCredentials": true,
 	// #147: like adapter PATs, a dynamic-secret provider's admin credential
 	// authenticates to an external engine with no Hikyo credential epoch, so the

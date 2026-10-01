@@ -5,7 +5,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import { parsed } from '../api/client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
-import { ceremonyRefusalText, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
+import { ceremonyRefusalText, runOIDCCeremony, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
+import { useSessionOIDCProvider } from '../api/account.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
@@ -310,11 +311,13 @@ export function WorkspaceApprove() {
  * StepUpReauth runs THIS instance's own #58 reauthentication over the bound
  * environment, then hands off to the approval.
  *
- * It offers a passkey and a code both, and does not try to know in advance which
+ * It offers the current OIDC provider, a passkey, and a code, without guessing which
  * the environment allows: a protected environment refuses the code with a 409
  * the ceremony copy already explains, and asking the server is one more request
  * that can fail before the human has done anything. On success the reauth window
  * is open on this session and the approval's freshness gate will accept it.
+ * OIDC requires a popup here: full-page fallback would discard the bound
+ * consent continuation. A blocked popup refuses before starting a ceremony.
  */
 function StepUpReauth({
   operation,
@@ -334,6 +337,7 @@ function StepUpReauth({
   const [failure, setFailure] = useState<string | null>(null);
 
   const auth = useAuth();
+  const oidcProvider = useSessionOIDCProvider();
   const tasks = useCeremonyTask([
     operation,
     environmentId,
@@ -342,14 +346,14 @@ function StepUpReauth({
     auth.state.status === 'authenticated' ? auth.state.sessionEpoch : '',
   ]);
 
-  const attempt = async (run: () => Promise<void>) => {
+  const attempt = async (run: (signal: AbortSignal) => Promise<void>) => {
     const task = tasks.begin(['reauthenticate']);
     const revision = auth.captureTransition().revision;
     const current = () => tasks.isCurrent(task) && auth.captureTransition().revision === revision;
     setBusy(true);
     setFailure(null);
     try {
-      await run();
+      await run(task.signal);
       if (!current()) return;
       // Reauth is done; hand off to the approval and release our own busy flag
       // so `working` now reflects only the approve mutation. If that mutation
@@ -388,6 +392,12 @@ function StepUpReauth({
         <Alert>{failure}</Alert>
       )}
       <div className="dialog__actions">
+        {oidcProvider === null ? null : (
+          <Button variant="primary" type="button" disabled={working}
+            onClick={() => void attempt((signal) => runOIDCCeremony(oidcProvider.slug, environmentId, { requirePopup: true, signal }))}>
+            {working ? 'Working…' : `Continue with ${oidcProvider.display_name}`}
+          </Button>
+        )}
         <Button variant="primary" type="button" onClick={onPasskey} disabled={working}>
           {working ? 'Working…' : 'Use a passkey'}
         </Button>

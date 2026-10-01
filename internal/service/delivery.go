@@ -110,6 +110,8 @@ type DeliveredKey struct {
 	// string, because the empty string is a legitimate delivered value and
 	// "delivered empty" must be distinguishable from "not delivered".
 	Value *string
+	// SnapshotReceipt exists only when this fetch actually delivered plaintext.
+	SnapshotReceipt *string
 }
 
 // FetchOptions carries the per-request delivery controls that are not the
@@ -136,14 +138,15 @@ type FetchOptions struct {
 // OfflineRecord is one client-durable disclosure record produced before an
 // offline snapshot released plaintext.
 type OfflineRecord struct {
-	RecordID       string
-	KeyID          string
-	KeyName        string
-	Classification string
-	OccurredAt     time.Time
-	CredentialID   string
-	Generation     string
-	ServedFrom     time.Time
+	RecordID        string
+	KeyID           string
+	KeyName         string
+	Classification  string
+	OccurredAt      time.Time
+	CredentialID    string
+	Generation      string
+	ServedFrom      time.Time
+	SnapshotReceipt string
 }
 
 // ReconcileResult reports the idempotent outcome of one bounded batch.
@@ -457,6 +460,16 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		}
 		if !current {
 			out.Keys = rows
+			for i := range out.Keys {
+				if out.Keys[i].Value == nil {
+					continue
+				}
+				receipt, err := s.issueOfflineReceipt(scope, caller.Principal, out, out.Keys[i])
+				if err != nil {
+					return err
+				}
+				out.Keys[i].SnapshotReceipt = &receipt
+			}
 		}
 
 		disposition := "full"
@@ -616,6 +629,10 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 			}
 		}
 		for _, record := range records {
+			claims, err := s.verifyOfflineReceipt(scope, caller.Principal, record, s.now())
+			if err != nil {
+				return err
+			}
 			if caller.CredentialID != "" && !servedCredentials[record.CredentialID] {
 				return invalidDetail("offline record %q names a credential outside the presenting service account", record.RecordID)
 			}
@@ -633,6 +650,8 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 					"classification": record.Classification, "surface": "offline-serve",
 					"served_credential_id": record.CredentialID, "generation": record.Generation,
 					"served_from": audit.FormatTime(record.ServedFrom),
+					"revision":    claims.Revision, "receipt_verified": true,
+					"snapshot_commitment": claims.ChangeToken,
 				})
 			if err != nil {
 				return err
@@ -791,6 +810,16 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 		// the delivery and not in the manifest the token covers, so a secret's
 		// existence or value never leaks into a config-only consumer's token.
 		if secret && mode == delivery.ModeConfigOnly {
+			continue
+		}
+		if secret && !revealsSecret {
+			// Presence is authorized, hidden plaintext and write occurrence are
+			// not. Neither may move this caller's token or require decryption.
+			keys = append(keys, DeliveredKey{
+				KeyID: entry.KeyID, Name: entry.KeyName, Classification: entry.Classification,
+				Presence: delivery.PresenceSet,
+			})
+			manifest = append(manifest, delivery.Row{Key: entry.KeyName, Classification: entry.Classification})
 			continue
 		}
 		plain, err := sealer.OpenField(snapshotAAD(

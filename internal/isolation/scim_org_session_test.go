@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -55,7 +56,7 @@ func runSCIMOrgChangesPreserveUnrelatedOrgSession(t *testing.T, db *store.DB) {
 		if orgAReadable && err != nil {
 			t.Fatalf("%s: org A must remain readable: %v", phase, err)
 		}
-		if !orgAReadable && !isAuthz(err) {
+		if !orgAReadable && !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("%s: org A must immediately refuse removed authority, got %v", phase, err)
 		}
 		if _, err := projects.Get(ctx, service.Bearer(token), scopeProject(orgB, prjB1)); err != nil {

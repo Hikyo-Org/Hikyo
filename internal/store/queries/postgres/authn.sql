@@ -668,12 +668,33 @@ WHERE id = 1;
 -- name: MarkAllPrincipalsUnreconciled :exec
 UPDATE principals SET reconciled_epoch = 0;
 
+-- Pending password proofs have no epoch stamp. Retire them atomically with
+-- restore's epoch bump; consumed challenge history remains intact.
+-- hikyo:reason Local-host restore invalidation retires unconsumed password proofs that lack an epoch; no tenant request can authorize this recovery act.
+-- hikyo:authn-resolution
+-- name: RetireRestoredPendingLoginChallenges :exec
+DELETE FROM login_challenges WHERE consumed_at IS NULL;
+
+-- Approved handoffs carry old assurance but no credential epoch. Keep consumed
+-- rows for workspace-session provenance and unapproved transactions harmless.
+-- hikyo:reason Local-host restore invalidation retires unconsumed approved assurance that lacks an epoch while retaining consumed session provenance.
+-- hikyo:authn-resolution
+-- name: RetireRestoredApprovedWorkspaceHandoffs :exec
+DELETE FROM workspace_handoffs WHERE consumed_at IS NULL AND principal_id IS NOT NULL;
+
 -- Restored provider PATs are never trusted: unlike Hikyo authentication
 -- artifacts they carry no local epoch the provider checks, so restore must
 -- destroy custody and require operator re-entry.
 -- hikyo:authn-resolution
 -- name: InvalidateRestoredAdapterCredentials :exec
 UPDATE adapters SET credential_ciphertext = NULL, credential_set_at = NULL;
+
+-- Pending origin moves retain a second copy of externally authenticating PATs.
+-- Restore must destroy that custody and retire the move before any reconciled
+-- authority can resume activation against an archive-selected destination.
+-- hikyo:authn-resolution
+-- name: InvalidateRestoredAdapterRouteMoves :exec
+UPDATE adapter_route_moves SET pending_credential_ciphertext = NULL, pending_origin = NULL, state = 'canceled';
 
 -- Restored dynamic-secret provider admin credentials are never trusted for the
 -- same reason as adapter PATs (#147): the sealed credential authenticates to an

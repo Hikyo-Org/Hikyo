@@ -429,9 +429,16 @@ func deliveredRows(keys []apigen.DeliveredKey) []compose.SnapshotRow {
 		if k.Value == nil {
 			continue
 		}
-		rows = append(rows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value})
+		rows = append(rows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value, Receipt: deliveryReceipt(k)})
 	}
 	return rows
+}
+
+func deliveryReceipt(key apigen.DeliveredKey) string {
+	if key.SnapshotReceipt == nil {
+		return ""
+	}
+	return *key.SnapshotReceipt
 }
 
 // rowNames returns the snapshot row names (for the loader-control check).
