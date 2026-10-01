@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
   methods: { isError: false, refetch: vi.fn() },
   selfConfigPlan: '',
+  totpAvailable: false,
 }));
 
 vi.mock('../api/cliReauth.ts', () => ({
@@ -23,7 +24,7 @@ vi.mock('../api/cliReauth.ts', () => ({
 }));
 
 vi.mock('../api/account.ts', () => ({
-  useTotpStatus: () => ({ isSuccess: false }),
+  useTotpStatus: () => ({ isSuccess: mocks.totpAvailable, data: { confirmed: mocks.totpAvailable } }),
   useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
   useAuthMethods: () => mocks.methods,
 }));
@@ -87,9 +88,22 @@ beforeEach(() => {
   mocks.providerAvailable = true;
   mocks.methods.isError = false;
   mocks.selfConfigPlan = '';
+  mocks.totpAvailable = false;
 });
 
 describe('CLI OIDC disclosure handoff', () => {
+  it('announces the authenticator code as optional when passkey approval is available', async () => {
+    mocks.totpAvailable = true;
+    const view = await renderTransaction([
+      { environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false },
+    ]);
+    try {
+      const input = view.container.querySelector('input#cli-reauth-totp');
+      expect(input).not.toBeNull();
+      expect(input?.hasAttribute('required')).toBe(false);
+      expect(view.container.querySelector('label[for="cli-reauth-totp"]')?.textContent).toContain('optional');
+    } finally { await view.unmount(); }
+  });
   it('displays the exact controlled rollout digest in the CLI authorization handoff', async () => {
     mocks.selfConfigPlan = 'b'.repeat(64);
     const view = await renderTransaction([]);

@@ -69,6 +69,12 @@ func (a *TxAuthorizer) AccountCount(ctx context.Context) (int64, error) {
 	return a.r.AccountCount(ctx)
 }
 
+// IncompatiblePasswordKDFCount is for startup/configuration admission, not a
+// public authentication route. It exposes only aggregate parameter metadata.
+func (a *TxAuthorizer) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {
+	return a.r.IncompatiblePasswordKDFCount(ctx, kdf)
+}
+
 // PasswordCredentialFor reads an account's verifier row.
 func (a *TxAuthorizer) PasswordCredentialFor(ctx context.Context, accountID string) (PasswordCredential, error) {
 	return a.r.PasswordCredential(ctx, accountID)

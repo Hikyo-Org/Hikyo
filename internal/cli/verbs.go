@@ -690,7 +690,7 @@ machine identities:
 oidc federation:
   hikyo instance-config federation-issuer list [-o table|json]
   hikyo instance-config federation-issuer add --issuer <url>
-      --type kubernetes|forgejo|github-actions --refuse-audience <aud>
+      --type kubernetes|github-actions --refuse-audience <aud>
       [--jwks discovery|static --jwks-file PATH] [--ca-bundle-file PATH]
   hikyo instance-config federation-issuer update --id <id>
       --jwks discovery|static --refuse-audience <aud> [--jwks-file PATH]
@@ -712,7 +712,7 @@ oidc federation:
   every binding MUST pin the immutable identifiers its platform exposes:
     github-actions  repository_id, repository_owner_id, event_name
     kubernetes      /kubernetes.io/serviceaccount/uid
-    forgejo         repository, event_name  (Forgejo exposes no numeric ids)
+    Forgejo issuers are refused: Forgejo exposes no immutable repository id.
   pinning a name where an id exists lets a renamed-and-reused path inherit the
   binding, so there is no override.
 

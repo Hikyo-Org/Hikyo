@@ -189,7 +189,7 @@ export function CLIReauth() {
                 <label htmlFor="cli-reauth-totp">
                   Authenticator code (optional; leave empty to use a passkey)
                 </label>
-                <input id="cli-reauth-totp" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} required />
+                <input id="cli-reauth-totp" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} />
               </div>
             ) : null}
             {approve.isError ? <Alert>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</Alert> : null}

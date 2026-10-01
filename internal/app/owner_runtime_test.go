@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -137,6 +138,41 @@ func TestOwnerRuntimeInstallsHTTPAuthAndRetentionGraph(t *testing.T) {
 	}
 	if got := ownerHTTPStatus(t, srv, http.MethodGet, "/api/v1/meta"); got != http.StatusOK {
 		t.Fatalf("active graph after disposal = %d", got)
+	}
+}
+
+func TestOwnerRuntimeRefusesPasswordCostChangeAfterCredentialEstablishment(t *testing.T) {
+	srv, err := Boot(t.Context(), devConfig(t), testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	startOwnerServer(t, srv)
+	old := srv.owner.current.graph
+	candidate := ownerCandidate(t, srv, func(values map[string]string) { values["HIKYO_ARGON2_TIME"] = "4" })
+	prepared, err := srv.owner.Prepare(t.Context(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Close()
+	boot, err := old.auth.BootstrapAdmin(t.Context(), "kdf-admin", "KDF Admin", "terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "correct horse battery staple runtime KDF guard"
+	if err := old.auth.EstablishCredential(t.Context(), boot.Authority, password); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepared.Activate(t.Context()); err == nil || !strings.Contains(err.Error(), "Argon2 parameters differ") {
+		t.Fatalf("staged configuration accepted a new incompatible credential: %v", err)
+	}
+	if _, err := srv.owner.Prepare(t.Context(), candidate); err == nil || !strings.Contains(err.Error(), "Argon2 parameters differ") {
+		t.Fatalf("configuration preparation accepted incompatible credentials: %v", err)
+	}
+	if srv.owner.current.graph != old {
+		t.Fatal("refused candidate replaced the active graph")
+	}
+	if _, err := old.auth.LocalLogin(t.Context(), "kdf-admin", password, service.ArtifactCLI); err != nil {
+		t.Fatalf("old configuration no longer authenticates after refusal: %v", err)
 	}
 }
 

@@ -337,6 +337,28 @@ func (q *Queries) CountExternalIdentitiesForIssuer(ctx context.Context, arg Coun
 	return count, err
 }
 
+const countIncompatiblePasswordKDFs = `-- name: CountIncompatiblePasswordKDFs :one
+SELECT COUNT(*) FROM password_credentials
+WHERE credential_epoch = (SELECT credential_epoch FROM auth_instance_state WHERE id = 1)
+  AND (kdf_memory_kib <> $1 OR kdf_time <> $2
+       OR kdf_parallelism <> $3)
+`
+
+type CountIncompatiblePasswordKDFsParams struct {
+	MemoryKib   int64
+	TimeCost    int64
+	Parallelism int64
+}
+
+// Boot/configuration admission only; returns no identifiers or verifier bytes.
+// hikyo:authn-resolution
+func (q *Queries) CountIncompatiblePasswordKDFs(ctx context.Context, arg CountIncompatiblePasswordKDFsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countIncompatiblePasswordKDFs, arg.MemoryKib, arg.TimeCost, arg.Parallelism)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteExternalIdentity = `-- name: DeleteExternalIdentity :exec
 DELETE FROM external_identities WHERE id = $1
 `

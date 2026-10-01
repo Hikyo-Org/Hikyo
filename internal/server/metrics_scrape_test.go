@@ -232,18 +232,32 @@ func TestMCPMetricsRecoverAndRecordPanicsWithoutLoggingPanicValue(t *testing.T) 
 
 func TestOperationalMetricsRefuseNonLoopbackClients(t *testing.T) {
 	handler := server.NewOperational(nil, stubRetentionHealth{}, server.NewMetrics(nil))
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	req.RemoteAddr = "192.0.2.25:4321"
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("non-loopback metrics = %d, want %d", rec.Code, http.StatusForbidden)
+	for _, tc := range []struct {
+		peer string
+		want int
+	}{
+		{"127.0.0.1:4321", http.StatusOK},
+		{"[::1]:4321", http.StatusOK},
+		{"192.0.2.25:4321", http.StatusForbidden},
+		{"[2001:db8::25]:4321", http.StatusForbidden},
+	} {
+		t.Run(tc.peer, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			req.RemoteAddr = tc.peer
+			// Scrape authority is the actual peer, never a forwarded header.
+			req.Header.Set("X-Forwarded-For", "127.0.0.1")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("metrics = %d, want %d", rec.Code, tc.want)
+			}
+		})
 	}
 
 	// Node-originated liveness remains available on the operational listener.
-	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.RemoteAddr = "192.0.2.25:4321"
-	rec = httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("non-loopback health = %d, want %d", rec.Code, http.StatusOK)

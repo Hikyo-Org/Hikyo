@@ -287,6 +287,12 @@ func (p *preparedOwnerActivation) Activate(ctx context.Context) error {
 		o.resume(old.graph)
 		return err
 	}
+	// A password may have been established between preparation and draining
+	// the old graph. Recheck before admitting the replacement cost.
+	if err := p.graph.auth.CheckPasswordConfiguration(ctx); err != nil {
+		o.resume(old.graph)
+		return err
+	}
 	if p.graph.cfg.DevAdapterFakeProvider != old.graph.cfg.DevAdapterFakeProvider {
 		if err := o.checkDevelopmentProviderSwitch(ctx, p.graph.cfg); err != nil {
 			o.resume(old.graph)

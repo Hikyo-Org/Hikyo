@@ -206,16 +206,17 @@ func (r *HikyoSecretReconciler) patchPodTemplateAnnotation(ctx context.Context, 
 		Path  string `json:"path"`
 		Value any    `json:"value"`
 	}
+	escapePointer := strings.NewReplacer("~", "~0", "/", "~1")
 	operations := []operation{
 		{Op: "test", Path: "/metadata/uid", Value: string(fresh.GetUID())},
 		{Op: "test", Path: "/metadata/resourceVersion", Value: fresh.GetResourceVersion()},
-		{Op: "test", Path: "/metadata/annotations/hikyo.dev~1secrets", Value: targets},
+		{Op: "test", Path: "/metadata/annotations/" + escapePointer.Replace(hikyov1.AnnotationWorkloadSecrets), Value: targets},
 	}
 	annotations := podTemplateAnnotations(fresh)
 	if annotations == nil {
 		operations = append(operations, operation{Op: "add", Path: "/spec/template/metadata/annotations", Value: map[string]string{annKey: stamp}})
 	} else {
-		escaped := strings.NewReplacer("~", "~0", "/", "~1").Replace(annKey)
+		escaped := escapePointer.Replace(annKey)
 		operations = append(operations, operation{Op: "add", Path: "/spec/template/metadata/annotations/" + escaped, Value: stamp})
 	}
 	patch, err := json.Marshal(operations)

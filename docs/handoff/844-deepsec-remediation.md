@@ -20,8 +20,26 @@ closed and require pinned HTTPS.
   in the immutable trust entry.
 - Re-establish legacy loopback-only trust entries before credential-bearing CLI
   requests. They remain readable for migration but cannot send credentials.
-- After an unclean server exit, verify that no server owns the old socket path,
-  then remove it explicitly before restart.
+- After an unclean server exit, restart automatically reclaims a same-user
+  `0600` socket only when its connection is refused. A private persistent startup
+  lock serializes concurrent restarts. Live sockets, symlinks, and other objects
+  are refused without removal.
+- Argon2 cost changes are refused at startup and during runtime configuration
+  replacement while current-epoch password credentials use different costs.
+  Restore the previous Argon2 settings; select costs before establishing passwords.
+- Kubernetes metrics stay loopback-only. The chart does not expose a scrape
+  Service or support Prometheus scraping pod IPs. A separately configured
+  same-pod collector can scrape loopback and forward via authenticated transport.
+
+## Review repairs
+
+- Legacy CRD objects compare absent creation policies as the `Owner` default.
+- Pinned loopback HTTPS is accepted without a Unix socket; HTTP still requires one.
+- Restore holds prevent certificate issuance while worker and manual CRL
+  publication continue protecting revocation coverage.
+- Optional authenticator input no longer announces itself as required.
+- CLI help names Forgejo federation refusal, workflow fixtures pin each protected
+  condition, and fuzz classification tolerates toolchain diagnostics around JSON.
 
 ## Validation
 
@@ -31,6 +49,12 @@ closed and require pinned HTTPS.
 - Generated TypeScript client: typecheck and 21 tests passed.
 - Helm, fuzz classification, Linux and Windows compile checkpoints passed.
 - Commit signature, DCO, and diff hygiene checks passed.
+
+Review-repair validation: 1,288 web tests plus typecheck/lint; password-cost,
+CRL-hold and isolation invariant checks on SQLite and PostgreSQL; CLI and CRD
+admission suites; 50 race-enabled socket test repetitions; Windows app/service
+compilation; chart assertions and ShellCheck. Workflow mutation probes reject
+widened conditions independently on the trusted validation job and step.
 
 ## Remaining gates
 

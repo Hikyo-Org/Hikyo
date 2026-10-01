@@ -28,6 +28,9 @@ func TestPinnedClientReplacesPKIVerificationWithExactLeafIdentity(t *testing.T) 
 	if want := SPKIFingerprint(server.Certificate()); pin != want {
 		t.Fatalf("fetched pin = %q, want %q", pin, want)
 	}
+	if err := validateCredentialTransport(TrustEntry{Name: "local-tls", Origin: server.URL, SPKIPin: pin}); err != nil {
+		t.Fatalf("pinned loopback HTTPS credential transport refused: %v", err)
+	}
 
 	client, err := NewClient(TrustEntry{Name: "test", Origin: server.URL, SPKIPin: pin}, "")
 	if err != nil {

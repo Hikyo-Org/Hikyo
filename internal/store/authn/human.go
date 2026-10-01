@@ -82,8 +82,8 @@ type Account struct {
 	CreatedAt   time.Time
 }
 
-// KDFParams are the Argon2id parameters recorded per verifier, so the floor
-// can be raised without invalidating existing credentials.
+// KDFParams are the Argon2id parameters recorded per verifier. Configuration
+// admission refuses a different cost while live-epoch credentials exist.
 type KDFParams struct {
 	MemoryKiB   uint32
 	Time        uint32
@@ -269,6 +269,19 @@ func (r *Resolver) AccountCount(ctx context.Context) (int64, error) {
 		return r.sq.CountAccounts(ctx)
 	}
 	return r.pg.CountAccounts(ctx)
+}
+
+// IncompatiblePasswordKDFCount is the configuration admission check. It reads
+// only live-epoch parameter metadata, never account identifiers or verifiers.
+func (r *Resolver) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {
+	if r.sq != nil {
+		return r.sq.CountIncompatiblePasswordKDFs(ctx, sqlitegen.CountIncompatiblePasswordKDFsParams{
+			MemoryKib: int64(kdf.MemoryKiB), TimeCost: int64(kdf.Time), Parallelism: int64(kdf.Parallelism),
+		})
+	}
+	return r.pg.CountIncompatiblePasswordKDFs(ctx, pggen.CountIncompatiblePasswordKDFsParams{
+		MemoryKib: int64(kdf.MemoryKiB), TimeCost: int64(kdf.Time), Parallelism: int64(kdf.Parallelism),
+	})
 }
 
 // PasswordCredential reads an account's verifier row.

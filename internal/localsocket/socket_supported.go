@@ -11,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // ValidatePath requires an absolute canonical socket path inside an existing,
@@ -38,15 +41,19 @@ func ValidatePath(path string) error {
 }
 
 // Listen creates a 0600 Unix socket and rejects clients whose kernel-reported
-// effective UID differs from the server's. Existing paths are never removed.
+// effective UID differs from the server's. Only a verified, refused stale socket
+// is removed; a live socket or any other existing filesystem object is refused.
 func Listen(path string) (net.Listener, error) {
 	if err := ValidatePath(path); err != nil {
 		return nil, err
 	}
-	if _, err := os.Lstat(path); err == nil {
-		return nil, errors.New("local CLI socket path already exists; verify no server is using it, then remove it")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("inspect local CLI socket: %w", err)
+	unlock, err := lockSocketStartup(path)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if err := clearStaleSocket(path); err != nil {
+		return nil, err
 	}
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
@@ -62,6 +69,63 @@ func Listen(path string) (net.Listener, error) {
 		return nil, err
 	}
 	return &sameUserListener{Listener: listener, uid: uint32(os.Geteuid())}, nil
+}
+
+// Keep the lock inode after release: unlinking it would let a concurrent
+// starter lock a different inode and remove the newly bound socket.
+func lockSocketStartup(path string) (func(), error) {
+	fd, err := unix.Open(path+".lock", unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open local CLI socket startup lock: %w", err)
+	}
+	lock := os.NewFile(uintptr(fd), path+".lock")
+	info, err := lock.Stat()
+	if err != nil {
+		_ = lock.Close()
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		_ = lock.Close()
+		return nil, errors.New("local CLI socket startup lock must be a regular 0600 file")
+	}
+	if err := requireOwner(lock.Name(), info); err != nil {
+		_ = lock.Close()
+		return nil, err
+	}
+	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("lock local CLI socket startup: %w", err)
+	}
+	return func() { _ = lock.Close() }, nil
+}
+
+func clearStaleSocket(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect local CLI socket: %w", err)
+	}
+	if err := validateSocket(path); err != nil {
+		return fmt.Errorf("local CLI socket path already exists: %w", err)
+	}
+	conn, err := net.DialTimeout("unix", path, 250*time.Millisecond)
+	if err == nil {
+		_ = conn.Close()
+		return errors.New("local CLI socket is in use by another server")
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		return fmt.Errorf("probe existing local CLI socket: %w", err)
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(info, current) {
+		return errors.New("local CLI socket changed during stale-socket recovery")
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("remove stale local CLI socket: %w", err)
+	}
+	return nil
 }
 
 // DialContext connects only after both pathname custody and peer UID are

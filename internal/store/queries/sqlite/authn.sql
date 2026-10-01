@@ -91,6 +91,14 @@ WHERE principal_id = ? AND principal_id IN (SELECT principals.id FROM principals
 -- name: CountAccounts :one
 SELECT COUNT(*) FROM accounts;
 
+-- Boot/configuration admission only; returns no identifiers or verifier bytes.
+-- hikyo:authn-resolution
+-- name: CountIncompatiblePasswordKDFs :one
+SELECT COUNT(*) FROM password_credentials
+WHERE credential_epoch = (SELECT credential_epoch FROM auth_instance_state WHERE id = 1)
+  AND (kdf_memory_kib <> sqlc.arg(memory_kib) OR kdf_time <> sqlc.arg(time_cost)
+       OR kdf_parallelism <> sqlc.arg(parallelism));
+
 -- hikyo:authn-resolution
 -- name: GetPasswordCredential :one
 SELECT account_id, verifier, kdf_memory_kib, kdf_time, kdf_parallelism,

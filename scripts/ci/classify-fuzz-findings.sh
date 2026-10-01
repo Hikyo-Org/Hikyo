@@ -97,8 +97,8 @@ while IFS= read -r path; do
 		-run="^${target_and_hash}\$" -timeout=30s "$package") >"$replay" 2>&1; then
 		printf '%s\n' "$path" >>"$related_paths"
 		printf 'fuzz classification: %s passes on base; PR-related\n' "$path" >&2
-	elif "$JQ_BIN" -e --arg test "$target_and_hash" \
-		"select(.Action == \"fail\" and .Test == \$test)" "$replay" >/dev/null; then
+	elif "$JQ_BIN" -Rne --arg test "$target_and_hash" \
+		"[inputs | fromjson? | select(.Action == \"fail\" and .Test == \$test)] | length > 0" "$replay" >/dev/null; then
 		printf '%s\n' "$path" >>"$unrelated_paths"
 		printf 'fuzz classification: %s named subtest also fails on base; independent issue\n' "$path" >&2
 	else

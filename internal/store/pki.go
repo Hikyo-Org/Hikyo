@@ -514,7 +514,7 @@ func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time
 	return entries, nil
 }
 
-// PublishCRL stores DER and update times only for an unheld active or retiring
+// PublishCRL stores DER and update times only for an active or retiring
 // issuer whose CRL number equals previousNumber. It returns false without error when
 // no row matches; proof and database errors are propagated. The caller must
 // choose a number greater than previousNumber and capture revocationSeq before
@@ -530,7 +530,7 @@ func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID stri
 // prior CRL number. It returns false without error when no row matches. The
 // caller must supply an increasing number; this helper does not enforce it.
 func publishCRL(ctx context.Context, db adapterDB, issuerID string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (bool, error) {
-	query := db.SQL(`UPDATE pki_issuers SET crl_der=?, crl_number=?, crl_revocation_seq=?, crl_this_update=?, crl_next_update=? WHERE id=? AND crl_number=? AND state IN ('active','retiring') AND restore_hold=0`)
+	query := db.SQL(`UPDATE pki_issuers SET crl_der=?, crl_number=?, crl_revocation_seq=?, crl_this_update=?, crl_next_update=? WHERE id=? AND crl_number=? AND state IN ('active','retiring')`)
 	return affectedOne(db.Exec(ctx, query, der, number, revocationSeq, db.Stamp(thisUpdate), db.Stamp(nextUpdate), issuerID, previousNumber))
 }
 

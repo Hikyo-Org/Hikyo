@@ -103,7 +103,7 @@ func ensureTrustStateDir(dir string) error {
 		return err
 	}
 	if pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.IsDir() || !ownedByEUID(pathInfo) || pathInfo.Mode().Perm()&0o022 != 0 {
-		return fmt.Errorf("trust store directory %s must be an owner-controlled directory", dir)
+		return fmt.Errorf("trust store directory %s must be an owner-controlled 0700 directory (mode %04o)", dir, pathInfo.Mode().Perm())
 	}
 	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {

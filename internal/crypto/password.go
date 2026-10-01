@@ -25,10 +25,9 @@ const SaltSize = 16
 // verifierSize is the Argon2id output length.
 const verifierSize = 32
 
-// PasswordParams are the Argon2id cost parameters recorded per verifier, so
-// the floor can be raised later without invalidating existing credentials —
-// a verifier is re-derived on the next successful login under the
-// compare-and-swap rule.
+// PasswordParams are the Argon2id cost parameters recorded per verifier.
+// Serving configuration must match live-epoch credentials: changing costs
+// requires deliberate credential re-establishment, not a silent login lockout.
 type PasswordParams struct {
 	MemoryKiB   uint32
 	Time        uint32

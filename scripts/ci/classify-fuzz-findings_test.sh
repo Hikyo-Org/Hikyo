@@ -34,7 +34,10 @@ case "$arguments" in
 	*-list=\^FuzzUnrelated\$*) printf 'FuzzUnrelated\n' ;;
 	*-run=\^FuzzRelated/*) exit 0 ;;
 	*-run=\^FuzzUnrelated/*)
+		printf 'go: diagnostic before JSON output\n' >&2
 		printf '{"Action":"fail","Test":"FuzzUnrelated/2222222222222222222222222222222222222222222222222222222222222222"}\n'
+		printf '{"Action":"fail","Package":"internal/unrelated"}\n'
+		printf 'go: diagnostic after JSON output\n' >&2
 		exit 1
 		;;
 	*)

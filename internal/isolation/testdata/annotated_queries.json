@@ -199,6 +199,12 @@
   },
   {
     "engine": "postgres",
+    "name": "CountIncompatiblePasswordKDFs",
+    "annotation": "authn-resolution",
+    "hash": "f3db3be13710b63ae1fb63768c28f90b34eb0a3a9012b54afc0ded1e609f6505"
+  },
+  {
+    "engine": "postgres",
     "name": "CountLiveMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "26b1f388f751e68601c053d52e386f6ad45b35e4f6d63089a7b9d19918c8cb11"
@@ -2512,6 +2518,12 @@
     "name": "CountGrantsForOrg",
     "annotation": "authn-resolution",
     "hash": "3db19a6830a7a9ab88f1ecf4ad477e64927148f69b54dddc495c26a569095a44"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountIncompatiblePasswordKDFs",
+    "annotation": "authn-resolution",
+    "hash": "f3db3be13710b63ae1fb63768c28f90b34eb0a3a9012b54afc0ded1e609f6505"
   },
   {
     "engine": "sqlite",

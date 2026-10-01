@@ -3,7 +3,7 @@ set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 workflow="$script_dir/../../.github/workflows/ci.yml"
-controller="$script_dir/../../.github/workflows/ci-control.yml"
+controller=${CI_CONTROL_WORKFLOW:-"$script_dir/../../.github/workflows/ci-control.yml"}
 # Out-of-band fuzz reporting moved to its own trusted base-context workflow
 # (#189): ci.yml / ci-control.yml execute untrusted PR code and hold no
 # issue/PR write, while fuzz-report.yml runs on workflow_run completion in the
@@ -94,15 +94,25 @@ require_line "$script_dir/check-fork-validation.sh" 'select(.display_title == \"
 # The controller must execute the reusable validation graph only for a merge
 # group. Every pull request, including same-repository branches, is checked by
 # the PR-scoped workflow and the base-controlled gate below.
-if [ "$(grep -Fc "if: github.event_name == 'merge_group'" "$controller")" -ne 2 ]; then
-	printf 'trusted CI scripts fixture failed: trusted validation can run outside the merge queue\n' >&2
-	exit 1
-fi
-require_line "$controller" '- name: Require PR-scoped validation'
-if [ "$(grep -Fxc "        if: github.event_name == 'pull_request_target'" "$controller")" -ne 2 ]; then
-	printf 'trusted CI scripts fixture failed: PR-scoped validation gate is incomplete\n' >&2
-	exit 1
-fi
+require_controller_condition() {
+	marker=$1
+	expected=$2
+	actual=$(awk -v marker="$marker" '
+		found && /^[[:space:]]*if:/ { print; exit }
+		found && /^[[:space:]]*(uses:|runs-on:|- name:|[a-zA-Z_-]+: *$)/ { exit }
+		$0 == marker { found = 1 }
+	' "$controller")
+	if [ "$actual" != "$expected" ]; then
+		printf 'trusted CI scripts fixture failed: wrong condition for %s\n' "$marker" >&2
+		exit 1
+	fi
+}
+require_controller_condition '  validation:' "    if: github.event_name == 'merge_group'"
+require_controller_condition '  ci-required:' '    if: always() && !cancelled()'
+require_controller_condition '      - name: Require trusted validation' "        if: github.event_name == 'merge_group'"
+require_controller_condition '      - name: Require a vouched fork author' "        if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository"
+require_controller_condition '      - name: Check out the base branch' "        if: github.event_name == 'pull_request_target'"
+require_controller_condition '      - name: Require PR-scoped validation' "        if: github.event_name == 'pull_request_target'"
 # The merge queue (#813) validates the exact merge result with the full suite.
 # The fork path must never run for a merge group (it has no pull_request), and
 # groups must not share, and so cancel, one concurrency slot.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -56,6 +57,78 @@ func TestSameUserSocketRoundTripAndCustody(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSocketRestartRecoversStaleSocketButPreservesLiveListener(t *testing.T) {
+	directory, err := os.MkdirTemp("", "hks-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	path := filepath.Join(directory, "hikyo.sock")
+	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.SetUnlinkOnClose(false)
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stale.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate two restart attempts after the unclean exit. Exactly one may
+	// reclaim the stale socket; the loser must not remove the winner's listener.
+	start := make(chan struct{})
+	listeners := make(chan net.Listener, 2)
+	var attempts sync.WaitGroup
+	for range 2 {
+		attempts.Go(func() {
+			<-start
+			listener, err := Listen(path)
+			if err == nil {
+				listeners <- listener
+			}
+		})
+	}
+	close(start)
+	attempts.Wait()
+	close(listeners)
+	var live net.Listener
+	for listener := range listeners {
+		defer listener.Close()
+		if live != nil {
+			t.Fatal("both restart attempts bound the socket")
+		}
+		live = listener
+	}
+	if live == nil {
+		t.Fatal("no restart attempt recovered the stale socket")
+	}
+	if _, err := Listen(path); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("live socket error = %v", err)
+	}
+	conn, err := DialContext(t.Context(), path)
+	if err != nil {
+		t.Fatalf("live listener was replaced: %v", err)
+	}
+	_ = conn.Close()
+}
+
+func TestSocketStartupRefusesSymlinkLock(t *testing.T) {
+	directory, err := os.MkdirTemp("", "hks-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	path := filepath.Join(directory, "hikyo.sock")
+	if err := os.Symlink(filepath.Join(directory, "elsewhere"), path+".lock"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Listen(path); err == nil {
+		t.Fatal("symlink startup lock accepted")
 	}
 }
 

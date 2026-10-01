@@ -89,6 +89,9 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		FederationPolicy:     federationPolicy,
 		SecondFactorRequired: cfg.SecondFactor == "required",
 	}
+	if err := authSvc.CheckPasswordConfiguration(ctx); err != nil {
+		return nil, fmt.Errorf("boot: password configuration: %w", err)
+	}
 	selfConfig := owner.selfConfig
 	authSvc.SelfConfig = selfConfig
 	samlProviders := service.NewSAMLProviders(db, kr, cfg.ExternalOrigin)

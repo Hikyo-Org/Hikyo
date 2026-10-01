@@ -69,3 +69,61 @@ func TestParameterAdmissionUsesUTF8Bytes(t *testing.T) {
 		})
 	}
 }
+
+func TestCreationPolicyImmutabilityAllowsLegacyDefault(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chart/hikyo/crds/hikyo.dev_hikyosecrets.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var crd apiextensionsv1.CustomResourceDefinition
+	if err := yaml.Unmarshal(data, &crd); err != nil {
+		t.Fatal(err)
+	}
+	rules := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"].Properties["target"].XValidations
+	env, err := cel.NewEnv(cel.Variable("self", cel.MapType(cel.StringType, cel.StringType)), cel.Variable("oldSelf", cel.MapType(cel.StringType, cel.StringType)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rule string
+	for _, validation := range rules {
+		if validation.Message == "target.creationPolicy is immutable" {
+			rule = validation.Rule
+		}
+	}
+	if rule == "" {
+		t.Fatal("creationPolicy immutability rule absent")
+	}
+	ast, issues := env.Compile(rule)
+	if issues.Err() != nil {
+		t.Fatal(issues.Err())
+	}
+	program, err := env.Program(ast)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		old, current string
+		allowed      bool
+	}{
+		{"", "", true}, {"", "Owner", true}, {"Owner", "", true},
+		{"Owner", "Owner", true}, {"Orphan", "Orphan", true},
+		{"", "Orphan", false}, {"Orphan", "", false}, {"Owner", "Orphan", false},
+	} {
+		t.Run(tc.old+" to "+tc.current, func(t *testing.T) {
+			old, current := map[string]string{}, map[string]string{}
+			if tc.old != "" {
+				old["creationPolicy"] = tc.old
+			}
+			if tc.current != "" {
+				current["creationPolicy"] = tc.current
+			}
+			result, _, err := program.Eval(map[string]any{"self": current, "oldSelf": old})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Value() != tc.allowed {
+				t.Fatalf("allowed = %v, want %v", result.Value(), tc.allowed)
+			}
+		})
+	}
+}

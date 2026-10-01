@@ -140,19 +140,20 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 }
 
 func validateCredentialTransport(entry TrustEntry) error {
-	if isLoopbackOrigin(entry.Origin) && entry.CLISocket == "" {
+	if strings.HasPrefix(entry.Origin, "https://") {
+		if entry.CLISocket != "" {
+			return errors.New("https trust cannot carry a local CLI socket")
+		}
+		return nil
+	}
+	if !isLoopbackOrigin(entry.Origin) {
+		return errors.New("plaintext http is allowed only for loopback over an authenticated local CLI socket")
+	}
+	if entry.CLISocket == "" {
 		return errors.New("loopback http trust requires an authenticated local CLI socket")
 	}
-	if entry.CLISocket != "" {
-		if err := localsocket.ValidatePath(entry.CLISocket); err != nil {
-			return fmt.Errorf("local CLI socket: %w", err)
-		}
-	}
-	if strings.HasPrefix(entry.Origin, "https://") && entry.CLISocket != "" {
-		return errors.New("https trust cannot carry a local CLI socket")
-	}
-	if !strings.HasPrefix(entry.Origin, "https://") && !isLoopbackOrigin(entry.Origin) {
-		return errors.New("plaintext http is allowed only for loopback over an authenticated local CLI socket")
+	if err := localsocket.ValidatePath(entry.CLISocket); err != nil {
+		return fmt.Errorf("local CLI socket: %w", err)
 	}
 	return nil
 }

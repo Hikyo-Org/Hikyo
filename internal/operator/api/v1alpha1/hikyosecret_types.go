@@ -138,7 +138,7 @@ func (m Mapping) EffectiveSecretKey() string {
 // annotation's key-name limit (`stamp.hikyo.dev/<target.name>`, § 0.2).
 //
 // +kubebuilder:validation:XValidation:rule="self.name == oldSelf.name",message="target.name is immutable"
-// +kubebuilder:validation:XValidation:rule="self.creationPolicy == oldSelf.creationPolicy",message="target.creationPolicy is immutable"
+// +kubebuilder:validation:XValidation:rule="(has(self.creationPolicy) ? self.creationPolicy : 'Owner') == (has(oldSelf.creationPolicy) ? oldSelf.creationPolicy : 'Owner')",message="target.creationPolicy is immutable"
 type Target struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
