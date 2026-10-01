@@ -51,13 +51,9 @@ func runGitLabAdoptionScope(t *testing.T, db *store.DB, foreignScope string, wan
 			t.Fatalf("reactivate released claim: %s, %v", state, err)
 		}
 		var scope string
-		if db.Engine() == store.EngineSQLite {
-			err = db.SQLiteWrite().QueryRowContext(t.Context(), `SELECT destination_scope FROM adapter_ledger WHERE id='led_legacy'`).Scan(&scope)
-		} else {
-			err = db.PG().QueryRow(t.Context(), `SELECT destination_scope FROM adapter_ledger WHERE id='led_legacy'`).Scan(&scope)
-		}
-		if err != nil || scope != "production" {
-			t.Fatalf("reactivated scope = %q, %v; want production", scope, err)
+		queryAdapterRow(t, db, `SELECT destination_scope FROM adapter_ledger WHERE id='led_legacy'`, &scope)
+		if scope != "production" {
+			t.Fatalf("reactivated scope = %q; want production", scope)
 		}
 		if err := journal.Prepare(t.Context(), effect, state); err != nil {
 			t.Fatal(err)
@@ -89,15 +85,7 @@ func runGitLabAdoptionScope(t *testing.T, db *store.DB, foreignScope string, wan
 	count := func(query string) int {
 		t.Helper()
 		var n int
-		var err error
-		if db.Engine() == store.EngineSQLite {
-			err = db.SQLiteWrite().QueryRowContext(t.Context(), query).Scan(&n)
-		} else {
-			err = db.PG().QueryRow(t.Context(), query).Scan(&n)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		queryAdapterRow(t, db, query, &n)
 		return n
 	}
 	want := 1

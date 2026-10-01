@@ -10,7 +10,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
-	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	storetx "github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -73,40 +72,6 @@ func TestCanonicalOriginAdoptionSQLite(t *testing.T) {
 }
 func TestCanonicalOriginAdoptionPostgres(t *testing.T) {
 	runCanonicalOriginAdoption(t, store.EnginePostgres)
-}
-
-func runLegacyOriginPublicRetirement(t *testing.T, engine store.Engine) {
-	db := repositoryRecoveryDB(t, engine)
-	seedOriginAdoptionPeer(t, db, "forgejo", "https://git.example", "https://GIT.example:443/", "forgejo", "owned", "", false)
-	if err := adoptTOKEN(t, db); !errors.Is(err, adapter.ErrOperatorReview) {
-		t.Fatalf("ambiguous legacy custody not held:%v", err)
-	}
-	// No module factory/keyring is configured. Public metadata-only retirement
-	// must still work, and therefore cannot build a client or contact a provider.
-	svc := &service.Adapters{DB: db}
-	result, err := svc.Delete(t.Context(), service.LocalPrincipal("usr_adopt"), domain.Scope{Org: "org_adopt", Project: "prj_adopt"}, "adp_peer", true)
-	if err != nil {
-		t.Fatalf("public legacy keep-remote delete:%v", err)
-	}
-	if len(result.Orphaned) != 1 || result.Orphaned[0] != "secret:TOKEN" {
-		t.Fatalf("retirement orphan warning=%v", result.Orphaned)
-	}
-	if recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE id='led_peer' AND state='released' AND provider_origin='https://GIT.example:443/'`) != 1 {
-		t.Fatal("explicit retirement did not release only legacy claim")
-	}
-	if recoveryCount(t, db, `SELECT COUNT(*) FROM adapters WHERE id='adp_peer' AND state='tombstoned'`) != 1 {
-		t.Fatal("legacy adapter was not retired")
-	}
-	if err := adoptTOKEN(t, db); err != nil {
-		t.Fatalf("fresh verified adoption after retirement:%v", err)
-	}
-}
-
-func TestLegacyOriginPublicRetirementSQLite(t *testing.T) {
-	runLegacyOriginPublicRetirement(t, store.EngineSQLite)
-}
-func TestLegacyOriginPublicRetirementPostgres(t *testing.T) {
-	runLegacyOriginPublicRetirement(t, store.EnginePostgres)
 }
 
 func runConcurrentAWSOriginAdoption(t *testing.T, engine store.Engine) {

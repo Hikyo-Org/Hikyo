@@ -132,7 +132,7 @@ func scenarioAdapterCrashReservationRelease(t *testing.T, db *store.DB) {
 	who, scope, _, envs, _ := valueFixture(t, db, "adapterreserve")
 	env := mustEnv(t, envs, service.LocalPrincipal(who), scope, "prod")
 	seed(t, db, []string{
-		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_reservation_release','%s','%s','forgejo','https://git.example/adapterreserve','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
+		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_reservation_release','%s','%s','forgejo','https://adapterreserve.git.example','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
 		fmt.Sprintf(`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,active_job_id,created_at) VALUES ('tgt_reservation_release','%s','%s','%s','adp_reservation_release','repository','acme','app',4201,'',1,'active','converging','job_reservation_old','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, env.Env),
 		fmt.Sprintf(`INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,authority_principal_id,generation,dedup_key,attempt_count,next_attempt_at,state,lease_owner,lease_expires_at,created_at) VALUES ('job_reservation_old','%s','%s','%s','tgt_reservation_release','converge','%s',1,'tgt_reservation_release',1,'2026-08-17T00:00:00Z','running','worker_old','2099-08-17T00:00:00Z','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, env.Env, who),
 	})
@@ -195,7 +195,7 @@ func scenarioPublishEnqueuesAdapterSync(t *testing.T, db *store.DB) {
 	prod := mustEnv(t, envs, actor, scope, "prod")
 	key := mustKey(t, keys, actor, scope, "SYNCED", string(schema.Config), schema.DefaultPresenceRules())
 	seed(t, db, []string{
-		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_publish_hook','%s','%s','forgejo','https://git.example/adapterpublish','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
+		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_publish_hook','%s','%s','forgejo','https://adapterpublish.git.example','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
 		fmt.Sprintf(`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_publish_dev','%s','%s','%s','adp_publish_hook','repository','acme','dev',4101,'DEV_',1,'active','never','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, dev.Env),
 		fmt.Sprintf(`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_publish_prod','%s','%s','%s','adp_publish_hook','repository','acme','prod',4102,'PROD_',1,'active','never','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, prod.Env),
 	})

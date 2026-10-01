@@ -9,6 +9,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type blockedPreparationModule struct {
@@ -121,11 +122,22 @@ func TestAdapterPostgresReserveAndKeepRemoteRemovalShareTargetFirstFence(t *test
 	if err := held.Rollback(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-reserved; err != nil && !errors.Is(err, adapter.ErrSuperseded) {
-		t.Fatalf("concurrent old Reserve failed outside its fence: %v", err)
-	}
+	reserveErr := <-reserved
 	if err := <-removed; err != nil {
 		t.Fatalf("concurrent canonical removal = %v", err)
+	}
+	if reserveErr != nil && !errors.Is(reserveErr, adapter.ErrSuperseded) {
+		var pgErr *pgconn.PgError
+		if !errors.As(reserveErr, &pgErr) || pgErr.Code != "40001" {
+			t.Fatalf("concurrent old Reserve failed outside its fence: %v", reserveErr)
+		}
+		// Adapter transactions deliberately return serialization conflicts to
+		// the worker. Re-driving this rolled-back attempt after removal must
+		// observe supersession, not recreate ownership from its old snapshot.
+		_, err := runtime.Journal(job).Reserve(ctx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "P_RACE", Disposition: adapter.Create})
+		if !errors.Is(err, adapter.ErrSuperseded) {
+			t.Fatalf("Reserve retry after canonical removal = %v; want superseded", err)
+		}
 	}
 	if queryInt(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE target_id='tgt_gitlab_a' AND state<>'released'`) != 0 {
 		t.Fatal("target-first interleaving resurrected removed custody")

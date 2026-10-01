@@ -829,6 +829,7 @@ const (
 	StoreAdaptersTarget                 StoreOp = "adapters.Target"
 	StoreAdaptersGet                    StoreOp = "adapters.Get"
 	StoreAdaptersConfiguration          StoreOp = "adapters.Configuration"
+	StoreAdaptersConfigurationForUpdate StoreOp = "adapters.ConfigurationForUpdate"
 	StoreAdaptersList                   StoreOp = "adapters.List"
 	StoreAdaptersListTargets            StoreOp = "adapters.ListTargets"
 	StoreAdaptersTargetKeyIDs           StoreOp = "adapters.TargetKeyIDs"
@@ -4662,7 +4663,7 @@ var operationTable = map[Operation]opSpec{
 	OpAdapterConfigure: {
 		class: ClassTenant, level: domain.LevelProject, postGrantForbidden: true,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAdaptersCreate: true, StoreAdaptersAddTarget: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersUpdateTarget: true, StoreAdaptersMoveTarget: true, StoreAdaptersMoveOrigin: true, StoreAdaptersCancelMove: true, StoreAdaptersReplaceMoveTarget: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersMove: true, StoreAdaptersConfiguration: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeyIDs: true, StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersEnvironments: true, StoreCatalogueList: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAdaptersCreate: true, StoreAdaptersAddTarget: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersUpdateTarget: true, StoreAdaptersMoveTarget: true, StoreAdaptersMoveOrigin: true, StoreAdaptersCancelMove: true, StoreAdaptersReplaceMoveTarget: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersMove: true, StoreAdaptersConfiguration: true, StoreAdaptersConfigurationForUpdate: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeyIDs: true, StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersEnvironments: true, StoreCatalogueList: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAdapterConfigure, audit.EventAdapterSyncRequested, audit.EventAdapterSuperseded, audit.EventAdapterScrub, audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome},
 	},
 	OpAdapterCredentialSet: {

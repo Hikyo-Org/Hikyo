@@ -26,15 +26,7 @@ func repositoryRecoveryDB(t *testing.T, engine store.Engine) *store.DB {
 func recoveryCount(t *testing.T, db *store.DB, query string) int {
 	t.Helper()
 	var n int
-	var err error
-	if db.Engine() == store.EngineSQLite {
-		err = db.SQLiteRead().QueryRowContext(t.Context(), query).Scan(&n)
-	} else {
-		err = db.PG().QueryRow(t.Context(), query).Scan(&n)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	queryAdapterRow(t, db, query, &n)
 	return n
 }
 

@@ -177,6 +177,21 @@ func execAdapter(t *testing.T, db *store.DB, statement string) {
 	}
 }
 
+// queryAdapterRow keeps fixture observations inside the same sanctioned
+// both-engine harness as seed statements. Driver handles never leave it.
+func queryAdapterRow(t *testing.T, db *store.DB, query string, dest ...any) {
+	t.Helper()
+	var err error
+	if db.Engine() == store.EnginePostgres {
+		err = db.PG().QueryRow(t.Context(), query).Scan(dest...)
+	} else {
+		err = db.SQLiteRead().QueryRowContext(t.Context(), query).Scan(dest...)
+	}
+	if err != nil {
+		t.Fatalf("observe fixture %q: %v", query, err)
+	}
+}
+
 // seedAdoptionFixture stands up an active forgejo adapter+target with a queued
 // converge and an un-adopted conflict artifact for (secret, TOKEN) at
 // generation 1 — the minimal shape adoptAdapter walks — on either engine.

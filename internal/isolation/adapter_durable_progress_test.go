@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
@@ -10,6 +11,9 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type progressRateWait struct{ at time.Time }
@@ -266,6 +270,35 @@ func TestAdapterDurableProgressRequiresExactAcknowledgedRevisionAndCustody(t *te
 		if len(material.Completed) != 1 || material.Completed[0].EffectiveName != "ACKNOWLEDGED" {
 			t.Fatalf("reused unproven or unowned progress: %v", material.Completed)
 		}
+		// Independently exercise the generated predicate, so LoadExecution's
+		// preceding authority Gate cannot conceal an incomplete SQL witness.
+		var completed func(adapter.Job, int64) (int, error)
+		if db.Engine() == store.EngineSQLite {
+			q := sqlitegen.New(db.SQLiteWrite())
+			completed = func(job adapter.Job, revision int64) (int, error) {
+				rows, err := q.AdapterWorkerLoadExecutionCompletedQuery(t.Context(), sqlitegen.AdapterWorkerLoadExecutionCompletedQueryParams{ChainOrg: job.OrgID, ChainProject: sql.NullString{String: job.ProjectID, Valid: true}, ChainEnv: sql.NullString{String: job.EnvironmentID, Valid: true}, JobID: job.ID, TargetID: job.TargetID, Generation: job.Generation, LeaseOwner: sql.NullString{String: job.LeaseOwner, Valid: true}, AuthorityPrincipal: job.AuthorityPrincipal, InputRevision: revision})
+				return len(rows), err
+			}
+		} else {
+			q := pggen.New(db.PG())
+			completed = func(job adapter.Job, revision int64) (int, error) {
+				rows, err := q.AdapterWorkerLoadExecutionCompletedQuery(t.Context(), pggen.AdapterWorkerLoadExecutionCompletedQueryParams{ChainOrg: job.OrgID, ChainProject: pgtype.Text{String: job.ProjectID, Valid: true}, ChainEnv: pgtype.Text{String: job.EnvironmentID, Valid: true}, JobID: job.ID, TargetID: job.TargetID, Generation: job.Generation, LeaseOwner: pgtype.Text{String: job.LeaseOwner, Valid: true}, AuthorityPrincipal: job.AuthorityPrincipal, InputRevision: revision})
+				return len(rows), err
+			}
+		}
+		if n, err := completed(job, material.Revision); err != nil || n != 1 {
+			t.Fatalf("direct acknowledged witness=%d %v", n, err)
+		}
+		for _, revision := range []int64{0, material.Revision + 2} {
+			if n, err := completed(job, revision); err != nil || n != 0 {
+				t.Fatalf("unacknowledged revision %d=%d %v", revision, n, err)
+			}
+		}
+		foreignAuthority := job
+		foreignAuthority.AuthorityPrincipal = "other_principal"
+		if n, err := completed(foreignAuthority, material.Revision); err != nil || n != 0 {
+			t.Fatalf("direct foreign authority witness=%d %v", n, err)
+		}
 		for _, mutate := range []func(*adapter.Job){
 			func(job *adapter.Job) { job.OrgID = "org_b" },
 			func(job *adapter.Job) { job.ProjectID = "prj_b1" },
@@ -273,9 +306,13 @@ func TestAdapterDurableProgressRequiresExactAcknowledgedRevisionAndCustody(t *te
 			func(job *adapter.Job) { job.TargetID = "deadline_target_b" },
 			func(job *adapter.Job) { job.LeaseOwner = "other_worker" },
 			func(job *adapter.Job) { job.Generation++ },
+			func(job *adapter.Job) { job.ID = "other_job" },
 		} {
 			foreign := job
 			mutate(&foreign)
+			if n, err := completed(foreign, material.Revision); err != nil || n != 0 {
+				t.Fatalf("direct foreign witness=%d %v", n, err)
+			}
 			if material, err := runtime.LoadExecution(t.Context(), foreign); err == nil || len(material.Completed) != 0 {
 				t.Fatalf("foreign lease/chain reused progress: %+v, %v", foreign, err)
 			}

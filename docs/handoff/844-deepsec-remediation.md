@@ -393,3 +393,42 @@ and remove its repository-scoped copy. The workflow now names that environment,
 but source guards cannot protect an existing repository-wide private key.
 Use [the custody handoff](nightly-release-custody.md); no repository settings or
 secrets were mutated by this remediation.
+
+## CI repair after the custody and retry checkpoint
+
+The pushed checkpoint `39aeb4959` exposed several root causes, repeated across
+trusted and fork CI. These are repaired without weakening the guards:
+
+- `ConfigurationForUpdate` now has its own store operation, granted only to
+  adapter configuration. Inspection, planning, deletion and system proofs
+  cannot use the locking door; it is not an unaudited read-only operation.
+- Test fixtures use the existing sanctioned driver harness rather than raw
+  handles outside its owner. Target-state comparisons preserve every exported
+  field without importing reflection into a proof-handling store test. The
+  public retirement flow moved to isolation tests, preserving dependency
+  direction and its actual metadata-only service call.
+- Four new complex scoped queries have exact reviewed authority records and
+  independent generated-query controls. Ten changed records were reviewed
+  against both dialects, generated bindings and callers before refreshing their
+  pins. No production query, generator or analyzer exemption was changed.
+- Direct GitLab namespace positives now seed the exact destination scope;
+  independent-scope and foreign-chain refusals remain covered. Forgejo
+  conformance fixtures use supported bare origins instead of URL paths.
+- The concurrent PostgreSQL reserve/removal probe preserves the deliberate
+  serialization-conflict contract. If the old attempt rolls back with SQLSTATE
+  40001, its retry after removal must return superseded, with no custody revival.
+
+Local evidence includes full lint (110 seconds), CI-equivalent static
+invariants (15 seconds), new generated-direct boundaries on both engines with
+three race repetitions (389 seconds), paused moves (456 seconds), public legacy
+retirement (80 seconds), all four dependency contexts (13 seconds), the
+reserve/removal race (47 seconds), and generation-fenced reservation conformance
+on both engines with three race repetitions (114 seconds).
+
+A supplemental default-parallel static-analyzer race run also reproduced a
+Go 1.27 type-checker race inside `packages.Load`, before analyzer execution.
+Its separate single-checker diagnostic does not change application concurrency,
+CI settings or race detection. A first diagnostic overlapped removal of a
+temporary pin extractor and is not passing evidence; final checks run after
+the complete Go source tree is frozen. The new pushed head's remote CI remains
+a separate required delivery check.

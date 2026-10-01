@@ -1,10 +1,11 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
@@ -70,6 +71,18 @@ func movePolicyTargets(t *testing.T, db *store.DB) []store.AdapterTarget {
 	return targets
 }
 
+func movePolicyTargetState(t *testing.T, targets []store.AdapterTarget) []byte {
+	t.Helper()
+	// All returned target fields are exported without omission tags. Preserve
+	// nil/empty slices and pointer values while avoiding reflection in a test
+	// package that handles authorization proofs.
+	state, err := json.Marshal(targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
 func runPausedAdapterMoves(t *testing.T, engine store.Engine) {
 	for _, action := range []string{"destination", "origin_single", "origin_mixed"} {
 		for _, keep := range []bool{false, true} {
@@ -83,6 +96,7 @@ func runPausedAdapterMoves(t *testing.T, engine store.Engine) {
 					t.Fatal(err)
 				}
 				before := movePolicyTargets(t, db)
+				beforeState := movePolicyTargetState(t, before)
 				owned := recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE state='owned'`)
 				err := movePolicyWrite(t, db, func(ctx context.Context, r store.Repos, p authz.Proof) error {
 					if action == "destination" {
@@ -96,7 +110,7 @@ func runPausedAdapterMoves(t *testing.T, engine store.Engine) {
 				if !errors.Is(err, domain.ErrConflict) {
 					t.Errorf("paused move = %v; want conflict", err)
 				}
-				if after := movePolicyTargets(t, db); !reflect.DeepEqual(before, after) {
+				if after := movePolicyTargets(t, db); !bytes.Equal(beforeState, movePolicyTargetState(t, after)) {
 					t.Errorf("paused move changed targets: before=%+v after=%+v", before, after)
 				}
 				if recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_route_moves`) != 0 || recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id IS NOT NULL`) != 0 || recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE state='owned'`) != owned {

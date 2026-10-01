@@ -35,7 +35,7 @@ func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapte
 // credential replacement and origin moves cannot race the following write.
 // Read-only callers retain Configuration without acquiring a writer lock.
 func (r adapterQueries) ConfigurationForUpdate(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
-	chain, err := authz.Verify(p, authz.StoreAdaptersConfiguration, r.tok)
+	chain, err := authz.Verify(p, authz.StoreAdaptersConfigurationForUpdate, r.tok)
 	if err != nil {
 		return AdapterRecord{}, nil, err
 	}
