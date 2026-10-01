@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useEffect, useRef, useState } from 'react';
 
 import { isoDay } from '../api/identities.ts';
@@ -1084,15 +1085,10 @@ function IssueDialog({
                   {disclosed.result.private_key}
                 </pre>
               </div>
-              <p className="ceremony__cap" role="status">
-                <span className="alert__glyph" aria-hidden="true">
-                  !
-                </span>
-                <span>
-                  This private key is never retrievable again. Save it with mode 0600 now; if it is lost, revoke this
-                  certificate and issue a new one.
-                </span>
-              </p>
+              <CeremonyNotice>
+                This private key is never retrievable again. Save it with mode 0600 now; if it is lost, revoke this
+                certificate and issue a new one.
+              </CeremonyNotice>
               <Button
                 type="button"
                 onClick={async () => {

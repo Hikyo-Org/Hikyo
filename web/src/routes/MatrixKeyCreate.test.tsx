@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
+import { renderForm } from '../testkit/renderForm.tsx';
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { editDistance, MatrixKeyCreate, nearMissKeyName, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+import {
+  editDistance,
+  MatrixKeyCreate,
+  nearMissKeyName,
+  type MatrixKeyCreatePayload,
+} from './MatrixKeyCreate.tsx';
 
 type Props = Parameters<typeof MatrixKeyCreate>[0];
 type Environment = Props['environments'][number];
@@ -27,26 +30,21 @@ afterEach(() => {
 
 async function render(overrides: Partial<Props> = {}) {
   const onCreate = vi.fn<(payload: MatrixKeyCreatePayload) => Promise<void>>().mockResolvedValue(undefined);
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <MatrixKeyCreate
-        folders={['app']}
-        environments={environments}
-        protectedEnvironmentIds={[production.id]}
-        initialFolder="app"
-        existingKeyNames={['EXISTING']}
-        busy={false}
-        mutationError={null}
-        onClose={vi.fn()}
-        onCreate={onCreate}
-        {...overrides}
-      />,
-    );
-  });
-  return { container, onCreate, unmount: () => act(async () => root.unmount()) };
+  const { container, unmount } = await renderForm(
+    <MatrixKeyCreate
+      folders={['app']}
+      environments={environments}
+      protectedEnvironmentIds={[production.id]}
+      initialFolder="app"
+      existingKeyNames={['EXISTING']}
+      busy={false}
+      mutationError={null}
+      onClose={vi.fn()}
+      onCreate={onCreate}
+      {...overrides}
+    />,
+  );
+  return { container, onCreate, unmount };
 }
 
 function set(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): void {

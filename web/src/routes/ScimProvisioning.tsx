@@ -1,3 +1,4 @@
+import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
@@ -1002,15 +1003,10 @@ function MintDialog({
         </Alert>
       ) : null}
       <p className="mono machine__token">{minted.token}</p>
-      <p className="ceremony__cap" role="status">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          This value is never retrievable again. The list shows metadata only. Configure it at the
-          identity provider now; if it is lost, revoke this credential and mint a fresh one.
-        </span>
-      </p>
+      <CeremonyNotice>
+        This value is never retrievable again. The list shows metadata only. Configure it at the
+        identity provider now; if it is lost, revoke this credential and mint a fresh one.
+      </CeremonyNotice>
       <Button
         type="button"
         onClick={async () => {

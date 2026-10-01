@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 
+import { zJSONText } from '../lib/jsonText.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
@@ -748,12 +749,8 @@ function buildRule(
       if (trimmed.length > MAX_JSON_SCHEMA_LENGTH) {
         return { error: `A JSON Schema is at most ${String(MAX_JSON_SCHEMA_LENGTH)} characters.` };
       }
-      if (trimmed !== '') {
-        try {
-          JSON.parse(trimmed);
-        } catch {
-          return { error: 'The JSON Schema must be valid JSON.' };
-        }
+      if (trimmed !== '' && !zJSONText.safeParse(trimmed).success) {
+        return { error: 'The JSON Schema must be valid JSON.' };
       }
       return { rule: { type: 'json', ...(trimmed === '' ? {} : { jsonSchema: trimmed }) } };
     }
@@ -836,12 +833,7 @@ function validateFirstValue(rule: CreateKeyRule, value: string): string | null {
         ? null
         : 'Enter one of the declared enum members.';
     case 'json':
-      try {
-        JSON.parse(value);
-        return null;
-      } catch {
-        return 'Enter valid JSON.';
-      }
+      return zJSONText.safeParse(value).success ? null : 'Enter valid JSON.';
     default:
       return null;
   }

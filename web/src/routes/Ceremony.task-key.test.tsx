@@ -1,10 +1,9 @@
 // @vitest-environment happy-dom
 import { act, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ceremonyRequest, deferred } from '../testkit/ceremony.ts';
-import { settle } from '../testkit/renderForm.tsx';
+import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import { useCeremonyTask } from './useCeremonyTask.ts';
 
@@ -104,10 +103,7 @@ describe('Ceremony task identity', () => {
       .mockImplementationOnce(() => obsoleteAttempt.promise)
       .mockResolvedValueOnce(undefined);
     const committed: string[] = [];
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => root.render(<Harness />));
+    const { container, unmount } = await renderForm(<Harness />);
 
     await stage('first', committed);
     await act(async () => button(container, 'Use a passkey').click());
@@ -126,7 +122,7 @@ describe('Ceremony task identity', () => {
     await act(async () => button(container, 'Use a passkey').click());
     await settle();
     expect(committed).toEqual(['second']);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('offers the current OIDC provider only when a reusable window is allowed', async () => {
@@ -134,119 +130,99 @@ describe('Ceremony task identity', () => {
     mocks.providerAvailable = true;
     mocks.runOIDCCeremony.mockResolvedValue(undefined);
     mocks.refreshSession.mockResolvedValue(undefined);
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () =>
-      root.render(
-        <Ceremony
-          request={{
-            ...ceremonyRequest('production'),
-            window: {
-              protected: false,
-              effective_window_seconds: 300,
-              live: false,
-              single_decision: false,
-              can_reveal: false,
-              totp_offered: true,
-            },
-          }}
-          onAuthorised={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      ),
+    const { container, unmount } = await renderForm(
+      <Ceremony
+        request={{
+          ...ceremonyRequest('production'),
+          window: {
+            protected: false,
+            effective_window_seconds: 300,
+            live: false,
+            single_decision: false,
+            can_reveal: false,
+            totp_offered: true,
+          },
+        }}
+        onAuthorised={vi.fn()}
+        onCancel={vi.fn()}
+      />,
     );
 
     await act(async () => button(container, 'Re-authenticate with Corporate IdP').click());
     await settle();
     expect(mocks.runOIDCCeremony).toHaveBeenCalledWith('strict', 'production');
     expect(mocks.refreshSession).toHaveBeenCalledOnce();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('keeps a removed OIDC provider passkey-only', async () => {
     mocks.identity = { session: { assurance: { method: 'oidc:removed', provider: 'removed' } } };
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () =>
-      root.render(
-        <Ceremony
-          request={{
-            ...ceremonyRequest('production'),
-            window: {
-              protected: false,
-              effective_window_seconds: 300,
-              live: false,
-              single_decision: false,
-              can_reveal: false,
-              totp_offered: true,
-            },
-          }}
-          onAuthorised={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      ),
+    const { container, unmount } = await renderForm(
+      <Ceremony
+        request={{
+          ...ceremonyRequest('production'),
+          window: {
+            protected: false,
+            effective_window_seconds: 300,
+            live: false,
+            single_decision: false,
+            can_reveal: false,
+            totp_offered: true,
+          },
+        }}
+        onAuthorised={vi.fn()}
+        onCancel={vi.fn()}
+      />,
     );
 
     expect(container.textContent).not.toContain('Re-authenticate with');
     expect(container.textContent).toContain('Use a passkey');
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('shows and retries provider discovery failure during a reusable-window ceremony', async () => {
     mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
     mocks.methods.isError = true;
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () =>
-      root.render(
-        <Ceremony
-          request={{
-            ...ceremonyRequest('production'),
-            window: {
-              protected: false,
-              effective_window_seconds: 300,
-              live: false,
-              single_decision: false,
-              can_reveal: false,
-              totp_offered: true,
-            },
-          }}
-          onAuthorised={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      ),
+    const { container, unmount } = await renderForm(
+      <Ceremony
+        request={{
+          ...ceremonyRequest('production'),
+          window: {
+            protected: false,
+            effective_window_seconds: 300,
+            live: false,
+            single_decision: false,
+            can_reveal: false,
+            totp_offered: true,
+          },
+        }}
+        onAuthorised={vi.fn()}
+        onCancel={vi.fn()}
+      />,
     );
 
     expect(container.textContent).toContain('Identity provider options could not be loaded.');
     await act(async () => button(container, 'Retry identity providers').click());
     expect(mocks.methods.refetch).toHaveBeenCalledOnce();
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('keeps a zero-window OIDC session passkey-only and explains why', async () => {
     mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
     mocks.providerAvailable = true;
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () =>
-      root.render(
-        <Ceremony
-          request={ceremonyRequest('production')}
-          onAuthorised={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      ),
+    const { container, unmount } = await renderForm(
+      <Ceremony
+        request={ceremonyRequest('production')}
+        onAuthorised={vi.fn()}
+        onCancel={vi.fn()}
+      />,
     );
 
     expect(container.textContent).not.toContain('Re-authenticate with Corporate IdP');
     expect(container.textContent).toContain(
       'Your identity provider cannot satisfy a per-disclosure gate; use a passkey.',
     );
-    await act(async () => root.unmount());
+    await unmount();
   });
 });
 
@@ -261,13 +237,10 @@ describe('Ceremony copy and factor state (a11y audit)', () => {
   };
 
   async function mount(request: Parameters<typeof Ceremony>[0]['request']) {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () =>
-      root.render(<Ceremony request={request} onAuthorised={vi.fn()} onCancel={vi.fn()} />),
+    const { container, unmount } = await renderForm(
+      <Ceremony request={request} onAuthorised={vi.fn()} onCancel={vi.fn()} />,
     );
-    return { container, unmount: () => act(async () => root.unmount()) };
+    return { container, unmount };
   }
 
   it('names the act in the lede, marks secret keys, and explains the sliding window', async () => {

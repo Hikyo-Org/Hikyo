@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { deferred } from '../testkit/ceremony.ts';
 import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -228,13 +229,4 @@ function typeInto(textarea: HTMLTextAreaElement, value: string): void {
   if (setter === undefined) throw new Error('HTMLTextAreaElement exposes no value setter');
   setter.call(textarea, value);
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-function deferred<T>(): { readonly promise: Promise<T>; readonly reject: (reason: Error) => void } {
-  let reject: ((reason: Error) => void) | undefined;
-  const promise = new Promise<T>((_resolve, rejectPromise) => {
-    reject = (reason) => rejectPromise(reason);
-  });
-  if (reject === undefined) throw new Error('deferred rejection was not initialized');
-  return { promise, reject };
 }

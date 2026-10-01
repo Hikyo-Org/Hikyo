@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
-import { MachineRevealDialog } from './MachineAccess.tsx';
+import { MachineRevealDialog } from './machineAccess/MachineRevealPolicy.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 

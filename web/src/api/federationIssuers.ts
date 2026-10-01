@@ -8,7 +8,8 @@ import { zFederationIssuerList } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { ApiError, ok, parsed } from './client.ts';
+import { commonRefusalText, statusText } from './statusText.ts';
+import { ok, parsed } from './client.ts';
 
 /**
  * The federation-issuer surface, instance-scoped and MFA-mandatory
@@ -134,25 +135,14 @@ export function useDeleteFederationIssuer() {
  * disclosure capability; a 404 is the authorization mask.
  */
 export function issuerCreateRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'The server refused that issuer. Check the https URL, the JWKS document under static mode, and that every refused audience is a non-empty single line. Nothing was configured.';
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before configuring an issuer.';
-      case 403:
-        return 'Configuring a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above. Nothing was configured.';
-      case 404:
-        return 'You may not administer this instance’s configuration. Nothing was configured.';
-      case 409:
-        return 'An issuer with that exact URL is already configured. The match is byte-exact, so a trailing slash is a different issuer. Nothing was configured.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The issuer could not be configured (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The issuer could not be configured.';
+  return statusText(error, {
+    400: 'The server refused that issuer. Check the https URL, the JWKS document under static mode, and that every refused audience is a non-empty single line. Nothing was configured.',
+    401: 'The session could not be authenticated. Reload and sign in before configuring an issuer.',
+    403: 'Configuring a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above. Nothing was configured.',
+    404: 'You may not administer this instance’s configuration. Nothing was configured.',
+    409: 'An issuer with that exact URL is already configured. The match is byte-exact, so a trailing slash is a different issuer. Nothing was configured.',
+    429: commonRefusalText.requests,
+  }, 'The issuer could not be configured.', (error) => `The issuer could not be configured (server error ${String(error.status)}).`);
 }
 
 /**
@@ -161,23 +151,13 @@ export function issuerCreateRefusalText(error: unknown): string {
  * with. A 404 means the issuer was deleted underneath the edit.
  */
 export function issuerUpdateRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return 'The server refused that change. Check the JWKS document under static mode and that every refused audience is a non-empty single line. Nothing was changed.';
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before editing an issuer.';
-      case 403:
-        return 'Editing a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above. Nothing was changed.';
-      case 404:
-        return 'That issuer is absent, or not disclosed to this session: the two are the same uniform response. Nothing was changed.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The issuer could not be changed (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The issuer could not be changed.';
+  return statusText(error, {
+    400: 'The server refused that change. Check the JWKS document under static mode and that every refused audience is a non-empty single line. Nothing was changed.',
+    401: 'The session could not be authenticated. Reload and sign in before editing an issuer.',
+    403: 'Editing a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above. Nothing was changed.',
+    404: 'That issuer is absent, or not disclosed to this session: the two are the same uniform response. Nothing was changed.',
+    429: commonRefusalText.requests,
+  }, 'The issuer could not be changed.', (error) => `The issuer could not be changed (server error ${String(error.status)}).`);
 }
 
 /**
@@ -187,23 +167,13 @@ export function issuerUpdateRefusalText(error: unknown): string {
  * trusted. The operator revokes those bindings first.
  */
 export function issuerDeleteRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in before deleting an issuer.';
-      case 403:
-        return 'Deleting a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above.';
-      case 404:
-        return 'That issuer is absent, or not disclosed to this session: the two are the same uniform response.';
-      case 409:
-        return 'This issuer has bindings naming it, live or revoked, so it cannot be deleted. That binding history is append-only and never reaches zero once an issuer has been used, because erasing the issuer would erase what those bindings trusted.';
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `The issuer could not be deleted (server error ${String(error.status)}).`;
-    }
-  }
-  return 'The issuer could not be deleted.';
+  return statusText(error, {
+    401: 'The session could not be authenticated. Reload and sign in before deleting an issuer.',
+    403: 'Deleting a federation issuer is instance-config work and needs a second factor. Present your authenticator code or passkey in the banner above.',
+    404: 'That issuer is absent, or not disclosed to this session: the two are the same uniform response.',
+    409: 'This issuer has bindings naming it, live or revoked, so it cannot be deleted. That binding history is append-only and never reaches zero once an issuer has been used, because erasing the issuer would erase what those bindings trusted.',
+    429: commonRefusalText.requests,
+  }, 'The issuer could not be deleted.', (error) => `The issuer could not be deleted (server error ${String(error.status)}).`);
 }
 
 /**

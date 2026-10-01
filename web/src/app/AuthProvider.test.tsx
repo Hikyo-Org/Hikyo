@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { deferred, type Deferred } from '../testkit/ceremony.ts';
 import { createClient } from '@hikyo/runtime-core';
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { act, useEffect, useState, type ReactNode } from 'react';
@@ -19,20 +20,9 @@ import { listMyOrgsOp, localLoginOp, regenerateRecoveryCodesOp, stepUpTotpOp } f
 import { SessionChangedError } from '../api/sessionEpoch.ts';
 import { AuthProvider, useAuth, type WhoAmI } from './AuthProvider.tsx';
 
-type Deferred<T> = {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-};
 
-function deferred<T>(): Deferred<T> {
-  let resolve: (value: T) => void = (_value) => {
-    throw new Error('deferred promise was resolved before construction');
-  };
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
+
+
 
 const id = (prefix: string, suffix: string) =>
   `${prefix}_123e4567-e89b-12d3-a456-4266141740${suffix}`;

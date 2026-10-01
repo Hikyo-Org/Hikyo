@@ -2,6 +2,8 @@ package importer
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -969,4 +971,23 @@ func TestTemplateManualRenameIsTheHardStopEscapeHatch(t *testing.T) {
 	bad := &Template{Renames: []Rename{{From: "has space", To: "has space", Transform: TransformManual}}}
 	_, err = planFrom(t, "k8s-unmappable.yaml", state(), bad)
 	wantCode(t, err, CodeUnmappableName)
+}
+
+// The shared decoder must keep field names escaped exactly as encoding/json
+// reported them, rather than double-escaping quotes or backslashes.
+func TestArtifactUnknownFieldDiagnosticsPreserveEscapes(t *testing.T) {
+	for _, field := range []string{"extra", "extra\"quoted", "extra\\backslash", "extra\nline"} {
+		t.Run(field, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]bool{field: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var target struct{ Name string }
+			err = strictDecode(raw, "template", &target)
+			wantCode(t, err, CodeVersion)
+			if !strings.Contains(err.Error(), fmt.Sprintf("json: unknown field %q", field)) {
+				t.Fatalf("field diagnostic changed escaping: %v", err)
+			}
+		})
+	}
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -126,7 +125,7 @@ func scopeGenerationKey(p crypto.Purpose, orgID, projectID string) string {
 }
 
 func dbVersion(field string, v int64) (uint32, error) {
-	if v < 0 || v > math.MaxUint32 {
+	if !storedUint32Fits(v) {
 		return 0, fmt.Errorf("store: %s %d out of range", field, v)
 	}
 	return uint32(v), nil

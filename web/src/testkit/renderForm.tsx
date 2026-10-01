@@ -12,16 +12,22 @@ import { createRoot } from 'react-dom/client';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 /** Mount a node under a fresh, retry-free QueryClient in the happy-dom document. */
-export async function renderForm(node: ReactNode): Promise<{
+export async function renderForm(
+  node: ReactNode,
+  options: { client?: QueryClient; container?: HTMLElement } = {},
+): Promise<{
   container: HTMLElement;
   client: QueryClient;
   unmount: () => Promise<void>;
+  rerender: (node: ReactNode) => Promise<void>;
 }> {
-  const container = document.createElement('div');
+  const container = options.container ?? document.createElement('div');
   document.body.appendChild(container);
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const client =
+    options.client ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
   const root = createRoot(container);
   await act(async () => {
     root.render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
@@ -29,6 +35,11 @@ export async function renderForm(node: ReactNode): Promise<{
   return {
     container,
     client,
+    rerender: async (next) => {
+      await act(async () =>
+        root.render(<QueryClientProvider client={client}>{next}</QueryClientProvider>),
+      );
+    },
     unmount: async () => {
       await act(async () => root.unmount());
       container.remove();

@@ -773,8 +773,8 @@ func sanitizedList(in []string, max int) []string {
 // a wrong one that happens to converge.
 //
 // It is nil in production and costs one atomic load per phase. The same shape
-// as the resolution surface's query seam, and pinned by the same test
-// (TestQueryObserverIsTestOnly): it must have no production installer.
+// as the resolution surface's query seam. internal/lint.CheckTestObservers
+// enforces that production code never references either installer.
 var scimPhaseObserver atomic.Pointer[func(string, map[string]int)]
 
 // SetSCIMPhaseObserver installs the observer and returns a restore func. It is

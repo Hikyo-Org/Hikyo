@@ -230,82 +230,6 @@ func (r pgRepos) PKI() PKIRepo           { return pkiQueries{db: pgAdoptDB{db: r
 func (r sqliteReadRepos) PKI() PKIReader { return r.r.PKI() }
 func (r pgReadRepos) PKI() PKIReader     { return r.r.PKI() }
 
-const pkiIssuerColumns = `id,name,version,kind,origin,COALESCE(parent_id,''),state,key_algorithm,key_fingerprint,CASE WHEN encrypted_private_key IS NULL THEN 0 ELSE 1 END,certificate_der,csr_der,chain_pem,subject_cn,subject_org,not_before,not_after,crl_distribution_url,restore_hold,issued_count,crl_der,crl_number,revocation_seq,crl_this_update,crl_next_update,row_version,created_by,created_at,updated_at`
-
-type rowScanner interface{ Scan(...any) error }
-
-func pkiTime(t adapterStoredTime) (time.Time, error) {
-	parsed, err := t.Time()
-	if err != nil || parsed == nil {
-		return time.Time{}, err
-	}
-	return *parsed, nil
-}
-
-func pkiTimes(out []*time.Time, in []adapterStoredTime) error {
-	for i := range in {
-		t, err := pkiTime(in[i])
-		if err != nil {
-			return err
-		}
-		*out[i] = t
-	}
-	return nil
-}
-
-func scanPKIIssuer(row rowScanner) (PKIIssuer, error) {
-	var out PKIIssuer
-	var keyPresent, hold int
-	stamps := make([]adapterStoredTime, 6)
-	err := row.Scan(&out.ID, &out.Name, &out.Version, &out.Kind, &out.Origin, &out.ParentID, &out.State,
-		&out.KeyAlgorithm, &out.KeyFingerprint, &keyPresent, &out.CertificateDER, &out.CSRDER, &out.ChainPEM,
-		&out.SubjectCN, &out.SubjectOrg, &stamps[0], &stamps[1], &out.CRLDistributionURL, &hold,
-		&out.IssuedCount, &out.CRLDER, &out.CRLNumber, &out.RevocationSeq, &stamps[2], &stamps[3], &out.RowVersion,
-		&out.CreatedBy, &stamps[4], &stamps[5])
-	if isNoRows(err) {
-		return PKIIssuer{}, ErrNotFound
-	}
-	if err != nil {
-		return PKIIssuer{}, err
-	}
-	out.KeyPresent, out.RestoreHold = keyPresent == 1, hold == 1
-	return out, pkiTimes([]*time.Time{&out.NotBefore, &out.NotAfter, &out.CRLThisUpdate, &out.CRLNextUpdate, &out.CreatedAt, &out.UpdatedAt}, stamps)
-}
-
-func collectPKI[T any](rows adapterTargetRows, err error, scan func(rowScanner) (T, error)) ([]T, error) {
-	if err != nil {
-		return nil, err
-	}
-	defer closeRows(rows)
-	var out []T
-	for rows.Next() {
-		item, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, rows.Err()
-}
-
-// closeRows releases a result set on every return path. database/sql rows
-// return an error from Close and pgx rows do not.
-func closeRows(rows adapterTargetRows) {
-	switch r := rows.(type) {
-	case interface{ Close() error }:
-		_ = r.Close()
-	case interface{ Close() }:
-		r.Close()
-	}
-}
-
-func stampOrNil(db adapterDB, t time.Time) any {
-	if t.IsZero() {
-		return nil
-	}
-	return db.Stamp(t)
-}
-
 func affectedOne(n int64, err error) (bool, error) {
 	if err != nil {
 		return false, err
@@ -319,15 +243,16 @@ func (r pkiQueries) ListIssuers(ctx context.Context, p authz.Proof) ([]PKIIssuer
 	if _, err := authz.Verify(p, authz.StorePKIIssuersList, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+pkiIssuerColumns+` FROM pki_issuers ORDER BY name, version`)
-	return collectPKI(rows, err, scanPKIIssuer)
+
+	return r.db.pkiStoreQueries().pkiListIssuers(ctx)
 }
 
 func (r pkiQueries) GetIssuer(ctx context.Context, p authz.Proof, id string) (PKIIssuer, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersGet, r.tok); err != nil {
 		return PKIIssuer{}, err
 	}
-	return scanPKIIssuer(r.db.QueryRow(ctx, r.db.SQL(`SELECT `+pkiIssuerColumns+` FROM pki_issuers WHERE id=?`), id))
+
+	return r.db.pkiStoreQueries().pkiGetIssuer(ctx, id)
 }
 
 // IssuerKey returns the sealed key and DEK version after verifying the proof.
@@ -341,40 +266,16 @@ func (r pkiQueries) IssuerKey(ctx context.Context, p authz.Proof, id string) ([]
 }
 
 func (r pkiQueries) issuerKey(ctx context.Context, id string) ([]byte, uint32, error) {
-	var ct []byte
-	var version int64
-	err := r.db.QueryRow(ctx, r.db.SQL(`SELECT encrypted_private_key, dek_version FROM pki_issuers WHERE id=? AND encrypted_private_key IS NOT NULL AND dek_version IS NOT NULL`), id).Scan(&ct, &version)
-	if isNoRows(err) {
-		return nil, 0, ErrNotFound
-	}
-	if err != nil {
-		return nil, 0, err
-	}
-	return ct, uint32(version), nil
+	key, err := r.db.pkiStoreQueries().pkiIssuerKey(ctx, id)
+	return key.ciphertext, key.version, err
 }
 
 func (r pkiQueries) CreateIssuer(ctx context.Context, p authz.Proof, m PKIIssuerCreate) error {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersCreate, r.tok); err != nil {
 		return err
 	}
-	var parent any
-	if m.ParentID != "" {
-		parent = m.ParentID
-	}
-	stamp := r.db.Stamp(m.At)
-	query := r.db.SQL(`INSERT INTO pki_issuers (id,name,version,kind,origin,parent_id,state,key_algorithm,key_fingerprint,encrypted_private_key,dek_version,certificate_der,csr_der,chain_pem,subject_cn,subject_org,not_before,not_after,crl_distribution_url,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-	_, err := r.db.Exec(ctx, query, m.ID, m.Name, m.Version, m.Kind, m.Origin, parent, m.State, m.KeyAlgorithm,
-		m.KeyFingerprint, m.EncryptedPrivateKey, int64(m.DEKVersion), nilIfEmpty(m.CertificateDER), nilIfEmpty(m.CSRDER),
-		m.ChainPEM, m.SubjectCN, m.SubjectOrg, stampOrNil(r.db, m.NotBefore), stampOrNil(r.db, m.NotAfter),
-		m.CRLDistributionURL, m.CreatedBy, stamp, stamp)
-	return err
-}
 
-func nilIfEmpty(b []byte) any {
-	if len(b) == 0 {
-		return nil
-	}
-	return b
+	return r.db.pkiStoreQueries().pkiCreateIssuer(ctx, m)
 }
 
 // InstallIssuerCertificate activates a pending issuer only if its row version
@@ -384,8 +285,8 @@ func (r pkiQueries) InstallIssuerCertificate(ctx context.Context, p authz.Proof,
 	if _, err := authz.Verify(p, authz.StorePKIIssuersInstall, r.tok); err != nil {
 		return false, err
 	}
-	query := r.db.SQL(`UPDATE pki_issuers SET state='active', certificate_der=?, chain_pem=?, not_before=?, not_after=?, row_version=row_version+1, updated_at=? WHERE id=? AND state='pending' AND row_version=?`)
-	return affectedOne(r.db.Exec(ctx, query, m.CertificateDER, m.ChainPEM, r.db.Stamp(m.NotBefore), r.db.Stamp(m.NotAfter), r.db.Stamp(m.At), m.ID, m.RowVersion))
+
+	return affectedOne(r.db.pkiStoreQueries().pkiInstallIssuer(ctx, m))
 }
 
 // TransitionIssuer changes state only when both from and rowVersion match,
@@ -395,8 +296,8 @@ func (r pkiQueries) TransitionIssuer(ctx context.Context, p authz.Proof, id, fro
 	if _, err := authz.Verify(p, authz.StorePKIIssuersTransition, r.tok); err != nil {
 		return false, err
 	}
-	query := r.db.SQL(`UPDATE pki_issuers SET state=?, row_version=row_version+1, updated_at=? WHERE id=? AND state=? AND row_version=?`)
-	return affectedOne(r.db.Exec(ctx, query, to, r.db.Stamp(at), id, from, rowVersion))
+
+	return affectedOne(r.db.pkiStoreQueries().pkiTransitionIssuer(ctx, id, from, to, rowVersion, at))
 }
 
 // DestroyIssuerKey is the terminal transition: the sealed key is overwritten
@@ -406,15 +307,14 @@ func (r pkiQueries) DestroyIssuerKey(ctx context.Context, p authz.Proof, id, fro
 	if _, err := authz.Verify(p, authz.StorePKIIssuersDestroyKey, r.tok); err != nil {
 		return false, err
 	}
+
 	if to != "retired" && to != "revoked" {
 		return false, fmt.Errorf("store: %q is not a key-destroying state", to)
 	}
-	query := r.db.SQL(`UPDATE pki_issuers SET state=?, encrypted_private_key=NULL, dek_version=NULL, row_version=row_version+1, updated_at=? WHERE id=? AND state=? AND row_version=?`)
-	changed, err := affectedOne(r.db.Exec(ctx, query, to, r.db.Stamp(at), id, from, rowVersion))
+	q := r.db.pkiStoreQueries()
+	changed, err := affectedOne(q.pkiDestroyIssuerKey(ctx, id, from, to, rowVersion, at))
 	if err == nil && changed && to == "revoked" {
-		// The parent must publish the child's CA serial even though the child's
-		// compromised signing key is destroyed. This shares the terminal transaction.
-		_, err = r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=(SELECT parent_id FROM pki_issuers WHERE id=? AND certificate_der IS NOT NULL) AND state IN ('active','retiring')`), id)
+		err = q.pkiRevokeParent(ctx, id)
 	}
 	return changed, err
 }
@@ -425,12 +325,12 @@ func (r pkiQueries) SetIssuerHold(ctx context.Context, p authz.Proof, id string,
 	if _, err := authz.Verify(p, authz.StorePKIIssuersHold, r.tok); err != nil {
 		return false, err
 	}
-	value := 0
+
+	var value int64
 	if hold {
 		value = 1
 	}
-	query := r.db.SQL(`UPDATE pki_issuers SET restore_hold=?, row_version=row_version+1, updated_at=? WHERE id=? AND row_version=?`)
-	return affectedOne(r.db.Exec(ctx, query, value, r.db.Stamp(at), id, rowVersion))
+	return affectedOne(r.db.pkiStoreQueries().pkiSetIssuerHold(ctx, id, value, rowVersion, at))
 }
 
 // CountLiveCertificates counts unexpired leaves, including revoked leaves
@@ -441,9 +341,8 @@ func (r pkiQueries) CountLiveCertificates(ctx context.Context, p authz.Proof, is
 	if _, err := authz.Verify(p, authz.StorePKICertificatesCountLive, r.tok); err != nil {
 		return 0, err
 	}
-	var n int64
-	err := r.db.QueryRow(ctx, r.db.SQL(`SELECT (SELECT COUNT(*) FROM pki_certificates WHERE issuer_id=? AND state IN ('issuing','issued','renewed','unknown','revoked') AND not_after>?) + (SELECT COUNT(*) FROM pki_issuers WHERE parent_id=? AND certificate_der IS NOT NULL AND not_after>?)`), issuerID, r.db.Stamp(now), issuerID, r.db.Stamp(now)).Scan(&n)
-	return n, err
+
+	return r.db.pkiStoreQueries().pkiCountLiveCertificates(ctx, issuerID, now)
 }
 
 // RevokeLiveCertificates revokes all issuing, issued, renewed, and unknown
@@ -454,11 +353,11 @@ func (r pkiQueries) RevokeLiveCertificates(ctx context.Context, p authz.Proof, i
 	if _, err := authz.Verify(p, authz.StorePKICertificatesRevokeLive, r.tok); err != nil {
 		return 0, err
 	}
-	stamp := r.db.Stamp(at)
-	query := r.db.SQL(`UPDATE pki_certificates SET state='revoked', revoked_at=?, revocation_reason=?, row_version=row_version+1, updated_at=? WHERE issuer_id=? AND state IN ('issuing','issued','renewed','unknown')`)
-	changed, err := r.db.Exec(ctx, query, stamp, reason, stamp, issuerID)
+
+	q := r.db.pkiStoreQueries()
+	changed, err := q.pkiRevokeLiveCertificates(ctx, issuerID, reason, at)
 	if err == nil && changed > 0 {
-		_, err = r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=?`), issuerID)
+		err = q.pkiBumpIssuerRevocation(ctx, issuerID)
 	}
 	return changed, err
 }
@@ -475,41 +374,25 @@ func (r pkiQueries) RevokedEntries(ctx context.Context, p authz.Proof, issuerID 
 }
 
 func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time.Time) ([]PKIRevokedEntry, error) {
-	rows, err := db.Query(ctx, db.SQL(`SELECT serial, COALESCE(revoked_at, updated_at), COALESCE(revocation_reason, 'unspecified') FROM pki_certificates WHERE issuer_id=? AND state IN ('revoked','unknown') AND not_after>? ORDER BY serial`), issuerID, db.Stamp(now))
-	entries, err := collectPKI(rows, err, func(row rowScanner) (PKIRevokedEntry, error) {
-		var out PKIRevokedEntry
-		var at adapterStoredTime
-		if err := row.Scan(&out.Serial, &at, &out.Reason); err != nil {
-			return out, err
-		}
-		var parseErr error
-		out.RevokedAt, parseErr = pkiTime(at)
-		return out, parseErr
-	})
+	q := db.pkiStoreQueries()
+	entries, err := q.pkiRevokedEntries(ctx, issuerID, now)
 	if err != nil {
 		return nil, err
 	}
-	rows, err = db.Query(ctx, db.SQL(`SELECT certificate_der, updated_at FROM pki_issuers WHERE parent_id=? AND state='revoked' AND certificate_der IS NOT NULL AND not_after>? ORDER BY id`), issuerID, db.Stamp(now))
-	children, err := collectPKI(rows, err, func(row rowScanner) (PKIRevokedEntry, error) {
-		var der []byte
-		var at adapterStoredTime
-		if err := row.Scan(&der, &at); err != nil {
-			return PKIRevokedEntry{}, err
-		}
-		cert, err := x509.ParseCertificate(der)
+	children, err := q.pkiRevokedChildren(ctx, issuerID, now)
+	if err != nil {
+		return nil, err
+	}
+	for _, child := range children {
+		cert, err := x509.ParseCertificate(child.der)
 		if err != nil {
-			return PKIRevokedEntry{}, fmt.Errorf("store: revoked child issuer certificate: %w", err)
+			return nil, fmt.Errorf("store: revoked child issuer certificate: %w", err)
 		}
 		if !cert.IsCA || cert.SerialNumber.Sign() <= 0 {
-			return PKIRevokedEntry{}, fmt.Errorf("store: revoked child issuer certificate has invalid CA serial")
+			return nil, fmt.Errorf("store: revoked child issuer certificate has invalid CA serial")
 		}
-		revokedAt, err := pkiTime(at)
-		return PKIRevokedEntry{Serial: cert.SerialNumber.Text(16), RevokedAt: revokedAt, Reason: "ca-compromise"}, err
-	})
-	if err != nil {
-		return nil, err
+		entries = append(entries, PKIRevokedEntry{Serial: cert.SerialNumber.Text(16), RevokedAt: child.updatedAt, Reason: "ca-compromise"})
 	}
-	entries = append(entries, children...)
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Serial < entries[j].Serial })
 	return entries, nil
 }
@@ -530,50 +413,33 @@ func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID stri
 // prior CRL number. It returns false without error when no row matches. The
 // caller must supply an increasing number; this helper does not enforce it.
 func publishCRL(ctx context.Context, db adapterDB, issuerID string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (bool, error) {
-	query := db.SQL(`UPDATE pki_issuers SET crl_der=?, crl_number=?, crl_revocation_seq=?, crl_this_update=?, crl_next_update=? WHERE id=? AND crl_number=? AND state IN ('active','retiring')`)
-	return affectedOne(db.Exec(ctx, query, der, number, revocationSeq, db.Stamp(thisUpdate), db.Stamp(nextUpdate), issuerID, previousNumber))
+	return affectedOne(db.pkiStoreQueries().pkiPublishCRL(ctx, issuerID, der, previousNumber, number, revocationSeq, thisUpdate, nextUpdate))
 }
 
 // --- Profiles and bindings ----------------------------------------------------
-
-const pkiProfileColumns = `id,name,policy,row_version,created_by,created_at,updated_at`
-
-func scanPKIProfile(row rowScanner) (PKIProfile, error) {
-	var out PKIProfile
-	stamps := make([]adapterStoredTime, 2)
-	err := row.Scan(&out.ID, &out.Name, &out.Policy, &out.RowVersion, &out.CreatedBy, &stamps[0], &stamps[1])
-	if isNoRows(err) {
-		return PKIProfile{}, ErrNotFound
-	}
-	if err != nil {
-		return PKIProfile{}, err
-	}
-	return out, pkiTimes([]*time.Time{&out.CreatedAt, &out.UpdatedAt}, stamps)
-}
 
 func (r pkiQueries) ListProfiles(ctx context.Context, p authz.Proof) ([]PKIProfile, error) {
 	if _, err := authz.Verify(p, authz.StorePKIProfilesList, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+pkiProfileColumns+` FROM pki_profiles ORDER BY name`)
-	return collectPKI(rows, err, scanPKIProfile)
+
+	return r.db.pkiStoreQueries().pkiListProfiles(ctx)
 }
 
 func (r pkiQueries) GetProfile(ctx context.Context, p authz.Proof, name string) (PKIProfile, error) {
 	if _, err := authz.Verify(p, authz.StorePKIProfilesGet, r.tok); err != nil {
 		return PKIProfile{}, err
 	}
-	return scanPKIProfile(r.db.QueryRow(ctx, r.db.SQL(`SELECT `+pkiProfileColumns+` FROM pki_profiles WHERE name=?`), name))
+
+	return r.db.pkiStoreQueries().pkiGetProfile(ctx, name)
 }
 
 func (r pkiQueries) CreateProfile(ctx context.Context, p authz.Proof, m PKIProfile) error {
 	if _, err := authz.Verify(p, authz.StorePKIProfilesCreate, r.tok); err != nil {
 		return err
 	}
-	stamp := r.db.Stamp(m.CreatedAt)
-	_, err := r.db.Exec(ctx, r.db.SQL(`INSERT INTO pki_profiles (id,name,policy,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?)`),
-		m.ID, m.Name, m.Policy, m.CreatedBy, stamp, stamp)
-	return err
+
+	return r.db.pkiStoreQueries().pkiCreateProfile(ctx, m)
 }
 
 // UpdateProfile replaces stored policy JSON at the expected row version and
@@ -583,8 +449,8 @@ func (r pkiQueries) UpdateProfile(ctx context.Context, p authz.Proof, id, policy
 	if _, err := authz.Verify(p, authz.StorePKIProfilesUpdate, r.tok); err != nil {
 		return false, err
 	}
-	return affectedOne(r.db.Exec(ctx, r.db.SQL(`UPDATE pki_profiles SET policy=?, row_version=row_version+1, updated_at=? WHERE id=? AND row_version=?`),
-		policy, r.db.Stamp(at), id, rowVersion))
+
+	return affectedOne(r.db.pkiStoreQueries().pkiUpdateProfile(ctx, id, policy, rowVersion, at))
 }
 
 // DeleteProfile removes a profile's bindings and then the profile in the
@@ -594,34 +460,20 @@ func (r pkiQueries) DeleteProfile(ctx context.Context, p authz.Proof, id string)
 	if _, err := authz.Verify(p, authz.StorePKIProfilesDelete, r.tok); err != nil {
 		return false, err
 	}
-	if _, err := r.db.Exec(ctx, r.db.SQL(`DELETE FROM pki_profile_bindings WHERE profile_id=?`), id); err != nil {
+
+	q := r.db.pkiStoreQueries()
+	if err := q.pkiDeleteProfileBindings(ctx, id); err != nil {
 		return false, err
 	}
-	return affectedOne(r.db.Exec(ctx, r.db.SQL(`DELETE FROM pki_profiles WHERE id=?`), id))
-}
-
-const pkiBindingColumns = `id,profile_id,org_id,project_id,COALESCE(environment_id,''),created_by,created_at`
-
-func scanPKIBinding(row rowScanner) (PKIProfileBinding, error) {
-	var out PKIProfileBinding
-	var created adapterStoredTime
-	if err := row.Scan(&out.ID, &out.ProfileID, &out.OrgID, &out.ProjectID, &out.EnvironmentID, &out.CreatedBy, &created); err != nil {
-		if isNoRows(err) {
-			return out, ErrNotFound
-		}
-		return out, err
-	}
-	var err error
-	out.CreatedAt, err = pkiTime(created)
-	return out, err
+	return affectedOne(q.pkiDeleteProfile(ctx, id))
 }
 
 func (r pkiQueries) ListBindings(ctx context.Context, p authz.Proof, profileID string) ([]PKIProfileBinding, error) {
 	if _, err := authz.Verify(p, authz.StorePKIBindingsList, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, r.db.SQL(`SELECT `+pkiBindingColumns+` FROM pki_profile_bindings WHERE profile_id=? ORDER BY org_id, project_id, environment_id`), profileID)
-	return collectPKI(rows, err, scanPKIBinding)
+
+	return r.db.pkiStoreQueries().pkiListBindings(ctx, profileID)
 }
 
 // CreateBinding records an operator's explicit binding. The ids are the
@@ -632,20 +484,16 @@ func (r pkiQueries) CreateBinding(ctx context.Context, p authz.Proof, m PKIProfi
 	if _, err := authz.Verify(p, authz.StorePKIBindingsCreate, r.tok); err != nil {
 		return err
 	}
-	var env any
-	if m.EnvironmentID != "" {
-		env = m.EnvironmentID
-	}
-	_, err := r.db.Exec(ctx, r.db.SQL(`INSERT INTO pki_profile_bindings (id,profile_id,org_id,project_id,environment_id,created_by,created_at) VALUES (?,?,?,?,?,?,?)`),
-		m.ID, m.ProfileID, m.OrgID, m.ProjectID, env, m.CreatedBy, r.db.Stamp(m.CreatedAt))
-	return err
+
+	return r.db.pkiStoreQueries().pkiCreateBinding(ctx, m)
 }
 
 func (r pkiQueries) DeleteBinding(ctx context.Context, p authz.Proof, profileID, bindingID string) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIBindingsDelete, r.tok); err != nil {
 		return false, err
 	}
-	return affectedOne(r.db.Exec(ctx, r.db.SQL(`DELETE FROM pki_profile_bindings WHERE id=? AND profile_id=?`), bindingID, profileID))
+
+	return affectedOne(r.db.pkiStoreQueries().pkiDeleteBinding(ctx, bindingID, profileID))
 }
 
 // BoundProfile resolves a profile by name only if a binding reaches the
@@ -656,8 +504,8 @@ func (r pkiQueries) BoundProfile(ctx context.Context, p authz.Proof, name string
 	if err != nil {
 		return PKIProfile{}, err
 	}
-	query := r.db.SQL(`SELECT ` + pkiProfileColumns + ` FROM pki_profiles WHERE name=? AND id IN (SELECT profile_id FROM pki_profile_bindings WHERE org_id=? AND project_id=? AND (environment_id IS NULL OR environment_id=?))`)
-	return scanPKIProfile(r.db.QueryRow(ctx, query, name, chain.Org, chain.Project, chain.Env))
+
+	return r.db.pkiStoreQueries().pkiBoundProfile(ctx, chain, name)
 }
 
 // BoundProfiles lists profiles bound to the proof's environment or whole
@@ -667,38 +515,19 @@ func (r pkiQueries) BoundProfiles(ctx context.Context, p authz.Proof) ([]PKIProf
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT ` + pkiProfileColumns + ` FROM pki_profiles WHERE id IN (SELECT profile_id FROM pki_profile_bindings WHERE org_id=? AND project_id=? AND (environment_id IS NULL OR environment_id=?)) ORDER BY name`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, chain.Env)
-	return collectPKI(rows, err, scanPKIProfile)
+
+	return r.db.pkiStoreQueries().pkiBoundProfiles(ctx, chain)
 }
 
 // --- Certificates -------------------------------------------------------------
-
-const pkiCertificateColumns = `id,environment_id,profile_id,profile_name,issuer_id,serial,state,key_source,key_algorithm,key_fingerprint,common_name,sans,not_before,not_after,certificate_der,principal_id,principal_class,COALESCE(renewed_from,''),COALESCE(renewed_by,''),revoked_at,COALESCE(revocation_reason,''),issuing_deadline,row_version,created_at,updated_at`
-
-func scanPKICertificate(row rowScanner) (PKICertificate, error) {
-	var out PKICertificate
-	stamps := make([]adapterStoredTime, 6)
-	err := row.Scan(&out.ID, &out.EnvironmentID, &out.ProfileID, &out.ProfileName, &out.IssuerID, &out.Serial,
-		&out.State, &out.KeySource, &out.KeyAlgorithm, &out.KeyFingerprint, &out.CommonName, &out.SANs,
-		&stamps[0], &stamps[1], &out.CertificateDER, &out.PrincipalID, &out.PrincipalClass, &out.RenewedFrom,
-		&out.RenewedBy, &stamps[2], &out.RevocationReason, &stamps[3], &out.RowVersion, &stamps[4], &stamps[5])
-	if isNoRows(err) {
-		return PKICertificate{}, ErrNotFound
-	}
-	if err != nil {
-		return PKICertificate{}, err
-	}
-	return out, pkiTimes([]*time.Time{&out.NotBefore, &out.NotAfter, &out.RevokedAt, &out.IssuingDeadline, &out.CreatedAt, &out.UpdatedAt}, stamps)
-}
 
 func (r pkiQueries) GetCertificate(ctx context.Context, p authz.Proof, id string) (PKICertificate, error) {
 	chain, err := authz.Verify(p, authz.StorePKICertificatesGet, r.tok)
 	if err != nil {
 		return PKICertificate{}, err
 	}
-	query := r.db.SQL(`SELECT ` + pkiCertificateColumns + ` FROM pki_certificates WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`)
-	return scanPKICertificate(r.db.QueryRow(ctx, query, id, chain.Org, chain.Project, chain.Env))
+
+	return r.db.pkiStoreQueries().pkiGetCertificate(ctx, chain, id)
 }
 
 // ListCertificates returns at most 500 rows in the proof's environment, ordered
@@ -709,9 +538,8 @@ func (r pkiQueries) ListCertificates(ctx context.Context, p authz.Proof) ([]PKIC
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(`SELECT ` + pkiCertificateColumns + ` FROM pki_certificates WHERE org_id=? AND project_id=? AND environment_id=? ORDER BY created_at DESC, id DESC LIMIT 500`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, chain.Env)
-	return collectPKI(rows, err, scanPKICertificate)
+
+	return r.db.pkiStoreQueries().pkiListCertificates(ctx, chain)
 }
 
 // IssuerPublic reads an issuer's public surface from an environment operation
@@ -721,7 +549,8 @@ func (r pkiQueries) IssuerPublic(ctx context.Context, p authz.Proof, id string) 
 	if _, err := authz.Verify(p, authz.StorePKIIssuersPublic, r.tok); err != nil {
 		return PKIIssuer{}, err
 	}
-	return scanPKIIssuer(r.db.QueryRow(ctx, r.db.SQL(`SELECT `+pkiIssuerColumns+` FROM pki_issuers WHERE id=?`), id))
+
+	return r.db.pkiStoreQueries().pkiGetIssuer(ctx, id)
 }
 
 // ActiveIssuerPublic resolves the signing version of a named issuer.
@@ -729,7 +558,8 @@ func (r pkiQueries) ActiveIssuerPublic(ctx context.Context, p authz.Proof, name 
 	if _, err := authz.Verify(p, authz.StorePKIIssuersActivePublic, r.tok); err != nil {
 		return PKIIssuer{}, err
 	}
-	return scanPKIIssuer(r.db.QueryRow(ctx, r.db.SQL(`SELECT `+pkiIssuerColumns+` FROM pki_issuers WHERE name=? AND state='active'`), name))
+
+	return r.db.pkiStoreQueries().pkiActiveIssuer(ctx, name)
 }
 
 // IssuerForSigning returns the issuer's public row plus its sealed key, for
@@ -738,7 +568,8 @@ func (r pkiQueries) IssuerForSigning(ctx context.Context, p authz.Proof, id stri
 	if _, err := authz.Verify(p, authz.StorePKIIssuersSigning, r.tok); err != nil {
 		return PKIIssuer{}, nil, 0, err
 	}
-	issuer, err := scanPKIIssuer(r.db.QueryRow(ctx, r.db.SQL(`SELECT `+pkiIssuerColumns+` FROM pki_issuers WHERE id=? AND state='active'`), id))
+
+	issuer, err := r.db.pkiStoreQueries().pkiSigningIssuer(ctx, id)
 	if err != nil {
 		return PKIIssuer{}, nil, 0, err
 	}
@@ -754,7 +585,8 @@ func (r pkiQueries) FenceIssuance(ctx context.Context, p authz.Proof, issuerID s
 	if _, err := authz.Verify(p, authz.StorePKIIssuersFence, r.tok); err != nil {
 		return false, err
 	}
-	return affectedOne(r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET issued_count=issued_count+1 WHERE id=? AND state='active' AND restore_hold=0`), issuerID))
+
+	return affectedOne(r.db.pkiStoreQueries().pkiFenceIssuance(ctx, issuerID))
 }
 
 // CreateCertificate reserves an issuing row using the environment from the
@@ -765,76 +597,76 @@ func (r pkiQueries) CreateCertificate(ctx context.Context, p authz.Proof, m PKIC
 	if err != nil {
 		return err
 	}
-	var renewedFrom any
-	if m.RenewedFrom != "" {
-		renewedFrom = m.RenewedFrom
-	}
-	stamp := r.db.Stamp(m.At)
-	query := r.db.SQL(`INSERT INTO pki_certificates (id,org_id,project_id,environment_id,profile_id,profile_name,issuer_id,serial,state,key_source,key_algorithm,key_fingerprint,common_name,sans,not_before,not_after,principal_id,principal_class,renewed_from,issuing_deadline,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,'issuing',?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-	_, err = r.db.Exec(ctx, query, m.ID, chain.Org, chain.Project, chain.Env, m.ProfileID, m.ProfileName, m.IssuerID,
-		m.Serial, m.KeySource, m.KeyAlgorithm, m.KeyFingerprint, m.CommonName, m.SANs, r.db.Stamp(m.NotBefore),
-		r.db.Stamp(m.NotAfter), m.PrincipalID, m.PrincipalClass, renewedFrom, r.db.Stamp(m.IssuingDeadline), stamp, stamp)
-	return err
-}
 
-func (r pkiQueries) certificateCAS(ctx context.Context, p authz.Proof, op authz.StoreOp, set, where string, args ...any) (bool, error) {
-	chain, err := authz.Verify(p, op, r.tok)
-	if err != nil {
-		return false, err
-	}
-	query := r.db.SQL(`UPDATE pki_certificates SET ` + set + `, row_version=row_version+1 WHERE ` + where + ` AND org_id=? AND project_id=? AND environment_id=?`)
-	return affectedOne(r.db.Exec(ctx, query, append(args, chain.Org, chain.Project, chain.Env)...))
+	return r.db.pkiStoreQueries().pkiCreateCertificate(ctx, chain, m)
 }
 
 // FinishCertificate stores the signed DER and marks an issuing row issued in
 // the proof's environment. Missing rows or other states return false without
 // error; proof and database failures return errors.
 func (r pkiQueries) FinishCertificate(ctx context.Context, p authz.Proof, id string, der []byte, at time.Time) (bool, error) {
-	return r.certificateCAS(ctx, p, authz.StorePKICertificatesFinish, `state='issued', certificate_der=?, updated_at=?`,
-		`id=? AND state='issuing'`, der, r.db.Stamp(at), id)
+	chain, err := authz.Verify(p, authz.StorePKICertificatesFinish, r.tok)
+	if err != nil {
+		return false, err
+	}
+	return affectedOne(r.db.pkiStoreQueries().pkiFinishCertificate(ctx, chain, id, der, at))
 }
 
 // FailCertificate marks an issuing row failed in the proof's environment.
 // Missing rows or other states return false without error; proof and database
 // failures return errors.
 func (r pkiQueries) FailCertificate(ctx context.Context, p authz.Proof, id string, at time.Time) (bool, error) {
-	return r.certificateCAS(ctx, p, authz.StorePKICertificatesFail, `state='failed', updated_at=?`,
-		`id=? AND state='issuing'`, r.db.Stamp(at), id)
+	chain, err := authz.Verify(p, authz.StorePKICertificatesFail, r.tok)
+	if err != nil {
+		return false, err
+	}
+	return affectedOne(r.db.pkiStoreQueries().pkiFailCertificate(ctx, chain, id, at))
 }
 
 // ClaimRenewal is the single-winner renewal claim: only an issued certificate
 // with no renewal in flight can be claimed, so two nodes renewing at once
 // produce one successor.
 func (r pkiQueries) ClaimRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error) {
-	return r.certificateCAS(ctx, p, authz.StorePKICertificatesClaimRenewal, `renewed_by=?, updated_at=?`,
-		`id=? AND state='issued' AND renewed_by IS NULL`, successorID, r.db.Stamp(at), id)
+	chain, err := authz.Verify(p, authz.StorePKICertificatesClaimRenewal, r.tok)
+	if err != nil {
+		return false, err
+	}
+	return affectedOne(r.db.pkiStoreQueries().pkiClaimRenewal(ctx, chain, id, successorID, at))
 }
 
 // CompleteRenewal marks an issued predecessor renewed only when it names
 // successorID in the proof's environment. It reports whether a row changed and
 // propagates proof and database errors.
 func (r pkiQueries) CompleteRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error) {
-	return r.certificateCAS(ctx, p, authz.StorePKICertificatesCompleteRenewal, `state='renewed', updated_at=?`,
-		`id=? AND state='issued' AND renewed_by=?`, r.db.Stamp(at), id, successorID)
+	chain, err := authz.Verify(p, authz.StorePKICertificatesCompleteRenewal, r.tok)
+	if err != nil {
+		return false, err
+	}
+	return affectedOne(r.db.pkiStoreQueries().pkiCompleteRenewal(ctx, chain, id, successorID, at))
 }
 
 // ReleaseRenewal clears a matching successor claim in the proof's environment,
 // regardless of certificate state. It reports whether a row changed and
 // propagates proof and database errors.
 func (r pkiQueries) ReleaseRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error) {
-	return r.certificateCAS(ctx, p, authz.StorePKICertificatesReleaseRenewal, `renewed_by=NULL, updated_at=?`,
-		`id=? AND renewed_by=?`, r.db.Stamp(at), id, successorID)
+	chain, err := authz.Verify(p, authz.StorePKICertificatesReleaseRenewal, r.tok)
+	if err != nil {
+		return false, err
+	}
+	return affectedOne(r.db.pkiStoreQueries().pkiReleaseRenewal(ctx, chain, id, successorID, at))
 }
 
 // RevokeCertificate marks an issued, renewed, or unknown row revoked in the
 // proof's environment, recording the supplied reason and time. Missing rows or
 // other states return false without error; proof and database errors propagate.
 func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, reason string, at time.Time) (bool, error) {
-	stamp := r.db.Stamp(at)
-	changed, err := r.certificateCAS(ctx, p, authz.StorePKICertificatesRevoke, `state='revoked', revoked_at=?, revocation_reason=?, updated_at=?`,
-		`id=? AND state IN ('issued','renewed','unknown')`, stamp, reason, stamp, id)
+	chain, err := authz.Verify(p, authz.StorePKICertificatesRevoke, r.tok)
+	if err != nil {
+		return false, err
+	}
+	changed, err := affectedOne(r.db.pkiStoreQueries().pkiRevokeCertificate(ctx, chain, id, reason, at))
 	if err == nil && changed {
-		_, err = r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=(SELECT issuer_id FROM pki_certificates WHERE id=?)`), id)
+		err = r.db.pkiStoreQueries().pkiBumpCertificateRevocation(ctx, id)
 	}
 	return changed, err
 }

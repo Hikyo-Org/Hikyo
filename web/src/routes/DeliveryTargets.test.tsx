@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -15,37 +14,26 @@ import { listing, NOW, refusedTarget, staging, target, viewOf } from '../testkit
 import { serviceAccount } from '../testkit/machineAccess.ts';
 import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-
-let root: Root | null = null;
-let container: HTMLElement | null = null;
+let mounted: Awaited<ReturnType<typeof renderForm>> | null = null;
 
 afterEach(async () => {
-  if (root !== null) {
-    await act(async () => root?.unmount());
-    root = null;
-  }
-  container = null;
+  await mounted?.unmount();
+  mounted = null;
 });
 
 async function render(view: DeliveryTargetsView, known = true): Promise<HTMLElement> {
-  container = document.createElement('div');
-  root = createRoot(container);
-  const mounted = root;
-  await act(async () =>
-    mounted.render(
-      <MemoryRouter>
-        <DeliveryTargetsPanel
-          project={{ org: ORG, project: PRJ }}
-          view={view}
-          known={known}
-          accounts={[serviceAccount]}
-          now={NOW}
-        />
-      </MemoryRouter>,
-    ),
+  mounted = await renderForm(
+    <MemoryRouter>
+      <DeliveryTargetsPanel
+        project={{ org: ORG, project: PRJ }}
+        view={view}
+        known={known}
+        accounts={[serviceAccount]}
+        now={NOW}
+      />
+    </MemoryRouter>,
   );
-  return container;
+  return mounted.container;
 }
 
 /** The healthy treatment: the `reported` word, its controller line, or the ok tone. */

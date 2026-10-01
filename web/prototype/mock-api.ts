@@ -60,7 +60,7 @@ function prototypeLoginResult() {
       },
     },
     principal: { id: ids.principal, kind: 'human', display_name: 'Alex Lee' },
-    capabilities: { instance_operator: true },
+    capabilities: { instance_operator: true, delivery_report_grant: { instance: false, orgs: [] } },
   };
 }
 
@@ -495,6 +495,9 @@ export function prototypeReadFixture(
   scenario: Scenario = 'populated',
 ): PrototypeReadFixture | undefined {
   path = canonicalPrototypePath(path);
+  if (path === '/api/v1/auth/whoami') {
+    return { status: 200, body: prototypeLoginResult() };
+  }
   if (path === '/api/v1/runtime/status') {
     return { status: 200, body: { state: 'ready', phase: null } };
   }

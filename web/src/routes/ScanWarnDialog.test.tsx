@@ -1,11 +1,8 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const item: ScanWarnItem = {
   environmentId: 'env_a',
@@ -25,20 +22,15 @@ afterEach(() => {
 
 describe('ScanWarnDialog', () => {
   it('labels the dialog by its heading, shows the locator, and offers exactly two actions', async () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <ScanWarnDialog
-          keyName="API_KEY"
-          items={[item]}
-          onDismiss={vi.fn().mockResolvedValue([])}
-          onReclassify={vi.fn().mockResolvedValue(undefined)}
-          onClose={vi.fn()}
-        />,
-      );
-    });
+    const { container, unmount } = await renderForm(
+      <ScanWarnDialog
+        keyName="API_KEY"
+        items={[item]}
+        onDismiss={vi.fn().mockResolvedValue([])}
+        onReclassify={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+      />,
+    );
     const dialog = container.querySelector('dialog');
     const heading = dialog?.querySelector('h2');
     expect(dialog?.getAttribute('aria-labelledby')).toBe(heading?.id);
@@ -50,25 +42,20 @@ describe('ScanWarnDialog', () => {
     // The close X is gone (ui/Dialog); the dialog gained a Close action and
     // the primary is last.
     expect(labels).toEqual(['Keep as config', 'Close', 'Reclassify API_KEY as secret']);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('offers no reclassify action to a caller who may not edit declarations', async () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <ScanWarnDialog
-          keyName="API_KEY"
-          items={[item]}
-          onDismiss={vi.fn().mockResolvedValue([])}
-          onClose={vi.fn()}
-        />,
-      );
-    });
+    const { container, unmount } = await renderForm(
+      <ScanWarnDialog
+        keyName="API_KEY"
+        items={[item]}
+        onDismiss={vi.fn().mockResolvedValue([])}
+        onClose={vi.fn()}
+      />,
+    );
     const labels = [...container.querySelectorAll('button')].map((node) => node.textContent);
     expect(labels).toEqual(['Keep as config', 'Close']);
-    await act(async () => root.unmount());
+    await unmount();
   });
 });

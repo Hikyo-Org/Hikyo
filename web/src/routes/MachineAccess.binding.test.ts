@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
-import { carriedClaims, presetForBinding, seedClaims, tabLabel } from './MachineAccess.tsx';
+import { carriedClaims, presetForBinding, seedClaims } from './machineAccess/FederationBindings.tsx';
+import { tabLabel } from './MachineAccess.tsx';
 
 /**
  * The replace form's seeding. A replacement inherits the predecessor's platform
@@ -87,6 +88,13 @@ describe('carriedClaims', () => {
     for (const field of preset.claims) {
       expect(carried.some((pin) => pin.claim === field.claim)).toBe(false);
     }
+  });
+
+  it('preserves a custom numeric pin without rounding its read value', () => {
+    const credential = binding([{ claim: 'custom_id', number_value: 9007199254740993n }]);
+    expect(carriedClaims(presetForBinding(credential), credential)).toEqual([
+      { claim: 'custom_id', number_value: 9007199254740993n },
+    ]);
   });
 
   it('carries nothing when every pin is a preset field', () => {

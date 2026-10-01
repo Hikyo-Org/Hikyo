@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'rea
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 
+import { formatWhen } from '../lib/formatWhen.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
   adapterRefusalText,
@@ -99,8 +100,7 @@ type CeremonyAsk = {
 
 function when(value: string | null | undefined): string {
   if (value === null || value === undefined) return 'Not available';
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? value : at.toLocaleString();
+  return formatWhen(value);
 }
 
 function revision(value: bigint | null | undefined): string {

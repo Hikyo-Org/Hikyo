@@ -3,7 +3,7 @@ import { expect, fn, userEvent } from 'storybook/test';
 
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { serviceAccount as account } from '../testkit/machineAccess.ts';
-import { DeleteAccountDialog } from './MachineAccess.tsx';
+import { DeleteAccountDialog } from './machineAccess/AccountDialogs.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 

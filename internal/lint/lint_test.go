@@ -295,7 +295,7 @@ func TestSQLPredicateCatchesViolations(t *testing.T) {
 			"without a WHERE clause"},
 		{"or beside the tenant conjunct",
 			Query{Name: "Bad3", SQL: "SELECT id FROM environments WHERE org_id = ? AND project_id = ? OR name = ?"},
-			"unprovable shape (OR)"},
+			"not a provable"},
 		{"union branch",
 			Query{Name: "Bad4", SQL: "SELECT id FROM environments WHERE org_id = ? AND project_id = ? UNION SELECT id FROM environments"},
 			"unprovable shape"},
@@ -304,7 +304,7 @@ func TestSQLPredicateCatchesViolations(t *testing.T) {
 			"unprovable shape"},
 		{"join",
 			Query{Name: "Bad6", SQL: "SELECT e.id FROM environments e JOIN projects p ON p.id = e.project_id"},
-			"unprovable shape"},
+			"unprovable joined read"},
 		{"set on chain column",
 			Query{Name: "Bad7", SQL: "UPDATE environments SET org_id = ? WHERE org_id = ? AND project_id = ? AND id = ?"},
 			"immutable column"},
@@ -317,15 +317,15 @@ func TestSQLPredicateCatchesViolations(t *testing.T) {
 		{"unknown table",
 			Query{Name: "Bad10", SQL: "SELECT id FROM widgets WHERE id = ?"},
 			"not in the derived scope registry"},
-		{"parenthesised predicate",
-			Query{Name: "Bad11", SQL: "SELECT id FROM environments WHERE org_id = ? AND project_id = ? AND name IN (?)"},
-			"unprovable shape"},
+		{"parenthesised chain predicate",
+			Query{Name: "Bad11", SQL: "SELECT id FROM environments WHERE org_id = ? AND project_id IN (?)"},
+			"not a provable"},
 		{"upsert with an update action",
 			Query{Name: "Bad12", SQL: "INSERT INTO environments (id, org_id, project_id, name) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = ?"},
 			"unprovable shape (ON CONFLICT)"},
 		{"sqlite insert or replace",
 			Query{Name: "Bad13", SQL: "INSERT OR REPLACE INTO environments (id, org_id, project_id, name) VALUES (?, ?, ?, ?)"},
-			"unprovable shape (OR)"},
+			"unrecognised statement shape"},
 		{"group by beside a missing chain conjunct",
 			Query{Name: "Bad14", SQL: "SELECT id, MAX(display_order) AS display_order FROM environments WHERE org_id = ? GROUP BY id"},
 			"missing top-level chain conjunct"},
@@ -813,6 +813,9 @@ func TestContextsSelectTaggedAndPlatformFiles(t *testing.T) {
 	}
 	if got := files(t, byName["windows"], durability); !slices.Contains(got, "directory_windows.go") || slices.Contains(got, "directory_unix.go") {
 		t.Fatalf("windows context filedurability files = %v, want the windows leg selected", got)
+	}
+	if got := files(t, byName["darwin"], Module+"/internal/devupgrade"); !slices.Contains(got, "publish_darwin.go") {
+		t.Fatalf("darwin context devupgrade files = %v, want the darwin leg selected", got)
 	}
 }
 

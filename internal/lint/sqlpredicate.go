@@ -16,11 +16,13 @@ import (
 
 // This file is analyzer 2 (tenant-isolation ADR, invariant 8): sqlc queries
 // are static SQL, so predicate confinement is checked at build time. The
-// analyzer is conservative by design — for every statement touching a
+// analyzer is conservative by design: for every statement touching a
 // tenant-owned table it requires the full owning-scope chain predicate as
-// top-level conjuncts and REJECTS ANY QUERY SHAPE IT CANNOT PROVE (UNION,
-// CTE, OR, JOIN, subqueries, parenthesised predicates), forcing a rewrite
-// into a provable shape. The tenant-table registry is derived from the
+// top-level conjuncts and rejects shapes it cannot prove. Bounded qualified
+// joins, binding-membership reads and atomic INSERT SELECT retain a separate
+// proof for every source. Parenthesized non-chain conditions only narrow rows
+// already confined by those chain conjuncts. UNION, CTE and arbitrary nested
+// reads remain refused. The tenant-table registry is derived from the
 // scope-class directives in migration metadata, never curated: a table
 // without a directive fails the build.
 //
@@ -39,6 +41,7 @@ type Query struct {
 	Name       string
 	Cmd        string
 	Annotation string // hikyo annotation, "" if none
+	Reason     string // explicit authority justification for new annotations
 	SQL        string
 }
 
@@ -62,7 +65,9 @@ var (
 	annotRe = regexp.MustCompile(`^--\s*hikyo:(instance-scoped|authn-resolution)\s*$`)
 	// A bindable parameter: sqlite positional, postgres positional, or the
 	// sqlc named form (the reserved chain_* parameters use it on postgres).
-	paramRe = `(\?|\$\d+|SQLCARG_\w+)`
+	paramRe        = `(\?|\$\d+|SQLCARG_\w+)`
+	predicateValue = `(?:` + paramRe + `|'(?:[^']|'')*'|-?\d+(?:\.\d+)?|TRUE|FALSE|NULL)`
+	predicateTails = []string{" ORDER BY ", " FOR UPDATE", " FOR SHARE", " FOR NO KEY UPDATE", " FOR KEY SHARE", " GROUP BY ", " LIMIT "}
 	// sqlcArgRe masks sqlc.arg(name) into a paren-free token so the
 	// conservative parenthesis rejection doesn't fire on the named-parameter
 	// syntax itself.
@@ -162,6 +167,12 @@ func ParseQueries(dir string) ([]Query, error) {
 			if i > 0 {
 				if a := annotRe.FindStringSubmatch(strings.TrimSpace(lines[i-1])); a != nil {
 					q.Annotation = a[1]
+					if i > 1 {
+						q.Reason = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[i-2]), "-- hikyo:reason "))
+						if !strings.HasPrefix(strings.TrimSpace(lines[i-2]), "-- hikyo:reason ") {
+							q.Reason = ""
+						}
+					}
 				}
 			}
 			var body []string
@@ -171,7 +182,9 @@ func ParseQueries(dir string) ([]Query, error) {
 					i--
 					break
 				}
-				if strings.HasPrefix(line, "--") {
+				// Match sqlc's raw-line comment stripping. An indented marker
+				// can be inside a multiline literal and expose live SQL after it.
+				if strings.HasPrefix(lines[i], "--") {
 					continue
 				}
 				if line != "" {
@@ -196,6 +209,10 @@ func CheckSQLPredicates(repoRoot string) []string {
 	perEngine := map[string][]Query{}
 	perEngineRules := map[string]map[string]TableRule{}
 	perEngineContracts := map[string]map[string]generatedContract{}
+	reviews, err := readScopedQueryReviews()
+	if err != nil {
+		return []string{"sqlpredicate: cannot read scoped query reviews: " + err.Error()}
+	}
 
 	for _, engine := range []string{"sqlite", "postgres"} {
 		migDir := filepath.Join(repoRoot, "internal", "store", "migrations", engine)
@@ -237,7 +254,42 @@ func CheckSQLPredicates(repoRoot string) []string {
 		}
 		perEngineContracts[engine] = contracts
 		for _, q := range queries {
-			findings = append(findings, checkQuery(engine, q, rules)...)
+			if q.Annotation != "" && q.Reason == "" && !legacyAnnotationNames[q.Name] {
+				findings = append(findings, fmt.Sprintf("sqlpredicate(%s): %s: new annotation requires an explicit hikyo:reason authority justification", engine, q.Name))
+			}
+			if reviewed, ok := reviews[engine][q.Name]; ok {
+				api, generated := contracts[q.Name]
+				findings = append(findings, checkScopedQueryReview(engine, q, api, generated, reviewed, repoRoot)...)
+			} else {
+				findings = append(findings, checkQuery(engine, q, rules)...)
+			}
+		}
+	}
+	for engine, pins := range reviews {
+		for name := range pins {
+			found := false
+			for _, q := range perEngine[engine] {
+				if q.Name == name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				findings = append(findings, fmt.Sprintf("sqlpredicate: retire absent reviewed scoped query %s/%s", engine, name))
+			}
+		}
+	}
+	for name := range legacyAnnotationNames {
+		live := false
+		for _, queries := range perEngine {
+			for _, q := range queries {
+				if q.Name == name && q.Annotation != "" {
+					live = true
+				}
+			}
+		}
+		if !live {
+			findings = append(findings, fmt.Sprintf("sqlpredicate: retire absent legacy annotation name %s", name))
 		}
 	}
 
@@ -251,23 +303,42 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 		// Exempt from predicate requirements; pinned by invariant 13.
 		return nil
 	}
+	if reason := unsupportedPredicateLexeme(engine, q.SQL); reason != "" {
+		return []string{label + ": unprovable SQL lexeme: " + reason}
+	}
 	sql := maskSQLCArgs(normalizeSpace(q.SQL))
 	// An idempotent insert's `ON CONFLICT (target) DO NOTHING` suffix names a
 	// conflict target and no action: it can neither widen the rows written nor
 	// rewrite a chain column, so it is cut before the shape scan. `DO UPDATE`
 	// and sqlite's `INSERT OR REPLACE` stay unprovable shapes.
 	sql = doNothingRe.ReplaceAllString(sql, "")
-	upper := strings.ToUpper(sql)
+	upper := strings.ToUpper(maskSQLContractLiteralsAndComments(sql))
 
 	// Conservative rejection: shapes the analyzer cannot prove are refused
 	// outright, forcing a provable rewrite.
-	for _, banned := range []string{" UNION ", "WITH ", " EXCEPT ", " INTERSECT ", " JOIN ", " OR ", "ON CONFLICT"} {
+	for _, banned := range []string{" UNION ", "WITH ", " EXCEPT ", " INTERSECT ", "ON CONFLICT"} {
 		if strings.Contains(upper, banned) || strings.HasPrefix(upper, strings.TrimSpace(banned)+" ") {
 			return []string{fmt.Sprintf("%s: unprovable shape (%s) — rewrite into a form the analyzer accepts or annotate under review", label, strings.TrimSpace(banned))}
 		}
 	}
-	if strings.Count(upper, "SELECT") > 1 {
+	if findings, supported := checkScopedMembership(engine, q, sql, rules); supported {
+		return findings
+	}
+	if len(selectTokenRe.FindAllStringIndex(upper, -1)) > 1 {
 		return []string{label + ": nested SELECT is an unprovable shape"}
+	}
+
+	if findings, supported := checkInsertSelect(engine, q, sql, rules); supported {
+		return findings
+	}
+	if !strings.HasPrefix(upper, "SELECT ") && selectTokenRe.MatchString(upper) {
+		return []string{label + ": nested SELECT is an unprovable shape"}
+	}
+	if strings.HasPrefix(upper, "UPDATE ") && strings.Contains(upper, " FROM ") || strings.HasPrefix(upper, "DELETE ") && strings.Contains(upper, " USING ") {
+		return []string{label + ": additional mutation sources are an unprovable shape"}
+	}
+	if strings.Contains(upper, " JOIN ") || qualifiedSelectRe.MatchString(sql) {
+		return checkJoinedSelect(label, sql, rules)
 	}
 
 	table, kind, ok := statementTarget(upper)
@@ -309,6 +380,8 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 	return []string{label + ": unreachable statement kind"}
 }
 
+var selectTokenRe = regexp.MustCompile(`(?i)\bSELECT\b`)
+
 func statementTarget(upper string) (table, kind string, ok bool) {
 	for _, pat := range []struct {
 		kind string
@@ -342,15 +415,15 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 	// walk. FOR UPDATE is a row-lock request, ORDER BY a sort, GROUP BY (with
 	// any HAVING after it) an aggregation over rows the chain conjuncts already
 	// confined; none of them widens that set.
-	for _, tail := range []string{" ORDER BY ", " FOR UPDATE", " GROUP BY "} {
-		if end := strings.Index(strings.ToUpper(where), tail); end >= 0 {
+	for _, tail := range predicateTails {
+		if end := strings.Index(strings.ToUpper(maskSQLContractLiteralsAndComments(where)), tail); end >= 0 {
 			where = where[:end]
 		}
 	}
-	if strings.ContainsAny(where, "()") {
-		return []string{label + ": parenthesised predicate is an unprovable shape"}
+	conjuncts, balanced := splitSQLTop(where, " AND ")
+	if !balanced {
+		return []string{label + ": unbalanced predicate"}
 	}
-	conjuncts := andSplitRe.Split(where, -1)
 	present := map[string]bool{}
 	chain := map[string]bool{}
 	for _, col := range chainCols {
@@ -360,9 +433,15 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 		c = strings.TrimSpace(c)
 		m := conjunctRe.FindStringSubmatch(c)
 		if m == nil {
+			if narrowPredicate(c, chain, func(col string) bool { return !strings.Contains(col, ".") }) {
+				continue
+			}
 			return []string{fmt.Sprintf("%s: conjunct %q is not a provable `column OP param` shape", label, c)}
 		}
 		col, op := strings.ToLower(m[1]), m[2]
+		if chain[col] && !boundParameterRe.MatchString(m[3]) {
+			return []string{fmt.Sprintf("%s: chain column %q must bind a parameter, never a literal", label, col)}
+		}
 		// Chain columns require equality — a range predicate on a chain
 		// column is not a tenant address. Non-chain columns may carry the
 		// comparison operators (cursor and time-range predicates on the
@@ -439,11 +518,18 @@ func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRu
 		pgQuery, inPostgres := byName["postgres"][name]
 		switch {
 		case !inPostgres:
-			out = append(out, fmt.Sprintf("sqlpredicate: query %q exists on sqlite but not postgres", name))
+			api, generated := contracts["sqlite"][name]
+			out = append(out, checkEngineOnlyQuery("sqlite", sqQuery, api, generated)...)
 			continue
 		case !inSQLite:
-			out = append(out, fmt.Sprintf("sqlpredicate: query %q exists on postgres but not sqlite", name))
+			api, generated := contracts["postgres"][name]
+			out = append(out, checkEngineOnlyQuery("postgres", pgQuery, api, generated)...)
 			continue
+		}
+		for _, engine := range []string{"sqlite", "postgres"} {
+			if _, pinned := approvedEngineOnlyQueries[engine][name]; pinned {
+				out = append(out, fmt.Sprintf("sqlpredicate: query %q now exists on both engines; retire its %s-only pin", name, engine))
+			}
 		}
 		sqContract, sqGenerated := contracts["sqlite"][name]
 		pgContract, pgGenerated := contracts["postgres"][name]
@@ -452,6 +538,13 @@ func crossEngine(queries map[string][]Query, rules map[string]map[string]TableRu
 			continue
 		}
 		out = append(out, compareQueryContracts(name, sqQuery, pgQuery, sqContract, pgContract)...)
+	}
+	for engine, pins := range approvedEngineOnlyQueries {
+		for name := range pins {
+			if _, exists := byName[engine][name]; !exists {
+				out = append(out, fmt.Sprintf("sqlpredicate: %s-only query %q was removed; retire its engine protocol pin", engine, name))
+			}
+		}
 	}
 	sq, pg := rules["sqlite"], rules["postgres"]
 	for t, r := range sq {
@@ -492,8 +585,11 @@ func eachSQLFile(dir string, fn func(path, src string) error) error {
 var (
 	andSplitRe  = regexp.MustCompile(`(?i)\s+AND\s+`)
 	doNothingRe = regexp.MustCompile(`(?i)\s+ON CONFLICT \([\w, ]+\) DO NOTHING$`)
-	conjunctRe  = regexp.MustCompile(`^(\w+)\s*(=|<=|>=|<|>)\s*` + paramRe + `$`)
-	spaceRe     = regexp.MustCompile(`\s+`)
+	// Fixed state predicates only narrow rows already constrained by bound
+	// tenant-chain conjuncts. A literal can never satisfy a chain binding.
+	conjunctRe       = regexp.MustCompile(`(?i)^(\w+)\s*(=|<>|!=|<=|>=|<|>)\s*(` + predicateValue + `)$`)
+	boundParameterRe = regexp.MustCompile(`(?i)^` + paramRe + `$`)
+	spaceRe          = regexp.MustCompile(`\s+`)
 
 	setColRes  = map[string]*regexp.Regexp{}
 	setColResM sync.Mutex

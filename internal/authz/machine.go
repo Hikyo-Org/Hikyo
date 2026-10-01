@@ -118,102 +118,6 @@ func (a *TxAuthorizer) authenticateMachine(ctx context.Context, presented string
 // reads and writes ride the resolution surface, exactly as grant
 // administration does.
 
-func (a *TxAuthorizer) CreateMachinePrincipal(ctx context.Context, id domain.PrincipalID, class domain.PrincipalClass, at time.Time) error {
-	return a.r.CreateMachinePrincipal(ctx, id, class, at)
-}
-
-func (a *TxAuthorizer) CreateServiceAccountAggregate(ctx context.Context, sa NewServiceAccount) (ServiceAccountCreation, error) {
-	return a.r.CreateServiceAccountAggregate(ctx, sa)
-}
-
-// ServiceAccountAt resolves one service account within an addressed project;
-// an id from another project answers domain.ErrNotFound.
-func (a *TxAuthorizer) ServiceAccountAt(ctx context.Context, scope domain.Scope, id string) (ServiceAccount, error) {
-	return a.r.ServiceAccountAt(ctx, scope, id)
-}
-
-// ServiceAccountByPrincipal resolves the service account a machine principal
-// is, for the grant surface's subtree confinement.
-func (a *TxAuthorizer) ServiceAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (ServiceAccount, error) {
-	return a.r.ServiceAccountByPrincipal(ctx, p)
-}
-
-func (a *TxAuthorizer) ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error) {
-	return a.r.ServiceAccountsIn(ctx, scope)
-}
-
-func (a *TxAuthorizer) DeleteServiceAccountAggregate(ctx context.Context, in DeleteServiceAccountAggregateInput) (ServiceAccountDeletion, error) {
-	return a.r.DeleteServiceAccountAggregate(ctx, in)
-}
-
-func (a *TxAuthorizer) CreateMachineCredential(ctx context.Context, c NewCredential) error {
-	return a.r.CreateMachineCredential(ctx, c)
-}
-
-func (a *TxAuthorizer) MachineCredentialsFor(ctx context.Context, serviceAccountID string) ([]MachineCredential, error) {
-	return a.r.MachineCredentialsFor(ctx, serviceAccountID)
-}
-
-func (a *TxAuthorizer) LiveMachineCredentialCount(ctx context.Context, serviceAccountID string, epoch int64, now time.Time) (int64, error) {
-	return a.r.LiveMachineCredentialCount(ctx, serviceAccountID, epoch, now)
-}
-
-func (a *TxAuthorizer) LiveMachineCredentialCounts(ctx context.Context, scope domain.Scope, epoch int64, now time.Time) (map[string]int64, error) {
-	return a.r.LiveMachineCredentialCounts(ctx, scope, epoch, now)
-}
-
-func (a *TxAuthorizer) RevokeMachineCredential(ctx context.Context, serviceAccountID, id string, at time.Time) (bool, error) {
-	return a.r.RevokeMachineCredential(ctx, serviceAccountID, id, at)
-}
-
-func (a *TxAuthorizer) TouchMachineCredential(ctx context.Context, id string, at time.Time) error {
-	return a.r.TouchMachineCredential(ctx, id, at)
-}
-
-func (a *TxAuthorizer) CredentialsBeyondCeiling(ctx context.Context, ceiling time.Time) ([]AffectedCredential, error) {
-	return a.r.CredentialsBeyondCeiling(ctx, ceiling)
-}
-
-func (a *TxAuthorizer) IndefiniteCredentials(ctx context.Context) ([]AffectedCredential, error) {
-	return a.r.IndefiniteCredentials(ctx)
-}
-
-func (a *TxAuthorizer) ClampCredentialExpiry(ctx context.Context, ceiling time.Time) (int64, error) {
-	return a.r.ClampCredentialExpiry(ctx, ceiling)
-}
-
-func (a *TxAuthorizer) ClampIndefiniteCredentials(ctx context.Context, ceiling time.Time) (int64, error) {
-	return a.r.ClampIndefiniteCredentials(ctx, ceiling)
-}
-
-// LockCredentialPolicy serializes a mint against a concurrent tightening.
-func (a *TxAuthorizer) LockCredentialPolicy(ctx context.Context) error {
-	return a.r.LockCredentialPolicy(ctx)
-}
-
-// LockMachinePrincipal takes a service account's principal-row lock — THE SAME
-// LOCK the grant writers take — so a mint and a grant landing on that
-// principal serialize. Without it a grant can widen the account between the
-// mint's post-state check and its insert, producing a token whose authority
-// never passed the gate.
-func (a *TxAuthorizer) LockMachinePrincipal(ctx context.Context, p domain.PrincipalID) error {
-	return a.r.LockPrincipalRow(ctx, p)
-}
-
-func (a *TxAuthorizer) CredentialPolicy(ctx context.Context) (CredentialPolicy, error) {
-	return a.r.CredentialPolicy(ctx)
-}
-
-func (a *TxAuthorizer) SetCredentialPolicy(ctx context.Context, p CredentialPolicy, actor domain.PrincipalID, at time.Time) error {
-	return a.r.SetCredentialPolicy(ctx, p, actor, at)
-}
-
-// EnvironmentsInProject is the universe the mint and widen reachability
-// formulas range over.
-func (a *TxAuthorizer) EnvironmentsInProject(ctx context.Context, scope domain.Scope) ([]domain.EnvID, error) {
-	return a.r.EnvironmentsInProject(ctx, scope)
-}
-
 // Reachable is the ADR's reachability computation, and the comment is the
 // point of the function: the two authority classes are computed
 // INDEPENDENTLY and never collapsed into one "can reach plaintext" boolean.
@@ -266,12 +170,6 @@ func coveredBy(grants []domain.Grant, cap domain.Capability, at domain.Scope) bo
 	return false
 }
 
-// GrantsOf returns a principal's full grant set — the pre-state input to the
-// reachability diff.
-func (a *TxAuthorizer) GrantsOf(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
-	return a.r.Grants(ctx, p)
-}
-
 // authenticateInstanceConnection resolves a presented directory credential
 // (#71). It is the machine leg's sibling and keeps the same discipline, with
 // one fewer read: the connection row holds the principal AND the credential,
@@ -314,32 +212,6 @@ func (a *TxAuthorizer) authenticateInstanceConnection(ctx context.Context, prese
 // caller mints a proof through Authorize before reaching here — but the rows
 // are `class=authn`, so the reads and writes ride the resolution surface.
 
-func (a *TxAuthorizer) MintInstanceConnection(ctx context.Context, n authn.NewInstanceConnection) error {
-	return a.r.MintInstanceConnection(ctx, n)
-}
-
-func (a *TxAuthorizer) RevokeInstanceConnection(ctx context.Context, id string, at time.Time) (bool, error) {
-	return a.r.RevokeInstanceConnection(ctx, id, at)
-}
-
-func (a *TxAuthorizer) TouchInstanceConnection(ctx context.Context, id string, at time.Time) error {
-	return a.r.TouchInstanceConnection(ctx, id, at)
-}
-
-func (a *TxAuthorizer) InstanceConnections(ctx context.Context) ([]authn.InstanceConnection, error) {
-	return a.r.InstanceConnections(ctx)
-}
-
-func (a *TxAuthorizer) InstanceConnectionByID(ctx context.Context, id string) (authn.InstanceConnection, error) {
-	return a.r.InstanceConnectionByID(ctx, id)
-}
-
-// InstanceIdentity is this instance's own opaque id — the value a directory
-// listing carries and the one self-connection refusal compares against.
-func (a *TxAuthorizer) InstanceIdentity(ctx context.Context) (string, error) {
-	return a.r.InstanceIdentity(ctx)
-}
-
 // The workspace tier's carrier types, re-exported so the service layer never
 // names internal/store/authn — the import-boundary test enforces that the
 // resolution surface is reachable only through this package.
@@ -367,76 +239,6 @@ const (
 // that cannot be — StartHandoff and RedeemHandoff, where no principal exists
 // yet, which is what a handoff transaction is for.
 
-func (a *TxAuthorizer) WorkspaceOrigins(ctx context.Context) ([]authn.WorkspaceOrigin, error) {
-	return a.r.WorkspaceOrigins(ctx)
-}
-
-func (a *TxAuthorizer) WorkspaceOriginAllowed(ctx context.Context, origin string) (bool, error) {
-	return a.r.WorkspaceOriginAllowed(ctx, origin)
-}
-
-func (a *TxAuthorizer) AllowWorkspaceOrigin(ctx context.Context, o authn.WorkspaceOrigin) error {
-	return a.r.AllowWorkspaceOrigin(ctx, o)
-}
-
-// RemoveWorkspaceOrigin and RevokeWorkspaceSessionsForOrigin are ONE ACT in two
-// statements and must be called in one transaction. That pairing is the ADR's
-// atomic kill switch; splitting it leaves a window in which an origin is
-// de-allowlisted and its sessions still authenticate.
-func (a *TxAuthorizer) RemoveWorkspaceOrigin(ctx context.Context, origin string) (bool, error) {
-	return a.r.RemoveWorkspaceOrigin(ctx, origin)
-}
-
-func (a *TxAuthorizer) RevokeWorkspaceSessionsForOrigin(ctx context.Context, origin string) (int64, error) {
-	return a.r.RevokeWorkspaceSessionsForOrigin(ctx, origin)
-}
-
-func (a *TxAuthorizer) CreateWorkspaceHandoff(ctx context.Context, h authn.NewWorkspaceHandoff) error {
-	return a.r.CreateWorkspaceHandoff(ctx, h)
-}
-
-func (a *TxAuthorizer) WorkspaceHandoffByState(ctx context.Context, verifier []byte) (authn.WorkspaceHandoff, error) {
-	return a.r.WorkspaceHandoffByState(ctx, verifier)
-}
-
-func (a *TxAuthorizer) WorkspaceHandoffByCode(ctx context.Context, verifier []byte) (authn.WorkspaceHandoff, error) {
-	return a.r.WorkspaceHandoffByCode(ctx, verifier)
-}
-
-func (a *TxAuthorizer) ApproveWorkspaceHandoff(ctx context.Context, id string, codeVerifier []byte, p domain.PrincipalID, factors, factorClass string, authenticatedAt time.Time) (bool, error) {
-	return a.r.ApproveWorkspaceHandoff(ctx, id, codeVerifier, p, factors, factorClass, authenticatedAt)
-}
-
-// LockWorkspaceOrigin and LockInstanceIdentityRow are the two row locks the
-// serving side's read-then-write decisions serialize on under postgres' READ
-// COMMITTED semantics.
-func (a *TxAuthorizer) LockWorkspaceOrigin(ctx context.Context, origin string) (bool, error) {
-	return a.r.LockWorkspaceOrigin(ctx, origin)
-}
-
-func (a *TxAuthorizer) LockInstanceIdentityRow(ctx context.Context) error {
-	return a.r.LockInstanceIdentityRow(ctx)
-}
-
-func (a *TxAuthorizer) ConsumeWorkspaceHandoff(ctx context.Context, id string, at time.Time) (bool, error) {
-	return a.r.ConsumeWorkspaceHandoff(ctx, id, at)
-}
-
-func (a *TxAuthorizer) SweepExpiredWorkspaceHandoffs(ctx context.Context, before time.Time) (int64, error) {
-	return a.r.SweepExpiredWorkspaceHandoffs(ctx, before)
-}
-
-// SessionsForPrincipal and RevokeSessionForPrincipal are the self-scoped
-// active-session surface (#71 criterion 5). The principal conjunct is in the
-// SQL, so one caller structurally cannot reach another's row.
-func (a *TxAuthorizer) SessionsForPrincipal(ctx context.Context, p domain.PrincipalID) ([]authn.SessionSummary, error) {
-	return a.r.SessionsForPrincipal(ctx, p)
-}
-
-func (a *TxAuthorizer) RevokeSessionForPrincipal(ctx context.Context, id string, p domain.PrincipalID) (bool, error) {
-	return a.r.RevokeSessionForPrincipal(ctx, id, p)
-}
-
 // InstanceConnectionByPrincipal answers "which connection is this caller",
 // which is what the directory serve needs to stamp last-used and to name the
 // actor in its audit event.
@@ -451,10 +253,4 @@ func (a *TxAuthorizer) InstanceConnectionByPrincipal(ctx context.Context, p doma
 		}
 	}
 	return authn.InstanceConnection{}, domain.ErrNotFound
-}
-
-// RemoteOrigins is the CSP `connect-src` input. See the resolver's doc comment
-// for why this one read of a class=instance table is proof-free.
-func (a *TxAuthorizer) RemoteOrigins(ctx context.Context) ([]string, error) {
-	return a.r.RemoteOrigins(ctx)
 }

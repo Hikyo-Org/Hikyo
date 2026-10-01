@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { expect, fn } from 'storybook/test';
 
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
-import { MintDialog } from './MachineAccess.tsx';
+import { MintDialog } from './machineAccess/Credentials.tsx';
 import type { MintLifecycle, MintRequest } from './mintLifecycle.ts';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';

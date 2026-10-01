@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 const (
@@ -91,40 +92,12 @@ func removeApplyPending(stateDir string) error {
 	return nil
 }
 
-// writeFileAtomic0600 writes data to a temp file in the same dir and renames it
-// into place (0600), creating the directory 0700 if needed.
+// writeFileAtomic0600 publishes data durably with mode 0600, creating its
+// directory with mode 0700 if needed.
 func writeFileAtomic0600(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	committed := false
-	defer func() {
-		if !committed {
-			tmp.Close()
-			_ = os.Remove(tmpName)
-		}
-	}()
-	if err := tmp.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return err
-	}
-	committed = true
-	return nil
+	return securefile.WriteAtomic(path, data, 0o600)
 }

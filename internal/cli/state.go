@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 // Client-side state under the XDG state directory: the trust store, named
@@ -188,11 +190,7 @@ func (s *State) writeJSON(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return securefile.WriteAtomic(path, append(raw, '\n'), 0o600)
 }
 
 // PinFile is the committable, non-secret project-dir file: the `.nvmrc` of

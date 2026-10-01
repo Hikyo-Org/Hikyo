@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
+import { renderForm } from '../testkit/renderForm.tsx';
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
 import { MAX_FILE_BYTES } from './import-sources.ts';
 
+const cleanups: Array<() => Promise<void>> = [];
 const listOccurrences = vi.fn();
 const createKey = vi.fn();
 const importValues = vi.fn();
@@ -21,8 +22,6 @@ vi.mock('../api/matrix.ts', async (importOriginal) => {
 });
 
 const { ImportWizard } = await import('./ImportWizard.tsx');
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const environments = [
   { id: 'env-dev', name: 'development' },
@@ -55,26 +54,23 @@ beforeEach(() => {
   importValues.mockReset().mockResolvedValue({ imported: ['EXISTING', 'NEW'], skipped: [] });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  for (const unmount of cleanups.splice(0)) await unmount();
   document.body.innerHTML = '';
 });
 
 async function render(gitManaged = false, canDeclareKeys = !gitManaged) {
   const onClose = vi.fn();
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <ImportWizard
-        matrixRef={{ org: 'acme', project: 'app' }}
-        environments={environments}
-        gitManaged={gitManaged}
-        canDeclareKeys={canDeclareKeys}
-        onClose={onClose}
-      />,
-    );
-  });
+  const { container, unmount } = await renderForm(
+    <ImportWizard
+      matrixRef={{ org: 'acme', project: 'app' }}
+      environments={environments}
+      gitManaged={gitManaged}
+      canDeclareKeys={canDeclareKeys}
+      onClose={onClose}
+    />,
+  );
+  cleanups.push(unmount);
   return { container, onClose };
 }
 

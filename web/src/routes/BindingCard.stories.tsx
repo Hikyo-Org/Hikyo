@@ -3,7 +3,7 @@ import { expect, fn } from 'storybook/test';
 
 import type { MachineCredential } from '../api/identities.ts';
 import { serviceAccount as account } from '../testkit/machineAccess.ts';
-import { BindingCard } from './MachineAccess.tsx';
+import { BindingCard } from './machineAccess/FederationBindings.tsx';
 
 // One federated binding as the Federation tab and a row expansion list it: the
 // byte-exact (issuer, subject, audience) triple, every pinned claim, the expiry

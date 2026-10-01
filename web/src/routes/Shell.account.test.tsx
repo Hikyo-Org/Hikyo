@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
+import { renderForm } from '../testkit/renderForm.tsx';
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,8 +14,6 @@ vi.mock('../api/session.ts', async (importOriginal) => {
     useLogout: () => ({ isPending: false, mutate: vi.fn() }),
   };
 });
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const session: WhoAmI = {
   session: {
@@ -55,26 +53,20 @@ function firstMenuItem(container: HTMLElement): HTMLElement {
 }
 
 async function renderAccountEntry(who: WhoAmI = session): Promise<{
-  container: HTMLDivElement;
+  container: HTMLElement;
   trigger: HTMLButtonElement;
   unmount: () => Promise<void>;
 }> {
-  const container = document.createElement('div');
-  document.body.append(container);
-  const root = createRoot(container);
-
-  await act(async () => {
-    root.render(
-      <MemoryRouter>
-        <AccountEntry session={who} updateVersions={[]} />
-      </MemoryRouter>,
-    );
-  });
+  const { container, unmount } = await renderForm(
+    <MemoryRouter>
+      <AccountEntry session={who} updateVersions={[]} />
+    </MemoryRouter>,
+  );
 
   return {
     container,
     trigger: accountButton(container),
-    unmount: async () => act(async () => root.unmount()),
+    unmount,
   };
 }
 

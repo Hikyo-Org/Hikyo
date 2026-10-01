@@ -3,6 +3,7 @@ import type { zRuleList } from '@hikyo/zod';
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { createBody, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
@@ -118,25 +119,21 @@ export function useRuleMutations(org: string) {
 }
 
 function refusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The server refused this rule: check where it applies and what it gives.';
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-        return 'Managing access needs a second factor. Sign in again and present your passkey or a code, then retry.';
-      case 404:
-        return 'You do not manage access on every project this rule names, or something it names no longer exists. The two are deliberately the same answer.';
-      case 409:
-        return error.detail ?? 'The server refused this change as it stands.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
-    }
-  }
-  return transportRefusalText(error) ?? 'The rules could not be reached, or the answer did not match the contract. Whether the change applied is unknown: reload to check.';
+  return statusText(
+    error,
+    {
+      400: (error) =>
+        error.detail ?? 'The server refused this rule: check where it applies and what it gives.',
+      401: commonRefusalText.sessionEnded,
+      403: 'Managing access needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      404: 'You do not manage access on every project this rule names, or something it names no longer exists. The two are deliberately the same answer.',
+      409: (error) => error.detail ?? 'The server refused this change as it stands.',
+      429: commonRefusalText.attempts,
+    },
+    transportRefusalText(error) ?? 'The rules could not be reached, or the answer did not match the contract. Whether the change applied is unknown: reload to check.',
+    (error) =>
+      `The server failed (${error.status}); whether the change applied is unknown: reload to check.`,
+  );
 }
 
 /** A save or remove failure in words, saying which half of an edit stands. */

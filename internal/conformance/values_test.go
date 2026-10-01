@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -1047,61 +1045,4 @@ func valueRowID(t *testing.T, db *store.DB, envID, keyName string) string {
 		t.Fatal(err)
 	}
 	return out
-}
-
-// TestMaskedIsAbsentFromSchemaAndAPI is mvp-boundary C2's negative clause:
-// `masked` is absent from the schema, the API surface and the UI.
-//
-// It is asserted mechanically because a deleted state comes back by accident,
-// not on purpose — as an enum member somebody adds "for completeness", or a
-// nullable presence column whose NULL quietly becomes a third state. The two
-// places it could re-enter and not be noticed are the stored schema and the
-// wire contract, so both are scanned: the migration set for a column or CHECK
-// naming it, and the OpenAPI document for it appearing anywhere except the
-// two prose lines that say it does not exist.
-func TestMaskedIsAbsentFromSchemaAndAPI(t *testing.T) {
-	for _, dir := range []string{
-		filepath.Join("..", "store", "migrations", "sqlite"),
-		filepath.Join("..", "store", "migrations", "postgres"),
-	} {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, entry := range entries {
-			raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, line := range strings.Split(string(raw), "\n") {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "--") {
-					// Prose explaining that the state is gone is not the state.
-					continue
-				}
-				if strings.Contains(strings.ToLower(trimmed), "masked") {
-					t.Errorf("%s/%s: `masked` reached the stored schema: %s", dir, entry.Name(), trimmed)
-				}
-			}
-		}
-	}
-
-	spec, err := os.ReadFile(filepath.Join("..", "..", "api", "openapi.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i, line := range strings.Split(string(spec), "\n") {
-		lower := strings.ToLower(line)
-		if !strings.Contains(lower, "masked") {
-			continue
-		}
-		// The only admissible occurrences are the two descriptions that state
-		// the flat model deleted it. Anything else — an enum member, a
-		// property, a required field — is the state itself coming back.
-		if strings.Contains(lower, "appears nowhere in this contract") ||
-			strings.Contains(lower, "anywhere in this contract") {
-			continue
-		}
-		t.Errorf("api/openapi.yaml:%d: `masked` reached the contract: %s", i+1, strings.TrimSpace(line))
-	}
 }

@@ -10,8 +10,6 @@ import {
   getOrgOp,
   getOrgRetentionOp,
   getProjectOp,
-  getProjectRetentionOp,
-  listEnvironmentsOp,
   listOrgsOp,
   listProjectsOp,
   renameEnvironmentOp,
@@ -50,9 +48,11 @@ import {
 import type { Client } from '@hikyo/runtime-core';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, ok, parsed } from './client.ts';
-import { environmentTopologyQueryPrefixes } from './keys.ts';
+import { environmentTopologyQueryPrefixes, environmentsKey } from './keys.ts';
+import { environmentListQueryOptions, projectRetentionQueryOptions } from './hierarchyQueries.ts';
 import type { EnvironmentNode, ProjectNode } from './access.ts';
 import { useTransport } from './transport.tsx';
 
@@ -75,16 +75,12 @@ const orgKey = (org: string) => ['org', org] as const;
 const orgsListKey = ['orgs-instance'] as const;
 const projectsKey = (org: string) => ['projects', org] as const;
 const projectKey = (org: string, project: string) => ['project', org, project] as const;
-const environmentsKey = (org: string, project: string) =>
-  ['environments', org, project] as const;
 /** Every environment's settings in one project: the prefix a project-wide refresh invalidates. */
 export const environmentSettingsPrefix = (org: string, project: string) =>
   ['environment-settings', org, project] as const;
 const environmentSettingsKey = (org: string, project: string, environment: string) =>
   [...environmentSettingsPrefix(org, project), environment] as const;
 const orgRetentionKey = (org: string) => ['org-retention', org] as const;
-const projectRetentionKey = (org: string, project: string) =>
-  ['project-retention', org, project] as const;
 
 // --- reads ------------------------------------------------------------------
 
@@ -109,15 +105,7 @@ export function useEnvironments(
   project: string,
 ): UseQueryResult<z.infer<typeof zEnvironmentList>> {
   const transport = useTransport();
-  return useQuery(environmentListQueryOptions(org, project, transport.client));
-}
-
-function environmentListQueryOptions(org: string, project: string, client?: Client) {
-  return {
-    queryKey: environmentsKey(org, project),
-    queryFn: () => parsed(listEnvironmentsOp, { path: { org, project }, client }),
-    enabled: org !== '' && project !== '',
-  } as const;
+  return useQuery(environmentListQueryOptions({ org, project }, transport.client));
 }
 
 /** One canonical project-list hook and query key for every chrome surface. */
@@ -142,12 +130,7 @@ export function useProjectRetention(
   org: string,
   project: string,
 ): UseQueryResult<ProjectRetentionPolicy> {
-  return useQuery({
-    queryKey: projectRetentionKey(org, project),
-    queryFn: () =>
-      parsed(getProjectRetentionOp, { path: { org, project } }),
-    enabled: org !== '' && project !== '',
-  });
+  return useQuery(projectRetentionQueryOptions({ org, project }));
 }
 
 type ProjectRetentionReadState =
@@ -162,9 +145,7 @@ export function useProjectRetentions(
 ): ReadonlyMap<string, ProjectRetentionReadState> {
   const results = useQueries({
     queries: projects.map((project) => ({
-      queryKey: projectRetentionKey(org, project.id),
-      queryFn: () =>
-        parsed(getProjectRetentionOp, { path: { org, project: project.id } }),
+      ...projectRetentionQueryOptions({ org, project: project.id }),
       enabled: org !== '',
     })),
   });
@@ -317,7 +298,7 @@ export function useOrgTopology(org: string): {
   const items = projects.data === undefined ? [] : projects.data.items;
 
   const environments = useQueries({
-    queries: items.map((project) => environmentListQueryOptions(org, project.id)),
+    queries: items.map((project) => environmentListQueryOptions({ org, project: project.id })),
   });
 
   const flat = items.flatMap((project, index) => {
@@ -516,7 +497,7 @@ function invalidateEnvironmentTopology(
   project: string,
 ) {
   const queryKeys = [
-    environmentsKey(org, project),
+    environmentsKey({ org, project }),
     environmentSettingsPrefix(org, project),
     ...environmentTopologyQueryPrefixes({ org, project }),
   ];
@@ -601,24 +582,14 @@ export function useCloneEnvironment(org: string, project: string) {
  * organisation scope.
  */
 export function createProjectRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? 'The project name is invalid.';
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-      case 404:
-        return 'You are not permitted to create a project here: that needs manage-projects at the organisation scope.';
-      case 409:
-        return error.detail ?? 'This project name is already in use.';
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-      default:
-        return 'The server failed; whether the project was created is unknown: reload to check.';
-    }
-  }
-  return 'The server failed; whether the project was created is unknown: reload to check.';
+  return statusText(error, {
+    400: (error) => error.detail ?? 'The project name is invalid.',
+    401: commonRefusalText.sessionEnded,
+    403: 'You are not permitted to create a project here: that needs manage-projects at the organisation scope.',
+    404: 'You are not permitted to create a project here: that needs manage-projects at the organisation scope.',
+    409: (error) => error.detail ?? 'This project name is already in use.',
+    429: commonRefusalText.attempts,
+  }, 'The server failed; whether the project was created is unknown: reload to check.');
 }
 
 /**
@@ -644,22 +615,18 @@ function environmentLifecycleRefusalText(
   error: unknown,
   refusal: EnvironmentLifecycleRefusal,
 ): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return error.detail ?? refusal.invalid;
-      case 401:
-        return 'Your session ended. Sign in again to continue.';
-      case 403:
-      case 404:
-        return environmentLifecyclePermission(refusal.action);
-      case 409:
-        return error.detail ?? refusal.conflict;
-      case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
-    }
-  }
-  return refusal.uncertain;
+  return statusText(
+    error,
+    {
+      400: (error) => error.detail ?? refusal.invalid,
+      401: commonRefusalText.sessionEnded,
+      403: environmentLifecyclePermission(refusal.action),
+      404: environmentLifecyclePermission(refusal.action),
+      409: (error) => error.detail ?? refusal.conflict,
+      429: commonRefusalText.attempts,
+    },
+    refusal.uncertain,
+  );
 }
 
 /**
@@ -936,7 +903,7 @@ export function settingsFailureText(
       case 400:
         return failure.detail ?? invalidSettingsText(failedOperation);
       case 401:
-        return 'Your session ended. Sign in again to continue.';
+        return commonRefusalText.sessionEnded;
       case 403:
         return `You are not permitted to ${settingsAction(failedOperation)}.`;
       case 404:
@@ -944,7 +911,7 @@ export function settingsFailureText(
       case 409:
         return failure.detail ?? conflictingSettingsText(failedOperation);
       case 429:
-        return 'Too many attempts right now. Wait a moment and try again.';
+        return commonRefusalText.attempts;
       default:
         return 'The server failed; whether the change applied is unknown: reload to check.';
     }

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
+	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
 
 // Dynamic-secret request-path store (#147). These methods are proof-carrying:
@@ -131,34 +133,15 @@ type DynamicRepo interface {
 }
 
 type dynamicQueries struct {
-	db  adapterDB
-	tok *authz.TxToken
+	queries dynamicStoreQueries
+	tok     *authz.TxToken
 }
 
 func (r sqliteRepos) Dynamic() DynamicRepo {
-	return dynamicQueries{db: sqliteAdoptDB{db: r.db}, tok: r.tok}
+	return dynamicQueries{queries: sqliteDynamicStoreQueries{queries: sqlitegen.New(r.db)}, tok: r.tok}
 }
 func (r pgRepos) Dynamic() DynamicRepo {
-	return dynamicQueries{db: pgAdoptDB{db: r.db}, tok: r.tok}
-}
-
-const dynamicProviderColumns = `id,kind,origin,tls_mode,grant_role,CASE WHEN admin_credential_ciphertext IS NULL THEN 0 ELSE 1 END,credential_set_at,authority_principal_id,state,created_at`
-
-func scanDynamicProvider(row interface{ Scan(...any) error }) (DynamicProviderRecord, error) {
-	var out DynamicProviderRecord
-	var present int
-	var credentialSetAt, createdAt adapterStoredTime
-	err := row.Scan(&out.ID, &out.Kind, &out.Origin, &out.TLSMode, &out.GrantRole, &present, &credentialSetAt, &out.AuthorityPrincipalID, &out.State, &createdAt)
-	if isNoRows(err) {
-		return DynamicProviderRecord{}, ErrNotFound
-	}
-	if err != nil {
-		return DynamicProviderRecord{}, err
-	}
-	out.CredentialPresent = present == 1
-	out.CredentialSetAt = credentialSetAt.value
-	out.CreatedAt = createdAt.value
-	return out, nil
+	return dynamicQueries{queries: pgDynamicStoreQueries{queries: pggen.New(r.db)}, tok: r.tok}
 }
 
 func (r dynamicQueries) CreateProvider(ctx context.Context, p authz.Proof, m DynamicProviderCreate) (DynamicProviderRecord, error) {
@@ -166,11 +149,7 @@ func (r dynamicQueries) CreateProvider(ctx context.Context, p authz.Proof, m Dyn
 	if err != nil {
 		return DynamicProviderRecord{}, err
 	}
-	stamp := r.db.Stamp(m.At)
-	query := r.db.SQL(
-		`INSERT INTO dynamic_providers (id,org_id,project_id,kind,origin,tls_mode,grant_role,admin_credential_ciphertext,credential_set_at,authority_principal_id,state,created_at) VALUES (?,?,?,?,?,?,?,?,?,?, 'active', ?)`,
-	)
-	if _, err := r.db.Exec(ctx, query, m.ID, chain.Org, chain.Project, m.Kind, m.Origin, m.TLSMode, m.GrantRole, m.CredentialCiphertext, stamp, m.AuthorityPrincipalID, stamp); err != nil {
+	if _, err := r.queries.dynamicCreateProvider(ctx, chain, m); err != nil {
 		return DynamicProviderRecord{}, err
 	}
 	return r.GetProvider(ctx, p, m.ID)
@@ -181,10 +160,7 @@ func (r dynamicQueries) GetProvider(ctx context.Context, p authz.Proof, provider
 	if err != nil {
 		return DynamicProviderRecord{}, err
 	}
-	query := r.db.SQLPerEngine(
-		`SELECT `+dynamicProviderColumns+` FROM dynamic_providers WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-		`SELECT `+dynamicProviderColumns+` FROM dynamic_providers WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state='active'`)
-	return scanDynamicProvider(r.db.QueryRow(ctx, query, providerID, chain.Org, chain.Project))
+	return r.queries.dynamicGetProvider(ctx, chain, providerID)
 }
 
 func (r dynamicQueries) ProviderCredentialCiphertext(ctx context.Context, p authz.Proof, providerID string) ([]byte, error) {
@@ -192,14 +168,8 @@ func (r dynamicQueries) ProviderCredentialCiphertext(ctx context.Context, p auth
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(
-		`SELECT admin_credential_ciphertext FROM dynamic_providers WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	)
-	var ct []byte
-	if err := r.db.QueryRow(ctx, query, providerID, chain.Org, chain.Project).Scan(&ct); err != nil {
-		if isNoRows(err) {
-			return nil, ErrNotFound
-		}
+	ct, err := r.queries.dynamicProviderCredentialCiphertext(ctx, chain, providerID)
+	if err != nil {
 		return nil, err
 	}
 	if len(ct) == 0 {
@@ -213,23 +183,7 @@ func (r dynamicQueries) ListProviders(ctx context.Context, p authz.Proof) ([]Dyn
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQLPerEngine(
-		`SELECT `+dynamicProviderColumns+` FROM dynamic_providers WHERE org_id=? AND project_id=? AND state='active' ORDER BY id`,
-		`SELECT `+dynamicProviderColumns+` FROM dynamic_providers WHERE org_id=$1 AND project_id=$2 AND state='active' ORDER BY id`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []DynamicProviderRecord
-	for rows.Next() {
-		record, err := scanDynamicProvider(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, record)
-	}
-	return out, rows.Err()
+	return r.queries.dynamicListProviders(ctx, chain)
 }
 
 func (r dynamicQueries) ReplaceProviderCredential(ctx context.Context, p authz.Proof, m DynamicProviderCredentialMutation) error {
@@ -237,11 +191,7 @@ func (r dynamicQueries) ReplaceProviderCredential(ctx context.Context, p authz.P
 	if err != nil {
 		return err
 	}
-	stamp := r.db.Stamp(m.At)
-	query := r.db.SQL(
-		`UPDATE dynamic_providers SET admin_credential_ciphertext=?,credential_set_at=? WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	)
-	rows, err := r.db.Exec(ctx, query, m.CredentialCiphertext, stamp, m.ProviderID, chain.Org, chain.Project)
+	rows, err := r.queries.dynamicReplaceProviderCredential(ctx, chain, m)
 	if err != nil {
 		return err
 	}
@@ -256,10 +206,7 @@ func (r dynamicQueries) RevokeProviderCredential(ctx context.Context, p authz.Pr
 	if err != nil {
 		return err
 	}
-	query := r.db.SQL(
-		`UPDATE dynamic_providers SET admin_credential_ciphertext=NULL,credential_set_at=NULL WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	)
-	rows, err := r.db.Exec(ctx, query, providerID, chain.Org, chain.Project)
+	rows, err := r.queries.dynamicRevokeProviderCredential(ctx, chain, providerID)
 	if err != nil {
 		return err
 	}
@@ -282,10 +229,7 @@ func (r dynamicQueries) DeleteProvider(ctx context.Context, p authz.Proof, provi
 	// gone from every ordinary read; only the proof-free worker join reaches it.
 	// The reencrypt walk lists by ciphertext presence, not state, so the row
 	// stays covered until a restore or an explicit later cleanup nulls it.
-	query := r.db.SQL(
-		`UPDATE dynamic_providers SET state='tombstoned' WHERE id=? AND org_id=? AND project_id=? AND state='active'`,
-	)
-	rows, err := r.db.Exec(ctx, query, providerID, chain.Org, chain.Project)
+	rows, err := r.queries.dynamicDeleteProvider(ctx, chain, providerID)
 	if err != nil {
 		return err
 	}
@@ -301,25 +245,6 @@ func (r dynamicQueries) DeleteProvider(ctx context.Context, p authz.Proof, provi
 // provider deadline the mint runs under.
 const mintRecoveryGrace = 5 * time.Minute
 
-const dynamicLeaseColumns = `id,provider_id,environment_id,principal_id,principal_class,provider_handle,state,issued_at,expires_at,max_ttl_seconds,last_transition_at,created_at`
-
-func scanDynamicLease(row interface{ Scan(...any) error }) (DynamicLease, error) {
-	var out DynamicLease
-	var issuedAt, expiresAt, lastTransitionAt, createdAt adapterStoredTime
-	err := row.Scan(&out.ID, &out.ProviderID, &out.EnvironmentID, &out.PrincipalID, &out.PrincipalClass, &out.ProviderHandle, &out.State, &issuedAt, &expiresAt, &out.MaxTTLSeconds, &lastTransitionAt, &createdAt)
-	if isNoRows(err) {
-		return DynamicLease{}, ErrNotFound
-	}
-	if err != nil {
-		return DynamicLease{}, err
-	}
-	out.IssuedAt = issuedAt.value
-	out.ExpiresAt = expiresAt.value
-	out.LastTransitionAt = lastTransitionAt.value
-	out.CreatedAt = createdAt.value
-	return out, nil
-}
-
 func (r dynamicQueries) CreateLease(ctx context.Context, p authz.Proof, m DynamicLeaseCreate) (DynamicLease, error) {
 	chain, err := authz.Verify(p, authz.StoreDynamicLeasesCreate, r.tok)
 	if err != nil {
@@ -331,17 +256,12 @@ func (r dynamicQueries) CreateLease(ctx context.Context, p authz.Proof, m Dynami
 	if chain.Env == "" {
 		return DynamicLease{}, ErrNotFound
 	}
-	stamp := r.db.Stamp(m.At)
 	// next_attempt_at is set a grace period ahead, NOT now: the synchronous mint
 	// request is still running (it will FinishMint within seconds), and the
 	// worker must not claim this `minting` row and mint-recover a role the
 	// request is about to disclose. Only a genuinely crashed request — one that
 	// never reached FinishMint before the grace elapses — is picked up.
-	graceStamp := r.db.Stamp(m.At.Add(mintRecoveryGrace))
-	query := r.db.SQL(
-		`INSERT INTO dynamic_leases (id,org_id,project_id,environment_id,provider_id,principal_id,principal_class,provider_handle,state,max_ttl_seconds,last_transition_at,attempt_count,next_attempt_at,created_at) VALUES (?,?,?,?,?,?,?,?, 'minting', ?, ?, 0, ?, ?)`,
-	)
-	if _, err := r.db.Exec(ctx, query, m.ID, chain.Org, chain.Project, chain.Env, m.ProviderID, m.PrincipalID, m.PrincipalClass, m.ProviderHandle, m.MaxTTLSeconds, stamp, graceStamp, stamp); err != nil {
+	if _, err := r.queries.dynamicCreateLease(ctx, chain, m); err != nil {
 		return DynamicLease{}, err
 	}
 	return r.GetLease(ctx, p, m.ID)
@@ -356,10 +276,7 @@ func (r dynamicQueries) GetLease(ctx context.Context, p authz.Proof, leaseID str
 	if err != nil {
 		return DynamicLease{}, err
 	}
-	query := r.db.SQLPerEngine(
-		`SELECT `+dynamicLeaseColumns+` FROM dynamic_leases WHERE id=? AND org_id=? AND project_id=? AND (?='' OR environment_id=?)`,
-		`SELECT `+dynamicLeaseColumns+` FROM dynamic_leases WHERE id=$1 AND org_id=$2 AND project_id=$3 AND ($4='' OR environment_id=$5)`)
-	return scanDynamicLease(r.db.QueryRow(ctx, query, leaseID, chain.Org, chain.Project, string(chain.Env), string(chain.Env)))
+	return r.queries.dynamicGetLease(ctx, chain, leaseID)
 }
 
 func (r dynamicQueries) ListLeasesForEnvironment(ctx context.Context, p authz.Proof) ([]DynamicLease, error) {
@@ -370,23 +287,7 @@ func (r dynamicQueries) ListLeasesForEnvironment(ctx context.Context, p authz.Pr
 	if chain.Env == "" {
 		return nil, ErrNotFound
 	}
-	query := r.db.SQLPerEngine(
-		`SELECT `+dynamicLeaseColumns+` FROM dynamic_leases WHERE org_id=? AND project_id=? AND environment_id=? ORDER BY id`,
-		`SELECT `+dynamicLeaseColumns+` FROM dynamic_leases WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 ORDER BY id`)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, string(chain.Env))
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []DynamicLease
-	for rows.Next() {
-		lease, err := scanDynamicLease(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, lease)
-	}
-	return out, rows.Err()
+	return r.queries.dynamicListLeasesForEnvironment(ctx, chain)
 }
 
 func (r dynamicQueries) ActiveLeaseIDsForProvider(ctx context.Context, p authz.Proof, providerID string) ([]DynamicLease, error) {
@@ -394,23 +295,7 @@ func (r dynamicQueries) ActiveLeaseIDsForProvider(ctx context.Context, p authz.P
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQLPerEngine(
-		`SELECT `+dynamicLeaseColumns+` FROM dynamic_leases WHERE provider_id=? AND org_id=? AND project_id=? AND state NOT IN ('revoked','expired','failed') ORDER BY id`,
-		`SELECT `+dynamicLeaseColumns+` FROM dynamic_leases WHERE provider_id=$1 AND org_id=$2 AND project_id=$3 AND state NOT IN ('revoked','expired','failed') ORDER BY id`)
-	rows, err := r.db.Query(ctx, query, providerID, chain.Org, chain.Project)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []DynamicLease
-	for rows.Next() {
-		lease, err := scanDynamicLease(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, lease)
-	}
-	return out, rows.Err()
+	return r.queries.dynamicActiveLeaseIDsForProvider(ctx, chain, providerID)
 }
 
 func (r dynamicQueries) FinishMint(ctx context.Context, p authz.Proof, m DynamicLeaseFinishMint) error {
@@ -421,19 +306,12 @@ func (r dynamicQueries) FinishMint(ctx context.Context, p authz.Proof, m Dynamic
 	if chain.Env == "" {
 		return ErrNotFound
 	}
-	var issued, expires any
-	if m.State == "active" {
-		issued = r.db.Stamp(m.IssuedAt)
-		expires = r.db.Stamp(m.ExpiresAt)
-	}
+
 	// lease_owner IS NULL is load-bearing: if the worker has already claimed this
 	// still-minting row (a synchronous request paused past the mint grace), the
 	// worker owns the recovery and this settle must NOT clear its fence or
 	// disclose. The affected-row count of 0 then makes the request fail closed.
-	query := r.db.SQL(
-		`UPDATE dynamic_leases SET state=?,issued_at=?,expires_at=?,last_transition_at=?,next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state='minting' AND lease_owner IS NULL`,
-	)
-	rows, err := r.db.Exec(ctx, query, m.State, issued, expires, r.db.Stamp(m.At), r.db.Stamp(m.NextAttemptAt), m.LeaseID, chain.Org, chain.Project, string(chain.Env))
+	rows, err := r.queries.dynamicFinishMint(ctx, chain, m)
 	if err != nil {
 		return err
 	}
@@ -452,40 +330,18 @@ func (r dynamicQueries) EnqueueTransition(ctx context.Context, p authz.Proof, m 
 	// a lease already in flight is left to the worker. Revoke is allowed from
 	// any non-terminal state so a compromised workload's lease can always be
 	// torn down.
-	var allowed string
 	switch m.State {
-	case "revoking":
-		allowed = `state NOT IN ('revoked','expired','failed','revoking')`
-	case "renewing":
-		allowed = `state='active'`
-	case "unknown":
-		// Reconcile only re-triggers a lease that is ALREADY uncertain; it never
-		// forces a healthy lease into re-probing (which mint-recovery would then
-		// drop). A reconcile of a settled or active lease is a no-op conflict.
-		allowed = `state='unknown'`
+	case "revoking", "renewing", "unknown":
 	default:
 		return DynamicLease{}, errors.New("store: unknown lease transition target state")
 	}
+
 	// Environment is bound from the proof: an env-scoped proof (renew/revoke/
 	// settle) may only touch a lease in its own environment; a project-scoped
 	// proof (the provider-delete cascade) has chain.Env == "" and reaches every
 	// environment in the project. The `(chain.Env='' OR environment_id=chain.Env)`
 	// predicate expresses both from the verified chain, never a caller argument.
-	env := string(chain.Env)
-	var query string
-	var args []any
-	if m.MaxTTLSeconds > 0 {
-		query = r.db.SQLPerEngine(
-			`UPDATE dynamic_leases SET state=?,max_ttl_seconds=?,last_transition_at=?,next_attempt_at=?,attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND project_id=? AND (?='' OR environment_id=?) AND `+allowed,
-			`UPDATE dynamic_leases SET state=$1,max_ttl_seconds=$2,last_transition_at=$3,next_attempt_at=$4,attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=$5 AND org_id=$6 AND project_id=$7 AND ($8='' OR environment_id=$9) AND `+allowed)
-		args = []any{m.State, m.MaxTTLSeconds, r.db.Stamp(m.At), r.db.Stamp(m.NextAttemptAt), m.LeaseID, chain.Org, chain.Project, env, env}
-	} else {
-		query = r.db.SQLPerEngine(
-			`UPDATE dynamic_leases SET state=?,last_transition_at=?,next_attempt_at=?,attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND org_id=? AND project_id=? AND (?='' OR environment_id=?) AND `+allowed,
-			`UPDATE dynamic_leases SET state=$1,last_transition_at=$2,next_attempt_at=$3,attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=$4 AND org_id=$5 AND project_id=$6 AND ($7='' OR environment_id=$8) AND `+allowed)
-		args = []any{m.State, r.db.Stamp(m.At), r.db.Stamp(m.NextAttemptAt), m.LeaseID, chain.Org, chain.Project, env, env}
-	}
-	rows, err := r.db.Exec(ctx, query, args...)
+	rows, err := r.queries.dynamicEnqueueTransition(ctx, chain, m)
 	if err != nil {
 		return DynamicLease{}, err
 	}
@@ -504,10 +360,7 @@ func (r dynamicQueries) ReencryptProvider(ctx context.Context, p authz.Proof, id
 	if err != nil {
 		return false, err
 	}
-	query := r.db.SQL(
-		`UPDATE dynamic_providers SET admin_credential_ciphertext=? WHERE org_id=? AND project_id=? AND id=? AND admin_credential_ciphertext=?`,
-	)
-	rows, err := r.db.Exec(ctx, query, newCiphertext, chain.Org, chain.Project, id, oldCiphertext)
+	rows, err := r.queries.dynamicReencryptProvider(ctx, chain, id, newCiphertext, oldCiphertext)
 	if err != nil {
 		return false, err
 	}
@@ -519,22 +372,5 @@ func (r dynamicQueries) ListProvidersForReencrypt(ctx context.Context, p authz.P
 	if err != nil {
 		return nil, err
 	}
-	query := r.db.SQL(
-		`SELECT id, admin_credential_ciphertext FROM dynamic_providers WHERE org_id=? AND project_id=? AND id>? AND admin_credential_ciphertext IS NOT NULL ORDER BY id LIMIT ?`,
-	)
-	rows, err := r.db.Query(ctx, query, chain.Org, chain.Project, cursor, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer closeAdapterRows(rows)
-	var out []ReencryptFieldRow
-	for rows.Next() {
-		var id string
-		var ct []byte
-		if err := rows.Scan(&id, &ct); err != nil {
-			return nil, err
-		}
-		out = append(out, ReencryptFieldRow{ID: id, Owner: id, Ciphertext: ct})
-	}
-	return out, rows.Err()
+	return r.queries.dynamicListProvidersForReencrypt(ctx, chain, cursor, limit)
 }

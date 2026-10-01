@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/cli"
@@ -24,13 +23,5 @@ func TestDoctorGrammar(t *testing.T) {
 				t.Fatalf("exit %d, want %d", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestHelpListsDoctor(t *testing.T) {
-	var help strings.Builder
-	cli.Usage(&help)
-	if !strings.Contains(help.String(), "hikyo doctor") {
-		t.Fatal("help omits doctor")
 	}
 }

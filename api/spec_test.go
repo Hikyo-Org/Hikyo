@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -463,19 +462,6 @@ func TestUnroutedRequestIsDistinguishableFromMalformed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, api.PathPrefix+"/nothing-here", nil)
 	if _, err := api.ValidateRequest(req); !errors.Is(err, api.ErrNoRoute) {
 		t.Fatal("an undescribed path must be reported as unrouted, not as a bad body")
-	}
-}
-
-// The embedded copy is what the server enforces; the file on disk is what CI
-// diffs and what the TypeScript generator reads. They cannot be allowed to
-// differ.
-func TestEmbeddedSpecMatchesTheFileOnDisk(t *testing.T) {
-	onDisk, err := os.ReadFile("openapi.yaml")
-	if err != nil {
-		t.Fatalf("read openapi.yaml: %v", err)
-	}
-	if !bytes.Equal(onDisk, api.SpecYAML) {
-		t.Fatal("the embedded contract differs from api/openapi.yaml")
 	}
 }
 

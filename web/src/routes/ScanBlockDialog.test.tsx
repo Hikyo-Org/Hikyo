@@ -1,12 +1,10 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const withToken: RefusalFinding = {
   rule_id: 'aws-access-key',
@@ -28,21 +26,17 @@ async function render(
   findings: readonly RefusalFinding[],
   onOverride: ((tokens: readonly string[]) => Promise<void>) | null,
 ) {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <ScanBlockDialog
+  const view = await renderForm(
+    <ScanBlockDialog
         title="Declaration blocked by secret scanning"
         intro="Declaring API_KEY was refused."
         findings={findings}
         onOverride={onOverride}
         onClose={vi.fn()}
-      />,
-    );
-  });
-  return { container, unmount: () => act(async () => root.unmount()) };
+      />
+  );
+  const { container } = view;
+  return { container, unmount: view.unmount };
 }
 
 function button(container: HTMLElement, label: string): HTMLButtonElement | undefined {

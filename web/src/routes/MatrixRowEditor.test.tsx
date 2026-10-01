@@ -1,14 +1,12 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { renderForm } from '../testkit/renderForm.tsx';
 import { MemoryRouter } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
 import { MatrixRowEditor, type MatrixEditorChange } from './MatrixRowEditor.tsx';
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 type MatrixRowEditorProps = Parameters<typeof MatrixRowEditor>[0];
 
@@ -106,36 +104,29 @@ async function renderEditor(record: MatrixRowEditorProps['keyRecord'] = keyRecor
   const onApply = vi
     .fn<(changes: readonly MatrixEditorChange[]) => Promise<void>>()
     .mockResolvedValue(undefined);
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-
   const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
-  await act(async () => {
-    root.render(
-      <QueryClientProvider client={queries}>
-        <MemoryRouter>
-          <MatrixRowEditor
-            refData={{ org: 'org-a', project: 'project-a' }}
-            keyRecord={record}
-            environmentId={environmentId}
-            rows={entries}
-            busy={false}
-            mutationError={null}
-            onClose={vi.fn()}
-            onApply={onApply}
-            onCopy={vi.fn()}
-          />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-  });
+  const { container, unmount } = await renderForm(
+    <MemoryRouter>
+      <MatrixRowEditor
+        refData={{ org: 'org-a', project: 'project-a' }}
+        keyRecord={record}
+        environmentId={environmentId}
+        rows={entries}
+        busy={false}
+        mutationError={null}
+        onClose={vi.fn()}
+        onApply={onApply}
+        onCopy={vi.fn()}
+      />
+    </MemoryRouter>,
+    { client: queries },
+  );
 
   return {
     container,
     queries,
     onApply,
-    unmount: async () => act(async () => root.unmount()),
+    unmount,
   };
 }
 
@@ -159,30 +150,24 @@ describe('MatrixRowEditor degraded columns (#451)', () => {
       .fn<(changes: readonly MatrixEditorChange[]) => Promise<void>>()
       .mockResolvedValue(undefined);
     const onCopy = vi.fn();
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    await act(async () => {
-      const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
-      root.render(
-        <QueryClientProvider client={queries}>
-          <MemoryRouter>
-            <MatrixRowEditor
-              refData={{ org: 'org-a', project: 'project-a' }}
-              keyRecord={keyRecord}
-              environmentId={environmentId}
-              rows={rowsInput}
-              busy={false}
-              mutationError={null}
-              onClose={vi.fn()}
-              onApply={onApply}
-              onCopy={onCopy}
-            />
-          </MemoryRouter>
-        </QueryClientProvider>,
-      );
-    });
-    return { container, onApply, onCopy, unmount: async () => act(async () => root.unmount()) };
+    const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
+    const { container, unmount } = await renderForm(
+      <MemoryRouter>
+        <MatrixRowEditor
+          refData={{ org: 'org-a', project: 'project-a' }}
+          keyRecord={keyRecord}
+          environmentId={environmentId}
+          rows={rowsInput}
+          busy={false}
+          mutationError={null}
+          onClose={vi.fn()}
+          onApply={onApply}
+          onCopy={onCopy}
+        />
+      </MemoryRouter>,
+      { client: queries },
+    );
+    return { container, onApply, onCopy, unmount };
   }
 
   it('excludes a degraded column from bulk edit and copy destinations', async () => {
@@ -269,29 +254,23 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
 
   it('labels the dialog by its heading, and closes on Close and on a real backdrop click', async () => {
     const onClose = vi.fn();
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
     const queries = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queries}>
-          <MemoryRouter>
-            <MatrixRowEditor
-              refData={{ org: 'org-a', project: 'project-a' }}
-              keyRecord={keyRecord}
-              environmentId={environmentId}
-              rows={rows}
-              busy={false}
-              mutationError={null}
-              onClose={onClose}
-              onApply={vi.fn()}
-              onCopy={vi.fn()}
-            />
-          </MemoryRouter>
-        </QueryClientProvider>,
-      );
-    });
+    const { container, unmount } = await renderForm(
+      <MemoryRouter>
+        <MatrixRowEditor
+          refData={{ org: 'org-a', project: 'project-a' }}
+          keyRecord={keyRecord}
+          environmentId={environmentId}
+          rows={rows}
+          busy={false}
+          mutationError={null}
+          onClose={onClose}
+          onApply={vi.fn()}
+          onCopy={vi.fn()}
+        />
+      </MemoryRouter>,
+      { client: queries },
+    );
     const dialog = container.querySelector('dialog');
     if (dialog === null) throw new Error('dialog missing');
     const heading = dialog.querySelector('h2');
@@ -323,7 +302,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     await at('mousedown', 10, 10);
     await at('click', 10, 10);
     expect(onClose).toHaveBeenCalledTimes(2);
-    await act(async () => root.unmount());
+    await unmount();
   });
 
   it('toggles edit-all through its label and offers the per-row clear only in the single view', async () => {

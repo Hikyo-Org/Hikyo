@@ -1,3 +1,4 @@
+import { deferred } from '../testkit/ceremony.ts';
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, StrictMode } from 'react';
@@ -23,12 +24,6 @@ vi.mock('../app/AuthProvider.tsx', () => ({ useAuth: () => ({
 
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.clearAllMocks(); });
 afterEach(() => { vi.unstubAllGlobals(); });
-function deferred<Value>() {
-  let resolve: (value: Value) => void = () => { throw new Error('Promise not initialized'); };
-  let reject: (error: Error) => void = () => { throw new Error('Promise not initialized'); };
-  const promise = new Promise<Value>((accept, refuse) => { resolve = accept; reject = refuse; });
-  return { promise, resolve, reject };
-}
 const secret = 'SENTINEL-private-secret-material';
 const env = { org: 'org', project: 'project', environment: 'environment' };
 

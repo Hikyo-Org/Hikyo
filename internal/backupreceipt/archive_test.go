@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
@@ -131,5 +132,30 @@ func TestAuthenticatedArchiveRequiresActualCompleteContainer(t *testing.T) {
 				t.Fatal("closed proof remained usable")
 			}
 		})
+	}
+}
+
+func TestAuthenticatedManifestRejectsCaseVariantAuthorityMember(t *testing.T) {
+	f := newSignedEvidenceFixture(t, true)
+	receipt, err := ParseReceipt(f.material.Receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := testfixture.JSON(t, map[string]any{"format": "hikyo-upgrade-backup/v2", "engine": receipt.Snapshot.Engine, "created_at": receipt.Snapshot.CreatedAt, "upgrade": receipt.Snapshot})
+	manifest = append(bytes.Clone(manifest[:len(manifest)-1]), []byte(`,"UPGRADE":null}`)...)
+	var plaintext bytes.Buffer
+	archive := tar.NewWriter(&plaintext)
+	if err := archive.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0600, Size: int64(len(manifest)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archive.Write(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	receipt.ManifestSHA256 = releaseidentity.Hash(manifest)
+	if err := matchAuthenticatedManifest(bytes.NewReader(plaintext.Bytes()), receipt); err == nil || !strings.Contains(err.Error(), "invalid authenticated manifest JSON") {
+		t.Fatalf("case-variant authenticated authority accepted: %v", err)
 	}
 }

@@ -3,7 +3,7 @@ import { expect, fn, userEvent } from 'storybook/test';
 
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { dynamicProvider as provider } from '../testkit/machineAccess.ts';
-import { RevokeCredentialDialog } from './MachineAccess.tsx';
+import { RevokeCredentialDialog } from './machineAccess/DynamicProviders.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 

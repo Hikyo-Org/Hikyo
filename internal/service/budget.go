@@ -560,7 +560,7 @@ func (b *Budget) chargeOnce(charged *bool, cat budgetCategory, keys budgetKeys) 
 // per-project bound. charged, owned by the caller outside the closure, keeps the
 // charge idempotent across the retry loop (see chargeOnce). Direct
 // r.Catalogue().BumpSchemaRevision calls are banned outside this helper by
-// TestBumpSchemaRevisionOnlyThroughBudget, so a future call site cannot forget
+// internal/lint.CheckServiceSeams, so a future call site cannot forget
 // the paired charge.
 func bumpSchemaRevision(ctx context.Context, r store.Repos, p authz.Proof, b *Budget, charged *bool, project domain.ProjectID) error {
 	if err := b.chargeOnce(charged, budgetSchemaRevision, budgetKeys{Project: project}); err != nil {

@@ -17,6 +17,7 @@ import { zSshca, zSshCertificate, zSshProfile } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
+import { commonRefusalText, statusText } from './statusText.ts';
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
 import { useTransport, type TransportOptions } from './transport.tsx';
 
@@ -306,19 +307,21 @@ export function sshRefusalText(
     'delete-profile': 'The profile was not deleted.',
     revoke: 'The certificate was not revoked.',
   }[act];
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail(`The server refused the request as invalid. ${nothing}`, error);
-      case 401:
-        return 'The session could not be authenticated. Reload and sign in first.';
-      case 403:
-      case 404:
-        return act === 'revoke'
+  return statusText(
+    error,
+    {
+      400: (error) => withDetail(`The server refused the request as invalid. ${nothing}`, error),
+      401: commonRefusalText.unauthenticated,
+      403:
+        act === 'revoke'
           ? `That certificate is not here, or revoking someone else's needs manage-identities on this project. ${nothing}`
-          : `That is not here, or this act needs manage-identities on this project. ${nothing}`;
-      case 409:
-        return withDetail(
+          : `That is not here, or this act needs manage-identities on this project. ${nothing}`,
+      404:
+        act === 'revoke'
+          ? `That certificate is not here, or revoking someone else's needs manage-identities on this project. ${nothing}`
+          : `That is not here, or this act needs manage-identities on this project. ${nothing}`,
+      409: (error) =>
+        withDetail(
           {
             'create-ca': 'A live CA already has that name.',
             rotate: 'The CA changed underneath this request. Reload and try again.',
@@ -329,14 +332,12 @@ export function sshRefusalText(
             revoke: 'The certificate changed underneath this request. Reload and try again.',
           }[act],
           error,
-        );
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        return `${nothing} (server error ${String(error.status)})`;
-    }
-  }
-  return nothing;
+        ),
+      429: commonRefusalText.requests,
+    },
+    nothing,
+    (error) => `${nothing} (server error ${String(error.status)})`,
+  );
 }
 
 /**
@@ -345,25 +346,25 @@ export function sshRefusalText(
  * may have issued a certificate whose generated key is gone, so it says so.
  */
 export function sshIssueFailureText(error: unknown, issued: boolean): string {
+  const fallback = issued
+    ? 'The issuance may have completed, but its response was lost. If a certificate appears below that you did not receive, revoke it.'
+    : 'The certificate could not be issued.';
   if (error instanceof ApiError) {
-    switch (error.status) {
-      case 400:
-        return withDetail('The request is outside the profile. No certificate was issued.', error);
-      case 403:
-        return 'The server refused this issuance: a human requester needs a fresh passkey reauthentication over this environment. No certificate was issued.';
-      case 404:
-        return 'That profile is not here, or you are not on its requester list. No certificate was issued.';
-      case 409:
-        return withDetail('The profile is disabled or its CA changed. No certificate was issued.', error);
-      case 429:
-        return 'Too many requests right now. Wait a moment and try again.';
-      default:
-        break;
-    }
+    return statusText(
+      error,
+      {
+        400: (error) =>
+          withDetail('The request is outside the profile. No certificate was issued.', error),
+        403: 'The server refused this issuance: a human requester needs a fresh passkey reauthentication over this environment. No certificate was issued.',
+        404: 'That profile is not here, or you are not on its requester list. No certificate was issued.',
+        409: (error) =>
+          withDetail('The profile is disabled or its CA changed. No certificate was issued.', error),
+        429: commonRefusalText.requests,
+      },
+      fallback,
+    );
   } else if (error instanceof Error && error.name === 'NotAllowedError') {
     return 'The passkey prompt was dismissed or timed out. No certificate was issued.';
   }
-  return issued
-    ? 'The issuance may have completed, but its response was lost. If a certificate appears below that you did not receive, revoke it.'
-    : 'The certificate could not be issued.';
+  return fallback;
 }
