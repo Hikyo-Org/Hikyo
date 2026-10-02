@@ -36,7 +36,7 @@ jobs:
         with:
           mode: walltime
           run: >-
-            go test -run '^$' -bench .
+            go test -bench=.
             ./internal/crypto/
             ./internal/dotenv/
             ./internal/scanning/
