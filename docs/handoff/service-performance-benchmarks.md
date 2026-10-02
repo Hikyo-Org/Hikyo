@@ -50,6 +50,10 @@ walltime reporting (pushes to main only). The latter uses
 shared-runner timings. Performance regressions are detected after merge, not
 as a reliable premerge comparison. The first Macro main run establishes a new
 hardware baseline; previous hosted x64 timings are not comparable.
+The runner/cache policy permits only this exact Macro label in CodSpeed's
+main-push job. PR smoke jobs remain GitHub-hosted and the Macro job cannot use
+shared Go caches. Validation includes refusals for PR Macro execution, a different
+Macro label, a Macro smoke runner and a shared Go cache on the Macro job.
 
 CodSpeed lists 600 included ARM64 Macro minutes per month, then $0.032/minute.
 Account runner access must be enabled before the first main run. This change
