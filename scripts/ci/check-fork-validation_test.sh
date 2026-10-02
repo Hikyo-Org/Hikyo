@@ -97,6 +97,13 @@ same_repo() {
 	mv "$work/pr-new.json" "$work/pr.json"
 }
 
+bdfl_author() {
+	jq '.user = {id:991668,login:"Dunky13"}' "$work/pr.json" >"$work/pr-new.json"
+	mv "$work/pr-new.json" "$work/pr.json"
+	printf '{"user":{"id":991668},"permission":"admin"}\n' >"$work/permission.json"
+	printf '{"user":{"id":991668},"permission":"none"}\n' >"$work/permission-later.json"
+}
+
 approval() {
 	printf '[[{"id":20,"user":{"id":11,"login":"maintainer"},"state":"APPROVED","commit_id":"%s","submitted_at":"2026-10-01T00:00:00Z"}]]\n' "$head" >"$work/reviews.json"
 }
@@ -182,6 +189,45 @@ expect_reject 'a truncated file list'
 workflow='[{"filename":".github/workflows/ci-fork.yml"}]'
 fixture 1 "$workflow" "$done_run" success
 same_repo
+bdfl_author
+expect_accept 'the pinned BDFL with current maintainer permission and no reviews'
+for permission in write maintain; do
+	printf '{"user":{"id":991668},"permission":"%s"}\n' "$permission" >"$work/permission.json"
+	expect_accept "BDFL with current $permission permission"
+done
+for permission in read triage none; do
+	printf '{"user":{"id":991668},"permission":"%s"}\n' "$permission" >"$work/permission.json"
+	expect_reject "BDFL without maintainer permission ($permission)"
+done
+printf '{"user":{"id":991668},"permission":"admin"}\n' >"$work/permission.json"
+( PERMISSION_ERROR=true expect_reject 'BDFL permission API failure' )
+rm -f "$work/permission-calls"
+( PERMISSION_REMOVED_AT=2 expect_reject 'BDFL permission revoked before validation is accepted' )
+[ "$(cat "$work/permission-calls")" -eq 2 ]
+rm -f "$work/pr-calls"
+( HEAD_MOVES_AT=3 expect_reject 'BDFL head moved while checking current permission' )
+[ "$(cat "$work/pr-calls")" -eq 3 ]
+printf '{"user":{"id":10},"permission":"admin"}\n' >"$work/permission.json"
+expect_reject 'BDFL permission lookup returned another account'
+bdfl_author
+jq '.user.login = "renamed-owner"' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_accept 'BDFL identity survives an account rename'
+fixture 1 "$workflow" "$done_run" success
+same_repo
+jq '.user.login = "Dunky13"' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'another user copying the BDFL login without the pinned ID'
+fixture 1 "$workflow" "$done_run" success
+bdfl_author
+expect_reject 'BDFL exemption cannot authorize fork-controlled workflows'
+fixture 1 "$workflow" "$done_run" failure
+same_repo
+bdfl_author
+expect_reject 'BDFL still needs successful exact-head validation'
+
+fixture 1 "$workflow" "$done_run" success
+same_repo
 expect_reject 'same-repo workflow edits without independent approval'
 approval
 expect_accept 'same-repo workflow edits with exact-head independent maintainer approval'
@@ -243,4 +289,4 @@ approval
 fixture 1 "$docs" "$done_run" success
 ( HEAD_MOVES_AT=3 expect_reject 'head moved after checking completed validation jobs' )
 
-printf 'fork gate fixture: exact-head validation, untouched fork YAML, and independently approved same-repo workflow edits only\n'
+printf 'fork gate fixture: exact-head validation, untouched fork YAML, and same-repo workflow authority from independent approval or the pinned current-maintainer BDFL\n'
