@@ -26,7 +26,7 @@ func selfConfigFixture(t *testing.T) (*SelfConfig, Actor) {
 	return selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "self-config.db")}, map[string]string{"HIKYO_UPDATE_CHANNEL": "nightly"})
 }
 
-func selfConfigFixtureConfig(t *testing.T, cfg store.Config, seed map[string]string) (*SelfConfig, Actor) {
+func selfConfigFixtureConfig(t testing.TB, cfg store.Config, seed map[string]string) (*SelfConfig, Actor) {
 	t.Helper()
 	db, err := openServiceFixture(t, cfg)
 	if err != nil {

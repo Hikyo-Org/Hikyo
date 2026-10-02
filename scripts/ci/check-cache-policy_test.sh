@@ -38,8 +38,8 @@ for candidate in "$workflows_dir"/*.yml "$workflows_dir"/*.yaml; do
 done
 [ "$#" -gt 0 ] || fail 'no GitHub workflow files found'
 
-# Hikyo deliberately uses the free GitHub-hosted pool. Keep runner placement
-# reviewable instead of allowing a third-party label to return unnoticed.
+# Ordinary CI uses the free GitHub-hosted pool. Explicit measurement lanes
+# below have closed runner policies, so third-party labels cannot slip in.
 for file in "$@"; do
 	if grep -iE 'blacksmith|buildjet|self-hosted' "$file" >/dev/null; then
 		fail "non-GitHub runner reference in $(basename "$file")"
@@ -83,6 +83,28 @@ for file in "$@"; do
 			;;
 	esac
 	runner_source=$file
+	if [ "$(basename "$file")" = codspeed.yml ]; then
+		# Only the main performance job may use this approved Macro runner.
+		# PR smoke checks and any future jobs stay in the GitHub-hosted pool.
+		macro=$(workflow_job_block "$file" benchmarks)
+		printf '%s\n' "$macro" | grep -Fx '    runs-on: codspeed-macro-arm64-graviton-ubuntu-22-04' >/dev/null ||
+			fail 'CodSpeed main benchmarks must use the approved Graviton Macro runner'
+		[ "$(printf '%s\n' "$macro" | grep -c 'runs-on:')" = 1 ] ||
+			fail 'CodSpeed main benchmarks must declare exactly one runner'
+		printf '%s\n' "$macro" | grep -Fx "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'" >/dev/null ||
+			fail 'CodSpeed Macro runner must be restricted to pushes to main'
+		printf '%s\n' "$macro" | grep -Fx '          cache: false' >/dev/null ||
+			fail 'CodSpeed Macro runner must disable shared Go caches'
+		if printf '%s\n' "$macro" | grep -E 'actions/cache(@|/)|^[[:space:]]+cache:[[:space:]]+true' >/dev/null; then
+			fail 'CodSpeed Macro runner must not use shared caches'
+		fi
+		runner_source=$(mktemp)
+		awk '
+			$0 == "  benchmarks:" { skip = 1; next }
+			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
+			!skip { print }
+		' "$file" >"$runner_source"
+	fi
 	if [ "$(basename "$file")" = ci.yml ]; then
 		# The local secret scanner (#153) is the one non-Linux lane: a closed
 		# matrix of exactly the two other GitHub-hosted client platforms, with no
@@ -212,4 +234,4 @@ for file in "$@"; do
 	' "$file" || fail "cache writer without trusted-main exact-miss guard in $(basename "$file")"
 done
 
-printf 'cache policy fixture: GitHub runners, stable Go keys, and trusted exact-miss writers verified\n'
+printf 'cache policy fixture: approved runner lanes, stable Go keys, and trusted exact-miss writers verified\n'

@@ -1,7 +1,7 @@
 name: codspeed
 
-# Continuous performance tracking of the Go benchmarks with CodSpeed. No
-# production custody or secrets: CodSpeed authenticates through OIDC.
+# PRs smoke-test benchmarks on hosted runners. Only pushes to main use paid
+# Macro minutes and upload comparable walltime data. CodSpeed uses OIDC.
 on:
   push:
     branches: [main]
@@ -16,9 +16,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmarks:
-    name: Run benchmarks
+  smoke:
+    name: Benchmark smoke
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Exercise every benchmark once
+        run: >-
+          go test -run '^$' -bench . -benchtime=1x
+          ./internal/crypto/
+          ./internal/dotenv/
+          ./internal/scanning/
+          ./internal/server/
+          ./internal/service/
+
+  benchmarks:
+    name: Track main performance
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: codspeed-macro-arm64-graviton-ubuntu-22-04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -35,6 +58,7 @@ jobs:
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
           mode: walltime
+          # CodSpeed runs benchmarks only and supports -bench, not -run.
           run: >-
             go test -bench=.
             ./internal/crypto/
