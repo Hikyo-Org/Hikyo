@@ -40,7 +40,10 @@ export function InstanceMailPanel() {
     {mail.isSuccess ? <>
       <p>Mailer <Badge>{mail.data.configured ? 'configured' : 'not configured'}</Badge></p>
       <p className="field__hint">Configured means the active configuration has valid mail settings. Only a test send checks reachability and delivery.</p>
-      {!mail.data.configured ? <p>Configure mail under <Link to={surfaceById('instance-config').path}>Hikyo configuration</Link> and apply the changes. Before managed configuration is adopted, bootstrap mail uses HIKYO_MAIL_* environment settings. An email sign-up entry stays inactive until the mailer is configured.</p> : null}
+      {!mail.data.configured ? <>
+        <p>Configure mail and apply the changes. Before managed configuration is adopted, bootstrap mail uses HIKYO_MAIL_* environment settings. An email sign-up entry stays inactive until the mailer is configured.</p>
+        <Link className="btn" to={surfaceById('instance-config').path}>Hikyo configuration</Link>
+      </> : null}
       <form onSubmit={submit}>
         <Input label="Test recipient" name="to" type="email" required disabled={!mail.data.configured || send.isPending} value={to} onChange={(event) => setTo(event.target.value)} />
         <Button type="submit" disabled={!mail.data.configured || send.isPending}>Send test…</Button>
