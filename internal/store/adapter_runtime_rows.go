@@ -24,6 +24,7 @@ func workerExecutionMetadata(c adapterWorkerLoadExecutionQueryRow, targetID, env
 	out.Target.Destination.Scope = c.DestinationScope
 	out.Target.NamePrefix = c.NamePrefix
 	out.Target.Generation = c.Generation
+	out.Revision = c.Revision
 	out.Target.Options = adapter.VariableOptions{Protected: c.VariableProtected == 1, Hidden: c.VariableHidden == 1, Expand: c.VariableExpand == 1}
 	if err := json.Unmarshal(c.SelectedRepositoryIds, &out.Target.Destination.SelectedRepositoryIDs); err != nil {
 		return AdapterExecution{}, fmt.Errorf("store: adapter selected repository ids: %w", err)

@@ -2,6 +2,7 @@ import { CeremonyNotice } from '../../ui/CeremonyNotice.tsx';
 import { useEffect, useRef } from 'react';
 import {
   expiryLabel,
+  disclosureReachText,
   identityRefusalText,
   mintCredential,
   mintFailureText,
@@ -172,7 +173,7 @@ export function MintDialog({
           <p className="ceremony__scope">
             {request.reach.length === 0
               ? 'This account reaches no plaintext in the resulting post-state, so no disclosure capability and no reauthentication are required. Its deliveries stay configuration and secret presence only.'
-              : `This account decrypts ${request.reach.map((r) => r.name).join(', ')}. Each takes its own passkey reauthentication before the value is minted.`}
+              : `This account decrypts ${disclosureReachText(request.reach)}. Each distinct environment takes its own passkey reauthentication before the value is minted.`}
           </p>
           {request.rotating ? (
             <p className="dialog__lede">

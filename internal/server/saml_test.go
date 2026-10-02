@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -20,15 +22,18 @@ type stubSAMLAuth struct {
 	acsResult   service.LoginResult
 	metadata    []byte
 	acsCookie   string
+	acsError    error
+	acsRelay    string
 }
 
 func (s *stubSAMLAuth) SAMLStart(context.Context, string, string, string, string, string) (service.SAMLStartResult, error) {
 	return s.startResult, nil
 }
 
-func (s *stubSAMLAuth) SAMLACS(_ context.Context, _, _, _, initiatorCookie string) (service.LoginResult, error) {
+func (s *stubSAMLAuth) SAMLACS(_ context.Context, _, _, relayState, initiatorCookie string) (service.LoginResult, error) {
 	s.acsCookie = initiatorCookie
-	return s.acsResult, nil
+	s.acsRelay = relayState
+	return s.acsResult, s.acsError
 }
 
 func (s *stubSAMLAuth) SAMLMetadata(context.Context, string) ([]byte, error) {
@@ -117,6 +122,90 @@ func TestSAMLACSConsumesInitiatorAndMintsOrdinaryBrowserCookie(t *testing.T) {
 	}
 	if _, leaked := body["session_token"]; leaked {
 		t.Fatal("browser session token leaked in ACS JSON")
+	}
+}
+
+type samlReady struct{}
+
+func (samlReady) Ready(context.Context) error { return nil }
+
+func samlHTTPRequest(t *testing.T, stub *stubSAMLAuth, accept, relay string) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{"SAMLResponse": {"c2lnbmVkLXJlc3BvbnNl"}, "RelayState": {relay}}
+	request := httptest.NewRequest(http.MethodPost, "https://hikyo.example"+samlACSPath("corp"), strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Accept", accept)
+	request.AddCookie(&http.Cookie{Name: samlBindingCookieName("corp", relay), Value: "initiator-secret"})
+	recorder := httptest.NewRecorder()
+	New(samlReady{}, &API{SAMLAuth: stub}, nil).ServeHTTP(recorder, request)
+	if err := api.ValidateResponse(request, recorder.Code, recorder.Header(), recorder.Body.Bytes()); err != nil {
+		t.Fatalf("SAML HTTP response violates contract: %v; status=%d body=%s", err, recorder.Code, recorder.Body)
+	}
+	return recorder
+}
+
+func TestSAMLACSHTTPBrowserCompletionRedirectsWithSharedCookiePair(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	relay := "validated-relay-state"
+	stub := &stubSAMLAuth{acsResult: service.LoginResult{
+		SessionToken: "browser-secret", CSRFToken: "csrf-secret", SessionID: "session", Artifact: service.ArtifactBrowser,
+		CreatedAt: now, IdleExpires: now.Add(time.Hour), AbsExpires: now.Add(8 * time.Hour), Principal: "principal",
+	}}
+	recorder := samlHTTPRequest(t, stub, "text/html,application/xhtml+xml,*/*;q=0.8", relay)
+	if recorder.Code != http.StatusSeeOther || recorder.Header().Get("Location") != "/auth/saml/done?state="+relay {
+		t.Fatalf("browser completion = %d Location %q", recorder.Code, recorder.Header().Get("Location"))
+	}
+	if recorder.Body.Len() != 0 || strings.Contains(recorder.Header().Get("Location"), "secret") {
+		t.Fatal("browser redirect leaked session material or emitted a response body")
+	}
+	if stub.acsRelay != relay || stub.acsCookie != "initiator-secret" {
+		t.Fatal("HTTP completion changed the SAML transaction/initiator binding")
+	}
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 3 || cookies[0].MaxAge >= 0 {
+		t.Fatalf("cookies = %#v, want initiator clear plus shared browser pair", cookies)
+	}
+	if session := cookies[1]; session.Name != browserSessionCookie || session.Value != "browser-secret" || !session.Secure || !session.HttpOnly || session.Path != "/" || session.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("session cookie = %#v", session)
+	}
+	if csrf := cookies[2]; csrf.Name != browserCSRFCookie || csrf.Value != "csrf-secret" || !csrf.Secure || csrf.HttpOnly || csrf.Path != "/" || csrf.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("CSRF cookie = %#v", csrf)
+	}
+}
+
+func TestSAMLACSHTTPJSONCompletionRemainsJSON(t *testing.T) {
+	for _, accept := range []string{"", "application/json", "*/*", "text/html;q=0,application/json"} {
+		t.Run(accept, func(t *testing.T) {
+			now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+			stub := &stubSAMLAuth{acsResult: service.LoginResult{
+				SessionToken: "browser-secret", CSRFToken: "csrf-secret", SessionID: "ses_01980000-0000-7000-8000-000000000001", Artifact: service.ArtifactBrowser,
+				CreatedAt: now, IdleExpires: now.Add(time.Hour), AbsExpires: now.Add(8 * time.Hour), Principal: "usr_01980000-0000-7000-8000-000000000002",
+				Assurance: service.Assurance{Method: "saml:corp", Factors: []string{"saml"}, AuthenticatedAt: now},
+			}}
+			recorder := samlHTTPRequest(t, stub, accept, "validated-relay-state")
+			if recorder.Code != http.StatusOK || recorder.Header().Get("Location") != "" || recorder.Header().Get("Content-Type") != "application/json" {
+				t.Fatalf("JSON completion = %d Location %q type %q", recorder.Code, recorder.Header().Get("Location"), recorder.Header().Get("Content-Type"))
+			}
+			if strings.Contains(recorder.Body.String(), "browser-secret") || strings.Contains(recorder.Body.String(), "csrf-secret") {
+				t.Fatal("browser credential leaked into JSON")
+			}
+			if cookies := recorder.Result().Cookies(); len(cookies) != 3 {
+				t.Fatalf("JSON cookie pair omitted: %#v", cookies)
+			}
+		})
+	}
+}
+
+func TestSAMLACSHTTPInvalidStateNeverRedirectsOrMintsCookies(t *testing.T) {
+	stub := &stubSAMLAuth{acsError: domain.ErrUnauthenticated}
+	recorder := samlHTTPRequest(t, stub, "text/html", "invalid-relay-state")
+	if recorder.Code != http.StatusUnauthorized || recorder.Header().Get("Location") != "" {
+		t.Fatalf("invalid state = %d Location %q", recorder.Code, recorder.Header().Get("Location"))
+	}
+	for _, cookie := range recorder.Result().Cookies() {
+		if cookie.Name == browserSessionCookie || cookie.Name == browserCSRFCookie || cookie.MaxAge >= 0 {
+			t.Fatalf("invalid state minted a cookie: %#v", cookie)
+		}
 	}
 }
 

@@ -125,6 +125,22 @@ func (s *Server) Seed(name, value string, tags map[string]string) {
 	sec.versions["seed"] = &version{value: value, stages: []string{"AWSCURRENT"}}
 }
 
+// RemoveTag models an operator removing ownership without replacing values.
+func (s *Server) RemoveTag(name, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.secrets[name].tags, key)
+}
+
+// Recreate replaces a named resource with a new ARN and an unowned value.
+func (s *Server) Recreate(name, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sec := s.newSecret(name, "", nil)
+	sec.arn = "arn:aws:secretsmanager:" + s.Region + ":" + s.Account + ":secret:" + name + "-Gh56Ij"
+	sec.versions["seed"] = &version{value: value, stages: []string{"AWSCURRENT"}}
+}
+
 // ExternalPut writes a new version the way an operator console edit does:
 // it moves only AWSCURRENT.
 func (s *Server) ExternalPut(name, value string) {
@@ -190,6 +206,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := in["SecretId"].(string)
+	if strings.HasPrefix(id, "arn:") {
+		// Full ARNs select one resource identity, not a subsequently
+		// recreated name. A stale ARN must never fall back to a name lookup.
+		for name, secret := range s.secrets {
+			if secret.arn == id {
+				id = name
+				break
+			}
+		}
+	}
 	switch operation {
 	case "CreateSecret":
 		name, _ := in["Name"].(string)
@@ -275,9 +301,45 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// AWS makes its first value current even with explicit custom stages.
+		if len(sec.versions) == 0 && !slices.Contains(stages, "AWSCURRENT") {
+			stages = append(stages, "AWSCURRENT")
+		}
 		sec.versions[token] = &version{value: value}
 		moveStages(sec, token, stages...)
 		writeJSON(w, map[string]string{"ARN": sec.arn, "VersionId": token})
+	case "UpdateSecretVersionStage":
+		sec, ok := s.secrets[id]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "ResourceNotFoundException", "")
+			return
+		}
+		if sec.deleted {
+			writeError(w, http.StatusBadRequest, "InvalidRequestException", "")
+			return
+		}
+		stage, _ := in["VersionStage"].(string)
+		moveTo, _ := in["MoveToVersionId"].(string)
+		removeFrom, _ := in["RemoveFromVersionId"].(string)
+		if _, exists := sec.versions[moveTo]; !exists || stage == "" {
+			writeError(w, http.StatusBadRequest, "InvalidParameterException", "")
+			return
+		}
+		owner := ""
+		for versionID, v := range sec.versions {
+			if slices.Contains(v.stages, stage) {
+				owner = versionID
+			}
+		}
+		if (owner != "" && owner != moveTo && removeFrom != owner) || (removeFrom != "" && removeFrom != owner) {
+			writeError(w, http.StatusBadRequest, "InvalidParameterException", "")
+			return
+		}
+		moveStages(sec, moveTo, stage)
+		if stage == "AWSCURRENT" && owner != "" && owner != moveTo {
+			moveStages(sec, owner, "AWSPREVIOUS")
+		}
+		writeJSON(w, map[string]string{"ARN": sec.arn, "Name": sec.name})
 	case "TagResource":
 		sec, ok := s.secrets[id]
 		if !ok {

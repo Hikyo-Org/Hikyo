@@ -1,5 +1,7 @@
 package main
 
+import "github.com/Hikyo-Org/hikyo/internal/multicall"
+
 // reviewedWireExtras is the compile-checked authoring owner for contract-external
 // entries and supplemental authority/audit links. It runs only during generation.
 // OpenAPI owns each HTTP route class and primary operation.
@@ -244,7 +246,17 @@ var reviewedWireExtras = wireExtras{
 		"http:PUT /api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration": {Ops: []string{"OpKeySecretRuleChange"}},
 	},
 	Entries: map[string]wireRow{
-		"cli:about": {Class: "ClassUnauthenticated"},
+		"cli:" + multicall.RootKeyStage:          {Class: "ClassSystem"},
+		"cli:" + multicall.TLSStage:              {Class: "ClassSystem"},
+		"cli:" + multicall.RolloutAuthorityStage: {Class: "ClassSystem"},
+		"cli:" + multicall.ImportSubprocess:      {Class: "ClassTenant"},
+		"cli:operator":                           {Class: "ClassSystem"},
+		"cli:updater":                            {Class: "ClassSystem"},
+		"cli:upgrade":                            {Class: "ClassSystem"},
+		"cli:config-rollout":                     {Class: "ClassSystem"},
+		"cli:--version":                          {Class: "ClassUnauthenticated"},
+		"cli:--upgrade-bundle-formats":           {Class: "ClassUnauthenticated"},
+		"cli:about":                              {Class: "ClassUnauthenticated"},
 		// `access` reaches BOTH classes; the org/project/env grant routes are
 		// tenant-class, the instance-scope ones are instance-class. It is
 		// classified instance because that is the WEAKER probe contract of the
@@ -269,7 +281,16 @@ var reviewedWireExtras = wireExtras{
 		// same local-authority verb group and emits the reset issuance beside the mint.
 		// `hikyo admin grant` (#55 break-glass) joins the same local-authority verb
 		// group: a recovery grant issued on the host, with no network route.
-		"cli:admin":    {Class: "ClassSystem", Events: []string{"EventAuthAuthorityMinted", "EventAuthCredentialResetIssued", "EventBreakGlassGrant", "EventPrivacySubjectCorrected", "EventPrivacySubjectExported", "EventPrivacySubjectRestricted", "EventPrivacySubjectReleased", "EventPrivacySubjectErased"}},
+		"cli:admin": {Class: "ClassSystem", Events: []string{"EventAuthAuthorityMinted", "EventAuthCredentialResetIssued", "EventBreakGlassGrant", "EventPrivacySubjectCorrected", "EventPrivacySubjectExported", "EventPrivacySubjectRestricted", "EventPrivacySubjectReleased", "EventPrivacySubjectErased"}},
+		"job:converge": {Class: "ClassSystem", Ops: []string{"OpAdapterPush"}, Events: []string{
+			"EventAdapterPushIntent", "EventAdapterPushOutcome", "EventAdapterKeyDelivered", "EventAdapterAbort",
+		}},
+		"job:scrub": {Class: "ClassSystem", Ops: []string{"OpAdapterPush"}, Events: []string{
+			"EventAdapterPushIntent", "EventAdapterPushOutcome", "EventAdapterScrub",
+		}},
+		"job:activate": {Class: "ClassSystem", Ops: []string{"OpAdapterConfigure"}, Events: []string{
+			"EventAdapterPushIntent", "EventAdapterPushOutcome",
+		}},
 		"cli:approval": {Class: "ClassTenant"},
 		"cli:backup":   {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
 		"cli:cert":     {Class: "ClassTenant"},
@@ -581,6 +602,5 @@ var reviewedWireExtras = wireExtras{
 // http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys
 // Transit (#156).
 
-// Outbox job types and SSE emit sites: none exist. Their registries are
-// this table's "job:" and "sse:" key spaces; the first entry of each
-// kind must arrive with its probe class.
+// Adapter worker jobs carry explicit system classifications and audit linkage.
+// SSE emit sites remain empty; the first entry must arrive with its probe class.

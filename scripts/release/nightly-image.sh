@@ -18,6 +18,11 @@ trap cleanup EXIT HUP INT TERM
 fail() { printf 'nightly image: %s\n' "$1" >&2; exit 1; }
 image=$(printf 'ghcr.io/%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
 [ "${IMAGE:-$image}" = "$image" ] || fail 'unexpected image repository'
+verify_source_signature() {
+	cosign verify --certificate-identity "https://github.com/$REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" \
+		--certificate-oidc-issuer https://token.actions.githubusercontent.com \
+		--certificate-github-workflow-sha "$COMMIT" "$ref" >"$work/signatures.json"
+}
 
 case "$1" in
 prepare)
@@ -60,7 +65,15 @@ promote)
 	: "${IMAGE_DIGEST:?}"
 	is_digest "$IMAGE_DIGEST"
 	ref=$image@$IMAGE_DIGEST
-	# Apply the same checks to a fresh push and an interrupted earlier push.
+	# Only this workflow's successful build may mint new source authority. An
+	# interrupted push must already carry an authentic signature for this SHA,
+	# before any downloaded payload is inspected or executed. Never re-sign it.
+	case "${IMAGE_BUILT:-false}" in
+	true) ;;
+	false) verify_source_signature ;;
+	*) fail 'IMAGE_BUILT must be true or false' ;;
+	esac
+	# Apply the same payload checks to a fresh push and an interrupted earlier push.
 	docker buildx imagetools inspect "$ref" --raw >"$work/index.json"
 	jq -e '([.manifests[].platform | .os + "/" + .architecture] | sort) == ["linux/amd64", "linux/arm64"]' "$work/index.json" >/dev/null
 	for arch in amd64 arm64; do
@@ -85,9 +98,10 @@ promote)
 	# Restore host architecture after checking arm64 without executing it.
 	docker pull --platform linux/amd64 "$ref"
 	"$script_dir/smoke-image-ui.sh" "$ref"
-	cosign sign --yes --use-signing-config=false --rekor-url=https://rekor.sigstore.dev "$ref"
-	cosign verify --certificate-identity "https://github.com/$REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" \
-		--certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >"$work/signatures.json"
+	if [ "${IMAGE_BUILT:-false}" = true ]; then
+		cosign sign --yes --use-signing-config=false --rekor-url=https://rekor.sigstore.dev "$ref"
+		verify_source_signature
+	fi
 	printf 'digest=%s\n' "$IMAGE_DIGEST" >>"$GITHUB_OUTPUT"
 	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		printf '### Verified nightly container\n\nImage: %s:%s\n\nDigest: %s\n\n' \

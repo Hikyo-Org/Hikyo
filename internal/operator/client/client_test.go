@@ -216,6 +216,13 @@ func TestFetchStatusMapping(t *testing.T) {
 	}
 	for _, tc := range cases {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if tc.status == http.StatusNotFound {
+				w.Header().Set("X-Hikyo-Delivery-Refusal", "v1")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(`{"error":{"code":"not_found"}}`))
+				return
+			}
 			w.WriteHeader(tc.status)
 		}))
 		c, err := NewClient(srv.URL, caPEM(t, srv), "hikyo-operator/test")
@@ -239,9 +246,62 @@ func TestFetchStatusMapping(t *testing.T) {
 	}
 }
 
+func TestUnmarkedJSON404RetainsDeliveredData(t *testing.T) {
+	for _, marker := range []string{"", "v2", "v1, v1"} {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if marker != "" {
+				w.Header().Set("X-Hikyo-Delivery-Refusal", marker)
+			}
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
+		}))
+		c, err := NewClient(srv.URL, caPEM(t, srv), "hikyo-operator/test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, outcome, err := c.Fetch(context.Background(), FetchRequest{Org: "o", Project: "p", Environment: "e", Bearer: "t"})
+		srv.Close()
+		if outcome != OutcomeFetchFailed || err == nil {
+			t.Fatalf("marker %q outcome = %v, error %v", marker, outcome, err)
+		}
+	}
+}
+
 func TestNewClientRefusesHTTP(t *testing.T) {
 	if _, err := NewClient("http://example.test", nil, "ua"); err == nil {
 		t.Fatal("expected refusal of a non-https instance url")
+	}
+}
+
+func TestNewClientRequiresCanonicalOrigin(t *testing.T) {
+	for _, raw := range []string{
+		"https://user@example.test",
+		"https://example.test/api",
+		"https://example.test?tenant=x",
+		"https://example.test#fragment",
+		"https://EXAMPLE.test",
+	} {
+		if _, err := NewClient(raw, nil, "ua"); err == nil {
+			t.Fatalf("NewClient(%q) accepted a non-canonical origin", raw)
+		}
+	}
+}
+
+func TestFetchGeneric404RetainsDeliveredData(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("default backend"))
+	}))
+	defer srv.Close()
+	c, err := NewClient(srv.URL, caPEM(t, srv), "hikyo-operator/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, outcome, err := c.Fetch(t.Context(), FetchRequest{Org: "o", Project: "p", Environment: "e", Bearer: "t"})
+	if err == nil || outcome != OutcomeFetchFailed {
+		t.Fatalf("generic 404 = %v, %v, want fetch failure", outcome, err)
 	}
 }
 

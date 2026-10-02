@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
+	"reflect"
+	"slices"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,11 +18,14 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
@@ -170,7 +176,7 @@ func (r *HikyoSecretReconciler) SetupWithManager(mgr manager.Manager) error {
 	// reads the Secret uncached and recomputes its stamp) plus the 5m periodic
 	// requeue — no cached Secret ever exists to leak values or to lag ownership.
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&hikyov1.HikyoSecret{}).
+		For(&hikyov1.HikyoSecret{}, builder.WithPredicates(hikyoSecretPredicate())).
 		Watches(&hikyov1.HikyoInstance{}, r.instanceHandler())
 	if r.Config.TriggerRollouts {
 		// Watch opted-in workloads so a Rollout=False/Stalled state is observed
@@ -191,6 +197,26 @@ func (r *HikyoSecretReconciler) SetupWithManager(mgr manager.Manager) error {
 			SkipNameValidation: skipNameValidation(r.SkipControllerNameValidation),
 		}).
 		Complete(r)
+}
+
+// hikyoSecretPredicate suppresses the status update emitted at the end of a
+// reconcile. Spec, label, annotation, deletion, and finalizer transitions still
+// enqueue immediately; steady-state refresh remains governed by RequeueAfter.
+func hikyoSecretPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldCR, oldOK := e.ObjectOld.(*hikyov1.HikyoSecret)
+			newCR, newOK := e.ObjectNew.(*hikyov1.HikyoSecret)
+			if !oldOK || !newOK {
+				return true
+			}
+			return oldCR.Generation != newCR.Generation ||
+				!maps.Equal(oldCR.Labels, newCR.Labels) ||
+				!maps.Equal(oldCR.Annotations, newCR.Annotations) ||
+				!reflect.DeepEqual(oldCR.DeletionTimestamp, newCR.DeletionTimestamp) ||
+				!slices.Equal(oldCR.Finalizers, newCR.Finalizers)
+		},
+	}
 }
 
 // jitteredExponential is the § 0.4 error backoff: exponential 1s → 5min,

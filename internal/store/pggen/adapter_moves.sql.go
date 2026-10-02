@@ -222,7 +222,7 @@ func (q *Queries) AdapterMoveBeginOriginCollisions(ctx context.Context, arg Adap
 }
 
 const adapterMoveBeginOriginTargets = `-- name: AdapterMoveBeginOriginTargets :many
-SELECT (t.id)::text AS id,(t.environment_id)::text AS environment_id,(t.destination_kind)::text AS kind,(t.destination_owner)::text AS owner,(t.destination_name)::text AS name,(t.destination_environment)::text AS destination_environment,(t.destination_scope)::text AS destination_scope,t.destination_id AS destination_id,t.repository_id AS repository_id,(t.visibility)::text AS visibility,(t.selected_repository_ids)::jsonb AS selected_repository_ids,(t.name_prefix)::text AS prefix,t.generation AS generation,(COALESCE(t.active_job_id,''))::text AS active_job,(COALESCE((SELECT jsonb_agg(surface||':'||effective_name ORDER BY surface,effective_name) FROM adapter_ledger WHERE target_id=t.id AND org_id=t.org_id AND project_id=t.project_id AND environment_id=t.environment_id AND state IN ('owned','dispatched')),'[]'::jsonb))::jsonb AS orphaned_names FROM adapter_targets t WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id FOR UPDATE
+SELECT (t.id)::text AS id,(t.environment_id)::text AS environment_id,(t.destination_kind)::text AS kind,(t.destination_owner)::text AS owner,(t.destination_name)::text AS name,(t.destination_environment)::text AS destination_environment,(t.destination_scope)::text AS destination_scope,t.destination_id AS destination_id,t.repository_id AS repository_id,(t.visibility)::text AS visibility,(t.selected_repository_ids)::jsonb AS selected_repository_ids,(t.name_prefix)::text AS prefix,(CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END)::bigint AS paused,t.generation AS generation,(COALESCE(t.active_job_id,''))::text AS active_job,(COALESCE((SELECT jsonb_agg(surface||':'||effective_name ORDER BY surface,effective_name) FROM adapter_ledger WHERE target_id=t.id AND org_id=t.org_id AND project_id=t.project_id AND environment_id=t.environment_id AND state IN ('owned','dispatched')),'[]'::jsonb))::jsonb AS orphaned_names FROM adapter_targets t WHERE t.adapter_id=$1 AND t.org_id=$2 AND t.project_id=$3 AND t.state='active' ORDER BY t.id FOR UPDATE
 `
 
 type AdapterMoveBeginOriginTargetsParams struct {
@@ -244,6 +244,7 @@ type AdapterMoveBeginOriginTargetsRow struct {
 	Visibility             string
 	SelectedRepositoryIds  []byte
 	Prefix                 string
+	Paused                 int64
 	Generation             int64
 	ActiveJob              string
 	OrphanedNames          []byte
@@ -271,6 +272,7 @@ func (q *Queries) AdapterMoveBeginOriginTargets(ctx context.Context, arg Adapter
 			&i.Visibility,
 			&i.SelectedRepositoryIds,
 			&i.Prefix,
+			&i.Paused,
 			&i.Generation,
 			&i.ActiveJob,
 			&i.OrphanedNames,
@@ -286,7 +288,7 @@ func (q *Queries) AdapterMoveBeginOriginTargets(ctx context.Context, arg Adapter
 }
 
 const adapterMoveBeginTarget = `-- name: AdapterMoveBeginTarget :one
-SELECT (t.adapter_id)::text AS adapter_id,(a.origin)::text AS origin,(t.environment_id)::text AS environment_id,(t.destination_kind)::text AS kind,(t.destination_owner)::text AS owner,(t.destination_name)::text AS name,(t.destination_environment)::text AS destination_environment,(t.destination_scope)::text AS destination_scope,t.destination_id AS destination_id,(t.name_prefix)::text AS prefix,t.generation AS generation,(COALESCE(t.active_job_id,''))::text AS active_job,(CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>$1 THEN 1 ELSE 0 END)::bigint AS provider_busy,(COALESCE((SELECT jsonb_agg(surface||':'||effective_name ORDER BY surface,effective_name) FROM adapter_ledger WHERE target_id=t.id AND org_id=t.org_id AND project_id=t.project_id AND environment_id=t.environment_id AND state IN ('owned','dispatched')),'[]'::jsonb))::jsonb AS orphaned_names FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.state='active' AND a.state='active' FOR UPDATE OF t,a
+SELECT (t.adapter_id)::text AS adapter_id,(a.origin)::text AS origin,(t.environment_id)::text AS environment_id,(t.destination_kind)::text AS kind,(t.destination_owner)::text AS owner,(t.destination_name)::text AS name,(t.destination_environment)::text AS destination_environment,(t.destination_scope)::text AS destination_scope,t.destination_id AS destination_id,(t.name_prefix)::text AS prefix,(CASE WHEN t.paused_at IS NULL THEN 0 ELSE 1 END)::bigint AS paused,t.generation AS generation,(COALESCE(t.active_job_id,''))::text AS active_job,(CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>$1 THEN 1 ELSE 0 END)::bigint AS provider_busy,(COALESCE((SELECT jsonb_agg(surface||':'||effective_name ORDER BY surface,effective_name) FROM adapter_ledger WHERE target_id=t.id AND org_id=t.org_id AND project_id=t.project_id AND environment_id=t.environment_id AND state IN ('owned','dispatched')),'[]'::jsonb))::jsonb AS orphaned_names FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=$2 AND t.org_id=$3 AND t.project_id=$4 AND t.state='active' AND a.state='active' FOR UPDATE OF t,a
 `
 
 type AdapterMoveBeginTargetParams struct {
@@ -307,6 +309,7 @@ type AdapterMoveBeginTargetRow struct {
 	DestinationScope       string
 	DestinationID          int64
 	Prefix                 string
+	Paused                 int64
 	Generation             int64
 	ActiveJob              string
 	ProviderBusy           int64
@@ -332,6 +335,7 @@ func (q *Queries) AdapterMoveBeginTarget(ctx context.Context, arg AdapterMoveBeg
 		&i.DestinationScope,
 		&i.DestinationID,
 		&i.Prefix,
+		&i.Paused,
 		&i.Generation,
 		&i.ActiveJob,
 		&i.ProviderBusy,
@@ -999,7 +1003,7 @@ func (q *Queries) AdapterMoveMarkAdapterMoving(ctx context.Context, arg AdapterM
 }
 
 const adapterMoveMarkMovingTarget = `-- name: AdapterMoveMarkMovingTarget :execrows
-UPDATE adapter_targets SET generation=$1,state='moving',sync_status='converging',failure_names='[]'::jsonb,active_job_id=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND generation=$7 AND state='active' AND provider_lease_job_id IS NULL
+UPDATE adapter_targets SET generation=$1,state='moving',sync_status='converging',failure_names='[]'::jsonb,active_job_id=$2 WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND generation=$7 AND state='active' AND paused_at IS NULL AND provider_lease_job_id IS NULL
 `
 
 type AdapterMoveMarkMovingTargetParams struct {
@@ -1154,7 +1158,7 @@ func (q *Queries) AdapterMoveReplaceOriginCollisions(ctx context.Context, arg Ad
 }
 
 const adapterMoveResetDestinations = `-- name: AdapterMoveResetDestinations :execrows
-UPDATE adapter_route_move_targets SET destination_id=0 WHERE move_id=$1 AND org_id=$2 AND project_id=$3
+UPDATE adapter_route_move_targets SET destination_id=0,repository_id=0 WHERE move_id=$1 AND org_id=$2 AND project_id=$3
 `
 
 type AdapterMoveResetDestinationsParams struct {

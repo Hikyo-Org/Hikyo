@@ -1,10 +1,11 @@
 #!/bin/sh
-# Trusted merge gate for a fork pull request (#813). trusted-ci runs this from
+# Trusted merge gate for untrusted pull-request validation (#813). trusted-ci runs this from
 # the base branch under pull_request_target; it never checks out or executes PR
 # code. The fork's validation ran untrusted under pull_request (ci-fork.yml),
 # from YAML in the PR's merge ref. Accept that result only when:
 #   1. the PR head is still HEAD_SHA (a newer push gets its own gate),
-#   2. the PR changes nothing under .github/, so the run executed base YAML,
+#   2. .github/ is untouched, or a same-repository PR has an independent,
+#      currently authorized maintainer's latest approval on this exact head,
 #   3. fork-ci's latest run for this PR (run title "fork-ci #N") and HEAD_SHA
 #      completed, and its aggregate gate ("validation / ci-required")
 #      succeeded. Another PR sharing the commit may target a different base,
@@ -22,11 +23,47 @@ fail() {
 	exit 1
 }
 
-pr=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.sha, (.changed_files | tostring)] | join(" ")')
-current_head=${pr% *}
-changed_files=${pr#* }
-[ "$current_head" = "$HEAD_SHA" ] ||
-	fail "PR head moved from $HEAD_SHA to $current_head; the newer run decides"
+check_current_pr() {
+	pr=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.sha, (.changed_files | tostring),
+		(if .head.repo.id != null and .head.repo.id == .base.repo.id and .head.repo.full_name == .base.repo.full_name then .head.repo.full_name else "fork" end),
+		.user.login, (.user.id | tostring)] | join(" ")')
+	current_head=${pr%% *}
+	[ "$current_head" = "$HEAD_SHA" ] ||
+		fail "PR head moved from $HEAD_SHA to $current_head; the newer run decides"
+	fields=${pr#* }
+	changed_files=${fields%% *}
+	fields=${fields#* }
+	head_repository=${fields%% *}
+	fields=${fields#* }
+	pr_author=${fields%% *}
+	pr_author_id=${fields#* }
+}
+
+require_workflow_review() {
+	check_current_pr
+	[ "$head_repository" = "$GH_REPO" ] ||
+		fail 'a fork PR that changes .github/ needs a maintainer to land it from a branch in this repository'
+	# API review author_association is historical, not current authority. Use
+	# the latest review per immutable reviewer id and check current permissions.
+	reviewers=$(gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews?per_page=100" \
+		--jq "[.[][] | select(.user.id != null)] | group_by(.user.id) |
+		map(max_by([(.submitted_at // \"\"), .id])) | .[] |
+		select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and
+		.user.id != $pr_author_id and .user.login != \"$pr_author\") | .user.login") ||
+		fail 'cannot verify exact-head workflow approval'
+	approved=false
+	for reviewer in $reviewers; do
+		case "$reviewer" in '' | *[!a-zA-Z0-9-]*) fail 'invalid reviewer identity' ;; esac
+		permission=$(gh api "repos/$GH_REPO/collaborators/$reviewer/permission" --jq '.permission') ||
+			fail 'cannot verify current maintainer permission'
+		case "$permission" in write | maintain | admin) approved=true; break ;; esac
+	done
+	[ "$approved" = true ] ||
+		fail 'workflow edits require an independent current maintainer approval on this exact PR head'
+	check_current_pr
+}
+
+check_current_pr
 
 # The files endpoint lists at most 3000 entries. A shorter list than
 # changed_files could hide a workflow change, so it fails closed.
@@ -35,12 +72,15 @@ files=$(gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/files?per_page=100" \
 listed=$(printf '%s\n' "$files" | grep -c . || true)
 [ "$listed" -ge "$changed_files" ] ||
 	fail "listed $listed of $changed_files changed files; cannot prove .github/ is untouched"
+workflow_changed=false
 if printf '%s\n' "$files" | tr '\t' '\n' | grep '^\.github/' >&2; then
-	fail "a fork PR that changes .github/ needs a maintainer to land it from a branch in this repository"
+	workflow_changed=true
+	require_workflow_review
 fi
 
 deadline=$(($(date +%s) + timeout_seconds))
 while :; do
+	check_current_pr
 	run=$(gh api "repos/$GH_REPO/actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100" \
 		--jq "[.workflow_runs[] | select(.display_title == \"fork-ci #$PR_NUMBER\")][0] // empty | \"\\(.id) \\(.status) \\(.conclusion)\"")
 	run_id=${run%% *}
@@ -52,6 +92,10 @@ while :; do
 			--jq ".jobs[] | select(.name == \"$gate_job\") | .conclusion")
 		[ "$conclusion" = success ] ||
 			fail "fork-ci run $run_id: '$gate_job' concluded '${conclusion:-missing}'"
+		# Polling may outlive a push, a dismissed review, or collaborator removal.
+		# Re-prove workflow-edit authority and the head immediately before passing.
+		if [ "$workflow_changed" = true ]; then require_workflow_review; fi
+		check_current_pr
 		printf 'fork validation gate: fork-ci run %s passed on %s\n' "$run_id" "$HEAD_SHA"
 		exit 0
 	fi

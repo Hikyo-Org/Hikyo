@@ -4,6 +4,7 @@ import type { GrantResult } from '@hikyo/client';
 import { createGrantsSequentially, grantFailureText } from '../../api/access.ts';
 import { useReportingSupport } from '../../api/deliveryTargets.ts';
 import {
+  disclosureReachText,
   grantableFor,
   grantSubmittable,
   grantWideningReach,
@@ -255,8 +256,8 @@ function GrantBody({
     let issued = false;
     try {
       // Each newly reachable environment takes its own reauthentication, in the
-      // same purpose the server consumes. Empty today, and for the same reason
-      // the mint's is: nothing this account can hold reaches plaintext.
+      // same purpose the server consumes, deduplicating current and historical
+      // disclosure classes that newly reach the same environment.
       for (const widened of widening) {
         await runPasskeyCeremony({
           operation: 'mint',
@@ -277,7 +278,7 @@ function GrantBody({
     } catch (error) {
       if (issued) {
         refreshGrants();
-        setFailure(grantFailureText(error));
+        setFailure(grantFailureText(error, { operation: 'create', scope: 'environment' }));
       } else {
         setFailure(identityRefusalText(error));
       }
@@ -368,7 +369,7 @@ function GrantBody({
               decrypt, the delta, not the whole post-state, because that is what the grant adds.{' '}
               {widening.length === 0
                 ? 'This grant newly decrypts nothing, so the disclosure conjunct is vacuous and no reauthentication is required.'
-                : `It newly decrypts ${widening.map((w) => w.name).join(', ')}, so each takes its own passkey reauthentication before the grant lands.`}
+                : `It newly decrypts ${disclosureReachText(widening)}, so each distinct environment takes its own passkey reauthentication before the grant lands.`}
               {withReport
                 ? ' report-delivery-status additionally takes manage-members at organisation or instance scope: no human holds it, so it is always an unheld grant.'
                 : ''}
@@ -393,7 +394,7 @@ function GrantBody({
                 ? 'This project declares no secrets today, so the grant decrypts nothing yet, and every secret declared later.'
                 : 'This project declares no keys, so the grant reaches an empty catalogue today, and every key declared later.'
               : effectiveCapability === 'read'
-                ? 'Newly reachable: every key below, by name and classification. A read grant delivers configuration values and secret presence; plaintext needs reveal.'
+                ? 'Newly reachable: every key below, by name and classification. A read grant delivers configuration values and secret presence. Current plaintext needs reveal; historical plaintext needs reveal-history.'
                 : 'Newly decryptable: every secret below, as standing authority over its value wherever it is set. Configuration keys are not listed: read already reaches them.'}
           </p>
           {reachable.length === 0 ? null : (

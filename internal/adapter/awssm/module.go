@@ -94,7 +94,11 @@ func (m *Module) verifyAccount(ctx context.Context, destination adapter.Destinat
 // describe reads metadata for one name and proves its ARN sits in the
 // configured account and the client's region.
 func (m *Module) describe(ctx context.Context, destination adapter.Destination, name string) (SecretMetadata, bool, error) {
-	meta, err := m.API.DescribeSecret(ctx, name)
+	return m.describeResource(ctx, destination, name, name)
+}
+
+func (m *Module) describeResource(ctx context.Context, destination adapter.Destination, name, resourceID string) (SecretMetadata, bool, error) {
+	meta, err := m.API.DescribeSecret(ctx, resourceID)
 	if IsNotFound(err) {
 		return SecretMetadata{}, false, nil
 	}
@@ -107,6 +111,14 @@ func (m *Module) describe(ctx context.Context, destination adapter.Destination, 
 	}
 	if err := verifyARN(meta.ARN, destination.Owner, region); err != nil {
 		return SecretMetadata{}, false, err
+	}
+	// A complete ARN contains this exact name followed by six random
+	// characters. Never turn an unrelated provider response into a write
+	// destination, and never follow a replacement when inspecting by ARN.
+	resource := strings.SplitN(meta.ARN, ":", 7)[6]
+	suffix, matches := strings.CutPrefix(resource, name+"-")
+	if meta.Name != name || !matches || len(suffix) != 6 || (resourceID != name && meta.ARN != resourceID) {
+		return SecretMetadata{}, false, fmt.Errorf("%w: provider secret identity does not match configured name", adapter.ErrDestinationID)
 	}
 	return meta, true, nil
 }
@@ -146,12 +158,14 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		return adapter.Plan{}, err
 	}
 	existing := map[string]bool{}
+	metadata := map[string]SecretMetadata{}
 	if destination.Kind == adapter.JSONObject {
-		_, found, err := m.describe(ctx, destination, destination.Name)
+		meta, found, err := m.describe(ctx, destination, destination.Name)
 		if err != nil {
 			return adapter.Plan{}, err
 		}
 		existing[destination.Name] = found
+		metadata[destination.Name] = meta
 	} else {
 		names, err := m.API.ListSecretNames(ctx, destination.Name+req.Target.NamePrefix, 0)
 		if err != nil {
@@ -169,7 +183,31 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	if err != nil {
 		return adapter.Plan{}, err
 	}
-	return adapter.Plan{Changes: adapter.PlanChanges(desired, ledger, existing)}, nil
+	changes := adapter.PlanChanges(desired, ledger, existing)
+	for i := range changes {
+		change := &changes[i]
+		record, held := ledger[adapter.NewLedgerKey(change.Surface, change.EffectiveName)]
+		if change.Disposition == adapter.Delete || !held || (record.State != adapter.Owned && record.State != adapter.Dispatched) {
+			continue
+		}
+		meta, inspected := metadata[change.EffectiveName]
+		found := existing[change.EffectiveName]
+		if !inspected {
+			if err := req.Gate(ctx); err != nil {
+				return adapter.Plan{}, err
+			}
+			meta, found, err = m.describe(ctx, destination, change.EffectiveName)
+			if err != nil {
+				return adapter.Plan{}, err
+			}
+		}
+		// Historical custody is not current provider ownership. Surface the
+		// same refusal as Sync so a fresh scoped artifact can renew adoption.
+		if found && meta.Tags[adapter.SentinelName] != req.Target.ID {
+			change.Disposition = adapter.Conflict
+		}
+	}
+	return adapter.Plan{Changes: changes}, nil
 }
 
 // rowStatus says how one name's failure affects the rest of the sync.
@@ -280,39 +318,43 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 
 // writePlan is the value-blind decision for one desired name.
 type writePlan struct {
-	conflict   string
-	create     bool
-	restore    bool
-	tag        bool
-	put        bool
-	versionTag bool
+	resourceID      string
+	conflict        string
+	create          bool
+	restore         bool
+	tag             bool
+	put             bool
+	promote         bool
+	markCurrent     bool
+	previousCurrent string
+	previousHikyo   string
+	versionTag      bool
 }
 
 // decide inspects metadata only: existence, ownership tag, deletion state,
 // the labels on the version holding AWSCURRENT, and the HIKYO_VERSION tag.
 //
-// A version is Hikyo's when it carries HIKYO_CURRENT (set atomically by the
-// write) or when HIKYO_VERSION names it (set right after the write). Only the
-// AWSCURRENT version's own labels are consulted: AWS-compatible services
-// differ on whether custom labels survive on superseded versions, and the
-// check must not depend on that.
-func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID, token string) writePlan {
+// HIKYO_PENDING proves a staged version only for this exact job token. Once
+// promoted, HIKYO_CURRENT and HIKYO_VERSION provide lasting ownership evidence.
+func decide(meta SecretMetadata, found bool, state adapter.LedgerState, adoptionPending bool, targetID, token string) writePlan {
 	if !found {
-		return writePlan{create: true, put: true, versionTag: true}
+		return writePlan{create: true, put: true, promote: true, markCurrent: true, versionTag: true}
 	}
 	owner, tagged := meta.Tags[adapter.SentinelName]
-	plan := writePlan{put: true, versionTag: true}
+	plan := writePlan{resourceID: meta.ARN, put: true, promote: true, markCurrent: true, versionTag: true}
 	switch {
 	case tagged && owner != targetID:
 		return writePlan{conflict: "tagged as owned by another Hikyo target"}
 	case !tagged && state == adapter.Reserved:
 		return writePlan{conflict: "exists, unowned; adopt it from a plan to let Hikyo overwrite it"}
-	case !tagged && state != adapter.Owned:
-		// A dispatched create always tags atomically, so an untagged secret
-		// here was created by someone else in the crash window.
-		return writePlan{conflict: "exists without the " + adapter.SentinelName + " tag; tag it " + adapter.SentinelName + "=" + targetID + " to let Hikyo overwrite it"}
+	case !tagged && (state != adapter.Owned || !adoptionPending):
+		// A historical ledger claim cannot capture a recreated name or a
+		// resource whose ownership markers disappeared. Only a fresh,
+		// scope-bound adoption authorizes the first ownership tag/write.
+		return writePlan{conflict: "exists without the " + adapter.SentinelName + " tag; fresh plan-bound adoption is required before writing"}
 	case !tagged:
-		// Owned without the tag is an explicit adoption: tag before writing.
+		// Pending explicit adoption: tag before writing. Owned alone is not
+		// evidence of consent to overwrite an unmarked replacement.
 		plan.tag = true
 	}
 	if meta.Deleted {
@@ -325,9 +367,14 @@ func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID
 		}
 		if slices.Contains(stages, CurrentStage) {
 			written = true
+			plan.previousHikyo = version
+		}
+		if slices.Contains(stages, PendingStage) {
+			written = true
 		}
 	}
-	ours := current != "" && (slices.Contains(meta.Stages[current], CurrentStage) || meta.Tags[VersionTag] == current)
+	plan.previousCurrent = current
+	ours := current != "" && (slices.Contains(meta.Stages[current], CurrentStage) || meta.Tags[VersionTag] == current || (current == token && slices.Contains(meta.Stages[current], PendingStage)))
 	// Once Hikyo has written a secret, or created it, any AWSCURRENT that is
 	// not Hikyo's was written by someone else. An adopted secret Hikyo never
 	// wrote is the one case where a foreign AWSCURRENT is expected, including
@@ -336,8 +383,15 @@ func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID
 	if current != "" && !ours && (written || meta.Tags[VersionTag] != "" || (tagged && state != adapter.Owned)) {
 		return writePlan{conflict: "AWSCURRENT version " + current + " was written outside Hikyo; tag the secret " + VersionTag + "=" + current + " to let Hikyo overwrite it"}
 	}
+	if adoptionPending && state == adapter.Owned && current != "" && !ours {
+		// Persist the approved predecessor even if an earlier interrupted
+		// ownership-tag request already installed the target tag.
+		plan.tag = true
+	}
 	if ours && current == token {
 		plan.put = false
+		plan.promote = false
+		plan.markCurrent = plan.previousHikyo != token
 		plan.versionTag = meta.Tags[VersionTag] != token
 	}
 	return plan
@@ -367,7 +421,7 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 		return change, statusFor(err), err
 	}
 	token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, row.EffectiveName)
-	plan := decide(meta, found, state, req.Target.ID, token)
+	plan := decide(meta, found, state, record.AdoptionPending, req.Target.ID, token)
 	if plan.conflict != "" {
 		change.Disposition = adapter.Conflict
 		if state == adapter.Reserved {
@@ -389,8 +443,8 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 		}
 		return change, rowFatal, gateErr
 	}
-	if err := m.apply(ctx, req, row, plan, token); err != nil {
-		status, err := m.finishFailure(ctx, journal, effect, state, err)
+	if mutated, err := m.apply(ctx, req, row, plan, state, record.AdoptionPending, token, func(ctx context.Context) error { return journal.Gate(ctx, effect) }); err != nil {
+		status, err := m.finishFailure(ctx, journal, effect, state, mutated, err)
 		if status == rowConflict {
 			change.Disposition = adapter.Conflict
 		}
@@ -402,71 +456,178 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 	return change, rowDone, nil
 }
 
-func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter.DesiredRow, plan writePlan, token string) error {
+func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter.DesiredRow, plan writePlan, state adapter.LedgerState, adoptionPending bool, token string, gate func(context.Context) error) (bool, error) {
+	mutated := false
+	beforeRequest := func() error {
+		if err := gate(ctx); err != nil {
+			return errors.Join(errRequestGate, err)
+		}
+		return nil
+	}
 	tags := map[string]string{adapter.SentinelName: req.Target.ID}
 	if plan.create {
 		// The tag is created with the secret, so ownership is never absent on
 		// a Hikyo-created name, even across a crash before the first value.
-		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
-		if IsExists(err) {
-			// Someone else won the race between DescribeSecret and create, or
-			// a replay of our own create landed. Only the tag can tell.
-			meta, found, describeErr := m.describe(ctx, req.Target.Destination, row.EffectiveName)
-			if describeErr != nil {
-				return describeErr
-			}
-			if !found || meta.Tags[adapter.SentinelName] != req.Target.ID {
-				return fmt.Errorf("%w: secret %s was created outside Hikyo", adapter.ErrConflict, row.EffectiveName)
-			}
-		} else if err != nil {
-			return err
+		if err := beforeRequest(); err != nil {
+			return mutated, err
 		}
+		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
+		if err != nil && !IsExists(err) {
+			return mutated, err
+		}
+		if err == nil {
+			mutated = true
+		}
+		// Resolve even a successful create before sending plaintext. A
+		// name can be deleted/recreated independently of Hikyo's lease.
+		// Collision recovery also rechecks the complete ownership policy.
+		if err := beforeRequest(); err != nil {
+			return mutated, err
+		}
+		meta, found, describeErr := m.describe(ctx, req.Target.Destination, row.EffectiveName)
+		if describeErr != nil {
+			return mutated, describeErr
+		}
+		if !found || meta.Tags[adapter.SentinelName] != req.Target.ID {
+			return mutated, fmt.Errorf("%w: secret %s was created outside Hikyo", adapter.ErrConflict, row.EffectiveName)
+		}
+		plan = decide(meta, true, state, adoptionPending, req.Target.ID, token)
+		if plan.conflict != "" {
+			return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, plan.conflict)
+		}
+		mutated = true
 	}
 	if plan.restore {
-		if err := m.API.RestoreSecret(ctx, row.EffectiveName); err != nil {
-			return err
+		if err := beforeRequest(); err != nil {
+			return mutated, err
 		}
+		if err := m.API.RestoreSecret(ctx, plan.resourceID); err != nil {
+			return mutated, err
+		}
+		mutated = true
 	}
 	if plan.tag {
-		if err := m.API.TagSecret(ctx, row.EffectiveName, tags); err != nil {
-			return errors.Join(errOwnershipTag, err)
+		if err := beforeRequest(); err != nil {
+			return mutated, err
 		}
+		if plan.previousCurrent != "" {
+			// Adoption approves this resource's observed current version, not
+			// whichever version appears after an interrupted attempt. Record
+			// ownership and that existing version-consent marker together on
+			// the verified ARN before staging plaintext. A Dispatched retry
+			// can then resume only while this exact predecessor remains current.
+			tags[VersionTag] = plan.previousCurrent
+		}
+		if err := m.API.TagSecret(ctx, plan.resourceID, tags); err != nil {
+			return mutated, errors.Join(errOwnershipTag, err)
+		}
+		mutated = true
 	}
 	if plan.put {
-		if err := m.API.PutSecretValue(ctx, row.EffectiveName, token, row.Value); err != nil {
-			return err
+		if err := beforeRequest(); err != nil {
+			return mutated, err
 		}
+		if err := m.API.PutSecretValue(ctx, plan.resourceID, token, row.Value); err != nil {
+			return mutated, err
+		}
+		mutated = true
+	}
+	if plan.promote && plan.previousCurrent == "" {
+		// AWS makes the first value AWSCURRENT even when PutSecretValue asks
+		// only for HIKYO_PENDING. Do not depend on an empty-predecessor
+		// promotion accepting an already-current version. Prove this job's
+		// version is current before skipping that redundant write, and never
+		// rebase the promotion onto a concurrently written foreign version.
+		if err := beforeRequest(); err != nil {
+			return mutated, err
+		}
+		meta, found, err := m.describeResource(ctx, req.Target.Destination, row.EffectiveName, plan.resourceID)
+		if err != nil {
+			return mutated, err
+		}
+		if !found {
+			return mutated, fmt.Errorf("%w: secret %s disappeared after staging", adapter.ErrConflict, row.EffectiveName)
+		}
+		fresh := decide(meta, true, state, adoptionPending, req.Target.ID, token)
+		if fresh.conflict != "" {
+			return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, fresh.conflict)
+		}
+		if !fresh.put && !fresh.promote {
+			plan.promote = false
+			plan.markCurrent = fresh.markCurrent
+			plan.previousHikyo = fresh.previousHikyo
+			plan.versionTag = fresh.versionTag
+		}
+	}
+	if plan.promote {
+		if err := beforeRequest(); err != nil {
+			return mutated, err
+		}
+		if err := m.API.UpdateSecretVersionStage(ctx, plan.resourceID, awsCurrent, token, plan.previousCurrent); err != nil {
+			// A conditional refusal must not advance ownership markers. Preserve
+			// both the old Hikyo version and the concurrent external AWSCURRENT.
+			var response *ResponseError
+			if errors.As(err, &response) && (response.Code == "InvalidParameterException" || response.Code == "InvalidRequestException") {
+				return mutated, fmt.Errorf("%w: secret %s: conditional AWSCURRENT promotion refused; review its current version before consenting to overwrite", adapter.ErrConflict, row.EffectiveName)
+			}
+			return mutated, err
+		}
+		mutated = true
+	}
+	if plan.markCurrent {
+		if err := beforeRequest(); err != nil {
+			return mutated, err
+		}
+		if err := m.API.UpdateSecretVersionStage(ctx, plan.resourceID, CurrentStage, token, plan.previousHikyo); err != nil {
+			return mutated, err
+		}
+		mutated = true
 	}
 	if plan.versionTag {
 		// Records the version Hikyo wrote independently of staging-label
 		// behaviour. If this tag fails after the write, HIKYO_CURRENT still
 		// marks the version, so the replay recognises it and retags.
-		return m.API.TagSecret(ctx, row.EffectiveName, map[string]string{VersionTag: token})
+		if err := beforeRequest(); err != nil {
+			return mutated, err
+		}
+		if err := m.API.TagSecret(ctx, plan.resourceID, map[string]string{VersionTag: token}); err != nil {
+			return mutated, err
+		}
+		mutated = true
 	}
-	return nil
+	return mutated, nil
 }
 
 // errOwnershipTag means the adopted secret's value has not been written.
 // Whether its ownership tag landed or not, explicit adoption remains valid.
 var errOwnershipTag = errors.New("aws-secrets-manager: recording adopted ownership tag")
 
+// A denied gate dispatched no new request, regardless of earlier mutations.
+// It must terminate this attempt rather than resume other target names.
+var errRequestGate = errors.New("aws-secrets-manager: authorization before provider request")
+
 // finishFailure settles an attempted write. A refusal AWS answered is a
 // definite failure; anything else may have landed and stays dispatched so the
 // replay reuses the same idempotency token.
-func (m *Module) finishFailure(ctx context.Context, journal adapter.Journal, effect adapter.Effect, state adapter.LedgerState, err error) (rowStatus, error) {
+func (m *Module) finishFailure(ctx context.Context, journal adapter.Journal, effect adapter.Effect, state adapter.LedgerState, mutated bool, err error) (rowStatus, error) {
 	completion := adapter.Completion{Outcome: adapter.OutcomeUnknown, State: adapter.Dispatched}
 	if errors.Is(err, errOwnershipTag) {
 		completion.State = state
 	}
 	conflict := errors.Is(err, adapter.ErrConflict)
-	if IsDefinite(err) || conflict {
+	if IsDefinite(err) || conflict || errors.Is(err, errRequestGate) {
 		completion = adapter.Completion{Outcome: adapter.OutcomeFailure, State: state, Conflict: conflict}
-		if state == adapter.Reserved {
+		if state == adapter.Reserved && !mutated {
 			completion.State, completion.ReleaseLedger = "", true
+		} else if state == adapter.Reserved {
+			completion.State = adapter.Dispatched
 		}
 	}
 	if finishErr := journal.Finish(ctx, effect, completion); finishErr != nil {
 		return rowFatal, finishErr
+	}
+	if errors.Is(err, errRequestGate) {
+		return rowFatal, err
 	}
 	if conflict {
 		return rowConflict, err
@@ -505,6 +666,10 @@ func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal ada
 		change.Disposition = adapter.Conflict
 		return change, rowConflict, fmt.Errorf("%w: secret %s is tagged as owned by another Hikyo target; not deleting", adapter.ErrConflict, row.EffectiveName)
 	}
+	if _, tagged := meta.Tags[adapter.SentinelName]; found && !meta.Deleted && !tagged {
+		change.Disposition = adapter.Conflict
+		return change, rowConflict, fmt.Errorf("%w: secret %s has no verified ownership tag; not deleting", adapter.ErrConflict, row.EffectiveName)
+	}
 	if err := journal.Gate(ctx, effect); err != nil {
 		return change, rowFatal, err
 	}
@@ -519,7 +684,7 @@ func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal ada
 	}
 	// Already gone or already scheduled for deletion is the desired end state.
 	if found && !meta.Deleted {
-		if err := m.API.DeleteSecret(ctx, row.EffectiveName); err != nil && !IsNotFound(err) {
+		if err := m.API.DeleteSecret(ctx, meta.ARN); err != nil && !IsNotFound(err) {
 			outcome := adapter.OutcomeUnknown
 			if IsDefinite(err) {
 				outcome = adapter.OutcomeFailure

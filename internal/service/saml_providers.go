@@ -130,11 +130,13 @@ type SAMLProviderWarning struct {
 // SAMLMetadataDiff is the complete trust-material change shown before a
 // provider mutation is applied. Empty collections are non-nil for stable JSON.
 type SAMLMetadataDiff struct {
-	EndpointsAdded   []string
-	EndpointsRemoved []string
-	CertsAddedFps    []string
-	CertsRemovedFps  []string
-	ValidUntil       *time.Time
+	EndpointsAdded          []string
+	EndpointsRemoved        []string
+	CertsAddedFps           []string
+	CertsRemovedFps         []string
+	MetadataCertsAddedFps   []string
+	MetadataCertsRemovedFps []string
+	ValidUntil              *time.Time
 }
 
 // SAMLProviderMutationResult is both legs of the metadata ceremony. A false
@@ -605,7 +607,9 @@ func assessSAMLMetadata(metadata samlsp.Metadata, previous *authz.SAMLProvider, 
 	assessment := samlMetadataAssessment{
 		Diff: SAMLMetadataDiff{
 			EndpointsAdded: []string{}, EndpointsRemoved: []string{},
-			CertsAddedFps: []string{}, CertsRemovedFps: []string{}, ValidUntil: metadata.ValidUntil,
+			CertsAddedFps: []string{}, CertsRemovedFps: []string{},
+			MetadataCertsAddedFps: []string{}, MetadataCertsRemovedFps: []string{},
+			ValidUntil: metadata.ValidUntil,
 		},
 		RequiredFingerprints: []string{}, RequiredEndpoints: []string{},
 	}
@@ -647,6 +651,12 @@ func assessSAMLMetadata(metadata samlsp.Metadata, previous *authz.SAMLProvider, 
 			return samlMetadataAssessment{}, err
 		}
 		oldMetadataFingerprint := previous != nil && previous.MetadataSigningFingerprint != nil && *previous.MetadataSigningFingerprint == fingerprint
+		if !oldMetadataFingerprint {
+			assessment.Diff.MetadataCertsAddedFps = append(assessment.Diff.MetadataCertsAddedFps, fingerprint)
+			if previous != nil && previous.MetadataSigningFingerprint != nil {
+				assessment.Diff.MetadataCertsRemovedFps = append(assessment.Diff.MetadataCertsRemovedFps, *previous.MetadataSigningFingerprint)
+			}
+		}
 		if !oldMetadataFingerprint && !confirmedSet[fingerprint] {
 			assessment.RequiredFingerprints = append(assessment.RequiredFingerprints, fingerprint)
 		}
@@ -661,6 +671,8 @@ func assessSAMLMetadata(metadata samlsp.Metadata, previous *authz.SAMLProvider, 
 	slices.Sort(assessment.Diff.EndpointsRemoved)
 	slices.Sort(assessment.Diff.CertsAddedFps)
 	slices.Sort(assessment.Diff.CertsRemovedFps)
+	slices.Sort(assessment.Diff.MetadataCertsAddedFps)
+	slices.Sort(assessment.Diff.MetadataCertsRemovedFps)
 	slices.Sort(assessment.RequiredFingerprints)
 	assessment.RequiredFingerprints = slices.Compact(assessment.RequiredFingerprints)
 	slices.Sort(assessment.RequiredEndpoints)

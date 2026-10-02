@@ -554,9 +554,10 @@ func (q *Queries) DeleteSCIMUsersForBinding(ctx context.Context, arg DeleteSCIMU
 	return result.RowsAffected()
 }
 
-const enterSCIMAttention = `-- name: EnterSCIMAttention :exec
+const enterSCIMAttention = `-- name: EnterSCIMAttention :execrows
 INSERT INTO scim_attention (id, org_id, binding_id, state, subject_ref, cause, entered_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (binding_id, state, subject_ref) DO NOTHING
 `
 
 type EnterSCIMAttentionParams struct {
@@ -569,8 +570,8 @@ type EnterSCIMAttentionParams struct {
 	EnteredAt  string
 }
 
-func (q *Queries) EnterSCIMAttention(ctx context.Context, arg EnterSCIMAttentionParams) error {
-	_, err := q.db.ExecContext(ctx, enterSCIMAttention,
+func (q *Queries) EnterSCIMAttention(ctx context.Context, arg EnterSCIMAttentionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, enterSCIMAttention,
 		arg.ID,
 		arg.OrgID,
 		arg.BindingID,
@@ -579,7 +580,10 @@ func (q *Queries) EnterSCIMAttention(ctx context.Context, arg EnterSCIMAttention
 		arg.Cause,
 		arg.EnteredAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const getSCIMBinding = `-- name: GetSCIMBinding :one
@@ -894,7 +898,7 @@ func (q *Queries) ListSCIMBindings(ctx context.Context, orgID string) ([]ScimBin
 
 const listSCIMGroupMembers = `-- name: ListSCIMGroupMembers :many
 SELECT id, org_id, binding_id, group_id, user_id, created_at
-FROM scim_group_members WHERE org_id = ? AND binding_id = ? AND group_id = ? ORDER BY user_id
+FROM scim_group_members WHERE org_id = ? AND binding_id = ? AND group_id = ? ORDER BY user_id LIMIT 1001
 `
 
 type ListSCIMGroupMembersParams struct {

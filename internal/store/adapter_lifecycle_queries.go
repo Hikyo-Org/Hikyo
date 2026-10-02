@@ -48,6 +48,10 @@ func (q sqliteAdapterStoreQueries) teardownTargets(ctx context.Context, chain do
 func (q sqliteAdapterStoreQueries) teardownAuthority(ctx context.Context, chain domain.Scope, adapterID string) (string, error) {
 	return q.queries.AdapterTeardownAuthority(ctx, sqlitegen.AdapterTeardownAuthorityParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 }
+
+func (q sqliteAdapterStoreQueries) teardownUnfinishedMoves(ctx context.Context, chain domain.Scope, adapterID string) (int64, error) {
+	return q.queries.AdapterTeardownUnfinishedMoves(ctx, sqlitegen.AdapterTeardownUnfinishedMovesParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+}
 func (q sqliteAdapterStoreQueries) resumeRevision(ctx context.Context, chain domain.Scope, envID string) (int64, error) {
 	return q.queries.AdapterResumeRevision(ctx, sqlitegen.AdapterResumeRevisionParams{EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 }
@@ -96,6 +100,10 @@ func (q pgAdapterStoreQueries) teardownTargets(ctx context.Context, chain domain
 }
 func (q pgAdapterStoreQueries) teardownAuthority(ctx context.Context, chain domain.Scope, adapterID string) (string, error) {
 	return q.queries.AdapterTeardownAuthority(ctx, pggen.AdapterTeardownAuthorityParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+}
+
+func (q pgAdapterStoreQueries) teardownUnfinishedMoves(ctx context.Context, chain domain.Scope, adapterID string) (int64, error) {
+	return q.queries.AdapterTeardownUnfinishedMoves(ctx, pggen.AdapterTeardownUnfinishedMovesParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 }
 func (q pgAdapterStoreQueries) resumeRevision(ctx context.Context, chain domain.Scope, envID string) (int64, error) {
 	return q.queries.AdapterResumeRevision(ctx, pggen.AdapterResumeRevisionParams{EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})

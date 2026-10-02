@@ -69,11 +69,13 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 		return nil, err
 	}
 
-	// Flush-before-fetch (ops-spec § 6): reconcile pending offline records BEFORE
-	// any doctor network request (the catalogue and agreement fetches), so a POST
-	// always precedes every GET (finding 9). A flush failure is a hard error.
-	if err := stack.flushOffline(ctx); err != nil {
-		return nil, err
+	// Doctor performs network checks, so it must flush disclosure records first.
+	// Sync has no pre-render network dependency: its render phase owns flush and
+	// can route an unavailable server into the authenticated offline path.
+	if includeServerAgreement {
+		if err := stack.flushOffline(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	var findings []compose.Finding
@@ -87,9 +89,16 @@ func composeDoctorGather(ctx context.Context, ios IO, st *State, flags commonFla
 		return nil, failf(ExitRefused, "compose doctor: %v", err)
 	}
 
-	existingKeyIDs, catFinding := doctorExistingKeyIDs(ctx, stack.client, stack.org, stack.project, stack.cfg)
-	if catFinding != nil {
-		findings = append(findings, *catFinding)
+	existingKeyIDs := map[string]bool{}
+	for _, id := range allTargetKeyIDs(stack.cfg) {
+		existingKeyIDs[id] = true
+	}
+	if includeServerAgreement {
+		var catFinding *compose.Finding
+		existingKeyIDs, catFinding = doctorExistingKeyIDs(ctx, stack.client, stack.org, stack.project, stack.cfg)
+		if catFinding != nil {
+			findings = append(findings, *catFinding)
+		}
 	}
 	stateEntries, scanFinding := doctorStateEntries(stack.stateDir)
 	if scanFinding != nil {

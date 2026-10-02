@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -245,6 +246,12 @@ func actorNameKeep(ctx context.Context, az *authz.TxAuthorizer, f store.AuditFil
 // is durable and a fresh query recovers it. Export is the gap-free surface: it
 // pages in commit order behind the writer barrier.
 func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, f store.AuditFilter) (AuditPage, error) {
+	return s.QueryActor(ctx, LocalPrincipal(principal), scope, f)
+}
+
+// QueryActor resolves a network caller inside the same transaction that reads
+// and records the audit page, preserving session assurance and revocation.
+func (s *Audits) QueryActor(ctx context.Context, actor Actor, scope domain.Scope, f store.AuditFilter) (AuditPage, error) {
 	// Commit order is export-only. Ignore internal cursor fields if a caller
 	// constructs AuditFilter directly instead of using an API decoder.
 	f.Order = store.AuditPageBySeq
@@ -255,7 +262,11 @@ func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope 
 	}
 	var page AuditPage
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, op, scope)
+		caller, err := actor.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, op, scope)
 		if err != nil {
 			return err
 		}
@@ -277,7 +288,7 @@ func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope 
 		}
 		// Record the pinned ceiling in the query's own audit event.
 		f.ToSeq = ceiling
-		ev, err := queryEvent(ctx, principal, f, len(page.Events))
+		ev, err := queryEvent(ctx, caller.Principal, f, len(page.Events))
 		if err != nil {
 			return err
 		}
@@ -292,12 +303,21 @@ func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope 
 // InstanceQuery is Query for the instance trail, under an instance-scope
 // audit-read grant — grant-evaluated, never route-implied.
 func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID, f store.AuditFilter) (AuditPage, error) {
+	return s.InstanceQueryActor(ctx, LocalPrincipal(principal), f)
+}
+
+// InstanceQueryActor is InstanceQuery with transaction-local bearer resolution.
+func (s *Audits) InstanceQueryActor(ctx context.Context, actor Actor, f store.AuditFilter) (AuditPage, error) {
 	// Commit order is export-only; interactive queries always expose seq order.
 	f.Order = store.AuditPageBySeq
 	f.AfterCommitSeq = 0
 	var page AuditPage
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, authz.OpAuditInstanceQuery, domain.Scope{})
+		caller, err := actor.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, authz.OpAuditInstanceQuery, domain.Scope{})
 		if err != nil {
 			return err
 		}
@@ -318,7 +338,7 @@ func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID
 			return err
 		}
 		f.ToSeq = ceiling
-		ev, err := queryEvent(ctx, principal, f, len(page.Events))
+		ev, err := queryEvent(ctx, caller.Principal, f, len(page.Events))
 		if err != nil {
 			return err
 		}
@@ -399,6 +419,11 @@ var ErrExportUnpaired = fmt.Errorf("service: audit export stopped by authorizati
 // export_completed on success, page failure and sink disconnect. pageSize
 // bounds each page read (the ops spec owns defaults).
 func (s *Audits) Export(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, f store.AuditFilter, pageSize int, w io.Writer) error {
+	return s.ExportActor(ctx, LocalPrincipal(principal), scope, f, pageSize, w)
+}
+
+// ExportActor re-resolves the bearer and its assurance at every page boundary.
+func (s *Audits) ExportActor(ctx context.Context, actor Actor, scope domain.Scope, f store.AuditFilter, pageSize int, w io.Writer) error {
 	op, err := auditExportOp(scope)
 	if err != nil {
 		return err
@@ -409,22 +434,34 @@ func (s *Audits) Export(ctx context.Context, principal domain.PrincipalID, scope
 	// § 179 / § 20 expensive-path budget: 5/min per principal, 2 concurrent per
 	// org, 6 per instance. Acquired here, at entry, and held for the whole
 	// stream — a running export occupies its concurrency slot until it ends.
-	release, err := s.Budget.acquire(budgetExport, budgetKeys{Principal: principal, Org: scope.Org})
+	release, err := s.Budget.acquire(budgetValuesExport, budgetKeys{Org: scope.Org})
 	if err != nil {
 		return err
 	}
 	defer release()
+	principal, err := s.authorizeAuditActor(ctx, actor, op, scope)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Budget.acquire(budgetExportRate, budgetKeys{Principal: principal}); err != nil {
+		return err
+	}
 	insertTenant := func(ctx context.Context, r store.Repos, p authz.Proof, ev audit.Event) error {
 		return r.Audit().InsertTenant(ctx, p, ev)
 	}
 	page := func(ctx context.Context, r store.ReadRepos, p authz.Proof, pf store.AuditFilter) ([]store.AuditEvent, error) {
 		return r.Audit().PageTenant(ctx, p, pf)
 	}
-	return s.export(ctx, principal, op, scope, f, pageSize, w, insertTenant, page)
+	return s.export(ctx, actor, principal, op, scope, f, pageSize, w, insertTenant, page)
 }
 
 // InstanceExport is Export for the instance trail.
 func (s *Audits) InstanceExport(ctx context.Context, principal domain.PrincipalID, f store.AuditFilter, pageSize int, w io.Writer) error {
+	return s.InstanceExportActor(ctx, LocalPrincipal(principal), f, pageSize, w)
+}
+
+// InstanceExportActor is InstanceExport with transaction-local bearer resolution.
+func (s *Audits) InstanceExportActor(ctx context.Context, actor Actor, f store.AuditFilter, pageSize int, w io.Writer) error {
 	if pageSize <= 0 {
 		return fmt.Errorf("service: export page size must be positive")
 	}
@@ -432,22 +469,46 @@ func (s *Audits) InstanceExport(ctx context.Context, principal domain.PrincipalI
 	// 6-per-instance concurrency only (budgetExportInstance), never the 2-per-org
 	// bound, which would otherwise collapse every instance export into one "" org
 	// bucket.
-	release, err := s.Budget.acquire(budgetExportInstance, budgetKeys{Principal: principal})
+	release, err := s.Budget.acquire(budgetExportInstanceConcurrency, budgetKeys{})
 	if err != nil {
 		return err
 	}
 	defer release()
+	principal, err := s.authorizeAuditActor(ctx, actor, authz.OpAuditInstanceExport, domain.Scope{})
+	if err != nil {
+		return err
+	}
+	if _, err := s.Budget.acquire(budgetExportRate, budgetKeys{Principal: principal}); err != nil {
+		return err
+	}
 	insertInstance := func(ctx context.Context, r store.Repos, p authz.Proof, ev audit.Event) error {
 		return r.Audit().InsertInstance(ctx, p, ev)
 	}
 	page := func(ctx context.Context, r store.ReadRepos, p authz.Proof, pf store.AuditFilter) ([]store.AuditEvent, error) {
 		return r.Audit().PageInstance(ctx, p, pf)
 	}
-	return s.export(ctx, principal, authz.OpAuditInstanceExport, domain.Scope{}, f, pageSize, w, insertInstance, page)
+	return s.export(ctx, actor, principal, authz.OpAuditInstanceExport, domain.Scope{}, f, pageSize, w, insertInstance, page)
+}
+
+func (s *Audits) authorizeAuditActor(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) (domain.PrincipalID, error) {
+	var principal domain.PrincipalID
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		caller, err := actor.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		if _, err := az.Authorize(ctx, caller, op, scope); err != nil {
+			return err
+		}
+		principal = caller.Principal
+		return nil
+	})
+	return principal, err
 }
 
 func (s *Audits) export(
 	ctx context.Context,
+	actor Actor,
 	principal domain.PrincipalID,
 	op authz.Operation,
 	scope domain.Scope,
@@ -483,7 +544,11 @@ func (s *Audits) export(
 	// that cursor instead of allocation-ordered seq. sqlite's single writer
 	// makes commit_seq equivalent to seq.
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, op, scope)
+		caller, err := actor.resolve(ctx, az, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		p, err := az.Authorize(ctx, caller, op, scope)
 		if err != nil {
 			return err
 		}
@@ -509,7 +574,11 @@ func (s *Audits) export(
 			return err
 		}
 		return tx.Write(terminalCtx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, op, scope)
+			caller, err := actor.resolve(ctx, az, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			p, err := az.Authorize(ctx, caller, op, scope)
 			if err != nil {
 				return err
 			}
@@ -535,7 +604,11 @@ func (s *Audits) export(
 		pf.Order = store.AuditPageByCommit
 		pf.AfterCommitSeq = commitCursor
 		err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-			p, err := az.Authorize(ctx, authz.Identity{Principal: principal}, op, scope)
+			caller, err := actor.resolve(ctx, az, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			p, err := az.Authorize(ctx, caller, op, scope)
 			if err != nil {
 				return err
 			}

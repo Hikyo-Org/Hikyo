@@ -748,20 +748,28 @@ export function useReencryptProject(org: string, project: string) {
 
 export function useSetEnvironmentSettings(org: string, project: string) {
   const auth = useAuth();
+  const queries = useQueryClient();
   return useMutation({
     mutationFn: (input: {
       environment: string;
       protectedFlag: boolean;
+      expectedProtected: boolean;
       reauthWindowSeconds: number | null;
     }) =>
       parsed(setEnvironmentSettingsOp, {
           path: { org, project, environment: input.environment },
           body: {
             protected: input.protectedFlag,
+            expected_protected: input.expectedProtected,
             reauth_window_seconds: input.reauthWindowSeconds,
           },
         }),
-    onSettled: () => auth.refreshSession(),
+    onSettled: async () => {
+      await Promise.all([
+        auth.refreshSession(),
+        queries.invalidateQueries({ queryKey: environmentSettingsPrefix(org, project) }),
+      ]);
+    },
   });
 }
 

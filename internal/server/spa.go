@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -403,7 +402,7 @@ func serveAsset(ui fs.FS, w http.ResponseWriter, r *http.Request) {
 // `connect-src` extension is spelled once, at the bottom, and neither path can
 // drift from the other. `remoteOrigins` is nil for a build with no directory
 // surface, which leaves the baseline exactly as it was.
-func serveSPA(ui fs.FS, remoteOrigins func(context.Context) []string, w http.ResponseWriter, r *http.Request) {
+func serveSPA(ui fs.FS, remoteOrigins func(*http.Request) []string, w http.ResponseWriter, r *http.Request) {
 	if reservedFromFallback(r.URL.Path) ||
 		(r.Method != http.MethodGet && r.Method != http.MethodHead) {
 		writeError(w, wirePolicyForCode(apigen.ErrorCodeNotFound), "")
@@ -448,7 +447,7 @@ func serveSPA(ui fs.FS, remoteOrigins func(context.Context) []string, w http.Res
 	// stop being reachable on the next navigation, which is the whole
 	// revocation story of the workspace tier.
 	if remoteOrigins != nil {
-		w.Header().Set("Content-Security-Policy", policyWithRemotes(remoteOrigins(r.Context())))
+		w.Header().Set("Content-Security-Policy", policyWithRemotes(remoteOrigins(r)))
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if varies {
@@ -460,7 +459,9 @@ func serveSPA(ui fs.FS, remoteOrigins func(context.Context) []string, w http.Res
 	// The document names the hashed assets, so it is the one file that must
 	// never be served from cache without revalidation — a stale index points at
 	// bundles a deploy has already removed.
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "private, no-cache")
+	addVary(w.Header(), "Cookie")
+	addVary(w.Header(), "Authorization")
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
 		return

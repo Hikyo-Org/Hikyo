@@ -163,7 +163,12 @@ const detail = {
   published_at: hoursAgo(3),
   changed_keys: [changed(3, 'edited')],
   change_token: 'tok_0123456789abcdef',
-  keys: keys.map((record) => ({ key_id: record.id, name: record.name, classification: record.classification })),
+  keys: keys.map((record) => ({
+    key_id: record.id,
+    name: record.name,
+    classification: record.classification,
+    sensitive: record.classification === 'secret',
+  })),
 } satisfies z.input<typeof zRevisionDetail>;
 
 const REVISIONS_URL = `${PROJECT_URL}/environments/${PRD}/revisions`;

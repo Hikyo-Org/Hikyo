@@ -38,6 +38,7 @@ type ownerRuntime struct {
 	publicEndpoint, operationalEndpoint *runtimeEndpoint
 	endpointErrors                      chan error
 	endpointWG                          sync.WaitGroup
+	cliServer                           *managedHTTPServer
 	serving                             bool
 	workerContext                       context.Context
 	transitioning                       bool
@@ -283,6 +284,12 @@ func (p *preparedOwnerActivation) Activate(ctx context.Context) error {
 		<-old.workersDone
 	}
 	if err := ctx.Err(); err != nil {
+		o.resume(old.graph)
+		return err
+	}
+	// A password may have been established between preparation and draining
+	// the old graph. Recheck before admitting the replacement cost.
+	if err := p.graph.auth.CheckPasswordConfiguration(ctx); err != nil {
 		o.resume(old.graph)
 		return err
 	}

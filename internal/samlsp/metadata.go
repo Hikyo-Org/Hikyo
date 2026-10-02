@@ -1,6 +1,8 @@
 package samlsp
 
 import (
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"errors"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/beevik/etree"
+	"github.com/russellhaering/goxmldsig/etreeutils"
 )
 
 const (
@@ -24,6 +27,7 @@ var (
 	ErrMetadataSigningCertificate = errors.New("samlsp: metadata has no usable assertion-signing certificate")
 	ErrMetadataValidUntil         = errors.New("samlsp: invalid metadata validUntil")
 	ErrMetadataSignature          = errors.New("samlsp: invalid metadata signature")
+	ErrMetadataCertificateKey     = errors.New("samlsp: metadata certificate uses a weak or unsupported public key")
 )
 
 // Metadata is the provider material extracted from one bounded etree. When a
@@ -84,7 +88,17 @@ func ParseMetadata(raw []byte, entityID string) (Metadata, error) {
 		if err != nil {
 			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
 		}
-		verified, _, err := verifyPinnedElement(signedElement, []*x509.Certificate{certificate}, certificate.NotBefore)
+		// Validation copies the element. Materialize inherited namespaces before
+		// that copy detaches a signed child from its metadata aggregate.
+		parentContext, err := etreeutils.NSBuildParentContext(signedElement)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
+		}
+		detached, err := etreeutils.NSDetatch(parentContext, signedElement)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
+		}
+		verified, _, err := verifyPinnedElement(detached, []*x509.Certificate{certificate}, certificate.NotBefore)
 		if err != nil {
 			return Metadata{}, fmt.Errorf("%w: %v", ErrMetadataSignature, err)
 		}
@@ -98,10 +112,6 @@ func ParseMetadata(raw []byte, entityID string) (Metadata, error) {
 	}
 
 	metadata.EntityID = entityID
-	metadata.ValidUntil, err = effectiveValidUntil(descriptor, extractionRoot)
-	if err != nil {
-		return Metadata{}, err
-	}
 	descriptors := directChildren(descriptor, SAMLMetadataNamespace, "IDPSSODescriptor")
 	var samlDescriptors []*etree.Element
 	for _, candidate := range descriptors {
@@ -117,6 +127,10 @@ func ParseMetadata(raw []byte, entityID string) (Metadata, error) {
 		return Metadata{}, ErrMetadataIDPDescriptor
 	}
 	idp := samlDescriptors[0]
+	metadata.ValidUntil, err = effectiveValidUntil(idp, extractionRoot)
+	if err != nil {
+		return Metadata{}, err
+	}
 	if rawSigned, present := plainAttr(idp, "WantAuthnRequestsSigned"); present {
 		switch rawSigned {
 		case "true", "1":
@@ -253,5 +267,33 @@ func parseMetadataCertificate(encoded string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x509.ParseCertificate(der)
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateMetadataCertificateKey(certificate); err != nil {
+		return nil, err
+	}
+	return certificate, nil
+}
+
+func validateMetadataCertificateKey(certificate *x509.Certificate) error {
+	switch key := certificate.PublicKey.(type) {
+	case *rsa.PublicKey:
+		if key.N == nil || key.N.BitLen() < 2048 {
+			return ErrMetadataCertificateKey
+		}
+	case *ecdsa.PublicKey:
+		if key.Curve == nil || key.Curve.Params() == nil {
+			return ErrMetadataCertificateKey
+		}
+		switch key.Curve.Params().Name {
+		case "P-256", "P-384", "P-521":
+		default:
+			return ErrMetadataCertificateKey
+		}
+	default:
+		return ErrMetadataCertificateKey
+	}
+	return nil
 }

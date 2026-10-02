@@ -3,7 +3,10 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"testing"
+	"time"
 )
 
 func TestInspectTarRejectsInstallHook(t *testing.T) {
@@ -14,7 +17,7 @@ func TestInspectTarRejectsInstallHook(t *testing.T) {
 		".post-install": []byte("#!/bin/sh\nstart-service\n"),
 	})
 	inspection := newTarInspection()
-	err := inspectTar(tar.NewReader(bytes.NewReader(archive)), inspection, map[string]bool{".PKGINFO": true})
+	err := inspectTar(tar.NewReader(bytes.NewReader(archive)), inspection, map[string]bool{".PKGINFO": true}, false)
 	if err == nil {
 		t.Fatal("inspectTar accepted an installation hook")
 	}
@@ -29,7 +32,7 @@ func TestInspectTarRequiresExactPayload(t *testing.T) {
 		"etc/hikyo.conf": []byte("unsafe"),
 	})
 	inspection := newTarInspection()
-	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), inspection, nil); err == nil {
+	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), inspection, nil, false); err == nil {
 		t.Fatal("inspectTar accepted a payload outside the exact allowlist")
 	}
 }
@@ -42,8 +45,110 @@ func TestInspectTarRejectsNonExecutableBinary(t *testing.T) {
 		licensePath: []byte("license"),
 	})
 	inspection := newTarInspection()
-	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), inspection, nil); err == nil {
+	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), inspection, nil, false); err == nil {
 		t.Fatal("inspectTar accepted a non-executable packaged binary")
+	}
+}
+
+func TestInspectTarRejectsUnsafeInstallationMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header tar.Header
+	}{
+		{name: "non-root owner", header: tar.Header{Name: binaryPath, Typeflag: tar.TypeReg, Mode: 0o755, Uid: 1000}},
+		{name: "writable directory", header: tar.Header{Name: "usr/bin/", Typeflag: tar.TypeDir, Mode: 0o777}},
+		{name: "extended attribute", header: tar.Header{Name: binaryPath, Typeflag: tar.TypeReg, Mode: 0o755, PAXRecords: map[string]string{"SCHILY.xattr.security.capability": "value"}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			writer := tar.NewWriter(&output)
+			header := tc.header
+			if header.Typeflag != tar.TypeDir {
+				header.Size = 1
+			}
+			if err := writer.WriteHeader(&header); err != nil {
+				t.Fatal(err)
+			}
+			if header.Size != 0 {
+				if _, err := writer.Write([]byte("x")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := inspectTar(tar.NewReader(bytes.NewReader(output.Bytes())), newTarInspection(), nil, false); err == nil {
+				t.Fatal("inspectTar accepted unsafe installation metadata")
+			}
+		})
+	}
+}
+
+func TestInspectTarAcceptsOnlyMatchingAPKChecksumMetadata(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("binary")
+	checksum := sha1.Sum(content)
+	archive := makeTarWithHeader(t, tar.Header{
+		Name:       binaryPath,
+		Typeflag:   tar.TypeReg,
+		Format:     tar.FormatPAX,
+		Mode:       0o755,
+		Size:       int64(len(content)),
+		ModTime:    time.Unix(1, 500),
+		PAXRecords: map[string]string{apkChecksumPAXKey: hex.EncodeToString(checksum[:])},
+	}, content)
+	header, err := tar.NewReader(bytes.NewReader(archive)).Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := header.PAXRecords[paxModTimeKey]; !ok {
+		t.Fatal("test APK entry does not exercise standard PAX modification time metadata")
+	}
+	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), newTarInspection(), nil, true); err != nil {
+		t.Fatalf("matching APK checksum and standard modification time refused: %v", err)
+	}
+
+	archive = makeTarWithHeader(t, tar.Header{
+		Name:       binaryPath,
+		Typeflag:   tar.TypeReg,
+		Mode:       0o755,
+		Size:       int64(len(content)),
+		PAXRecords: map[string]string{apkChecksumPAXKey: "0000000000000000000000000000000000000000"},
+	}, content)
+	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), newTarInspection(), nil, true); err == nil {
+		t.Fatal("mismatched APK checksum accepted")
+	}
+
+	archive = makeTarWithHeader(t, tar.Header{
+		Name:     binaryPath,
+		Typeflag: tar.TypeReg,
+		Mode:     0o755,
+		Size:     int64(len(content)),
+		PAXRecords: map[string]string{
+			apkChecksumPAXKey: hex.EncodeToString(checksum[:]),
+			"comment":         "untrusted metadata",
+		},
+	}, content)
+	if err := inspectTar(tar.NewReader(bytes.NewReader(archive)), newTarInspection(), nil, true); err == nil {
+		t.Fatal("APK checksum accompanied by non-time PAX metadata was accepted")
+	}
+}
+
+func TestRPMMetadataRejectsCapabilitiesAndUnsafeFlags(t *testing.T) {
+	t.Parallel()
+
+	if tag, found := firstForbiddenRPMHook(func(candidate int) bool { return candidate == 5010 }); !found || tag != 5010 {
+		t.Fatal("RPM FILECAPS metadata is not rejected")
+	}
+	if err := validateRPMFileFlags(binaryPath, 1); err == nil {
+		t.Fatal("binary file flags were accepted")
+	}
+	if err := validateRPMFileFlags(licensePath, 1<<7); err != nil {
+		t.Fatalf("standard RPM license marker refused: %v", err)
 	}
 }
 
@@ -91,6 +196,22 @@ func makeTar(t *testing.T, files map[string][]byte) []byte {
 		if _, err := writer.Write(content); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
+}
+
+func makeTarWithHeader(t *testing.T, header tar.Header, content []byte) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	writer := tar.NewWriter(&output)
+	if err := writer.WriteHeader(&header); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write(content); err != nil {
+		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)

@@ -588,6 +588,12 @@ func (a *TxAuthorizer) HoldRestoredPKIIssuers(ctx context.Context) error {
 	return a.r.HoldRestoredPKIIssuers(ctx)
 }
 
+// IncompatiblePasswordKDFCount is for startup/configuration admission, not a
+// public authentication route. It exposes only aggregate parameter metadata.
+func (a *TxAuthorizer) IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error) {
+	return a.r.IncompatiblePasswordKDFCount(ctx, kdf)
+}
+
 func (a *TxAuthorizer) IndefiniteCredentials(ctx context.Context) ([]AffectedCredential, error) {
 	return a.r.IndefiniteCredentials(ctx)
 }
@@ -618,6 +624,10 @@ func (a *TxAuthorizer) InvalidateRestoredAdapterCredentials(ctx context.Context)
 
 func (a *TxAuthorizer) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
 	return a.r.InvalidateRestoredDynamicProviderCredentials(ctx)
+}
+
+func (a *TxAuthorizer) InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error {
+	return a.r.InvalidateRestoredExternalCredentials(ctx, now)
 }
 
 func (a *TxAuthorizer) ListOAuth2Providers(ctx context.Context) ([]OAuth2Provider, error) {
@@ -860,12 +870,6 @@ func (a *TxAuthorizer) RegistrationSignupsForPolicy(ctx context.Context, policyI
 // ReleaseGrantOrigin releases one origin, reporting whether it held the row.
 func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error) {
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
-}
-
-// RemoteOrigins is the CSP `connect-src` input. See the resolver's doc comment
-// for why this one read of a class=instance table is proof-free.
-func (a *TxAuthorizer) RemoteOrigins(ctx context.Context) ([]string, error) {
-	return a.r.RemoteOrigins(ctx)
 }
 
 // RemoveExternalIdentity removes a link (unlink).

@@ -149,12 +149,12 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 	}
 	// One sealer for the whole walk: it holds every still-openable version, so it
 	// opens rows under their retiring version and seals under the active one.
-	sealer, err := s.Keyring.ForProject(ctx, orgID, projectID)
+	scope := domain.Scope{Org: domain.OrgID(orgID), Project: domain.ProjectID(projectID)}
+	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpReencryptProject, scope)
 	if err != nil {
 		return ReencryptResult{}, err
 	}
 	active := sealer.ActiveVersion()
-	scope := domain.Scope{Org: domain.OrgID(orgID), Project: domain.ProjectID(projectID)}
 
 	// §179 fail-closed default: a crypto walk proportional to every stored row,
 	// with no named category. Acquired once at entry and held for the whole

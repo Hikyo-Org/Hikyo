@@ -68,7 +68,8 @@ function ownedOptions<TData extends TDataShape>(
     fetch: (input, init) => {
       // SDK preparation is asynchronous. Fence the actual network dispatch too.
       assertSessionEpoch(epoch);
-      return (options.fetch ?? globalThis.fetch)(input, init);
+      const fetch = options.fetch ?? (options.client ?? client).getConfig().fetch ?? globalThis.fetch;
+      return fetch(input, init);
     },
   };
 }

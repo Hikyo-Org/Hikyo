@@ -212,12 +212,13 @@ func unseal(directory string, passphrase []byte, instance string, owner int) (re
 		return record{}, err
 	}
 	var plaintext boundedBuffer
-	defer clear(plaintext.buf)
+	defer func() { clear(plaintext.buf) }()
 	if err := backup.ExtractTo(&plaintext, bytes.NewReader(ciphertext), backup.Unlock{Passphrase: string(passphrase)}); err != nil {
 		return record{}, ErrUnlock
 	}
 	var r record
 	if definitions.DecodeStrict(plaintext.buf, &r) != nil {
+		r.clear()
 		return record{}, errors.New("invalid encrypted operator custody")
 	}
 	if r.Format != vaultFormat || r.Instance != instance {
@@ -322,6 +323,11 @@ type boundedBuffer struct{ buf []byte }
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	if len(b.buf)+len(p) > maxPlaintext {
 		return 0, errors.New("operator custody exceeds size bound")
+	}
+	if b.buf == nil {
+		// One owned allocation means cleanup can wipe every plaintext byte;
+		// append must not abandon earlier secret-bearing backing arrays.
+		b.buf = make([]byte, 0, maxPlaintext)
 	}
 	b.buf = append(b.buf, p...)
 	return len(p), nil

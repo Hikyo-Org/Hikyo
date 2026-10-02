@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -41,6 +42,17 @@ func newFakeAPI() *fakeAPI {
 	return &fakeAPI{account: testAccount, secrets: map[string]*fakeSecret{}, failOn: map[string]error{}, failOnce: map[string]error{}}
 }
 
+func (f *fakeAPI) resourceName(id string) string {
+	if strings.HasPrefix(id, "arn:") {
+		for name := range f.secrets {
+			if id == "arn:aws:secretsmanager:"+testRegion+":"+testAccount+":secret:"+name+"-AbCdEf" {
+				return name
+			}
+		}
+	}
+	return id
+}
+
 func (f *fakeAPI) fail(op, name string) error {
 	key := op + ":" + name
 	f.calls = append(f.calls, key)
@@ -61,6 +73,7 @@ func (f *fakeAPI) ResolveIdentity(context.Context) (Identity, error) {
 }
 
 func (f *fakeAPI) DescribeSecret(_ context.Context, name string) (SecretMetadata, error) {
+	name = f.resourceName(name)
 	if err := f.fail("describe", name); err != nil {
 		return SecretMetadata{}, err
 	}
@@ -112,6 +125,7 @@ func (f *fakeAPI) CreateSecret(_ context.Context, input CreateSecretInput) error
 }
 
 func (f *fakeAPI) PutSecretValue(_ context.Context, name, token, value string) error {
+	name = f.resourceName(name)
 	if err := f.fail("put", name); err != nil {
 		return err
 	}
@@ -128,8 +142,43 @@ func (f *fakeAPI) PutSecretValue(_ context.Context, name, token, value string) e
 		}
 		return nil
 	}
+	first := len(secret.values) == 0
 	secret.values[token] = value
-	f.moveStages(secret, token, awsCurrent, CurrentStage)
+	f.moveStages(secret, token, PendingStage)
+	if first {
+		f.moveStages(secret, token, awsCurrent)
+	}
+	return nil
+}
+
+func (f *fakeAPI) UpdateSecretVersionStage(_ context.Context, name, stage, moveTo, removeFrom string) error {
+	name = f.resourceName(name)
+	if err := f.fail("stage-"+stage, name); err != nil {
+		return err
+	}
+	secret, ok := f.secrets[name]
+	if !ok {
+		return &ResponseError{Status: 400, Code: "ResourceNotFoundException"}
+	}
+	if secret.deleted {
+		return &ResponseError{Status: 400, Code: "InvalidRequestException"}
+	}
+	if _, exists := secret.values[moveTo]; !exists {
+		return &ResponseError{Status: 400, Code: "InvalidParameterException"}
+	}
+	owner := ""
+	for id, stages := range secret.stages {
+		if slices.Contains(stages, stage) {
+			owner = id
+		}
+	}
+	if (owner != "" && owner != moveTo && removeFrom != owner) || (removeFrom != "" && removeFrom != owner) {
+		return &ResponseError{Status: 400, Code: "InvalidParameterException"}
+	}
+	f.moveStages(secret, moveTo, stage)
+	if stage == awsCurrent && owner != "" && owner != moveTo {
+		f.moveStages(secret, owner, "AWSPREVIOUS")
+	}
 	return nil
 }
 
@@ -143,12 +192,14 @@ func (f *fakeAPI) moveStages(secret *fakeSecret, version string, stages ...strin
 // externalPut is what an operator's `aws secretsmanager put-secret-value`
 // does: it moves only AWSCURRENT.
 func (f *fakeAPI) externalPut(name, version, value string) {
+	name = f.resourceName(name)
 	secret := f.secrets[name]
 	secret.values[version] = value
 	f.moveStages(secret, version, awsCurrent)
 }
 
 func (f *fakeAPI) TagSecret(_ context.Context, name string, tags map[string]string) error {
+	name = f.resourceName(name)
 	if err := f.fail("tag", name); err != nil {
 		return err
 	}
@@ -159,6 +210,7 @@ func (f *fakeAPI) TagSecret(_ context.Context, name string, tags map[string]stri
 }
 
 func (f *fakeAPI) RestoreSecret(_ context.Context, name string) error {
+	name = f.resourceName(name)
 	if err := f.fail("restore", name); err != nil {
 		return err
 	}
@@ -167,6 +219,7 @@ func (f *fakeAPI) RestoreSecret(_ context.Context, name string) error {
 }
 
 func (f *fakeAPI) DeleteSecret(_ context.Context, name string) error {
+	name = f.resourceName(name)
 	if err := f.fail("delete", name); err != nil {
 		return err
 	}
@@ -441,6 +494,164 @@ func TestExternalUpdateFailsLoudWithoutOverwrite(t *testing.T) {
 	}
 }
 
+type writeRaceAPI struct {
+	*fakeAPI
+	beforePut bool
+	afterPut  bool
+}
+
+func (f *writeRaceAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	if f.beforePut {
+		f.beforePut = false
+		f.externalPut(name, "concurrent-edit", "concurrent external value")
+	}
+	err := f.fakeAPI.PutSecretValue(ctx, name, token, value)
+	if err == nil && f.afterPut {
+		f.afterPut = false
+		f.externalPut(name, "concurrent-edit", "concurrent external value")
+	}
+	return err
+}
+
+func TestConcurrentExternalWriteIsNotOverwritten(t *testing.T) {
+	for _, timing := range []string{"before-put", "after-put"} {
+		t.Run(timing, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}, journal); err != nil {
+				t.Fatal(err)
+			}
+			oldVersion := api.secrets["prod/app"].tags[VersionTag]
+			race := &writeRaceAPI{fakeAPI: api, beforePut: timing == "before-put", afterPut: timing == "after-put"}
+			result, err := (&Module{API: race}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "next"}, journal)
+			if !errors.Is(err, adapter.ErrConflict) || len(result.Conflicts) != 1 || api.current("prod/app") != "concurrent external value" {
+				t.Fatalf("concurrent edit overwritten or silently accepted: err=%v result=%+v current=%q", err, result, api.current("prod/app"))
+			}
+			if !slices.Contains(api.secrets["prod/app"].stages[oldVersion], CurrentStage) || api.secrets["prod/app"].tags[VersionTag] != oldVersion {
+				t.Fatal("refused promotion discarded the previous Hikyo ownership evidence")
+			}
+			api.secrets["prod/app"].tags[VersionTag] = "concurrent-edit"
+			if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "consented"}, journal); err != nil {
+				t.Fatalf("explicit consent to the observed external version failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestConcurrentFirstVersionIsNotOverwritten(t *testing.T) {
+	for _, timing := range []string{"before-put", "after-put"} {
+		t.Run(timing, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			race := &writeRaceAPI{fakeAPI: api, beforePut: timing == "before-put", afterPut: timing == "after-put"}
+			result, err := (&Module{API: race}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}, journal)
+			if !errors.Is(err, adapter.ErrConflict) || len(result.Conflicts) != 1 || api.current("prod/app") != "concurrent external value" {
+				t.Fatalf("first-version concurrent edit lost: err=%v result=%+v current=%q", err, result, api.current("prod/app"))
+			}
+			if api.secrets["prod/app"].tags[VersionTag] != "" {
+				t.Fatal("failed first-version promotion recorded ownership of the external version")
+			}
+		})
+	}
+}
+
+type lostWriteResponseAPI struct {
+	*fakeAPI
+	operation string
+}
+
+type strictFirstPromotionAPI struct {
+	*fakeAPI
+	redundantPromotions int
+}
+
+func (f *strictFirstPromotionAPI) UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error {
+	if stage == awsCurrent && removeFrom == "" {
+		f.redundantPromotions++
+		// CI's pinned Moto refuses even when this exact version is already
+		// current. The protocol must not depend on a redundant no-op being
+		// accepted by either AWS or an AWS-compatible provider.
+		return &ResponseError{Status: 400, Code: "InvalidParameterException"}
+	}
+	return f.fakeAPI.UpdateSecretVersionStage(ctx, name, stage, moveTo, removeFrom)
+}
+
+func TestFirstVersionDoesNotRequireRedundantCurrentPromotion(t *testing.T) {
+	api, journal := &strictFirstPromotionAPI{fakeAPI: newFakeAPI()}, newFakeJournal()
+	req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "first"}
+	if _, err := (&Module{API: api}).Sync(t.Context(), req, journal); err != nil {
+		t.Fatal(err)
+	}
+	if api.redundantPromotions != 0 {
+		t.Fatal("first value depended on a redundant AWSCURRENT promotion")
+	}
+	token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, "prod/app")
+	secret := api.secrets["prod/app"]
+	if secret.tags[VersionTag] != token || !slices.Contains(secret.stages[token], CurrentStage) || !slices.Contains(secret.stages[token], awsCurrent) {
+		t.Fatalf("first value did not settle ownership: tags=%v stages=%v", secret.tags, secret.stages)
+	}
+}
+
+func (f *lostWriteResponseAPI) lost(operation string, err error) error {
+	if err == nil && f.operation == operation {
+		f.operation = ""
+		return errors.New("connection closed after committed operation")
+	}
+	return err
+}
+
+func (f *lostWriteResponseAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	return f.lost("put", f.fakeAPI.PutSecretValue(ctx, name, token, value))
+}
+
+func (f *lostWriteResponseAPI) UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error {
+	return f.lost(stage, f.fakeAPI.UpdateSecretVersionStage(ctx, name, stage, moveTo, removeFrom))
+}
+
+func (f *lostWriteResponseAPI) TagSecret(ctx context.Context, name string, tags map[string]string) error {
+	err := f.fakeAPI.TagSecret(ctx, name, tags)
+	if _, versionTag := tags[VersionTag]; versionTag {
+		return f.lost("version-tag", err)
+	}
+	return err
+}
+
+func TestStagedWriteReplayAfterActualLostResponses(t *testing.T) {
+	for _, operation := range []string{"put", awsCurrent, CurrentStage, "version-tag"} {
+		for _, existing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/existing=%v", operation, existing), func(t *testing.T) {
+				api, journal := newFakeAPI(), newFakeJournal()
+				if existing {
+					if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}, journal); err != nil {
+						t.Fatal(err)
+					}
+				}
+				wrapped := &lostWriteResponseAPI{fakeAPI: api, operation: operation}
+				req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "lost-response"}
+				_, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal)
+				if !existing && operation == awsCurrent {
+					if err != nil || wrapped.operation != awsCurrent {
+						t.Fatalf("first value redundantly promoted AWSCURRENT: err=%v remaining=%v", err, wrapped.operation)
+					}
+				} else if !errors.Is(err, adapter.ErrIndeterminate) {
+					t.Fatalf("actual committed operation's lost response = %v", err)
+				}
+				req.Ledger = journal.ledger()
+				if _, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal); err != nil {
+					t.Fatalf("same-job replay failed: %v", err)
+				}
+				wantVersions := 1
+				if existing {
+					wantVersions++
+				}
+				secret := api.secrets["prod/app"]
+				token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, "prod/app")
+				if len(secret.values) != wantVersions || secret.tags[VersionTag] != token || !slices.Contains(secret.stages[token], CurrentStage) || !slices.Contains(secret.stages[token], awsCurrent) || journal.states["prod/app"] != adapter.Owned {
+					t.Fatalf("replay duplicated a version or failed to settle ownership: versions=%d tags=%v stages=%v state=%v", len(secret.values), secret.tags, secret.stages, journal.states["prod/app"])
+				}
+			})
+		}
+	}
+}
+
 func TestValueWrittenIntoAFreshHikyoSecretIsRefused(t *testing.T) {
 	api, journal := newFakeAPI(), newFakeJournal()
 	// Created by this target (tagged) but written by someone else before
@@ -456,11 +667,34 @@ func TestAdoptedSecretIsTaggedBeforeWrite(t *testing.T) {
 	api, journal := newFakeAPI(), newFakeJournal()
 	api.secrets["prod/app"] = &fakeSecret{tags: map[string]string{}, stages: map[string][]string{"v1": {awsCurrent}}, values: map[string]string{"v1": "legacy"}}
 	journal.states["prod/app"] = adapter.Owned // explicit adoption
-	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_1"}, journal); err != nil {
+	ledger := journal.ledger()
+	ledger[0].AdoptionPending = true
+	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: ledger, JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(api.writes(), []string{"tag:prod/app", "put:prod/app", "tag:prod/app"}) {
+	if !slices.Equal(api.writes(), []string{"tag:prod/app", "put:prod/app", "stage-AWSCURRENT:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) {
 		t.Fatalf("adoption writes = %v, want ownership tag, put, version tag", api.writes())
+	}
+}
+
+func TestDefiniteLaterFailurePreservesCustodyOfCreatedSecret(t *testing.T) {
+	for _, operation := range []string{"put", "tag"} {
+		t.Run(operation, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			api.failOnce[operation+":prod/app"] = &ResponseError{Status: 403, Code: "AccessDeniedException"}
+			_, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{
+				Target: jsonTarget(), Manifest: manifest(), JobID: "job_partial",
+			}, journal)
+			if err == nil {
+				t.Fatal("partial mutation unexpectedly succeeded")
+			}
+			if api.secrets["prod/app"] == nil {
+				t.Fatal("fixture did not create the remote secret")
+			}
+			if journal.states["prod/app"] != adapter.Dispatched {
+				t.Fatalf("ledger state = %q, want dispatched custody", journal.states["prod/app"])
+			}
+		})
 	}
 }
 
@@ -470,7 +704,7 @@ func TestOwnedSecretScheduledForDeletionIsRestored(t *testing.T) {
 	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(api.writes(), []string{"restore:prod/app", "put:prod/app", "tag:prod/app"}) || api.secrets["prod/app"].deleted {
+	if !slices.Equal(api.writes(), []string{"restore:prod/app", "put:prod/app", "stage-HIKYO_CURRENT:prod/app", "tag:prod/app"}) || api.secrets["prod/app"].deleted {
 		t.Fatalf("writes = %v", api.writes())
 	}
 }
@@ -614,6 +848,7 @@ func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
 			wrapped := &adoptionTagFailureAPI{fakeAPI: api, landed: landed, failure: failure}
 			module := &Module{API: wrapped}
 			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_adopt"}
+			req.Ledger[0].AdoptionPending = true
 			if _, err := module.Sync(t.Context(), req, journal); err == nil {
 				t.Fatal("tag failure succeeded")
 			}
@@ -621,6 +856,7 @@ func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
 				t.Fatalf("landed=%v: adoption authority or value changed", landed)
 			}
 			req.Ledger = journal.ledger()
+			req.Ledger[0].AdoptionPending = true
 			if _, err := module.Sync(t.Context(), req, journal); err != nil {
 				t.Fatalf("landed=%v: retry: %v", landed, err)
 			}

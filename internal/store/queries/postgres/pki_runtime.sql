@@ -31,7 +31,7 @@ INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_ass
 -- hikyo:reason Closed PKIRuntime selects global active/retiring CAs with signing keys whose CRLs are missing, half-life due or behind committed revocation sequences.
 -- hikyo:instance-scoped
 -- name: RuntimePKIDueCRLs :many
-SELECT id,name,version,certificate_der,encrypted_private_key,dek_version,crl_number,revocation_seq FROM pki_issuers WHERE state IN ('active','retiring') AND encrypted_private_key IS NOT NULL AND dek_version IS NOT NULL AND certificate_der IS NOT NULL AND (crl_der IS NULL OR crl_next_update<=sqlc.arg(half_life) OR revocation_seq>crl_revocation_seq) ORDER BY id;
+SELECT id,name,version,certificate_der,encrypted_private_key,dek_version,crl_number,revocation_seq FROM pki_issuers WHERE restore_hold=0 AND state IN ('active','retiring') AND encrypted_private_key IS NOT NULL AND dek_version IS NOT NULL AND certificate_der IS NOT NULL AND (crl_der IS NULL OR crl_next_update<=sqlc.arg(half_life) OR revocation_seq>crl_revocation_seq) ORDER BY id;
 
 -- hikyo:reason Closed PKIRuntime appends the global CA publication audit only after successful prior-CRL-number CAS in the same transaction.
 -- hikyo:instance-scoped

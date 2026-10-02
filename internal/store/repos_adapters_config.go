@@ -30,6 +30,22 @@ func (r adapterQueries) Configuration(ctx context.Context, p authz.Proof, adapte
 	return r.db.adapterStoreQueries().adapterConfiguration(ctx, chain, adapterID)
 }
 
+// ConfigurationForUpdate binds provider verification to the configuration
+// that will receive the mutation. The parent lock is held until commit, so
+// credential replacement and origin moves cannot race the following write.
+// Read-only callers retain Configuration without acquiring a writer lock.
+func (r adapterQueries) ConfigurationForUpdate(ctx context.Context, p authz.Proof, adapterID string) (AdapterRecord, []byte, error) {
+	chain, err := authz.Verify(p, authz.StoreAdaptersConfigurationForUpdate, r.tok)
+	if err != nil {
+		return AdapterRecord{}, nil, err
+	}
+	queries := r.db.adapterStoreQueries()
+	if _, err := queries.adapterActiveForUpdate(ctx, chain, adapterID); err != nil {
+		return AdapterRecord{}, nil, err
+	}
+	return queries.adapterConfiguration(ctx, chain, adapterID)
+}
+
 func (r adapterQueries) List(ctx context.Context, p authz.Proof) ([]AdapterRecord, error) {
 	chain, err := authz.Verify(p, authz.StoreAdaptersList, r.tok)
 	if err != nil {
@@ -309,6 +325,9 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 	}
 	if _, err := adapter.ParseProvider(m.Provider); err != nil {
 		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
+	if err := requireCanonicalAdapterOrigin(m.Provider, m.Origin); err != nil {
+		return AdapterRecord{}, AdapterTarget{}, err
 	}
 	if m.ID == "" || m.Origin == "" || len(m.CredentialCiphertext) == 0 || m.AuthorityPrincipalID == "" || m.Target.AdapterID != m.ID {
 		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: incomplete atomic adapter bootstrap", domain.ErrInvalid)

@@ -19,6 +19,7 @@ const provider: OidcProvider = {
   redirect_uri: 'https://hikyo.example/api/v1/auth/oidc/acme/callback',
   assurance_policy: null,
   enabled: true,
+  row_version: 1n,
 };
 
 const goodDraft: OidcProviderDraft = {

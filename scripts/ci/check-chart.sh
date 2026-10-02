@@ -401,7 +401,7 @@ def assert_server_network(docs, mode, tls):
         fail(f"{mode}: root-key source volume = {root_source}")
     if root_source.get("items") != [{"key": "root-key", "path": "root-key"}]:
         fail(f"{mode}: root-key source item = {root_source.get('items')}")
-    if volumes.get("root-key", {}).get("emptyDir") != {}:
+    if volumes.get("root-key", {}).get("emptyDir") != {"medium": "Memory", "sizeLimit": "64Ki"}:
         fail(f"{mode}: staged root-key emptyDir = {volumes.get('root-key')}")
     if volumes.get("tmp", {}).get("emptyDir") != {}:
         fail(f"{mode}: writable tmp emptyDir = {volumes.get('tmp')}")
@@ -418,7 +418,7 @@ def assert_server_network(docs, mode, tls):
         secret = volumes.get("tls-source", {}).get("secret", {})
         if secret.get("secretName") != "fixture-tls" or secret.get("defaultMode") != 0o400:
             fail(f"{mode}: TLS volume = {secret}")
-        if volumes.get("tls", {}).get("emptyDir") != {}:
+        if volumes.get("tls", {}).get("emptyDir") != {"medium": "Memory", "sizeLimit": "1Mi"}:
             fail(f"{mode}: staged TLS emptyDir = {volumes.get('tls')}")
         init = {c["name"]: c for c in pod.get("initContainers", [])}.get("tls-stage", {})
         if init.get("args") != ["__hikyo-stage-tls", "--once"]:

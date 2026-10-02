@@ -58,10 +58,20 @@ describe('safeName', () => {
 
   it('escapes non-ASCII runes and caps the shown length', () => {
     expect(safeName('caf\u00e9')).toBe('"caf\\u00e9"');
+    expect(safeName('A'.repeat(2_000_000))).toBe(`"${'A'.repeat(127)}..."`);
   });
 });
 
 describe('k8s connector', () => {
+  it('preserves a leading UTF-8 BOM as secret value bytes', () => {
+    const { entries } = ok(parseSource('k8s', 'kind: Secret\nmetadata:\n  name: bom\ndata:\n  VALUE: 77u/dmFsdWU=\n'));
+    expect(entries[0]?.value).toBe('\uFEFFvalue');
+  });
+
+  it('refuses a huge shared manifest name before extracting its leaves', () => {
+    const manifest = `kind: Secret\nmetadata:\n  name: ${'a'.repeat(1_000_000)}\nstringData:\n  VALUE: value\n`;
+    expect(refusal(parseSource('k8s', manifest))).toContain('source-name bound');
+  });
   it('maps a single Secret onto the environment root (no folder)', () => {
     const { entries, renames, skipped } = ok(
       parseSource('k8s', 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: solo\n  resourceVersion: "1"\ndata:\n  ALPHA: YWxwaGE=\n  BETA: YmV0YQ==\n'),
@@ -118,6 +128,12 @@ describe('k8s connector', () => {
     );
   });
 
+  it('refuses an oversized YAML node graph before materializing it', () => {
+    const ignored = Array.from({ length: 25001 }, (_, index) => `  field${String(index)}: value`).join('\n');
+    const manifest = `kind: Secret\nmetadata:\n  name: bounded\nignored:\n${ignored}\ndata:\n  VALUE: eA==\n`;
+    expect(refusal(parseSource('k8s', manifest))).toMatch(/parser bound/);
+  });
+
   it('refuses a post-transform collision', () => {
     expect(
       refusal(parseSource('k8s', 'kind: Secret\nmetadata:\n  name: coll\ndata:\n  db-host: eA==\n  db.host: eQ==\n')),
@@ -165,6 +181,18 @@ describe('k8s connector', () => {
 });
 
 describe('infisical connector', () => {
+  it('preserves Go-compatible modeled field case variants rather than importing emptiness', () => {
+    const result = ok(parseSource('infisical', JSON.stringify([
+      { KEY: 'VALUE', Value: 'actual-value', TYPE: 'shared', SecretPath: '/' },
+    ]), { envSlug: 'prod' }));
+    expect(result.entries[0]?.value).toBe('actual-value');
+  });
+
+  it('refuses a mistyped case-variant value field', () => {
+    expect(refusal(parseSource('infisical', JSON.stringify([
+      { key: 'VALUE', VALUE: 42, type: 'shared', secretPath: '/' },
+    ]), { envSlug: 'prod' }))).toContain('pinned JSON array');
+  });
   const exportJson = JSON.stringify([
     { key: 'DB_URL', workspace: 'ws_1', value: 'postgres://x', type: 'shared', _id: 'sec_1', secretPath: '/db' },
     { key: 'api-key', workspace: 'ws_1', value: 'sk_live_x', type: 'shared', _id: 'sec_2', secretPath: '/db' },
@@ -210,6 +238,16 @@ describe('infisical connector', () => {
     ).toMatch(/more than once/);
   });
 
+  it.each([
+    ['s', 'ſ'],
+    ['σ', 'ς'],
+    ['µ', 'μ'],
+    ['в', 'ᲀ'],
+  ])('refuses Unicode SimpleFold-equivalent members %s and %s', (first, second) => {
+    const source = JSON.stringify([{ [first]: 1, [second]: 2 }]);
+    expect(refusal(parseSource('infisical', source, { envSlug: 'prod' }))).toMatch(/more than once/);
+  });
+
   it('refuses a non-string value instead of coercing it to an empty secret', () => {
     expect(
       refusal(parseSource('infisical', '[{"key":"API_KEY","value":123,"type":"shared","secretPath":"/"}]', { envSlug: 'prod' })),
@@ -220,6 +258,14 @@ describe('infisical connector', () => {
     expect(
       refusal(parseSource('infisical', '[{"key":"X","value":123,"type":"personal","secretPath":"/"}]', { envSlug: 'prod' })),
     ).toMatch(/pinned JSON array/);
+  });
+
+  it('refuses ignored JSON structures at the parser node bound', () => {
+    const ignored = Array.from({ length: 50001 }, () => 0);
+    const source = JSON.stringify([
+      { key: 'VALUE', value: 'x', type: 'shared', secretPath: '/', ignored },
+    ]);
+    expect(refusal(parseSource('infisical', source, { envSlug: 'prod' }))).toMatch(/parser bound/);
   });
 
   it('refuses a hostile type without echoing its value', () => {
@@ -234,6 +280,30 @@ describe('infisical connector', () => {
 });
 
 describe('vault/openbao connector', () => {
+  it('charges one parser-work budget across every JSON Lines capture', () => {
+    const lines = Array.from({ length: 15 }, (_, index) => JSON.stringify({
+      path: `apps/path-${index}`, mount: 'secret', engine_version: 1,
+      deleted: false, destroyed: false,
+      data: { VALUE: Array.from({ length: 4000 }, () => 0) },
+    }));
+    expect(refusal(parseSource('vault', lines.join('\n')))).toMatch(/parser bound/);
+  });
+
+  it('refuses the FB05/FB06 duplicate cycle used by the pinned Go CLI', () => {
+    const capture = JSON.stringify({
+      path: 'apps/value', mount: 'secret', engine_version: 1,
+      deleted: false, destroyed: false, data: { VALUE: { 'ﬅ': 1, 'ﬆ': 2 } },
+    });
+    expect(refusal(parseSource('vault', capture))).toMatch(/more than once/i);
+  });
+
+  it('keeps dotted I distinct from its expanded lowercase sequence, like Go', () => {
+    const capture = JSON.stringify({
+      path: 'apps/value', mount: 'secret', engine_version: 1,
+      deleted: false, destroyed: false, data: { VALUE: { 'İ': 1, 'i̇': 2 } },
+    });
+    expect(ok(parseSource('vault', capture)).entries[0]?.value).toBe('{"i̇":2,"İ":1}');
+  });
   it('strips the common prefix to folders, skips deleted, canonicalizes json leaves', () => {
     const capture = [
       '{"path":"apps/db/main","mount":"secret","engine_version":2,"secret_version":4,"deleted":false,"destroyed":false,"data":{"DB_URL":"postgres://fixture","OPTIONS":{"pool":5,"ssl":true}}}',

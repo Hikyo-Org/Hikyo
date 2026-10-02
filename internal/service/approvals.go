@@ -176,7 +176,7 @@ func (s *Approvals) CreatePolicy(ctx context.Context, actor Actor, scope domain.
 		if err != nil {
 			return err
 		}
-		if err := validatePolicyEnvironment(ctx, az, input.EnvironmentID); err != nil {
+		if err := validatePolicyEnvironment(ctx, az, scope, input.EnvironmentID); err != nil {
 			return err
 		}
 		id, err := newID("apol")
@@ -316,6 +316,13 @@ func (s *Approvals) ListPolicies(ctx context.Context, actor Actor, scope domain.
 				}
 			}
 			for _, id := range ids {
+				visible, err := names.visibleInProject(ctx, az, domain.PrincipalID(id), scope)
+				if err != nil {
+					return err
+				}
+				if !visible {
+					continue
+				}
 				name, err := names.get(ctx, az, domain.PrincipalID(id))
 				if err != nil {
 					return err
@@ -665,11 +672,11 @@ func validatePolicyInput(input ApprovalPolicyInput) error {
 	return nil
 }
 
-func validatePolicyEnvironment(ctx context.Context, az *authz.TxAuthorizer, envID string) error {
+func validatePolicyEnvironment(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scope, envID string) error {
 	if envID == "" {
 		return nil // project-wide
 	}
-	if _, err := az.EnvironmentReauthSettings(ctx, envID); err != nil {
+	if _, err := az.ResolveChain(ctx, domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return fmt.Errorf("%w: environment %q is not in this project", domain.ErrInvalid, envID)
 		}

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -180,14 +181,7 @@ type route struct {
 
 // canonicalOrigin accepts only a bare https origin.
 func canonicalOrigin(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", errors.New("aws-secrets-manager: origin is not a URL")
-	}
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("aws-secrets-manager: origin must be a bare https origin")
-	}
-	return "https://" + strings.ToLower(u.Host), nil
+	return adapter.CanonicalOrigin(adapter.AWSSecretsManagerProvider, raw)
 }
 
 // ValidateOrigin checks an adapter origin without a descriptor. AWS regional
@@ -249,6 +243,21 @@ func resolveRoute(rawOrigin string, d Descriptor) (route, error) {
 		sts, _ = canonicalOrigin(d.STSOrigin)
 	}
 	return route{origin: origin, region: d.Region, sts: sts}, nil
+}
+
+// STSOrigin returns the exact STS origin selected by an adapter descriptor.
+// Callers use it to select that origin's own operator egress exception rather
+// than lending the Secrets Manager origin's private-network authority to STS.
+func STSOrigin(rawOrigin, rawCredential string) (string, error) {
+	descriptor, err := ParseDescriptor(rawCredential)
+	if err != nil {
+		return "", configError(err)
+	}
+	route, err := resolveRoute(rawOrigin, descriptor)
+	if err != nil {
+		return "", configError(err)
+	}
+	return route.sts, nil
 }
 
 func regionalSTS(region string) string {

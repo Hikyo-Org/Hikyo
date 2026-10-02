@@ -9,7 +9,7 @@ Canonical contract: [social sign-in specification](../spec/social-signin.md), [o
 - Purpose-bound, single-use OAuth2 start/callback transactions support login, link, claim and establishment. Provider, binding, purpose and credential epoch are checked before credential writes. Claims lock the target principal; provider guards serialize same-issuer writes. OAuth2 disclosure reauthentication returns a local-authenticator/passkey remedy.
 - Unknown identities register only through an admitted signup policy. Only unknown signup fetches primary verified email. No verified email emits `registration.signup_refused`; an email network failure emits `auth.oauth2_refused` with `userinfo-error` and the signup context. One admitted budget reservation survives the network leg.
 - API, CLI and instance-admin WebUI support provider creation, read, list, reconfiguration and deletion. Secrets are sealed and write-only. Duplicate enabled origins return a conflict. Reconfiguration/disable/delete ends provider sessions. GitHub branding, profile and OAuth2 identity kinds reach login, account security and CLI reauthentication guidance.
-- Both database engines carry short-lived establishment evidence attached to the resulting session. Migration 71 adds this carrier and updates development compatibility identity. The historical archive fixture refuses to discard nonempty establishment evidence.
+- Both database engines carry short-lived establishment evidence attached to the resulting session. Migration 73 adds this carrier and updates development compatibility identity. The historical archive fixture refuses to discard nonempty establishment evidence.
 
 ## Ownership boundaries
 
@@ -28,7 +28,7 @@ The shared T3 browser exercised desktop 1280x800 and mobile 390x844 login brandi
 
 Initial full-suite failures included stale surface pins, API parity entries and shared proof-gate/registration expectations, which were corrected, plus PostgreSQL tmpfs OOM/recovery failures. Reverification uses disk-backed PostgreSQL 18. Broad fixture concurrency exhausted PostgreSQL connection and lock capacity; failed groups are rerun with two concurrent fixtures on an isolated server with increased lock capacity. An application fixture build and static AST checks also overlapped source edits; their exact failed tests passed after source stabilization.
 
-No push, remote CI, PR, merge or deployment is part of this local implementation endpoint.
+Delivery endpoint: [PR 848](https://github.com/Hikyo-Org/Hikyo/pull/848), with merge authorized after required checks pass on the final head. The earlier local endpoint was extended by the user.
 
 Final local evidence:
 
@@ -37,3 +37,7 @@ Final local evidence:
 - WebUI: typecheck, all 150 unit files / 1,327 tests, lint, design checks and production build passed. Generated TypeScript client: typecheck and all 21 tests passed.
 - Core Go adapter/server/API/authz/CLI tests passed. Go vet, import formatting and current-toolchain formatting passed. The API freeze guard is dormant because the freeze tag does not exist.
 - All 130 generated Go/TypeScript files matched their recorded hashes after fresh pinned regeneration. Signature and DCO verification follow the normal signed commit.
+
+Integration with main security remediation (#844): OAuth2 establishment moved to migration 73 after existing migrations 71/72. Same-origin login continuation, optional CLI authenticators and all incoming source boundaries remain in place. Compatibility identity and generators were rebuilt for the combined schema.
+
+Combined-main validation: all 1,468 WebUI tests plus typecheck/lint/design/build pass; generated client typecheck and 21 tests pass. Core Go adapter/server/API/authz/CLI/lint/boundary tests pass. Both-engine OAuth2, shared proof gates, registration, static invariants and audit closure pass (104.610 seconds); both-engine upgrade drill tests pass (78.258 seconds). Focused ordinary integration reviews found no critical conflict-resolution problem.

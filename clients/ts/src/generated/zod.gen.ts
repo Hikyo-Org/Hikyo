@@ -2002,7 +2002,7 @@ export const zServiceAccountList = z.object({
  */
 export const zMintCredentialRequest = z.object({
     indefinite: z.boolean().optional(),
-    lifetime_seconds: z.int().gte(1).optional()
+    lifetime_seconds: z.int().gte(1).lte(315360000).optional()
 });
 
 /**
@@ -2152,7 +2152,7 @@ export const zCreateBindingRequest = z.object({
     audience: z.string().min(1).max(512),
     required_claims: z.array(zFederatedClaimPin).min(1).max(16),
     indefinite: z.boolean().optional(),
-    lifetime_seconds: z.int().gte(1).optional(),
+    lifetime_seconds: z.int().gte(1).lte(315360000).optional(),
     replaces: zId.optional()
 });
 
@@ -2412,7 +2412,7 @@ export const zInstanceConfigMailTestResult = z.object({
 });
 
 export const zCredentialPolicy = z.object({
-    max_finite_lifetime_seconds: z.int().gte(1),
+    max_finite_lifetime_seconds: z.int().gte(1).lte(315360000),
     allow_indefinite: z.boolean(),
     max_live_credentials: z.int().gte(1),
     updated_at: zTimestamp.optional(),
@@ -2420,7 +2420,7 @@ export const zCredentialPolicy = z.object({
 });
 
 export const zSetCredentialPolicyRequest = z.object({
-    max_finite_lifetime_seconds: z.int().gte(1),
+    max_finite_lifetime_seconds: z.int().gte(1).lte(315360000),
     allow_indefinite: z.boolean(),
     max_live_credentials: z.int().gte(1),
     confirm: z.boolean().optional()
@@ -2621,7 +2621,8 @@ export const zGrantResultList = z.object({
 
 export const zEnvironmentSettings = z.object({
     protected: z.boolean(),
-    reauth_window_seconds: z.int().gte(0).nullish()
+    reauth_window_seconds: z.int().gte(0).nullish(),
+    expected_protected: z.boolean().optional()
 });
 
 export const zMachineRevealSettings = z.object({
@@ -2930,7 +2931,8 @@ export const zRevisionDiff = z.object({
 export const zSnapshotKey = z.object({
     key_id: zId,
     name: zKeyName,
-    classification: zKeyClassification
+    classification: zKeyClassification,
+    sensitive: z.boolean()
 });
 
 export const zRevisionDetail = z.object({
@@ -3060,6 +3062,7 @@ export const zValueDiff = z.object({
  *
  */
 export const zDeliveredKey = z.object({
+    snapshot_receipt: z.string().min(1).max(4096).optional(),
     key_id: zId,
     name: z.string().max(256),
     classification: zKeyClassification,
@@ -3095,6 +3098,7 @@ export const zDeliveryResponse = z.object({
 });
 
 export const zOfflineDeliveryRecord = z.object({
+    snapshot_receipt: z.string().min(1).max(4096),
     record_id: z.string().min(1).max(64),
     key_id: z.string().min(1).max(64),
     key_name: z.string().min(1).max(256),
@@ -3106,7 +3110,7 @@ export const zOfflineDeliveryRecord = z.object({
 });
 
 export const zReconcileOfflineRecordsRequest = z.object({
-    records: z.array(zOfflineDeliveryRecord).min(1).max(1000)
+    records: z.array(zOfflineDeliveryRecord).min(1).max(60)
 });
 
 /**
@@ -3438,7 +3442,8 @@ export const zOidcProviderInput = z.object({
     client_secret: z.string().max(4096),
     scopes: z.string().max(1024),
     assurance_policy: z.string().max(4096).nullish(),
-    enabled: z.boolean()
+    enabled: z.boolean(),
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
 export const zOauth2ProviderInput = z.object({
@@ -3458,7 +3463,8 @@ export const zOidcProvider = z.object({
     scopes: z.string(),
     redirect_uri: z.string(),
     assurance_policy: z.string().nullish(),
-    enabled: z.boolean()
+    enabled: z.boolean(),
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
 });
 
 export const zOidcProviderList = z.object({
@@ -3666,6 +3672,8 @@ export const zSamlMetadataDiff = z.object({
     endpoints_removed: z.array(z.string()),
     certs_added_fps: z.array(z.string()),
     certs_removed_fps: z.array(z.string()),
+    metadata_certs_added_fps: z.array(z.string()),
+    metadata_certs_removed_fps: z.array(z.string()),
     valid_until: zTimestamp.nullish()
 });
 
@@ -4082,7 +4090,7 @@ export const zInstanceConnectionList = z.object({
 
 export const zMintInstanceConnectionRequest = z.object({
     label: z.string().min(1).max(200),
-    lifetime_seconds: z.int().gte(1).optional(),
+    lifetime_seconds: z.int().gte(1).lte(315360000).optional(),
     indefinite: z.boolean().optional()
 });
 

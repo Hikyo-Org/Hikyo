@@ -325,7 +325,7 @@ func (a *API) GetEnvironmentSettings(ctx context.Context, req apigen.GetEnvironm
 }
 
 func (a *API) SetEnvironmentSettings(ctx context.Context, req apigen.SetEnvironmentSettingsRequestObject) (apigen.SetEnvironmentSettingsResponseObject, error) {
-	want := service.EnvironmentSettings{Protected: req.Body.Protected}
+	want := service.EnvironmentSettings{Protected: req.Body.Protected, ExpectedProtected: req.Body.ExpectedProtected}
 	if req.Body.ReauthWindowSeconds != nil {
 		want.HasWindow = true
 		want.Window = time.Duration(*req.Body.ReauthWindowSeconds) * time.Second

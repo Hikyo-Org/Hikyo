@@ -110,6 +110,8 @@ type DeliveredKey struct {
 	// string, because the empty string is a legitimate delivered value and
 	// "delivered empty" must be distinguishable from "not delivered".
 	Value *string
+	// SnapshotReceipt exists only when this fetch actually delivered plaintext.
+	SnapshotReceipt *string
 }
 
 // FetchOptions carries the per-request delivery controls that are not the
@@ -136,14 +138,15 @@ type FetchOptions struct {
 // OfflineRecord is one client-durable disclosure record produced before an
 // offline snapshot released plaintext.
 type OfflineRecord struct {
-	RecordID       string
-	KeyID          string
-	KeyName        string
-	Classification string
-	OccurredAt     time.Time
-	CredentialID   string
-	Generation     string
-	ServedFrom     time.Time
+	RecordID        string
+	KeyID           string
+	KeyName         string
+	Classification  string
+	OccurredAt      time.Time
+	CredentialID    string
+	Generation      string
+	ServedFrom      time.Time
+	SnapshotReceipt string
 }
 
 // ReconcileResult reports the idempotent outcome of one bounded batch.
@@ -288,6 +291,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 	}
 
 	var out FetchResult
+	principalCharged := false
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		resetDeliveryAttempt(&out)
 		if s.FetchProbe != nil {
@@ -311,6 +315,11 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		caller, p, err := authorize(ctx, az, actor, authz.OpDeliveryFetch, scope, issuedAt)
 		if err != nil {
 			return err
+		}
+		if domain.IsServiceAccountKind(caller.Class) {
+			if err := s.Budget.chargeMachineFetchOnce(&principalCharged, caller.Principal); err != nil {
+				return err
+			}
 		}
 
 		var selected *store.Snapshot
@@ -393,10 +402,19 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if err != nil {
 			return err
 		}
-		changeToken, err := s.Keyring.ChangeToken(string(scope.Org), string(scope.Project), string(scope.Env), parameterizedManifest(manifest, opts.Parameters))
+		// One database-locked key snapshot binds the conditional token, cursor
+		// and any disclosure receipts. A replica's boot-time handle is not
+		// evidence that its token key is still active.
+		row, err := r.Keys().ActiveTokenKeyForReceipt(ctx, p)
 		if err != nil {
 			return err
 		}
+		signer, err := s.Keyring.DeliveryTokenSnapshot(row, string(scope.Org), string(scope.Project), string(scope.Env))
+		if err != nil {
+			return err
+		}
+		defer signer.Close()
+		changeToken := signer.ChangeToken(parameterizedManifest(manifest, opts.Parameters))
 
 		// The other two non-content components.
 		revisionOfAuthority, err := az.PrincipalGeneration(ctx, caller.Principal)
@@ -417,8 +435,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if pinnedNonCurrent {
 			pinnedHistoricalRevision = out.PinnedRevision
 		}
-		computed, err := s.Keyring.DeliveryCursor(
-			string(scope.Org), string(scope.Project), string(scope.Env),
+		computed := signer.DeliveryCursor(
 			delivery.EncodeCursor(delivery.Cursor{
 				ChangeToken:              changeToken,
 				Projection:               projectionOf(grants, scope, revealGeneration),
@@ -427,10 +444,6 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 				Mode:                     mode,
 				PinnedHistoricalRevision: pinnedHistoricalRevision,
 			}))
-		if err != nil {
-			return err
-		}
-
 		// Constant-time, like every other comparison against a
 		// caller-controlled value in this codebase. A cursor is not a secret,
 		// but it is a value an attacker can guess at, and a byte-at-a-time
@@ -451,6 +464,16 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		}
 		if !current {
 			out.Keys = rows
+			for i := range out.Keys {
+				if out.Keys[i].Value == nil {
+					continue
+				}
+				receipt, err := s.issueOfflineReceipt(signer, caller.Principal, out, out.Keys[i])
+				if err != nil {
+					return err
+				}
+				out.Keys[i].SnapshotReceipt = &receipt
+			}
 		}
 
 		disposition := "full"
@@ -563,8 +586,8 @@ func (s *Delivery) ReconcileOfflineRecords(ctx context.Context, presented string
 
 // ReconcileOfflineRecordsAs is ReconcileOfflineRecords with the caller decided.
 func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, scope domain.Scope, records []OfflineRecord) (ReconcileResult, error) {
-	if len(records) == 0 || len(records) > 1000 {
-		return ReconcileResult{}, invalidDetail("offline reconciliation requires between 1 and 1000 records")
+	if len(records) == 0 || len(records) > BudgetDefaultRatePerMin {
+		return ReconcileResult{}, invalidDetail("offline reconciliation requires between 1 and %d records", BudgetDefaultRatePerMin)
 	}
 	for _, record := range records {
 		if record.RecordID == "" || len(record.RecordID) > 64 || record.KeyID == "" || len(record.KeyID) > 64 ||
@@ -575,10 +598,10 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 		}
 	}
 
-	// §179 fail-closed default: a bulk offline-record flush (up to 1000 records)
-	// with no named category. Authorized-then-acquired at entry (rate +
-	// concurrency), so an unauthorized caller cannot occupy the org's slots.
-	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpDeliveryReconcileOffline, authz.OpDeliveryReconcileOffline, scope, s.now)
+	// §179 fail-closed default: every caller-supplied record consumes one rate
+	// charge while the batch takes one concurrency slot. Authorized-then-acquired
+	// at entry, so an unauthorized caller cannot occupy the org's slots.
+	release, err := chargeDefaultAtEntryWeighted(ctx, s.DB, s.Budget, actor, authz.OpDeliveryReconcileOffline, authz.OpDeliveryReconcileOffline, scope, len(records), s.now)
 	if err != nil {
 		return ReconcileResult{}, err
 	}
@@ -609,7 +632,20 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 				servedCredentials[credential.ID] = true
 			}
 		}
+		row, err := r.Keys().ActiveTokenKeyForReceipt(ctx, p)
+		if err != nil {
+			return err
+		}
+		signer, err := s.Keyring.DeliveryTokenSnapshot(row, string(scope.Org), string(scope.Project), string(scope.Env))
+		if err != nil {
+			return err
+		}
+		defer signer.Close()
 		for _, record := range records {
+			claims, err := s.verifyOfflineReceipt(signer, caller.Principal, record, s.now())
+			if err != nil {
+				return err
+			}
 			if caller.CredentialID != "" && !servedCredentials[record.CredentialID] {
 				return invalidDetail("offline record %q names a credential outside the presenting service account", record.RecordID)
 			}
@@ -627,6 +663,8 @@ func (s *Delivery) ReconcileOfflineRecordsAs(ctx context.Context, actor Actor, s
 					"classification": record.Classification, "surface": "offline-serve",
 					"served_credential_id": record.CredentialID, "generation": record.Generation,
 					"served_from": audit.FormatTime(record.ServedFrom),
+					"revision":    claims.Revision, "receipt_verified": true,
+					"snapshot_commitment": claims.ChangeToken,
 				})
 			if err != nil {
 				return err
@@ -787,6 +825,16 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 		if secret && mode == delivery.ModeConfigOnly {
 			continue
 		}
+		if secret && !revealsSecret {
+			// Presence is authorized, hidden plaintext and write occurrence are
+			// not. Neither may move this caller's token or require decryption.
+			keys = append(keys, DeliveredKey{
+				KeyID: entry.KeyID, Name: entry.KeyName, Classification: entry.Classification,
+				Presence: delivery.PresenceSet,
+			})
+			manifest = append(manifest, delivery.Row{Key: entry.KeyName, Classification: entry.Classification})
+			continue
+		}
 		plain, err := sealer.OpenField(snapshotAAD(
 			entry.OrgID, entry.ProjectID, entry.EnvironmentID, entry.KeyID, entry.SnapshotID, entry.ID), entry.Ciphertext)
 		if err != nil {
@@ -814,7 +862,8 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 		}
 		keys = append(keys, key)
 		manifest = append(manifest, delivery.Row{
-			Key: entry.KeyName, Classification: entry.Classification, Value: resolved,
+			Key: entry.KeyName, Classification: entry.Classification,
+			Occurrence: entry.ValueEntryID, Value: resolved,
 		})
 	}
 	// The PINNED schema revision, not the live one: what this snapshot was

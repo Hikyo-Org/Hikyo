@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -180,18 +181,63 @@ type assurancePolicy struct {
 	AMRSets   [][]string `json:"amr_sets"`
 }
 
+const maxAssurancePolicyItems = 32
+
+func validateAssurancePolicy(policy *string) (*string, error) {
+	if policy == nil {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(*policy))
+	decoder.DisallowUnknownFields()
+	var p assurancePolicy
+	if err := decoder.Decode(&p); err != nil {
+		return nil, fmt.Errorf("%w: invalid assurance_policy", domain.ErrInvalid)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%w: assurance_policy carries trailing content", domain.ErrInvalid)
+	}
+	if len(p.ACRValues) > maxAssurancePolicyItems || len(p.AMRSets) > maxAssurancePolicyItems {
+		return nil, fmt.Errorf("%w: assurance_policy has too many entries", domain.ErrInvalid)
+	}
+	for _, value := range p.ACRValues {
+		if value == "" || strings.TrimSpace(value) != value {
+			return nil, fmt.Errorf("%w: assurance_policy values must be non-empty and trimmed", domain.ErrInvalid)
+		}
+	}
+	for _, set := range p.AMRSets {
+		if len(set) == 0 || len(set) > maxAssurancePolicyItems {
+			return nil, fmt.Errorf("%w: assurance_policy AMR sets must be non-empty and bounded", domain.ErrInvalid)
+		}
+		for _, value := range set {
+			if value == "" || strings.TrimSpace(value) != value {
+				return nil, fmt.Errorf("%w: assurance_policy values must be non-empty and trimmed", domain.ErrInvalid)
+			}
+		}
+	}
+	canonical, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid assurance_policy", domain.ErrInvalid)
+	}
+	value := string(canonical)
+	return &value, nil
+}
+
 // evaluateAssurance reports whether the provider's policy was satisfied by the
 // token's acr/amr. Absent policy is never multi-factor.
 func evaluateAssurance(policy *string, acr string, amr []string) (bool, error) {
-	if policy == nil {
+	validated, err := validateAssurancePolicy(policy)
+	if err != nil {
+		return false, err
+	}
+	if validated == nil {
 		return false, nil
 	}
 	var p assurancePolicy
-	if err := json.Unmarshal([]byte(*policy), &p); err != nil {
+	if err := json.Unmarshal([]byte(*validated), &p); err != nil {
 		return false, fmt.Errorf("service: parsing a provider assurance policy: %w", err)
 	}
 	for _, v := range p.ACRValues {
-		if acr == v {
+		if acr != "" && acr == v {
 			return true, nil
 		}
 	}
@@ -264,6 +310,7 @@ type ProviderView struct {
 	RedirectURI     string
 	AssurancePolicy *string
 	Enabled         bool
+	RowVersion      int64
 }
 
 func providerView(p authz.OIDCProvider) ProviderView {
@@ -271,6 +318,7 @@ func providerView(p authz.OIDCProvider) ProviderView {
 		Slug: p.Slug, DisplayName: p.DisplayName, Issuer: p.Issuer, ClientID: p.ClientID,
 		Scopes: p.Scopes, RedirectURI: p.RedirectURI,
 		AssurancePolicy: p.AssurancePolicy, Enabled: p.Enabled,
+		RowVersion: p.RowVersion,
 	}
 }
 
@@ -283,6 +331,10 @@ type ProviderInput struct {
 	Scopes          string
 	AssurancePolicy *string
 	Enabled         bool
+	// CreateOnly distinguishes an API create from legacy internal upsert calls.
+	// ExpectedRowVersion pins an API reconfiguration to the displayed row.
+	CreateOnly         bool
+	ExpectedRowVersion *int64
 }
 
 func (s *Providers) redirectURI(slug string) string {
@@ -300,7 +352,12 @@ func (s *Providers) redirectURI(slug string) string {
 // propagate.
 func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in ProviderInput) (ProviderView, error) {
 	var out ProviderView
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	validatedPolicy, err := validateAssurancePolicy(in.AssurancePolicy)
+	if err != nil {
+		return ProviderView{}, err
+	}
+	in.AssurancePolicy = validatedPolicy
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		// Authorize BEFORE discovery closes an SSRF: only an instance-config
 		// holder may make the server fetch an arbitrary issuer URL. Discovery
 		// then validates the issuer (byte-exact) before anything is written.
@@ -331,9 +388,18 @@ func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in Provid
 		existing, err := az.ProviderBySlug(ctx, slug)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
+			if in.ExpectedRowVersion != nil {
+				return ErrProviderRace
+			}
 			return s.create(ctx, r, az, p, caller.Principal, slug, in, &out)
 		case err != nil:
 			return err
+		}
+		if in.CreateOnly {
+			return ErrProviderExists
+		}
+		if in.ExpectedRowVersion != nil && *in.ExpectedRowVersion != existing.RowVersion {
+			return ErrProviderRace
 		}
 		if existing.Issuer != in.Issuer {
 			return ErrIssuerImmutable
@@ -398,6 +464,7 @@ func (s *Providers) create(ctx context.Context, r store.Repos, az *authz.TxAutho
 		Slug: slug, DisplayName: in.DisplayName, Issuer: in.Issuer, ClientID: in.ClientID,
 		Scopes: in.Scopes, RedirectURI: prov.RedirectURI,
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
+		RowVersion: 1,
 	})
 	return nil
 }
@@ -439,6 +506,7 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 		Slug: existing.Slug, DisplayName: in.DisplayName, Issuer: existing.Issuer, ClientID: in.ClientID,
 		Scopes: in.Scopes, RedirectURI: upd.RedirectURI,
 		AssurancePolicy: in.AssurancePolicy, Enabled: in.Enabled,
+		RowVersion: existing.RowVersion + 1,
 	})
 	return nil
 }

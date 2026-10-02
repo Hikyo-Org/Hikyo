@@ -89,6 +89,8 @@ func scimError(err error) *scimproto.Error {
 	case errors.Is(err, service.ErrSCIMUnknownMember):
 		return scimproto.ErrInvalidValue(
 			"A member reference names no user provisioned by this binding.")
+	case errors.Is(err, service.ErrSCIMGroupMemberLimit):
+		return scimproto.ErrInvalidValue(err.Error())
 	case errors.Is(err, service.ErrSCIMNestedGroup):
 		return scimproto.ErrInvalidValue("Nested group members are not supported.")
 	case errors.Is(err, service.ErrSCIMNoTarget):

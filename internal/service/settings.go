@@ -53,11 +53,15 @@ var (
 	// would be born expired, and a disclosure gate that silently cannot be
 	// satisfied is worse than one that refuses loudly.
 	ErrNoReauthHardCap = fmt.Errorf("%w: service: an effective reauthentication window of 0 requires a non-zero reauthentication hard cap", domain.ErrConflict)
+	// ErrEnvironmentSettingsRace refuses a stale full-replacement request whose
+	// reviewed protection flag changed before the write transaction.
+	ErrEnvironmentSettingsRace = fmt.Errorf("%w: service: environment settings changed after review", domain.ErrConflict)
 )
 
 // EnvironmentSettings is the caller-facing shape of the two knobs.
 type EnvironmentSettings struct {
-	Protected bool
+	Protected         bool
+	ExpectedProtected *bool
 	// HasWindow false means the environment inherits the instance default.
 	HasWindow bool
 	Window    time.Duration
@@ -116,6 +120,9 @@ func (s *ProjectSettings) SetEnvironment(ctx context.Context, actor Actor, scope
 		before, err := r.Environments().Settings(ctx, p)
 		if err != nil {
 			return err
+		}
+		if want.ExpectedProtected != nil && *want.ExpectedProtected != before.Protected {
+			return ErrEnvironmentSettingsRace
 		}
 
 		// Marking protected CAPS the window at the protected default. An

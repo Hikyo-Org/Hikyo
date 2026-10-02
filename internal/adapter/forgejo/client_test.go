@@ -227,7 +227,11 @@ func NewTestClient(origin, credential string, client *http.Client) (*Client, err
 	if credential == "" || client == nil {
 		return nil, errors.New("forgejo: test client requires credential and HTTP client")
 	}
-	return &Client{origin: canonical, token: credential, http: client}, nil
+	deadline := client.Timeout
+	if deadline <= 0 {
+		deadline = 15 * time.Second
+	}
+	return &Client{origin: canonical, token: credential, http: client, deadline: deadline}, nil
 }
 
 // A module lease owns this client's transport. Releasing the lease must close

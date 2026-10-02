@@ -24,7 +24,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/oidctest"
-	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -309,8 +308,6 @@ func runFederationPerIssuerType(t *testing.T, db *store.DB) {
 	}{
 		{"kubernetes", domain.IssuerKubernetes,
 			oidctest.KubernetesShape("prod", "deployer", "uid-9f2c", "https://kubernetes.default.svc")},
-		{"forgejo", domain.IssuerForgejo,
-			oidctest.ForgejoShape("https://git.example.test", "acme/service", "refs/heads/main", "push")},
 		{"github-actions", domain.IssuerGitHubActions,
 			oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "push")},
 	}
@@ -464,9 +461,8 @@ func TestFederationRefusesPullRequestEvents(t *testing.T) {
 // by the pinned `event_name`.
 func runPullRequestRefusal(t *testing.T, db *store.DB) {
 	r := newFedRig(t, db)
-	const instance = "https://git.example.test"
-	production := oidctest.ForgejoShape(instance, "acme/service", "refs/heads/main", "push")
-	r.configureIssuer(t, domain.IssuerForgejo, []string{production.DefaultAudience})
+	production := oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "push")
+	r.configureIssuer(t, domain.IssuerGitHubActions, []string{production.DefaultAudience})
 	r.bindShape(t, "ci-production", production, hikyoAudience)
 
 	// A CI binding that pins no `event_name` is refused AT CREATION. That is the
@@ -489,7 +485,7 @@ func runPullRequestRefusal(t *testing.T, db *store.DB) {
 	// `pull_request_target` against the production binding. The subject IS the
 	// production subject — the fixture asserts that rather than assuming it, so
 	// the refusal cannot be a subject mismatch wearing an event rule's clothes.
-	prTarget := oidctest.ForgejoShape(instance, "acme/service", "refs/heads/main", "pull_request_target")
+	prTarget := oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "pull_request_target")
 	if prTarget.Subject != production.Subject {
 		t.Fatalf("fixture broken: pull_request_target subject %q should equal the production subject %q",
 			prTarget.Subject, production.Subject)
@@ -504,7 +500,7 @@ func runPullRequestRefusal(t *testing.T, db *store.DB) {
 
 	// `pull_request` carries the OTHER subject form, so it is refused twice over.
 	// Both refusals are the same uniform answer, which is the point.
-	pr := oidctest.ForgejoShape(instance, "acme/service", "refs/heads/main", "pull_request")
+	pr := oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "pull_request")
 	prToken, err := r.idp.MintShape(pr, hikyoAudience, r.clk.Now(), 10*time.Minute)
 	if err != nil {
 		t.Fatal(err)
@@ -526,7 +522,7 @@ func runPullRequestRefusal(t *testing.T, db *store.DB) {
 	// ref-form one and the live-row unique index admits one binding per
 	// `(issuer, subject)`. That constraint is itself the ADR's rule: one external
 	// identity, one service account.
-	deliberate := oidctest.ForgejoShape(instance, "acme/preview", "refs/heads/main", "pull_request_target")
+	deliberate := oidctest.GitHubActionsShape("acme/preview", 4243, 77, "refs/heads/main", "pull_request_target")
 	if _, err := r.fed.CreateBinding(t.Context(), service.LocalPrincipal(identAdmin),
 		prjScope(), saPR.ID, service.BindingRequest{
 			Issuer: r.idp.Issuer(), Subject: deliberate.Subject, Audience: hikyoAudience,
@@ -1004,6 +1000,25 @@ func TestFederationRequiresImmutableIdentifiers(t *testing.T) {
 	if _, err := r.del.Fetch(t.Context(), token, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{}); err != nil {
 		t.Fatalf("id-pinned binding = %v, want acceptance", err)
 	}
+
+	// Forgejo exposes repository paths but no immutable repository or owner id.
+	// A path can be renamed and reused, so no binding is representable safely.
+	forgejoDB := seededDB(t, openSQLite)
+	forgejoRig := newFedRig(t, forgejoDB)
+	forgejo := oidctest.ForgejoShape("https://git.example.test", "acme/service", "refs/heads/main", "push")
+	forgejoRig.configureIssuer(t, domain.IssuerForgejo, []string{forgejo.DefaultAudience})
+	forgejoSA, err := forgejoRig.ident.CreateServiceAccount(t.Context(), service.LocalPrincipal(identAdmin),
+		prjScope(), "wl-forgejo-refused", domain.ClassWorkload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := forgejoRig.fed.CreateBinding(t.Context(), service.LocalPrincipal(identAdmin),
+		prjScope(), forgejoSA.ID, service.BindingRequest{
+			Issuer: forgejoRig.idp.Issuer(), Subject: forgejo.Subject, Audience: hikyoAudience,
+			RequiredClaims: pinsOf(t, forgejo),
+		}); !errors.Is(err, service.ErrBindingImmutableID) {
+		t.Fatalf("forgejo binding = %v, want ErrBindingImmutableID", err)
+	}
 }
 
 // TestFederationPinsNestedKubernetesUIDSQLite is the other half of the same rule,
@@ -1165,9 +1180,9 @@ func TestFederationOutageDoesNotSerializeIssuers(t *testing.T) {
 	// One cache, one client. The client must trust BOTH fixture CAs, which is
 	// what a real instance federating with two platforms looks like.
 	r.cache.HTTP = multiCAClient(r.idp, healthyIdP)
-	healthy := oidctest.ForgejoShape("https://git.example.test", "acme/healthy", "refs/heads/main", "push")
+	healthy := oidctest.GitHubActionsShape("acme/healthy", 5252, 88, "refs/heads/main", "push")
 	if _, err := r.fed.CreateIssuer(t.Context(), service.LocalPrincipal(root), service.IssuerRequest{
-		Issuer: healthyIdP.Issuer(), Type: domain.IssuerForgejo, KeySource: jwkssource.RemoteDiscovery(),
+		Issuer: healthyIdP.Issuer(), Type: domain.IssuerGitHubActions, KeySource: jwkssource.RemoteDiscovery(),
 		RefusedAudiences: []string{healthy.DefaultAudience},
 	}); err != nil {
 		t.Fatalf("configure the healthy issuer: %v", err)
@@ -1596,9 +1611,9 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 	// surface needs.
 	seedDeliveryCatalogue(t, db)
 	r := fedRigOn(t, db)
-	shape := oidctest.ForgejoShape("https://git.example.test", "acme/audited", "refs/heads/main", "push")
+	shape := oidctest.GitHubActionsShape("acme/audited", 6262, 99, "refs/heads/main", "push")
 
-	iss := r.configureIssuer(t, domain.IssuerForgejo, []string{shape.DefaultAudience})
+	iss := r.configureIssuer(t, domain.IssuerGitHubActions, []string{shape.DefaultAudience})
 	if _, err := r.fed.ListIssuers(t.Context(), service.LocalPrincipal(root)); err != nil {
 		t.Fatalf("identity.federation_issuer_read: %v", err)
 	}
@@ -1628,12 +1643,30 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 	if _, err := r.del.FetchAs(t.Context(), human, scopeEnv(orgA, prjA1, envA1), res.Cursor, service.FetchOptions{}); err != nil {
 		t.Fatalf("identity.delivery_fetched (current): %v", err)
 	}
-	if _, err := r.del.ReconcileOfflineRecordsAs(t.Context(), human,
+	served, err := r.ident.MintCredential(t.Context(), service.LocalPrincipal(identAdmin), prjScope(), sa.ID, service.MintRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := r.del.Fetch(t.Context(), served.Value, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offlineKey service.DeliveredKey
+	for _, key := range delivered.Keys {
+		if key.Value != nil && key.SnapshotReceipt != nil {
+			offlineKey = key
+			break
+		}
+	}
+	if offlineKey.SnapshotReceipt == nil {
+		t.Fatal("no authenticated delivery receipt")
+	}
+	if _, err := r.del.ReconcileOfflineRecords(t.Context(), served.Value,
 		scopeEnv(orgA, prjA1, envA1), []service.OfflineRecord{{
-			RecordID: "audit-offline-001", KeyID: "key_fed_pw", KeyName: "DATABASE_PASSWORD",
-			Classification: string(schema.Secret), OccurredAt: time.Now().UTC(),
-			CredentialID: binding.CredentialID, Generation: "v1-0123456789abcdef0123456789abcdef",
-			ServedFrom: time.Now().UTC().Add(-time.Minute),
+			RecordID: "audit-offline-001", KeyID: offlineKey.KeyID, KeyName: offlineKey.Name,
+			Classification: offlineKey.Classification, OccurredAt: delivered.IssuedAt,
+			CredentialID: served.Credential.ID, Generation: "v1-0123456789abcdef0123456789abcdef",
+			ServedFrom: delivered.IssuedAt.UTC(), SnapshotReceipt: *offlineKey.SnapshotReceipt,
 		}}); err != nil {
 		t.Fatalf("identity.offline_records_reconciled: %v", err)
 	}
@@ -1677,9 +1710,8 @@ func TestFederationBindingIsListedWithItsIdentity(t *testing.T) {
 // on this path, and the id is not what the external authority presents.
 func runBindingListedWithIdentity(t *testing.T, db *store.DB) {
 	r := newFedRig(t, db)
-	const instance = "https://git.example.test"
-	shape := oidctest.ForgejoShape(instance, "acme/service", "refs/heads/main", "push")
-	r.configureIssuer(t, domain.IssuerForgejo, []string{shape.DefaultAudience})
+	shape := oidctest.GitHubActionsShape("acme/service", 4242, 77, "refs/heads/main", "push")
+	r.configureIssuer(t, domain.IssuerGitHubActions, []string{shape.DefaultAudience})
 	sa, binding := r.bindShape(t, "listed-binding", shape, hikyoAudience)
 
 	// A bearer credential on the SAME account, so the discriminator is exercised

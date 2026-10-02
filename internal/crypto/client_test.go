@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 )
 
@@ -18,6 +19,50 @@ func loadKeys(t *testing.T) *LocalKeys {
 		t.Fatalf("LoadOrCreateLocalKey: %v", err)
 	}
 	return k
+}
+
+func TestConcurrentLocalKeyCreationLoadsOneCompleteWinner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory-relative atomic publication is the Unix implementation")
+	}
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// An interrupted unpublished temporary file cannot occupy local.key.
+	if err := os.WriteFile(filepath.Join(dir, ".local.key-crashed"), []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const count = 32
+	stamps := make(chan string, count)
+	var workers sync.WaitGroup
+	start := make(chan struct{})
+	for range count {
+		workers.Go(func() {
+			<-start
+			keys, err := LoadOrCreateLocalKey(dir)
+			if err != nil {
+				t.Errorf("concurrent initialization: %v", err)
+				return
+			}
+			stamps <- keys.Stamp([]byte("concurrent-winner"))
+		})
+	}
+	close(start)
+	workers.Wait()
+	close(stamps)
+	var winner string
+	for stamp := range stamps {
+		if winner == "" {
+			winner = stamp
+		} else if stamp != winner {
+			t.Error("concurrent initialization returned distinct master keys")
+		}
+	}
+	key, err := os.ReadFile(filepath.Join(dir, localKeyName))
+	if err != nil || len(key) != KeySize {
+		t.Fatalf("published key length=%d err=%v", len(key), err)
+	}
 }
 
 func TestLoadOrCreateLocalKeyModesAndReuse(t *testing.T) {

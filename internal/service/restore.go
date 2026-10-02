@@ -11,8 +11,9 @@ package service
 // transaction that loads the archive, and in that single act every restored
 // password verifier, TOTP seed, recovery-code batch, WebAuthn credential,
 // browser session, CLI session, machine bearer credential, OIDC link and
-// single-use artifact stops authenticating. Nothing is swept, so nothing can
-// be half-swept.
+// epoch-stamped single-use artifact stops authenticating. Pending login proofs
+// and approved workspace handoffs lack epoch stamps, so the same atomic bump
+// retires their unconsumed rows. Consumed proof history remains intact.
 //
 // The CEREMONY is reconciliation, and it is what this file adds. Restored
 // grants are inert until an operator commits them BACK, one principal at a
@@ -135,9 +136,10 @@ func restoreReconcile(ctx context.Context, run func(context.Context, tx.RestoreF
 
 // CompleteRestore is the closure the restore transaction runs against the
 // restored state, before it is committed or published. It advances the
-// credential epoch, invalidates restored adapter and dynamic-provider
-// credentials, holds restored CA issuers, and writes the reconstruction record
-// in that same act. Any failure is returned to abort the restore transaction.
+// credential epoch and retires pending human proofs, invalidates restored
+// adapter and dynamic-provider credentials, holds restored CA issuers, and
+// writes the reconstruction record in that same act. Any failure is returned
+// to abort the restore transaction.
 //
 // It is a package-level function rather than a method because it has no
 // datastore of its own to hold: the whole point is that it runs on somebody
@@ -153,7 +155,11 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 		if err := az.InvalidateRestoredDynamicProviderCredentials(ctx); err != nil {
 			return err
 		}
-		// #154: restored CA issuers mint nothing until `pki issuer release-hold`.
+		if err := az.InvalidateRestoredExternalCredentials(ctx, now); err != nil {
+			return err
+		}
+		// #154: restored CA issuers mint and sign no fresh CRLs until revocations
+		// are reconciled and `pki issuer release-hold` clears the hold.
 		if err := az.HoldRestoredPKIIssuers(ctx); err != nil {
 			return err
 		}

@@ -1,26 +1,26 @@
 hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> --local [--as USER] [--name REF] [--trust-file PATH]
+  hikyo login <instance-url> --local [--as USER] [--name REF] [--socket PATH] [--trust-file PATH]
                                                  terminal-native local login
   hikyo login <instance-url> --device              refused by name until the browser login lands
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 
 accounts:
-  hikyo account establish-credential --instance <url|ref> [--as USER] [--trust-file PATH]
+  hikyo account establish-credential --instance <url|ref> [--as USER] [--socket PATH] [--trust-file PATH]
   hikyo account factor enrol-totp [--output-file PATH | --dangerously-print]
   hikyo account factor confirm-totp
   hikyo account factor step-up
   hikyo account passkey enrol|list|remove          browser-only; refused on the terminal
   hikyo account recovery-codes regenerate [--output-file PATH | --dangerously-print]
-  hikyo account recovery begin --instance <url|ref> --as USER [--trust-file PATH]
+  hikyo account recovery begin --instance <url|ref> --as USER [--socket PATH] [--trust-file PATH]
       [--output-file PATH | --dangerously-print]
   hikyo account reset-credential <principal> [--output-file PATH | --dangerously-print]
 
 contexts:
   hikyo context create <name> --instance <url|ref> [--org O] [--project P] [--env E]
-      [--trust-file PATH]                          the trust bundle a CI runner was provisioned with
+      [--socket PATH] [--trust-file PATH]          authenticated local transport or provisioned trust
   hikyo context list [-o table|json]
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
@@ -468,7 +468,7 @@ machine identities:
 oidc federation:
   hikyo instance-config federation-issuer list [-o table|json]
   hikyo instance-config federation-issuer add --issuer <url>
-      --type kubernetes|forgejo|github-actions --refuse-audience <aud>
+      --type kubernetes|github-actions --refuse-audience <aud>
       [--jwks discovery|static --jwks-file PATH] [--ca-bundle-file PATH]
   hikyo instance-config federation-issuer update --id <id>
       --jwks discovery|static --refuse-audience <aud> [--jwks-file PATH]
@@ -490,7 +490,7 @@ oidc federation:
   every binding MUST pin the immutable identifiers its platform exposes:
     github-actions  repository_id, repository_owner_id, event_name
     kubernetes      /kubernetes.io/serviceaccount/uid
-    forgejo         repository, event_name  (Forgejo exposes no numeric ids)
+    Forgejo issuers are refused: Forgejo exposes no immutable repository id.
   pinning a name where an id exists lets a renamed-and-reused path inherit the
   binding, so there is no override.
 

@@ -226,6 +226,9 @@ func (s *Auth) LoginChallengeTOTP(ctx context.Context, challengeID, code string)
 	// Phase 3 — consume the step and the challenge, then mint a browser session.
 	result, err := writeCommittedLoginResult(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, result *LoginResult) error {
 		now := s.now()
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
 		challenge, err := az.LoginChallengeByID(ctx, challengeID)
 		if err != nil {
 			return err
@@ -411,6 +414,9 @@ func (s *Auth) LoginChallengeWebauthnFinish(ctx context.Context, challengeID str
 	// then mint the browser session, atomically.
 	attempt, err := writeCommittedSessionAttempt(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt) error {
 		now := s.now()
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
 		challenge, err := az.LoginChallengeByID(ctx, challengeID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {

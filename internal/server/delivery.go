@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -67,6 +68,9 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 	}
 	res, err := a.Delivery.Fetch(ctx, bearer(ctx), scope, cursor, opts)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &deliveryRefusal{cause: err}
+		}
 		return nil, err
 	}
 	// `keys` is a non-null empty array on the "current" disposition rather than
@@ -81,7 +85,8 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 			Presence:       apigen.DeliveredKeyPresence(k.Presence),
 			// Nil iff presence-only; rendered as the optional `value` member,
 			// so absent means no plaintext crossed rather than an empty value.
-			Value: k.Value,
+			Value:           k.Value,
+			SnapshotReceipt: k.SnapshotReceipt,
 		})
 	}
 	out := apigen.FetchDelivery200JSONResponse{
@@ -124,7 +129,8 @@ func (a *API) ReconcileOfflineRecords(ctx context.Context, req apigen.ReconcileO
 			RecordID: record.RecordId, KeyID: record.KeyId, KeyName: record.KeyName,
 			Classification: string(record.Classification), OccurredAt: record.OccurredAt,
 			CredentialID: record.CredentialId, Generation: record.Generation,
-			ServedFrom: record.ServedFrom,
+			ServedFrom:      record.ServedFrom,
+			SnapshotReceipt: record.SnapshotReceipt,
 		})
 	}
 	res, err := a.Delivery.ReconcileOfflineRecords(ctx, bearer(ctx), scope, records)

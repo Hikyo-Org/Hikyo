@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -93,7 +94,7 @@ func readRolloutInstalled(path string) ([]byte, error) {
 }
 
 func runRolloutAuthorityStage(args []string) (bool, int) {
-	if len(args) == 0 || args[0] != "__hikyo-stage-rollout-authority" {
+	if len(args) == 0 || args[0] != multicall.RolloutAuthorityStage {
 		return false, 0
 	}
 	if len(args) != 1 {

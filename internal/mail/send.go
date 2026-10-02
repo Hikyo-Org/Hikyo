@@ -15,6 +15,12 @@ import (
 
 const SendTimeout = 15 * time.Second
 
+// smtpReadBudget bounds all server-to-client bytes on one connection,
+// including the unauthenticated greeting and EHLO exchange before STARTTLS.
+// A normal SMTP dialogue is a few kilobytes; one MiB leaves ample headroom
+// while preventing textproto from accumulating an attacker-sized reply.
+const smtpReadBudget int64 = 1 << 20
+
 var (
 	ErrDisabled  = errors.New("mail is not configured")
 	ErrDelivery  = errors.New("mail delivery failed")
@@ -61,7 +67,7 @@ func (c *Client) Send(ctx context.Context, to, subject, body string) error {
 		}
 		connection = raw
 		stopCancellation = context.AfterFunc(ctx, func() { _ = raw.Close() })
-		bounded := &deadlineConn{Conn: raw, deadline: deadline}
+		bounded := &deadlineConn{Conn: &readBudgetConn{Conn: raw, remaining: smtpReadBudget}, deadline: deadline}
 		if err := bounded.SetDeadline(deadline); err != nil {
 			return nil, err
 		}
@@ -107,6 +113,23 @@ func (c *Client) Send(ctx context.Context, to, subject, body string) error {
 		return ErrDelivery
 	}
 	return nil
+}
+
+type readBudgetConn struct {
+	net.Conn
+	remaining int64
+}
+
+func (c *readBudgetConn) Read(p []byte) (int, error) {
+	if c.remaining <= 0 {
+		return 0, errors.New("mail: SMTP response exceeded the connection budget")
+	}
+	if int64(len(p)) > c.remaining {
+		p = p[:c.remaining]
+	}
+	n, err := c.Conn.Read(p)
+	c.remaining -= int64(n)
+	return n, err
 }
 
 // go-mail refreshes socket deadlines per SMTP command. Clamp each refresh so

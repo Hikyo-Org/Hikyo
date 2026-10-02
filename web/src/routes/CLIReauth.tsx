@@ -50,12 +50,13 @@ export function CLIReauth() {
         if (handoff.self_config === undefined) throw new Error('The configuration decision is unavailable.');
         await reauthenticateSelfConfig(handoff.self_config, code.trim() === '' ? { kind: 'passkey' } : { kind: 'totp', code: code.trim() });
       } else if (handoff.purpose === 'adapter') {
-        if (handoff.environments.some((environment) => !environment.requires_webauthn)) {
-          await runAdapterTOTPCeremony(adapterOperation(handoff.operation), environmentIds, code);
+        const passkeyEnvironments = code.trim() === ''
+          ? handoff.environments
+          : handoff.environments.filter((candidate) => candidate.requires_webauthn);
+        if (code.trim() !== '') {
+          await runAdapterTOTPCeremony(adapterOperation(handoff.operation), environmentIds, code.trim());
         }
-        for (const environment of handoff.environments.filter(
-          (candidate) => candidate.requires_webauthn,
-        )) {
+        for (const environment of passkeyEnvironments) {
           await runAdapterPasskeyCeremony({
             operation: adapterOperation(handoff.operation),
             environmentId: environment.environment_id,
@@ -113,6 +114,7 @@ export function CLIReauth() {
   }
 
   const selfConfig = transaction.data?.purpose === 'self-config';
+  const adapter = transaction.data?.purpose === 'adapter';
   const disclosure = transaction.data !== undefined && transaction.data.purpose !== 'adapter' && !selfConfig;
   const slidingEnvironments =
     transaction.data?.environments.filter((environment) => !environment.requires_webauthn) ?? [];
@@ -121,8 +123,8 @@ export function CLIReauth() {
   // offers the code only where it can do anything - a sliding environment and
   // an enrolled authenticator - and the passkey otherwise.
   const hasTotp = totpStatus.isSuccess && totpStatus.data.confirmed;
-  const requiresTOTP = !disclosure && !selfConfig && slidingEnvironments.length > 0;
-  const offersTOTP = (selfConfig || (disclosure && slidingEnvironments.length > 0)) && hasTotp;
+  const offersTOTP =
+    (selfConfig || ((adapter || disclosure) && slidingEnvironments.length > 0)) && hasTotp;
   const offersOIDC =
     disclosure && slidingEnvironments.length > 0 && oidcProvider !== null;
   const methodsFailed =
@@ -176,21 +178,23 @@ export function CLIReauth() {
               {transaction.data.environments.map((environment) => (
                 <li key={environment.environment_id}>
                   <span className="mono">{environment.environment_id}</span>{' '}
-                  ({environment.requires_webauthn ? 'passkey required' : 'TOTP required'})
+                  ({environment.requires_webauthn
+                    ? 'passkey required'
+                    : 'passkey or authenticator code'})
                 </li>
               ))}
             </ul>
             {auth.identity?.session.assurance.method.startsWith('oauth2:') && !hasTotp ? <Alert>GitHub cannot reauthenticate. Use an enrolled passkey, or enrol TOTP in Settings → Security.</Alert> : null}
-            {requiresTOTP || offersTOTP ? (
+            {offersTOTP ? (
               <div className="field">
                 <label htmlFor="cli-reauth-totp">
-                  {requiresTOTP ? 'Authenticator code' : 'Authenticator code (optional; leave empty to use a passkey)'}
+                  Authenticator code (optional; leave empty to use a passkey)
                 </label>
-                <input id="cli-reauth-totp" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} required />
+                <input id="cli-reauth-totp" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} />
               </div>
             ) : null}
             {approve.isError ? <Alert>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</Alert> : null}
-            <Button variant="primary" type="button" disabled={approve.isPending || (requiresTOTP && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
+            <Button variant="primary" type="button" disabled={approve.isPending} onClick={() => approve.mutate('factor')}>
               {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
             </Button>
             {offersOIDC ? (

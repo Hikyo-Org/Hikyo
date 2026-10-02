@@ -39,7 +39,8 @@ type stubDelivery struct {
 	// assert the projection and acknowledgement query params reached the service
 	// unmangled. It is a pointer because the stub is handed to the server by
 	// value; the pointee is shared with the test.
-	got *service.FetchOptions
+	got        *service.FetchOptions
+	gotOffline *[]service.OfflineRecord
 }
 
 func (s stubDelivery) Fetch(_ context.Context, presented string, scope domain.Scope, cursor string, opts service.FetchOptions) (service.FetchResult, error) {
@@ -63,12 +64,13 @@ func (s stubDelivery) Fetch(_ context.Context, presented string, scope domain.Sc
 	// A delivered value carries plaintext; a presence-only secret carries none,
 	// so the render half is exercised on both a non-nil and a nil `value`.
 	delivered := "postgres://render-test"
+	receipt := "sr1:opaque-service-verified-receipt"
 	return service.FetchResult{
 		Cursor: s.cursor, ChangeToken: "v1:token", SchemaRevision: 7,
 		CredentialID:        "mcr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f16",
 		CredentialExpiresAt: s.credentialExpiresAt,
 		Keys: []service.DeliveredKey{
-			{KeyID: "key_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f17", Name: "DATABASE_URL", Classification: "config", Presence: delivery.PresenceSet, Value: &delivered},
+			{KeyID: "key_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f17", Name: "DATABASE_URL", Classification: "config", Presence: delivery.PresenceSet, Value: &delivered, SnapshotReceipt: &receipt},
 			{KeyID: "key_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f18", Name: "DATABASE_PASSWORD", Classification: "secret", Presence: delivery.PresenceSet},
 		},
 		IssuedAt: time.Unix(1_800_000_000, 0).UTC(), SnapshotExpiresAt: time.Unix(1_800_604_800, 0).UTC(),
@@ -76,6 +78,9 @@ func (s stubDelivery) Fetch(_ context.Context, presented string, scope domain.Sc
 }
 
 func (s stubDelivery) ReconcileOfflineRecords(_ context.Context, presented string, _ domain.Scope, records []service.OfflineRecord) (service.ReconcileResult, error) {
+	if s.gotOffline != nil {
+		*s.gotOffline = records
+	}
 	if s.err != nil {
 		return service.ReconcileResult{}, s.err
 	}
@@ -194,6 +199,9 @@ func TestDeliveryRouteRendersBothDispositions(t *testing.T) {
 	if full.Keys[0].Value == nil || *full.Keys[0].Value != "postgres://render-test" || full.Keys[1].Value != nil {
 		t.Fatalf("value projection rendered %+v", full.Keys)
 	}
+	if full.Keys[0].SnapshotReceipt == nil || *full.Keys[0].SnapshotReceipt != "sr1:opaque-service-verified-receipt" || full.Keys[1].SnapshotReceipt != nil {
+		t.Fatalf("receipt projection rendered %+v", full.Keys)
+	}
 	if full.SnapshotExpiresAt.Sub(full.IssuedAt) != delivery.SnapshotMaxAge {
 		t.Fatalf("snapshot lifetime = %s, want %s", full.SnapshotExpiresAt.Sub(full.IssuedAt), delivery.SnapshotMaxAge)
 	}
@@ -221,13 +229,14 @@ func TestDeliveryRouteRendersBothDispositions(t *testing.T) {
 }
 
 func TestOfflineRecordReconciliationRoute(t *testing.T) {
-	srv := federationServer(t, stubFederation{}, stubDelivery{})
+	var got []service.OfflineRecord
+	srv := federationServer(t, stubFederation{}, stubDelivery{gotOffline: &got})
 	now := time.Unix(1_800_000_000, 0).UTC()
 	body := apigen.ReconcileOfflineRecordsRequest{Records: []apigen.OfflineDeliveryRecord{{
 		RecordId: "offline-001", KeyId: "key_001", KeyName: "DATABASE_PASSWORD",
 		Classification: apigen.KeyClassificationSecret, OccurredAt: now,
 		CredentialId: "cred_revoked", Generation: "v1-0123456789abcdef0123456789abcdef",
-		ServedFrom: now.Add(-time.Hour),
+		ServedFrom: now.Add(-time.Hour), SnapshotReceipt: "sr1:opaque-service-verified-receipt",
 	}}}
 	resp, payload := call(t, srv, http.MethodPost, deliveryPath+"/offline-records", "hik_1_wl_abc", body)
 	if resp.StatusCode != http.StatusOK {
@@ -239,6 +248,15 @@ func TestOfflineRecordReconciliationRoute(t *testing.T) {
 	}
 	if result.Accepted != 1 || result.Duplicates != 0 {
 		t.Fatalf("offline reconciliation rendered %+v", result)
+	}
+	if len(got) != 1 || got[0].SnapshotReceipt != body.Records[0].SnapshotReceipt {
+		t.Fatalf("receipt did not reach the service unchanged: %+v", got)
+	}
+	body.Records[0].SnapshotReceipt = ""
+	got = nil
+	resp, _ = call(t, srv, http.MethodPost, deliveryPath+"/offline-records", "hik_1_wl_abc", body)
+	if resp.StatusCode != http.StatusBadRequest || len(got) != 0 {
+		t.Fatalf("unsigned legacy record reached the service: status=%d records=%+v", resp.StatusCode, got)
 	}
 }
 

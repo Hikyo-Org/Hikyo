@@ -62,6 +62,23 @@ afterEach(() => {
 });
 
 describe('runOIDCCeremony', () => {
+  it('closes the consent popup and channel when its task is retired', async () => {
+    const controller = new AbortController();
+    const pending = runOIDCCeremony('strict', 'env-production', { requirePopup: true, signal: controller.signal });
+    const rejected = expect(pending).rejects.toThrow('retired');
+    await vi.waitFor(() => expect(TestBroadcastChannel.latest).toBeDefined());
+    controller.abort(new Error('retired'));
+    await rejected;
+    expect(popup.close).toHaveBeenCalledExactlyOnceWith();
+    expect(TestBroadcastChannel.latest?.closed).toBe(true);
+  });
+  it('refuses a blocked consent popup before starting a transaction or navigating away', async () => {
+    vi.stubGlobal('open', vi.fn(() => null));
+    const assign = vi.spyOn(globalThis.location, 'assign');
+    await expect(runOIDCCeremony('strict', 'env-production', { requirePopup: true })).rejects.toThrow('Allow popups');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+  });
   it('resolves only for the matching successful callback message', async () => {
     const { pending } = await startedCeremony();
     TestBroadcastChannel.latest?.emit({ state: 'some-other-state', ok: true });

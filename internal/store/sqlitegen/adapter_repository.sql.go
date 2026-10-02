@@ -11,20 +11,21 @@ import (
 )
 
 const adapterAdoptionConflictCount = `-- name: AdapterAdoptionConflictCount :one
-SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id=?1 AND target_id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5 AND repository_id=?6 AND destination_id=?7 AND target_generation=?8 AND surface=?9 AND effective_name=?10 AND adopted_at IS NULL
+SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id=?1 AND target_id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5 AND repository_id=?6 AND destination_id=?7 AND target_generation=?8 AND surface=?9 AND effective_name=?10 AND adopted_at IS NULL AND (CAST(?11 AS INTEGER)=0 OR observed_provider_version>0)
 `
 
 type AdapterAdoptionConflictCountParams struct {
-	ArtifactID    string
-	TargetID      string
-	ChainOrg      string
-	ChainProject  string
-	EnvironmentID string
-	RepositoryID  int64
-	DestinationID int64
-	Generation    int64
-	Surface       string
-	EffectiveName string
+	ArtifactID     string
+	TargetID       string
+	ChainOrg       string
+	ChainProject   string
+	EnvironmentID  string
+	RepositoryID   int64
+	DestinationID  int64
+	Generation     int64
+	Surface        string
+	EffectiveName  string
+	RequireVersion int64
 }
 
 func (q *Queries) AdapterAdoptionConflictCount(ctx context.Context, arg AdapterAdoptionConflictCountParams) (int64, error) {
@@ -39,6 +40,7 @@ func (q *Queries) AdapterAdoptionConflictCount(ctx context.Context, arg AdapterA
 		arg.Generation,
 		arg.Surface,
 		arg.EffectiveName,
+		arg.RequireVersion,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -82,23 +84,24 @@ func (q *Queries) AdapterAdoptionInsertJob(ctx context.Context, arg AdapterAdopt
 }
 
 const adapterAdoptionInsertLedger = `-- name: AdapterAdoptionInsertLedger :execrows
-INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'owned',?13)
+INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,destination_scope,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'owned',?14)
 `
 
 type AdapterAdoptionInsertLedgerParams struct {
-	LedgerID        string
-	ChainOrg        string
-	ChainProject    string
-	EnvironmentID   string
-	TargetID        string
-	ProviderOrigin  string
-	DestinationKind string
-	RepositoryID    int64
-	DestinationID   int64
-	Surface         string
-	EffectiveName   string
-	NormalizedName  string
-	UpdatedAt       string
+	LedgerID         string
+	ChainOrg         string
+	ChainProject     string
+	EnvironmentID    string
+	TargetID         string
+	ProviderOrigin   string
+	DestinationKind  string
+	DestinationScope string
+	RepositoryID     int64
+	DestinationID    int64
+	Surface          string
+	EffectiveName    string
+	NormalizedName   string
+	UpdatedAt        string
 }
 
 func (q *Queries) AdapterAdoptionInsertLedger(ctx context.Context, arg AdapterAdoptionInsertLedgerParams) (int64, error) {
@@ -110,6 +113,7 @@ func (q *Queries) AdapterAdoptionInsertLedger(ctx context.Context, arg AdapterAd
 		arg.TargetID,
 		arg.ProviderOrigin,
 		arg.DestinationKind,
+		arg.DestinationScope,
 		arg.RepositoryID,
 		arg.DestinationID,
 		arg.Surface,
@@ -155,6 +159,50 @@ func (q *Queries) AdapterAdoptionMarkConflict(ctx context.Context, arg AdapterAd
 	return result.RowsAffected()
 }
 
+const adapterAdoptionReclaimReleasedLedger = `-- name: AdapterAdoptionReclaimReleasedLedger :execrows
+UPDATE adapter_ledger SET environment_id=?1,provider_origin=?2,destination_kind=?3,destination_scope=?4,repository_id=?5,destination_id=?6,effective_name=?7,state='owned',missing=0,updated_at=?8 WHERE target_id=?9 AND org_id=?10 AND project_id=?11 AND surface=?12 AND normalized_name=?13 AND state='released'
+`
+
+type AdapterAdoptionReclaimReleasedLedgerParams struct {
+	EnvironmentID    string
+	ProviderOrigin   string
+	DestinationKind  string
+	DestinationScope string
+	RepositoryID     int64
+	DestinationID    int64
+	EffectiveName    string
+	UpdatedAt        string
+	TargetID         string
+	ChainOrg         string
+	ChainProject     string
+	Surface          string
+	NormalizedName   string
+}
+
+// Verified current conflict consent may reclaim only this target's released
+// historical name. The global held-name index still rejects foreign custody.
+func (q *Queries) AdapterAdoptionReclaimReleasedLedger(ctx context.Context, arg AdapterAdoptionReclaimReleasedLedgerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterAdoptionReclaimReleasedLedger,
+		arg.EnvironmentID,
+		arg.ProviderOrigin,
+		arg.DestinationKind,
+		arg.DestinationScope,
+		arg.RepositoryID,
+		arg.DestinationID,
+		arg.EffectiveName,
+		arg.UpdatedAt,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.Surface,
+		arg.NormalizedName,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const adapterAdoptionSupersedeJob = `-- name: AdapterAdoptionSupersedeJob :execrows
 UPDATE adapter_outbox SET state='superseded',finished_at=?1,lease_owner=NULL,lease_expires_at=NULL WHERE id=?2 AND target_id=?3 AND org_id=?4 AND project_id=?5 AND environment_id=?6 AND state IN ('queued','running')
 `
@@ -184,7 +232,7 @@ func (q *Queries) AdapterAdoptionSupersedeJob(ctx context.Context, arg AdapterAd
 }
 
 const adapterAdoptionTarget = `-- name: AdapterAdoptionTarget :one
-SELECT t.adapter_id,t.environment_id,a.origin,t.destination_kind,t.repository_id,t.destination_id,t.generation,CAST(CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>?1 THEN 1 ELSE 0 END AS INTEGER) AS provider_busy,CAST(COALESCE(t.active_job_id,'') AS TEXT) AS prior_job FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=?2 AND t.org_id=?3 AND t.project_id=?4 AND t.state='active'
+SELECT t.adapter_id,t.environment_id,a.origin,a.provider,t.destination_kind,t.destination_scope,t.repository_id,t.destination_id,t.generation,CAST(CASE WHEN t.provider_lease_job_id IS NOT NULL AND t.provider_lease_expires_at>?1 THEN 1 ELSE 0 END AS INTEGER) AS provider_busy,CAST(COALESCE(t.active_job_id,'') AS TEXT) AS prior_job FROM adapter_targets t JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id WHERE t.id=?2 AND t.org_id=?3 AND t.project_id=?4 AND t.state='active'
 `
 
 type AdapterAdoptionTargetParams struct {
@@ -195,15 +243,17 @@ type AdapterAdoptionTargetParams struct {
 }
 
 type AdapterAdoptionTargetRow struct {
-	AdapterID       string
-	EnvironmentID   string
-	Origin          string
-	DestinationKind string
-	RepositoryID    int64
-	DestinationID   int64
-	Generation      int64
-	ProviderBusy    int64
-	PriorJob        string
+	AdapterID        string
+	EnvironmentID    string
+	Origin           string
+	Provider         string
+	DestinationKind  string
+	DestinationScope string
+	RepositoryID     int64
+	DestinationID    int64
+	Generation       int64
+	ProviderBusy     int64
+	PriorJob         string
 }
 
 func (q *Queries) AdapterAdoptionTarget(ctx context.Context, arg AdapterAdoptionTargetParams) (AdapterAdoptionTargetRow, error) {
@@ -218,7 +268,9 @@ func (q *Queries) AdapterAdoptionTarget(ctx context.Context, arg AdapterAdoption
 		&i.AdapterID,
 		&i.EnvironmentID,
 		&i.Origin,
+		&i.Provider,
 		&i.DestinationKind,
+		&i.DestinationScope,
 		&i.RepositoryID,
 		&i.DestinationID,
 		&i.Generation,
@@ -245,6 +297,48 @@ func (q *Queries) AdapterAdoptionUpdateAuthority(ctx context.Context, arg Adapte
 		arg.AdapterID,
 		arg.ChainOrg,
 		arg.ChainProject,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const adapterAdoptionUpdateHeldLedger = `-- name: AdapterAdoptionUpdateHeldLedger :execrows
+UPDATE adapter_ledger SET state='owned',updated_at=?1 WHERE target_id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5 AND provider_origin=?6 AND destination_kind=?7 AND destination_scope=?8 AND repository_id=?9 AND destination_id=?10 AND surface=?11 AND normalized_name=?12 AND state IN ('dispatched','owned')
+`
+
+type AdapterAdoptionUpdateHeldLedgerParams struct {
+	UpdatedAt        string
+	TargetID         string
+	ChainOrg         string
+	ChainProject     string
+	EnvironmentID    string
+	ProviderOrigin   string
+	DestinationKind  string
+	DestinationScope string
+	RepositoryID     int64
+	DestinationID    int64
+	Surface          string
+	NormalizedName   string
+}
+
+// Adopt only this target's existing held Vault/AWS custody; global foreign-name
+// collisions and generic-provider owned rows remain refusal paths.
+func (q *Queries) AdapterAdoptionUpdateHeldLedger(ctx context.Context, arg AdapterAdoptionUpdateHeldLedgerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterAdoptionUpdateHeldLedger,
+		arg.UpdatedAt,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.EnvironmentID,
+		arg.ProviderOrigin,
+		arg.DestinationKind,
+		arg.DestinationScope,
+		arg.RepositoryID,
+		arg.DestinationID,
+		arg.Surface,
+		arg.NormalizedName,
 	)
 	if err != nil {
 		return 0, err
@@ -879,22 +973,23 @@ func (q *Queries) AdapterHealthCounts(ctx context.Context) (AdapterHealthCountsR
 }
 
 const adapterInsertConflict = `-- name: AdapterInsertConflict :execrows
-INSERT INTO adapter_conflicts (id,artifact_id,org_id,project_id,environment_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,created_at) VALUES (?1,?2,?3,?4,?5,?6,NULL,?7,?8,?9,?10,?11,?12)
+INSERT INTO adapter_conflicts (id,artifact_id,org_id,project_id,environment_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,observed_provider_version,created_at) VALUES (?1,?2,?3,?4,?5,?6,NULL,?7,?8,?9,?10,?11,?12,?13)
 `
 
 type AdapterInsertConflictParams struct {
-	ID               string
-	ArtifactID       string
-	ChainOrg         string
-	ChainProject     string
-	EnvironmentID    string
-	TargetID         string
-	DestinationID    int64
-	RepositoryID     int64
-	TargetGeneration int64
-	Surface          string
-	EffectiveName    string
-	CreatedAt        string
+	ID                      string
+	ArtifactID              string
+	ChainOrg                string
+	ChainProject            string
+	EnvironmentID           string
+	TargetID                string
+	DestinationID           int64
+	RepositoryID            int64
+	TargetGeneration        int64
+	Surface                 string
+	EffectiveName           string
+	ObservedProviderVersion sql.NullInt64
+	CreatedAt               string
 }
 
 func (q *Queries) AdapterInsertConflict(ctx context.Context, arg AdapterInsertConflictParams) (int64, error) {
@@ -910,6 +1005,7 @@ func (q *Queries) AdapterInsertConflict(ctx context.Context, arg AdapterInsertCo
 		arg.TargetGeneration,
 		arg.Surface,
 		arg.EffectiveName,
+		arg.ObservedProviderVersion,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -1527,29 +1623,33 @@ func (q *Queries) AdapterPlanCredential(ctx context.Context, arg AdapterPlanCred
 }
 
 const adapterPlanLedger = `-- name: AdapterPlanLedger :many
-SELECT surface,effective_name,state,missing FROM adapter_ledger WHERE target_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state<>'released' ORDER BY surface,effective_name
+SELECT l.surface,l.effective_name,l.state,l.missing,CAST(CASE WHEN l.state='owned' AND EXISTS (SELECT 1 FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=?1 AND c.project_id=?2 AND c.environment_id=?3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND julianday(c.adopted_at) IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=?1 AND e.project_id=?2 AND e.environment_id=?3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND (julianday(e.finished_at) IS NULL OR julianday(e.finished_at)>=julianday(c.adopted_at)))) THEN 1 ELSE 0 END AS INTEGER) AS adoption_pending,(SELECT c.observed_provider_version FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=?1 AND c.project_id=?2 AND c.environment_id=?3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND julianday(c.adopted_at) IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=?1 AND e.project_id=?2 AND e.environment_id=?3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND (julianday(e.finished_at) IS NULL OR julianday(e.finished_at)>=julianday(c.adopted_at))) AND c.observed_provider_version IS NOT NULL ORDER BY julianday(c.adopted_at) DESC,c.id DESC LIMIT 1) AS adoption_version FROM adapter_ledger l JOIN adapter_targets t ON t.id=l.target_id AND t.org_id=?1 AND t.project_id=?2 AND t.environment_id=?3 AND t.generation=?4 WHERE l.target_id=?5 AND l.org_id=?1 AND l.project_id=?2 AND l.environment_id=?3 AND l.state<>'released' ORDER BY l.surface,l.effective_name
 `
 
 type AdapterPlanLedgerParams struct {
-	TargetID      string
 	ChainOrg      string
 	ChainProject  string
 	EnvironmentID string
+	Generation    int64
+	TargetID      string
 }
 
 type AdapterPlanLedgerRow struct {
-	Surface       string
-	EffectiveName string
-	State         string
-	Missing       int64
+	Surface         string
+	EffectiveName   string
+	State           string
+	Missing         int64
+	AdoptionPending int64
+	AdoptionVersion sql.NullInt64
 }
 
 func (q *Queries) AdapterPlanLedger(ctx context.Context, arg AdapterPlanLedgerParams) ([]AdapterPlanLedgerRow, error) {
 	rows, err := q.db.QueryContext(ctx, adapterPlanLedger,
-		arg.TargetID,
 		arg.ChainOrg,
 		arg.ChainProject,
 		arg.EnvironmentID,
+		arg.Generation,
+		arg.TargetID,
 	)
 	if err != nil {
 		return nil, err
@@ -1563,6 +1663,8 @@ func (q *Queries) AdapterPlanLedger(ctx context.Context, arg AdapterPlanLedgerPa
 			&i.EffectiveName,
 			&i.State,
 			&i.Missing,
+			&i.AdoptionPending,
+			&i.AdoptionVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -1859,7 +1961,7 @@ func (q *Queries) AdapterReplaceCredential(ctx context.Context, arg AdapterRepla
 }
 
 const adapterReplaceCredentialBump = `-- name: AdapterReplaceCredentialBump :execrows
-UPDATE adapter_targets SET generation=generation+1,provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE adapter_id=?1 AND org_id=?2 AND project_id=?3 AND state='active' AND (provider_lease_job_id IS NULL OR provider_lease_expires_at<=?4)
+UPDATE adapter_targets SET generation=generation+1,active_job_id=NULL,provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE adapter_id=?1 AND org_id=?2 AND project_id=?3 AND state='active' AND (provider_lease_job_id IS NULL OR provider_lease_expires_at<=?4)
 `
 
 type AdapterReplaceCredentialBumpParams struct {
@@ -1984,6 +2086,32 @@ func (q *Queries) AdapterRetainTarget(ctx context.Context, arg AdapterRetainTarg
 	return result.RowsAffected()
 }
 
+const adapterRetireCredentialJobs = `-- name: AdapterRetireCredentialJobs :execrows
+UPDATE adapter_outbox SET state='superseded',finished_at=?1,lease_owner=NULL,lease_expires_at=NULL WHERE adapter_outbox.org_id=?2 AND adapter_outbox.project_id=?3 AND adapter_outbox.state IN ('queued','running') AND EXISTS (SELECT 1 FROM adapter_targets t WHERE t.id=adapter_outbox.target_id AND t.org_id=adapter_outbox.org_id AND t.project_id=adapter_outbox.project_id AND t.environment_id=adapter_outbox.environment_id AND t.adapter_id=?4 AND t.state='active')
+`
+
+type AdapterRetireCredentialJobsParams struct {
+	At           sql.NullString
+	ChainOrg     string
+	ChainProject string
+	AdapterID    string
+}
+
+// Retire only pending work for this adapter's active scoped targets before
+// credential generation changes. Never rewrite a terminal provider outcome.
+func (q *Queries) AdapterRetireCredentialJobs(ctx context.Context, arg AdapterRetireCredentialJobsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterRetireCredentialJobs,
+		arg.At,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.AdapterID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const adapterRevokeCredential = `-- name: AdapterRevokeCredential :execrows
 UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL,credential_expires_at=NULL WHERE id=?1 AND org_id=?2 AND project_id=?3 AND state='active'
 `
@@ -2003,7 +2131,7 @@ func (q *Queries) AdapterRevokeCredential(ctx context.Context, arg AdapterRevoke
 }
 
 const adapterRevokeCredentialBump = `-- name: AdapterRevokeCredentialBump :execrows
-UPDATE adapter_targets SET generation=generation+1 WHERE adapter_id=?1 AND org_id=?2 AND project_id=?3 AND state='active'
+UPDATE adapter_targets SET generation=generation+1,active_job_id=NULL WHERE adapter_id=?1 AND org_id=?2 AND project_id=?3 AND state='active'
 `
 
 type AdapterRevokeCredentialBumpParams struct {
@@ -2315,6 +2443,23 @@ func (q *Queries) AdapterTeardownTargets(ctx context.Context, arg AdapterTeardow
 		return nil, err
 	}
 	return items, nil
+}
+
+const adapterTeardownUnfinishedMoves = `-- name: AdapterTeardownUnfinishedMoves :one
+SELECT COUNT(*) FROM adapter_route_moves WHERE adapter_id=?1 AND org_id=?2 AND project_id=?3 AND state NOT IN ('completed','canceled')
+`
+
+type AdapterTeardownUnfinishedMovesParams struct {
+	AdapterID    string
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) AdapterTeardownUnfinishedMoves(ctx context.Context, arg AdapterTeardownUnfinishedMovesParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, adapterTeardownUnfinishedMoves, arg.AdapterID, arg.ChainOrg, arg.ChainProject)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const adapterUpdateActiveAuthority = `-- name: AdapterUpdateActiveAuthority :execrows

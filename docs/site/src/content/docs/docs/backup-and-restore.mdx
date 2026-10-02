@@ -208,6 +208,19 @@ A passing drill proves all of these, in order:
 5. A machine credential is minted, then revoked.
 6. The whole sequence finished within `HIKYO_BACKUP_RTO_TARGET`.
 
+The security admission check inventories executable SQLite schema objects even
+when an archive uses reserved `sqlite_` names. Only exact engine bookkeeping
+definitions are excluded. PostgreSQL restore refuses counters in the upper half
+of their canonical sequence range, leaving substantial capacity for future audit
+events rather than accepting an exhausted archive. If a genuine installation
+has reached that range, migrate its counters through a supported operator
+procedure before restoring; do not edit the archive to bypass admission.
+
+Restore destroys both active adapter credentials and pending origin-move
+credentials, clears pending destinations, and cancels the moves. Re-enter
+provider credentials and review routing before starting a new move. Reconciled
+grants alone cannot resume an archive-supplied activation using a retained PAT.
+
 The drill records the archive identity and digest, binary and schema versions,
 elapsed time and RTO verdict on the live instance's audit trail and health row.
 The root key and backup identity are read from files, used for the drill's

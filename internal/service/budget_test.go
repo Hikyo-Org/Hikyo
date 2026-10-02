@@ -23,9 +23,16 @@ func (c *clock) add(d time.Duration) {
 }
 
 func newTestBudget(c *clock) *Budget {
-	b := NewBudget()
-	b.now = c.now
-	return b
+	return NewBudgetWithClock(c.now)
+}
+
+func TestBudgetWithClockRequiresClock(t *testing.T) {
+	defer func() {
+		if got := recover(); got != "service: budget requires a clock" {
+			t.Fatalf("nil budget clock panic = %v", got)
+		}
+	}()
+	NewBudgetWithClock(nil)
 }
 
 func principalKeys(p, org, project string) budgetKeys {
@@ -57,6 +64,25 @@ func TestBudgetRateWindowSlides(t *testing.T) {
 	c.add(time.Hour + time.Second)
 	if _, err := b.acquire(budgetSchemaRevision, keys); err != nil {
 		t.Fatalf("after window: %v", err)
+	}
+}
+
+func TestBudgetWeightedRateChargesEachUnitAtomically(t *testing.T) {
+	c := &clock{t: time.Unix(1_700_000_000, 0)}
+	b := newTestBudget(c)
+	keys := principalKeys("p1", "org1", "proj1")
+
+	release, err := b.acquireWeighted(budgetDefault, keys, BudgetDefaultRatePerMin-5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if _, err := b.acquireWeighted(budgetDefault, keys, 6); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("overflowing weighted charge = %v, want ErrOverloaded", err)
+	}
+	// The refused six-unit charge is atomic and leaves room for exactly five.
+	if _, err := b.acquireWeighted(budgetDefault, keys, 5); err != nil {
+		t.Fatalf("five-unit remainder refused: %v", err)
 	}
 }
 

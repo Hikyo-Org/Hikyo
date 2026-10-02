@@ -1,8 +1,13 @@
 package samlsp
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +62,42 @@ func TestParseMetadataRejectsAmbiguousEntityAndMissingRedirectEndpoint(t *testin
 	}
 }
 
+func TestValidateMetadataCertificateKeyRejectsWeakAndUnsupportedKeys(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]*x509.Certificate{
+		"rsa-1024": {
+			PublicKey: &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 1023), E: 65537},
+		},
+		"ecdsa-p224": {
+			PublicKey: &ecdsa.PublicKey{Curve: elliptic.P224()},
+		},
+	}
+	for name, certificate := range tests {
+		certificate := certificate
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := validateMetadataCertificateKey(certificate); !errors.Is(err, ErrMetadataCertificateKey) {
+				t.Fatalf("validateMetadataCertificateKey() error = %v, want ErrMetadataCertificateKey", err)
+			}
+		})
+	}
+}
+
+func TestValidateMetadataCertificateKeyAcceptsSupportedKeys(t *testing.T) {
+	t.Parallel()
+
+	_, rsaCertificate := requestSigningFixture(t)
+	if err := validateMetadataCertificateKey(rsaCertificate); err != nil {
+		t.Fatalf("validateMetadataCertificateKey(RSA-2048) error = %v", err)
+	}
+	if err := validateMetadataCertificateKey(&x509.Certificate{
+		PublicKey: &ecdsa.PublicKey{Curve: elliptic.P256()},
+	}); err != nil {
+		t.Fatalf("validateMetadataCertificateKey(ECDSA-P256) error = %v", err)
+	}
+}
+
 func TestParseMetadataVerifiesSignedDescriptorBeforeExtraction(t *testing.T) {
 	t.Parallel()
 
@@ -98,6 +139,45 @@ func TestParseMetadataVerifiesSignedDescriptorBeforeExtraction(t *testing.T) {
 	tampered := []byte(strings.Replace(string(raw), "https://idp.example/sso", "https://attacker.example/sso", 1))
 	if _, err := ParseMetadata(tampered, "https://idp.example/metadata"); !errors.Is(err, ErrMetadataSignature) {
 		t.Fatalf("tampered ParseMetadata() error = %v, want ErrMetadataSignature", err)
+	}
+
+	// The child remains signed over the same namespace-qualified values when
+	// its namespace declarations come only from the aggregate parent.
+	signed.RemoveAttr("xmlns:md")
+	signed.RemoveAttr("xmlns:ds")
+	aggregate := etree.NewElement("md:EntitiesDescriptor")
+	aggregate.CreateAttr("xmlns:md", SAMLMetadataNamespace)
+	aggregate.CreateAttr("xmlns:ds", XMLDSIGNamespace)
+	aggregate.AddChild(signed)
+	document.SetRoot(aggregate)
+	raw, err = document.WriteToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err = ParseMetadata(raw, "https://idp.example/metadata")
+	if err != nil || !metadata.Signed || metadata.SSOURL != "https://idp.example/sso" {
+		t.Fatalf("inherited namespaces = %+v, error %v", metadata, err)
+	}
+	tampered = []byte(strings.Replace(string(raw), "https://idp.example/sso", "https://attacker.example/sso", 1))
+	if _, err := ParseMetadata(tampered, "https://idp.example/metadata"); !errors.Is(err, ErrMetadataSignature) {
+		t.Fatalf("tampered aggregate error = %v", err)
+	}
+}
+
+func TestMetadataValidityIncludesSelectedRole(t *testing.T) {
+	_, certificate := requestSigningFixture(t)
+	for _, roleValidity := range []string{"2026-08-01T00:00:00Z", "invalid"} {
+		for _, ancestorValidity := range []string{"", ` validUntil="2026-09-01T00:00:00Z"`} {
+			raw := []byte(`<md:EntityDescriptor xmlns:md="` + SAMLMetadataNamespace + `" xmlns:ds="` + XMLDSIGNamespace + `" entityID="x"` + ancestorValidity + `><md:IDPSSODescriptor protocolSupportEnumeration="` + SAMLProtocolNamespace + `" validUntil="` + roleValidity + `">` + metadataKeyDescriptor("signing", certificate.Raw) + `<md:SingleSignOnService Binding="` + BindingHTTPRedirect + `" Location="https://idp.example/sso"/></md:IDPSSODescriptor></md:EntityDescriptor>`)
+			metadata, err := ParseMetadata(raw, "x")
+			if roleValidity == "invalid" {
+				if !errors.Is(err, ErrMetadataValidUntil) {
+					t.Fatalf("malformed role validity error = %v", err)
+				}
+			} else if err != nil || metadata.ValidUntil == nil || metadata.ValidUntil.Format(time.RFC3339) != roleValidity {
+				t.Fatalf("role validity = %v, error %v", metadata.ValidUntil, err)
+			}
+		}
 	}
 }
 

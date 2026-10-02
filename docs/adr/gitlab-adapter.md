@@ -26,4 +26,31 @@ The four-operation seam and its value-blind `Plan`; full-state converge with wri
 
 ## Verification
 
+### Adoption scope repair (2026-10-01)
+
+Explicit adoption records the target's immutable `environment_scope` in the
+ledger, just like ordinary reservation. Same-scope claims are excluded globally
+across Hikyo tenants; different scopes retain separate ownership. A blank scope
+is never a substitute for GitLab's `*` scope.
+
+Migration 72 releases only existing held blank-scope claims on GitLab targets
+whose configured scope is nonempty. It preserves provider data and historical
+audit/effect outcomes, supersedes pending jobs, advances the target generation,
+and pauses the affected target with the warning
+`gitlab_scope_claims_released_operator_review`. It does not silently translate
+those claims or adopt any remote value. Correctly scoped and non-GitLab claims
+are unchanged. An operator must review the actual GitLab variables before
+resuming the target. Existing unowned values then follow the ordinary
+create-conflict and fresh explicit-adoption workflow; the migration never
+authorizes their overwrite or deletion.
+
+If an affected target was moving, its containing unfinished route move becomes
+`attention_required`. All pending jobs for that exact move's scoped members are
+superseded and only their matching active pointers are detached; sibling
+provider fences, ledger custody, pending claims and historical terminal outcomes
+are preserved. The supported operator recovery is CancelMove, which restores
+the active route without removing the repair pause, followed by an explicit
+ResumeTarget with the complete current environment-bound consent. The repair
+never silently resumes sibling provider work or infers ownership.
+
 Unit tests pin the closed method set and route table, the masking rule, token policy, scope handling, and the full ledger state machine against a fake API. A gated end-to-end test (`TestGitLabRealLifecycle`) runs the durable store journal on both datastore engines against a real disposable GitLab CE started by `.github/workflows/gitlab-e2e.yml`: project, group, and scoped variables; protected and masked flags; conflict refusal without overwrite; crash-window replay; owned-missing recreation; pruning only owned names; SPKI pin mismatch refusal; and teardown.

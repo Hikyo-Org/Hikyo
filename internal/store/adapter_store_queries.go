@@ -9,6 +9,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type adapterStoreQueries interface {
@@ -41,7 +42,7 @@ type adapterStoreQueries interface {
 	mapping(context.Context, domain.Scope, string) ([]adapter.ManifestEntry, error)
 	planCredential(context.Context, domain.Scope, string) ([]byte, AdapterTransport, error)
 	planManifest(context.Context, domain.Scope, string, string) ([]adapter.ManifestEntry, error)
-	planLedger(context.Context, domain.Scope, string, string) ([]adapter.LedgerEntry, error)
+	planLedger(context.Context, domain.Scope, string, string, int64) ([]adapter.LedgerEntry, error)
 	targetEnvironments(context.Context, domain.Scope, string) ([]string, error)
 	environments(context.Context, domain.Scope, string) ([]string, error)
 	conflicts(context.Context, domain.Scope, string) ([]AdapterConflictArtifact, error)
@@ -50,6 +51,8 @@ type adapterStoreQueries interface {
 	adoptionTarget(context.Context, domain.Scope, AdapterAdoption) (adapterAdoptionTarget, error)
 	adoptionConflictCount(context.Context, domain.Scope, AdapterAdoption, adapterAdoptionTarget, AdapterConflictEntry) (int64, error)
 	adoptionInsertLedger(context.Context, domain.Scope, AdapterAdoption, adapterAdoptionTarget, AdapterConflictEntry, string) (int64, error)
+	adoptionUpdateHeldLedger(context.Context, domain.Scope, AdapterAdoption, adapterAdoptionTarget, AdapterConflictEntry) (int64, error)
+	adoptionReclaimReleasedLedger(context.Context, domain.Scope, AdapterAdoption, adapterAdoptionTarget, AdapterConflictEntry) (int64, error)
 	adoptionMarkConflict(context.Context, domain.Scope, AdapterAdoption, adapterAdoptionTarget, AdapterConflictEntry) (int64, error)
 	adoptionSupersedeJob(context.Context, domain.Scope, string, string, string, time.Time) (int64, error)
 	adoptionInsertJob(context.Context, domain.Scope, string, publishedAdapterTarget, int64, time.Time) (int64, error)
@@ -66,6 +69,7 @@ type adapterStoreQueries interface {
 	teardownTarget(context.Context, domain.Scope, string, time.Time) (adapterTeardownTarget, error)
 	teardownTargets(context.Context, domain.Scope, string, time.Time) ([]adapterTeardownTarget, error)
 	teardownAuthority(context.Context, domain.Scope, string) (string, error)
+	teardownUnfinishedMoves(context.Context, domain.Scope, string) (int64, error)
 	orphans(context.Context, domain.Scope, string, string) ([]string, error)
 	releaseLedger(context.Context, domain.Scope, adapterTeardownTarget, time.Time) error
 	retainTarget(context.Context, domain.Scope, adapterTeardownTarget, int64, time.Time) (int64, error)
@@ -76,6 +80,7 @@ type adapterStoreQueries interface {
 	replaceCredentialTarget(context.Context, domain.Scope, string, time.Time) (string, int, int64, error)
 	replaceCredential(context.Context, domain.Scope, AdapterCredentialMutation) (int64, error)
 	replaceCredentialBump(context.Context, domain.Scope, string, time.Time) (int64, error)
+	retireCredentialJobs(context.Context, domain.Scope, string, time.Time) (int64, error)
 	revokeCredentialTarget(context.Context, domain.Scope, string) (string, int, error)
 	revokeCredential(context.Context, domain.Scope, string) (int64, error)
 	revokeCredentialBump(context.Context, domain.Scope, string) (int64, error)
@@ -472,13 +477,13 @@ func (q sqliteAdapterStoreQueries) planCredential(ctx context.Context, chain dom
 	c, err := q.queries.AdapterPlanCredential(ctx, sqlitegen.AdapterPlanCredentialParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 	return c.CredentialCiphertext, AdapterTransport{SPKIPin: c.SpkiPin, CABundlePEM: c.CaBundlePem, AllowPersonalToken: c.AllowPersonalToken == 1}, err
 }
-func (q sqliteAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string) ([]adapter.LedgerEntry, error) {
-	rows, err := q.queries.AdapterPlanLedger(ctx, sqlitegen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+func (q sqliteAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string, generation int64) ([]adapter.LedgerEntry, error) {
+	rows, err := q.queries.AdapterPlanLedger(ctx, sqlitegen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Generation: generation})
 	if err != nil {
 		return nil, err
 	}
 	return mapRows(rows, func(c sqlitegen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
-		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0}, nil
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
 	})
 }
 func (q sqliteAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
@@ -514,7 +519,7 @@ func (q sqliteAdapterStoreQueries) planTarget(ctx context.Context, chain domain.
 	return adapterPlanTarget{environmentID: c.EnvironmentID, destinationID: c.DestinationID, repositoryID: c.RepositoryID, generation: c.Generation}, err
 }
 func (q sqliteAdapterStoreQueries) insertConflict(ctx context.Context, chain domain.Scope, id, artifactID, envID, targetID string, destinationID, repositoryID, generation int64, entry AdapterConflictEntry, at time.Time) (int64, error) {
-	return adapterAffected(q.queries.AdapterInsertConflict(ctx, sqlitegen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, CreatedAt: fixedStamp(at)}))
+	return adapterAffected(q.queries.AdapterInsertConflict(ctx, sqlitegen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: adapterOptionalVersion(entry.ObservedProviderVersion), CreatedAt: fixedStamp(at)}))
 }
 
 func (q pgAdapterStoreQueries) mapping(ctx context.Context, chain domain.Scope, targetID string) ([]adapter.ManifestEntry, error) {
@@ -541,13 +546,13 @@ func (q pgAdapterStoreQueries) planCredential(ctx context.Context, chain domain.
 	c, err := q.queries.AdapterPlanCredential(ctx, pggen.AdapterPlanCredentialParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 	return c.CredentialCiphertext, AdapterTransport{SPKIPin: c.SpkiPin, CABundlePEM: c.CaBundlePem, AllowPersonalToken: c.AllowPersonalToken == 1}, err
 }
-func (q pgAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string) ([]adapter.LedgerEntry, error) {
-	rows, err := q.queries.AdapterPlanLedger(ctx, pggen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+func (q pgAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scope, targetID, envID string, generation int64) ([]adapter.LedgerEntry, error) {
+	rows, err := q.queries.AdapterPlanLedger(ctx, pggen.AdapterPlanLedgerParams{TargetID: targetID, EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), Generation: generation})
 	if err != nil {
 		return nil, err
 	}
 	return mapRows(rows, func(c pggen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
-		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing}, nil
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
 	})
 }
 func (q pgAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
@@ -583,7 +588,7 @@ func (q pgAdapterStoreQueries) planTarget(ctx context.Context, chain domain.Scop
 	return adapterPlanTarget{environmentID: c.EnvironmentID, destinationID: c.DestinationID, repositoryID: c.RepositoryID, generation: c.Generation}, err
 }
 func (q pgAdapterStoreQueries) insertConflict(ctx context.Context, chain domain.Scope, id, artifactID, envID, targetID string, destinationID, repositoryID, generation int64, entry AdapterConflictEntry, at time.Time) (int64, error) {
-	return adapterAffected(q.queries.AdapterInsertConflict(ctx, pggen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, CreatedAt: pgRequiredTime(at)}))
+	return adapterAffected(q.queries.AdapterInsertConflict(ctx, pggen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: pgtype.Int8{Int64: adapterOptionalVersion(entry.ObservedProviderVersion).Int64, Valid: adapterOptionalVersion(entry.ObservedProviderVersion).Valid}, CreatedAt: pgRequiredTime(at)}))
 }
 
 func adapterAffected(rows int64, err error) (int64, error) { return rows, constraint(err) }

@@ -10,11 +10,11 @@ import { Login } from './Login.tsx';
 
 async function mount(
   container: HTMLElement,
-  page: { intent?: 'sign-in' | 'sign-up'; url?: string } = {},
+  page: { intent?: 'sign-in' | 'sign-up'; url?: string; returnTo?: string } = {},
 ) {
   const node = () => (
     <MemoryRouter initialEntries={[page.url ?? '/login']}>
-      <Login intent={page.intent} />
+      <Login intent={page.intent} returnTo={page.returnTo} />
     </MemoryRouter>
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -197,11 +197,10 @@ it('badges the row this browser used last time, and remembers the one chosen now
 
 it('starts a SAML login through the SP-initiated redirect', async () => {
   const fetchMock = vi.fn((_request: RequestInfo | URL) =>
-    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso' })),
+    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso?RelayState=saml-state' })),
   );
   vi.stubGlobal('fetch', fetchMock);
-  const assign = vi.fn();
-  vi.stubGlobal('location', { ...globalThis.location, assign });
+  const assign = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
   const container = document.createElement('div');
   const { unmount } = await mount(container);
   const button = [...container.querySelectorAll('button')].find(
@@ -216,7 +215,10 @@ it('starts a SAML login through the SP-initiated redirect', async () => {
     expect(new URL(request.url).pathname).toBe('/api/v1/auth/saml/sso/start');
     expect(await request.json()).toEqual({ purpose: 'login' });
   }
-  expect(assign).toHaveBeenCalledWith('https://idp.example/sso');
+  expect(assign).toHaveBeenCalledWith('https://idp.example/sso?RelayState=saml-state');
+  expect(JSON.parse(globalThis.sessionStorage.getItem('hikyo-saml-transaction:saml-state') ?? 'null')).toEqual({
+    purpose: 'login', returnTo: '/',
+  });
   await unmount();
 });
 
@@ -394,6 +396,40 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
 
 const buttonNamed = (container: HTMLElement, text: string) =>
   [...container.querySelectorAll('button')].find((button) => button.textContent === text);
+
+it.each(['password', 'passkey', 'code', 'challenge-passkey'])('refreshes the document after completed %s login, retaining consent continuation', async (leg) => {
+  const assign = vi.fn();
+  vi.stubGlobal('location', { origin: 'http://localhost:3000', assign });
+  mocks.passkeysAvailable = true;
+  const container = document.createElement('div');
+  const { unmount } = await mount(container, { returnTo: '/workspace/approve?state=bound-state' });
+  if (leg === 'password') {
+    mocks.login.mutate.mockImplementation((_input, callbacks) => callbacks.onSuccess({ kind: 'session' }));
+    await openPassword(container);
+    await act(async () => container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  } else if (leg === 'passkey') {
+    mocks.passkey.mutate.mockImplementation((_input, callbacks) => callbacks.onSuccess({}));
+    await act(async () => [...container.querySelectorAll('button')].find((button) => button.textContent?.startsWith('Passkey'))?.click());
+  } else {
+    await answerWithChallenge(container, ['totp', 'webauthn']);
+    expect(assign).not.toHaveBeenCalled();
+    if (leg === 'code') {
+      mocks.challengeTotp.mutate.mockImplementation((_input, callbacks) => callbacks.onSuccess({}));
+      const input = container.querySelector('input');
+      if (input === null) throw new Error('missing code input');
+      await act(async () => {
+        input.value = '123456';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+    } else {
+      mocks.challengePasskey.mutate.mockImplementation((_input, callbacks) => callbacks.onSuccess({}));
+      await act(async () => buttonNamed(container, 'Use a passkey')?.click());
+    }
+  }
+  expect(assign).toHaveBeenCalledExactlyOnceWith('/workspace/approve?state=bound-state');
+  await unmount();
+});
 
 /** Open the password step, submit its form and answer it with a #760 login challenge. */
 async function answerWithChallenge(container: HTMLElement, factors: string[]) {
@@ -613,10 +649,10 @@ it('starts an OIDC sign-in, and marks only its row, when a SAML provider shares 
 it('starts a SAML sign-in when an OIDC provider shares the slug', async () => {
   mocks.methods.data.providers = sharedSlug;
   const fetchMock = vi.fn((_request: RequestInfo | URL) =>
-    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso' })),
+    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso?RelayState=saml-state' })),
   );
   vi.stubGlobal('fetch', fetchMock);
-  vi.stubGlobal('location', { ...globalThis.location, assign: vi.fn() });
+  vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
   const container = document.createElement('div');
   const { unmount } = await mount(container);
 
@@ -626,6 +662,21 @@ it('starts a SAML sign-in when an OIDC provider shares the slug', async () => {
   expect(request).toBeInstanceOf(Request);
   if (request instanceof Request) expect(new URL(request.url).pathname).toBe('/api/v1/auth/saml/corp/start');
   expect(mocks.oidc.mutate).not.toHaveBeenCalled();
+  await unmount();
+});
+
+it('binds a SAML workspace approval continuation to the returned RelayState', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({
+    redirect_url: 'https://idp.example/sso?RelayState=workspace-login',
+  }))));
+  vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
+  const container = document.createElement('div');
+  const { unmount } = await mount(container, { returnTo: '/workspace/approve?state=workspace-state' });
+  await act(async () => buttonNamed(container, 'Continue with SAML SSO')?.click());
+  for (let round = 0; round < 10; round += 1) await act(async () => Promise.resolve());
+  expect(JSON.parse(globalThis.sessionStorage.getItem('hikyo-saml-transaction:workspace-login') ?? 'null')).toEqual({
+    purpose: 'login', returnTo: '/workspace/approve?state=workspace-state',
+  });
   await unmount();
 });
 

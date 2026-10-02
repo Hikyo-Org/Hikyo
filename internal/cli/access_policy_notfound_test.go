@@ -13,7 +13,7 @@ import (
 
 func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {
 	requests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
 			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
@@ -26,7 +26,7 @@ func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(apigen.AccessPolicyList{Items: []apigen.AccessPolicy{}})
 	}))
 	defer srv.Close()
-	st, stateDir := machineState(t, srv.URL)
+	st, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
 	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: srv.URL, Token: "fixture-human", SessionID: "ses_fixture", Principal: "usr_fixture", ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
 		t.Fatal(err)
 	}

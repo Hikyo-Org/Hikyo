@@ -310,6 +310,7 @@ func (a *API) GetRevision(ctx context.Context, req apigen.GetRevisionRequestObje
 		keys = append(keys, apigen.SnapshotKey{
 			KeyId: key.KeyID, Name: key.Name,
 			Classification: apigen.KeyClassification(key.Classification),
+			Sensitive:      key.Sensitive,
 		})
 	}
 	return apigen.GetRevision200JSONResponse(apigen.RevisionDetail{

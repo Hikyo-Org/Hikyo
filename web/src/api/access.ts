@@ -823,15 +823,20 @@ export function resetFailureText(error: unknown): string {
  * cannot be distinguished from a genuine miss, and saying otherwise would
  * invent the oracle the server closed.
  */
-export function grantFailureText(error: unknown): string {
+export type GrantFailureContext = {
+  readonly operation?: 'create' | 'revoke';
+  readonly scope?: ScopeRef['kind'];
+};
+
+export function grantFailureText(error: unknown, context: GrantFailureContext = {}): string {
   if (error instanceof GrantPartialFailure) {
     if (error.completed.length === 0) {
-      return grantFailureText(error.cause);
+      return grantFailureText(error.cause, context);
     }
     return (
       `Completed ${String(error.completed.length)} of ${String(error.total)} (live and listed below). ` +
       `${grantOutcomeSummary(error.completed)} ` +
-      `${error.failedCapability} was refused: ${grantFailureText(error.cause)}`
+      `${error.failedCapability} was refused: ${grantFailureText(error.cause, context)}`
     );
   }
   return statusText(
@@ -841,11 +846,17 @@ export function grantFailureText(error: unknown): string {
         error.detail ??
           'That grant was refused: the capability cannot be held at this scope, or this principal may not hold it.',
       401: commonRefusalText.sessionEnded,
-      403: 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.',
+      403: context.scope === 'instance'
+        ? 'This session may not manage instance members, or its required assurance is missing. Sign in again and verify the account has instance manage-members authority.'
+        : 'Managing members needs a second factor. Sign in again and present your passkey or a code, then retry.',
       404: 'This scope is not available to you, or it does not exist. The two are deliberately the same answer.',
-      409: (error) =>
-        error.detail ??
-          'Refused: this would leave the organisation with nobody able to manage its members.',
+      409: (error) => {
+        if (error.detail !== undefined) return error.detail;
+        if (context.operation === 'revoke' && (context.scope === 'org' || context.scope === 'instance')) {
+          return 'This grant cannot be revoked in its current authorization or ownership state. Review its origins and remaining member managers. If SCIM owns the grant, change its provisioning mapping instead.';
+        }
+        return 'The grant conflicts with this principal, scope, capability, or current authorization state. Reload and review the requested grant.';
+      },
       429: commonRefusalText.attempts,
     },
     'The grant surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.',

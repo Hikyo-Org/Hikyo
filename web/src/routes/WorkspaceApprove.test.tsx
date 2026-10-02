@@ -9,7 +9,12 @@ import { WorkspaceApprove } from './WorkspaceApprove.tsx';
 const ceremonies = vi.hoisted(() => ({
   passkey: vi.fn<() => Promise<void>>(),
   totp: vi.fn<() => Promise<void>>(),
+  oidc: vi.fn<() => Promise<void>>(),
+  provider: false,
   revision: 0,
+}));
+vi.mock('../api/account.ts', () => ({
+  useSessionOIDCProvider: () => ceremonies.provider ? { slug: 'strict', display_name: 'Corporate IdP' } : null,
 }));
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({
@@ -22,6 +27,7 @@ vi.mock('../api/values.ts', async (original) => ({
   ...(await original<typeof import('../api/values.ts')>()),
   runPasskeyCeremony: ceremonies.passkey,
   runTOTPCeremony: ceremonies.totp,
+  runOIDCCeremony: ceremonies.oidc,
 }));
 const cleanups: Array<() => Promise<void>> = [];
 const fetcher = vi.fn<typeof fetch>();
@@ -45,6 +51,8 @@ beforeEach(() => {
   fetcher.mockReset();
   ceremonies.passkey.mockReset();
   ceremonies.totp.mockReset();
+  ceremonies.oidc.mockReset();
+  ceremonies.provider = false;
   ceremonies.revision = 0;
   vi.stubGlobal('fetch', fetcher);
   globalThis.history.replaceState(
@@ -186,6 +194,32 @@ describe('workspace consent summary', () => {
     });
     expect(container.textContent).toContain('Authorization could not be completed');
     if (complete === undefined) throw new Error('missing ceremony completion');
+    await act(async () => complete?.());
+    await settle();
+    expect(methods()).toEqual(['GET']);
+  });
+  it('offers an OIDC-only session its provider and re-reads consent before approval', async () => {
+    ceremonies.provider = true;
+    ceremonies.oidc.mockResolvedValue();
+    const summary = { ...fresh(), purpose: 'step-up', operation: 'reveal', environment: id('env', 1), key_ids: [id('key', 1)] };
+    fetcher.mockResolvedValueOnce(response(summary)).mockResolvedValueOnce(response(summary)).mockResolvedValue(response({}, 403));
+    const container = await render();
+    await act(async () => button(container, 'Continue with Corporate IdP').click());
+    await settle();
+    expect(ceremonies.oidc).toHaveBeenCalledExactlyOnceWith('strict', id('env', 1), { requirePopup: true, signal: expect.any(AbortSignal) });
+    expect(methods()).toEqual(['GET', 'GET', 'POST']);
+  });
+
+  it.each(['expiry', 'session'])('ignores an OIDC completion after consent %s retires', async (reason) => {
+    vi.useFakeTimers();
+    ceremonies.provider = true;
+    let complete: (() => void) | undefined;
+    ceremonies.oidc.mockReturnValue(new Promise<void>((resolve) => { complete = resolve; }));
+    fetcher.mockResolvedValue(response({ ...fresh(), expires_at: new Date(Date.now() + 5_000).toISOString(), purpose: 'step-up', operation: 'reveal', environment: id('env', 1), key_ids: [] }));
+    const container = await render();
+    await act(async () => button(container, 'Continue with Corporate IdP').click());
+    if (reason === 'expiry') await act(async () => { await vi.advanceTimersByTimeAsync(5_001); });
+    else ceremonies.revision++;
     await act(async () => complete?.());
     await settle();
     expect(methods()).toEqual(['GET']);

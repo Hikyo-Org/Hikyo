@@ -211,19 +211,10 @@ Full suite green on sqlite **and** postgres 18 (local container).
    attempt, amplifying exactly the flood it bounds. A multi-node build must
    replace it — the constraint is written at the top of `internal/admission`.
 
-5. **The common-password list is a mechanism without its data.** The ops spec
-   names an embedded top-100k SecLists/HIBP-derived list, pinned and
-   hash-checked in CI. The whole mechanism is implemented — length floor,
-   no composition rules, no forced rotation, set-time-only checking, and the
-   embedded-list lookup — but **the bundled list is a ~90-entry starter set**,
-   because sourcing the real one needs a network fetch and a licence review
-   this ticket did not do. `service.TestCommonListIsAKnownPlaceholder` fails
-   the day the file grows past the placeholder bound, so the two cannot be
-   confused, and its failure message names what else to update. This is the
-   one acceptance-adjacent item this slice leaves short. **Disposition
-   (human): follow-up ticket, not this PR** — the full list needs sourcing
-   and a licence review; the starter set ships here behind the placeholder
-   guard.
+5. **The common-password list is pinned and complete.** The embedded NCSC
+   100k most-used-password corpus is pinned to a SecLists commit. Its source,
+   redistribution terms, SHA-256, and minimum effective entry count are kept
+   beside the set-time-only password-policy check.
 
 6. **The freeze gate is fixture-proven, not yet armed.** No freeze tag exists,
    so there is no immutable base to diff the live contract against. The

@@ -87,7 +87,11 @@ func (a *API) MintMachineCredential(ctx context.Context, req apigen.MintMachineC
 		want.Indefinite = *req.Body.Indefinite
 	}
 	if req.Body.LifetimeSeconds != nil {
-		want.Lifetime = time.Duration(*req.Body.LifetimeSeconds) * time.Second
+		lifetime, err := credentialLifetime(int64(*req.Body.LifetimeSeconds))
+		if err != nil {
+			return nil, err
+		}
+		want.Lifetime = lifetime
 	}
 	res, err := a.Identities.MintCredential(ctx, service.Bearer(bearer(ctx)),
 		projectScope(req.Org, req.Project), req.ServiceAccount, want)
@@ -117,8 +121,12 @@ func (a *API) GetCredentialPolicy(ctx context.Context, _ apigen.GetCredentialPol
 }
 
 func (a *API) SetCredentialPolicy(ctx context.Context, req apigen.SetCredentialPolicyRequestObject) (apigen.SetCredentialPolicyResponseObject, error) {
+	maxLifetime, err := credentialLifetime(int64(req.Body.MaxFiniteLifetimeSeconds))
+	if err != nil {
+		return nil, err
+	}
 	change := service.PolicyChange{
-		MaxFiniteLifetime:  time.Duration(req.Body.MaxFiniteLifetimeSeconds) * time.Second,
+		MaxFiniteLifetime:  maxLifetime,
 		AllowIndefinite:    req.Body.AllowIndefinite,
 		MaxLiveCredentials: int64(req.Body.MaxLiveCredentials),
 	}

@@ -8,13 +8,15 @@
           "name": "DATABASE_URL",
           "key_id": "key_url",
           "classification": "config",
-          "value": "postgres://db"
+          "value": "postgres://db",
+          "snapshot_receipt": "receipt-key_url"
         },
         {
           "name": "PATH",
           "key_id": "key_path",
           "classification": "config",
-          "value": "/srv/bin"
+          "value": "/srv/bin",
+          "snapshot_receipt": "receipt-key_path"
         }
       ]
     },
@@ -26,13 +28,15 @@
           "name": "BAD-NAME",
           "key_id": "key_bad_name",
           "classification": "config",
-          "value": "x"
+          "value": "x",
+          "snapshot_receipt": "receipt-key_bad_name"
         },
         {
           "name": "MULTILINE",
           "key_id": "key_multiline",
           "classification": "config",
-          "value": "a\nb"
+          "value": "a\nb",
+          "snapshot_receipt": "receipt-key_multiline"
         }
       ]
     }

@@ -50,19 +50,23 @@ var validClassifications = map[string]bool{"config": true, "secret": true}
 // RecordID is the idempotency key; it MUST be set by the caller before the
 // plaintext op (so a retry re-sends the same id).
 type OfflineRecord struct {
-	RecordID       string `json:"record_id"`
-	KeyID          string `json:"key_id"`
-	KeyName        string `json:"key_name"`
-	Classification string `json:"classification"`
-	OccurredAt     string `json:"occurred_at"` // client-asserted RFC3339
-	CredentialID   string `json:"credential_id"`
-	Generation     string `json:"generation"`
-	ServedFrom     string `json:"served_from"`
+	RecordID        string `json:"record_id"`
+	KeyID           string `json:"key_id"`
+	KeyName         string `json:"key_name"`
+	Classification  string `json:"classification"`
+	OccurredAt      string `json:"occurred_at"` // client-asserted RFC3339
+	CredentialID    string `json:"credential_id"`
+	Generation      string `json:"generation"`
+	ServedFrom      string `json:"served_from"`
+	SnapshotReceipt string `json:"snapshot_receipt"`
 }
 
 // validate rejects any record missing a required field or carrying a malformed
 // time, classification, or generation stamp.
 func (r OfflineRecord) validate() error {
+	if strings.TrimSpace(r.SnapshotReceipt) == "" {
+		return errors.New("compose: offline record lacks a server-authenticated delivery receipt; refresh online and regenerate legacy offline state")
+	}
 	for name, v := range map[string]string{
 		"record_id": r.RecordID, "key_id": r.KeyID, "key_name": r.KeyName,
 		"credential_id": r.CredentialID, "served_from": r.ServedFrom,
@@ -168,6 +172,11 @@ func Pending(stateDir string) (records []OfflineRecord, handles []string, err er
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&batch); err != nil {
 			return nil, nil, fmt.Errorf("compose: parse offline record %s: %w", n, err)
+		}
+		for _, record := range batch {
+			if err := record.validate(); err != nil {
+				return nil, nil, fmt.Errorf("compose: invalid offline record %s: %w", n, err)
+			}
 		}
 		records = append(records, batch...)
 		handles = append(handles, n)

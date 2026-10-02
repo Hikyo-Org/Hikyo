@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ import (
 //     HIKYO_TEST_AWS_REAL_ACCOUNT, HIKYO_TEST_AWS_REAL_REGION,
 //     HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID, HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY,
 //     optional HIKYO_TEST_AWS_REAL_SESSION_TOKEN. The key needs
-//     secretsmanager:{Describe,List,Create,PutSecretValue,Tag,Restore,Delete}
+//     secretsmanager:{Describe,List,Create,PutSecretValue,UpdateSecretVersionStage,Tag,Restore,Delete}
 //     and, for the oracle only, GetSecretValue on the hikyo-e2e-* names.
 //
 // The adapter itself never reads a value; only the oracle below does, and it
@@ -92,6 +93,9 @@ func TestAWSSecretsManagerEmulatorLifecycle(t *testing.T) {
 		}
 	}
 	runExternalAWSLifecycle(t, env)
+	runExternalAWSConcurrentWrites(t, env)
+	runExternalAWSReplacementRace(t, env)
+	runExternalAWSAdoptionReplay(t, env)
 }
 
 func TestAWSSecretsManagerRealSmoke(t *testing.T) {
@@ -119,7 +123,7 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
+	client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, STSAllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +172,7 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 		var out struct {
 			SecretString string `json:"SecretString"`
 		}
-		if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": name}, &out); err != nil {
+		if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": name, "VersionStage": "AWSCURRENT"}, &out); err != nil {
 			t.Fatalf("oracle read %s: %v", name, err)
 		}
 		oracle[name] = out.SecretString
@@ -199,7 +203,7 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 	var edited struct {
 		SecretString string `json:"SecretString"`
 	}
-	if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": owned[0]}, &edited); err != nil || edited.SecretString != "edited outside Hikyo" {
+	if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": owned[0], "VersionStage": "AWSCURRENT"}, &edited); err != nil || edited.SecretString != "edited outside Hikyo" {
 		t.Fatalf("external edit was overwritten: %q %v", edited.SecretString, err)
 	}
 	for i, target := range targets {
@@ -229,11 +233,296 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 	var restored struct {
 		SecretString string `json:"SecretString"`
 	}
-	if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": owned[1]}, &restored); err != nil {
+	// Explicitly select AWSCURRENT: AWS defaults to it, but pinned Moto's
+	// cached default version is not updated by UpdateSecretVersionStage.
+	if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": owned[1], "VersionStage": "AWSCURRENT"}, &restored); err != nil {
 		t.Fatalf("oracle read after recreate: %v", err)
 	}
 	if err := json.Unmarshal([]byte(restored.SecretString), &document); err != nil || document["TOKEN"] != recreated {
 		t.Fatalf("recreated document = %q (%v)", restored.SecretString, err)
+	}
+}
+
+// externalAWSWriteRaceAPI interleaves an actual provider write in the two
+// read/write gaps. Embedding the closed adapter API keeps the test oracle's
+// unrestricted call path outside the production adapter.
+type externalAWSWriteRaceAPI struct {
+	awssm.API
+	env       externalAWS
+	beforePut bool
+}
+
+func (api *externalAWSWriteRaceAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	writeExternal := func() error {
+		return externalAWSCall(ctx, api.env, "PutSecretValue", map[string]string{
+			"SecretId": name, "SecretString": "external concurrent value", "ClientRequestToken": strings.Repeat("d", 64),
+		}, nil)
+	}
+	if api.beforePut {
+		if err := writeExternal(); err != nil {
+			return err
+		}
+	}
+	if err := api.API.PutSecretValue(ctx, name, token, value); err != nil {
+		return err
+	}
+	if !api.beforePut {
+		return writeExternal()
+	}
+	return nil
+}
+
+func runExternalAWSConcurrentWrites(t *testing.T, env externalAWS) {
+	t.Helper()
+	for _, existing := range []bool{false, true} {
+		for _, beforePut := range []bool{false, true} {
+			t.Run(fmt.Sprintf("concurrent/existing=%v/before-put=%v", existing, beforePut), func(t *testing.T) {
+				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+				if err != nil {
+					t.Fatal(err)
+				}
+				client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, STSAllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(client.Forget)
+				module := &awssm.Module{API: client}
+				run := strings.ToLower(strconv.FormatInt(time.Now().UnixNano(), 36))
+				name := "hikyo-e2e-" + run + "/concurrent"
+				destination := adapter.Destination{Kind: adapter.JSONObject, Owner: env.account, Name: name}
+				connection, err := module.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: destination, Gate: func(context.Context) error { return nil }})
+				if err != nil {
+					t.Fatal(err)
+				}
+				destination.NumericID = connection.DestinationID
+				t.Cleanup(func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil {
+						t.Errorf("force-delete %s: %v", name, err)
+					}
+				})
+				journal := newForgejoLifecycleJournal()
+				req := adapter.SyncRequest{Target: adapter.Target{ID: "tgt_concurrent_" + run, Environment: "external", Generation: 1, Destination: destination}, Manifest: []adapter.ManifestEntry{{KeyID: "key_e2e", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "Hikyo value"}}, JobID: "initial_" + run}
+				previousVersion := ""
+				if existing {
+					if _, err := module.Sync(t.Context(), req, journal); err != nil {
+						t.Fatal(err)
+					}
+					meta, err := client.DescribeSecret(t.Context(), name)
+					if err != nil {
+						t.Fatal(err)
+					}
+					previousVersion = meta.Tags[awssm.VersionTag]
+				}
+				req.Ledger, req.JobID = journal.ledger(), "race_"+run
+				module.API = &externalAWSWriteRaceAPI{API: client, env: env, beforePut: beforePut}
+				if _, err := module.Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrConflict) {
+					t.Fatalf("concurrent write = %v, want conflict", err)
+				}
+				var current struct{ SecretString string }
+				if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": name, "VersionStage": "AWSCURRENT"}, &current); err != nil || current.SecretString != "external concurrent value" {
+					t.Fatalf("foreign value overwritten: value=%q err=%v", current.SecretString, err)
+				}
+				meta, err := client.DescribeSecret(t.Context(), name)
+				if err != nil || meta.Tags[awssm.VersionTag] != previousVersion {
+					t.Fatalf("refusal advanced ownership: previous=%q tags=%v err=%v", previousVersion, meta.Tags, err)
+				}
+				currentVersion := ""
+				for version, stages := range meta.Stages {
+					if slices.Contains(stages, "AWSCURRENT") {
+						currentVersion = version
+					}
+				}
+				if currentVersion == "" {
+					t.Fatal("provider has no current version to consent to")
+				}
+				if err := client.TagSecret(t.Context(), name, map[string]string{awssm.VersionTag: currentVersion}); err != nil {
+					t.Fatal(err)
+				}
+				module.API = client
+				req.Ledger, req.JobID = journal.ledger(), "consented_"+run
+				if _, err := module.Sync(t.Context(), req, journal); err != nil {
+					t.Fatalf("version-bound consent failed: %v", err)
+				}
+				if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": name, "VersionStage": "AWSCURRENT"}, &current); err != nil || current.SecretString != `{"TOKEN":"Hikyo value"}` {
+					t.Fatalf("consented value = %q err=%v", current.SecretString, err)
+				}
+			})
+		}
+	}
+}
+
+type externalAWSReplacementRaceAPI struct {
+	awssm.API
+	env  externalAWS
+	name string
+}
+
+func (api *externalAWSReplacementRaceAPI) PutSecretValue(ctx context.Context, secretID, token, value string) error {
+	if err := externalAWSCall(ctx, api.env, "DeleteSecret", map[string]any{"SecretId": api.name, "ForceDeleteWithoutRecovery": true}, nil); err != nil {
+		return err
+	}
+	if err := externalAWSCall(ctx, api.env, "CreateSecret", map[string]string{"Name": api.name}, nil); err != nil {
+		return err
+	}
+	return api.API.PutSecretValue(ctx, secretID, token, value)
+}
+
+func runExternalAWSReplacementRace(t *testing.T, env externalAWS) {
+	t.Helper()
+	t.Run("empty-replacement-before-put", func(t *testing.T) {
+		descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, STSAllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(client.Forget)
+		module := &awssm.Module{API: client}
+		run := strings.ToLower(strconv.FormatInt(time.Now().UnixNano(), 36))
+		name := "hikyo-e2e-" + run + "/replacement"
+		destination := adapter.Destination{Kind: adapter.JSONObject, Owner: env.account, Name: name}
+		connection, err := module.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: destination, Gate: func(context.Context) error { return nil }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		destination.NumericID = connection.DestinationID
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil {
+				t.Errorf("force-delete %s: %v", name, err)
+			}
+		})
+		journal := newForgejoLifecycleJournal()
+		req := adapter.SyncRequest{Target: adapter.Target{ID: "tgt_replacement_" + run, Environment: "external", Generation: 1, Destination: destination}, Manifest: []adapter.ManifestEntry{{KeyID: "key_e2e", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "Hikyo value"}}, JobID: "initial_" + run}
+		if _, err := module.Sync(t.Context(), req, journal); err != nil {
+			t.Fatal(err)
+		}
+		before, err := client.DescribeSecret(t.Context(), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		module.API = &externalAWSReplacementRaceAPI{API: client, env: env, name: name}
+		req.Ledger, req.JobID = journal.ledger(), "replacement_"+run
+		if _, err := module.Sync(t.Context(), req, journal); err == nil {
+			t.Fatal("replacement race unexpectedly succeeded")
+		}
+		after, err := client.DescribeSecret(t.Context(), name)
+		if err != nil || before.ARN == after.ARN {
+			t.Fatalf("fixture did not replace resource identity: before=%q after=%q err=%v", before.ARN, after.ARN, err)
+		}
+		if len(after.Stages) != 0 {
+			t.Fatalf("empty replacement received a plaintext value version: stages=%v", after.Stages)
+		}
+	})
+}
+
+type externalAWSInterruptedAdoptionAPI struct {
+	awssm.API
+	interruption string
+	injected     bool
+}
+
+func (api *externalAWSInterruptedAdoptionAPI) PutSecretValue(ctx context.Context, id, token, value string) error {
+	if err := api.API.PutSecretValue(ctx, id, token, value); err != nil {
+		return err
+	}
+	if !api.injected && api.interruption == "lost-put-response" {
+		api.injected = true
+		return errors.New("connection closed after provider accepted staged value")
+	}
+	return nil
+}
+
+func (api *externalAWSInterruptedAdoptionAPI) UpdateSecretVersionStage(ctx context.Context, id, stage, moveTo, removeFrom string) error {
+	if !api.injected && api.interruption == "pre-promotion-cancellation" && stage == "AWSCURRENT" {
+		api.injected = true
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		// Invoke the real signed client with a canceled request, after the
+		// provider already accepted staging but before promotion can land.
+		return api.API.UpdateSecretVersionStage(canceled, id, stage, moveTo, removeFrom)
+	}
+	return api.API.UpdateSecretVersionStage(ctx, id, stage, moveTo, removeFrom)
+}
+
+func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
+	t.Helper()
+	for _, interruption := range []string{"lost-put-response", "pre-promotion-cancellation"} {
+		for _, foreign := range []bool{false, true} {
+			t.Run(fmt.Sprintf("adoption/%s/foreign=%v", interruption, foreign), func(t *testing.T) {
+				descriptor, err := json.Marshal(awssm.Descriptor{Mode: awssm.AuthStatic, Region: env.region, AccessKeyID: env.creds.AccessKeyID, SecretKey: env.creds.SecretAccessKey, SessionToken: env.creds.SessionToken})
+				if err != nil {
+					t.Fatal(err)
+				}
+				client, err := awssm.NewClient(awssm.ClientConfig{Origin: env.origin, Credential: string(descriptor), AllowedCIDRs: env.allowed, STSAllowedCIDRs: env.allowed, RootCAs: env.roots, Deadline: 15 * time.Second})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(client.Forget)
+				run := strings.ToLower(strconv.FormatInt(time.Now().UnixNano(), 36))
+				name := "hikyo-e2e-" + run + "/adoption"
+				if err := externalAWSCall(t.Context(), env, "CreateSecret", map[string]string{"Name": name, "SecretString": "approved legacy", "ClientRequestToken": strings.Repeat("c", 64)}, nil); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil {
+						t.Errorf("force-delete %s: %v", name, err)
+					}
+				})
+				before, err := client.DescribeSecret(t.Context(), name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				journal := newForgejoLifecycleJournal()
+				journal.states[forgejoLifecycleEffectKey(adapter.Effect{Surface: adapter.Secret, EffectiveName: name})] = adapter.Owned
+				req := adapter.SyncRequest{Target: adapter.Target{ID: "tgt_adoption_" + run, Environment: "external", Generation: 1, Destination: adapter.Destination{Kind: adapter.JSONObject, Owner: env.account, Name: name}}, Manifest: []adapter.ManifestEntry{{KeyID: "key_e2e", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "Hikyo value"}}, Ledger: journal.ledger(), JobID: "adoption_" + run}
+				req.Ledger[0].AdoptionPending = true
+				module := &awssm.Module{API: &externalAWSInterruptedAdoptionAPI{API: client, interruption: interruption}}
+				if _, err := module.Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+					t.Fatalf("interrupted adoption = %v, want indeterminate", err)
+				}
+				staged, err := client.DescribeSecret(t.Context(), name)
+				if err != nil || len(staged.Stages) != 2 || staged.ARN != before.ARN || staged.Tags[awssm.VersionTag] != strings.Repeat("c", 64) {
+					t.Fatalf("approved predecessor not durably retained: stages=%v tags=%v err=%v", staged.Stages, staged.Tags, err)
+				}
+				if foreign {
+					if err := externalAWSCall(t.Context(), env, "PutSecretValue", map[string]string{"SecretId": name, "SecretString": "later external value", "ClientRequestToken": strings.Repeat("e", 64)}, nil); err != nil {
+						t.Fatal(err)
+					}
+				}
+				module.API, req.Ledger = client, journal.ledger()
+				if req.Ledger[0].State != adapter.Dispatched || req.Ledger[0].AdoptionPending {
+					t.Fatal("fixture did not lose pending adoption exposure after ambiguous staging")
+				}
+				_, err = module.Sync(t.Context(), req, journal)
+				want := `{"TOKEN":"Hikyo value"}`
+				if foreign {
+					want = "later external value"
+					if !errors.Is(err, adapter.ErrConflict) {
+						t.Fatalf("foreign current was accepted: %v", err)
+					}
+				} else if err != nil {
+					t.Fatalf("approved unchanged predecessor could not resume: %v", err)
+				}
+				var current struct{ SecretString string }
+				if err := externalAWSCall(t.Context(), env, "GetSecretValue", map[string]string{"SecretId": name, "VersionStage": "AWSCURRENT"}, &current); err != nil || current.SecretString != want {
+					t.Fatalf("replay current = %q, want %q: %v", current.SecretString, want, err)
+				}
+				if !foreign {
+					settled, err := client.DescribeSecret(t.Context(), name)
+					if err != nil || len(settled.Stages) != 2 || settled.ARN != before.ARN {
+						t.Fatalf("replay duplicated a value/resource: stages=%v ARN=%q err=%v", settled.Stages, settled.ARN, err)
+					}
+				}
+			})
+		}
 	}
 }
 

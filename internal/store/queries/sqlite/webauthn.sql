@@ -94,6 +94,15 @@ INSERT INTO webauthn_ceremonies
      expires_at, consumed_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?);
 
+-- Expired, unconsumed challenges have no provenance value and cannot be
+-- referenced by a session or reauthentication window. Remove them before
+-- creating the next ceremony so sustained starts cannot grow storage forever.
+-- hikyo:reason Pre-auth issuance retires only expired unconsumed proofs; no live credential or tenant authority changes.
+-- hikyo:authn-resolution
+-- name: DeleteExpiredUnconsumedWebAuthnCeremonies :execrows
+DELETE FROM webauthn_ceremonies
+WHERE consumed_at IS NULL AND expires_at <= ?;
+
 -- hikyo:authn-resolution
 -- name: GetWebAuthnCeremonyByChallenge :one
 SELECT id, challenge_verifier, session_data, account_id, session_id, purpose,

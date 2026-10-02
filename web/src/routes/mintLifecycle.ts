@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MachineDisclosureReach } from '../api/identities.ts';
 
 /**
  * The fields every mint request carries so the lifecycle can address a response
@@ -23,7 +24,7 @@ export type MintRequest = MintBoundaryFields & {
   readonly accountId: string;
   readonly accountName: string;
   readonly rotating: boolean;
-  readonly reach: readonly { readonly id: string; readonly name: string }[];
+  readonly reach: readonly MachineDisclosureReach[];
 };
 
 export type MintResult = {

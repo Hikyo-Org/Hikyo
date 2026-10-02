@@ -158,7 +158,23 @@ openssl x509 -req -days 1 -sha256 \
 	-in "$work/tls/server.csr" \
 	-CA "$work/tls/ca.crt" -CAkey "$work/tls/ca.key" -CAcreateserial \
 	-extfile "$work/tls/server.ext" -out "$work/tls/tls.crt" >/dev/null 2>&1
+openssl req -newkey rsa:2048 -nodes \
+	-keyout "$work/tls/hikyo.key" -out "$work/tls/hikyo.csr" \
+	-subj '/CN=127.0.0.1' >/dev/null 2>&1
+cat >"$work/tls/hikyo.ext" <<'EOF'
+subjectAltName=IP:127.0.0.1
+extendedKeyUsage=serverAuth
+EOF
+openssl x509 -req -days 1 -sha256 \
+	-in "$work/tls/hikyo.csr" \
+	-CA "$work/tls/ca.crt" -CAkey "$work/tls/ca.key" -CAcreateserial \
+	-extfile "$work/tls/hikyo.ext" -out "$work/tls/hikyo.crt" >/dev/null 2>&1
+chart_spki_pin=$(openssl x509 -in "$work/tls/hikyo.crt" -pubkey -noout |
+	openssl pkey -pubin -outform DER 2>/dev/null |
+	openssl dgst -sha256 -binary |
+	openssl base64 -A)
 chmod 0400 "$work/tls/tls.key"
+chmod 0400 "$work/tls/hikyo.key"
 openssl rand -hex 32 >"$work/root-key"
 chmod 0400 "$work/root-key"
 
@@ -202,6 +218,8 @@ kubectl --namespace "$NAMESPACE" create secret generic hikyo-database-ca \
 	--from-file=ca.crt="$work/tls/ca.crt" >/dev/null
 kubectl --namespace "$NAMESPACE" create secret generic hikyo-root-key \
 	--from-file=root-key="$work/root-key" >/dev/null
+kubectl --namespace "$NAMESPACE" create secret tls hikyo-tls \
+	--cert="$work/tls/hikyo.crt" --key="$work/tls/hikyo.key" >/dev/null
 database_dsn="postgres://hikyo:hikyo@postgres.$NAMESPACE.svc:5432/hikyo?sslmode=verify-full&sslrootcert=/run/hikyo-database-ca/ca.crt"
 kubectl --namespace "$NAMESPACE" create secret generic hikyo-database \
 	--from-literal=HIKYO_DB="$database_dsn" >/dev/null
@@ -307,11 +325,10 @@ chart_values=(
 	--set database.existingSecret=hikyo-database \
 	--set database.tls.existingSecret=hikyo-database-ca \
 	--set rootKey.existingSecret=hikyo-root-key \
+	--set tls.existingSecret=hikyo-tls \
 	--set upgrade.existingClaim=hikyo-upgrade-public \
 	--set upgrade.stateExistingClaim=hikyo-upgrade-state \
-	--set externalOrigin=http://127.0.0.1:18080 \
-	--set network.allowPlaintextOrigin=true \
-	--set 'network.trustedProxyCIDRs={10.0.0.0/8}'
+	--set externalOrigin=https://127.0.0.1:18080
 )
 
 # Retained broken-shape fixture: removing the root-key file argument recreates
@@ -444,7 +461,7 @@ umask 077
 docker exec "$doctor_node" cat /var/lib/hikyo-chart-state/operator-custody/chart-doctor-authority \
 	>"$doctor_private/authority"
 go build -trimpath -o "$work/hikyo-cli" ./cmd/hikyo
-go run ./scripts/ci/chartdoctor --origin http://127.0.0.1:18080 \
+go run ./scripts/ci/chartdoctor --origin https://127.0.0.1:18080 --spki-pin "$chart_spki_pin" \
 	--private-dir "$doctor_private" --binary "$work/hikyo-cli"
 if ! jq -e --arg engine postgres --arg volume_severity unknown -f scripts/ci/assert-doctor-findings.jq "$doctor_private/doctor.json" >/dev/null; then
 	echo 'chart-kind: instance doctor did not report the complete measured finding set' >&2
@@ -453,7 +470,8 @@ if ! jq -e --arg engine postgres --arg volume_severity unknown -f scripts/ci/ass
 fi
 echo 'chart-kind: authenticated instance doctor reported all 12 operational finding families'
 
-document_status=$(forwarded_get http://127.0.0.1:18080/ "$work/document.html" --header 'Accept: text/html') || exit 1
+document_status=$(forwarded_get https://127.0.0.1:18080/ "$work/document.html" \
+	--cacert "$work/tls/ca.crt" --header 'Accept: text/html') || exit 1
 if [[ "$document_status" != 200 ]]; then
 	echo "chart-kind: UI document request returned $document_status" >&2
 	exit 1

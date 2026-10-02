@@ -198,17 +198,7 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 // API origin, rejecting other hosts, schemes, credentials, queries, or paths
 // other than an optional root slash.
 func canonicalOrigin(raw string) (string, error) {
-	if raw == "" {
-		return DefaultOrigin, nil
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("cloudflare: parse origin: %w", err)
-	}
-	if u.Scheme != "https" || !strings.EqualFold(u.Host, "api.cloudflare.com") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("cloudflare: origin must be https://api.cloudflare.com")
-	}
-	return DefaultOrigin, nil
+	return adapter.CanonicalOrigin(adapter.CloudflareProvider, raw)
 }
 
 // ResponseError keeps only the status. Provider bodies are never surfaced: a
@@ -274,7 +264,7 @@ func (c *Client) do(ctx context.Context, op operation, path string, body any) (e
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return envelope{}, fmt.Errorf("cloudflare: provider request: %w", err)
+		return envelope{}, fmt.Errorf("cloudflare: provider request: %w", adapter.SafeTransportError(err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseCap+1))

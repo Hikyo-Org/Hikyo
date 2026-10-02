@@ -4,13 +4,15 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DynamicLease } from '../api/dynamic.ts';
+import type { Grant } from '../api/identities.ts';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { dynamicProvider, serviceAccount } from '../testkit/machineAccess.ts';
 import { deferred } from '../testkit/ceremony.ts';
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { MachineAccessPage } from './MachineAccess.tsx';
 
-const mocks = vi.hoisted(() => ({ session: 'session-first', mintCredential: vi.fn(), mintLease: vi.fn() }));
+const mocks = vi.hoisted(() => ({ session: 'session-first', mintCredential: vi.fn(), mintLease: vi.fn(), ceremony: vi.fn() }));
+let machineGrants: Grant[] = [];
 const accounts = { items: [serviceAccount], count: 1 };
 const environments = { items: [{ id: 'env-one', name: 'production' }], count: 1 };
 const providers = { items: [dynamicProvider], count: 1 };
@@ -31,7 +33,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
 vi.mock('../api/identities.ts', async (importActual) => ({
   ...(await importActual<typeof import('../api/identities.ts')>()),
   useServiceAccounts: () => ({ ...ready, data: accounts }),
-  useProjectGrants: () => ({ ...ready, data: { items: [], count: 0 } }),
+  useProjectGrants: () => ({ ...ready, data: { items: machineGrants, count: machineGrants.length } }),
   useCredentials: () => ({ byAccount: new Map(), isPending: false, isError: false }),
   useKeyCatalogue: () => ({ ...ready, data: { items: [], count: 0 } }),
   useRefreshAccount: () => vi.fn(),
@@ -40,7 +42,7 @@ vi.mock('../api/identities.ts', async (importActual) => ({
 vi.mock('../api/values.ts', async (importActual) => ({
   ...(await importActual<typeof import('../api/values.ts')>()),
   useEnvironments: () => ({ ...ready, data: environments }),
-  runPasskeyCeremony: vi.fn().mockResolvedValue(undefined),
+  runPasskeyCeremony: mocks.ceremony,
 }));
 vi.mock('../api/machineReveal.ts', async (importActual) => ({
   ...(await importActual<typeof import('../api/machineReveal.ts')>()),
@@ -82,6 +84,8 @@ function RouteUnderTest() {
 }
 let view: Awaited<ReturnType<typeof renderForm>> | undefined;
 beforeEach(() => {
+  machineGrants = [];
+  mocks.ceremony.mockReset().mockResolvedValue(undefined);
   mocks.session = 'session-first';
   mocks.mintCredential.mockReset().mockResolvedValue({ value: 'credential-SENTINEL', clamped: false, expires_at: null });
   mocks.mintLease.mockReset().mockResolvedValue({ username: 'lease-user', password: 'lease-SENTINEL', expires_at: null });
@@ -120,6 +124,24 @@ async function openCredential() {
   await click(`▸ ${serviceAccount.name}`);
   await click(`Mint credential for ${serviceAccount.name}`);
 }
+
+it.each([
+  { capabilities: ['read', 'reveal-history'], classes: 'historical plaintext' },
+  { capabilities: ['read', 'reveal', 'reveal-history'], classes: 'current and historical plaintext' },
+])('the actual route reviews $classes and runs one mint ceremony per environment', async ({ capabilities, classes }) => {
+  machineGrants = capabilities.map((capability) => ({
+    id: `grant-${capability}`, principal_id: serviceAccount.principal_id, capability,
+    scope: { org_id: 'org-first', project_id: 'project-first', environment_id: 'env-one' },
+    origins: [], created_at: '2026-09-22T08:00:00Z',
+  }));
+  view = await renderForm(<RouteUnderTest />);
+  await openCredential();
+  expect(view.container.textContent).toContain(`production (${classes})`);
+  expect(view.container.textContent).not.toContain('reaches no plaintext');
+  await click('Use a passkey and mint');
+  expect(mocks.ceremony).toHaveBeenCalledExactlyOnceWith({ operation: 'mint', environmentId: 'env-one', keyIds: [] });
+  expect(mocks.mintCredential).toHaveBeenCalledTimes(1);
+});
 
 const dialogCases = [
   { name: 'create account', open: () => click('Create service account') },

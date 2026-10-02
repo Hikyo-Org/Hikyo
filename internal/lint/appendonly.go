@@ -375,12 +375,18 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// route, and the classification-totality invariant keeps that true.
 	// Adapter PATs have no Hikyo credential epoch for the remote provider to
 	// enforce, so CompleteRestore must erase them in the same local-host act.
-	"AdvanceRestoreEpoch":                  true,
+	"AdvanceRestoreEpoch": true,
+	// Only AdvanceRestoreEpoch calls this private historical-table retirement
+	// helper. Pending human proofs lack an epoch and must die with the bump.
+	"retireRestoredPendingHumanProofs":     true,
 	"InvalidateRestoredAdapterCredentials": true,
 	// #147: like adapter PATs, a dynamic-secret provider's admin credential
 	// authenticates to an external engine with no Hikyo credential epoch, so the
 	// same local-host restore act erases it.
 	"InvalidateRestoredDynamicProviderCredentials": true,
+	// Human-login provider secrets and remote credentials cross the same
+	// restore boundary and are destroyed by the local-host reconciliation act.
+	"InvalidateRestoredExternalCredentials": true,
 	// #154: a restore can resurrect certificates revoked after the backup,
 	// so the same local-host restore act holds every restored CA issuer.
 	"HoldRestoredPKIIssuers": true,

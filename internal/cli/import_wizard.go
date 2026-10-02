@@ -131,7 +131,7 @@ func (h *cliWizardHost) ReadSource(source string, sel importer.Selector) (import
 	}
 	diagnostics.Printf(h.ctx, 2, "import: parsed records=%d skipped=%d", len(res.Records), len(res.Skipped))
 	h.sourceFiles = append(h.sourceFiles, sel.File)
-	return importer.SourceRead{Result: res, FileDigest: importer.Digest(in.Data), EnvSlug: sel.EnvSlug}, nil
+	return importer.SourceRead{Result: res, FileDigest: importer.SourceFileReference(source, in.Data, res.Records), EnvSlug: sel.EnvSlug}, nil
 }
 
 // ExistingEnvironments lists the project's environments the actor can read.

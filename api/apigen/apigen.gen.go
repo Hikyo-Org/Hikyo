@@ -6262,6 +6262,11 @@ type DeliveredKey struct {
 	// the snapshot does not carry.
 	Presence DeliveredKeyPresence `json:"presence"`
 
+	// SnapshotReceipt Authenticated server receipt for this delivered value, present only
+	// with value. Store inside the encrypted offline snapshot. Required
+	// for later offline disclosure reconciliation; never log it.
+	SnapshotReceipt *string `json:"snapshot_receipt,omitempty"`
+
 	// Value The delivered plaintext. Present ONLY when the caller was
 	// authorized to receive it (see the schema description); absent for a
 	// presence-only key. The maxLength matches the value-write bound.
@@ -6679,7 +6684,9 @@ type EnvironmentParameters map[string]string
 
 // EnvironmentSettings defines model for EnvironmentSettings.
 type EnvironmentSettings struct {
-	Protected bool `json:"protected"`
+	// ExpectedProtected Optional compare-and-set precondition; a changed protection flag returns 409.
+	ExpectedProtected *bool `json:"expected_protected,omitempty"`
+	Protected         bool  `json:"protected"`
 
 	// ReauthWindowSeconds The environment's own reauthentication window. Null or absent means
 	// it inherits the instance default - which is NOT the same statement
@@ -7226,6 +7233,8 @@ type ImpactPreview struct {
 // authorized transaction, after `read@project AND read@environment` is
 // re-evaluated for every environment named here.
 type ImportPrecondition struct {
+	// DefinitionsRevision Informational project revision recorded by phase 1. Freshness is
+	// enforced by the occurrence token for every written key.
 	DefinitionsRevision int64 `json:"definitions_revision"`
 	EnvironmentIds      []ID  `json:"environment_ids"`
 	Occurrences         []struct {
@@ -8127,6 +8136,12 @@ type OfflineDeliveryRecord struct {
 
 	// ServedFrom RFC 3339 UTC, microsecond precision.
 	ServedFrom Timestamp `json:"served_from"`
+
+	// SnapshotReceipt Receipt delivered with this key's plaintext. Authenticates scope,
+	// principal, serving credential, key metadata, snapshot identity and
+	// issuance window. Unsigned legacy claims are refused. The later
+	// offline serving time and local generation remain client assertions.
+	SnapshotReceipt string `json:"snapshot_receipt"`
 }
 
 // OidcProvider defines model for OidcProvider.
@@ -8137,6 +8152,7 @@ type OidcProvider struct {
 	Enabled         bool    `json:"enabled"`
 	Issuer          string  `json:"issuer"`
 	RedirectUri     string  `json:"redirect_uri"`
+	RowVersion      int64   `json:"row_version"`
 	Scopes          string  `json:"scopes"`
 	Slug            string  `json:"slug"`
 }
@@ -8154,7 +8170,10 @@ type OidcProviderInput struct {
 
 	// Issuer Byte-exact, immutable after create (A3).
 	Issuer string `json:"issuer"`
-	Scopes string `json:"scopes"`
+
+	// RowVersion Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
+	RowVersion *int64 `json:"row_version,omitempty"`
+	Scopes     string `json:"scopes"`
 }
 
 // OidcProviderList defines model for OidcProviderList.
@@ -9776,11 +9795,17 @@ type SamlACSRequest struct {
 
 // SamlMetadataDiff defines model for SamlMetadataDiff.
 type SamlMetadataDiff struct {
-	CertsAddedFps    []string   `json:"certs_added_fps"`
-	CertsRemovedFps  []string   `json:"certs_removed_fps"`
-	EndpointsAdded   []string   `json:"endpoints_added"`
-	EndpointsRemoved []string   `json:"endpoints_removed"`
-	ValidUntil       *Timestamp `json:"valid_until,omitempty"`
+	CertsAddedFps    []string `json:"certs_added_fps"`
+	CertsRemovedFps  []string `json:"certs_removed_fps"`
+	EndpointsAdded   []string `json:"endpoints_added"`
+	EndpointsRemoved []string `json:"endpoints_removed"`
+
+	// MetadataCertsAddedFps Metadata-signature certificate fingerprints newly trusted by this change.
+	MetadataCertsAddedFps []string `json:"metadata_certs_added_fps"`
+
+	// MetadataCertsRemovedFps Metadata-signature certificate fingerprints retired by this change.
+	MetadataCertsRemovedFps []string   `json:"metadata_certs_removed_fps"`
+	ValidUntil              *Timestamp `json:"valid_until,omitempty"`
 }
 
 // SamlMetadataRefreshRequest defines model for SamlMetadataRefreshRequest.
@@ -10428,6 +10453,9 @@ type SnapshotKey struct {
 	// constraint, not a style preference. `maxLength` counts code points
 	// here and bytes in the service; the grammar is ASCII, so they agree.
 	Name KeyName `json:"name"`
+
+	// Sensitive True when this value occurrence is secret-classified or carries sticky historical secrecy.
+	Sensitive bool `json:"sensitive"`
 }
 
 // StartWorkspaceHandoffRequest defines model for StartWorkspaceHandoffRequest.
@@ -11105,8 +11133,10 @@ type ValueOccurrenceCandidateIntendedType string
 // ValueOccurrenceList defines model for ValueOccurrenceList.
 type ValueOccurrenceList struct {
 	// DefinitionsRevision The project's key-catalogue revision as phase 1 observed it. The
-	// run manifest pins it, and phase 2 refuses a run whose declarations
-	// moved.
+	// run manifest records it for operator evidence. Phase 2 does not
+	// compare it globally because applying the reviewed definitions
+	// bundle advances the revision; per-key occurrence tokens enforce
+	// declaration and value freshness instead.
 	DefinitionsRevision int64 `json:"definitions_revision"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -34226,6 +34256,20 @@ func (response SamlACS200JSONResponse) VisitSamlACSResponse(w http.ResponseWrite
 	return err
 }
 
+type SamlACS303ResponseHeaders struct {
+	Location string
+}
+
+type SamlACS303Response struct {
+	Headers SamlACS303ResponseHeaders
+}
+
+func (response SamlACS303Response) VisitSamlACSResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(303)
+	return nil
+}
+
 type SamlACS400JSONResponse struct{ BadRequestJSONResponse }
 
 func (response SamlACS400JSONResponse) VisitSamlACSResponse(w http.ResponseWriter) error {
@@ -47065,6 +47109,20 @@ func (response QueryOrgAudit401JSONResponse) VisitQueryOrgAuditResponse(w http.R
 	return err
 }
 
+type QueryOrgAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response QueryOrgAudit403JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryOrgAudit404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response QueryOrgAudit404JSONResponse) VisitQueryOrgAuditResponse(w http.ResponseWriter) error {
@@ -47199,6 +47257,20 @@ func (response ExportOrgAudit401JSONResponse) VisitExportOrgAuditResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportOrgAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ExportOrgAudit403JSONResponse) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -51568,6 +51640,20 @@ func (response QueryProjectAudit401JSONResponse) VisitQueryProjectAuditResponse(
 	return err
 }
 
+type QueryProjectAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response QueryProjectAudit403JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryProjectAudit404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response QueryProjectAudit404JSONResponse) VisitQueryProjectAuditResponse(w http.ResponseWriter) error {
@@ -51703,6 +51789,20 @@ func (response ExportProjectAudit401JSONResponse) VisitExportProjectAuditRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ExportProjectAudit403JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -55009,6 +55109,20 @@ func (response QueryEnvAudit401JSONResponse) VisitQueryEnvAuditResponse(w http.R
 	return err
 }
 
+type QueryEnvAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response QueryEnvAudit403JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type QueryEnvAudit404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response QueryEnvAudit404JSONResponse) VisitQueryEnvAuditResponse(w http.ResponseWriter) error {
@@ -55145,6 +55259,20 @@ func (response ExportEnvAudit401JSONResponse) VisitExportEnvAuditResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEnvAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ExportEnvAudit403JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }

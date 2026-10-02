@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
-import { carriedClaims, presetForBinding, seedClaims } from './machineAccess/FederationBindings.tsx';
+import { carriedClaims, presetForBinding, seedClaims, unsafeNumericClaim } from './machineAccess/FederationBindings.tsx';
 import { tabLabel } from './MachineAccess.tsx';
 
 /**
@@ -102,6 +102,13 @@ describe('carriedClaims', () => {
       { claim: '/kubernetes.io/serviceaccount/uid', string_value: 'abc' },
     ]);
     expect(carriedClaims(presetForBinding(credential), credential)).toEqual([]);
+  });
+
+  it('refuses predecessor numbers outside the browser exact-integer range', () => {
+    const credential = binding([
+      { claim: 'custom_id', number_value: BigInt(Number.MAX_SAFE_INTEGER) + 1n },
+    ]);
+    expect(unsafeNumericClaim(credential)).toBe('custom_id');
   });
 });
 

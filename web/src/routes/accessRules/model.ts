@@ -381,13 +381,19 @@ type ServerGrant = {
 const keyItemOf = (item: ServerRule['where']['keys']['items'][number]): KeyItem =>
   item.key !== undefined ? { project: item.project, key: item.key } : { project: item.project, folder: item.folder ?? '' };
 
-const itemKey = (item: EnvItem | KeyItem) => ('environment' in item ? `${item.project}|e|${item.environment}` : isFolder(item) ? `${item.project}|f|${item.folder}` : `${item.project}|k|${item.key}`);
+const itemKey = (item: EnvItem | KeyItem) => JSON.stringify(
+  'environment' in item
+    ? [item.project, 'environment', item.environment]
+    : isFolder(item)
+      ? [item.project, 'folder', item.folder]
+      : [item.project, 'key', item.key],
+);
 
 /** A Where in one canonical spelling, so two rules with the same Where group together. */
 function whereKey(rule: Pick<Rule, 'projects' | 'envs' | 'keys'>): string {
-  const sorted = (items: readonly (EnvItem | KeyItem)[]) => items.map(itemKey).sort().join(',');
-  const projects = rule.projects === '*' ? '*' : [...rule.projects].sort().join(',');
-  return `${projects};${rule.envs.mode}:${sorted(rule.envs.items)};${rule.keys.mode}:${sorted(rule.keys.items)}`;
+  const sorted = (items: readonly (EnvItem | KeyItem)[]) => items.map(itemKey).sort();
+  const projects = rule.projects === '*' ? '*' : [...rule.projects].sort();
+  return JSON.stringify([projects, [rule.envs.mode, sorted(rule.envs.items)], [rule.keys.mode, sorted(rule.keys.items)]]);
 }
 
 /** Server rules, one capability each, grouped into the rules a person reads: one per principal and Where (D1). */
@@ -544,4 +550,29 @@ export function savePlan(before: Rule | null, draft: Rule): { create: PermId[]; 
     create: next.filter((id) => !parts.some((p) => p.perm === id)),
     revoke: parts.filter((p) => !next.includes(p.perm)).map((p) => p.id),
   };
+}
+
+/**
+ * Refuse a self-edit that needs more than one request. Each successful rule
+ * mutation invalidates the affected principal's sessions, so a later request
+ * would run without the authority needed to finish the edit.
+ */
+export function selfSaveRefusal(before: Rule | null, draft: Rule, actingPrincipal: string): string | null {
+  if (draft.member !== actingPrincipal) return null;
+  const plan = savePlan(before, draft);
+  if (plan.create.length + plan.revoke.length <= 1) return null;
+  return 'This change needs multiple requests, but the first would end your session before the rest finish. Ask another administrator to change your access.';
+}
+
+/** Separate creates and revokes cannot represent one atomic authority change. */
+export function replacementSaveRefusal(before: Rule | null, draft: Rule): string | null {
+  const plan = savePlan(before, draft);
+  if (plan.create.length === 0 || plan.revoke.length === 0) return null;
+  return 'This edit requires atomic rule replacement, which this server does not provide. No changes were sent. Keep the existing rule until atomic replacement is available; separate requests could expose combined permissions.';
+}
+
+/** A multi-part self-removal has the same partial-commit risk as a self-edit. */
+export function selfRemoveRefusal(rule: Rule, actingPrincipal: string): string | null {
+  if (rule.member !== actingPrincipal || rule.source.kind !== 'rule' || rule.source.parts.length <= 1) return null;
+  return 'Removing this rule needs multiple requests, but the first would end your session before the rest finish. Ask another administrator to remove your access.';
 }

@@ -79,6 +79,9 @@ func rotateRootScopedTier3(ctx context.Context, proof authz.Proof, key crypto.Wr
 	if err := adapter.acquireHierarchy(ctx); err != nil {
 		return err
 	}
+	if err := assertActiveMaster(ctx, key.MasterKeyVersion, adapter); err != nil {
+		return err
+	}
 	retired, err := adapter.retireTier3AtVersion(ctx, purpose, "", "", int64(key.Version)-1)
 	if err != nil {
 		return err

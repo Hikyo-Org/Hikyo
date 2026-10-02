@@ -13,6 +13,8 @@ import (
 	"testing/fstest"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -147,8 +149,8 @@ func TestSPAFallbackServesIndexForApplicationRoutes(t *testing.T) {
 func TestIndexAlwaysRevalidates(t *testing.T) {
 	srv := uiServer(t)
 	resp, _ := get(t, srv, http.MethodGet, "/", htmlAccept)
-	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
-		t.Fatalf("index Cache-Control = %q, want no-cache", got)
+	if got := resp.Header.Get("Cache-Control"); got != "private, no-cache" {
+		t.Fatalf("index Cache-Control = %q, want private, no-cache", got)
 	}
 }
 
@@ -226,8 +228,8 @@ func TestIndexPrefersPrecompressedRepresentationWithoutChangingRevalidation(t *t
 	if got := resp.Header.Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
 		t.Fatalf("Vary = %q, want Accept-Encoding", got)
 	}
-	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
-		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	if got := resp.Header.Get("Cache-Control"); got != "private, no-cache" {
+		t.Fatalf("Cache-Control = %q, want private, no-cache", got)
 	}
 	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
 		t.Fatalf("Content-Type = %q, want text/html", got)
@@ -545,17 +547,18 @@ type countingRemotes struct {
 	calls atomic.Int64
 	mu    sync.RWMutex
 	items []string
+	err   error
 }
 
 // stubRemoteOrigin is the origin the stub reports. It appears in `connect-src`
 // on a document and nowhere else.
 const stubRemoteOrigin = "https://peer.example"
 
-func (c *countingRemotes) RemoteOrigins(context.Context) ([]string, error) {
+func (c *countingRemotes) RemoteOrigins(context.Context, service.Actor) ([]string, error) {
 	c.calls.Add(1)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return append([]string(nil), c.items...), nil
+	return append([]string(nil), c.items...), c.err
 }
 
 func (c *countingRemotes) setOrigins(origins ...string) {
@@ -664,7 +667,7 @@ func TestRemoteOriginsAreReadOnlyForSuccessfulSPADocuments(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			remotes.setOrigins(c.origin)
-			resp, _ := get(t, srv, c.method, c.path, htmlAccept)
+			resp := getBrowserDocument(t, srv, c.method, c.path)
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want 200", resp.StatusCode)
 			}
@@ -697,4 +700,52 @@ func TestRemoteOriginsAreReadOnlyForSuccessfulSPADocuments(t *testing.T) {
 		}
 		staticBaseline(t, resp)
 	})
+}
+
+func getBrowserDocument(t *testing.T, srv *httptest.Server, method, path string) *http.Response {
+	t.Helper()
+	token, _, err := crypto.NewArtifact(crypto.ArtifactBrowserSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(method, srv.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept", htmlAccept)
+	req.AddCookie(&http.Cookie{Name: "__Host-hikyo", Value: token})
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+func TestAnonymousSPADocumentsDoNotDiscloseRemoteOrigins(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		for _, path := range []string{"/", "/login", "/org/acme/projects"} {
+			t.Run(method+path, func(t *testing.T) {
+				srv, remotes := countingServer(t, testUI())
+				remotes.setOrigins("https://10.0.0.12:8443")
+				resp, _ := get(t, srv, method, path, htmlAccept)
+				if resp.StatusCode != http.StatusOK || remotes.calls.Load() != 0 {
+					t.Fatalf("anonymous document status=%d origin reads=%d", resp.StatusCode, remotes.calls.Load())
+				}
+				if strings.Contains(resp.Header.Get("Content-Security-Policy"), "10.0.0.12") {
+					t.Fatal("anonymous document disclosed private remote topology")
+				}
+			})
+		}
+	}
+	for _, refusal := range []error{domain.ErrUnauthenticated, domain.ErrNotFound} {
+		t.Run(refusal.Error(), func(t *testing.T) {
+			srv, remotes := countingServer(t, testUI())
+			remotes.err = refusal
+			resp := getBrowserDocument(t, srv, http.MethodGet, "/")
+			if resp.StatusCode != http.StatusOK || strings.Contains(resp.Header.Get("Content-Security-Policy"), stubRemoteOrigin) {
+				t.Fatal("refused browser document disclosed remote origin")
+			}
+		})
+	}
 }

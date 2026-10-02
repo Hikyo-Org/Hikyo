@@ -243,7 +243,7 @@ func TestWriteArtifactsRefusesValuesFilePhaseTwoCannotRead(t *testing.T) {
 	plan := &importer.Plan{
 		HasValues: true,
 		Values: importer.ValuesFile{
-			FormatVersion: importer.FormatVersion, Project: "prj_1", Environment: "env_1", Entries: entries,
+			FormatVersion: importer.RunArtifactFormatVersion, CommitmentKey: strings.Repeat("ab", 32), Project: "prj_1", Environment: "env_1", Entries: entries,
 		},
 	}
 	_, err := writeArtifacts(IO{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}, outDir, "env_1", plan)
@@ -405,7 +405,7 @@ func TestMarkImportedWriteFailureLeavesOriginalIntact(t *testing.T) {
 func testManifest(t *testing.T) []byte {
 	t.Helper()
 	raw, err := importer.Encode(importer.Manifest{
-		FormatVersion:            importer.FormatVersion,
+		FormatVersion:            importer.RunArtifactFormatVersion,
 		ConnectorContractVersion: importer.ConnectorContractVersion,
 		Target: importer.Target{
 			Project:      "prj_test",

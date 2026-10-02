@@ -111,6 +111,8 @@ const previewDiff = {
       endpoints_removed: [],
       certs_added_fps: ['sha256:c0ff…ee00'],
       certs_removed_fps: ['sha256:5e21…77af'],
+      metadata_certs_added_fps: [],
+      metadata_certs_removed_fps: [],
     },
     required_fingerprints: ['sha256:c0ff…ee00'],
     required_endpoints: ['https://acme.okta.com/app/hikyo/exk1a2b3c4d5e6f7g8h9/sso/saml-post'],

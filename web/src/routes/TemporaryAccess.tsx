@@ -127,6 +127,11 @@ export function TemporaryAccess() {
   const params = useParams();
   const org = params.org ?? '';
   const project = params.project ?? '';
+
+  return <ScopedTemporaryAccess key={`${org}/${project}`} org={org} project={project} />;
+}
+
+function ScopedTemporaryAccess({ org, project }: { org: string; project: string }) {
   const ref = { org, project };
   const me = useAuth().identity?.principal.id ?? '';
 
@@ -287,7 +292,15 @@ export function TemporaryAccess() {
 
       <Panel id="ta-requests" title="Requests">
         <label htmlFor="ta-env">Environment</label>
-        <select id="ta-env" value={selectedEnv} onChange={(event) => setSelectedEnv(event.target.value)}>
+        <select
+          id="ta-env"
+          value={selectedEnv}
+          disabled={checkingWindow || action.isPending || ceremony !== null}
+          onChange={(event) => {
+            setCeremony(null);
+            setSelectedEnv(event.target.value);
+          }}
+        >
           <option value="">Choose an environment</option>
           {envItems.map((env) => (
             <option key={env.id} value={env.id}>

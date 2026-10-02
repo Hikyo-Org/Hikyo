@@ -594,7 +594,7 @@ func (r *run) scanUnstaged(ctx context.Context, g git) error {
 		return parseRaw(out, func(e blobEntry) error {
 			return r.collect(&entries, e)
 		})
-	}, "diff-files", "--no-ext-diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
+	}, "diff-files", "--no-ext-diff", "--ignore-submodules=all", "--raw", "-z", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
 	if err != nil {
 		return err
 	}

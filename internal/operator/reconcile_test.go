@@ -556,6 +556,26 @@ func Test401RetainsAndFetchFailed(t *testing.T) {
 	}
 }
 
+func TestUnmarked404RetainsManagedSecret(t *testing.T) {
+	h := newHarness(t, interceptor.Funcs{},
+		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true), makeCR("app"))
+	h.stub.set(200, deliveryJSON(false, "v1:c", "v1:t", []deliveredKey{secretVal("API_KEY", "still-authorized")}, nil))
+	if _, err := h.reconcile("app"); err != nil {
+		t.Fatal(err)
+	}
+	h.stub.set(404, `{"error":{"code":"not_found"}}`)
+	h.stub.mu.Lock()
+	h.stub.unmarkedRefusal = true
+	h.stub.mu.Unlock()
+	if _, err := h.reconcile("app"); err == nil {
+		t.Fatal("unmarked refusal must be retried, not treated as withdrawal")
+	}
+	secret, ok := h.getSecret(testNS, testTarget)
+	if !ok || string(secret.Data["API_KEY"]) != "still-authorized" {
+		t.Fatalf("unmarked refusal destroyed delivered data: %v, %v", secret, ok)
+	}
+}
+
 func Test404Scrubs(t *testing.T) {
 	cr := makeCR("app")
 	// Seed prior cursor/binding/stamp so we can prove they clear.
@@ -568,7 +588,7 @@ func Test404Scrubs(t *testing.T) {
 		makeOptedInDeployment("web", testTarget), // opted in
 		makeOptedInDeployment("db"),              // not opted in
 		cr)
-	h.stub.set(404, "")
+	h.stub.set(404, `{"error":{"code":"not_found"}}`)
 
 	if _, err := h.reconcile("app"); err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -618,7 +638,7 @@ func TestScrubPatchFailureRetriesWithBackoff(t *testing.T) {
 	h := newHarness(t, interceptors,
 		makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true),
 		makeOptedInDeployment("web", testTarget), owned, cr)
-	h.stub.set(404, "")
+	h.stub.set(404, `{"error":{"code":"not_found"}}`)
 
 	// A scrub whose workload patch fails must surface an error (backoff), not a
 	// quiet resync — the workload has not rolled into the scrubbed state.

@@ -438,6 +438,7 @@ func toAPIRecords(recs []compose.OfflineRecord) []apigen.OfflineDeliveryRecord {
 			Classification: apigen.KeyClassification(r.Classification),
 			OccurredAt:     occ, ServedFrom: served,
 			CredentialId: r.CredentialID, Generation: r.Generation,
+			SnapshotReceipt: r.SnapshotReceipt,
 		})
 	}
 	return out
@@ -581,8 +582,9 @@ func appendOfflineRecords(ios IO, stateDir string, rows []compose.SnapshotRow, b
 		}
 		recs = append(recs, compose.OfflineRecord{
 			RecordID: id, KeyID: r.KeyID, KeyName: r.Name, Classification: r.Classification,
-			OccurredAt: ios.now().UTC().Format(time.RFC3339), CredentialID: aad.CredentialID,
+			OccurredAt: ios.now().UTC().Format(time.RFC3339Nano), CredentialID: aad.CredentialID,
 			Generation: generation, ServedFrom: aad.IssuedAt,
+			SnapshotReceipt: r.Receipt,
 		})
 	}
 	return compose.Append(stateDir, recs)

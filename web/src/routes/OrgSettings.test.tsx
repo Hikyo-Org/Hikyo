@@ -6,6 +6,28 @@ import { renderForm, typeInto } from '../testkit/renderForm.tsx';
 import { CompactOrgRetention } from './OrgSettings.tsx';
 
 describe('CompactOrgRetention', () => {
+  it('shows unlimited truthfully and offers a valid bounded transition', async () => {
+    const onSave = vi.fn();
+    const { container, unmount } = await renderForm(
+      <CompactOrgRetention
+        policy={{ mode: 'unlimited', max_age_seconds: null, last_revisions: null }}
+        busy={false}
+        onSave={onSave}
+      />,
+    );
+    expect(container.textContent).toContain('Unlimited: keep every revision payload.');
+    expect(container.querySelector('input')).toBeNull();
+    const button = container.querySelector('button');
+    if (!(button instanceof HTMLButtonElement)) throw new Error('no bounded transition button');
+    await act(async () => button.click());
+    expect(onSave).toHaveBeenCalledWith({
+      mode: 'keep-if-either',
+      max_age_seconds: 7_776_000,
+      last_revisions: 6,
+    });
+    await unmount();
+  });
+
   it('refuses fewer than one revision out loud and resets the field', async () => {
     const onSave = vi.fn();
     const { container, unmount } = await renderForm(

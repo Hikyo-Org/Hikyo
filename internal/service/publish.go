@@ -1288,7 +1288,8 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 			}
 		}
 		rows = append(rows, delivery.Row{
-			Key: cell.key.Name, Classification: cell.key.Classification, Value: cell.value,
+			Key: cell.key.Name, Classification: cell.key.Classification,
+			Occurrence: cell.entryID, Value: cell.value,
 		})
 	}
 

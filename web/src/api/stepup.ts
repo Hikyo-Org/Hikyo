@@ -28,9 +28,9 @@ import { requestOptions, toBase64URL } from './values.ts';
  * that only ever asks for a password.
  */
 export function hasSecondFactor(session: WhoAmI): boolean {
-  return session.session.assurance.factors.some(
-    (factor) => factor === 'totp' || factor === 'webauthn',
-  );
+  // Match authz.AdequateAssurance, including provider-recorded OIDC/SAML MFA.
+  const factors = session.session.assurance.factors;
+  return factors.includes('webauthn') || new Set(factors).size >= 2;
 }
 
 /** stepUpFailureText names the refusal without inventing a cause. */

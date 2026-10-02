@@ -30,6 +30,13 @@ type adapterPushOutcomePayload struct {
 	ProviderStatus int    `json:"provider_status,omitempty"`
 }
 
+type adapterPushIntentPayload struct {
+	Surface       string `json:"surface"`
+	EffectiveName string `json:"effective_name"`
+	Disposition   string `json:"disposition"`
+	InputRevision int64  `json:"input_revision,omitempty"`
+}
+
 // adapterTestPayload is the audit payload for adapter.test events.
 type adapterTestPayload struct {
 	Version       string `json:"version"`
@@ -60,6 +67,7 @@ type AdapterExecution struct {
 	Entries                             []AdapterSnapshotEntry
 	Ledger                              []adapter.LedgerEntry
 	Revision                            int64
+	Completed                           []adapter.Change
 }
 
 type AdapterActivation struct {
@@ -123,7 +131,7 @@ func (r *AdapterRuntime) CheckProviderSwitch(ctx context.Context) error {
 // caller must Gate immediately before this method; every query repeats the
 // complete job chain and generation fence. Ciphertexts remain sealed here.
 func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (AdapterExecution, error) {
-	return dbReadResult(ctx, r.db, func(db adapterDB) (AdapterExecution, error) {
+	out, err := dbReadResult(ctx, r.db, func(db adapterDB) (AdapterExecution, error) {
 		q := db.adapterRuntimeQueries()
 		metadata, err := q.adapterWorkerLoadExecutionQuery(ctx, job.ID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner)
 		if isNoRows(err) {
@@ -136,12 +144,12 @@ func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (Ad
 		if err != nil {
 			return AdapterExecution{}, err
 		}
-		ledger, err := q.adapterWorkerLoadExecutionLedgerQuery(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
+		ledger, err := q.adapterWorkerLoadExecutionLedgerQuery(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation)
 		if err != nil {
 			return AdapterExecution{}, err
 		}
 		for _, entry := range ledger {
-			out.Ledger = append(out.Ledger, adapter.LedgerEntry{Surface: adapter.Surface(entry.Surface), EffectiveName: entry.EffectiveName, State: adapter.LedgerState(entry.State), Missing: entry.Missing})
+			out.Ledger = append(out.Ledger, adapter.LedgerEntry{Surface: adapter.Surface(entry.Surface), EffectiveName: entry.EffectiveName, State: adapter.LedgerState(entry.State), Missing: entry.Missing, AdoptionPending: entry.AdoptionPending, AdoptionVersion: entry.AdoptionVersion})
 		}
 		if job.Kind == adapter.Scrub {
 			return out, nil
@@ -168,8 +176,46 @@ func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (Ad
 		for _, entry := range entries {
 			out.Entries = append(out.Entries, AdapterSnapshotEntry{ID: entry.ID, SnapshotID: entry.SnapshotID, KeyID: entry.KeyID, KeyName: entry.KeyName, Classification: entry.Classification, Ciphertext: entry.Ciphertext})
 		}
+		completed, err := q.adapterWorkerLoadExecutionCompletedQuery(ctx, job, out.Revision)
+		if err != nil {
+			return AdapterExecution{}, err
+		}
+		out.Completed = completed
 		return out, nil
 	})
+	if err != nil || job.Kind == adapter.Scrub || out.Revision <= 0 {
+		return out, err
+	}
+	// The exact pinned input revision must be durable before any remote effect.
+	// A delete can supersede settlement after Journal.Finish releases its fence;
+	// scrub still needs this revision for delivered or indeterminate effects.
+	err = r.transaction(ctx, func(tx adapterDBTX) error {
+		rows, err := tx.adapterRuntimeQueries().adapterWorkerPinExecutionRevision(ctx,
+			out.Revision, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID,
+			job.Generation)
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return adapter.ErrSuperseded
+		}
+		// Lock and validate the exact outbox lease in the same transaction.
+		// Losing the lease rolls back the revision pin as well.
+		rows, err = tx.adapterRuntimeQueries().adapterWorkerPinExecutionLease(ctx,
+			job.ID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID,
+			job.Generation, job.LeaseOwner)
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return adapter.ErrSuperseded
+		}
+		return nil
+	})
+	if err != nil {
+		return AdapterExecution{}, err
+	}
+	return out, nil
 }
 
 // LoadActivation resolves only the pending route and its outbound credential.
@@ -420,7 +466,12 @@ func (j *adapterJournal) Gate(ctx context.Context, effect adapter.Effect) error 
 		return adapter.ErrUnauthorized
 	}
 	if err := j.runtime.authorize(ctx, j.job, effect); err != nil {
-		return fmt.Errorf("%w", adapter.ErrUnauthorized)
+		// Only a resolved refusal is terminal. A deadline or unavailable
+		// authority datastore must not permanently discard an authorized job.
+		if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, domain.ErrUnauthenticated) {
+			return adapter.ErrUnauthorized
+		}
+		return err
 	}
 	return dbRead(ctx, j.runtime.db, func(db adapterDB) error {
 		count, err := db.adapterRuntimeQueries().adapterWorkerGateQuery(ctx, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, j.job.ID, j.job.LeaseOwner, time.Now().UTC())
@@ -440,10 +491,65 @@ func adapterEffectKey(effect adapter.Effect) string {
 
 func newAdapterID(prefix string) string { return prefix + "_" + uuid.Must(uuid.NewV7()).String() }
 
+func (j *adapterJournal) lockCurrentCustody(ctx context.Context, q adapterRuntimeQueries) error {
+	rows, err := q.adapterWorkerLockCustodyTarget(ctx, j.job, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return adapter.ErrSuperseded
+	}
+	rows, err = q.adapterWorkerLockCustodyJob(ctx, j.job, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return adapter.ErrSuperseded
+	}
+	// Lock acquisition may have waited. Recheck expiry with a fresh clock after
+	// both rows are locked, before reading or mutating custody or conflicts.
+	rows, err = q.adapterWorkerGateQuery(ctx, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, j.job.ID, j.job.LeaseOwner, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return adapter.ErrSuperseded
+	}
+	return nil
+}
+
+func (j *adapterJournal) guardOriginCustody(ctx context.Context, tx adapterDBTX, effect adapter.Effect) error {
+	q := tx.adapterOriginQueries()
+	chain := domain.Scope{Org: domain.OrgID(j.job.OrgID), Project: domain.ProjectID(j.job.ProjectID), Env: domain.EnvID(j.job.EnvironmentID)}
+	route, err := q.currentRoute(ctx, j.job.TargetID, chain)
+	if err != nil {
+		return err
+	}
+	if err := guardAdapterOriginCustody(ctx, q, route, j.job.TargetID, string(effect.Surface), strings.ToUpper(effect.EffectiveName)); err != nil {
+		return err
+	}
+	// A paged metadata scan may wait. Preserve the locked job's live lease at
+	// the actual custody-write boundary, not just before the scan started.
+	rows, err := tx.adapterRuntimeQueries().adapterWorkerGateQuery(ctx, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, j.job.ID, j.job.LeaseOwner, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return adapter.ErrSuperseded
+	}
+	return nil
+}
+
 func (j *adapterJournal) Reserve(ctx context.Context, effect adapter.Effect) (adapter.LedgerState, error) {
 	state := adapter.Reserved
 	err := j.runtime.transaction(ctx, func(tx adapterDBTX) error {
 		q := tx.adapterRuntimeQueries()
+		if err := j.lockCurrentCustody(ctx, q); err != nil {
+			return err
+		}
+		if err := j.guardOriginCustody(ctx, tx, effect); err != nil {
+			return err
+		}
 		normalized := strings.ToUpper(effect.EffectiveName)
 		pending, err := q.adapterWorkerReservePendingQuery(ctx, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, string(effect.Surface), normalized)
 		if err != nil {
@@ -493,7 +599,7 @@ func (j *adapterJournal) Reserve(ctx context.Context, effect adapter.Effect) (ad
 		if constraint(err) != nil {
 			return adapter.ErrConflict
 		}
-		return nil
+		return err
 	})
 	return state, err
 }
@@ -503,8 +609,13 @@ func (j *adapterJournal) Prepare(ctx context.Context, effect adapter.Effect, pri
 	intentID := newAdapterID("aud")
 	now := time.Now().UTC()
 	err := j.runtime.transaction(ctx, func(tx adapterDBTX) error {
-
 		leaseUntil := now.Add(adapter.LeaseTime)
+		if err := j.lockCurrentCustody(ctx, tx.adapterRuntimeQueries()); err != nil {
+			return err
+		}
+		if err := j.guardOriginCustody(ctx, tx, effect); err != nil {
+			return err
+		}
 		nowStamp := now
 		rows, err := tx.adapterRuntimeQueries().adapterWorkerPrepareProviderLease(ctx, j.job.ID, effectID, leaseUntil, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, nowStamp)
 		if err != nil {
@@ -515,17 +626,31 @@ func (j *adapterJournal) Prepare(ctx context.Context, effect adapter.Effect, pri
 		}
 
 		rows, err = tx.adapterRuntimeQueries().adapterWorkerPrepareLease(ctx, leaseUntil, j.job.ID, j.job.LeaseOwner)
-		if err != nil || rows != 1 {
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
 			return adapter.ErrSuperseded
 		}
-		if prior == adapter.Reserved {
+		if effect.RequireExplicitRecovery {
+			rows, err := tx.adapterRuntimeQueries().adapterWorkerPrepareExplicitRecovery(ctx, now, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), strings.ToUpper(effect.EffectiveName))
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
+				return adapter.ErrSuperseded
+			}
+		} else if prior == adapter.Reserved {
 
 			rows, err := tx.adapterRuntimeQueries().adapterWorkerPrepareUpdate(ctx, now, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.TargetID, string(effect.Surface), strings.ToUpper(effect.EffectiveName))
-			if err != nil || rows != 1 {
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
 				return adapter.ErrSuperseded
 			}
 		}
-		payload, _ := json.Marshal(map[string]string{"surface": string(effect.Surface), "effective_name": effect.EffectiveName, "disposition": string(effect.Disposition)})
+		payload, _ := json.Marshal(adapterPushIntentPayload{Surface: string(effect.Surface), EffectiveName: effect.EffectiveName, Disposition: string(effect.Disposition), InputRevision: effect.InputRevision})
 		if err := j.insertAudit(ctx, tx, intentID, "adapter.push_intent", "intent", now, payload); err != nil {
 			return err
 		}
@@ -613,6 +738,9 @@ func (j *adapterJournal) Finish(ctx context.Context, effect adapter.Effect, comp
 
 func (j *adapterJournal) Refuse(ctx context.Context, effect adapter.Effect) error {
 	return j.runtime.transaction(ctx, func(tx adapterDBTX) error {
+		if err := j.lockCurrentCustody(ctx, tx.adapterRuntimeQueries()); err != nil {
+			return err
+		}
 		now := time.Now().UTC()
 		if err := j.insertConflict(ctx, tx, effect, now); err != nil {
 			return err
@@ -707,8 +835,11 @@ func (r *AdapterRuntime) Activate(ctx context.Context, job adapter.Job, connecti
 		return fmt.Errorf("%w: incomplete adapter route activation", domain.ErrInvalid)
 	}
 	return r.transaction(ctx, func(tx adapterDBTX) error {
-
 		stamp := at
+		journal := adapterJournal{runtime: r, job: job}
+		if err := journal.lockCurrentCustody(ctx, tx.adapterRuntimeQueries()); err != nil {
+			return err
+		}
 		rows, err := tx.adapterRuntimeQueries().adapterWorkerActivateFinish(ctx, stamp, job.ID, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner)
 		if err != nil {
 			return err
@@ -962,6 +1093,9 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			}
 		}
 		if state == "failed" && errors.Is(terminalErr, adapter.ErrSuperseded) {
+			if _, err := tx.adapterRuntimeQueries().adapterWorkerDetachSupersededJob(ctx, job); err != nil {
+				return err
+			}
 			payload, _ := json.Marshal(map[string]string{"cause": "generation"})
 			if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
 				return err

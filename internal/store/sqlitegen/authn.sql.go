@@ -336,6 +336,29 @@ func (q *Queries) CountExternalIdentitiesForIssuer(ctx context.Context, arg Coun
 	return count, err
 }
 
+const countIncompatiblePasswordKDFs = `-- name: CountIncompatiblePasswordKDFs :one
+SELECT COUNT(*) FROM password_credentials
+WHERE credential_epoch = (SELECT credential_epoch FROM auth_instance_state WHERE id = 1)
+  AND (kdf_memory_kib <> ?1 OR kdf_time <> ?2
+       OR kdf_parallelism <> ?3)
+`
+
+type CountIncompatiblePasswordKDFsParams struct {
+	MemoryKib   int64
+	TimeCost    int64
+	Parallelism int64
+}
+
+// Boot/configuration admission only; returns no identifiers or verifier bytes.
+// hikyo:reason Boot admission counts incompatible verifiers without exposing credentials; no tenant authority is exercised.
+// hikyo:authn-resolution
+func (q *Queries) CountIncompatiblePasswordKDFs(ctx context.Context, arg CountIncompatiblePasswordKDFsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countIncompatiblePasswordKDFs, arg.MemoryKib, arg.TimeCost, arg.Parallelism)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteExternalIdentity = `-- name: DeleteExternalIdentity :exec
 DELETE FROM external_identities WHERE id = ?
 `
@@ -366,6 +389,18 @@ func (q *Queries) DeleteOriginlessGrantsForPrincipal(ctx context.Context, princi
 	return result.RowsAffected()
 }
 
+const deletePendingLoginChallengesForPrincipal = `-- name: DeletePendingLoginChallengesForPrincipal :exec
+DELETE FROM login_challenges WHERE consumed_at IS NULL
+AND account_id IN (SELECT id FROM accounts WHERE principal_id = ?)
+`
+
+// hikyo:reason Principal-generation revocation retires only unconsumed password proofs for the exact principal whose account security changed.
+// hikyo:authn-resolution
+func (q *Queries) DeletePendingLoginChallengesForPrincipal(ctx context.Context, principalID string) error {
+	_, err := q.db.ExecContext(ctx, deletePendingLoginChallengesForPrincipal, principalID)
+	return err
+}
+
 const deletePendingTOTPForAccount = `-- name: DeletePendingTOTPForAccount :exec
 DELETE FROM totp_credentials WHERE account_id = ? AND confirmed_at IS NULL
 `
@@ -373,6 +408,17 @@ DELETE FROM totp_credentials WHERE account_id = ? AND confirmed_at IS NULL
 // hikyo:authn-resolution
 func (q *Queries) DeletePendingTOTPForAccount(ctx context.Context, accountID string) error {
 	_, err := q.db.ExecContext(ctx, deletePendingTOTPForAccount, accountID)
+	return err
+}
+
+const deletePendingWorkspaceHandoffsForPrincipal = `-- name: DeletePendingWorkspaceHandoffsForPrincipal :exec
+DELETE FROM workspace_handoffs WHERE consumed_at IS NULL AND principal_id = ?
+`
+
+// hikyo:reason Principal-generation revocation retires only unconsumed approvals by the exact principal; consumed handoffs retain session provenance.
+// hikyo:authn-resolution
+func (q *Queries) DeletePendingWorkspaceHandoffsForPrincipal(ctx context.Context, principalID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deletePendingWorkspaceHandoffsForPrincipal, principalID)
 	return err
 }
 
@@ -389,6 +435,17 @@ func (q *Queries) DeleteReauthWindowsForEnvironment(ctx context.Context, environ
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const deleteRestoredRemotes = `-- name: DeleteRestoredRemotes :exec
+DELETE FROM remotes
+`
+
+// hikyo:reason Authorized restore removes archive-controlled remote-instance trust and credentials across the instance.
+// hikyo:authn-resolution
+func (q *Queries) DeleteRestoredRemotes(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteRestoredRemotes)
+	return err
 }
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -1265,8 +1322,9 @@ UPDATE pki_issuers SET restore_hold = 1
 `
 
 // A restore can resurrect certificates revoked after the backup was taken, so
-// every restored CA issuer is held (no minting) until an operator releases
-// the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.
+// every restored CA issuer is held (no fresh certificate or CRL signing) until
+// an operator reconciles revocations and releases the hold with
+// `hikyo pki issuer release-hold` (#154, pki ADR D8). Existing CRLs remain readable.
 // hikyo:authn-resolution
 func (q *Queries) HoldRestoredPKIIssuers(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, holdRestoredPKIIssuers)
@@ -1795,6 +1853,19 @@ func (q *Queries) InvalidateRestoredAdapterCredentials(ctx context.Context) erro
 	return err
 }
 
+const invalidateRestoredAdapterRouteMoves = `-- name: InvalidateRestoredAdapterRouteMoves :exec
+UPDATE adapter_route_moves SET pending_credential_ciphertext = NULL, pending_origin = NULL, state = 'canceled'
+`
+
+// Pending origin moves retain a second copy of externally authenticating PATs.
+// Restore must destroy that custody and retire the move before any reconciled
+// authority can resume activation against an archive-selected destination.
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredAdapterRouteMoves(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, invalidateRestoredAdapterRouteMoves)
+	return err
+}
+
 const invalidateRestoredDynamicProviderCredentials = `-- name: InvalidateRestoredDynamicProviderCredentials :exec
 UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL
 `
@@ -1808,6 +1879,34 @@ UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_
 // hikyo:authn-resolution
 func (q *Queries) InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, invalidateRestoredDynamicProviderCredentials)
+	return err
+}
+
+const invalidateRestoredOAuth2ProviderCredentials = `-- name: InvalidateRestoredOAuth2ProviderCredentials :exec
+UPDATE oauth2_providers
+SET client_secret = X'', enabled = 0, row_version = row_version + 1, updated_at = ?
+`
+
+// hikyo:reason Authorized restore destroys all outbound OAuth2-provider credentials across the restored instance.
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredOAuth2ProviderCredentials(ctx context.Context, updatedAt string) error {
+	_, err := q.db.ExecContext(ctx, invalidateRestoredOAuth2ProviderCredentials, updatedAt)
+	return err
+}
+
+const invalidateRestoredOIDCProviderCredentials = `-- name: InvalidateRestoredOIDCProviderCredentials :exec
+UPDATE oidc_providers
+SET client_secret = X'', enabled = 0, row_version = row_version + 1, updated_at = ?
+`
+
+// Restored human-login provider secrets and remote-instance credentials also
+// authenticate to systems outside Hikyo's credential epoch. Disable providers,
+// destroy their secret ciphertext, and remove remotes so no restored material
+// can be presented to an archive-controlled endpoint.
+// hikyo:reason Authorized restore destroys all outbound login-provider credentials across the restored instance.
+// hikyo:authn-resolution
+func (q *Queries) InvalidateRestoredOIDCProviderCredentials(ctx context.Context, updatedAt string) error {
+	_, err := q.db.ExecContext(ctx, invalidateRestoredOIDCProviderCredentials, updatedAt)
 	return err
 }
 
@@ -2720,6 +2819,32 @@ func (q *Queries) ResolveProjectChain(ctx context.Context, arg ResolveProjectCha
 	var i ResolveProjectChainRow
 	err := row.Scan(&i.OrgID, &i.ID)
 	return i, err
+}
+
+const retireRestoredApprovedWorkspaceHandoffs = `-- name: RetireRestoredApprovedWorkspaceHandoffs :exec
+DELETE FROM workspace_handoffs WHERE consumed_at IS NULL AND principal_id IS NOT NULL
+`
+
+// Approved handoffs carry old assurance but no credential epoch. Keep consumed
+// rows for workspace-session provenance and unapproved transactions harmless.
+// hikyo:reason Local-host restore invalidation retires unconsumed approved assurance that lacks an epoch while retaining consumed session provenance.
+// hikyo:authn-resolution
+func (q *Queries) RetireRestoredApprovedWorkspaceHandoffs(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, retireRestoredApprovedWorkspaceHandoffs)
+	return err
+}
+
+const retireRestoredPendingLoginChallenges = `-- name: RetireRestoredPendingLoginChallenges :exec
+DELETE FROM login_challenges WHERE consumed_at IS NULL
+`
+
+// Pending password proofs have no epoch stamp. Retire them atomically with
+// restore's epoch bump; consumed challenge history remains intact.
+// hikyo:reason Local-host restore invalidation retires unconsumed password proofs that lack an epoch; no tenant request can authorize this recovery act.
+// hikyo:authn-resolution
+func (q *Queries) RetireRestoredPendingLoginChallenges(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, retireRestoredPendingLoginChallenges)
+	return err
 }
 
 const rotateSessionFactors = `-- name: RotateSessionFactors :exec

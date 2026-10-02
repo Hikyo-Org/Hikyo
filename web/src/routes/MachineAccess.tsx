@@ -250,7 +250,7 @@ export function MachineAccessPage() {
         accountId: account.id,
         accountName: account.name,
         rotating,
-        reach: postStateReach(scopeFor(account)).map(({ id, name }) => ({ id, name })),
+        reach: postStateReach(scopeFor(account)),
       },
     });
   };

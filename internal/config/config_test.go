@@ -133,21 +133,27 @@ func TestPostgresRemotePlaintextRefuses(t *testing.T) {
 }
 
 func TestPostgresRemoteVerifiedTLSAllowed(t *testing.T) {
-	for _, dsn := range []string{
-		"postgres://u:p@db.example.com/hikyo?sslmode=verify-full",
-		"postgres://u:p@db.example.com/hikyo?sslmode=verify-ca",
-	} {
-		if _, _, err := Load("server", nil, env("HIKYO_DB", dsn), nil); err != nil {
-			t.Fatalf("%s: %v", dsn, err)
-		}
+	dsn := "postgres://u:p@db.example.com/hikyo?sslmode=verify-full"
+	if _, _, err := Load("server", nil, env("HIKYO_DB", dsn), nil); err != nil {
+		t.Fatalf("%s: %v", dsn, err)
+	}
+}
+
+func TestPostgresRemoteCAOnlyTLSRefused(t *testing.T) {
+	dsn := "postgres://u:p@db.example.com/hikyo?sslmode=verify-ca"
+	if _, _, err := Load("server", nil, env("HIKYO_DB", dsn), nil); err == nil {
+		t.Fatalf("%s: CA-only verification without hostname binding must refuse", dsn)
 	}
 }
 
 func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	for _, dsn := range []string{
-		"postgres:///hikyo?host=remote.example.com",          // libpq-style host param
-		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer", // empty authority + host param
-		"postgres:///hikyo", // no host at all (implicit PGHOST)
+		// libpq-style host param
+		"postgres:///hikyo?host=remote.example.com",
+		// empty authority + host param
+		"postgres://u:p@/hikyo?host=10.0.0.5&sslmode=prefer",
+		// no host at all (implicit PGHOST)
+		"postgres:///hikyo",
 		"postgres://u:p@localhost/hikyo?host=remote.example.com", // conflicting hosts
 		"postgres:///hikyo?host=a,b",                             // multi-host
 	} {
@@ -158,6 +164,21 @@ func TestPostgresHostParamCannotBypassTLSCheck(t *testing.T) {
 	// Socket path via host param stays allowed.
 	if _, _, err := Load("server", nil, env("HIKYO_DB", "postgres:///hikyo?host=/var/run/postgresql"), nil); err != nil {
 		t.Errorf("socket host param: %v", err)
+	}
+}
+
+func TestRolloutPostgresDSNUsesStartupValidation(t *testing.T) {
+	for _, raw := range []string{
+		"host=localhost dbname=hikyo sslmode=disable",
+		"postgres:///hikyo",
+		"postgres://u:p@db.example.com/hikyo?sslmode=disable",
+	} {
+		if err := ValidatePostgresDSN(raw); err == nil {
+			t.Errorf("ValidatePostgresDSN(%q) accepted a descriptor startup rejects", raw)
+		}
+	}
+	if err := ValidatePostgresDSN("postgres://u:p@localhost/hikyo"); err != nil {
+		t.Fatalf("startup-compatible DSN refused: %v", err)
 	}
 }
 
@@ -507,6 +528,20 @@ func TestOperationalListenMustDifferFromPublic(t *testing.T) {
 	_, _, err := Load("server", []string{"--dev", "--listen", "127.0.0.1:9000", "--operational-listen", "127.0.0.1:9000"}, env(), nil)
 	if err == nil || !strings.Contains(err.Error(), "must differ") {
 		t.Fatalf("equal public and operational listeners: err = %v", err)
+	}
+}
+
+func TestCLISocketIsAbsoluteCanonicalBootstrapConfiguration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hikyo.sock")
+	cfg, _, err := Load("server", []string{"--dev", "--cli-socket", path}, env(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CLISocket != path {
+		t.Fatalf("CLISocket = %q, want %q", cfg.CLISocket, path)
+	}
+	if _, _, err := Load("server", []string{"--dev"}, env("HIKYO_CLI_SOCKET", "relative.sock"), nil); err == nil || !strings.Contains(err.Error(), "absolute canonical") {
+		t.Fatalf("relative socket error = %v", err)
 	}
 }
 

@@ -397,8 +397,8 @@ func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time
 	return entries, nil
 }
 
-// PublishCRL stores DER and update times only for an active or retiring issuer
-// whose CRL number equals previousNumber. It returns false without error when
+// PublishCRL stores DER and update times only for an unheld active or retiring
+// issuer whose CRL number equals previousNumber. It returns false without error when
 // no row matches; proof and database errors are propagated. The caller must
 // choose a number greater than previousNumber and capture revocationSeq before
 // reading the entries included in this CRL.
@@ -409,8 +409,8 @@ func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID stri
 	return publishCRL(ctx, r.db, issuerID, der, previousNumber, number, revocationSeq, thisUpdate, nextUpdate)
 }
 
-// publishCRL stores a CRL for an active or retiring issuer under a CAS on the
-// prior CRL number. It returns false without error when no row matches. The
+// publishCRL stores a CRL for an unheld active or retiring issuer under a CAS on
+// the prior CRL number. A restore hold rejects even pre-hold candidates. The
 // caller must supply an increasing number; this helper does not enforce it.
 func publishCRL(ctx context.Context, db adapterDB, issuerID string, der []byte, previousNumber, number, revocationSeq int64, thisUpdate, nextUpdate time.Time) (bool, error) {
 	return affectedOne(db.pkiStoreQueries().pkiPublishCRL(ctx, issuerID, der, previousNumber, number, revocationSeq, thisUpdate, nextUpdate))

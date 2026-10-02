@@ -72,6 +72,7 @@ export type OidcProviderInput = {
 export async function putOidcProvider(
   slug: string,
   input: OidcProviderInput,
+  rowVersion?: bigint,
 ): Promise<OidcProvider> {
   return parsed(putOidcProviderOp, {
     path: { slug },
@@ -83,6 +84,7 @@ export async function putOidcProvider(
       scopes: input.scopes,
       assurance_policy: input.assurancePolicy,
       enabled: input.enabled,
+      row_version: rowVersion === undefined ? undefined : Number(rowVersion),
     },
   });
 }

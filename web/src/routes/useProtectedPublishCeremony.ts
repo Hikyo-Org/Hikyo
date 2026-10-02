@@ -56,6 +56,7 @@ export function useProtectedPublishCeremony(
     targets: readonly ProtectedPublishTarget[],
     onComplete: () => void,
     failureMessage: string,
+    onRefusal?: (cause: unknown) => void,
   ): Promise<void> => {
     for (const target of targets) {
       if (target.keys.length === 0) {
@@ -107,7 +108,9 @@ export function useProtectedPublishCeremony(
           await advance(remaining.slice(1));
           return;
         }
-        if (window.live && !window.single_decision) {
+        // Workspace windows are bound to one exact operation and key set.
+        // Their liveness alone never proves that they cover this next act.
+        if (window.live && !window.single_decision && transport.client === undefined) {
           await advance(remaining.slice(1));
           return;
         }
@@ -125,6 +128,7 @@ export function useProtectedPublishCeremony(
       } catch (cause) {
         if (ceremony.commit(task, () => {
           setError(`${failureMessage}: ${errorMessage(cause)}`);
+          onRefusal?.(cause);
         })) {
           ceremony.finish(task);
         }

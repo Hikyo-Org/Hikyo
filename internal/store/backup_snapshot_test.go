@@ -101,6 +101,49 @@ func (s *schemaChangeTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, _ p
 	}
 }
 
+func TestPostgresRestoreSequenceBoundsUseTargetSchemaCatalog(t *testing.T) {
+	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatal("CI requires HIKYO_TEST_POSTGRES_DSN")
+		}
+		t.Skip("HIKYO_TEST_POSTGRES_DSN not set")
+	}
+	conn, err := pgx.Connect(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(context.Background())
+	tx, err := conn.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	schema := fmt.Sprintf("hikyo_sequence_bounds_%d", time.Now().UnixNano())
+	other := schema + "_other"
+	for _, name := range []string{schema, other} {
+		if _, err := tx.Exec(t.Context(), "CREATE SCHEMA "+pgx.Identifier{name}.Sanitize()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Exec(t.Context(), "SET LOCAL search_path TO "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(t.Context(), "CREATE SEQUENCE "+pgx.Identifier{schema, "archive_counter"}.Sanitize()+" MINVALUE 2 MAXVALUE 42"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(t.Context(), "CREATE SEQUENCE "+pgx.Identifier{other, "not_in_target"}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	bounds, err := pgSequenceBounds(t.Context(), tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bounds) != 1 || bounds["archive_counter"] != (pgSequenceBound{min: 2, max: 42}) {
+		t.Fatalf("target schema sequence bounds = %+v, want only archive_counter [2,42]", bounds)
+	}
+}
+
 func TestExportPostgresManifestUsesCopySnapshotDuringMigration(t *testing.T) {
 	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
 	if dsn == "" {

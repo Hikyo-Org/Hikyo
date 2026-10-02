@@ -24,9 +24,8 @@ import (
 //     path stat a rename could race between check and use.
 //   - os.OpenRoot follows a symlinked ROOT path (the root itself is not confined
 //     — only lookups WITHIN it are), so after OpenRoot succeeds we os.Lstat the
-//     path once and refuse a symlink. That Lstat comes AFTER the open, so a race
-//     can only cause a spurious refusal, never a spurious acceptance — the fd we
-//     actually use is already pinned.
+//     path, refuse a symlink, and require os.SameFile with root.Stat("."). The
+//     descriptor and checked pathname therefore identify the same directory.
 //   - local.key is opened O_RDONLY|O_NOFOLLOW and its mode/owner/regularity read
 //     from that fd (f.Stat()); there is no Lstat→open gap. An escaping symlink is
 //     refused by os.Root itself ("path escapes"); an in-root, non-escaping key
@@ -61,8 +60,8 @@ func loadOrCreateMasterKey(dir string) ([]byte, error) {
 func openStateDir(dir string) (*os.Root, error) {
 	// Create parents permissively, then the leaf itself with os.Mkdir so a
 	// successful create is distinguishable from a pre-existing dir: only a dir we
-	// just created is chmod'd (to counter umask); an existing one is verified and
-	// refused if loose, never silently repaired.
+	// just created is distinguishable from a pre-existing dir. Mode 0700 has no
+	// group/other bits for umask to widen, so no path-based chmod is needed.
 	if parent := filepath.Dir(dir); parent != dir {
 		if err := os.MkdirAll(parent, 0o700); err != nil {
 			return nil, fmt.Errorf("crypto: create state dir parents %s: %w", parent, err)
@@ -70,9 +69,6 @@ func openStateDir(dir string) (*os.Root, error) {
 	}
 	switch err := os.Mkdir(dir, 0o700); {
 	case err == nil:
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return nil, fmt.Errorf("crypto: chmod state dir %s: %w", dir, err)
-		}
 	case errors.Is(err, os.ErrExist):
 		// Pre-existing: verified below, never repaired.
 	default:
@@ -85,7 +81,8 @@ func openStateDir(dir string) (*os.Root, error) {
 	}
 	// os.OpenRoot follows a symlinked root path; refuse a symlinked state dir with
 	// a single post-open Lstat (see file header: post-open ⇒ no acceptance race).
-	if li, err := os.Lstat(dir); err != nil {
+	li, err := os.Lstat(dir)
+	if err != nil {
 		root.Close()
 		return nil, fmt.Errorf("crypto: lstat state dir %s: %w", dir, err)
 	} else if li.Mode()&os.ModeSymlink != 0 {
@@ -100,6 +97,10 @@ func openStateDir(dir string) (*os.Root, error) {
 	if !info.IsDir() {
 		root.Close()
 		return nil, fmt.Errorf("crypto: state path %s is not a directory", dir)
+	}
+	if !os.SameFile(li, info) {
+		root.Close()
+		return nil, fmt.Errorf("crypto: state dir %s changed while it was opened; refusing", dir)
 	}
 	if perm := info.Mode().Perm(); perm != 0o700 {
 		root.Close()
@@ -129,28 +130,33 @@ func readVerifiedKey(f *os.File, dir string) ([]byte, error) {
 	return key, nil
 }
 
-// createKeyFileRoot creates local.key relative to root with O_EXCL and 0600,
-// fills it with fresh randomness, and fsyncs it before use.
+// createKeyFileRoot prepares and syncs an owner-only temporary key, then
+// atomically links it to local.key without overwriting a concurrent winner.
 func createKeyFileRoot(root *os.Root, dir string) ([]byte, error) {
 	key := make([]byte, KeySize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		Zero(key)
 		return nil, fmt.Errorf("crypto: randomness unavailable, refusing to create local key: %w", err)
 	}
-	f, err := root.OpenFile(localKeyName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	temporary := ".local.key-" + rand.Text()
+	f, err := root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		Zero(key)
 		return nil, fmt.Errorf("crypto: create %s/%s: %w", dir, localKeyName, err)
 	}
+	defer root.Remove(temporary)
 	// Umask-independent: 0600 exactly whatever the process umask was.
 	if err := f.Chmod(0o600); err != nil {
 		f.Close()
 		Zero(key)
 		return nil, fmt.Errorf("crypto: chmod %s/%s: %w", dir, localKeyName, err)
 	}
-	if _, err := f.Write(key); err != nil {
+	if written, err := f.Write(key); err != nil || written != len(key) {
 		f.Close()
 		Zero(key)
+		if err == nil {
+			err = io.ErrShortWrite
+		}
 		return nil, fmt.Errorf("crypto: write %s/%s: %w", dir, localKeyName, err)
 	}
 	if err := f.Sync(); err != nil {
@@ -161,6 +167,28 @@ func createKeyFileRoot(root *os.Root, dir string) ([]byte, error) {
 	if err := f.Close(); err != nil {
 		Zero(key)
 		return nil, fmt.Errorf("crypto: close %s/%s: %w", dir, localKeyName, err)
+	}
+	if err := root.Link(temporary, localKeyName); err != nil {
+		Zero(key)
+		if !errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("crypto: publish %s/%s: %w", dir, localKeyName, err)
+		}
+		winner, err := root.OpenFile(localKeyName, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return nil, fmt.Errorf("crypto: open concurrent local key: %w", err)
+		}
+		defer winner.Close()
+		return readVerifiedKey(winner, dir)
+	}
+	parent, err := root.Open(".")
+	if err != nil {
+		Zero(key)
+		return nil, fmt.Errorf("crypto: open state directory for sync: %w", err)
+	}
+	defer parent.Close()
+	if err := parent.Sync(); err != nil {
+		Zero(key)
+		return nil, fmt.Errorf("crypto: sync published local key: %w", err)
 	}
 	return key, nil
 }

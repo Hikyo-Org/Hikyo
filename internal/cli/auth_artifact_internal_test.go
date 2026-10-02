@@ -208,7 +208,7 @@ func TestParseCommonRefusesUnknownOperationBeforeStateRead(t *testing.T) {
 func TestAuthenticatedTargetReturnsExplicitMachineCredential(t *testing.T) {
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: "http://127.0.0.1:1234"}); err != nil {
+	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: "https://local.example", SPKIPin: pinnedTestFingerprint}); err != nil {
 		t.Fatal(err)
 	}
 	ios := IO{Env: Env{
@@ -230,7 +230,7 @@ func TestAuthenticatedTargetReturnsExplicitMachineCredential(t *testing.T) {
 	if !ok {
 		t.Fatalf("artifact type = %T, want MachineCredential", artifact)
 	}
-	if machine.Origin != "http://127.0.0.1:1234" || machine.CredentialRef != CredentialRefEnvironment {
+	if machine.Origin != "https://local.example" || machine.CredentialRef != CredentialRefEnvironment {
 		t.Fatalf("machine artifact = %+v", machine)
 	}
 	if strings.Contains(machine.CredentialRef.String(), "machine-secret") {
@@ -279,8 +279,8 @@ func authTargetFixture(t *testing.T) (*State, IO) {
 	t.Helper()
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	const origin = "http://127.0.0.1:1234"
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: origin}); err != nil {
+	const origin = "https://local.example"
+	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: origin, SPKIPin: pinnedTestFingerprint}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.PutSession(SessionArtifact{

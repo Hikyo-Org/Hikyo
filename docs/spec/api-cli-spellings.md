@@ -4,6 +4,16 @@
 
 [api-cli-surface.md](../adr/api-cli-surface.md) is the API/CLI spec's skeleton; several later ADRs joined its closed grammar at declared join points and delegated their **exact spellings** to this document. Every spelling here is bound by the locked grammar (noun-verb families, output classes, print triad, exit codes, parity rules) and by the delegating ADR's constraints; a spelling that would violate either is a defect here, not a licence to reinterpret the ADR. Nothing here adds a verb class, an output class, or an endpoint outside the declared join points.
 
+Client trust and session files are private state, not checkout artifacts.
+Unix reads require the current user's private directory and regular 0600
+files, with ownership and inode checked on the opened file. Windows reads
+require current-user ownership and a private DACL, reject reparse points,
+and check security on the same handle used to read. Private Windows atomic
+writes set their DACL at creation, before writing credentials. Unsafe existing
+trust or session files are refused, not silently adopted. If credentials were
+stored with broader access, revoke them and sign in again after restoring
+private state custody; changing permissions cannot undo earlier exposure.
+
 ## 1. SCIM administration ([scim-provisioning.md](../adr/scim-provisioning.md))
 
 Human-session verbs (full UI↔CLI parity: binding CRUD, mapping-table administration, credential mint/rotate/revoke, provisioned directory views; the *wire* endpoints under `/api/v1/orgs/{org}/scim/v2/{binding}/…` are fixed in the ADR and are parity-exempt protocol paths):
@@ -123,11 +133,11 @@ Phase 2 is the existing pipeline, no new grammar: `definitions plan --file` → 
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
   "connector_contract_version": 1,
   "template": { "digest": "sha256:…" },
   "source_identity": { "kind": "k8s | sops | vault | infisical",
-                       "context": "<cluster/context name | VAULT_ADDR origin | export-file digest>" },
+                       "context": "<cluster/context name | VAULT_ADDR origin | file-export | fully encrypted SOPS digest>" },
   "source_versions": [ { "key": "<KEY>", "environment": "<environment-id>",
                          "version": "<resourceVersion | secret_version>" } ],
   "target": { "project": "<project-id>", "environments": ["<environment-id>"],
@@ -135,12 +145,16 @@ Phase 2 is the existing pipeline, no new grammar: `definitions plan --file` → 
               "keys": [ { "name": "<KEY>", "id": "<key-id-or-null>" } ] },
   "definitions_revision": 0,
   "occurrences": [ { "key": "<KEY>", "environment": "<environment-id>", "token": "<server-minted opaque>" } ],
-  "values_digests": [ { "environment": "<environment-id-or-name>", "digest": "sha256:…" } ],
+  "values_digests": [ { "environment": "<environment-id-or-name>", "digest": "hmac-sha256:…" } ],
   "phase_completion": { "authored": true, "applied": false, "imported": { "<environment-id-or-name>": false } }
 }
 ```
 
-**`values_digests` binds each environment's values file to this run by content.** The occurrence tokens bind the reviewed STATE (that it has not moved), not the plaintext an operator is about to write — and a created environment has no token at all. Without a content binding, two runs targeting the same `(project, environment)` could be mispaired: run B's values imported under run A's manifest, or run A's completion marker stamped for run B. So the manifest records the digest of each writing environment's canonical values file (id for existing environments, name for created ones), and `values import` refuses a values file whose recomputed digest does not match. The digest is deterministic, so a wizard session and a flag run with coinciding choices record the same one.
+**`values_digests` binds each environment's values file to this run by content.** Occurrence tokens bind the reviewed server state, not the imported plaintext. Each protected values file now has `format_version: 2` and a fresh 256-bit hex `commitment_key`, stored only in that 0600 values file. The manifest records HMAC-SHA256 over the `hikyo-import-values-commitment-v2\0` domain prefix followed by the canonical values serialization with `commitment_key` omitted, keyed by that private material. The final prefix byte is NUL. Verification includes project, environment and every entry. The key never enters the committable template or manifest. Identical imports under independent keys have different public commitments, preventing offline password guessing from repository artifacts.
+
+Mapping templates remain version 1. Plaintext file sources use the nonempty `file-export` marker in `scope.file_digest` and `source_identity.context`; this is informational file-mode provenance, not a content hash or an integrity proof. Only fully encrypted SOPS inputs retain their ciphertext digest; partially plaintext SOPS inputs also use the marker.
+
+Version 1 run manifests and values files are refused with regeneration guidance. Re-run phase 1 into a fresh output directory, optionally replaying the unchanged version 1 mapping template, then review the new definitions, occurrences, and paired version 2 values files before phase 2. Existing artifacts are not modified or deleted. Previously published unkeyed secret hashes cannot be made private by regeneration; rotate affected low-entropy secrets if those old artifacts were exposed.
 
 **Created environments are tokenless.** A wizard session may fan out across target environments including ones it will create (state 3), declared up front as `create environment` lines in the definitions bundle and named — not id'd — in `target.created_environments` (`omitempty`; absent when the session creates nothing). A created environment has no id at phase 1 (phase 1 never writes), so it carries **no occurrence row** and sits **outside the phase-2 precondition**: its per-environment values file carries `environment_name` in place of `environment`, and `values import` resolves the name to its id after `definitions apply`, binds by name, and attaches no precondition — a precondition that reviewed no occurrence for it would reject every key. Its safety rests on the locked manifest-less strict-import path (closed schema + skip-by-default); the accepted residual is that movement in the apply→import window is skipped-and-listed, not rejected-by-name. `phase_completion.imported` keys created environments by name and existing ones by id. Detail: [import-paths.md](../adr/import-paths.md), `docs/handoff/112-import-wizard.md`.
 
@@ -429,7 +443,12 @@ holding the destination lock, and an expired or rolled-back offline snapshot
 reached current within `refresh.timeout` → **6**; a filesystem failure while
 publishing → **1**. Failures before the `current` symlink swap preserve the
 prior generation. Failures after the swap can leave the new generation current
-and require inspection or repair.
+and require inspection or repair. Repeating the same render completes owned-link
+pruning and obsolete-generation collection even when the generation is unchanged.
+Each new generation records its predecessor in private `.previous` metadata so
+retry cleanup retains the actual current and previous generations. A legacy
+generation without this metadata is republished once with identical content,
+then uses the same bounded retry cleanup. Foreign files and symlinks remain untouched.
 
 ### Stderr strings that are stable surface
 

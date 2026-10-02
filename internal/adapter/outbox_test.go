@@ -30,8 +30,12 @@ func TestWorkerProviderAuthIsTerminalButTransportRemainsRetryable(t *testing.T) 
 	}{
 		{name: "converge revoked before load", kind: Converge, loadErr: ErrProviderAuth, wantFail: true},
 		{name: "scrub revoked before load", kind: Scrub, loadErr: ErrProviderAuth, wantFail: true},
+		{name: "converge held before load", kind: Converge, loadErr: ErrOperatorReview, wantFail: true},
+		{name: "scrub held before load", kind: Scrub, loadErr: ErrOperatorReview, wantFail: true},
 		{name: "converge provider rejects credential", kind: Converge, moduleErr: ErrProviderAuth, wantFail: true},
 		{name: "scrub provider rejects credential", kind: Scrub, moduleErr: ErrProviderAuth, wantFail: true},
+		{name: "converge uncertain write requires review", kind: Converge, moduleErr: ErrOperatorReview, wantFail: true},
+		{name: "scrub uncertain write requires review", kind: Scrub, moduleErr: ErrOperatorReview, wantFail: true},
 		{name: "converge transport retries", kind: Converge, moduleErr: errors.New("connection reset")},
 		{name: "scrub transport retries", kind: Scrub, moduleErr: errors.New("connection reset")},
 		{name: "converge indeterminate 5xx retries", kind: Converge, moduleErr: ErrIndeterminate},
@@ -65,6 +69,7 @@ func TestWorkerActivationRequiresAttentionOnlyForCredentialCollisionOrForgedAck(
 		{name: "pending credential rejected", connectionErr: ErrProviderAuth, wantFail: true},
 		{name: "pending namespace collision", activationErr: ErrConflict, wantFail: true},
 		{name: "pending probe acknowledgement forged", connectionErr: ErrAckForged, wantFail: true},
+		{name: "pending probe requires review", connectionErr: ErrOperatorReview, wantFail: true},
 		{name: "pending route transport retries", connectionErr: errors.New("connection reset")},
 		{name: "pending route indeterminate retries", connectionErr: ErrIndeterminate},
 	}

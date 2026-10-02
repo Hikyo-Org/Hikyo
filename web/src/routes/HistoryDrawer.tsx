@@ -206,6 +206,7 @@ export function HistoryDrawer({
     [keyFilter, revisions],
   );
   const currentRevision = currentRevisions.get(environmentId) ?? 0n;
+  const currentDetail = useRevisionDetail(env, currentRevision > 0n ? currentRevision : null, true);
   const requestedRevision = params.get('rev');
   const selected =
     filtered.find((entry) => String(entry.revision) === requestedRevision) ?? filtered[0];
@@ -335,9 +336,19 @@ export function HistoryDrawer({
   };
 
   const runRestore = (revision: bigint, keyId: string | null, keyName: string | null) => {
+    if (currentRevision > 0n && !currentDetail.isSuccess) {
+      setRefusal('Current revision sensitivity could not be read, so nothing was staged. Retry after it loads.');
+      return;
+    }
+    const currentSensitivity = new Map(
+      (currentDetail.data?.keys ?? []).map((key) => [key.key_id, key.sensitive]),
+    );
     const unit = restoreCeremonyUnit({
       revisionKeys: sheetRevisionKeys(sheet),
-      currentCells: cellsByEnvironment.get(environment.id) ?? [],
+      currentCells: (cellsByEnvironment.get(environment.id) ?? []).map((cell) => ({
+        ...cell,
+        sensitive: currentSensitivity.get(cell.keyId) === true,
+      })),
       keyId,
     });
     withCeremony(unit, 'restore', () => {
@@ -345,11 +356,13 @@ export function HistoryDrawer({
         keyName === null ? { revision } : { revision, key: keyName },
         {
           onSuccess: (result) => {
-            rememberRestorePreview(
-              refData,
-              result.changes.map((change) => change.version_id),
-              result.preview.token,
-            );
+            if (result.changes.length > 0) {
+              rememberRestorePreview(
+                refData,
+                result.changes.map((change) => change.version_id),
+                result.preview.token,
+              );
+            }
             setSheet({
               kind: 'restore',
               revision,
@@ -965,6 +978,7 @@ function RevisionDetail({
     keyId: key.key_id,
     name: key.name,
     classification: key.classification,
+    sensitive: key.sensitive,
   }));
   const pinnedHere = pins.filter((pin) => pin.revision === revision.revision);
 
@@ -1290,7 +1304,7 @@ function RestoreSheet({
             >
               {publishBusy
                 ? 'Publishing this restore…'
-                : restorePublishLabel(revision, groups)}
+                : result.changes.length === 0 ? 'Nothing to publish' : restorePublishLabel(revision, groups)}
             </Button>
           </div>
           {result.changes.length === 0 ? (

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -88,6 +89,9 @@ func (s *SCIM) CreateBinding(ctx context.Context, actor Actor, org domain.OrgID,
 		}
 		if err := domain.CheckSubjectSource(in.SubjectSource); err != nil {
 			return fmt.Errorf("%w: %s", ErrSCIMSubjectSource, err)
+		}
+		if strings.EqualFold(in.SubjectSource, domain.SubjectSourceExternalID) {
+			in.SubjectSource = domain.SubjectSourceExternalID
 		}
 		provider, err := s.referencedProvider(ctx, az, in)
 		if err != nil {
@@ -543,7 +547,7 @@ func (s *SCIM) DeleteBinding(ctx context.Context, actor Actor, org domain.OrgID,
 				outcome, evs, err := s.releaseAndSettle(ctx, r, az, c, principal, releaseArgs{
 					binding: id, org: org,
 					match: matchBinding(id), cause: domain.CauseBindingDelete,
-				}, advanceIfAuthorityChanged, now)
+				}, now)
 				if err != nil {
 					return err
 				}
@@ -684,16 +688,6 @@ func releaseStructural(
 		})
 	}
 	return events, nil
-}
-
-// advanceAndSweep is the locked "revocation is immediate" pair: the generation
-// advance and the session-row deletion, committing with the grant change so an
-// open session dies with the capability rather than at token expiry.
-func advanceAndSweep(ctx context.Context, az *authz.TxAuthorizer, p domain.PrincipalID) error {
-	if err := az.AdvanceGeneration(ctx, p); err != nil {
-		return err
-	}
-	return az.RevokeAllSessionsFor(ctx, p)
 }
 
 // principalForAccount resolves the principal a provisioned account's grants

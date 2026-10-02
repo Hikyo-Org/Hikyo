@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/freetext"
 )
 
@@ -113,6 +114,14 @@ func NewClient(rawURL string, caBundlePEM []byte, userAgent string) (*Client, er
 		// missing insecure-skip-verify field.
 		return nil, fmt.Errorf("operator client: refusing non-https instance url %q: delivery is an integrity capability", rawURL)
 	}
+	if u.Host == "" || u.Hostname() == "" || u.User != nil || u.Opaque != "" ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+		return nil, fmt.Errorf("operator client: instance url must be a canonical HTTPS origin")
+	}
+	origin := (&url.URL{Scheme: "https", Host: strings.ToLower(u.Host)}).String()
+	if strings.TrimSuffix(rawURL, "/") != origin {
+		return nil, fmt.Errorf("operator client: instance url must use canonical origin %q", origin)
+	}
 
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if len(caBundlePEM) > 0 {
@@ -126,7 +135,7 @@ func NewClient(rawURL string, caBundlePEM []byte, userAgent string) (*Client, er
 	}
 
 	return &Client{
-		origin:    strings.TrimRight(rawURL, "/"),
+		origin:    origin,
 		userAgent: userAgent,
 		http: &http.Client{
 			Timeout: 30 * time.Second,
@@ -337,7 +346,21 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 		}
 		return nil, OutcomeFetchFailed, fmt.Errorf("operator client: fetch validation failed (400)")
 	case resp.StatusCode == http.StatusNotFound:
-		return nil, OutcomeScrub, fmt.Errorf("operator client: authoritative refusal (404): scope nonexistent or read withdrawn")
+		markers := resp.Header.Values(delivery.RefusalHeader)
+		if len(markers) == 1 && markers[0] == delivery.RefusalVersion && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+			payload, err := io.ReadAll(io.LimitReader(resp.Body, (16<<10)+1))
+			if err == nil && len(payload) <= 16<<10 {
+				var envelope struct {
+					Error struct {
+						Code string `json:"code"`
+					} `json:"error"`
+				}
+				if json.Unmarshal(payload, &envelope) == nil && envelope.Error.Code == string(apigen.ErrorCodeNotFound) {
+					return nil, OutcomeScrub, fmt.Errorf("operator client: authoritative refusal (404): scope nonexistent or read withdrawn")
+				}
+			}
+		}
+		return nil, OutcomeFetchFailed, errors.New("operator client: unverified 404 response; retaining delivered data")
 	case resp.StatusCode == http.StatusConflict:
 		return nil, OutcomeNotMaterialized, fmt.Errorf("operator client: no published revision (409)")
 	case resp.StatusCode == http.StatusUnauthorized,

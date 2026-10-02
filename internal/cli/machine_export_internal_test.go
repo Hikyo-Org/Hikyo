@@ -32,7 +32,7 @@ func TestMachineExportUsesAuthorizedDelivery(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
 					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
@@ -56,7 +56,7 @@ func TestMachineExportUsesAuthorizedDelivery(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(apigen.DeliveryResponse{Revision: 7, Keys: keys})
 			}))
 			defer srv.Close()
-			_, stateDir := machineState(t, srv.URL)
+			_, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
 			ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "automation-token", nil)
 			args := []string{"values", "export", "--format", "json", "--param", "PR_NUMBER=123", "--instance", "local", "--org", "org_one", "--project", "prj_one", "--env", "env_one"}
 			args = append(args, tc.flags...)
@@ -88,7 +88,7 @@ func TestMachineExportRefusesOldServerAndUnexpectedConditionalResponse(t *testin
 	for _, revision := range []int{2, api.Revision} {
 		t.Run(string(rune('0'+revision)), func(t *testing.T) {
 			requests := 0
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == api.PathPrefix+"/meta" {
 					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture", ApiRevision: revision})
 					return
@@ -97,7 +97,7 @@ func TestMachineExportRefusesOldServerAndUnexpectedConditionalResponse(t *testin
 				_ = json.NewEncoder(w).Encode(apigen.DeliveryResponse{Current: true})
 			}))
 			defer srv.Close()
-			client, err := NewClient(TrustEntry{Origin: srv.URL}, "machine-test")
+			client, err := NewClient(pinnedTestEntry("test", srv), "machine-test")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -119,7 +119,7 @@ func TestMachineExportRefusesOldServerAndUnexpectedConditionalResponse(t *testin
 // Retry-After ("" for a 429 without one, "ok" for success) and counts requests.
 func throttledDelivery(t *testing.T, script []string, requests *int) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == api.PathPrefix+"/meta" {
 			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
@@ -149,7 +149,7 @@ func TestThrottledMachineExportExitsRateLimitedWithRetryAfter(t *testing.T) {
 	requests := 0
 	// 61 s is past the retry ceiling, so the CLI reports rather than sleeps.
 	srv := throttledDelivery(t, []string{"61"}, &requests)
-	_, stateDir := machineState(t, srv.URL)
+	_, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
 	ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "automation-token", nil)
 	code := Run(t.Context(), ios, []string{"values", "export", "--format", "json", "--instance", "local", "--org", "org_one", "--project", "prj_one", "--env", "env_one"})
 	if code != ExitRateLimited {
@@ -168,7 +168,7 @@ func TestThrottledMachineExportExitsRateLimitedWithRetryAfter(t *testing.T) {
 func TestMachineExportCancelledDuringThrottleWaitReportsCancellation(t *testing.T) {
 	requests := 0
 	srv := throttledDelivery(t, []string{"12", "ok"}, &requests)
-	client, err := NewClient(TrustEntry{Origin: srv.URL}, "machine-test")
+	client, err := NewClient(pinnedTestEntry("test", srv), "machine-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestMachineExportRetriesThrottledReadWithinItsBound(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
 			srv := throttledDelivery(t, tc.script, &requests)
-			client, err := NewClient(TrustEntry{Origin: srv.URL}, "machine-test")
+			client, err := NewClient(pinnedTestEntry("test", srv), "machine-test")
 			if err != nil {
 				t.Fatal(err)
 			}

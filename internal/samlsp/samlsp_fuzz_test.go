@@ -1,7 +1,8 @@
 package samlsp
 
 import (
-	"crypto/ed25519"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -35,7 +36,7 @@ func FuzzParseResponse(f *testing.F) {
 
 // FuzzParseMetadata checks the SAML metadata parser returns normally within the shared XML bounds.
 func FuzzParseMetadata(f *testing.F) {
-	_, key, err := ed25519.GenerateKey(rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -43,7 +44,7 @@ func FuzzParseMetadata(f *testing.F) {
 		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "fuzz IdP"},
 		NotBefore: time.Unix(0, 0), NotAfter: time.Unix(1<<31, 0), KeyUsage: x509.KeyUsageDigitalSignature,
 	}
-	certificate, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	certificate, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		f.Fatal(err)
 	}

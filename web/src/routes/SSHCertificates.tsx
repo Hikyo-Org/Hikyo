@@ -392,10 +392,10 @@ export function SSHCertificatesPanel({
       ) : null}
 
       {dialog?.kind === 'create-ca' ? (
-        <CADialog env={env} onClose={() => setDialog(null)} onDone={done} />
+		<CADialog key={`${env.org}/${env.project}/${env.environment}/create`} env={env} onClose={() => setDialog(null)} onDone={done} />
       ) : null}
       {dialog?.kind === 'rotate' ? (
-        <CADialog env={env} rotating={dialog.ca} onClose={() => setDialog(null)} onDone={done} />
+		<CADialog key={`${env.org}/${env.project}/${env.environment}/rotate/${dialog.ca.id}`} env={env} rotating={dialog.ca} onClose={() => setDialog(null)} onDone={done} />
       ) : null}
       {dialog?.kind === 'trust' ? (
         <TrustDialog env={env} ca={dialog.ca} onClose={() => setDialog(null)} />

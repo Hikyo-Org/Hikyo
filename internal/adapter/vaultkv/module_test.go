@@ -197,7 +197,7 @@ func (j *fakeJournal) Reserve(_ context.Context, effect adapter.Effect) (adapter
 	return adapter.Reserved, nil
 }
 func (j *fakeJournal) Prepare(_ context.Context, effect adapter.Effect, prior adapter.LedgerState) error {
-	if prior == adapter.Reserved {
+	if prior == adapter.Reserved || effect.RequireExplicitRecovery {
 		j.states[journalKey(effect)] = adapter.Dispatched
 	}
 	return nil
@@ -352,7 +352,15 @@ func TestAdoptedPathIsTakenOverWithCASOnObservedVersion(t *testing.T) {
 	journal.states["secret:DATABASE_URL"] = adapter.Owned
 	kv.paths["apps/pay/MANAGED_BY_HIKYO"] = &fakePath{current: 1, values: map[int64]string{1: adapter.SentinelName}, deleted: map[int64]bool{}, custom: map[string]string{MarkerKey: "tgt_1", VersionKey: "1"}}
 	target := testTarget(t, kv)
-	if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
+	ledger := journal.ledger()
+	for i := range ledger {
+		if ledger[i].EffectiveName == "DATABASE_URL" {
+			ledger[i].AdoptionPending = true
+			version := int64(2)
+			ledger[i].AdoptionVersion = &version
+		}
+	}
+	if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: ledger}, journal); err != nil {
 		t.Fatal(err)
 	}
 	p := kv.paths["apps/pay/DATABASE_URL"]
@@ -448,20 +456,18 @@ func TestLostCASWithdrawalFailureIsReported(t *testing.T) {
 	withdraw := errors.New("withdraw refused")
 	racer := &racingKV{fakeKV: kv, path: "apps/pay/DATABASE_URL", afterRace: func() { kv.failOn["patch-metadata:apps/pay/DATABASE_URL"] = withdraw }}
 	_, err := (&Module{API: racer}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal)
-	if !errors.Is(err, adapter.ErrConflict) || !errors.Is(err, withdraw) {
-		t.Fatalf("Sync() = %v, want conflict carrying the failed withdrawal", err)
+	if !errors.Is(err, adapter.ErrOperatorReview) || !strings.Contains(err.Error(), withdraw.Error()) {
+		t.Fatalf("Sync() = %v, want operator review naming the failed withdrawal", err)
 	}
-	// The stale pending marker names the racer's version, so a kept claim
-	// would replay it as "our write landed" and overwrite the racer. The
-	// claim is released instead; without it the marker cannot authorize a
-	// write over a live value.
-	if _, held := journal.states["secret:DATABASE_URL"]; held || !slices.Contains(journal.conflicts, "secret:DATABASE_URL") {
-		t.Fatalf("claim held=%v conflicts=%v after failed withdrawal", held, journal.conflicts)
+	// Hold custody without writer inference; a fresh operator version witness
+	// is required even if the stranded marker resembles a successful write.
+	if journal.states["secret:DATABASE_URL"] != adapter.Dispatched || !slices.Contains(journal.conflicts, "secret:DATABASE_URL") {
+		t.Fatalf("claim=%v conflicts=%v after failed withdrawal", journal.states, journal.conflicts)
 	}
 	delete(kv.failOn, "patch-metadata:apps/pay/DATABASE_URL")
 	for range 2 {
-		if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrConflict) {
-			t.Fatalf("replay after failed withdrawal = %v, want conflict", err)
+		if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrOperatorReview) {
+			t.Fatalf("replay after failed withdrawal = %v, want operator review", err)
 		}
 		if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "racer" {
 			t.Fatalf("replay overwrote the racing write with %q", got)
@@ -488,8 +494,8 @@ func TestLostCASWithdrawalWithFailedFinishStaysLoud(t *testing.T) {
 	if !errors.Is(err, finish) || errors.Is(err, errPendingStranded) || !strings.Contains(err.Error(), errPendingStranded.Error()) {
 		t.Fatalf("Sync() = %v, want the journal failure naming the stranded marker", err)
 	}
-	if journal.states["secret:DATABASE_URL"] != adapter.Owned {
-		t.Fatalf("claim = %q, want the unpersisted release to leave it owned", journal.states["secret:DATABASE_URL"])
+	if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+		t.Fatalf("claim = %q, want durable pre-write uncertainty despite failed Finish", journal.states["secret:DATABASE_URL"])
 	}
 }
 
@@ -533,7 +539,7 @@ func (r *racingKV) WriteCAS(ctx context.Context, mount, path, value string, cas 
 	return r.fakeKV.WriteCAS(ctx, mount, path, value, cas)
 }
 
-func TestAmbiguousWriteReplaysFromMetadataAlone(t *testing.T) {
+func TestAmbiguousWriteStopsEvenWhenMetadataMatchesPending(t *testing.T) {
 	for _, landed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("landed=%v", landed), func(t *testing.T) {
 			kv := newFakeKV()
@@ -561,22 +567,24 @@ func TestAmbiguousWriteReplaysFromMetadataAlone(t *testing.T) {
 			if pending := kv.paths["apps/pay/DATABASE_URL"].custom[PendingKey]; pending != "2" {
 				t.Fatalf("pending marker = %q, want 2", pending)
 			}
-			// Replay converges without conflict in both crash windows.
-			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: next, Ledger: journal.ledger()}, journal); err != nil {
-				t.Fatalf("replay = %v", err)
+			// Matching pending metadata cannot prove which writer landed.
+			before := kv.paths["apps/pay/DATABASE_URL"].current
+			kv.calls = nil
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: next, Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrOperatorReview) {
+				t.Fatalf("replay = %v; want operator review", err)
 			}
 			p := kv.paths["apps/pay/DATABASE_URL"]
-			if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "postgres://two" || p.custom[PendingKey] != "" || p.custom[VersionKey] != fmt.Sprint(p.current) {
-				t.Fatalf("replayed path = %+v", p)
+			if p.current != before || p.custom[PendingKey] != "2" || len(kv.mutations()) != 0 {
+				t.Fatalf("review refusal changed path = %+v, mutations=%v", p, kv.mutations())
 			}
-			if journal.states["secret:DATABASE_URL"] != adapter.Owned || len(journal.conflicts) != 0 {
-				t.Fatalf("replay state=%q conflicts=%v", journal.states["secret:DATABASE_URL"], journal.conflicts)
+			if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+				t.Fatalf("review refusal lost held custody: %q", journal.states["secret:DATABASE_URL"])
 			}
 		})
 	}
 }
 
-func TestAmbiguousCreateReplays(t *testing.T) {
+func TestAmbiguousCreateStopsForReviewWhetherOrNotItLanded(t *testing.T) {
 	for _, landed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("landed=%v", landed), func(t *testing.T) {
 			kv := newFakeKV()
@@ -595,21 +603,21 @@ func TestAmbiguousCreateReplays(t *testing.T) {
 			if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
 				t.Fatalf("ambiguous create state = %q, want dispatched", journal.states["secret:DATABASE_URL"])
 			}
-			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
-				t.Fatalf("replay = %v", err)
+			kv.calls = nil
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrOperatorReview) {
+				t.Fatalf("replay = %v; want operator review", err)
 			}
-			p := kv.paths["apps/pay/DATABASE_URL"]
-			if got, ok := kv.value("apps/pay/DATABASE_URL"); !ok || got != "postgres://one" || p.custom[MarkerKey] != "tgt_1" || p.custom[VersionKey] != fmt.Sprint(p.current) || p.custom[PendingKey] != "" {
-				t.Fatalf("replayed create = %q, %v, %+v", got, ok, p)
+			if len(kv.mutations()) != 0 {
+				t.Fatalf("ambiguous create replay mutated provider: %v", kv.mutations())
 			}
-			if journal.states["secret:DATABASE_URL"] != adapter.Owned || len(journal.conflicts) != 0 {
-				t.Fatalf("replay state=%q conflicts=%v", journal.states["secret:DATABASE_URL"], journal.conflicts)
+			if _, ok := kv.value("apps/pay/DATABASE_URL"); ok != landed || journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+				t.Fatalf("review refusal changed create outcome or custody: present=%v state=%q", ok, journal.states["secret:DATABASE_URL"])
 			}
 		})
 	}
 }
 
-func TestFailedMarkAfterCreateReplays(t *testing.T) {
+func TestAcknowledgedCreateWithFailedMarkRetainsOwnershipButNeedsFreshConsent(t *testing.T) {
 	kv := newFakeKV()
 	journal := newFakeJournal()
 	target := testTarget(t, kv)
@@ -618,14 +626,24 @@ func TestFailedMarkAfterCreateReplays(t *testing.T) {
 	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
 		t.Fatalf("Sync() = %v, want indeterminate", err)
 	}
-	if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
-		t.Fatal("unmarked create must remain dispatched")
+	if journal.states["secret:DATABASE_URL"] != adapter.Owned {
+		t.Fatal("acknowledged create must retain known ownership")
 	}
 	if custom := kv.paths["apps/pay/DATABASE_URL"].custom; custom[MarkerKey] != "" {
 		t.Fatalf("custom metadata = %v, want the unmarked create", custom)
 	}
-	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
-		t.Fatalf("replay = %v", err)
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrConflict) {
+		t.Fatalf("unmarked replay = %v; want refusal", err)
+	}
+	ledger := journal.ledger()
+	for i := range ledger {
+		if ledger[i].EffectiveName == "DATABASE_URL" {
+			version := int64(1)
+			ledger[i].AdoptionPending, ledger[i].AdoptionVersion = true, &version
+		}
+	}
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: ledger}, journal); err != nil {
+		t.Fatalf("fresh version-bound adoption = %v", err)
 	}
 	p := kv.paths["apps/pay/DATABASE_URL"]
 	if p.current != 2 || p.custom[MarkerKey] != "tgt_1" || p.custom[VersionKey] != "2" || p.custom[PendingKey] != "" {
@@ -676,6 +694,34 @@ func TestPruneSoftDeletesAndReAddReclaimsOwnPath(t *testing.T) {
 	}
 	if got, ok := kv.value("apps/pay/LOG_LEVEL"); !ok || got != "debug" || kv.paths["apps/pay/LOG_LEVEL"].current != 2 {
 		t.Fatalf("re-add = %q, %v", got, ok)
+	}
+}
+
+func TestReclassificationRetiresOppositeSurfaceWithoutPruningDesiredPath(t *testing.T) {
+	kv := newFakeKV()
+	journal := newFakeJournal()
+	target := testTarget(t, kv)
+	module := &Module{API: kv}
+	config := []adapter.ManifestEntry{{KeyID: "key_log", CanonicalName: "LOG_LEVEL", Classification: adapter.ConfigClassification, Value: "debug"}}
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: config}, journal); err != nil {
+		t.Fatal(err)
+	}
+	// Adoption of the reclassified row creates the new surface claim while the
+	// asynchronous old claim still exists.
+	journal.states["secret:LOG_LEVEL"] = adapter.Owned
+	secret := []adapter.ManifestEntry{{KeyID: "key_log", CanonicalName: "LOG_LEVEL", Classification: adapter.SecretClassification, Value: "sensitive"}}
+	kv.calls = nil
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: secret, Ledger: journal.ledger()}, journal); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(kv.calls, "soft-delete:apps/pay/LOG_LEVEL") {
+		t.Fatalf("reclassification pruned its desired path: %v", kv.calls)
+	}
+	if got, ok := kv.value("apps/pay/LOG_LEVEL"); !ok || got != "sensitive" {
+		t.Fatalf("reclassified path = %q, %t, want sensitive", got, ok)
+	}
+	if journal.states["variable:LOG_LEVEL"] != adapter.Released {
+		t.Fatalf("opposite-surface ownership claim = %q, want released", journal.states["variable:LOG_LEVEL"])
 	}
 }
 
@@ -842,8 +888,8 @@ func TestFailedCreateFinalizeNeverOverwritesOrPrunesLaterExternalEdit(t *testing
 			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
 				t.Fatalf("create finalize: %v", err)
 			}
-			if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
-				t.Fatal("create finalize refusal must retain dispatched claim")
+			if journal.states["secret:DATABASE_URL"] != adapter.Owned {
+				t.Fatal("acknowledged create finalize refusal must retain known ownership")
 			}
 			kv.externalWrite("apps/pay/DATABASE_URL", "external")
 			req := adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}

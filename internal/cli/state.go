@@ -34,14 +34,14 @@ type State struct {
 // Windows).
 func NewState(env Env) (*State, error) {
 	if d := env.Getenv("HIKYO_STATE_DIR"); d != "" {
-		return &State{dir: d}, nil
+		return newStateAt(d)
 	}
 	if d := env.Getenv("XDG_STATE_HOME"); d != "" {
-		return &State{dir: filepath.Join(d, "hikyo")}, nil
+		return newStateAt(filepath.Join(d, "hikyo"))
 	}
 	if runtime.GOOS == "windows" {
 		if d := env.Getenv("LocalAppData"); d != "" {
-			return &State{dir: filepath.Join(d, "hikyo")}, nil
+			return newStateAt(filepath.Join(d, "hikyo"))
 		}
 	}
 	home := env.Getenv("HOME")
@@ -49,7 +49,14 @@ func NewState(env Env) (*State, error) {
 		return nil, failf(ExitUsage,
 			"cannot locate a state directory: neither HIKYO_STATE_DIR, XDG_STATE_HOME nor HOME is set")
 	}
-	return &State{dir: filepath.Join(home, ".local", "state", "hikyo")}, nil
+	return newStateAt(filepath.Join(home, ".local", "state", "hikyo"))
+}
+
+func newStateAt(dir string) (*State, error) {
+	if !filepath.IsAbs(dir) {
+		return nil, failf(ExitUsage, "state directory must be absolute, got %q", dir)
+	}
+	return &State{dir: filepath.Clean(dir)}, nil
 }
 
 // Dir is the resolved state directory.
@@ -91,6 +98,11 @@ func (s *State) Contexts() (map[string]Context, error) {
 
 // PutContext stores a context.
 func (s *State) PutContext(c Context) error {
+	unlock, err := lockStateDir(s.dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	all, err := s.Contexts()
 	if err != nil {
 		return err
@@ -101,6 +113,11 @@ func (s *State) PutContext(c Context) error {
 
 // DeleteContext removes a context.
 func (s *State) DeleteContext(name string) error {
+	unlock, err := lockStateDir(s.dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	all, err := s.Contexts()
 	if err != nil {
 		return err
@@ -131,12 +148,12 @@ type SessionArtifact struct {
 
 // Sessions reads the stored artifacts.
 func (s *State) Sessions() (map[string]SessionArtifact, error) {
-	raw, err := os.ReadFile(s.sessionsPath())
+	raw, err := readPrivateStateFile(s.dir, "sessions.json")
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]SessionArtifact{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read private session state: %w", err)
 	}
 	// sessions.json was historically an unversioned map of instance reference
 	// to human session. Keep reading that shape byte-for-byte. A future
@@ -164,6 +181,11 @@ func (s *State) Sessions() (map[string]SessionArtifact, error) {
 
 // PutSession stores an artifact for an instance.
 func (s *State) PutSession(a SessionArtifact) error {
+	unlock, err := lockStateDir(s.dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	all, err := s.Sessions()
 	if err != nil {
 		return err
@@ -174,6 +196,11 @@ func (s *State) PutSession(a SessionArtifact) error {
 
 // DeleteSession forgets an artifact.
 func (s *State) DeleteSession(instance string) error {
+	unlock, err := lockStateDir(s.dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	all, err := s.Sessions()
 	if err != nil {
 		return err

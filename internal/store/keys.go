@@ -25,6 +25,10 @@ import (
 
 // KeyReader is the read side of keyring persistence.
 type KeyReader interface {
+	// ActiveTokenKeyForReceipt returns only the active instance token row. The
+	// PostgreSQL shared row lock holds rotation behind this authorized batch;
+	// SQLite's admitted writer transaction provides the equivalent fence.
+	ActiveTokenKeyForReceipt(ctx context.Context, pf authz.Proof) (crypto.WrappedKey, error)
 	// ActiveMasterWrappers returns every active master wrapper (one per
 	// root epoch; two while a root rotation is dual-wrapped; empty at
 	// first boot), newest epoch first.
@@ -206,6 +210,20 @@ func (k sqliteKeys) ActiveTier3(ctx context.Context, pf authz.Proof, p crypto.Pu
 	return tier3FromSQLite(row)
 }
 
+func (k sqliteKeys) ActiveTokenKeyForReceipt(ctx context.Context, pf authz.Proof) (crypto.WrappedKey, error) {
+	if _, err := authz.Verify(pf, authz.StoreKeysActiveTokenKeyForReceipt, k.tok); err != nil {
+		return crypto.WrappedKey{}, err
+	}
+	row, err := k.q.GetActiveTokenKeyForReceipt(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return crypto.WrappedKey{}, crypto.ErrNoKey
+	}
+	if err != nil {
+		return crypto.WrappedKey{}, err
+	}
+	return tier3FromSQLite(row)
+}
+
 func (k sqliteKeys) Tier3Versions(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) ([]crypto.WrappedKey, error) {
 	if _, err := authz.Verify(pf, authz.StoreKeysTier3Versions, k.tok); err != nil {
 		return nil, err
@@ -375,6 +393,20 @@ func (k pgKeys) ActiveTier3(ctx context.Context, pf authz.Proof, p crypto.Purpos
 	row, err := k.q.GetActiveTier3Key(ctx, pggen.GetActiveTier3KeyParams{
 		Purpose: string(p), OrgID: orgID, ProjectID: projectID,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return crypto.WrappedKey{}, crypto.ErrNoKey
+	}
+	if err != nil {
+		return crypto.WrappedKey{}, err
+	}
+	return tier3FromPG(row)
+}
+
+func (k pgKeys) ActiveTokenKeyForReceipt(ctx context.Context, pf authz.Proof) (crypto.WrappedKey, error) {
+	if _, err := authz.Verify(pf, authz.StoreKeysActiveTokenKeyForReceipt, k.tok); err != nil {
+		return crypto.WrappedKey{}, err
+	}
+	row, err := k.q.GetActiveTokenKeyForReceipt(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return crypto.WrappedKey{}, crypto.ErrNoKey
 	}

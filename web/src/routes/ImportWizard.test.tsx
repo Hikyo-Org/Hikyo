@@ -10,6 +10,17 @@ const cleanups: Array<() => Promise<void>> = [];
 const listOccurrences = vi.fn();
 const createKey = vi.fn();
 const importValues = vi.fn();
+const publishPreflight = vi.hoisted(() => vi.fn());
+vi.mock('./Ceremony.tsx', () => ({
+  Ceremony: ({ request, onAuthorised, onCancel }: {
+    request: import('./Ceremony.tsx').CeremonyRequest; onAuthorised: () => void; onCancel: () => void;
+  }) => <section aria-label="Publish ceremony"><p>{`${request.purpose}:${request.environmentName}:${request.keys.map((key) => key.name).join(',')}`}</p>
+    <button onClick={onAuthorised}>Authorise import</button><button onClick={onCancel}>Cancel ceremony</button></section>,
+}));
+vi.mock('../api/values.ts', async (original) => ({
+  ...(await original<typeof import('../api/values.ts')>()),
+  fetchRevealWindow: publishPreflight,
+}));
 
 vi.mock('../api/matrix.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/matrix.ts')>();
@@ -28,9 +39,9 @@ const environments = [
   { id: 'env-prod', name: 'production' },
 ];
 
-// Phase 1a candidates carry the default `secret` intent; 1b carries `config`.
-// The mock uses that to answer 1a with the new key still undeclared and 1b with
-// every declaration landed, the exact transition the wizard depends on.
+// Phase 1a candidates carry the default `secret` intent; the final review read
+// carries the selected intent. The mock uses that to distinguish discovery from
+// the tokens the operator actually reviews.
 function occurrenceList(input: {
   environment: string;
   candidates: readonly { name: string; classification: string }[];
@@ -52,11 +63,24 @@ beforeEach(() => {
   listOccurrences.mockReset().mockImplementation(async (input) => occurrenceList(input));
   createKey.mockReset().mockResolvedValue({ id: 'key-new' });
   importValues.mockReset().mockResolvedValue({ imported: ['EXISTING', 'NEW'], skipped: [] });
+  publishPreflight.mockReset().mockResolvedValue({ protected: false, live: false });
+  vi.stubGlobal('fetch', vi.fn(() => {
+    const names = [...new Set(listOccurrences.mock.calls.flatMap(([input]) => input.candidates.map((candidate: { name: string }) => candidate.name)))];
+    return Promise.resolve(Response.json({ count: names.length, schema_revision: 3, items: names.map((name, index) => ({
+      id: `key_123e4567-e89b-12d3-a456-4266141740${String(10 + index)}`,
+      org_id: 'org_123e4567-e89b-12d3-a456-426614174001', project_id: 'prj_123e4567-e89b-12d3-a456-426614174002',
+      name, folder_path: '', classification: 'secret', description: '', deprecated: false, deprecation_note: '',
+      declaration: { rule: { type: 'string', allow_empty: true } },
+      presence: { required_in: { mode: 'none' }, forbidden_in: { mode: 'none' } },
+      group_id: '', created_at: '2026-01-01T00:00:00Z',
+    })) }));
+  }));
 });
 
 afterEach(async () => {
   for (const unmount of cleanups.splice(0)) await unmount();
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });
 
 async function render(gitManaged = false, canDeclareKeys = !gitManaged) {
@@ -137,6 +161,50 @@ async function reachReview(container: HTMLElement): Promise<void> {
 }
 
 describe('ImportWizard success', () => {
+  it('authorises exactly the written keys before publishing into each protected destination', async () => {
+    publishPreflight.mockResolvedValue({ protected: true, live: false });
+    const { container } = await render();
+    await reachReview(container);
+    await click(button(container, 'Import'));
+    expect(importValues).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('publish:development:EXISTING,NEW');
+    await click(button(container, 'Authorise import'));
+    expect(importValues).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('publish:production:NEW');
+    await click(button(container, 'Authorise import'));
+    expect(importValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops the entire remaining batch when the protected publish ceremony is canceled', async () => {
+    publishPreflight.mockResolvedValue({ protected: true, live: false });
+    const { container } = await render();
+    await reachReview(container);
+    await click(button(container, 'Import'));
+    expect(button(container, 'Cancel').disabled).toBe(true);
+    await click(button(container, 'Cancel ceremony'));
+    expect(importValues).not.toHaveBeenCalled();
+    expect(publishPreflight).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Declared 1 new key');
+    expect(container.textContent).toContain('No further values were sent');
+  });
+
+  it('does not create another declaration after the workflow is unmounted', async () => {
+    let finish: (result: { id: string }) => void = () => {};
+    createKey.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const { container } = await render();
+    await pickDotenv(container);
+    await selectFile(container, 'FIRST=value\nSECOND=value\n');
+    await click(button(container, 'Review'));
+    await click(button(container, 'Review changes'));
+    await click(button(container, 'Import'));
+    expect(createKey).toHaveBeenCalledTimes(1);
+    expect(button(container, 'Cancel').disabled).toBe(true);
+    await cleanups.pop()?.();
+    await act(async () => finish({ id: 'key-first' }));
+    await settle();
+    expect(createKey).toHaveBeenCalledTimes(1);
+    expect(importValues).not.toHaveBeenCalled();
+  });
   it('declares the new key, imports every environment, and reports what landed', async () => {
     const { container } = await render();
     await reachReview(container);
@@ -164,12 +232,22 @@ describe('ImportWizard success', () => {
     await reachReview(container);
     await click(button(container, 'Import'));
     const call = importValues.mock.calls[0]?.[0];
-    // env-dev tokens come from the 1b read, so they name the post-declaration state.
+    // env-dev tokens come from the final review read and are preserved while
+    // declarations land.
     expect(call.precondition.occurrences).toContainEqual({
       key: 'NEW',
       environment_id: 'env-dev',
       token: 'tok-NEW-env-dev',
     });
+    expect(listOccurrences).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not rebind occurrence tokens after final review', async () => {
+    const { container } = await render();
+    await reachReview(container);
+    const readsAtReview = listOccurrences.mock.calls.length;
+    await click(button(container, 'Import'));
+    expect(listOccurrences).toHaveBeenCalledTimes(readsAtReview);
   });
 });
 

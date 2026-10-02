@@ -253,6 +253,21 @@ func TestDecodeUserAcceptsStringifiedActive(t *testing.T) {
 	}
 }
 
+func TestDecodeUserTreatsActiveCaseInsensitively(t *testing.T) {
+	for _, raw := range []string{
+		`{"userName":"a@b.test","Active":false}`,
+		`{"userName":"a@b.test","ACTIVE":"False"}`,
+	} {
+		u, e := DecodeUser([]byte(raw))
+		if e != nil {
+			t.Fatalf("DecodeUser(%s): %v", raw, e)
+		}
+		if u.Active == nil || *u.Active {
+			t.Fatalf("DecodeUser(%s) active = %v, want false", raw, u.Active)
+		}
+	}
+}
+
 // A PATCH is ATOMIC: any invalid operation fails the whole request with nothing
 // committed, so validation happens for EVERY operation before any is applied.
 func TestPatchIsAtomicOnOneInvalidOperation(t *testing.T) {

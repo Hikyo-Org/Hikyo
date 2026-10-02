@@ -57,6 +57,7 @@ const env = (n: number, name: string, read: boolean, reveal: boolean): MachineEn
   name,
   read,
   reveal,
+  revealHistory: false,
   report: false,
   origins: read ? [{ kind: 'direct', subject: 'dana@example.com' }] : [],
 });

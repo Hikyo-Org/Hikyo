@@ -50,7 +50,7 @@ func (q *Queries) RuntimePKICountUnknown(ctx context.Context, now string) (int64
 }
 
 const runtimePKIDueCRLs = `-- name: RuntimePKIDueCRLs :many
-SELECT id,name,version,certificate_der,encrypted_private_key,dek_version,crl_number,revocation_seq FROM pki_issuers WHERE state IN ('active','retiring') AND encrypted_private_key IS NOT NULL AND dek_version IS NOT NULL AND certificate_der IS NOT NULL AND (crl_der IS NULL OR crl_next_update<=?1 OR revocation_seq>crl_revocation_seq) ORDER BY id
+SELECT id,name,version,certificate_der,encrypted_private_key,dek_version,crl_number,revocation_seq FROM pki_issuers WHERE restore_hold=0 AND state IN ('active','retiring') AND encrypted_private_key IS NOT NULL AND dek_version IS NOT NULL AND certificate_der IS NOT NULL AND (crl_der IS NULL OR crl_next_update<=?1 OR revocation_seq>crl_revocation_seq) ORDER BY id
 `
 
 type RuntimePKIDueCRLsRow struct {

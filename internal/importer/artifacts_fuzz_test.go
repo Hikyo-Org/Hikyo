@@ -44,7 +44,7 @@ func FuzzParseTemplate(f *testing.F) {
 // FuzzParseManifest checks the import-paths manifest decoder returns a manifest or the package's own error type.
 func FuzzParseManifest(f *testing.F) {
 	valid := fuzzArtifactSeed(f, Manifest{
-		FormatVersion: FormatVersion, ConnectorContractVersion: ConnectorContractVersion,
+		FormatVersion: RunArtifactFormatVersion, ConnectorContractVersion: ConnectorContractVersion,
 		Target: Target{Project: "project", Environments: []string{"production"}},
 	})
 	f.Add(valid)
@@ -60,7 +60,7 @@ func FuzzParseManifest(f *testing.F) {
 // FuzzParseValuesFile checks the import-paths values decoder returns a values file or the package's own error type.
 func FuzzParseValuesFile(f *testing.F) {
 	valid := fuzzArtifactSeed(f, ValuesFile{
-		FormatVersion: FormatVersion, Project: "project", Environment: "production",
+		FormatVersion: RunArtifactFormatVersion, CommitmentKey: "abababababababababababababababababababababababababababababababab", Project: "project", Environment: "production",
 		Entries: []ValuesEntry{{Key: "API_TOKEN", Value: "secret"}},
 	})
 	f.Add(valid)

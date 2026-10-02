@@ -3,8 +3,10 @@ package service
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 )
 
 // DesiredUser is the complete user state accepted by create and PUT. PATCH
@@ -56,6 +58,9 @@ func ReduceUserPatch(current DesiredUser, commands []UserPatchCommand) (DesiredU
 		case UserPatchSetActive:
 			next.Active = command.Active
 		case UserPatchMergeAttributes:
+			if err := checkSCIMAttributeNames(command.Attributes, 0); err != nil {
+				return DesiredUser{}, err
+			}
 			next.Attributes = mergeAttributes(next.Attributes, command.Attributes)
 		default:
 			return DesiredUser{}, fmt.Errorf("service: unknown SCIM user patch command %T", command)
@@ -222,9 +227,57 @@ func preserveSubjectSource(desired, stored map[string]any, source string) map[st
 	} else {
 		desiredNested = cloneAttributes(desiredNested)
 	}
+	// The desired object can use a different case for this immutable leaf.
+	// Preserve ONE leaf, not two differently spelled copies of the same name.
+	for key := range desiredNested {
+		if strings.EqualFold(key, storedAttribute) {
+			delete(desiredNested, key)
+		}
+	}
 	desiredNested[storedAttribute] = value
 	out[desiredURN] = desiredNested
 	return out
+}
+
+func checkSCIMAttributeNames(value any, depth int) error {
+	if depth > 12 {
+		return scimproto.ErrInvalidValue("The resource nests more deeply than this service provider accepts.")
+	}
+	switch value := value.(type) {
+	case map[string]any:
+		seen := make(map[string]bool, len(value))
+		for name, child := range value {
+			canonical := scimAttributeName(name)
+			if seen[canonical] {
+				return scimproto.ErrInvalidValue("The resource names one case-insensitive attribute twice.")
+			}
+			seen[canonical] = true
+			if err := checkSCIMAttributeNames(child, depth+1); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if err := checkSCIMAttributeNames(child, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Match strings.EqualFold's complete equivalence relation, without a quadratic
+// scan of a caller-supplied object (ToLower alone misses final sigma/long s).
+func scimAttributeName(name string) string {
+	var out strings.Builder
+	for _, char := range name {
+		canonical := char
+		for folded := unicode.SimpleFold(char); folded != char; folded = unicode.SimpleFold(folded) {
+			canonical = min(canonical, folded)
+		}
+		out.WriteRune(canonical)
+	}
+	return out.String()
 }
 
 func mapEntry(values map[string]any, name string) (string, any, bool) {

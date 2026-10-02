@@ -62,22 +62,17 @@ func (s *PKI) RunPKISweep(ctx context.Context) (bool, error) {
 // read, key, certificate, signing, and publication errors reach the caller.
 func (s *PKI) publishDueCRL(ctx context.Context, candidate store.PKICRLCandidate) (bool, error) {
 	now := store.CanonTime(s.now())
-	entries, err := s.Runtime.RevokedEntries(ctx, candidate.IssuerID, now)
-	if err != nil {
-		return false, err
-	}
-	cert, err := x509.ParseCertificate(candidate.CertificateDER)
-	if err != nil {
-		return false, err
-	}
-	signer, err := s.openIssuerKey(candidate.IssuerID, candidate.EncryptedPrivateKey)
-	if err != nil {
-		return false, err
-	}
-	number := pki.NextCRLNumber(candidate.CRLNumber, now)
-	der, err := signCRL(pki.Parent{Certificate: cert, Signer: signer}, entries, number, now)
-	if err != nil {
-		return false, err
-	}
-	return s.Runtime.PublishCRL(ctx, candidate, der, number, len(entries), now, now.Add(pki.CRLValidity))
+	return s.Runtime.SignAndPublishCRL(ctx, candidate, now, now.Add(pki.CRLValidity), func(fresh store.PKICRLCandidate, entries []store.PKIRevokedEntry) ([]byte, int64, error) {
+		cert, err := x509.ParseCertificate(fresh.CertificateDER)
+		if err != nil {
+			return nil, 0, err
+		}
+		signer, err := s.openIssuerKey(fresh.IssuerID, fresh.EncryptedPrivateKey)
+		if err != nil {
+			return nil, 0, err
+		}
+		number := pki.NextCRLNumber(fresh.CRLNumber, now)
+		der, err := signCRL(pki.Parent{Certificate: cert, Signer: signer}, entries, number, now)
+		return der, number, err
+	})
 }

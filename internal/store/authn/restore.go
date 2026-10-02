@@ -116,7 +116,7 @@ func (r *Resolver) AdvanceRestoreEpoch(ctx context.Context, now time.Time) error
 		if err := r.sq.MarkAllPrincipalsUnreconciled(ctx); err != nil {
 			return fmt.Errorf("authn: mark principals unreconciled: %w", err)
 		}
-		return nil
+		return r.retireRestoredPendingHumanProofs(ctx)
 	}
 	next, err := r.restoreNextEpoch(ctx)
 	if err != nil {
@@ -133,21 +133,92 @@ func (r *Resolver) AdvanceRestoreEpoch(ctx context.Context, now time.Time) error
 	if err := r.pg.MarkAllPrincipalsUnreconciled(ctx); err != nil {
 		return fmt.Errorf("authn: mark principals unreconciled: %w", err)
 	}
+	return r.retireRestoredPendingHumanProofs(ctx)
+}
+
+// retireRestoredPendingHumanProofs removes proofs that carry assurance from the
+// old epoch without carrying an epoch stamp themselves. Reconciliation cannot
+// turn those proofs into a new session. Consumed rows remain as provenance.
+func (r *Resolver) retireRestoredPendingHumanProofs(ctx context.Context) error {
+	challenges, handoffs, err := r.restoredPendingHumanProofTables(ctx)
+	if err != nil {
+		return fmt.Errorf("authn: probe restored pending human proof tables: %w", err)
+	}
+	if r.sq != nil {
+		if challenges {
+			if err := r.sq.RetireRestoredPendingLoginChallenges(ctx); err != nil {
+				return fmt.Errorf("authn: retire restored login challenges: %w", err)
+			}
+		}
+		if handoffs {
+			if err := r.sq.RetireRestoredApprovedWorkspaceHandoffs(ctx); err != nil {
+				return fmt.Errorf("authn: retire restored workspace approvals: %w", err)
+			}
+		}
+		return nil
+	}
+	if challenges {
+		if err := r.pg.RetireRestoredPendingLoginChallenges(ctx); err != nil {
+			return fmt.Errorf("authn: retire restored login challenges: %w", err)
+		}
+	}
+	if handoffs {
+		if err := r.pg.RetireRestoredApprovedWorkspaceHandoffs(ctx); err != nil {
+			return fmt.Errorf("authn: retire restored workspace approvals: %w", err)
+		}
+	}
 	return nil
+}
+
+// restoredPendingHumanProofTables probes the fixed historical schema before
+// executing generated writes. Both required predicates have existed since each
+// table's first migration (workspace 00020, login challenges 00056). PostgreSQL
+// must never discover optional-table absence through a transaction-aborting write.
+func (r *Resolver) restoredPendingHumanProofTables(ctx context.Context) (challenges, handoffs bool, err error) {
+	if r.sq != nil {
+		err = r.sqdb.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'login_challenges'),
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_handoffs')`).Scan(&challenges, &handoffs)
+		return
+	}
+	err = r.pgdb.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('login_challenges')),
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('workspace_handoffs'))`).Scan(&challenges, &handoffs)
+	return
 }
 
 // InvalidateRestoredAdapterCredentials destroys custody of every restored
 // outbound provider credential. A PAT is checked by Forgejo, not Hikyo's
 // credential epoch, so an epoch bump alone cannot make a restored PAT inert.
 func (r *Resolver) InvalidateRestoredAdapterCredentials(ctx context.Context) error {
+	var moves bool
+	var probeErr error
+	if r.sq != nil {
+		probeErr = r.sqdb.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='adapter_route_moves')`).Scan(&moves)
+	} else {
+		probeErr = r.pgdb.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r','p') AND oid=to_regclass('adapter_route_moves'))`).Scan(&moves)
+	}
+	if probeErr != nil {
+		return fmt.Errorf("authn: probe restored adapter route moves: %w", probeErr)
+	}
 	if r.sq != nil {
 		if err := r.sq.InvalidateRestoredAdapterCredentials(ctx); err != nil {
 			return fmt.Errorf("authn: invalidate restored adapter credentials: %w", err)
+		}
+		if moves {
+			if err := r.sq.InvalidateRestoredAdapterRouteMoves(ctx); err != nil {
+				return fmt.Errorf("authn: invalidate restored adapter route credentials: %w", err)
+			}
 		}
 		return nil
 	}
 	if err := r.pg.InvalidateRestoredAdapterCredentials(ctx); err != nil {
 		return fmt.Errorf("authn: invalidate restored adapter credentials: %w", err)
+	}
+	if moves {
+		if err := r.pg.InvalidateRestoredAdapterRouteMoves(ctx); err != nil {
+			return fmt.Errorf("authn: invalidate restored adapter route credentials: %w", err)
+		}
 	}
 	return nil
 }
@@ -166,6 +237,76 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 		return fmt.Errorf("authn: invalidate restored dynamic provider credentials: %w", err)
 	}
 	return nil
+}
+
+// InvalidateRestoredExternalCredentials destroys every restored credential
+// whose verifier lives outside this instance's epoch boundary.
+func (r *Resolver) InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error {
+	tables, err := r.restoredExternalCredentialTables(ctx)
+	if err != nil {
+		return fmt.Errorf("authn: probe restored external credential tables: %w", err)
+	}
+	if r.sq != nil {
+		at := encodeTime(now)
+		if tables.oidc {
+			if err := r.sq.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil {
+				return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+			}
+		}
+		if tables.oauth2 {
+			if err := r.sq.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil {
+				return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+			}
+		}
+		if tables.remotes {
+			if err := r.sq.DeleteRestoredRemotes(ctx); err != nil {
+				return fmt.Errorf("authn: delete restored remotes: %w", err)
+			}
+		}
+		return nil
+	}
+	at := pgTimestamp(now)
+	if tables.oidc {
+		if err := r.pg.InvalidateRestoredOIDCProviderCredentials(ctx, at); err != nil {
+			return fmt.Errorf("authn: invalidate restored OIDC credentials: %w", err)
+		}
+	}
+	if tables.oauth2 {
+		if err := r.pg.InvalidateRestoredOAuth2ProviderCredentials(ctx, at); err != nil {
+			return fmt.Errorf("authn: invalidate restored OAuth2 credentials: %w", err)
+		}
+	}
+	if tables.remotes {
+		if err := r.pg.DeleteRestoredRemotes(ctx); err != nil {
+			return fmt.Errorf("authn: delete restored remotes: %w", err)
+		}
+	}
+	return nil
+}
+
+type restoredExternalTables struct {
+	oidc    bool
+	oauth2  bool
+	remotes bool
+}
+
+// restoredExternalCredentialTables probes before issuing writes. PostgreSQL
+// aborts a transaction after an undefined-table error, so catching that error
+// after a write is too late for older archives whose migrations have not run.
+func (r *Resolver) restoredExternalCredentialTables(ctx context.Context) (restoredExternalTables, error) {
+	var tables restoredExternalTables
+	if r.sq != nil {
+		err := r.sqdb.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oidc_providers'),
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth2_providers'),
+			EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'remotes')`).Scan(&tables.oidc, &tables.oauth2, &tables.remotes)
+		return tables, err
+	}
+	err := r.pgdb.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('oidc_providers')),
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('oauth2_providers')),
+		EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('remotes'))`).Scan(&tables.oidc, &tables.oauth2, &tables.remotes)
+	return tables, err
 }
 
 // HoldRestoredPKIIssuers suspends minting on every restored CA issuer (#154,

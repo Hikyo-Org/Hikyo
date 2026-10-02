@@ -22,6 +22,32 @@ import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
 
+/** Mirror the server's readable-metadata contract without echoing secret input. */
+export function providerOriginRefusal(origin: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return 'Use a password-free postgres://admin@host/database URL. Nothing was created.';
+  }
+  if (origin !== origin.trim() || !/^postgres(?:ql)?:\/\//.test(origin)) {
+    return 'The origin must be a postgres:// or postgresql:// URL. Nothing was created.';
+  }
+  const authority = origin.slice(origin.indexOf('://') + 3).split(/[/?#]/)[0] ?? '';
+  const at = authority.lastIndexOf('@');
+  const userInfo = at < 0 ? '' : authority.slice(0, at);
+  if (parsed.password !== '' || userInfo.includes(':')) {
+    return 'The origin must not contain a password, including an empty password field. Use the write-only admin credential field. Nothing was created.';
+  }
+  if (parsed.search !== '' || parsed.hash !== '') {
+    return 'The origin must not contain query parameters or a fragment. Nothing was created.';
+  }
+  if (parsed.username === '' || parsed.hostname === '' || parsed.pathname.replaceAll('/', '') === '') {
+    return 'The origin must include the admin username, host and database. Nothing was created.';
+  }
+  return null;
+}
+
 /**
  * CreateProviderDialog configures a dynamic-secret provider.
  *
@@ -50,6 +76,11 @@ export function CreateProviderDialog({
   const submit = async () => {
     if (origin.trim() === '' || grantRole.trim() === '' || credential === '') {
       setFailure('Origin, grant role and the admin credential are all required. Nothing was created.');
+      return;
+    }
+    const originRefusal = providerOriginRefusal(origin);
+    if (originRefusal !== null) {
+      setFailure(originRefusal);
       return;
     }
     setBusy(true);
@@ -111,7 +142,7 @@ export function CreateProviderDialog({
     >
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
-          <label htmlFor="create-provider-origin">Origin (host:port/dbname)</label>
+          <label htmlFor="create-provider-origin">Origin (password-free PostgreSQL URL)</label>
           <input
             id="create-provider-origin"
             className="mono"
@@ -119,12 +150,13 @@ export function CreateProviderDialog({
             autoComplete="off"
             spellCheck={false}
             maxLength={2048}
-            placeholder="db.internal:5432/app"
+            placeholder="postgres://admin@db.example.com:5432/app"
             onChange={(event) => {
               setOrigin(event.target.value);
               setFailure(null);
             }}
           />
+          <p className="field__hint">Include the admin username, host and database. Passwords belong only in the write-only credential field; query parameters and fragments are refused.</p>
         </div>
 
         <div className="field">

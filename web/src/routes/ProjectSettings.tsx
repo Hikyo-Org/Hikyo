@@ -821,6 +821,7 @@ function EnvironmentPolicy({
   const save = useSetEnvironmentSettings(org, project);
   const windowId = useId();
   const [windowValue, setWindowValue] = useState('900');
+  const [windowBatchPending, setWindowBatchPending] = useState(false);
 
   if (environments.length === 0) {
     return <p role="status">This project holds no environments yet.</p>;
@@ -845,13 +846,14 @@ function EnvironmentPolicy({
               <Button
                 type="button"
                 variant="quiet"
-                disabled={!ready || save.isPending}
+                disabled={!ready || save.isPending || windowBatchPending}
                 aria-pressed={protectedFlag}
                 onClick={() =>
                   save.mutate(
                     {
                       environment: environment.id,
                       protectedFlag: !protectedFlag,
+                      expectedProtected: protectedFlag,
                       reauthWindowSeconds: protectedFlag ? Number(windowValue) : 0,
                     },
                     {
@@ -894,31 +896,36 @@ function EnvironmentPolicy({
           id={windowId}
           className="settings-select"
           value={windowValue}
-          disabled={save.isPending}
-          onChange={(event) => {
+          disabled={save.isPending || windowBatchPending}
+          onChange={async (event) => {
             const next = event.currentTarget.value;
             setWindowValue(next);
             const editable = environments.filter((environment) => {
               const state = protection.get(environment.id);
               return state?.status === 'ready' && !state.protected;
             });
-            editable.forEach((environment, index) =>
-              save.mutate(
+            setWindowBatchPending(true);
+            const results = await Promise.allSettled(
+              editable.map((environment) =>
+                save.mutateAsync(
                 {
                   environment: environment.id,
                   protectedFlag: false,
+                  expectedProtected: false,
                   reauthWindowSeconds: Number(next),
                 },
-                {
-                  onSuccess: () => {
-                    if (index === editable.length - 1) {
-                      onDone(`Reveal reauthentication window changed to ${next} seconds.`);
-                    }
-                  },
-                  onError,
-                },
+                ),
               ),
             );
+            setWindowBatchPending(false);
+            const failed = results.flatMap((result, index) =>
+              result.status === 'rejected' ? [editable[index]?.name ?? 'unknown'] : [],
+            );
+            if (failed.length > 0) {
+              onError(new Error(`Reveal-window update failed for: ${failed.join(', ')}. Every policy was refreshed; retry after reviewing the current values.`));
+              return;
+            }
+            onDone(`Reveal reauthentication window changed to ${next} seconds in ${String(editable.length)} environment${editable.length === 1 ? '' : 's'}.`);
           }}
         >
           <option value="0">0 (every disclosure)</option>
@@ -947,9 +954,16 @@ export function CompactProjectRetention({
   onError: (error: unknown) => void;
 }) {
   const save = useSetProjectRetention(org, project);
-  const [customRevisions, setCustomRevisions] = useState(
-    String(policy.last_revisions ?? orgPolicy.last_revisions ?? 6),
-  );
+  const policyKey = JSON.stringify([org, project, policy, orgPolicy]);
+  const [draft, setDraft] = useState<{ policyKey: string; revisions: string; age: string } | null>(null);
+  const [overrideRequested, setOverrideRequested] = useState(false);
+  const customRevisions = draft?.revisions ?? String(policy.last_revisions ?? orgPolicy.last_revisions ?? 6);
+  const customAge = draft?.age ?? String(policy.max_age_seconds ?? orgPolicy.max_age_seconds ?? '');
+  const edit = (changes: { revisions?: string; age?: string }) => setDraft({
+    policyKey: draft?.policyKey ?? policyKey,
+    revisions: changes.revisions ?? customRevisions,
+    age: changes.age ?? customAge,
+  });
   const [refusal, setRefusal] = useState<string | null>(null);
   const effective = policy.last_revisions ?? orgPolicy.last_revisions ?? 6;
   // Lowering the org default never rewrites a project's own number, it caps
@@ -966,14 +980,23 @@ export function CompactProjectRetention({
     && own !== undefined
     && own > cap;
 
-  const apply = (inherited: boolean, revisions: number) => {
+  const apply = (inherited: boolean, revisions: number, age = Number(customAge)) => {
+    if (draft !== null && draft.policyKey !== policyKey) {
+      setDraft(null);
+      setRefusal('The retention policy changed while you were editing. Review the current bounds and try again. Nothing was saved.');
+      return;
+    }
     // Refused here, before the request: the server would refuse it too, but a
     // field that quietly keeps a number above the cap looks saved.
     if (!inherited && cap !== null && cap !== undefined && revisions > cap) {
       setRefusal(
         `Refused: cannot exceed the organisation retention (${String(cap)}). A project may never keep more history than the organisation allows.`,
       );
-      setCustomRevisions(String(own ?? cap));
+      setDraft(null);
+      return;
+    }
+    if (!inherited && (!Number.isSafeInteger(revisions) || revisions < 1 || !Number.isSafeInteger(age) || age < 1)) {
+      setRefusal('Custom retention needs a positive maximum age in seconds and a positive revision count. Nothing was saved.');
       return;
     }
     setRefusal(null);
@@ -981,15 +1004,25 @@ export function CompactProjectRetention({
       {
         inherited,
         maxAgeSeconds:
-          inherited ? null : policy.max_age_seconds ?? orgPolicy.max_age_seconds ?? null,
+          inherited ? null : age,
         lastRevisions: inherited ? null : revisions,
       },
       {
-        onSuccess: () => onDone('Revision retention saved.'),
+        onSuccess: () => { setDraft(null); setOverrideRequested(false); onDone('Revision retention saved.'); },
         onError,
       },
     );
   };
+  const saveEdited = () => {
+    if (draft === null) return;
+    if (!policy.inherited && draft.policyKey === policyKey && Number(draft.revisions) === policy.last_revisions && Number(draft.age) === policy.max_age_seconds) {
+      setDraft(null);
+      return;
+    }
+    apply(false, Number(customRevisions));
+  };
+  const custom = !policy.inherited || overrideRequested;
+  const unlimited = policy.mode === 'unlimited';
 
   return (
     <>
@@ -998,7 +1031,9 @@ export function CompactProjectRetention({
           <span className="settings-row__title">Revision retention</span>
           <span className={`settings-row__detail${capped ? ' text-danger' : ''}`}>
             {policy.inherited
-              ? `inherits the org default: values kept for the last ${String(effective)} revisions per environment; follows org changes`
+              ? unlimited
+                ? 'inherits the org default: unlimited retention; follows org changes'
+                : `inherits the org default: values kept for the last ${String(effective)} revisions per environment; follows org changes`
               : capped
                 ? `custom ${String(own)}, capped to ${String(cap)} by the org: a project may never keep more than the org allows`
                 : `custom ${String(effective)}: values kept for the last ${String(effective)} revisions per environment; detached from later org changes`}
@@ -1008,17 +1043,23 @@ export function CompactProjectRetention({
         <select
           className="settings-select"
           aria-label="Retention mode"
-          value={policy.inherited ? 'inherit' : 'custom'}
+          value={custom ? 'custom' : 'inherit'}
           disabled={save.isPending}
           onChange={(event) => {
             const inherit = event.currentTarget.value === 'inherit';
+            if (!inherit && customAge === '') {
+              setOverrideRequested(true);
+              setRefusal('Choose a positive maximum age in seconds and revision count for this custom override.');
+              return;
+            }
+            if (inherit) setOverrideRequested(false);
             apply(inherit, Number(customRevisions));
           }}
         >
-          <option value="inherit">inherit org ({String(orgPolicy.last_revisions ?? 6)})</option>
+          <option value="inherit">inherit org ({orgPolicy.mode === 'unlimited' ? 'unlimited' : String(orgPolicy.last_revisions)})</option>
           <option value="custom">custom</option>
         </select>
-        {policy.inherited ? null : (
+        {!custom ? null : (
           <input
             className={`settings-input settings-input--compact${capped ? ' settings-input--capped' : ''}`}
             type="number"
@@ -1027,11 +1068,20 @@ export function CompactProjectRetention({
             aria-label="Revisions kept per environment"
             value={customRevisions}
             disabled={save.isPending}
-            onChange={(event) => setCustomRevisions(event.currentTarget.value)}
-            onBlur={() => apply(false, Number(customRevisions))}
+            onChange={(event) => edit({ revisions: event.currentTarget.value })}
+            onBlur={saveEdited}
           />
         )}
       </div>
+      {custom && (policy.max_age_seconds ?? orgPolicy.max_age_seconds) == null ? (
+        <div className="settings-row">
+          <div className="settings-row__copy"><span className="settings-row__title">Maximum retention age (seconds)</span></div>
+          <span className="settings-row__spacer" />
+          <input className="settings-input settings-input--compact" type="number" min="1"
+            aria-label="Maximum retention age (seconds)" value={customAge} disabled={save.isPending}
+            onChange={(event) => edit({ age: event.currentTarget.value })} onBlur={saveEdited} />
+        </div>
+      ) : null}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       <p className="settings-note">
         Older revisions lose their values as collection runs (pinned ones always stay); who-changed-what

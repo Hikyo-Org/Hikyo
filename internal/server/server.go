@@ -8,6 +8,7 @@ import (
 	"context"
 	"io/fs"
 	"math"
+	"net"
 	"net/http"
 	"time"
 
@@ -17,6 +18,10 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
 // ReadyChecker reports whether a request would actually work.
@@ -64,12 +69,18 @@ type TLSMetrics interface {
 // It is handed to serveSPA rather than to the header middleware (#211): only a
 // served document consumes the extension, so only a served document pays for
 // the read.
-func remoteOriginSource(a *API) func(context.Context) []string {
+func remoteOriginSource(a *API) func(*http.Request) []string {
 	if a == nil || a.Remotes == nil {
 		return nil
 	}
-	return func(ctx context.Context) []string {
-		origins, err := a.Remotes.RemoteOrigins(ctx)
+	return func(r *http.Request) []string {
+		cookie, err := r.Cookie(browserSessionCookie)
+		if err != nil || r.Header.Get("Authorization") != "" || crypto.ParseArtifact(cookie.Value, crypto.ArtifactBrowserSession) != nil {
+			return nil
+		}
+		ctx := audit.WithContext(r.Context(), audit.Context{SourceIP: a.sourceIP(r), UserAgent: r.UserAgent(), Origin: audit.OriginAPI})
+		ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
+		origins, err := a.Remotes.RemoteOrigins(ctx, service.Bearer(cookie.Value))
 		if err != nil {
 			return nil
 		}
@@ -85,7 +96,7 @@ func New(ready ReadyChecker, a *API, ui fs.FS) http.Handler {
 func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions) http.Handler {
 	r := chi.NewRouter()
 	// The static security baseline, on every response including refusals. The
-	// dynamic part — `connect-src` extended with the configured remotes'
+	// dynamic part — `connect-src` extended with authorized configured remotes'
 	// origins (#71), a closed list read per DOCUMENT so an added or removed
 	// remote takes effect without a restart — belongs to the SPA writer below,
 	// which is the only response that can use it.
@@ -200,6 +211,11 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		_, _ = w.Write([]byte("ready"))
 	})
 	r.Get("/metrics", func(w http.ResponseWriter, req *http.Request) {
+		host, _, err := net.SplitHostPort(req.RemoteAddr)
+		if err != nil || !net.ParseIP(host).IsLoopback() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 		if healthService == nil {
 			http.Error(w, "retention health unavailable", http.StatusServiceUnavailable)
 			return

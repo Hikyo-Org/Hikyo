@@ -290,12 +290,18 @@ func (r *Resolver) DeleteSessionsForWebAuthnCredential(ctx context.Context, cred
 // CreateWebAuthnCeremony writes a single-use, expiring challenge row.
 func (r *Resolver) CreateWebAuthnCeremony(ctx context.Context, c NewWebAuthnCeremony) error {
 	if r.sq != nil {
+		if _, err := r.sq.DeleteExpiredUnconsumedWebAuthnCeremonies(ctx, encodeTime(c.CreatedAt)); err != nil {
+			return err
+		}
 		return r.sq.InsertWebAuthnCeremony(ctx, sqlitegen.InsertWebAuthnCeremonyParams{
 			ID: c.ID, ChallengeVerifier: c.ChallengeVerifier, SessionData: c.SessionData,
 			AccountID: nullString(c.AccountID), SessionID: nullString(c.SessionID), Purpose: c.Purpose,
 			OperationBinding: nullString(c.OperationBinding), EnvironmentID: nullString(c.EnvironmentID),
 			CredentialEpoch: c.CredentialEpoch, ExpiresAt: encodeTime(c.ExpiresAt), CreatedAt: encodeTime(c.CreatedAt),
 		})
+	}
+	if _, err := r.pg.DeleteExpiredUnconsumedWebAuthnCeremonies(ctx, pgTimestamp(c.CreatedAt)); err != nil {
+		return err
 	}
 	return r.pg.InsertWebAuthnCeremony(ctx, pggen.InsertWebAuthnCeremonyParams{
 		ID: c.ID, ChallengeVerifier: c.ChallengeVerifier, SessionData: c.SessionData,

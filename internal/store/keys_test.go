@@ -85,6 +85,21 @@ func runKeyRotationInvariants(t *testing.T, db *store.DB) {
 				}
 			})
 		})
+		t.Run("stale_"+string(purpose)+"_master", func(t *testing.T) {
+			withKeyRepo(t, db, func(ctx context.Context, keys store.KeyRepo, proofs keyTestProofs) {
+				mustInsertKeyFixture(t, ctx, keys, proofs.boot, []crypto.WrappedKey{masterKey(2, 1)}, []crypto.WrappedKey{tier3Key(purpose, 1, 2)})
+				candidate := tier3Key(purpose, 2, 1)
+				var err error
+				if purpose == crypto.PurposeToken {
+					err = keys.RotateTokenKey(ctx, proofs.token, candidate)
+				} else {
+					err = keys.RotateScanningKey(ctx, proofs.scanning, candidate)
+				}
+				if !errors.Is(err, crypto.ErrStaleMaster) {
+					t.Fatalf("stale %s master error = %v, want ErrStaleMaster", purpose, err)
+				}
+			})
+		})
 	}
 
 	t.Run("stale_dek_predecessor", func(t *testing.T) {

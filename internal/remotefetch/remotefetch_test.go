@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +34,8 @@ func TestCONNECTCancellationClosesAStalledProxyConnection(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	result := make(chan error, 1)
 	go func() {
-		result <- establishCONNECT(ctx, client, "remote.example:443", time.Minute)
+		_, err := establishCONNECT(ctx, client, "remote.example:443", time.Minute)
+		result <- err
 	}()
 
 	<-requestRead
@@ -53,6 +55,29 @@ func TestCONNECTCancellationClosesAStalledProxyConnection(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("the stalled proxy retained its connection after cancellation")
+	}
+}
+
+func TestCONNECTSuccessIgnoresDeclaredBodyAndPreservesTunnelBytes(t *testing.T) {
+	client, proxy := net.Pipe()
+	defer proxy.Close()
+	go func() {
+		reader := bufio.NewReader(proxy)
+		_, _ = http.ReadRequest(reader)
+		_, _ = proxy.Write([]byte("HTTP/1.1 200 Connection Established\r\nContent-Length: 999\r\n\r\ntls"))
+	}()
+
+	tunnel, err := establishCONNECT(t.Context(), client, "remote.example:443", time.Second)
+	if err != nil {
+		t.Fatalf("CONNECT: %v", err)
+	}
+	defer tunnel.Close()
+	got := make([]byte, 3)
+	if _, err := io.ReadFull(tunnel, got); err != nil {
+		t.Fatalf("read buffered tunnel bytes: %v", err)
+	}
+	if string(got) != "tls" {
+		t.Fatalf("tunnel bytes = %q, want tls", got)
 	}
 }
 
