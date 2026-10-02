@@ -645,4 +645,21 @@ type txForwarded interface {
 	// WriteRecoveryCodes writes the first batch for an account.
 	//hikyo:forward CreateRecoveryCodes
 	WriteRecoveryCodes(ctx context.Context, b RecoveryBatch, at time.Time) error
+	// OAuth2's profile-pinned provider and single-use transaction resolution.
+	CreateOAuth2Provider(ctx context.Context, n NewOAuth2Provider) error
+	OAuth2ProviderBySlug(ctx context.Context, slug string) (OAuth2Provider, error)
+	ListOAuth2Providers(ctx context.Context) ([]OAuth2Provider, error)
+	UpdateOAuth2Provider(ctx context.Context, u OAuth2ProviderUpdate) (bool, error)
+	LockOAuth2ProviderForDelete(ctx context.Context, id string) error
+	DeleteOAuth2Provider(ctx context.Context, id string) error
+	GuardOAuth2ProviderForMint(ctx context.Context, id string, rowVersion int64, issuer string) (bool, error)
+	OAuth2ProviderForCallback(ctx context.Context, id string) (OAuth2Provider, error)
+	CreateOAuth2Transaction(ctx context.Context, t NewOAuth2Transaction) error
+	OAuth2TransactionByState(ctx context.Context, stateVerifier []byte) (OAuth2Transaction, error)
+	ConsumeOAuth2Transaction(ctx context.Context, id string, at time.Time) (bool, error)
+	BindSessionToOAuth2Provider(ctx context.Context, sessionID, providerID string) (bool, error)
+	DeleteSessionsForOAuth2Provider(ctx context.Context, providerID string) (int64, error)
+	CredentialAuthorityByID(ctx context.Context, id string) (CredentialAuthority, error)
+	ClaimOAuth2Authority(ctx context.Context, id string, at time.Time) (bool, error)
+	StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error
 }

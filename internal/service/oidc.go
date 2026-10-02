@@ -595,7 +595,7 @@ func (s *Providers) Delete(ctx context.Context, actor Actor, slug string) error 
 func (s *Providers) auditChanged(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID, providerID, change string, swept int64) error {
 	e, err := newAuditEvent(ctx, audit.EventOIDCProviderChanged, principal,
 		audit.Object{Type: "oidc_provider", ID: providerID}, audit.OutcomeSuccess, "",
-		audit.Payload{"provider_id": providerID, "change": change, "sessions_swept": int(swept)})
+		audit.Payload{"kind": OIDCKind, "provider_id": providerID, "change": change, "sessions_swept": int(swept)})
 	if err != nil {
 		return err
 	}
@@ -605,7 +605,7 @@ func (s *Providers) auditChanged(ctx context.Context, r store.Repos, p authz.Pro
 func (s *Providers) auditRead(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID, query string, count int) error {
 	e, err := newAuditEvent(ctx, audit.EventOIDCProviderRead, principal,
 		audit.Object{Type: "oidc_provider"}, audit.OutcomeSuccess, "",
-		audit.Payload{"query": query, "row_count": count})
+		audit.Payload{"kind": OIDCKind, "query": query, "row_count": count})
 	if err != nil {
 		return err
 	}

@@ -121,8 +121,9 @@ type SessionRow struct {
 	// CSRFVerifier is the fast-hash verifier of this session's synchronizer
 	// token, nil for a CLI session. The transport compares the presented
 	// header against it on every state-changing cookie request (#56).
-	CSRFVerifier []byte
-	ProviderID   string
+	CSRFVerifier     []byte
+	ProviderID       string
+	OAuth2ProviderID string
 	// RequestingOrigin is the origin a WORKSPACE session was issued to, empty
 	// for cli and browser rows. It travels with the resolved row because the
 	// `ws` authentication leg COMPARES it against the origin the transport
@@ -379,7 +380,7 @@ func (r *Resolver) SessionByVerifier(ctx context.Context, verifier []byte) (Sess
 		AuthenticatedAt: row.AuthenticatedAt.Time, CeremonyID: row.CeremonyID.String,
 		CreatedAt: row.CreatedAt.Time, LastSeenAt: row.LastSeenAt.Time,
 		IdleExpiresAt: row.IdleExpiresAt.Time, AbsoluteExpiresAt: row.AbsoluteExpiresAt.Time,
-		CSRFVerifier: row.CsrfVerifier, RequestingOrigin: row.RequestingOrigin.String, ProviderID: row.ProviderID.String,
+		CSRFVerifier: row.CsrfVerifier, RequestingOrigin: row.RequestingOrigin.String, ProviderID: row.ProviderID.String, OAuth2ProviderID: row.Oauth2ProviderID.String,
 		EnrolmentRequired: row.EnrolmentRequired,
 	}, nil
 }
@@ -407,7 +408,7 @@ func (r *Resolver) SessionByID(ctx context.Context, id string) (SessionRow, erro
 		AuthenticatedAt: row.AuthenticatedAt.Time, CeremonyID: row.CeremonyID.String,
 		CreatedAt: row.CreatedAt.Time, LastSeenAt: row.LastSeenAt.Time,
 		IdleExpiresAt: row.IdleExpiresAt.Time, AbsoluteExpiresAt: row.AbsoluteExpiresAt.Time,
-		CSRFVerifier: row.CsrfVerifier, RequestingOrigin: row.RequestingOrigin.String, ProviderID: row.ProviderID.String,
+		CSRFVerifier: row.CsrfVerifier, RequestingOrigin: row.RequestingOrigin.String, ProviderID: row.ProviderID.String, OAuth2ProviderID: row.Oauth2ProviderID.String,
 		EnrolmentRequired: row.EnrolmentRequired,
 	}, nil
 }
@@ -763,20 +764,20 @@ func sqliteSession(row sqlitegen.GetSessionByVerifierRow) (SessionRow, error) {
 	return sqliteSessionFields(row.ID, row.PrincipalID, row.Artifact, row.SessionGeneration,
 		row.CredentialEpoch, row.AuthMethod, row.Factors, row.AuthenticatedAt,
 		row.CeremonyID, row.CreatedAt, row.LastSeenAt, row.IdleExpiresAt, row.AbsoluteExpiresAt,
-		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID, row.EnrolmentRequired)
+		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID, row.Oauth2ProviderID, row.EnrolmentRequired)
 }
 
 func sqliteSessionByID(row sqlitegen.GetSessionByIDRow) (SessionRow, error) {
 	return sqliteSessionFields(row.ID, row.PrincipalID, row.Artifact, row.SessionGeneration,
 		row.CredentialEpoch, row.AuthMethod, row.Factors, row.AuthenticatedAt,
 		row.CeremonyID, row.CreatedAt, row.LastSeenAt, row.IdleExpiresAt, row.AbsoluteExpiresAt,
-		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID, row.EnrolmentRequired)
+		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID, row.Oauth2ProviderID, row.EnrolmentRequired)
 }
 
 func sqliteSessionFields(id, principalID, artifact string, sessionGeneration, credentialEpoch int64,
 	authMethod, factors, authenticatedAt string, ceremonyID sql.NullString,
 	createdAt, lastSeenAt, idleExpiresAt, absoluteExpiresAt string, csrfVerifier []byte,
-	requestingOrigin, providerID sql.NullString, enrolmentRequired int64,
+	requestingOrigin, providerID, oauth2ProviderID sql.NullString, enrolmentRequired int64,
 ) (SessionRow, error) {
 	var (
 		out SessionRow
@@ -786,7 +787,7 @@ func sqliteSessionFields(id, principalID, artifact string, sessionGeneration, cr
 		ID: id, PrincipalID: domain.PrincipalID(principalID), Artifact: artifact,
 		SessionGeneration: sessionGeneration, CredentialEpoch: credentialEpoch,
 		AuthMethod: authMethod, Factors: factors, CeremonyID: ceremonyID.String,
-		CSRFVerifier: csrfVerifier, RequestingOrigin: requestingOrigin.String, ProviderID: providerID.String,
+		CSRFVerifier: csrfVerifier, RequestingOrigin: requestingOrigin.String, ProviderID: providerID.String, OAuth2ProviderID: oauth2ProviderID.String,
 		EnrolmentRequired: enrolmentRequired != 0,
 	}
 	for _, f := range []struct {

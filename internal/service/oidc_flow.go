@@ -962,6 +962,7 @@ func joinAMR(amr []string) string {
 
 // AuthMethodProvider is one enabled provider for the public methods list.
 type AuthMethodProvider struct {
+	Profile     string
 	Slug        string
 	DisplayName string
 	Kind        string
@@ -1005,6 +1006,16 @@ func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, err
 				out = append(out, AuthMethodProvider{Slug: p.Slug, DisplayName: p.DisplayName, Kind: OIDCKind, Brand: providerBrand(p.Issuer)})
 			}
 		}
+		oauth2Providers, e := az.ListOAuth2Providers(ctx)
+		if e != nil {
+			return e
+		}
+		for _, p := range oauth2Providers {
+			if p.Enabled {
+				out = append(out, AuthMethodProvider{Slug: p.Slug, DisplayName: p.DisplayName, Kind: OAuth2Kind, Profile: p.Profile, Brand: p.Profile})
+			}
+		}
+
 		samlProviders, e := az.ListSAMLProviders(ctx)
 		if e != nil {
 			return e
@@ -1022,6 +1033,7 @@ func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, err
 // ExternalIdentityView is the transport-facing shape of a linked identity, so
 // internal/server needs no authz import.
 type ExternalIdentityView struct {
+	Profile    string
 	ID         string
 	Kind       string
 	Issuer     string
@@ -1047,7 +1059,15 @@ func (s *Auth) ListIdentities(ctx context.Context, presented string) ([]External
 			return e
 		}
 		for _, r := range rows {
-			out = append(out, ExternalIdentityView{
+			profile := ""
+			if r.Kind == OAuth2Kind {
+				p, err := az.OAuth2ProviderForCallback(ctx, r.ProviderID)
+				if err != nil && !errors.Is(err, domain.ErrNotFound) {
+					return err
+				}
+				profile = p.Profile
+			}
+			out = append(out, ExternalIdentityView{Profile: profile,
 				ID: r.ID, Kind: r.Kind, Issuer: r.Issuer, Subject: r.Subject, ProviderID: r.ProviderID, CreatedAt: r.CreatedAt,
 			})
 		}

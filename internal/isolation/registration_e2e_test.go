@@ -140,9 +140,8 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("missing")}, Landing: orgTemplateLanding()}},
 		{"landing.kind", reg, instanceReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding()}},
-		// oauth2 has no provider table until #609: refused by name, not as
-		// an unknown row.
-		{string(service.PreconditionProviderKindUnsupported) + ": oauth2:github", reg, orgAReg,
+		// OAuth2 is supported, but this fixture has no GitHub provider row.
+		{"external[0].provider: unknown provider oauth2:github", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{{
 				Provider: domain.ProviderRef{Kind: domain.ProviderOAuth2, Slug: "github"}}}, Landing: orgTemplateLanding()}},
 	}

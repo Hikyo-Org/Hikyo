@@ -477,3 +477,21 @@ func TestPKICreatesDeclareCreated(t *testing.T) {
 		}
 	}
 }
+
+func TestOAuth2RegistrationSchemaRefusesClaims(t *testing.T) {
+	for _, tc := range []struct {
+		body    string
+		refused bool
+	}{
+		{`{"proof":"fixture","external":[{"provider":{"kind":"oauth2","slug":"github"},"claim":"company","values":["acme"]}],"landing":{"kind":"none"}}`, true},
+		{`{"proof":"fixture","external":[{"provider":{"kind":"oauth2","slug":"github"}}],"landing":{"kind":"none"}}`, false},
+		{`{"proof":"fixture","external":[{"provider":{"kind":"oidc","slug":"corp"},"claim":"hd","values":["acme"]}],"landing":{"kind":"none"}}`, false},
+	} {
+		req := httptest.NewRequest(http.MethodPut, api.PathPrefix+"/instance/registration-policy", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		_, err := api.ValidateRequest(req)
+		if (err != nil) != tc.refused {
+			t.Fatalf("schema refusal %v: %v body %s", tc.refused, err, tc.body)
+		}
+	}
+}

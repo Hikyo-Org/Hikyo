@@ -33,6 +33,8 @@ import (
 
 // AuthService is the human-authentication surface this transport needs.
 type AuthService interface {
+	OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
+	OAuth2Callback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
 	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
 	UpdateMyProfile(ctx context.Context, presented string, profile service.ProfileUpdate, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
@@ -91,6 +93,13 @@ type ProviderService interface {
 	Put(ctx context.Context, actor service.Actor, slug string, in service.ProviderInput) (service.ProviderView, error)
 	Get(ctx context.Context, actor service.Actor, slug string) (service.ProviderView, error)
 	List(ctx context.Context, actor service.Actor) ([]service.ProviderView, error)
+	Delete(ctx context.Context, actor service.Actor, slug string) error
+}
+
+type OAuth2ProviderService interface {
+	Put(ctx context.Context, actor service.Actor, slug string, in service.OAuth2ProviderInput) (service.OAuth2ProviderView, error)
+	Get(ctx context.Context, actor service.Actor, slug string) (service.OAuth2ProviderView, error)
+	List(ctx context.Context, actor service.Actor) ([]service.OAuth2ProviderView, error)
 	Delete(ctx context.Context, actor service.Actor, slug string) error
 }
 
@@ -175,6 +184,7 @@ type API struct {
 	RetentionHealth OperationalRetentionHealthService
 	Updates         UpdateService
 	Providers       ProviderService
+	OAuth2Providers OAuth2ProviderService
 	SAMLProviders   SAMLProviderService
 	Adapters        *service.Adapters
 	// FileTargets is the generic file-destination administration (#164).

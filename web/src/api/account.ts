@@ -15,6 +15,7 @@ import {
   removePasskeyOp,
   removeTotpOp,
   samlStartOp,
+  oauth2StartOp,
   unlinkIdentityOp,
 } from '@hikyo/operations';
 import {
@@ -285,13 +286,17 @@ export function useUnlinkIdentity() {
 
 export function useLinkIdentity() {
   return useSensitiveMutation({
-    mutationFn: async (input: { provider: string; kind: 'oidc' | 'saml'; proof: string }) => {
+    mutationFn: async (input: { provider: string; kind: 'oidc' | 'saml' | 'oauth2'; proof: string }) => {
       if (input.kind === 'saml') {
         const result = await parsed(samlStartOp, {
             path: { provider: input.provider },
             body: { purpose: 'link', proof: input.proof },
           });
         return result.redirect_url;
+      }
+      if (input.kind === 'oauth2') {
+        const result = await parsed(oauth2StartOp, { path: { provider: input.provider }, body: {purpose: 'link', proof: input.proof, browser: true} });
+        return result.authorization_url;
       }
       const result = await parsed(linkIdentityOp, {
         body: { provider: input.provider, proof: input.proof, browser: true },

@@ -20,7 +20,7 @@ import (
 // authority and every request still proves instance-config at the server.
 func runInstanceConfig(ctx context.Context, ios IO, args []string) error {
 	noun, rest, err := subverb("instance-config", args,
-		"provider", "saml-sp-key", "credential-policy", "federation-issuer", "status", "adopt", "apply", "test-email")
+		"provider", "oauth2-provider", "saml-sp-key", "credential-policy", "federation-issuer", "status", "adopt", "apply", "test-email")
 	if err != nil {
 		return err
 	}
@@ -29,6 +29,9 @@ func runInstanceConfig(ctx context.Context, ios IO, args []string) error {
 	}
 	if noun == "federation-issuer" {
 		return runFederationIssuer(ctx, ios, rest)
+	}
+	if noun == "oauth2-provider" {
+		return runOAuth2Provider(ctx, ios, rest)
 	}
 	if noun == "saml-sp-key" {
 		return runSAMLSPKey(ctx, ios, rest)

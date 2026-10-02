@@ -165,7 +165,7 @@ const (
 	// deleted: nothing auto-deletes entries (#579 d6).
 	PreconditionProviderMissing RegistrationPrecondition = "provider-missing"
 	// PreconditionProviderKindUnsupported is a provider kind with no
-	// configured table yet (`oauth2` until #609).
+	// configured table for this build.
 	PreconditionProviderKindUnsupported RegistrationPrecondition = "provider-kind-unsupported"
 )
 
@@ -354,6 +354,9 @@ func validateRegistrationInput(scope RegistrationScope, in RegistrationPolicyInp
 			// allowlist claim either.
 			return out, refuseRegistration("%s.claim: email is not accepted as an allowlist claim", at)
 		}
+		if ref.Kind == domain.ProviderOAuth2 && claim != "" {
+			return out, refuseRegistration("%s.claim: an OAuth2 profile has no verified allowlist claim", at)
+		}
 		if (claim == "") != (len(e.Values) == 0) {
 			return out, refuseRegistration("%s: an allowlist claim needs at least one accepted value, and values need a claim", at)
 		}
@@ -408,9 +411,21 @@ type resolvedEntry struct {
 }
 
 // resolveEntryProvider binds a {kind, slug} to a provider row and applies
-// providerPrecondition. Only oidc rows exist today: an `oauth2` entry is
-// refused by name until #609 adds its table, which replaces this branch.
+// providerPrecondition against the table owned by its protocol kind.
 func resolveEntryProvider(ctx context.Context, az *authz.TxAuthorizer, at string, ref domain.ProviderRef) (string, error) {
+	if ref.Kind == domain.ProviderOAuth2 {
+		p, err := az.OAuth2ProviderBySlug(ctx, ref.Slug)
+		if errors.Is(err, domain.ErrNotFound) {
+			return "", refuseRegistration("%s.provider: unknown provider %s", at, ref)
+		}
+		if err != nil {
+			return "", err
+		}
+		if !p.Enabled {
+			return "", preconditionRefusal(PreconditionProviderDisabled, ref.String())
+		}
+		return p.ID, nil
+	}
 	if ref.Kind != domain.ProviderOIDC {
 		return "", preconditionRefusal(PreconditionProviderKindUnsupported, ref.String())
 	}
@@ -503,7 +518,20 @@ func (s *Registration) evaluatePolicy(ctx context.Context, az *authz.TxAuthorize
 			Claim:    e.Claim, Values: append([]string{}, e.Values...),
 		}
 		var failing RegistrationPrecondition
-		if entry.Provider.Kind != domain.ProviderOIDC {
+		if entry.Provider.Kind == domain.ProviderOAuth2 {
+			row, err := az.OAuth2ProviderForCallback(ctx, e.ProviderID)
+			switch {
+			case errors.Is(err, domain.ErrNotFound):
+				failing = PreconditionProviderMissing
+			case err != nil:
+				return RegistrationPolicyView{}, err
+			default:
+				entry.Provider.Slug, entry.DisplayName = row.Slug, row.DisplayName
+				if !row.Enabled {
+					failing = PreconditionProviderDisabled
+				}
+			}
+		} else if entry.Provider.Kind != domain.ProviderOIDC {
 			failing = PreconditionProviderKindUnsupported
 		} else {
 			row, err := az.ProviderForCallback(ctx, e.ProviderID)

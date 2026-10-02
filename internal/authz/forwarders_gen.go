@@ -103,6 +103,10 @@ func (a *TxAuthorizer) AuthorityByValue(ctx context.Context, verifier []byte) (C
 	return a.r.CredentialAuthorityByVerifier(ctx, verifier)
 }
 
+func (a *TxAuthorizer) BindSessionToOAuth2Provider(ctx context.Context, sessionID, providerID string) (bool, error) {
+	return a.r.BindSessionToOAuth2Provider(ctx, sessionID, providerID)
+}
+
 // BindSessionToSAMLProvider records SAML provider provenance in the same
 // transaction that mints the session.
 func (a *TxAuthorizer) BindSessionToSAMLProvider(ctx context.Context, sessionID, providerID string) (bool, error) {
@@ -122,6 +126,10 @@ func (a *TxAuthorizer) CLIReauthHandoffByCode(ctx context.Context, verifier []by
 
 func (a *TxAuthorizer) CLIReauthHandoffByState(ctx context.Context, verifier []byte) (CLIReauthHandoff, error) {
 	return a.r.CLIReauthHandoffByState(ctx, verifier)
+}
+
+func (a *TxAuthorizer) ClaimOAuth2Authority(ctx context.Context, id string, at time.Time) (bool, error) {
+	return a.r.ClaimOAuth2Authority(ctx, id, at)
 }
 
 // ClaimSAMLReplay atomically records an assertion ID. False means replay.
@@ -167,6 +175,10 @@ func (a *TxAuthorizer) ConsumeCLIReauthHandoff(ctx context.Context, id string, a
 // already consumed and the caller must fail closed.
 func (a *TxAuthorizer) ConsumeLoginChallenge(ctx context.Context, id string, at time.Time) (bool, error) {
 	return a.r.ConsumeLoginChallenge(ctx, id, at)
+}
+
+func (a *TxAuthorizer) ConsumeOAuth2Transaction(ctx context.Context, id string, at time.Time) (bool, error) {
+	return a.r.ConsumeOAuth2Transaction(ctx, id, at)
 }
 
 // ConsumeOIDCTransaction claims a transaction atomically; false means it moved.
@@ -265,6 +277,15 @@ func (a *TxAuthorizer) CreateMachinePrincipal(ctx context.Context, id domain.Pri
 	return a.r.CreateMachinePrincipal(ctx, id, class, at)
 }
 
+// OAuth2's profile-pinned provider and single-use transaction resolution.
+func (a *TxAuthorizer) CreateOAuth2Provider(ctx context.Context, n NewOAuth2Provider) error {
+	return a.r.CreateOAuth2Provider(ctx, n)
+}
+
+func (a *TxAuthorizer) CreateOAuth2Transaction(ctx context.Context, t NewOAuth2Transaction) error {
+	return a.r.CreateOAuth2Transaction(ctx, t)
+}
+
 // CreateOIDCTransaction writes a single-use transaction row.
 func (a *TxAuthorizer) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransaction) error {
 	return a.r.CreateOIDCTransaction(ctx, t)
@@ -334,6 +355,10 @@ func (a *TxAuthorizer) CreateWorkspaceHandoff(ctx context.Context, h authn.NewWo
 	return a.r.CreateWorkspaceHandoff(ctx, h)
 }
 
+func (a *TxAuthorizer) CredentialAuthorityByID(ctx context.Context, id string) (CredentialAuthority, error) {
+	return a.r.CredentialAuthorityByID(ctx, id)
+}
+
 // CredentialEpoch reads the instance epoch.
 func (a *TxAuthorizer) CredentialEpoch(ctx context.Context) (int64, error) {
 	return a.r.CredentialEpoch(ctx)
@@ -365,6 +390,10 @@ func (a *TxAuthorizer) DeleteFederationIssuer(ctx context.Context, id string) (b
 // DeleteGrantRow removes a grant row whose last origin was released.
 func (a *TxAuthorizer) DeleteGrantRow(ctx context.Context, grantID string, p domain.PrincipalID) (bool, error) {
 	return a.r.DeleteGrantRow(ctx, grantID, p)
+}
+
+func (a *TxAuthorizer) DeleteOAuth2Provider(ctx context.Context, id string) error {
+	return a.r.DeleteOAuth2Provider(ctx, id)
 }
 
 // DeleteProvider removes a provider.
@@ -402,6 +431,10 @@ func (a *TxAuthorizer) DeleteSAMLProvider(ctx context.Context, id string) error 
 
 func (a *TxAuthorizer) DeleteServiceAccountAggregate(ctx context.Context, in DeleteServiceAccountAggregateInput) (ServiceAccountDeletion, error) {
 	return a.r.DeleteServiceAccountAggregate(ctx, in)
+}
+
+func (a *TxAuthorizer) DeleteSessionsForOAuth2Provider(ctx context.Context, providerID string) (int64, error) {
+	return a.r.DeleteSessionsForOAuth2Provider(ctx, providerID)
 }
 
 // DeleteWebAuthnCredential removes a credential (de-enrolment) under an
@@ -534,6 +567,10 @@ func (a *TxAuthorizer) GrantsOf(ctx context.Context, p domain.PrincipalID) ([]do
 	return a.r.Grants(ctx, p)
 }
 
+func (a *TxAuthorizer) GuardOAuth2ProviderForMint(ctx context.Context, id string, rowVersion int64, issuer string) (bool, error) {
+	return a.r.GuardOAuth2ProviderForMint(ctx, id, rowVersion, issuer)
+}
+
 // GuardProviderForMint locks the pinned provider row inside a Phase-C mint tx
 // and reports whether it still matches the Phase-A snapshot; false means the
 // provider moved and the mint must refuse (A4 TOCTOU, sweep wins).
@@ -593,6 +630,10 @@ func (a *TxAuthorizer) InvalidateRestoredExternalCredentials(ctx context.Context
 	return a.r.InvalidateRestoredExternalCredentials(ctx, now)
 }
 
+func (a *TxAuthorizer) ListOAuth2Providers(ctx context.Context) ([]OAuth2Provider, error) {
+	return a.r.ListOAuth2Providers(ctx)
+}
+
 // ListProviders lists every configured provider.
 func (a *TxAuthorizer) ListProviders(ctx context.Context) ([]OIDCProvider, error) {
 	return a.r.ListProviders(ctx)
@@ -632,6 +673,10 @@ func (a *TxAuthorizer) LockInstanceIdentityRow(ctx context.Context) error {
 // never passed the gate.
 func (a *TxAuthorizer) LockMachinePrincipal(ctx context.Context, p domain.PrincipalID) error {
 	return a.r.LockPrincipalRow(ctx, p)
+}
+
+func (a *TxAuthorizer) LockOAuth2ProviderForDelete(ctx context.Context, id string) error {
+	return a.r.LockOAuth2ProviderForDelete(ctx, id)
 }
 
 // LockProviderForDelete locks the provider row inside the delete tx so the
@@ -702,6 +747,18 @@ func (a *TxAuthorizer) MintInstanceConnection(ctx context.Context, n authn.NewIn
 // MintSession writes a session row.
 func (a *TxAuthorizer) MintSession(ctx context.Context, s NewSession) error {
 	return a.r.CreateSession(ctx, s)
+}
+
+func (a *TxAuthorizer) OAuth2ProviderBySlug(ctx context.Context, slug string) (OAuth2Provider, error) {
+	return a.r.OAuth2ProviderBySlug(ctx, slug)
+}
+
+func (a *TxAuthorizer) OAuth2ProviderForCallback(ctx context.Context, id string) (OAuth2Provider, error) {
+	return a.r.OAuth2ProviderForCallback(ctx, id)
+}
+
+func (a *TxAuthorizer) OAuth2TransactionByState(ctx context.Context, stateVerifier []byte) (OAuth2Transaction, error) {
+	return a.r.OAuth2TransactionByState(ctx, stateVerifier)
 }
 
 // OIDCTransactionByState resolves a transaction by its state verifier.
@@ -987,6 +1044,10 @@ func (a *TxAuthorizer) SlideSession(ctx context.Context, id string, seen, idleEx
 	return a.r.TouchSession(ctx, id, seen, idleExpires)
 }
 
+func (a *TxAuthorizer) StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error {
+	return a.r.StampCredentialEstablish(ctx, sessionID, identityID, expires)
+}
+
 // StrandedRevealPrincipals enumerates the reveal-holding principals a 0
 // effective window would strand on the given environment chain (B6).
 func (a *TxAuthorizer) StrandedRevealPrincipals(ctx context.Context, org, project, env string) ([]domain.PrincipalID, error) {
@@ -1037,6 +1098,10 @@ func (a *TxAuthorizer) UpdateAccountProfile(ctx context.Context, accountID strin
 
 func (a *TxAuthorizer) UpdateFederationIssuer(ctx context.Context, id string, source jwkssource.KeySource, refused []string, caBundle string, actor domain.PrincipalID, at time.Time) (bool, error) {
 	return a.r.UpdateFederationIssuer(ctx, id, source, refused, caBundle, actor, at)
+}
+
+func (a *TxAuthorizer) UpdateOAuth2Provider(ctx context.Context, u OAuth2ProviderUpdate) (bool, error) {
+	return a.r.UpdateOAuth2Provider(ctx, u)
 }
 
 // UpdateProvider compare-and-swaps a provider; false means the row moved.

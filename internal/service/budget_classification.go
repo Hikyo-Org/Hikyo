@@ -186,6 +186,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpFederationIssuerUpdate, authz.OpFederationIssuerDelete,
 		// providers (OIDC)
 		authz.OpProviderGet, authz.OpProviderList, authz.OpProviderPut, authz.OpProviderDelete,
+		authz.OpOAuth2ProviderGet, authz.OpOAuth2ProviderList, authz.OpOAuth2ProviderPut, authz.OpOAuth2ProviderDelete,
 		// SAML providers + SP keys
 		authz.OpSAMLProviderGet, authz.OpSAMLProviderList, authz.OpSAMLProviderPut,
 		authz.OpSAMLProviderPatch, authz.OpSAMLProviderDelete, authz.OpSAMLProviderRefreshMetadata,

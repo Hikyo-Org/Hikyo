@@ -500,6 +500,13 @@ type CredentialAuthority struct {
 	CreatedAt                 pgtype.Timestamptz
 }
 
+type CredentialEstablishEvidence struct {
+	SessionID  string
+	IdentityID string
+	Purpose    string
+	ExpiresAt  pgtype.Timestamptz
+}
+
 type CredentialPolicy struct {
 	ID                       int32
 	MaxFiniteLifetimeSeconds int64

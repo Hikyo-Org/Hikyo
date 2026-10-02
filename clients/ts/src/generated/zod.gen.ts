@@ -3396,6 +3396,15 @@ export const zOidcStartRequest = z.object({
     browser: z.boolean().optional().default(false)
 });
 
+export const zOauth2StartRequest = z.object({
+    purpose: z.string(),
+    intent: z.enum(['sign-in', 'sign-up']).optional(),
+    signup_org: z.string().max(64).optional(),
+    environment_id: z.string().max(64).optional(),
+    proof: z.string().max(1024).optional(),
+    browser: z.boolean().optional().default(false)
+});
+
 export const zOidcStartResult = z.object({
     authorization_url: z.string()
 });
@@ -3416,6 +3425,7 @@ export const zSamlAcsRequest = z.object({
 });
 
 export const zIdentityLinkRequest = z.object({
+    kind: z.enum(['oidc', 'oauth2']).optional().default('oidc'),
     provider: z.string().max(64),
     proof: z.string().max(1024),
     browser: z.boolean().optional().default(false)
@@ -3436,6 +3446,16 @@ export const zOidcProviderInput = z.object({
     row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
+export const zOauth2ProviderInput = z.object({
+    profile: z.enum(['github']),
+    display_name: z.string().min(1).max(256),
+    issuer: z.string().min(1).max(2048),
+    client_id: z.string().min(1).max(1024),
+    client_secret: z.string().min(1).max(4096),
+    enabled: z.boolean(),
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
 export const zOidcProvider = z.object({
     slug: z.string(),
     display_name: z.string(),
@@ -3450,6 +3470,21 @@ export const zOidcProvider = z.object({
 
 export const zOidcProviderList = z.object({
     providers: z.array(zOidcProvider)
+});
+
+export const zOauth2Provider = z.object({
+    profile: z.enum(['github']),
+    slug: z.string(),
+    display_name: z.string(),
+    issuer: z.string(),
+    client_id: z.string(),
+    redirect_uri: z.string(),
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    enabled: z.boolean()
+});
+
+export const zOauth2ProviderList = z.object({
+    providers: z.array(zOauth2Provider)
 });
 
 /**
@@ -3473,12 +3508,18 @@ export const zSignupMethod = z.union([
     zLocalSignupMethod
 ]);
 
-export const zRegistrationExternalEntry = z.object({
+export const zRegistrationExternalEntry = z.intersection(z.union([
+    z.unknown(),
+    z.object({
+        claim: z.string().max(0).optional(),
+        values: z.array(z.string()).max(0).optional()
+    })
+]), z.object({
     provider: zProviderRef,
     display_name: z.string().optional(),
     claim: z.string().max(256).optional(),
     values: z.array(z.string().max(512)).max(64).optional()
-});
+}));
 
 export const zRegistrationPolicyPutRequest = z.object({
     external: z.array(zRegistrationExternalEntry).max(64),
@@ -3508,10 +3549,11 @@ export const zRegistrationPolicy = z.object({
 });
 
 export const zAuthMethodProvider = z.object({
+    profile: z.enum(['github']).optional(),
     slug: z.string(),
     display_name: z.string(),
     kind: zIdentityProviderKind,
-    brand: z.enum(['google', 'microsoft']).optional()
+    brand: z.string().optional()
 });
 
 export const zAuthMethods = z.object({
@@ -3528,6 +3570,7 @@ export const zAuthMethods = z.object({
 });
 
 export const zExternalIdentity = z.object({
+    profile: z.enum(['github']).optional(),
     id: zId,
     kind: zIdentityProviderKind,
     issuer: z.string(),
@@ -6197,6 +6240,33 @@ export const zOidcCallbackQuery = z.object({
  */
 export const zOidcCallbackResponse = zLoginResult;
 
+export const zOauth2StartBody = zOauth2StartRequest;
+
+export const zOauth2StartPath = z.object({
+    provider: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+/**
+ * The IdP authorization URL.
+ */
+export const zOauth2StartResponse = zOidcStartResult;
+
+export const zOauth2CallbackPath = z.object({
+    provider: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+export const zOauth2CallbackQuery = z.object({
+    code: z.string().max(4096).optional(),
+    state: z.string().max(512).optional(),
+    iss: z.string().max(2048).optional(),
+    error: z.string().max(256).optional()
+});
+
+/**
+ * The minted or rotated session.
+ */
+export const zOauth2CallbackResponse = zLoginResult;
+
 export const zSamlStartBody = zSamlStartRequest;
 
 export const zSamlStartPath = z.object({
@@ -6378,6 +6448,40 @@ export const zPutOidcProviderPath = z.object({
  * The created or reconfigured provider.
  */
 export const zPutOidcProviderResponse = zOidcProvider;
+
+/**
+ * The configured providers.
+ */
+export const zListOauth2ProvidersResponse = zOauth2ProviderList;
+
+export const zDeleteOauth2ProviderPath = z.object({
+    slug: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+/**
+ * Deleted.
+ */
+export const zDeleteOauth2ProviderResponse = z.void();
+
+export const zGetOauth2ProviderPath = z.object({
+    slug: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+/**
+ * The provider.
+ */
+export const zGetOauth2ProviderResponse = zOauth2Provider;
+
+export const zPutOauth2ProviderBody = zOauth2ProviderInput;
+
+export const zPutOauth2ProviderPath = z.object({
+    slug: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+});
+
+/**
+ * The created or reconfigured provider.
+ */
+export const zPutOauth2ProviderResponse = zOauth2Provider;
 
 /**
  * Persisted payload-pruner health.

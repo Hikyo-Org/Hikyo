@@ -175,7 +175,7 @@ export function AccountSecurity() {
           { provider: request.provider, kind: request.providerKind, proof: value },
           {
             onSuccess: (redirect) => {
-              if (request.providerKind === 'oidc') {
+              if ((request.providerKind === 'oidc' || request.providerKind === 'oauth2')) {
                 const state = new URL(redirect).searchParams.get('state');
                 if (state !== null) rememberOIDCReturn(state, window.location.href);
               }
@@ -455,7 +455,7 @@ export function AccountSecurity() {
               disabled={link.isPending || methods.data?.providers[0] === undefined}
               onClick={() => {
                 const provider = methods.data?.providers[0];
-                if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
+                if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml' || provider.kind === 'oauth2')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
               }}
             >link…</Button>
           </div>
@@ -474,7 +474,7 @@ export function AccountSecurity() {
               <div>
                 <strong className="mono">{identity.issuer}</strong>
                 <span className="factor__meta mono">
-                  subject {identity.subject} · {identity.kind} · linked{' '}
+                  subject {identity.subject} · {identity.kind}{identity.profile ? ` · ${identity.profile}` : ''} · linked{' '}
                   {new Date(identity.created_at).toLocaleDateString()}
                 </span>
               </div>
@@ -503,9 +503,9 @@ export function AccountSecurity() {
                 <Button
                   type="button"
                   key={provider.slug}
-                  disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml')}
+                  disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2')}
                   onClick={() => {
-                    if (provider.kind !== 'oidc' && provider.kind !== 'saml') return;
+                    if (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2') return;
                     setProof({
                       kind: 'link',
                       provider: provider.slug,
@@ -583,7 +583,7 @@ type ProofRequest =
   | { kind: 'totp-start' }
   | { kind: 'totp-remove' }
   | { kind: 'recovery' }
-  | { kind: 'link'; provider: string; providerKind: 'oidc' | 'saml' }
+  | { kind: 'link'; provider: string; providerKind: 'oidc' | 'saml' | 'oauth2' }
   | { kind: 'unlink'; id: string };
 
 const PROOF_COPY: Record<ProofRequest['kind'], { title: string; hint: string; label: string }> = {

@@ -634,6 +634,10 @@ instance configuration:
   hikyo instance-config provider disable <name> [--kind oidc|saml]
   hikyo instance-config provider refresh-metadata <name> [--metadata-file <xml>]
       [--confirm-fingerprint FP]... [--confirm-endpoint URL]...
+  hikyo instance-config oauth2-provider create --slug <slug> --profile github --origin https://github.com
+    --display-name <name> --client-id <id> --client-secret-file <path>
+  hikyo instance-config oauth2-provider list|show|update|delete [<slug>]
+
   hikyo instance-config saml-sp-key list|rotate
   hikyo instance-config saml-sp-key retire|compromise-retire <fingerprint>
 

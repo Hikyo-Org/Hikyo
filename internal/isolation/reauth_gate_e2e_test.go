@@ -27,7 +27,7 @@ func TestReauthGatedOperationsRefuseWithoutProof(t *testing.T) {
 //
 // Every probe runs on one real account prepared so the proof check is the
 // first thing that can refuse: it holds a password, a confirmed TOTP factor,
-// a passkey and a linked OIDC identity, and SAML and OIDC providers exist.
+// a passkey and a linked OIDC identity, and SAML, OIDC and OAuth2 providers exist.
 // A proof refusal is ErrReauthProofRequired (the selection names the missing
 // class) or the uniform ErrUnauthenticated of a failed proof; the latter is
 // attributed to the proof by checking the session still resolves after it.
@@ -62,6 +62,7 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 	token = enrolPasskey(t, auth, ctx, token, password, webauthntest.New(waRPID, waOrigin))
 	passkey := queryString(t, db, "SELECT id FROM webauthn_credentials WHERE account_id = '"+accountID+"'")
 	configureSAMLProvider(t, auth, principal)
+	configureGithub(t, &signupHarness{t: t, db: db, auth: auth})
 	// enrolTotpStart is gated only while no factor stands (a second enrolment
 	// is refused as already enrolled), so its proof-less probe runs before
 	// the factor exists; its result is checked with the others below.
@@ -117,6 +118,10 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 		},
 		"oidcStart": func() error {
 			_, err := auth.OIDCStart(ctx, "gate-idp", "link", "", "", "", token, "", false)
+			return err
+		},
+		"oauth2Start": func() error {
+			_, err := auth.OAuth2Start(ctx, "github", "link", "", "", "", token, "", false)
 			return err
 		},
 		"samlStart": func() error {

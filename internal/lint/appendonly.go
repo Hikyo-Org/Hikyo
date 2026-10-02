@@ -195,7 +195,20 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// artifacts that decide who a caller is and how they authenticated, which is
 	// resolution, not authorization. Provider administration is proof-bound and
 	// lives on the repository surface, not here.
-	"CreateOIDCTransaction":     true,
+	"CreateOIDCTransaction": true,
+	// OAuth2 #609: closed provider administration, callback CAS, session provenance
+	// and first-credential evidence; service guards own epoch/purpose/binding.
+	"CreateOAuth2Provider":            true,
+	"UpdateOAuth2Provider":            true,
+	"DeleteOAuth2Provider":            true,
+	"GuardOAuth2ProviderForMint":      true,
+	"CreateOAuth2Transaction":         true,
+	"ConsumeOAuth2Transaction":        true,
+	"BindSessionToOAuth2Provider":     true,
+	"DeleteSessionsForOAuth2Provider": true,
+	"ClaimOAuth2Authority":            true,
+	"StampCredentialEstablish":        true,
+
 	"ConsumeOIDCTransaction":    true,
 	"CreateExternalIdentity":    true,
 	"DeleteExternalIdentity":    true,

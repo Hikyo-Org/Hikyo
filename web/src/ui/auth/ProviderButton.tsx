@@ -16,7 +16,14 @@ export type SignInProvider = z.infer<typeof zAuthMethodProvider>;
  */
 export type ProviderBrand = 'google' | 'microsoft' | 'github';
 
-export type LoginProvider = Omit<SignInProvider, 'brand'> & { brand?: ProviderBrand };
+export type LoginProvider = SignInProvider;
+
+function knownBrand(brand: string | undefined): ProviderBrand | undefined {
+  switch (brand) {
+    case 'google': case 'microsoft': case 'github': return brand;
+    default: return undefined;
+  }
+}
 
 /** Whether the row starts a sign-in or, from the sign-up door, a sign-up. */
 export type SignInIntent = 'sign-in' | 'sign-up';
@@ -57,14 +64,15 @@ const MARKS: Record<ProviderBrand, JSX.Element> = {
  * follows the fixed text instead of replacing it.
  */
 function providerLabel(provider: LoginProvider, intent: SignInIntent): string {
-  if (provider.brand === undefined) return `Continue with ${provider.display_name}`;
+  const brand = knownBrand(provider.brand);
+  if (brand === undefined) return `Continue with ${provider.display_name}`;
   const verb = intent === 'sign-up' ? 'Sign up' : 'Continue';
   const label: Record<ProviderBrand, string> = {
     google: `${verb} with Google`,
     github: `${verb} with GitHub`,
     microsoft: 'Sign in with Microsoft',
   };
-  return label[provider.brand];
+  return label[brand];
 }
 
 /**
@@ -90,7 +98,7 @@ export function ProviderButton({
   lastUsed?: boolean;
   onClick: () => void;
 }) {
-  const { brand } = provider;
+  const brand = knownBrand(provider.brand);
   return (
     <button
       type="button"

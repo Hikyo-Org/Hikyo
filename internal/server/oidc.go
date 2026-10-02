@@ -43,8 +43,12 @@ func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObje
 		provider := apigen.AuthMethodProvider{
 			Slug: p.Slug, DisplayName: p.DisplayName, Kind: apigen.IdentityProviderKind(p.Kind),
 		}
+		if p.Profile != "" {
+			profile := apigen.AuthMethodProviderProfile(p.Profile)
+			provider.Profile = &profile
+		}
 		if p.Brand != "" {
-			brand := apigen.AuthMethodProviderBrand(p.Brand)
+			brand := p.Brand
 			provider.Brand = &brand
 		}
 		out.Providers = append(out.Providers, provider)
@@ -238,7 +242,7 @@ func oidcBrowserMarker(state, purpose string) *http.Cookie {
 }
 
 func validOIDCPurpose(purpose string) bool {
-	return purpose == "login" || purpose == "link" || purpose == "reauth"
+	return purpose == "login" || purpose == "link" || purpose == "reauth" || purpose == "establish" || purpose == "claim"
 }
 
 type oidcLinkStartResponse struct {
@@ -262,7 +266,12 @@ func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequest
 	}
 	out := apigen.IdentityList{Identities: make([]apigen.ExternalIdentity, 0, len(rows))}
 	for _, r := range rows {
-		out.Identities = append(out.Identities, apigen.ExternalIdentity{
+		var profile *apigen.ExternalIdentityProfile
+		if r.Profile != "" {
+			value := apigen.ExternalIdentityProfile(r.Profile)
+			profile = &value
+		}
+		out.Identities = append(out.Identities, apigen.ExternalIdentity{Profile: profile,
 			Id: r.ID, Kind: apigen.IdentityProviderKind(r.Kind), Issuer: r.Issuer,
 			Subject: r.Subject, ProviderId: r.ProviderID, CreatedAt: r.CreatedAt,
 		})
@@ -277,7 +286,13 @@ func (a *API) LinkIdentity(ctx context.Context, req apigen.LinkIdentityRequestOb
 		return apigen.LinkIdentity400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 	}
 	browser := req.Body.Browser != nil && *req.Body.Browser
-	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", "", "", bearer(ctx), req.Body.Proof, browser)
+	var result service.OIDCStartResult
+	var err error
+	if req.Body.Kind != nil && *req.Body.Kind == apigen.IdentityLinkRequestKindOauth2 {
+		result, err = a.Auth.OAuth2Start(ctx, req.Body.Provider, "link", "", "", "", bearer(ctx), req.Body.Proof, browser)
+	} else {
+		result, err = a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", "", "", bearer(ctx), req.Body.Proof, browser)
+	}
 	if err != nil {
 		return nil, err
 	}

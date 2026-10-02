@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -124,6 +125,8 @@ var ErrCredentialRace = errors.New("service: credential row changed underneath t
 
 // Auth is the human-authentication service.
 type Auth struct {
+	// OAuth2HTTPClient is a test transport seam; production uses bounded federation HTTP.
+	OAuth2HTTPClient *http.Client
 	// SelfConfig is the setup coordinator, wired by both server and host admin
 	// composition roots. Its provisioning shares the first-admin transaction.
 	SelfConfig *SelfConfig
@@ -935,6 +938,14 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 			}
 			out.Assurance.Provider = provider.Slug
 		}
+		if id.OAuth2ProviderID != "" && strings.HasPrefix(id.Assurance.Method, "oauth2:") {
+			provider, err := az.OAuth2ProviderForCallback(ctx, id.OAuth2ProviderID)
+			if err != nil {
+				return err
+			}
+			out.Assurance.Provider = provider.Slug
+		}
+
 		// A disclosure-safe grant check (no operation is recorded), so the SPA
 		// can gate the operator-only chrome polls instead of discovering the
 		// answer from their refusals.

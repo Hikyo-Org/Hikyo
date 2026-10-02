@@ -77,7 +77,7 @@ function landingText(landing: AuthMethods['signup_landing']): string | null {
 function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
   if (methods === undefined || !methods.signup_open) return null;
   const admitted = methods.providers.filter((provider) =>
-    provider.kind === 'oidc' &&
+    (provider.kind === 'oidc' || provider.kind === 'oauth2') &&
     methods.signup_methods.some((method) => method !== 'local' && method.kind === provider.kind && method.slug === provider.slug),
   );
   return admitted.length === 0 ? null : { providers: admitted, landing: landingText(methods.signup_landing) };
@@ -138,7 +138,7 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
   // The kind discriminator is open (zIdentityProviderKind is a string), so the
   // card is only offered the two protocols this route can actually start.
   const providers = (methods.data?.providers ?? []).filter(
-    (provider) => provider.kind === 'oidc' || provider.kind === 'saml',
+    (provider) => (provider.kind === 'oidc' || provider.kind === 'oauth2') || provider.kind === 'saml',
   );
   const providerPending = oidc.isPending || saml.isPending;
   // A provider ceremony ends in a redirect or a session change, so every
@@ -250,8 +250,9 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
           // The row names its protocol (a slug is unique per kind only); the
           // sign-up door admits the OIDC kind alone, so a SAML start signs in.
           if (provider.kind === 'saml') saml.mutate({ provider: provider.slug, ...(returnTo === undefined ? {} : { returnTo }) });
-          else oidc.mutate({
+          else if (provider.kind === 'oidc' || provider.kind === 'oauth2') oidc.mutate({
             provider: provider.slug,
+            kind: provider.kind,
             intent: startIntent,
             signupOrg,
             ...(returnTo === undefined ? {} : { returnTo }),

@@ -17,7 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
-// Federated sign-up on the OIDC kind (#607; docs/spec/social-signin.md
+// Federated sign-up for OIDC and OAuth2 (#607; docs/spec/social-signin.md
 // section 4, "Federated login callback", the unknown-and-sign-up branch).
 // It runs inside completeLogin's transaction, after the intent-blind
 // (kind, issuer, subject) resolution missed, in the normative order:
@@ -55,25 +55,29 @@ const (
 // `identity-exists` refusal in a fresh one.
 var errSignupIdentityRace = errors.New("service: sign-up identity lost the uniqueness race")
 
-// oidcSignup is one sign-up-intent callback's registration leg. It is built
+// federatedSignup is one sign-up-intent callback's registration leg. It is built
 // once per callback, outside the retried transaction, and carries the refund
 // of the budget charge its current attempt made: the charge is in memory and
 // survives a rolled-back attempt, so every retry (and a transaction that fails
 // outright) refunds it first. A committed attempt's charge is exactly what its
 // committed events say: charged from the budget step on, never before it.
-type oidcSignup struct {
-	auth   *Auth
-	prov   authz.OIDCProvider
-	txn    authz.OIDCTransaction
-	claims oidcrp.Claims
-	refund func()
+type federatedSignup struct {
+	auth           *Auth
+	providerID     string
+	issuer         string
+	signupOrg      string
+	subject        string
+	claims         map[string]json.RawMessage
+	refund         func()
+	kind           string
+	emailAssertion func(context.Context) (string, string, bool, error)
 	// policyID is the policy the last attempt resolved, for the refusal
 	// written after an identity race.
 	policyID string
 }
 
 // rollback refunds the charge of an attempt that did not commit.
-func (g *oidcSignup) rollback() {
+func (g *federatedSignup) rollback() {
 	if g.refund != nil {
 		g.refund()
 		g.refund = nil
@@ -82,19 +86,19 @@ func (g *oidcSignup) rollback() {
 
 // newOIDCSignup holds one callback's verified claims and its budget refund
 // across transaction retries.
-func newOIDCSignup(s *Auth, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) *oidcSignup {
-	return &oidcSignup{auth: s, prov: prov, txn: txn, claims: claims}
+func newOIDCSignup(s *Auth, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) *federatedSignup {
+	return &federatedSignup{auth: s, providerID: prov.ID, issuer: txn.Issuer, signupOrg: txn.SignupScopeOrgID, subject: claims.Subject, claims: claims.Raw, kind: OIDCKind}
 }
 
 // scope returns the transaction's sign-up scope; an empty org ID represents
 // the instance policy.
-func (g *oidcSignup) scope() domain.Scope {
-	return domain.Scope{Org: domain.OrgID(g.txn.SignupScopeOrgID)}
+func (g *federatedSignup) scope() domain.Scope {
+	return domain.Scope{Org: domain.OrgID(g.signupOrg)}
 }
 
 // refusal stages registration.signup_refused and marks the attempt refused:
 // the uniform login refusal, or the shared 429 for the budget.
-func (g *oidcSignup) refusal(ctx context.Context, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt, cause, policyID string) (authz.Account, error) {
+func (g *federatedSignup) refusal(ctx context.Context, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt, cause, policyID string) (authz.Account, error) {
 	if err := g.stageRefused(ctx, az, cause, policyID); err != nil {
 		return authz.Account{}, err
 	}
@@ -107,10 +111,10 @@ func (g *oidcSignup) refusal(ctx context.Context, az *authz.TxAuthorizer, attemp
 
 // stageRefused records the refusal on the instance trail. The policy ID is
 // omitted when no policy was resolved; audit creation and write errors propagate.
-func (g *oidcSignup) stageRefused(ctx context.Context, az *authz.TxAuthorizer, cause, policyID string) error {
+func (g *federatedSignup) stageRefused(ctx context.Context, az *authz.TxAuthorizer, cause, policyID string) error {
 	payload := audit.Payload{
 		"cause": cause, "scope": renderScope(g.scope()),
-		"kind": OIDCKind, "provider_id": g.prov.ID,
+		"kind": g.kind, "provider_id": g.providerID,
 	}
 	if policyID != "" {
 		payload["policy_id"] = policyID
@@ -119,7 +123,7 @@ func (g *oidcSignup) stageRefused(ctx context.Context, az *authz.TxAuthorizer, c
 		payload["verified_by"] = "none"
 	}
 	ev, err := newAuditEvent(ctx, audit.EventRegistrationSignupRefused, "",
-		audit.Object{Type: "oidc_transaction"}, audit.OutcomeFailure, "", payload)
+		audit.Object{Type: g.kind + "_transaction"}, audit.OutcomeFailure, "", payload)
 	if err != nil {
 		return err
 	}
@@ -128,7 +132,7 @@ func (g *oidcSignup) stageRefused(ctx context.Context, az *authz.TxAuthorizer, c
 
 // refuseAfterRace commits the identity-exists refusal of an attempt the
 // UNIQUE key aborted, and answers the uniform refusal.
-func (g *oidcSignup) refuseAfterRace(ctx context.Context) error {
+func (g *federatedSignup) refuseAfterRace(ctx context.Context) error {
 	err := tx.Write(ctx, g.auth.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		return g.stageRefused(ctx, az, signupCauseIdentityExists, g.policyID)
 	})
@@ -143,7 +147,7 @@ func (g *oidcSignup) refuseAfterRace(ctx context.Context) error {
 // known identity), or stages a refusal on attempt and returns a zero account.
 // Policy, audit and write errors propagate; an identity uniqueness race is
 // returned for completeLogin to audit in a fresh transaction.
-func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt, epoch int64, now time.Time) (authz.Account, error) {
+func (g *federatedSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt, epoch int64, now time.Time) (authz.Account, error) {
 	refuse := func(cause, policyID string) (authz.Account, error) {
 		return g.refusal(ctx, az, attempt, cause, policyID)
 	}
@@ -178,7 +182,7 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 		return refuse(signupCausePrecondition, policy.ID)
 	}
 	entryAt := slices.IndexFunc(policy.Entries, func(e authz.RegistrationEntry) bool {
-		return e.ProviderKind == string(domain.ProviderOIDC) && e.ProviderID == g.prov.ID
+		return e.ProviderKind == g.kind && e.ProviderID == g.providerID
 	})
 	if entryAt < 0 {
 		return refuse(signupCausePredicate, policy.ID)
@@ -188,30 +192,39 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	// 2. The `signup` budget: the first leg that would create state
 	// (#585 d3 as amended by #604). Once committed, never refunded; overflow
 	// is the shared pre-auth 429.
-	refund, err := g.auth.signupBudget.chargeSignup()
-	if err != nil {
-		if errors.Is(err, admission.ErrOverloaded) {
-			// Reset first: a retried transaction reuses attempt, and a
-			// refusal without a window must not inherit an earlier one's wait.
-			attempt.retryAfter = 0
-			if limited, ok := errors.AsType[*admission.RateLimitedError](err); ok {
-				attempt.retryAfter = limited.Wait
+	if g.refund == nil {
+		refund, err := g.auth.signupBudget.chargeSignup()
+		if err != nil {
+			if errors.Is(err, admission.ErrOverloaded) {
+				// Reset first: a retried transaction reuses attempt, and a
+				// refusal without a window must not inherit an earlier one's wait.
+				attempt.retryAfter = 0
+				if limited, ok := errors.AsType[*admission.RateLimitedError](err); ok {
+					attempt.retryAfter = limited.Wait
+				}
+				return refuse(signupCauseBudget, policy.ID)
 			}
-			return refuse(signupCauseBudget, policy.ID)
+			return authz.Account{}, err
 		}
-		return authz.Account{}, err
+		g.refund = refund
 	}
-	g.refund = refund
 
-	// 3. The verified-email assertion (#598), from the signed ID token only,
+	// 3. The verified-email assertion (#598), from the protocol-verified assertion,
 	// evaluated before the allowlist so the cause is deterministic.
-	address, verifiedBy, ok := verifiedEmail(g.claims.Raw)
+	address, verifiedBy, ok := verifiedEmail(g.claims)
+	if g.emailAssertion != nil {
+		var err error
+		address, verifiedBy, ok, err = g.emailAssertion(ctx)
+		if err != nil {
+			return authz.Account{}, err
+		}
+	}
 	if !ok {
 		return refuse(signupCauseNoVerifiedEmail, policy.ID)
 	}
 	// 4. The entry's claim allowlist (#579 d5): one string claim of the
-	// signed token, one of the accepted values.
-	if entry.Claim != "" && !claimAdmitted(g.claims.Raw, entry.Claim, entry.Values) {
+	// protocol-verified user claims, one of the accepted values.
+	if entry.Claim != "" && (g.kind == OAuth2Kind || !claimAdmitted(g.claims, entry.Claim, entry.Values)) {
 		return refuse(signupCausePredicate, policy.ID)
 	}
 	// 5. The fresh-org cap (#585 d9), counted live inside this serialized
@@ -230,7 +243,7 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 		audit.Object{Type: "registration-policy", ID: policy.ID}, audit.OutcomeSuccess, "",
 		audit.Payload{
 			"policy_id": policy.ID, "scope": renderScope(g.scope()), "landing": policy.Landing,
-			"kind": OIDCKind, "issuer": g.txn.Issuer, "provider_id": g.prov.ID,
+			"kind": g.kind, "issuer": g.issuer, "provider_id": g.providerID,
 			"address": audit.SanitizeFreeText(address), "verified_by": verifiedBy,
 		})
 	if err != nil {
@@ -254,8 +267,8 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	if err := az.CreateHumanPrincipal(ctx, domain.PrincipalID(principalID), now); err != nil {
 		return authz.Account{}, err
 	}
-	username := "oidc-" + accountID
-	displayName, displayFrom := signupDisplayName(g.claims.Raw, username)
+	username := g.kind + "-" + accountID
+	displayName, displayFrom := signupDisplayName(g.claims, username)
 	if err := az.CreateAccount(ctx, authz.Account{
 		ID: accountID, PrincipalID: domain.PrincipalID(principalID),
 		Username: username, DisplayName: displayName, CreatedAt: now,
@@ -269,8 +282,8 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	// The identity row precedes any org row (spec section 9): a concurrent
 	// bind of this identity refuses here, and the rollback leaves nothing.
 	if err := az.CreateExternalIdentity(ctx, authz.NewExternalIdentity{
-		ID: identityID, AccountID: accountID, Kind: OIDCKind, Issuer: g.txn.Issuer,
-		Subject: g.claims.Subject, ProviderID: g.prov.ID, CredentialEpoch: epoch, CreatedAt: now,
+		ID: identityID, AccountID: accountID, Kind: g.kind, Issuer: g.issuer,
+		Subject: g.subject, ProviderID: g.providerID, CredentialEpoch: epoch, CreatedAt: now,
 	}); err != nil {
 		if isUniquenessRace(err) {
 			return authz.Account{}, errSignupIdentityRace
@@ -287,7 +300,7 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	}
 	payload := audit.Payload{
 		"policy_id": policy.ID, "account_id": accountID, "landing": policy.Landing,
-		"kind": OIDCKind, "provider_id": g.prov.ID,
+		"kind": g.kind, "provider_id": g.providerID,
 		"address": audit.SanitizeFreeText(address), "verified_by": verifiedBy,
 		"display_name_from": displayFrom,
 	}
@@ -312,7 +325,7 @@ type landed struct {
 // org.create and for the template grant targeting the new principal, re-
 // authorized here against its current grants; grant origin `registration`
 // with the authority as subject.
-func (g *oidcSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, policy authz.RegistrationPolicy, target domain.PrincipalID, now time.Time) (landed, error) {
+func (g *federatedSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, policy authz.RegistrationPolicy, target domain.PrincipalID, now time.Time) (landed, error) {
 	authority := authz.Identity{Principal: policy.AuthorityPrincipalID}
 	grants := &Grants{DB: g.auth.DB, Now: func() time.Time { return now }, originKind: domain.OriginRegistration}
 	switch LandingKind(policy.Landing) {
@@ -376,7 +389,7 @@ func (g *oidcSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthor
 // that names verified_by when both are present and true.
 var verifiedEmailClaims = []string{"email_verified", "xms_edov"}
 
-// verifiedEmail applies #598 d3/d4 to the signed token's raw claims: a
+// verifiedEmail applies #598 d3/d4 to the protocol-verified claims's raw claims: a
 // non-empty string `email`, and at least one recognised claim that is the
 // JSON boolean true. Any recognised claim present and not exactly `true`
 // refuses, whatever the other says (fail-closed tie-break); the string
@@ -417,7 +430,7 @@ func claimAdmitted(raw map[string]json.RawMessage, claim string, values []string
 // signupDisplayName is the token's `name` claim when it is a string the
 // profile itself would accept, else the opaque handle; the second result says
 // which (`name-claim` or `handle`), for the signup_completed trail. It is
-// display text only; the handle stays `oidc-<account id>` (no provider text in
+// display text only; the handle stays `<identity kind>-<account id>` (no provider text in
 // a UNIQUE column, the #585 d4 naming rule).
 func signupDisplayName(raw map[string]json.RawMessage, handle string) (string, string) {
 	var name string

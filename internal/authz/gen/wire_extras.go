@@ -22,6 +22,7 @@ var reviewedWireExtras = wireExtras{
 		// A sign-up-intent login (#607) adds the registration outcomes and, for
 		// a landing, the org creation and template grants its authority writes.
 		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
+		"http:GET /api/v1/auth/oauth2/{provider}/callback":     {Events: []string{"EventOAuth2Login", "EventOAuth2Refused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/workspace/transactions/{state}": {Events: []string{"EventRemoteWorkspaceHandoffRead"}},
 		// The audit trail read surface (#45). Query and export at each addressed
 		// depth; the depth is in the path, so one operation per route. Reading is
@@ -117,7 +118,8 @@ var reviewedWireExtras = wireExtras{
 		// (login success, refusal by cause, link, the reissued/rotated session,
 		// reauth). link start mirrors start; unlink emits the unlink plus the
 		// reissued session. Provider administration is operation-modeled (Ops).
-		"http:POST /api/v1/auth/oidc/{provider}/start": {Events: []string{"EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/oidc/{provider}/start":   {Events: []string{"EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/oauth2/{provider}/start": {Events: []string{"EventAuthThrottleCrossed"}},
 		// The TOTP half of the disclosure ceremony (#58). Unauthenticated-class
 		// for the same reason as every other reauth leg: it authenticates a factor
 		// rather than acting on a tenant object, and its refusals are uniform.

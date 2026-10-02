@@ -43,7 +43,8 @@ type Mocks = {
         kind: string;
         slug: string;
         display_name: string;
-        brand?: 'google' | 'microsoft';
+        brand?: string;
+        profile?: 'github';
       }[];
       signup_open: boolean;
       signup_paused: boolean;
@@ -163,7 +164,7 @@ it('offers each configured OIDC and SAML provider and starts the selected login'
   expect(container.textContent).toContain('Continue with SAML SSO');
   await act(async () => button?.click());
   // The sign-in door's rows start `sign-in`, which never creates an account.
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-in', signupOrg: undefined });
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'strict', intent: 'sign-in', signupOrg: undefined });
   await unmount();
 });
 
@@ -388,7 +389,7 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
   await act(async () => named('Continue with Corporate IdP')?.click());
   await render();
 
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-in', signupOrg: undefined });
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'strict', intent: 'sign-in', signupOrg: undefined });
   expect(container.querySelector('.login__card [role="alert"]')).toBeNull();
   await unmount();
 });
@@ -550,7 +551,7 @@ it('opens the door, confirms, and starts a sign-up only from the confirmation st
     'This creates a new account. Already have one? Sign in with it first, then add Corporate IdP under Settings › Security.',
   );
   await act(async () => buttonNamed(container, 'Continue to Corporate IdP')?.click());
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-up', signupOrg: undefined });
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'strict', intent: 'sign-up', signupOrg: undefined });
   await unmount();
 });
 
@@ -566,7 +567,7 @@ it('addresses the org door from /signup?org= and carries the org into the start'
   expect(container.textContent).toContain('You’ll join this organisation.');
   await act(async () => buttonNamed(container, 'Continue with Corporate IdP')?.click());
   await act(async () => buttonNamed(container, 'Continue to Corporate IdP')?.click());
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-up', signupOrg: 'org_acme' });
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'strict', intent: 'sign-up', signupOrg: 'org_acme' });
   await unmount();
 });
 
@@ -587,7 +588,7 @@ it('starts an OIDC sign-up even when a SAML provider shares the slug', async () 
   await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
   expect(container.querySelector('h1')?.textContent).toBe('Create an account with Corp OIDC');
   await act(async () => buttonNamed(container, 'Continue to Corp OIDC')?.click());
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'corp', intent: 'sign-up', signupOrg: undefined });
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'corp', intent: 'sign-up', signupOrg: undefined });
   await unmount();
 });
 
@@ -637,7 +638,7 @@ it('starts an OIDC sign-in, and marks only its row, when a SAML provider shares 
 
   await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
   await render();
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'corp', intent: 'sign-in', signupOrg: undefined });
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'corp', intent: 'sign-in', signupOrg: undefined });
   expect(fetchMock).not.toHaveBeenCalled();
   const labels = [...container.querySelectorAll('button')].map((button) => button.textContent);
   expect(labels.filter((label) => label === 'Contacting identity provider…')).toHaveLength(1);
@@ -720,5 +721,29 @@ it('follows the providers’ published button rules', async () => {
     'Sign up with Google',
     'Sign in with Microsoft · Contoso',
   ]);
+  await unmount();
+});
+
+
+it('brands GitHub and routes sign-in to the OAuth2 kind', async () => {
+ mocks.methods.data.providers=[{kind:'oauth2',slug:'github',display_name:'GitHub',profile:'github',brand:'github'}];
+ const container=document.createElement('div');
+ const {unmount}=await mount(container);
+ const button=buttonNamed(container,'Continue with GitHub');
+ expect(button?.querySelector('svg')).not.toBeNull();
+ await act(async()=>button?.click());
+ expect(mocks.oidc.mutate).toHaveBeenCalledWith({kind:'oauth2',provider:'github',intent:'sign-in',signupOrg:undefined});
+ await unmount();
+});
+
+it('renders an unknown future brand as a usable generic provider', async () => {
+  mocks.methods.data.providers = [{kind:'oidc',slug:'future',display_name:'Future IdP',brand:'future-brand'}];
+  const container = document.createElement('div');
+  const {unmount} = await mount(container);
+  const button = buttonNamed(container,'Continue with Future IdP');
+  expect(button).toBeDefined();
+  expect(button?.querySelector('svg')).toBeNull();
+  await act(async () => button?.click());
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({kind:'oidc',provider:'future',intent:'sign-in',signupOrg:undefined});
   await unmount();
 });

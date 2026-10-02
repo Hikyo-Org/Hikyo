@@ -229,6 +229,13 @@ operations:
 
   # auth
   authMethods:                 {webui: login}
+  oauth2Start: {webui: login}
+  oauth2Callback: {exception: identity-protocol}
+  listOauth2Providers: {webui: instance-admin}
+  getOauth2Provider: {webui: instance-admin, via: [listOauth2Providers]}
+  putOauth2Provider: {webui: instance-admin}
+  deleteOauth2Provider: {webui: instance-admin}
+
   oidcStart:                   {webui: login}
   oidcCallback:                {exception: identity-protocol}
   samlStart:                   {webui: login}

@@ -4647,6 +4647,117 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/auth/oauth2/{provider}/start:
+    parameters:
+      - $ref: "#/components/parameters/ProviderSlug"
+    post:
+      operationId: oauth2Start
+      tags: [auth]
+      summary: Begin an OAuth2 transaction (login, link, establish or claim).
+      description: |
+        Creates a single-use server-side transaction (PKCE S256 always) and
+        returns the IdP authorization URL. `login` is anonymous and bound by a
+        `__Host-` browser-binding cookie set on this response (A2/A16); `link`
+        and `establish` require an authenticated session and are session-bound;
+        `claim` binds a credential authority. `link` verifies the account-security
+        proof up front (A6). OAuth2 cannot perform disclosure reauthentication;
+        `reauth` returns a local-authenticator or passkey remedy (409). A `login`
+        records its `intent` (absent = `sign-in`) and, for a `sign-up`, the
+        addressed scope (`signup_org`, absent = instance); the start reads no
+        registration policy (#604 d5).
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-value, member: purpose, values: [link]}
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Oauth2StartRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The IdP authorization URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcStartResult"
+        # Expected ceremony refusals collapse to a uniform 401. An environment
+        # is never accepted (400); reauth has a local-factor remedy (409).
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/auth/oauth2/{provider}/callback:
+    parameters:
+      - $ref: "#/components/parameters/ProviderSlug"
+    get:
+      operationId: oauth2Callback
+      tags: [auth]
+      summary: Complete an OAuth2 transaction from the IdP redirect.
+      description: |
+        Per-provider distinct callback path (mix-up defence leg 1): the path
+        provider must equal the transaction's provider, refused BEFORE any token
+        is fetched (A1). The transaction is consumed single-use, the code is
+        exchanged only at the recorded provider, the numeric GitHub identity resolved, and the purpose wall is structural. Returns the minted or
+        rotated session.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema: { type: string, maxLength: 4096 }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string, maxLength: 512 }
+        - name: iss
+          in: query
+          required: false
+          schema: { type: string, maxLength: 2048 }
+        - name: error
+          in: query
+          required: false
+          schema: { type: string, maxLength: 256 }
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The minted or rotated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "303":
+          description: Browser transaction completed; continue on the SPA done page.
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/auth/saml/{provider}/start:
     parameters:
       - $ref: "#/components/parameters/ProviderSlug"
@@ -5519,6 +5630,136 @@ paths:
         transactions cascade (A14).
       x-hikyo-class: instance
       x-hikyo-operation: oidc-provider.delete
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+  /api/v1/instance/oauth2-providers:
+    get:
+      operationId: listOauth2Providers
+      tags: [instance]
+      summary: List configured OAuth2 providers.
+      x-hikyo-class: instance
+      x-hikyo-operation: oauth2-provider.list
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The configured providers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Oauth2ProviderList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/oauth2-providers/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/ProviderSlugPath"
+    get:
+      operationId: getOauth2Provider
+      tags: [instance]
+      summary: Read one OAuth2 provider.
+      x-hikyo-class: instance
+      x-hikyo-operation: oauth2-provider.get
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Oauth2Provider"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: putOauth2Provider
+      tags: [instance]
+      summary: Create or reconfigure an OAuth2 provider.
+      description: |
+        The issuer is immutable after create (A3): a changed issuer is refused.
+        Profile and canonical origin are validated locally; no discovery runs. A reconfigure sweeps every session authenticated through
+        the provider (A4).
+      x-hikyo-class: instance
+      x-hikyo-operation: oauth2-provider.put
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Oauth2ProviderInput"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The created or reconfigured provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Oauth2Provider"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteOauth2Provider
+      tags: [instance]
+      summary: Delete an OAuth2 provider.
+      description: |
+        Sweeps every session authenticated through the provider (A4); its live
+        transactions cascade (A14).
+      x-hikyo-class: instance
+      x-hikyo-operation: oauth2-provider.delete
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
@@ -16543,7 +16784,7 @@ components:
           $ref: "#/components/schemas/AuthMethod"
         provider:
           type: string
-          description: The configured provider slug, present only for OIDC sessions.
+          description: The configured provider slug, present for OIDC and OAuth2 sessions.
         factors:
           type: array
           description: The factor classes actually presented in this session.
@@ -20587,6 +20828,15 @@ components:
 
     RegistrationExternalEntry:
       type: object
+      anyOf:
+        - not:
+            properties:
+              provider:
+                properties:
+                  kind: {enum: [oauth2]}
+        - properties:
+            claim: {type: string, maxLength: 0}
+            values: {type: array, maxItems: 0, items: {type: string}}
       additionalProperties: false
       required: [provider]
       properties:
@@ -20600,7 +20850,8 @@ components:
           maxLength: 256
           description: |
             One issuer-specific string claim the signed ID token must carry,
-            with a value in `values`. Never `email`.
+            with a value in `values`. Never `email`. OAuth2 entries must omit
+            `claim` and `values`: editable profile fields cannot admit signup.
         values:
           type: array
           maxItems: 64
@@ -20724,6 +20975,7 @@ components:
       additionalProperties: false
       required: [slug, display_name, kind]
       properties:
+        profile: {type: string, enum: [github]}
         slug:
           type: string
         display_name:
@@ -20732,7 +20984,7 @@ components:
           $ref: "#/components/schemas/IdentityProviderKind"
         brand:
           type: string
-          enum: [google, microsoft]
+          x-extensible-enum: [google, microsoft, github]
           description: |
             The provider's published button rules apply (#587 d4,
             docs/research/social-providers.md): Google's standard-colour G,
@@ -20770,6 +21022,45 @@ components:
           type: string
           maxLength: 64
           description: Required for reauth; the window scope. Refused (400) on any other purpose.
+        proof:
+          type: string
+          maxLength: 1024
+          description: Required for link; the pre-existing password.
+        browser:
+          type: boolean
+          default: false
+          description: Redirect the callback to the SPA done page instead of returning JSON.
+
+    Oauth2StartRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose]
+      properties:
+        purpose:
+          type: string
+          x-extensible-enum: [login, link, establish, claim, reauth]
+          description: Reauth is always refused with 409 and a local-factor remedy.
+        intent:
+          type: string
+          enum: [sign-in, sign-up]
+          description: |
+            Valid only with purpose `login` (#604); absent = `sign-in`. It
+            decides only what happens to an unknown identity at the callback:
+            `sign-in` refuses it uniformly, `sign-up` enters the registration
+            policy of the addressed scope. A known identity signs in under
+            either. Supplied on any other purpose, the start refuses uniformly.
+        signup_org:
+          type: string
+          maxLength: 64
+          description: |
+            The org whose registration policy a `sign-up` addresses; absent =
+            the instance scope. Valid only with intent `sign-up`. The start
+            reads no policy: an unknown org refuses at the callback as a closed
+            door.
+        environment_id:
+          type: string
+          maxLength: 64
+          description: Never accepted. Any supplied value is refused with 400; OAuth2 cannot perform disclosure reauthentication.
         proof:
           type: string
           maxLength: 1024
@@ -20836,6 +21127,10 @@ components:
       additionalProperties: false
       required: [provider, proof]
       properties:
+        kind:
+          type: string
+          enum: [oidc, oauth2]
+          default: oidc
         provider:
           type: string
           maxLength: 64
@@ -20861,6 +21156,7 @@ components:
       additionalProperties: false
       required: [id, kind, issuer, subject, provider_id, created_at]
       properties:
+        profile: {type: string, enum: [github]}
         id:
           $ref: "#/components/schemas/ID"
         kind:
@@ -20918,6 +21214,23 @@ components:
           minimum: 1
           description: Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
 
+    Oauth2ProviderInput:
+      type: object
+      additionalProperties: false
+      required: [profile, display_name, issuer, client_id, client_secret, enabled]
+      properties:
+        profile: {type: string, enum: [github]}
+        display_name: {type: string, minLength: 1, maxLength: 256}
+        issuer: {type: string, minLength: 1, maxLength: 2048}
+        client_id: {type: string, minLength: 1, maxLength: 1024}
+        client_secret: {type: string, minLength: 1, maxLength: 4096}
+        enabled: {type: boolean}
+        row_version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
+
     OidcProvider:
       type: object
       additionalProperties: false
@@ -20954,10 +21267,40 @@ components:
           items:
             $ref: "#/components/schemas/OidcProvider"
 
+    Oauth2Provider:
+      type: object
+      additionalProperties: false
+      required: [profile, slug, display_name, issuer, client_id, redirect_uri, enabled, row_version]
+      properties:
+        profile: {type: string, enum: [github]}
+        slug:
+          type: string
+        display_name:
+          type: string
+        issuer:
+          type: string
+        client_id:
+          type: string
+        redirect_uri:
+          type: string
+        row_version: {type: integer, format: int64, minimum: 1}
+        enabled:
+          type: boolean
+
+    Oauth2ProviderList:
+      type: object
+      additionalProperties: false
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Oauth2Provider"
+
     IdentityProviderKind:
       type: string
       description: OPEN protocol discriminator in the byte-exact external-identity key.
-      x-extensible-enum: [oidc, saml]
+      x-extensible-enum: [oidc, saml, oauth2]
 
     SamlMetadataSource:
       type: string

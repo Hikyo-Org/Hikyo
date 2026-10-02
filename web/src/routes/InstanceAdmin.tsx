@@ -32,6 +32,7 @@ import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
+import { OAuth2ProvidersPanel } from './OAuth2ProvidersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { PkiIssuersPanel } from './PkiIssuersPanel.tsx';
 import { PkiProfilesPanel } from './PkiProfilesPanel.tsx';
@@ -136,6 +137,7 @@ export function InstanceAdmin() {
       { id: 'instance-members', label: 'Members' },
       { id: 'instance-settings', label: 'Policy' },
       { id: 'instance-oidc', label: 'Identity providers' },
+      { id: 'instance-oauth2', label: 'GitHub sign-in' },
       { id: 'instance-federation', label: 'Federation' },
       { id: 'instance-retention', label: 'Retention health' },
       { id: 'instance-keys', label: 'Keys & crypto' },
@@ -212,6 +214,7 @@ export function InstanceAdmin() {
     <CredentialPolicyPanel query={policy} onDone={ok} onFailure={report} />
 
     <OidcProvidersPanel />
+    <OAuth2ProvidersPanel />
 
     <FederationIssuersPanel />
 
