@@ -43,7 +43,17 @@ certification or a portable performance threshold.
 
 The CodSpeed command remains `go test -bench=.` over the workflow's existing
 package paths. Do not copy native `-run`, `-count` or `-benchtime` flags there:
-the integration supports only `-bench`. No runner label or billing change is
-part of this work. Walltime reports on shared hosted runners remain noisy.
+the integration supports only `-bench`. The workflow separates
+native one-iteration smoke checks (PRs and manual dispatch) from CodSpeed
+walltime reporting (pushes to main only). The latter uses
+`codspeed-macro-arm64-graviton-ubuntu-22-04`; no PR uses Macro minutes or uploads
+shared-runner timings. Performance regressions are detected after merge, not
+as a reliable premerge comparison. The first Macro main run establishes a new
+hardware baseline; previous hosted x64 timings are not comparable.
+
+CodSpeed lists 600 included ARM64 Macro minutes per month, then $0.032/minute.
+Account runner access must be enabled before the first main run. This change
+does not enroll the organisation or alter billing settings. Manual dispatch
+deliberately runs smoke only, so it cannot spend Macro minutes on a PR branch.
 
 Reference: <https://codspeed.io/docs/benchmarks/go>.
