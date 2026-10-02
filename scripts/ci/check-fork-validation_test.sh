@@ -51,6 +51,14 @@ case $url in
 		jq -r --arg sha fedcba9876543210fedcba9876543210fedcba98 ".head.sha = \$sha | $filter" "$FIXTURES/pr.json"
 		exit 0
 	fi
+	if [ "$count" -ge "${MERGEABLE_RESOLVES_AT:-99999}" ]; then
+		jq -r ".mergeable = true | $filter" "$FIXTURES/pr.json"
+		exit 0
+	fi
+	if [ "$count" -ge "${MERGEABLE_PENDING_AT:-99999}" ]; then
+		jq -r ".mergeable = null | $filter" "$FIXTURES/pr.json"
+		exit 0
+	fi
 	fixture=pr
 	;;
 */workflows/ci-fork.yml/runs*)
@@ -73,7 +81,7 @@ head=0123456789abcdef0123456789abcdef01234567
 
 # fixture <changed_files> <files-json> <runs-json> <gate-conclusion>
 fixture() {
-	printf '{"head":{"sha":"%s","repo":{"id":2,"full_name":"fork/r"}},"base":{"repo":{"id":1,"full_name":"o/r"}},"user":{"id":10,"login":"author"},"changed_files":%s}\n' "$head" "$1" >"$work/pr.json"
+	printf '{"head":{"sha":"%s","repo":{"id":2,"full_name":"fork/r"}},"base":{"repo":{"id":1,"full_name":"o/r"}},"user":{"id":10,"login":"author"},"changed_files":%s,"mergeable":true}\n' "$head" "$1" >"$work/pr.json"
 	printf '%s\n' "$2" >"$work/files.json"
 	printf '%s\n' "$3" >"$work/runs.json"
 	printf '{"jobs":[{"name":"validation / changes","conclusion":"success"},{"name":"validation / ci-required","conclusion":"%s"}]}\n' "$4" >"$work/jobs.json"
@@ -89,13 +97,20 @@ same_repo() {
 	mv "$work/pr-new.json" "$work/pr.json"
 }
 
+bdfl_author() {
+	jq '.user = {id:991668,login:"Dunky13"}' "$work/pr.json" >"$work/pr-new.json"
+	mv "$work/pr-new.json" "$work/pr.json"
+	printf '{"user":{"id":991668},"permission":"admin"}\n' >"$work/permission.json"
+	printf '{"user":{"id":991668},"permission":"none"}\n' >"$work/permission-later.json"
+}
+
 approval() {
 	printf '[[{"id":20,"user":{"id":11,"login":"maintainer"},"state":"APPROVED","commit_id":"%s","submitted_at":"2026-10-01T00:00:00Z"}]]\n' "$head" >"$work/reviews.json"
 }
 
 gate() {
 	PATH="$work/bin:$PATH" FIXTURES=$work GH_REPO=o/r PR_NUMBER=7 HEAD_SHA=${1:-$head} \
-		FORK_GATE_TIMEOUT_SECONDS=0 FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
+		FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
 }
 
 # expect_pending <description>: rejected only by the deadline, never as a result.
@@ -128,6 +143,21 @@ fixture 1 "$docs" "$done_run" success
 expect_accept 'a docs-only fork PR whose fork-ci gate passed'
 expect_reject 'a PR head that moved since the event' fedcba9876543210fedcba9876543210fedcba98
 
+fixture 1 "$docs" "$done_run" success
+jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'completed validation while mergeability remains unknown'
+grep -F 'PR mergeability is still pending' "$work/stderr" >/dev/null
+rm -f "$work/pr-calls"
+( MERGEABLE_RESOLVES_AT=4 TEST_GATE_TIMEOUT_SECONDS=10 expect_accept 'completed validation after a later poll resolves mergeability' )
+[ "$(cat "$work/pr-calls")" -ge 5 ] || {
+	printf 'fork gate fixture failed: mergeability was not checked on a later poll\n' >&2
+	exit 1
+}
+fixture 1 "$docs" "$done_run" success
+( MERGEABLE_PENDING_AT=3 expect_reject 'mergeability becomes unknown immediately before accepting validation' )
+grep -F 'PR mergeability is still pending' "$work/stderr" >/dev/null
+
 fixture 1 "$docs" "$done_run" failure
 expect_reject 'a failed fork-ci gate'
 fixture 1 "$docs" "$done_run" skipped
@@ -141,6 +171,13 @@ fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":
 expect_pending 'a fork-ci run awaiting maintainer approval'
 fixture 1 "$docs" '{"workflow_runs":[]}' success
 expect_pending 'no fork-ci run at all'
+jq '.mergeable = false' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'a conflicted PR whose validation cannot start'
+grep -F 'PR has merge conflicts' "$work/stderr" >/dev/null || {
+	printf 'fork gate fixture failed: conflicted PR did not fail immediately\n' >&2
+	exit 1
+}
 
 fixture 2 '[{"filename":"docs/a.md"},{"filename":".github/workflows/ci-fork.yml"}]' "$done_run" success
 expect_reject 'a fork PR that edits a workflow'
@@ -152,9 +189,58 @@ expect_reject 'a truncated file list'
 workflow='[{"filename":".github/workflows/ci-fork.yml"}]'
 fixture 1 "$workflow" "$done_run" success
 same_repo
+bdfl_author
+expect_accept 'the pinned BDFL with current maintainer permission and no reviews'
+for permission in write maintain; do
+	printf '{"user":{"id":991668},"permission":"%s"}\n' "$permission" >"$work/permission.json"
+	expect_accept "BDFL with current $permission permission"
+done
+for permission in read triage none; do
+	printf '{"user":{"id":991668},"permission":"%s"}\n' "$permission" >"$work/permission.json"
+	expect_reject "BDFL without maintainer permission ($permission)"
+done
+printf '{"user":{"id":991668},"permission":"admin"}\n' >"$work/permission.json"
+( PERMISSION_ERROR=true expect_reject 'BDFL permission API failure' )
+rm -f "$work/permission-calls"
+( PERMISSION_REMOVED_AT=2 expect_reject 'BDFL permission revoked before validation is accepted' )
+[ "$(cat "$work/permission-calls")" -eq 2 ]
+rm -f "$work/pr-calls"
+( HEAD_MOVES_AT=3 expect_reject 'BDFL head moved while checking current permission' )
+[ "$(cat "$work/pr-calls")" -eq 3 ]
+printf '{"user":{"id":10},"permission":"admin"}\n' >"$work/permission.json"
+expect_reject 'BDFL permission lookup returned another account'
+bdfl_author
+jq '.user.login = "renamed-owner"' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_accept 'BDFL identity survives an account rename'
+fixture 1 "$workflow" "$done_run" success
+same_repo
+jq '.user.login = "Dunky13"' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'another user copying the BDFL login without the pinned ID'
+fixture 1 "$workflow" "$done_run" success
+bdfl_author
+expect_reject 'BDFL exemption cannot authorize fork-controlled workflows'
+fixture 1 "$workflow" "$done_run" failure
+same_repo
+bdfl_author
+expect_reject 'BDFL still needs successful exact-head validation'
+
+fixture 1 "$workflow" "$done_run" success
+same_repo
 expect_reject 'same-repo workflow edits without independent approval'
 approval
 expect_accept 'same-repo workflow edits with exact-head independent maintainer approval'
+jq '.[0] = [.[0][0] | .user = {id:1,login:"reviewer[bot]",type:"Bot"}]' "$work/reviews.json" >"$work/reviews-new.json"
+mv "$work/reviews-new.json" "$work/reviews.json"
+expect_reject 'a bot approval without an independent maintainer'
+grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
+bot_review=$(cat "$work/reviews.json")
+approval
+jq --argjson bot "$bot_review" '.[0] = $bot[0] + .[0]' "$work/reviews.json" >"$work/reviews-new.json"
+mv "$work/reviews-new.json" "$work/reviews.json"
+expect_accept 'bot review preceding a valid independent maintainer approval'
+approval
 ( REVIEWS_ERROR=true expect_reject 'review API failure despite an approved fixture' )
 for permission in admin maintain; do
 	printf '{"permission":"%s"}\n' "$permission" >"$work/permission.json"
@@ -203,4 +289,4 @@ approval
 fixture 1 "$docs" "$done_run" success
 ( HEAD_MOVES_AT=3 expect_reject 'head moved after checking completed validation jobs' )
 
-printf 'fork gate fixture: exact-head validation, untouched fork YAML, and independently approved same-repo workflow edits only\n'
+printf 'fork gate fixture: exact-head validation, untouched fork YAML, and same-repo workflow authority from independent approval or the pinned current-maintainer BDFL\n'
