@@ -20828,6 +20828,15 @@ components:
 
     RegistrationExternalEntry:
       type: object
+      anyOf:
+        - not:
+            properties:
+              provider:
+                properties:
+                  kind: {enum: [oauth2]}
+        - properties:
+            claim: {type: string, maxLength: 0}
+            values: {type: array, maxItems: 0, items: {type: string}}
       additionalProperties: false
       required: [provider]
       properties:
@@ -20841,7 +20850,8 @@ components:
           maxLength: 256
           description: |
             One issuer-specific string claim the signed ID token must carry,
-            with a value in `values`. Never `email`.
+            with a value in `values`. Never `email`. OAuth2 entries must omit
+            `claim` and `values`: editable profile fields cannot admit signup.
         values:
           type: array
           maxItems: 64
@@ -21028,7 +21038,8 @@ components:
       properties:
         purpose:
           type: string
-          x-extensible-enum: [login, link, establish, claim]
+          x-extensible-enum: [login, link, establish, claim, reauth]
+          description: Reauth is always refused with 409 and a local-factor remedy.
         intent:
           type: string
           enum: [sign-in, sign-up]
@@ -21049,7 +21060,7 @@ components:
         environment_id:
           type: string
           maxLength: 64
-          description: Required for reauth; the window scope. Refused (400) on any other purpose.
+          description: Never accepted. Any supplied value is refused with 400; OAuth2 cannot perform disclosure reauthentication.
         proof:
           type: string
           maxLength: 1024

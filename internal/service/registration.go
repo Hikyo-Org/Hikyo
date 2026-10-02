@@ -354,6 +354,9 @@ func validateRegistrationInput(scope RegistrationScope, in RegistrationPolicyInp
 			// allowlist claim either.
 			return out, refuseRegistration("%s.claim: email is not accepted as an allowlist claim", at)
 		}
+		if ref.Kind == domain.ProviderOAuth2 && claim != "" {
+			return out, refuseRegistration("%s.claim: an OAuth2 profile has no verified allowlist claim", at)
+		}
 		if (claim == "") != (len(e.Values) == 0) {
 			return out, refuseRegistration("%s: an allowlist claim needs at least one accepted value, and values need a claim", at)
 		}

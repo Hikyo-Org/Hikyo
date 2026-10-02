@@ -3506,12 +3506,18 @@ export const zSignupMethod = z.union([
     zLocalSignupMethod
 ]);
 
-export const zRegistrationExternalEntry = z.object({
+export const zRegistrationExternalEntry = z.intersection(z.union([
+    z.unknown(),
+    z.object({
+        claim: z.string().max(0).optional(),
+        values: z.array(z.string()).max(0).optional()
+    })
+]), z.object({
     provider: zProviderRef,
     display_name: z.string().optional(),
     claim: z.string().max(256).optional(),
     values: z.array(z.string().max(512)).max(64).optional()
-});
+}));
 
 export const zRegistrationPolicyPutRequest = z.object({
     external: z.array(zRegistrationExternalEntry).max(64),

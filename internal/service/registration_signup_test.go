@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"testing"
 )
 
@@ -85,6 +86,16 @@ func TestSignupDisplayName(t *testing.T) {
 		}
 		if got != want || from != wantFrom {
 			t.Errorf("%s display name = (%q, %q), want (%q, %q)", doc, got, from, want, wantFrom)
+		}
+	}
+}
+
+func TestOAuth2RegistrationClaimRefused(t *testing.T) {
+	for _, kind := range []domain.ProviderKind{domain.ProviderOAuth2, domain.ProviderOIDC} {
+		input := RegistrationPolicyInput{External: []RegistrationExternalEntry{{Provider: domain.ProviderRef{Kind: kind, Slug: "github"}, Claim: "company", Values: []string{"acme"}}}, Landing: RegistrationLanding{Kind: LandingNone}}
+		_, err := validateRegistrationInput(InstanceRegistrationScope(), input)
+		if (err != nil) != (kind == domain.ProviderOAuth2) {
+			t.Fatalf("kind %s: %v", kind, err)
 		}
 	}
 }

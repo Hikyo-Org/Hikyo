@@ -4478,7 +4478,10 @@ export type ProviderRef = {
     slug: string;
 };
 
-export type RegistrationExternalEntry = {
+export type RegistrationExternalEntry = (unknown | {
+    claim?: string;
+    values?: Array<string>;
+}) & {
     provider: ProviderRef;
     /**
      * The provider's display name; on responses only, ignored on input.
@@ -4486,7 +4489,8 @@ export type RegistrationExternalEntry = {
     display_name?: string;
     /**
      * One issuer-specific string claim the signed ID token must carry,
-     * with a value in `values`. Never `email`.
+     * with a value in `values`. Never `email`. OAuth2 entries must omit
+     * `claim` and `values`: editable profile fields cannot admit signup.
      *
      */
     claim?: string;
@@ -4619,6 +4623,9 @@ export type OidcStartRequest = {
 };
 
 export type Oauth2StartRequest = {
+    /**
+     * Reauth is always refused with 409 and a local-factor remedy.
+     */
     purpose: string;
     /**
      * Valid only with purpose `login` (#604); absent = `sign-in`. It
@@ -4638,7 +4645,7 @@ export type Oauth2StartRequest = {
      */
     signup_org?: string;
     /**
-     * Required for reauth; the window scope. Refused (400) on any other purpose.
+     * Never accepted. Any supplied value is refused with 400; OAuth2 cannot perform disclosure reauthentication.
      */
     environment_id?: string;
     /**

@@ -224,7 +224,7 @@ func (g *federatedSignup) run(ctx context.Context, r store.Repos, az *authz.TxAu
 	}
 	// 4. The entry's claim allowlist (#579 d5): one string claim of the
 	// protocol-verified user claims, one of the accepted values.
-	if entry.Claim != "" && !claimAdmitted(g.claims, entry.Claim, entry.Values) {
+	if entry.Claim != "" && (g.kind == OAuth2Kind || !claimAdmitted(g.claims, entry.Claim, entry.Values)) {
 		return refuse(signupCausePredicate, policy.ID)
 	}
 	// 5. The fresh-org cap (#585 d9), counted live inside this serialized

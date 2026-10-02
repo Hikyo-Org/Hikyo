@@ -8090,7 +8090,7 @@ type Oauth2StartRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
 	Browser *bool `json:"browser,omitempty"`
 
-	// EnvironmentId Required for reauth; the window scope. Refused (400) on any other purpose.
+	// EnvironmentId Never accepted. Any supplied value is refused with 400; OAuth2 cannot perform disclosure reauthentication.
 	EnvironmentId *string `json:"environment_id,omitempty"`
 
 	// Intent Valid only with purpose `login` (#604); absent = `sign-in`. It
@@ -8101,8 +8101,10 @@ type Oauth2StartRequest struct {
 	Intent *Oauth2StartRequestIntent `json:"intent,omitempty"`
 
 	// Proof Required for link; the pre-existing password.
-	Proof   *string `json:"proof,omitempty"`
-	Purpose string  `json:"purpose"`
+	Proof *string `json:"proof,omitempty"`
+
+	// Purpose Reauth is always refused with 409 and a local-factor remedy.
+	Purpose string `json:"purpose"`
 
 	// SignupOrg The org whose registration policy a `sign-up` addresses; absent =
 	// the instance scope. Valid only with intent `sign-up`. The start
@@ -8823,7 +8825,8 @@ type ReencryptResultScope string
 // RegistrationExternalEntry defines model for RegistrationExternalEntry.
 type RegistrationExternalEntry struct {
 	// Claim One issuer-specific string claim the signed ID token must carry,
-	// with a value in `values`. Never `email`.
+	// with a value in `values`. Never `email`. OAuth2 entries must omit
+	// `claim` and `values`: editable profile fields cannot admit signup.
 	Claim *string `json:"claim,omitempty"`
 
 	// DisplayName The provider's display name; on responses only, ignored on input.
@@ -8832,6 +8835,16 @@ type RegistrationExternalEntry struct {
 	// Provider A federated provider named by kind and slug (slugs are unique per kind only).
 	Provider ProviderRef `json:"provider"`
 	Values   *[]string   `json:"values,omitempty"`
+	union    json.RawMessage
+}
+
+// RegistrationExternalEntry0 defines model for RegistrationExternalEntry.0.
+type RegistrationExternalEntry0 = interface{}
+
+// RegistrationExternalEntry1 defines model for RegistrationExternalEntry.1.
+type RegistrationExternalEntry1 struct {
+	Claim  *string   `json:"claim,omitempty"`
+	Values *[]string `json:"values,omitempty"`
 }
 
 // RegistrationLanding Where a sign-up lands. An organisation policy is `org-template` with a
@@ -12776,6 +12789,142 @@ type ScimReplaceUserJSONRequestBody = ScimResource
 
 // ScimReplaceUserApplicationScimPlusJSONRequestBody defines body for ScimReplaceUser for application/scim+json ContentType.
 type ScimReplaceUserApplicationScimPlusJSONRequestBody = ScimResource
+
+// AsRegistrationExternalEntry0 returns the union data inside the RegistrationExternalEntry as a RegistrationExternalEntry0
+func (t RegistrationExternalEntry) AsRegistrationExternalEntry0() (RegistrationExternalEntry0, error) {
+	var body RegistrationExternalEntry0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRegistrationExternalEntry0 overwrites any union data inside the RegistrationExternalEntry as the provided RegistrationExternalEntry0
+func (t *RegistrationExternalEntry) FromRegistrationExternalEntry0(v RegistrationExternalEntry0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRegistrationExternalEntry0 performs a merge with any union data inside the RegistrationExternalEntry, using the provided RegistrationExternalEntry0
+func (t *RegistrationExternalEntry) MergeRegistrationExternalEntry0(v RegistrationExternalEntry0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRegistrationExternalEntry1 returns the union data inside the RegistrationExternalEntry as a RegistrationExternalEntry1
+func (t RegistrationExternalEntry) AsRegistrationExternalEntry1() (RegistrationExternalEntry1, error) {
+	var body RegistrationExternalEntry1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRegistrationExternalEntry1 overwrites any union data inside the RegistrationExternalEntry as the provided RegistrationExternalEntry1
+func (t *RegistrationExternalEntry) FromRegistrationExternalEntry1(v RegistrationExternalEntry1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRegistrationExternalEntry1 performs a merge with any union data inside the RegistrationExternalEntry, using the provided RegistrationExternalEntry1
+func (t *RegistrationExternalEntry) MergeRegistrationExternalEntry1(v RegistrationExternalEntry1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t RegistrationExternalEntry) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Claim != nil {
+		object["claim"], err = json.Marshal(t.Claim)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'claim': %w", err)
+		}
+	}
+
+	if t.DisplayName != nil {
+		object["display_name"], err = json.Marshal(t.DisplayName)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'display_name': %w", err)
+		}
+	}
+
+	object["provider"], err = json.Marshal(t.Provider)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'provider': %w", err)
+	}
+
+	if t.Values != nil {
+		object["values"], err = json.Marshal(t.Values)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'values': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *RegistrationExternalEntry) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["claim"]; found {
+		err = json.Unmarshal(raw, &t.Claim)
+		if err != nil {
+			return fmt.Errorf("error reading 'claim': %w", err)
+		}
+	}
+
+	if raw, found := object["display_name"]; found {
+		err = json.Unmarshal(raw, &t.DisplayName)
+		if err != nil {
+			return fmt.Errorf("error reading 'display_name': %w", err)
+		}
+	}
+
+	if raw, found := object["provider"]; found {
+		err = json.Unmarshal(raw, &t.Provider)
+		if err != nil {
+			return fmt.Errorf("error reading 'provider': %w", err)
+		}
+	}
+
+	if raw, found := object["values"]; found {
+		err = json.Unmarshal(raw, &t.Values)
+		if err != nil {
+			return fmt.Errorf("error reading 'values': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsResumeAdapterOriginMoveRequest returns the union data inside the ResumeAdapterMoveRequest as a ResumeAdapterOriginMoveRequest
 func (t ResumeAdapterMoveRequest) AsResumeAdapterOriginMoveRequest() (ResumeAdapterOriginMoveRequest, error) {

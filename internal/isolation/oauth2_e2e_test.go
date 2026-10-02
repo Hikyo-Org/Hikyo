@@ -382,3 +382,26 @@ func TestOAuth2ProviderAdministration(t *testing.T) {
 		}
 	})
 }
+
+func TestOAuth2ClaimAllowlistRefused(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h := newSignupHarness(t, db)
+		_, f := configureGithub(t, h)
+		entry := service.RegistrationExternalEntry{Provider: domain.ProviderRef{Kind: domain.ProviderOAuth2, Slug: "github"}, Claim: "name", Values: []string{"GitHub user"}}
+		input := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{entry}, Landing: service.RegistrationLanding{Kind: service.LandingNone}}
+		if _, err := h.reg.Put(t.Context(), service.LocalPrincipal(root), instanceReg, input, ""); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("editable claim accepted: %v", err)
+		}
+		input.External[0].Claim = ""
+		input.External[0].Values = nil
+		if _, err := h.reg.Put(t.Context(), service.LocalPrincipal(root), instanceReg, input, ""); err != nil {
+			t.Fatal(err)
+		}
+		// Simulate an older or restored policy that bypassed input validation.
+		execRaw(t, db, `UPDATE registration_policy_entries SET claim='name' WHERE provider_kind='oauth2'`)
+		execRaw(t, db, `INSERT INTO registration_policy_entry_values(entry_id,value) SELECT id,'GitHub user' FROM registration_policy_entries WHERE provider_kind='oauth2'`)
+		if _, err := githubRoundTrip(t, h, f, "sign-up"); !isUnauth(err) {
+			t.Fatalf("stored OAuth2 claim admitted: %v", err)
+		}
+	})
+}

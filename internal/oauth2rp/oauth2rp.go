@@ -114,27 +114,34 @@ func (p *Provider) User(ctx context.Context, token string) (User, error) {
 	if json.Unmarshal(raw["id"], &id) != nil || id <= 0 {
 		return User{}, ErrUserInfo
 	}
-	return User{Subject: strconv.FormatInt(id, 10), Claims: raw}, nil
+	return User{Subject: strconv.FormatInt(id, 10), Claims: map[string]json.RawMessage{"name": raw["name"]}}, nil
 }
 
 // VerifiedEmail is called only on the admitted unknown sign-up branch.
 func (p *Provider) VerifiedEmail(ctx context.Context, token string) (string, error) {
-	var rows []struct {
-		Email    string `json:"email"`
-		Primary  bool   `json:"primary"`
-		Verified bool   `json:"verified"`
-	}
-	if err := p.get(ctx, token, "/user/emails", &rows); err != nil {
-		return "", err
-	}
 	address := ""
-	for _, row := range rows {
-		if row.Primary && row.Verified && row.Email != "" {
-			if address != "" {
-				return "", nil
+	// Request numbered pages at the pinned origin; never follow a supplied URL.
+	// At most 1,000 email rows are considered. An exhausted bound refuses.
+	for page := 1; page <= 10; page++ {
+		var rows []struct {
+			Email    string `json:"email"`
+			Primary  bool   `json:"primary"`
+			Verified bool   `json:"verified"`
+		}
+		if err := p.get(ctx, token, "/user/emails?per_page=100&page="+strconv.Itoa(page), &rows); err != nil {
+			return "", err
+		}
+		for _, row := range rows {
+			if row.Primary && row.Verified && row.Email != "" {
+				if address != "" {
+					return "", nil
+				}
+				address = row.Email
 			}
-			address = row.Email
+		}
+		if len(rows) < 100 {
+			return address, nil
 		}
 	}
-	return address, nil
+	return "", ErrUserInfo
 }
