@@ -185,6 +185,16 @@ same_repo
 expect_reject 'same-repo workflow edits without independent approval'
 approval
 expect_accept 'same-repo workflow edits with exact-head independent maintainer approval'
+jq '.[0] = [.[0][0] | .user = {id:1,login:"reviewer[bot]",type:"Bot"}]' "$work/reviews.json" >"$work/reviews-new.json"
+mv "$work/reviews-new.json" "$work/reviews.json"
+expect_reject 'a bot approval without an independent maintainer'
+grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
+bot_review=$(cat "$work/reviews.json")
+approval
+jq --argjson bot "$bot_review" '.[0] = $bot[0] + .[0]' "$work/reviews.json" >"$work/reviews-new.json"
+mv "$work/reviews-new.json" "$work/reviews.json"
+expect_accept 'bot review preceding a valid independent maintainer approval'
+approval
 ( REVIEWS_ERROR=true expect_reject 'review API failure despite an approved fixture' )
 for permission in admin maintain; do
 	printf '{"permission":"%s"}\n' "$permission" >"$work/permission.json"
