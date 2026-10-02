@@ -15,10 +15,19 @@ Bot reviews are excluded from workflow approval candidates: they neither grant
 authority nor prevent a valid independent maintainer approval from being checked.
 Fixtures cover bot-only approval and a bot review preceding a human approval.
 
+Dunky13's same-repository PRs are exempt from the extra workflow approval check
+when the author has immutable GitHub user ID 991668 and still has write, maintain
+or admin permission. This is repository policy pinned in the trusted base script,
+not a PR-supplied flag. Current account identity and permission are checked again
+before accepting validation. Other authors still need independent exact-head
+maintainer approval. Fork workflow edits, failed validation, stale heads and
+unknown mergeability remain blocked. Signature, DCO and merge queue gates remain.
+
 This PR deliberately contains no `.github/` changes: the existing gate can
 validate it through ordinary PR-scoped CI without calling the broken approval
 lookup. Merge this script-only repair before workflow-edit PRs such as #850
-and #852, then rerun their trusted-ci jobs after exact-head maintainer approval.
+and #852, then rerun their trusted-ci jobs after the applicable approval or BDFL
+authority check.
 The checkout uses the event's base SHA; if a rerun retains the old base SHA,
 synchronize the workflow PR with updated main to trigger a fresh event.
 
