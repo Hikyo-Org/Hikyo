@@ -107,8 +107,13 @@ while :; do
 		# Re-prove workflow-edit authority and the head immediately before passing.
 		if [ "$workflow_changed" = true ]; then require_workflow_review; fi
 		check_current_pr
-		printf 'fork validation gate: fork-ci run %s passed on %s\n' "$run_id" "$HEAD_SHA"
-		exit 0
+		if [ "$mergeable" = true ]; then
+			printf 'fork validation gate: fork-ci run %s passed on %s\n' "$run_id" "$HEAD_SHA"
+			exit 0
+		fi
+		# A completed run does not resolve GitHub's pending mergeability.
+		[ "$(date +%s)" -lt "$deadline" ] ||
+			fail "PR mergeability is still pending after ${timeout_seconds}s; re-run once GitHub resolves it"
 	fi
 	[ "$(date +%s)" -lt "$deadline" ] ||
 		fail "no completed fork-ci run for $HEAD_SHA within ${timeout_seconds}s (every fork run needs maintainer approval); re-run this job once it finishes"

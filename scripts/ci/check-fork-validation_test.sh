@@ -51,6 +51,14 @@ case $url in
 		jq -r --arg sha fedcba9876543210fedcba9876543210fedcba98 ".head.sha = \$sha | $filter" "$FIXTURES/pr.json"
 		exit 0
 	fi
+	if [ "$count" -ge "${MERGEABLE_RESOLVES_AT:-99999}" ]; then
+		jq -r ".mergeable = true | $filter" "$FIXTURES/pr.json"
+		exit 0
+	fi
+	if [ "$count" -ge "${MERGEABLE_PENDING_AT:-99999}" ]; then
+		jq -r ".mergeable = null | $filter" "$FIXTURES/pr.json"
+		exit 0
+	fi
 	fixture=pr
 	;;
 */workflows/ci-fork.yml/runs*)
@@ -73,7 +81,7 @@ head=0123456789abcdef0123456789abcdef01234567
 
 # fixture <changed_files> <files-json> <runs-json> <gate-conclusion>
 fixture() {
-	printf '{"head":{"sha":"%s","repo":{"id":2,"full_name":"fork/r"}},"base":{"repo":{"id":1,"full_name":"o/r"}},"user":{"id":10,"login":"author"},"changed_files":%s}\n' "$head" "$1" >"$work/pr.json"
+	printf '{"head":{"sha":"%s","repo":{"id":2,"full_name":"fork/r"}},"base":{"repo":{"id":1,"full_name":"o/r"}},"user":{"id":10,"login":"author"},"changed_files":%s,"mergeable":true}\n' "$head" "$1" >"$work/pr.json"
 	printf '%s\n' "$2" >"$work/files.json"
 	printf '%s\n' "$3" >"$work/runs.json"
 	printf '{"jobs":[{"name":"validation / changes","conclusion":"success"},{"name":"validation / ci-required","conclusion":"%s"}]}\n' "$4" >"$work/jobs.json"
@@ -95,7 +103,7 @@ approval() {
 
 gate() {
 	PATH="$work/bin:$PATH" FIXTURES=$work GH_REPO=o/r PR_NUMBER=7 HEAD_SHA=${1:-$head} \
-		FORK_GATE_TIMEOUT_SECONDS=0 FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
+		FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
 }
 
 # expect_pending <description>: rejected only by the deadline, never as a result.
@@ -127,6 +135,21 @@ done_run='{"workflow_runs":[{"id":42,"status":"completed","display_title":"fork-
 fixture 1 "$docs" "$done_run" success
 expect_accept 'a docs-only fork PR whose fork-ci gate passed'
 expect_reject 'a PR head that moved since the event' fedcba9876543210fedcba9876543210fedcba98
+
+fixture 1 "$docs" "$done_run" success
+jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'completed validation while mergeability remains unknown'
+grep -F 'PR mergeability is still pending' "$work/stderr" >/dev/null
+rm -f "$work/pr-calls"
+( MERGEABLE_RESOLVES_AT=4 TEST_GATE_TIMEOUT_SECONDS=10 expect_accept 'completed validation after a later poll resolves mergeability' )
+[ "$(cat "$work/pr-calls")" -ge 5 ] || {
+	printf 'fork gate fixture failed: mergeability was not checked on a later poll\n' >&2
+	exit 1
+}
+fixture 1 "$docs" "$done_run" success
+( MERGEABLE_PENDING_AT=3 expect_reject 'mergeability becomes unknown immediately before accepting validation' )
+grep -F 'PR mergeability is still pending' "$work/stderr" >/dev/null
 
 fixture 1 "$docs" "$done_run" failure
 expect_reject 'a failed fork-ci gate'
