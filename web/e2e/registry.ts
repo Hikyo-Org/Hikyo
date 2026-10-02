@@ -35,6 +35,7 @@ export type Flow = {
 };
 
 export const FLOWS: readonly Flow[] = [
+  { id: 'signup', spec: 'flows/login.spec.ts', surfaces: ['signup-verify'] },
   // `establish-credential` (#568) is a new SURFACE and rides `login.spec.ts`
   // (group 1 on main) for the closure reason the SCIM and audit entries below
   // spell out: a spec file a PR adds to a `ci.yml` group never runs on that PR.

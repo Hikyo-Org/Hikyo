@@ -39,10 +39,10 @@
     "routes/EstablishCredential.tsx": "a22c4ec7b3937b1eb4fcd21b35e129349c0a8d9dc19ae9696842add49c20c8b6",
     "routes/HistoryDrawer.tsx": "00f6b1b2cbf2efb5af0e427621b3678e3b8b5741f20804f4780d9e2e3a3a81fb",
     "routes/ImportWizard.tsx": "57ff581b1cb54f9a99f6a36d6c6f17fdfaf4dbc8a08e8f05c83879ebe91a187b",
-    "routes/InstanceAdmin.tsx": "b4599250b7b23e4b56f3b3e1b5f3720e7316572ae5faac89b2c8f00b442920ad",
+    "routes/InstanceAdmin.tsx": "82a19f8196b3351aa0e7d6ed69744a796325e4bb73c2eb3b7b487109eb3b051e",
     "routes/InstanceConfig.tsx": "91a62d9494923fc03faf45d8a44344a3842dcec3b8351705dc20252f978d9c5d",
     "routes/InviteDialog.tsx": "0bffdf455370a982c89dad50046853f965e152d26cda1d42fb33d07b86392dff",
-    "routes/Login.tsx": "513efdb4ac0dc5910909e248317bf359de650e085c76da7b039754f09b480eea",
+    "routes/Login.tsx": "637788b5ae2b4b870ead8b36f59b132a01476b4790b33bf2bb7ce083e5c1ceb2",
     "routes/MatrixRowEditor.tsx": "cf17a821406b67d7b01d6e0a361fb34287652f7be2cf8db31c66a6853fffc0f5",
     "routes/Members.tsx": "588f70e738f3771035d7d1ed7fe6579a11fc27104b5b68eaf6e496c0230270af",
     "routes/OidcProvidersPanel.tsx": "3a9608ffaf836f0d0732f1c2c2bc6d0bfbac987b5da8384ce85c4ebf67cb6f72",
@@ -53,9 +53,12 @@
     "routes/Values.tsx": "fe3e293d3742d4bbe9ce1abe9ceae307513cb25c4530ee5362a2328b1a271045",
     "routes/WorkspaceApprove.tsx": "075ce078cd3fe1c32575c9150d5dee5084a433c16af1d06d204b39c072783d70",
     "routes/machineAccess/DynamicProviders.tsx": "5445ecbb594719c9c57358365a8c26b5cfa5de3e65ce6f1f44800a4b691823e8",
-    "ui/auth/LoginForm.tsx": "fa0f6dab49fc08e792d3b63c4090c3d448d45c373c376759c444dfe368cf070b",
+    "ui/auth/LoginForm.tsx": "b0a881e1b38b33f2fd045aa7181fa2564becbb5cb7b5ff8385acbdc1f3210a9b",
     "ui/auth/ProofDialog.tsx": "2ad7582557e7bc3d479e3aeb04c48b962d9dde20114ba76e516ec760ca9ac009",
     "ui/auth/SecondFactorSetup.tsx": "76405ce9c77015d38a0a8847f8e9899803ae0d063ceb62b7a16f7dbc9db14225",
-    "routes/OAuth2ProvidersPanel.tsx": "2614ad4c866841c860be599c436cf3b5143f1265fd6edb395d766e0b8e40e349"
+    "routes/OAuth2ProvidersPanel.tsx": "2614ad4c866841c860be599c436cf3b5143f1265fd6edb395d766e0b8e40e349",
+    "routes/InstanceMailPanel.tsx": "d51209ebc0ebdb68adcdaf0dd102ccc0c9959e2bfe3f02ab0a03b228982c5e5f",
+    "routes/SignupVerify.tsx": "921f12ac062abe74c9b612fbf41216fe3f915eeabc4c1df26549046b18da539c",
+    "ui/auth/LocalSignupForm.tsx": "90afc6117d4b9972a5aa181f9d4f8efb4bcd4f4e6373f5c3ecd24423b4c14d53"
   }
 }

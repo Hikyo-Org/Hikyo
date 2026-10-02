@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# mvp-boundary O7 + ops-spec §13 / CI invariant 4: an instrumented boot+idle run
-# of `hikyo server`, with NOTHING configured (no remotes, no recipients, no
-# adapters, no IdPs), originates ZERO outbound connections and still boots AND
-# serves. strace records every outbound syscall (connect/sendto/sendmsg); the
+# mvp-boundary O7 + ops-spec §13 / CI invariant 4: two instrumented boot+idle
+# runs of `hikyo server`, one with NOTHING configured (no remotes, no
+# recipients, no adapters, no IdPs) and one with a configured mailer. Both
+# originate ZERO outbound connections and still boot AND serve.
+# strace records every outbound syscall (connect/sendto/sendmsg); the
 # run fails if any targets a non-loopback address, or if the server cannot serve.
 #
 # Linux-only: it depends on strace and syscall tracing. Runs in CI, not on a
@@ -33,17 +34,26 @@ else
 	go build -o "$bin" ./cmd/hikyo
 fi
 
+# Environment inputs are only the pre-adoption seed. Give each probe its own
+# empty state so neither run silently reuses the other's adopted configuration.
+# Clear inherited mail inputs to prove the absent case, including file tiers.
+unset HIKYO_MAIL_ADDR HIKYO_MAIL_TLS HIKYO_MAIL_USER HIKYO_MAIL_PASSWORD \
+	HIKYO_MAIL_PASSWORD_FILE HIKYO_MAIL_FROM HIKYO_MAIL_EHLO \
+	HIKYO_MAIL_ALLOWED_CIDRS HIKYO_MAIL_CA_FILE
+
+probe() {
+local mode="$1"
 port=47811
 ops_port=47812
 origin="http://127.0.0.1:${port}"
 ops_origin="http://127.0.0.1:${ops_port}"
-trace="$work/net.log"
+trace="$work/$mode-net.log"
 # The per-syscall trace goes to strace's own -o file; strace's diagnostics AND
 # the server's slog (which writes "boot complete" to stderr) share serverlog.
-serverlog="$work/server.log"
+serverlog="$work/$mode-server.log"
 
-export HIKYO_STATE_DIR="$work/state"
-export HIKYO_DB="sqlite:$work/hikyo.db"
+export HIKYO_STATE_DIR="$work/$mode-state"
+export HIKYO_DB="sqlite:$work/$mode-hikyo.db"
 mkdir -p "$HIKYO_STATE_DIR"
 
 # Fail early if the port is already answering — otherwise a stray listener could
@@ -115,9 +125,23 @@ fi
 egress="$(grep -E '(connect|sendto|sendmsg)\([0-9]+, .*sa_family=AF_INET6?' "$trace" \
 	| grep -vE 'inet_addr\("127\.|"::1"|::ffff:127\.|sin6_addr=.*"::1"' || true)"
 if [ -n "$egress" ]; then
-	echo "no-egress: an unconfigured boot+idle attempted outbound traffic:"
+	echo "no-egress: $mode boot+idle attempted outbound traffic:"
 	echo "$egress"
 	exit 1
 fi
 
-echo "no-egress: OK — booted, served, ready, and originated 0 non-loopback connect/sendto/sendmsg"
+echo "no-egress: $mode OK - booted, served, ready, and originated 0 non-loopback connect/sendto/sendmsg"
+}
+
+probe unconfigured
+
+# A fully configured relay with an explicit address-policy exception must still
+# remain idle. A mistaken boot-time probe would generate a traced non-loopback
+# connect, even though no relay is listening at this documentation-only address.
+export HIKYO_MAIL_ADDR="198.51.100.1:465"
+export HIKYO_MAIL_TLS="implicit"
+export HIKYO_MAIL_FROM="Hikyo <hikyo@example.com>"
+export HIKYO_MAIL_USER="no-egress-fixture"
+export HIKYO_MAIL_PASSWORD="no-egress-fixture"
+export HIKYO_MAIL_ALLOWED_CIDRS="198.51.100.1/32"
+probe configured-mailer

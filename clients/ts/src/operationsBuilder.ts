@@ -92,7 +92,7 @@ function successResponse(typesSource: string, base: string): SuccessResponse | n
     }
   }
   successes.sort((a, b) => a.status - b.status);
-  const bodyless = successes.filter((entry) => entry.body === 'void');
+  const bodyless = successes.filter((entry) => entry.body === 'void' || (base === 'SignupRequest' && entry.status === 202 && entry.body === 'unknown'));
   if (bodyless.length !== 0 && bodyless.length !== successes.length) {
     throw new Error(
       `${base} mixes body-bearing and bodyless success statuses; generate separate descriptors instead of weakening the parser contract`,

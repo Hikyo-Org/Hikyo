@@ -439,3 +439,136 @@ func (r *Resolver) DeleteRegistrationSignup(ctx context.Context, id string) (boo
 	}
 	return n == 1, err
 }
+
+// RegistrationSignup is a complete pending local verification snapshot.
+type RegistrationSignup = NewRegistrationSignup
+
+func (r *Resolver) RegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error) {
+	if r.sq != nil {
+		row, err := r.sq.GetRegistrationSignupByEmail(ctx, email)
+		if err != nil {
+			return RegistrationSignup{}, notFoundOr(err)
+		}
+		created, err := decodeTime(row.CreatedAt)
+		if err != nil {
+			return RegistrationSignup{}, err
+		}
+		expires, err := decodeTime(row.ExpiresAt)
+		return RegistrationSignup{ID: row.ID, Email: row.Email, TokenVerifier: row.TokenVerifier, PolicyID: row.PolicyID, SignupScopeOrgID: domain.OrgID(row.SignupScopeOrgID.String), CredentialEpoch: row.CredentialEpoch, CreatedAt: created, ExpiresAt: expires}, err
+	}
+	row, err := r.pg.GetRegistrationSignupByEmail(ctx, email)
+	if err != nil {
+		return RegistrationSignup{}, notFoundOr(err)
+	}
+	return RegistrationSignup{ID: row.ID, Email: row.Email, TokenVerifier: row.TokenVerifier, PolicyID: row.PolicyID, SignupScopeOrgID: domain.OrgID(row.SignupScopeOrgID.String), CredentialEpoch: row.CredentialEpoch, CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time}, nil
+}
+func (r *Resolver) RegistrationSignupByVerifier(ctx context.Context, verifier []byte) (RegistrationSignup, error) {
+	if r.sq != nil {
+		row, err := r.sq.GetRegistrationSignupByVerifier(ctx, verifier)
+		if err != nil {
+			return RegistrationSignup{}, notFoundOr(err)
+		}
+		return r.RegistrationSignupByEmail(ctx, row.Email)
+	}
+	row, err := r.pg.GetRegistrationSignupByVerifier(ctx, verifier)
+	if err != nil {
+		return RegistrationSignup{}, notFoundOr(err)
+	}
+	return r.RegistrationSignupByEmail(ctx, row.Email)
+}
+
+// ReissueRegistrationSignup refuses a pending row deleted since its snapshot.
+// Callers must not record an intent or send a token whose verifier was not stored.
+func (r *Resolver) ReissueRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error {
+	var affected int64
+	var err error
+	if r.sq != nil {
+		affected, err = r.sq.ReissueRegistrationSignup(ctx, sqlitegen.ReissueRegistrationSignupParams{TokenVerifier: n.TokenVerifier, PolicyID: n.PolicyID, SignupScopeOrgID: sql.NullString{String: string(n.SignupScopeOrgID), Valid: n.SignupScopeOrgID != ""}, CredentialEpoch: n.CredentialEpoch, ExpiresAt: encodeTime(n.ExpiresAt), ID: n.ID})
+	} else {
+		affected, err = r.pg.ReissueRegistrationSignup(ctx, pggen.ReissueRegistrationSignupParams{TokenVerifier: n.TokenVerifier, PolicyID: n.PolicyID, SignupScopeOrgID: pgtype.Text{String: string(n.SignupScopeOrgID), Valid: n.SignupScopeOrgID != ""}, CredentialEpoch: n.CredentialEpoch, ExpiresAt: pgTimestamp(n.ExpiresAt), ID: n.ID})
+	}
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (r *Resolver) ConsumeRegistrationSignup(ctx context.Context, id string, verifier []byte) (bool, error) {
+	var count int64
+	var err error
+	if r.sq != nil {
+		count, err = r.sq.ConsumeRegistrationSignup(ctx, sqlitegen.ConsumeRegistrationSignupParams{ID: id, TokenVerifier: verifier})
+	} else {
+		count, err = r.pg.ConsumeRegistrationSignup(ctx, pggen.ConsumeRegistrationSignupParams{ID: id, TokenVerifier: verifier})
+	}
+	return count == 1, err
+}
+
+type ExpiredRegistrationSignup struct {
+	ID, PolicyID     string
+	SignupScopeOrgID domain.OrgID
+}
+
+func (r *Resolver) ExpiredRegistrationSignups(ctx context.Context, at time.Time) ([]ExpiredRegistrationSignup, error) {
+	var out []ExpiredRegistrationSignup
+	if r.sq != nil {
+		rows, err := r.sq.ListExpiredRegistrationSignups(ctx, encodeTime(at))
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out = append(out, ExpiredRegistrationSignup{row.ID, row.PolicyID, domain.OrgID(row.SignupScopeOrgID.String)})
+		}
+	} else {
+		rows, err := r.pg.ListExpiredRegistrationSignups(ctx, pgTimestamp(at))
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out = append(out, ExpiredRegistrationSignup{row.ID, row.PolicyID, domain.OrgID(row.SignupScopeOrgID.String)})
+		}
+	}
+	return out, nil
+}
+func (r *Resolver) AccountByEmail(ctx context.Context, email string) (Account, error) {
+	if r.sq != nil {
+		row, err := r.sq.GetAccountByEmail(ctx, sql.NullString{String: email, Valid: true})
+		if err != nil {
+			return Account{}, notFoundOr(err)
+		}
+		return sqliteAccount(row.ID, row.PrincipalID, row.Username, row.DisplayName, row.CreatedAt)
+	}
+	row, err := r.pg.GetAccountByEmail(ctx, pgtype.Text{String: email, Valid: true})
+	if err != nil {
+		return Account{}, notFoundOr(err)
+	}
+	return pgAccount(row.ID, row.PrincipalID, row.Username, row.DisplayName, row.CreatedAt.Time), nil
+}
+func (r *Resolver) SetLocalAccountEmail(ctx context.Context, id, email string, at time.Time) error {
+	if r.sq != nil {
+		return r.sq.SetLocalAccountEmail(ctx, sqlitegen.SetLocalAccountEmailParams{ID: id, Email: sql.NullString{String: email, Valid: true}, EmailVerifiedAt: sql.NullString{String: encodeTime(at), Valid: true}})
+	}
+	return r.pg.SetLocalAccountEmail(ctx, pggen.SetLocalAccountEmailParams{ID: id, Email: pgtype.Text{String: email, Valid: true}, EmailVerifiedAt: pgTimestamp(at)})
+}
+
+func (r *Resolver) PruneExpiredRegistrationSignup(ctx context.Context, id string, at time.Time) (bool, error) {
+	var n int64
+	var err error
+	if r.sq != nil {
+		n, err = r.sq.PruneExpiredRegistrationSignup(ctx, sqlitegen.PruneExpiredRegistrationSignupParams{ID: id, ExpiresAt: encodeTime(at)})
+	} else {
+		n, err = r.pg.PruneExpiredRegistrationSignup(ctx, pggen.PruneExpiredRegistrationSignupParams{ID: id, ExpiresAt: pgTimestamp(at)})
+	}
+	return n == 1, err
+}
+
+func (r *Resolver) VerifiedAccountEmailExists(ctx context.Context, email string) (bool, error) {
+	if r.sq != nil {
+		n, e := r.sq.VerifiedAccountEmailExists(ctx, sql.NullString{String: email, Valid: true})
+		return n, e
+	}
+	return r.pg.VerifiedAccountEmailExists(ctx, pgtype.Text{String: email, Valid: true})
+}

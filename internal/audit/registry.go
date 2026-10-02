@@ -256,6 +256,9 @@ const (
 	EventRegistrationSignupAdmitted  EventType = "registration.signup_admitted"
 	EventRegistrationSignupRefused   EventType = "registration.signup_refused"
 	EventRegistrationSignupCompleted EventType = "registration.signup_completed"
+	EventRegistrationMailIntent      EventType = "registration.mail_intent"
+	EventRegistrationMailOutcome     EventType = "registration.mail_outcome"
+	EventRegistrationMailStatusRead  EventType = "registration.mail_status_read"
 
 	// settings.reauthentication_window_changed and
 	// settings.protected_flag_changed are the `project-settings` security
@@ -2004,6 +2007,10 @@ var registry = map[EventType]TypeSpec{
 			"cause":     {Kind: KindString, Required: true, Enum: []string{"expired", "policy-deleted"}},
 		},
 	},
+	EventRegistrationMailStatusRead: {SchemaVersion: 1, Retention: RetentionAccess, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"configured": {Kind: KindBool, Required: true}}},
+	EventRegistrationMailIntent:     {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeIntent: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"kind": {Kind: KindString, Required: true, Enum: []string{"verification", "existing-address", "test"}}, "recipient": {Kind: KindFreeText, Required: true}, "policy_id": {Kind: KindString}}},
+	EventRegistrationMailOutcome:    {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"intent_id": {Kind: KindString, Required: true}}},
+
 	EventRegistrationSignupAdmitted: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,

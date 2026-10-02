@@ -86,3 +86,9 @@ test('the committed operations.gen.ts is exactly what the generator emits now', 
   const committed = here('operations.gen.ts');
   assert.equal(committed, buildOperationsModule(sources()));
 });
+
+// hey-api represents a content-free 202 as unknown; this named protocol
+// response remains bodyless without weakening other unknown responses.
+test('signup acceptance binds the bodyless 202 response', () => {
+  assert.match(buildOperationsModule(sources()), /signupRequestOp: BodylessOperation<SignupRequestData>.*\[202\]/);
+});

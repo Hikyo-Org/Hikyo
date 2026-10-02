@@ -99,6 +99,7 @@ var proofMembers = []string{"proof", "password", "code"}
 // factor, redeeming a handoff code). Each is the thing a proof would be
 // checked against, not a mutation gated on one.
 var reauthExempt = map[string]string{
+	"signupVerify":           "sets the first credential under a single-use signup authority; no existing account session exists",
 	"localLogin":             "the password is the login itself",
 	"establishCredential":    "the password being established is the new credential",
 	"beginRecovery":          "the recovery code is the recovery ceremony itself",

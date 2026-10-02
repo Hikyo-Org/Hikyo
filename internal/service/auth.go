@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/oidcrp"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/webauthnrp"
@@ -177,7 +178,9 @@ type Auth struct {
 	// both or neither; with neither, every sign-up door is closed and the
 	// callback refuses `closed`, uncharged.
 	registration *Registration
+	MailFailed   func()
 	signupBudget *Budget
+	signupMail   func(context.Context) (*runtimeconfig.Bundle, error)
 
 	// dummyRecoverySealed is a batch sealed once and opened on every
 	// non-matching recovery path, so a miss costs the same envelope decrypt +
@@ -319,6 +322,14 @@ func (s *Auth) LocalLogin(ctx context.Context, username, password string, artifa
 		return LoginResult{}, fmt.Errorf("%w: unknown session artifact %q", domain.ErrInvalid, artifact)
 	}
 
+	// Email login and its failure bucket use the same canonical identifier.
+	// Domain case variants must not buy separate guesses against one verifier.
+	if strings.Contains(username, "@") {
+		if canonical, err := domain.CanonicalEmail(username); err == nil {
+			username = canonical
+		}
+	}
+
 	// The per-account delay is evaluated BEFORE the semaphore, not after.
 	// Sleeping while holding an expensive-work slot would let an attacker put
 	// a handful of identifiers into backoff and then occupy every slot doing
@@ -384,7 +395,15 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		if epoch, err = az.CredentialEpoch(ctx); err != nil {
 			return err
 		}
-		account, err = az.AccountByUsername(ctx, username)
+		if strings.Contains(username, "@") {
+			address, e := domain.CanonicalEmail(username)
+			if e != nil {
+				return nil
+			}
+			account, err = az.AccountByEmail(ctx, address)
+		} else {
+			account, err = az.AccountByUsername(ctx, username)
+		}
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			return nil

@@ -110,6 +110,11 @@ func (c *Client) Send(ctx context.Context, to, subject, body string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		// Socket deadlines can fire before the context timer is scheduled.
+		// The absolute operation deadline still determines the public cause.
+		if !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
 		return ErrDelivery
 	}
 	return nil

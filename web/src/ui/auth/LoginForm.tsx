@@ -7,6 +7,7 @@ import { Badge } from '../Badge.tsx';
 import { Button } from '../Button.tsx';
 import { Glyph } from '../Glyph.tsx';
 import { Input } from '../Input.tsx';
+import { LocalSignupForm } from './LocalSignupForm.tsx';
 import { ProviderButton, type LoginProvider, type SignInIntent } from './ProviderButton.tsx';
 
 export type { LoginProvider, ProviderBrand, SignInIntent, SignInProvider } from './ProviderButton.tsx';
@@ -34,6 +35,8 @@ export type SignInBusy = 'password' | 'passkey' | { provider: ProviderIdentity |
  */
 export type SignupDoor = {
   readonly providers: readonly LoginProvider[];
+  readonly local?: boolean;
+  readonly org?: string;
   /** "You'll join this organisation." and the like; null when the wire names no landing. */
   readonly landing: string | null;
 };
@@ -42,6 +45,7 @@ type Stage =
   | { at: 'choose' }
   | { at: 'password' }
   | { at: 'sign-up' }
+  | { at: 'email' }
   | { at: 'confirm'; provider: ProviderIdentity };
 
 /**
@@ -53,8 +57,9 @@ type Stage =
  * to the door, where the rows it still admits are.
  */
 function shownStage(chosen: Stage, signup: SignupDoor | null): Stage {
-  if (chosen.at !== 'sign-up' && chosen.at !== 'confirm') return chosen;
+  if (chosen.at !== 'sign-up' && chosen.at !== 'confirm' && chosen.at !== 'email') return chosen;
   if (signup === null) return { at: 'choose' };
+  if (chosen.at === 'email' && signup.local !== true) return { at: 'sign-up' };
   if (
     chosen.at === 'confirm' &&
     !signup.providers.some(
@@ -205,6 +210,9 @@ export function LoginForm({
         </form>
       );
 
+    case 'email':
+      return <LocalSignupForm landing={signup?.landing ?? null} org={signup?.org} onBack={() => setStage({ at: 'sign-up' })} />;
+
     case 'sign-up': {
       if (signup === null) return null;
       return (
@@ -213,6 +221,7 @@ export function LoginForm({
           {title('Create an account')}
           {signup.landing !== null ? <p className="login__landing">{signup.landing}</p> : null}
           <div className="login__methods">
+            {signup.local === true ? <Button type="button" className="login__method" disabled={anyBusy} onClick={() => setStage({ at: 'email' })}>Email</Button> : null}
             {signup.providers.map((provider) => (
               <ProviderButton
                 key={`${provider.kind}:${provider.slug}`}

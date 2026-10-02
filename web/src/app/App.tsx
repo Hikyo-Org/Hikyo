@@ -17,6 +17,7 @@ const loadAuthRoutes = () => import('./route-groups/auth.ts');
 const loadWorkspaceRoutes = () => import('./route-groups/workspace.ts');
 const loadSettingsRoutes = () => import('./route-groups/settings.ts');
 
+const SignupVerify = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.SignupVerify })));
 const Login = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.Login })));
 const EstablishCredential = lazy(() =>
   loadAuthRoutes().then((routes) => ({ default: routes.EstablishCredential })),
@@ -69,6 +70,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   login: withRouteFallback(<Login />),
   // The same page opened on the addressed scope's sign-up door (#607).
   signup: withRouteFallback(<Login intent="sign-up" />),
+  'signup-verify': withRouteFallback(<SignupVerify />),
   'establish-credential': withRouteFallback(<EstablishCredential />),
   overview: <Overview />,
   projects: withRouteFallback(<Projects />),

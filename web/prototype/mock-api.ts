@@ -3,6 +3,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import {
+  zSignupRequest,
+  zSignupVerifyRequest,
+  zInstanceMailTestRequest,
   zApplyTemplateRequest,
   zCreateOrgRequest,
   zCreateGrantRequest,
@@ -352,10 +355,16 @@ const prototypeInstancePolicy = (): RegistrationPolicy => ({
   created_at: '2026-09-01T08:00:00Z',
   updated_at: '2026-09-01T08:00:00Z',
 });
+let prototypeAuthenticated = true;
+let prototypeSignupMail: { token: string; email: string; landing: 'none' | 'org' | 'fresh-org'; org?: string } | null = null;
+let prototypeSignupSequence = 0;
 let prototypePolicies = new Map<string, RegistrationPolicy>([['instance', prototypeInstancePolicy()]]);
 let prototypeExtraProjects: PrototypeProjectRow[] = [];
 
 function reset(): void {
+  prototypeAuthenticated = true;
+  prototypeSignupMail = null;
+  prototypeSignupSequence = 0;
   drafts.clear();
   published.clear();
   projectSequence = 1;
@@ -493,6 +502,7 @@ function canonicalPrototypePath(path: string): string {
 export function prototypeReadFixture(
   path: string,
   scenario: Scenario = 'populated',
+  signupOrg?: string,
 ): PrototypeReadFixture | undefined {
   path = canonicalPrototypePath(path);
   if (path === '/api/v1/auth/whoami') {
@@ -501,17 +511,21 @@ export function prototypeReadFixture(
   if (path === '/api/v1/runtime/status') {
     return { status: 200, body: { state: 'ready', phase: null } };
   }
+  if (path === '/api/v1/instance/mail') return { status: 200, body: { configured: true } };
   if (path === '/api/v1/auth/methods') {
+    const policy = prototypePolicies.get(signupOrg ?? 'instance');
+    const local = policy?.state === 'active' && policy.local !== undefined;
     return {
       status: 200,
       body: {
         local_login_enabled: true,
         providers: [{ slug: 'git', display_name: 'git.example.com', kind: 'oidc' }],
-        // The instance policy fixture is inactive: the login page says only
-        // "Sign-up is paused." (#606).
-        signup_open: false,
-        signup_paused: true,
-        signup_methods: [],
+        // Default policy is inactive. An explicit prototype policy save
+        // opens the local door for signup preview without changing defaults.
+        signup_open: local,
+        signup_paused: !local,
+        signup_methods: local ? ['local'] : [],
+        ...(local ? { signup_landing: policy.landing.kind } : {}),
       },
     };
   }
@@ -743,7 +757,57 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     send(response, 204);
     return true;
   }
+  if (path === '/__prototype/signout' && method === 'POST') {
+    prototypeAuthenticated = false;
+    send(response, 204);
+    return true;
+  }
+  if (path === '/__prototype/signin' && method === 'POST') {
+    prototypeAuthenticated = true;
+    send(response, 204);
+    return true;
+  }
+  if (path === '/api/v1/auth/whoami' && !prototypeAuthenticated) {
+    send(response, 401, { error: { code: 'unauthenticated', message: 'unauthenticated' } });
+    return true;
+  }
+  if (path === '/__prototype/signup-mail' && method === 'GET') {
+    send(response, 200, { mail: prototypeSignupMail });
+    return true;
+  }
   if (!path.startsWith('/api/v1/')) return false;
+  if (path === '/api/v1/auth/signup' && method === 'POST') {
+    return body(request).then((raw) => {
+      const input = zSignupRequest.parse(JSON.parse(raw));
+      const policy = prototypePolicies.get(input.org ?? 'instance');
+      if (policy?.state === 'active' && policy.local !== undefined) {
+        prototypeSignupSequence += 1;
+        prototypeSignupMail = { token: `su_prototype_${String(prototypeSignupSequence)}`, email: input.email,
+          landing: policy.landing.kind === 'org-template' ? 'org' : policy.landing.kind,
+          ...(input.org === undefined ? {} : { org: input.org }) };
+      }
+      send(response, 202);
+      return true;
+    });
+  }
+  if (path === '/api/v1/auth/signup/verify' && method === 'POST') {
+    return body(request).then((raw) => {
+      const input = zSignupVerifyRequest.parse(JSON.parse(raw));
+      if (prototypeSignupMail === null || input.token !== prototypeSignupMail.token) {
+        send(response, 401, { error: { code: 'unauthenticated', message: 'unauthenticated' } });
+      } else if (input.org_name === 'Acme Corp') {
+        send(response, 400, { error: { code: 'bad_request', message: 'bad request', detail: 'Choose another organisation name. Your link is still valid.' } });
+      } else {
+        prototypeSignupMail = null;
+        send(response, 204);
+      }
+      return true;
+    });
+  }
+  if (path === '/api/v1/instance/mail/test' && method === 'POST') {
+    return body(request).then((raw) => { zInstanceMailTestRequest.parse(JSON.parse(raw)); send(response, 204); return true; });
+  }
+
 
   // Registration policy (#606): one per scope, held in memory. A save makes
   // the prototype principal the authority and reads active; the prototype
@@ -790,7 +854,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   }
 
   if (method === 'GET') {
-    const fixture = prototypeReadFixture(path, scenario);
+    const fixture = prototypeReadFixture(path, scenario, url.searchParams.get('org') ?? undefined);
     if (fixture !== undefined) {
       send(response, fixture.status, fixture.body);
       return true;

@@ -747,3 +747,20 @@ it('renders an unknown future brand as a usable generic provider', async () => {
   expect(mocks.oidc.mutate).toHaveBeenCalledWith({kind:'oidc',provider:'future',intent:'sign-in',signupOrg:undefined});
   await unmount();
 });
+
+it('opens a local-only sign-up door and falls back when the email entry closes', async () => {
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = ['local'];
+  mocks.methods.data.signup_landing = 'none';
+  const container = document.createElement('div');
+  const view = await mount(container, { intent: 'sign-up' });
+  try {
+    expect(container.querySelector('h1')?.textContent).toBe('Create an account');
+    await act(async () => buttonNamed(container, 'Email')?.click());
+    expect(container.querySelector('h1')?.textContent).toBe('Create an account with email');
+    mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'strict' }];
+    await view.render();
+    expect(container.querySelector('h1')?.textContent).toBe('Create an account');
+    expect(buttonNamed(container, 'Email')).toBeUndefined();
+  } finally { await view.unmount(); }
+});

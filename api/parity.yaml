@@ -55,6 +55,10 @@
 # fails naming it.
 
 operations:
+  signupRequest: {webui: signup}
+  signupVerify: {webui: signup-verify}
+  getInstanceMail: {webui: instance-admin}
+  testInstanceMail: {webui: instance-admin}
 
   # Bounded preview delivery configuration (#723), CLI/operator acceptance scope.
   listEnvironmentParameters: {exception: preview-parameter-configuration}

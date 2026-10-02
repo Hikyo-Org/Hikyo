@@ -74,6 +74,7 @@ type federatedSignup struct {
 	// policyID is the policy the last attempt resolved, for the refusal
 	// written after an identity race.
 	policyID string
+	orgName  string
 }
 
 // rollback refunds the charge of an attempt that did not commit.
@@ -349,8 +350,12 @@ func (g *federatedSignup) land(ctx context.Context, r store.Repos, az *authz.TxA
 		if err != nil {
 			return landed{}, err
 		}
+		orgName := g.orgName
+		if orgName == "" {
+			orgName = "org-" + orgID
+		}
 		org := store.Org{
-			ID: orgID, Name: "org-" + orgID, Active: true, Metadata: json.RawMessage(`{}`),
+			ID: orgID, Name: orgName, Active: true, Metadata: json.RawMessage(`{}`),
 			CreatedAt: store.CanonTime(now), Origin: string(domain.OriginRegistration),
 			RegistrationPolicyID: policy.ID,
 		}

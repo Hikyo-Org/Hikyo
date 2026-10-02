@@ -4487,6 +4487,139 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/auth/signup:
+    post:
+      operationId: signupRequest
+      tags: [auth]
+      summary: Request local email registration.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+      responses:
+        "202":
+          description: Uniform accepted response. No address or policy status is disclosed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/auth/signup/verify:
+    post:
+      operationId: signupVerify
+      tags: [auth]
+      summary: Verify one local registration without minting a session.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupVerifyRequest"
+      responses:
+        "204":
+          description: Account and landing created. Sign in separately.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/mail/test:
+    post:
+      operationId: testInstanceMail
+      tags: [instance]
+      summary: Send one test using the active mail configuration.
+      x-hikyo-class: instance
+      x-hikyo-operation: mail.test
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstanceMailTestRequest"
+      responses:
+        "204":
+          description: Test delivered.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/mail:
+    get:
+      operationId: getInstanceMail
+      tags: [instance]
+      summary: Read the static active mailer predicate.
+      x-hikyo-class: instance
+      x-hikyo-operation: mail.get
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Static status. No network probe is performed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceMailStatus"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/auth/methods:
     get:
       operationId: authMethods
@@ -20763,6 +20896,36 @@ components:
         acknowledgements:
           $ref: "#/components/schemas/Acknowledgements"
 
+    SignupRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, maxLength: 65536}
+        org: {type: string, maxLength: 128}
+    SignupVerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [token, password, display_name]
+      properties:
+        token: {type: string, maxLength: 65536}
+        password: {type: string, maxLength: 65536}
+        display_name: {type: string, maxLength: 256}
+        org_name: {type: string, maxLength: 256}
+        landing: {type: string, enum: [none, org, fresh-org]}
+    InstanceMailStatus:
+      type: object
+      additionalProperties: false
+      required: [configured]
+      properties:
+        configured: {type: boolean}
+    InstanceMailTestRequest:
+      type: object
+      additionalProperties: false
+      required: [to, proof]
+      properties:
+        to: {type: string, maxLength: 254}
+        proof: {type: string, maxLength: 65536}
     AuthMethods:
       type: object
       additionalProperties: false

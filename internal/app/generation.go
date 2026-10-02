@@ -256,7 +256,10 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	if err := authSvc.EnableSignup(registrationSvc, budget); err != nil {
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 	}
+	authSvc.EnableLocalSignup(selfConfig.Capture)
+	authSvc.MailFailed = metrics.RecordSignupMailFailure
 	api := &server.API{
+		Mail:     &service.InstanceMail{DB: db, Auth: authSvc, Capture: selfConfig.Capture},
 		Runtime:  &service.System{DB: db, Store: sc},
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
@@ -421,6 +424,9 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		}),
 		operationalHandler: server.NewOperational(readyChk, operationalHealth{retention: retentionSvc, tls: certificate}, metrics),
 		scheduler: &Scheduler{Log: log, Jobs: []ScheduledJob{{
+			Name: "registration_signup_expiry",
+			Run:  authSvc.ReapSignups,
+		}, {
 			Name: "payload_gc",
 			Run: func(ctx context.Context) error {
 				_, err := retentionSvc.Sweep(ctx)

@@ -100,3 +100,48 @@ SELECT id, signup_scope_org_id FROM registration_signups WHERE policy_id = ? ORD
 -- hikyo:authn-resolution
 -- name: DeleteRegistrationSignup :execrows
 DELETE FROM registration_signups WHERE id = ?;
+
+-- hikyo:reason The admitted signup request resolves its canonical address to one pending signup row before issuing mail.
+-- hikyo:authn-resolution
+-- name: GetRegistrationSignupByEmail :one
+SELECT id, email, token_verifier, policy_id, signup_scope_org_id, credential_epoch, created_at, expires_at FROM registration_signups WHERE email = ?;
+
+-- hikyo:reason The signup ceremony resolves an opaque bearer verifier without exposing the pending row to authenticated callers.
+-- hikyo:authn-resolution
+-- name: GetRegistrationSignupByVerifier :one
+SELECT id, email, token_verifier, policy_id, signup_scope_org_id, credential_epoch, created_at, expires_at FROM registration_signups WHERE token_verifier = ?;
+
+-- hikyo:reason The admitted local signup request rotates only the matched pending signup row under the live registration policy.
+-- hikyo:authn-resolution
+-- name: ReissueRegistrationSignup :execrows
+UPDATE registration_signups SET token_verifier = ?, policy_id = ?, signup_scope_org_id = ?, credential_epoch = ?, expires_at = ? WHERE id = ?;
+
+-- hikyo:reason A verified signup bearer is CAS-consumed by its row id and verifier inside the account-creation transaction.
+-- hikyo:authn-resolution
+-- name: ConsumeRegistrationSignup :execrows
+DELETE FROM registration_signups WHERE id = ? AND token_verifier = ?;
+
+-- hikyo:reason The singleton registration reaper enumerates only expired pending rows for audited cleanup.
+-- hikyo:authn-resolution
+-- name: ListExpiredRegistrationSignups :many
+SELECT id, policy_id, signup_scope_org_id FROM registration_signups WHERE expires_at <= ? ORDER BY id;
+
+-- hikyo:reason Local login resolves a canonical verified address only to an active principal, never as a federated linking key.
+-- hikyo:authn-resolution
+-- name: GetAccountByEmail :one
+SELECT id, principal_id, username, display_name, created_at FROM accounts WHERE email = ? AND email_verified_at IS NOT NULL AND principal_id IN (SELECT id FROM principals WHERE privacy_state = 'active');
+
+-- hikyo:reason The successful single-use signup ceremony sets the verified address only on its newly created local account.
+-- hikyo:authn-resolution
+-- name: SetLocalAccountEmail :exec
+UPDATE accounts SET email = ?, email_verified_at = ? WHERE id = ?;
+
+-- hikyo:reason The singleton reaper deletes only its observed expired row and rechecks expiry to preserve concurrent resend.
+-- hikyo:authn-resolution
+-- name: PruneExpiredRegistrationSignup :execrows
+DELETE FROM registration_signups WHERE id = ? AND expires_at <= ?;
+
+-- hikyo:reason The admitted signup request checks address ownership regardless of principal privacy only to select the no-link notice; its public answer remains uniform.
+-- hikyo:authn-resolution
+-- name: VerifiedAccountEmailExists :one
+SELECT EXISTS(SELECT 1 FROM accounts WHERE email = ? AND email_verified_at IS NOT NULL);

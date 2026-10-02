@@ -1,9 +1,11 @@
 package mail_test
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -193,5 +195,88 @@ func TestPreparationAcceptsValidConfigurationWithoutContactingRelay(t *testing.T
 	}
 	if !client.Configured() {
 		t.Fatal("valid mail configuration disabled")
+	}
+}
+
+// A relay that omits STARTTLS must receive neither credentials nor a message.
+func TestSendRefusesRelayWithoutSTARTTLS(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	commands := make(chan []string, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			commands <- nil
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(time.Second))
+		_, _ = io.WriteString(conn, "220 relay.example ESMTP\r\n")
+		scanner := bufio.NewScanner(conn)
+		var received []string
+		for scanner.Scan() {
+			line := scanner.Text()
+			received = append(received, line)
+			if strings.HasPrefix(line, "EHLO ") {
+				_, _ = io.WriteString(conn, "250-relay.example\r\n250 AUTH PLAIN\r\n")
+			} else {
+				break
+			}
+		}
+		commands <- received
+	}()
+	client, err := mail.New(mail.Config{Addr: listener.Addr().String(), TLS: "starttls", From: "hikyo@example.com",
+		User: "operator", Password: "confidential-password", AllowedCIDRs: "127.0.0.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Send(context.Background(), "recipient@example.com", "Test", "confidential-body"); !errors.Is(err, mail.ErrDelivery) {
+		t.Fatalf("got %v, want mandatory STARTTLS refusal", err)
+	}
+	select {
+	case received := <-commands:
+		if len(received) != 1 || !strings.HasPrefix(received[0], "EHLO ") {
+			t.Fatalf("cleartext relay received commands beyond EHLO: %v", received)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("relay did not close after TLS refusal")
+	}
+}
+
+func TestSendHonorsEarlierCallerDeadline(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			accepted <- conn
+		}
+	}()
+	client, err := mail.New(mail.Config{Addr: listener.Addr().String(), TLS: "starttls", From: "hikyo@example.com", AllowedCIDRs: "127.0.0.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err = client.Send(ctx, "recipient@example.com", "Test", "Test body")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want caller deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("caller deadline ignored: %v", elapsed)
+	}
+	select {
+	case conn := <-accepted:
+		_ = conn.Close()
+	case <-time.After(time.Second):
+		t.Fatal("send never reached stalled local relay")
 	}
 }

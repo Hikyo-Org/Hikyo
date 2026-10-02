@@ -69,6 +69,9 @@ func validateAccountProfile(profile ProfileUpdate) error {
 			}
 		}
 	}
+	if strings.Contains(profile.Username, "@") {
+		return fmt.Errorf("%w: username must not contain @", domain.ErrInvalid)
+	}
 	if profile.Username == "" {
 		return fmt.Errorf("%w: username is required", domain.ErrInvalid)
 	}

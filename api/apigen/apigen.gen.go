@@ -3284,6 +3284,27 @@ func (e SetDefinitionsSettingsRequestDefinitionsSource) Valid() bool {
 	}
 }
 
+// Defines values for SignupVerifyRequestLanding.
+const (
+	SignupVerifyRequestLandingFreshOrg SignupVerifyRequestLanding = "fresh-org"
+	SignupVerifyRequestLandingNone     SignupVerifyRequestLanding = "none"
+	SignupVerifyRequestLandingOrg      SignupVerifyRequestLanding = "org"
+)
+
+// Valid indicates whether the value is a known member of the SignupVerifyRequestLanding enum.
+func (e SignupVerifyRequestLanding) Valid() bool {
+	switch e {
+	case SignupVerifyRequestLandingFreshOrg:
+		return true
+	case SignupVerifyRequestLandingNone:
+		return true
+	case SignupVerifyRequestLandingOrg:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StartWorkspaceHandoffRequestPurpose.
 const (
 	StartWorkspaceHandoffRequestPurposeEstablishment StartWorkspaceHandoffRequestPurpose = "establishment"
@@ -7421,6 +7442,17 @@ type InstanceConnectionList struct {
 	Items []InstanceConnection `json:"items"`
 }
 
+// InstanceMailStatus defines model for InstanceMailStatus.
+type InstanceMailStatus struct {
+	Configured bool `json:"configured"`
+}
+
+// InstanceMailTestRequest defines model for InstanceMailTestRequest.
+type InstanceMailTestRequest struct {
+	Proof string `json:"proof"`
+	To    string `json:"to"`
+}
+
 // InstanceUpdateBackend defines model for InstanceUpdateBackend.
 type InstanceUpdateBackend string
 
@@ -10423,6 +10455,24 @@ type SignupMethod struct {
 	union json.RawMessage
 }
 
+// SignupRequest defines model for SignupRequest.
+type SignupRequest struct {
+	Email string  `json:"email"`
+	Org   *string `json:"org,omitempty"`
+}
+
+// SignupVerifyRequest defines model for SignupVerifyRequest.
+type SignupVerifyRequest struct {
+	DisplayName string                      `json:"display_name"`
+	Landing     *SignupVerifyRequestLanding `json:"landing,omitempty"`
+	OrgName     *string                     `json:"org_name,omitempty"`
+	Password    string                      `json:"password"`
+	Token       string                      `json:"token"`
+}
+
+// SignupVerifyRequestLanding defines model for SignupVerifyRequest.Landing.
+type SignupVerifyRequestLanding string
+
 // SnapshotKey defines model for SnapshotKey.
 type SnapshotKey struct {
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
@@ -12297,6 +12347,12 @@ type SamlACSFormdataRequestBody = SamlACSRequest
 // SamlStartJSONRequestBody defines body for SamlStart for application/json ContentType.
 type SamlStartJSONRequestBody = SamlStartRequest
 
+// SignupRequestJSONRequestBody defines body for SignupRequest for application/json ContentType.
+type SignupRequestJSONRequestBody = SignupRequest
+
+// SignupVerifyJSONRequestBody defines body for SignupVerify for application/json ContentType.
+type SignupVerifyJSONRequestBody = SignupVerifyRequest
+
 // RemoveTotpJSONRequestBody defines body for RemoveTotp for application/json ContentType.
 type RemoveTotpJSONRequestBody = TotpProofRequest
 
@@ -12368,6 +12424,9 @@ type ApplyInstanceTemplateJSONRequestBody = ApplyTemplateRequest
 
 // InviteInstanceMemberJSONRequestBody defines body for InviteInstanceMember for application/json ContentType.
 type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
+
+// TestInstanceMailJSONRequestBody defines body for TestInstanceMail for application/json ContentType.
+type TestInstanceMailJSONRequestBody = InstanceMailTestRequest
 
 // PutOauth2ProviderJSONRequestBody defines body for PutOauth2Provider for application/json ContentType.
 type PutOauth2ProviderJSONRequestBody = Oauth2ProviderInput
@@ -13252,6 +13311,12 @@ type ServerInterface interface {
 	// SamlStart Begin an SP-initiated SAML transaction (login, link or reauth).
 	// (POST /api/v1/auth/saml/{provider}/start)
 	SamlStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
+	// SignupRequest Request local email registration.
+	// (POST /api/v1/auth/signup)
+	SignupRequest(w http.ResponseWriter, r *http.Request)
+	// SignupVerify Verify one local registration without minting a session.
+	// (POST /api/v1/auth/signup/verify)
+	SignupVerify(w http.ResponseWriter, r *http.Request)
 	// RemoveTotp Remove the confirmed TOTP factor.
 	// (DELETE /api/v1/auth/totp)
 	RemoveTotp(w http.ResponseWriter, r *http.Request)
@@ -13375,6 +13440,12 @@ type ServerInterface interface {
 	// InviteInstanceMember Invite a human at instance scope with a local credential.
 	// (POST /api/v1/instance/invitations)
 	InviteInstanceMember(w http.ResponseWriter, r *http.Request)
+	// GetInstanceMail Read the static active mailer predicate.
+	// (GET /api/v1/instance/mail)
+	GetInstanceMail(w http.ResponseWriter, r *http.Request)
+	// TestInstanceMail Send one test using the active mail configuration.
+	// (POST /api/v1/instance/mail/test)
+	TestInstanceMail(w http.ResponseWriter, r *http.Request)
 	// ListOauth2Providers List configured OAuth2 providers.
 	// (GET /api/v1/instance/oauth2-providers)
 	ListOauth2Providers(w http.ResponseWriter, r *http.Request)
@@ -14455,6 +14526,18 @@ func (_ Unimplemented) SamlStart(w http.ResponseWriter, r *http.Request, provide
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// SignupRequest Request local email registration.
+// (POST /api/v1/auth/signup)
+func (_ Unimplemented) SignupRequest(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SignupVerify Verify one local registration without minting a session.
+// (POST /api/v1/auth/signup/verify)
+func (_ Unimplemented) SignupVerify(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RemoveTotp Remove the confirmed TOTP factor.
 // (DELETE /api/v1/auth/totp)
 func (_ Unimplemented) RemoveTotp(w http.ResponseWriter, r *http.Request) {
@@ -14698,6 +14781,18 @@ func (_ Unimplemented) ApplyInstanceTemplate(w http.ResponseWriter, r *http.Requ
 // InviteInstanceMember Invite a human at instance scope with a local credential.
 // (POST /api/v1/instance/invitations)
 func (_ Unimplemented) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInstanceMail Read the static active mailer predicate.
+// (GET /api/v1/instance/mail)
+func (_ Unimplemented) GetInstanceMail(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TestInstanceMail Send one test using the active mail configuration.
+// (POST /api/v1/instance/mail/test)
+func (_ Unimplemented) TestInstanceMail(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -17193,6 +17288,34 @@ func (siw *ServerInterfaceWrapper) SamlStart(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// SignupRequest operation middleware
+func (siw *ServerInterfaceWrapper) SignupRequest(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SignupRequest(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SignupVerify operation middleware
+func (siw *ServerInterfaceWrapper) SignupVerify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SignupVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RemoveTotp operation middleware
 func (siw *ServerInterfaceWrapper) RemoveTotp(w http.ResponseWriter, r *http.Request) {
 
@@ -17862,6 +17985,34 @@ func (siw *ServerInterfaceWrapper) InviteInstanceMember(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.InviteInstanceMember(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstanceMail operation middleware
+func (siw *ServerInterfaceWrapper) GetInstanceMail(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstanceMail(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestInstanceMail operation middleware
+func (siw *ServerInterfaceWrapper) TestInstanceMail(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestInstanceMail(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -31201,6 +31352,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/values/diff/reveal", wrapper.RevealValueDiff)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/signup", wrapper.SignupRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/signup/verify", wrapper.SignupVerify)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/mail/test", wrapper.TestInstanceMail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/mail", wrapper.GetInstanceMail)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/methods", wrapper.AuthMethods)
 	})
 	r.Group(func(r chi.Router) {
@@ -34649,6 +34812,238 @@ func (response SamlStart500JSONResponse) VisitSamlStartResponse(w http.ResponseW
 type SamlStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response SamlStart503JSONResponse) VisitSamlStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequestRequestObject struct {
+	Body *SignupRequestJSONRequestBody
+}
+
+type SignupRequestResponseObject interface {
+	VisitSignupRequestResponse(w http.ResponseWriter) error
+}
+
+type SignupRequest202Response struct {
+}
+
+func (response SignupRequest202Response) VisitSignupRequestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type SignupRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SignupRequest400JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SignupRequest401JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SignupRequest409JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SignupRequest429JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response SignupRequest500JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SignupRequest503JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerifyRequestObject struct {
+	Body *SignupVerifyJSONRequestBody
+}
+
+type SignupVerifyResponseObject interface {
+	VisitSignupVerifyResponse(w http.ResponseWriter) error
+}
+
+type SignupVerify204Response struct {
+}
+
+func (response SignupVerify204Response) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SignupVerify400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SignupVerify400JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SignupVerify401JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SignupVerify403JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SignupVerify404JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SignupVerify409JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SignupVerify429JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify500JSONResponse struct{ InternalJSONResponse }
+
+func (response SignupVerify500JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupVerify503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SignupVerify503JSONResponse) VisitSignupVerifyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -39322,6 +39717,243 @@ func (response InviteInstanceMember500JSONResponse) VisitInviteInstanceMemberRes
 type InviteInstanceMember503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response InviteInstanceMember503JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMailRequestObject struct {
+}
+
+type GetInstanceMailResponseObject interface {
+	VisitGetInstanceMailResponse(w http.ResponseWriter) error
+}
+
+type GetInstanceMail200JSONResponse InstanceMailStatus
+
+func (response GetInstanceMail200JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetInstanceMail401JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMail403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetInstanceMail403JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMail404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetInstanceMail404JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMail429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetInstanceMail429JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMail500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetInstanceMail500JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceMail503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetInstanceMail503JSONResponse) VisitGetInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMailRequestObject struct {
+	Body *TestInstanceMailJSONRequestBody
+}
+
+type TestInstanceMailResponseObject interface {
+	VisitTestInstanceMailResponse(w http.ResponseWriter) error
+}
+
+type TestInstanceMail204Response struct {
+}
+
+func (response TestInstanceMail204Response) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type TestInstanceMail400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TestInstanceMail400JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TestInstanceMail401JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TestInstanceMail403JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TestInstanceMail404JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TestInstanceMail409JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TestInstanceMail429JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail500JSONResponse struct{ InternalJSONResponse }
+
+func (response TestInstanceMail500JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceMail503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TestInstanceMail503JSONResponse) VisitTestInstanceMailResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -74039,6 +74671,12 @@ type StrictServerInterface interface {
 	// SamlStart Begin an SP-initiated SAML transaction (login, link or reauth).
 	// (POST /api/v1/auth/saml/{provider}/start)
 	SamlStart(ctx context.Context, request SamlStartRequestObject) (SamlStartResponseObject, error)
+	// SignupRequest Request local email registration.
+	// (POST /api/v1/auth/signup)
+	SignupRequest(ctx context.Context, request SignupRequestRequestObject) (SignupRequestResponseObject, error)
+	// SignupVerify Verify one local registration without minting a session.
+	// (POST /api/v1/auth/signup/verify)
+	SignupVerify(ctx context.Context, request SignupVerifyRequestObject) (SignupVerifyResponseObject, error)
 	// RemoveTotp Remove the confirmed TOTP factor.
 	// (DELETE /api/v1/auth/totp)
 	RemoveTotp(ctx context.Context, request RemoveTotpRequestObject) (RemoveTotpResponseObject, error)
@@ -74162,6 +74800,12 @@ type StrictServerInterface interface {
 	// InviteInstanceMember Invite a human at instance scope with a local credential.
 	// (POST /api/v1/instance/invitations)
 	InviteInstanceMember(ctx context.Context, request InviteInstanceMemberRequestObject) (InviteInstanceMemberResponseObject, error)
+	// GetInstanceMail Read the static active mailer predicate.
+	// (GET /api/v1/instance/mail)
+	GetInstanceMail(ctx context.Context, request GetInstanceMailRequestObject) (GetInstanceMailResponseObject, error)
+	// TestInstanceMail Send one test using the active mail configuration.
+	// (POST /api/v1/instance/mail/test)
+	TestInstanceMail(ctx context.Context, request TestInstanceMailRequestObject) (TestInstanceMailResponseObject, error)
 	// ListOauth2Providers List configured OAuth2 providers.
 	// (GET /api/v1/instance/oauth2-providers)
 	ListOauth2Providers(ctx context.Context, request ListOauth2ProvidersRequestObject) (ListOauth2ProvidersResponseObject, error)
@@ -75873,6 +76517,68 @@ func (sh *strictHandler) SamlStart(w http.ResponseWriter, r *http.Request, provi
 	}
 }
 
+// SignupRequest operation middleware
+func (sh *strictHandler) SignupRequest(w http.ResponseWriter, r *http.Request) {
+	var request SignupRequestRequestObject
+
+	var body SignupRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SignupRequest(ctx, request.(SignupRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SignupRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SignupRequestResponseObject); ok {
+		if err := validResponse.VisitSignupRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SignupVerify operation middleware
+func (sh *strictHandler) SignupVerify(w http.ResponseWriter, r *http.Request) {
+	var request SignupVerifyRequestObject
+
+	var body SignupVerifyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SignupVerify(ctx, request.(SignupVerifyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SignupVerify")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SignupVerifyResponseObject); ok {
+		if err := validResponse.VisitSignupVerifyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RemoveTotp operation middleware
 func (sh *strictHandler) RemoveTotp(w http.ResponseWriter, r *http.Request) {
 	var request RemoveTotpRequestObject
@@ -77032,6 +77738,61 @@ func (sh *strictHandler) InviteInstanceMember(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(InviteInstanceMemberResponseObject); ok {
 		if err := validResponse.VisitInviteInstanceMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstanceMail operation middleware
+func (sh *strictHandler) GetInstanceMail(w http.ResponseWriter, r *http.Request) {
+	var request GetInstanceMailRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstanceMail(ctx, request.(GetInstanceMailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstanceMail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstanceMailResponseObject); ok {
+		if err := validResponse.VisitGetInstanceMailResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestInstanceMail operation middleware
+func (sh *strictHandler) TestInstanceMail(w http.ResponseWriter, r *http.Request) {
+	var request TestInstanceMailRequestObject
+
+	var body TestInstanceMailJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestInstanceMail(ctx, request.(TestInstanceMailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestInstanceMail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestInstanceMailResponseObject); ok {
+		if err := validResponse.VisitTestInstanceMailResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -32,6 +32,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
+	"github.com/Hikyo-Org/hikyo/internal/mail"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/server"
@@ -99,6 +100,14 @@ func goHelper(packagePath, name string) fixtureref.FixtureRef {
 // caught by TestReconciledBoundsMatchOpsSpecValues; completeness against new
 // spec rows is a review responsibility on this single source.
 var Registry = []Bound{
+	bound("signup-token-lifetime", "Local sign-up token lifetime", "social-signin §8", "uniform refusal once 24-hour expiry reached", "Resend renews the same live row; expired rows pruned only", StatusEnforced,
+		goTest("internal/isolation", "TestLocalSignup")),
+	bound("mail-test-budget", "Operator test mail budget", "social-signin §8", "five/hour/principal and one concurrent per instance", "Shared datastore bucket and lease across active/snapshot test routes", StatusEnforced,
+		goTest("internal/service", "TestInstanceMailTestRequiresProofAndBoundsRateBothEngines"),
+		goTest("internal/service", "TestInstanceMailTestConcurrentRefusalBothEngines")),
+	bound("mail-send-deadline", "SMTP send deadline", "ops-catalogue §Registration / social-signin §7", "bounded synchronous send; context deadline or redacted delivery failure", "Caller deadline interrupts a stalled relay; SMTP command deadline refresh cannot extend the operation", StatusEnforced,
+		goTest("internal/mail", "TestSendHonorsEarlierCallerDeadline"),
+		goTest("internal/mail", "TestSMTPDeadlineRefreshCannotExtendOperation")),
 	bound("http-server-limits", "HTTP header/read/write/idle limits", "ops-spec §10", "bounded net/http connection deadlines and header refusal", "Exact runtime configuration and stalled peer disconnect", StatusEnforced,
 		goTest("internal/app", "TestHTTPServerSlowClientLimitsConfigured")),
 	bound("http-public-inflight", "Public in-flight request cap", "ops-spec §10", "too_many_requests with Retry-After", "Request 513 refused before routing; completed requests release slots", StatusEnforced,
@@ -343,6 +352,7 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		{"service.BudgetSchemaRevisionPerHour", service.BudgetSchemaRevisionPerHour, 60},
 		// ops-spec banner 2026-09-03: the instance-wide signup budget (#606).
 		{"service.BudgetSignupPerHour", service.BudgetSignupPerHour, 20},
+		{"service.SignupLifetime", int(service.SignupLifetime / time.Second), 86400},
 		// Already-conformant bounds, pinned so they cannot drift unnoticed.
 		{"schema.MaxKeysPerProject", schema.MaxKeysPerProject, 1000},
 		{"schema.MaxKeyGroupsPerProject", schema.MaxKeyGroupsPerProject, 100},
@@ -373,6 +383,7 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		want time.Duration
 	}
 	dpins := []dpin{
+		{"mail.SendTimeout", mail.SendTimeout, 15 * time.Second},
 		{"schema.EvaluationDeadline", schema.EvaluationDeadline, 100 * time.Millisecond},
 		{"service.ReencryptChunkPause", service.ReencryptChunkPause, 100 * time.Millisecond},
 		{"service.PlanTTL", service.PlanTTL, 24 * time.Hour},

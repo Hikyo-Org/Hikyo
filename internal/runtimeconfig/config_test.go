@@ -142,3 +142,28 @@ func TestOwnerPreparationEnforcesCryptographicPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMailPreparationNamesMalformedSettingWithoutContactingRelay(t *testing.T) {
+	valid := map[string]string{"HIKYO_MAIL_ADDR": "no-such-relay.invalid:465", "HIKYO_MAIL_TLS": "implicit", "HIKYO_MAIL_FROM": "hikyo@example.com"}
+	for key, invalid := range map[string]string{
+		"HIKYO_MAIL_ADDR": "secret-invalid-address", "HIKYO_MAIL_TLS": "secret-cleartext",
+		"HIKYO_MAIL_FROM": "secret-invalid-sender", "HIKYO_MAIL_EHLO": "secret invalid host",
+		"HIKYO_MAIL_ALLOWED_CIDRS": "secret-invalid-cidr", "HIKYO_MAIL_CA_PEM": "secret-invalid-ca",
+	} {
+		t.Run(key, func(t *testing.T) {
+			values := make(map[string]string, len(valid)+1)
+			for name, value := range valid {
+				values[name] = value
+			}
+			values[key] = invalid
+			_, err := runtimeconfig.Prepare(values)
+			if err == nil || !strings.HasPrefix(err.Error(), key+" ") || strings.Contains(err.Error(), "secret") {
+				t.Fatalf("validation must name %s without disclosing input: %v", key, err)
+			}
+		})
+	}
+	bundle, err := runtimeconfig.Prepare(valid)
+	if err != nil || !bundle.MailConfigured() {
+		t.Fatalf("local-only preparation failed: %v", err)
+	}
+}

@@ -74,6 +74,7 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_adapter_targets_paused", MaxSeries: 1},
 		{Name: "hikyo_adapter_targets_attention", MaxSeries: 1},
 		{Name: "hikyo_adapter_jobs_queued", MaxSeries: 1},
+		{Name: "hikyo_signup_mail_failures_total", MaxSeries: 1},
 		{Name: "hikyo_http_requests_total", MaxSeries: 40, Labels: map[string][]string{"class": classes, "status": statuses}},
 		{Name: "hikyo_http_request_errors_total", MaxSeries: 16, Labels: map[string][]string{"class": classes, "status": {"4xx", "5xx"}}},
 		{Name: "hikyo_http_requests_in_flight", MaxSeries: 1},

@@ -54,6 +54,7 @@ const (
 
 	MetricRequestsTotal       = "hikyo_http_requests_total"
 	MetricRequestErrors       = "hikyo_http_request_errors_total"
+	MetricSignupMailFailures  = "hikyo_signup_mail_failures_total"
 	MetricRequestsInFlight    = "hikyo_http_requests_in_flight"
 	MetricRequestDuration     = "hikyo_http_request_duration_seconds"
 	MetricMCPRequestsTotal    = "hikyo_mcp_requests_total"
@@ -282,20 +283,21 @@ type HASnapshotter interface {
 type Metrics struct {
 	registry *prometheus.Registry
 
-	inFlight     prometheus.Gauge
-	requests     [numClasses][numStatusBuckets]prometheus.Counter
-	errors       [numClasses][numStatusBuckets]prometheus.Counter
-	durations    [numClasses]prometheus.Observer
-	mcpRequests  *prometheus.CounterVec
-	mcpInFlight  prometheus.Gauge
-	mcpDurations *prometheus.HistogramVec
-	ha           *haCollector
-	approvals    *approvalCollector
-	access       *accessCollector
-	dyn          *dynamicCollector
-	ssh          *sshCollector
-	transit      *transitCollector
-	pki          *pkiCollector
+	signupMailFailures prometheus.Counter
+	inFlight           prometheus.Gauge
+	requests           [numClasses][numStatusBuckets]prometheus.Counter
+	errors             [numClasses][numStatusBuckets]prometheus.Counter
+	durations          [numClasses]prometheus.Observer
+	mcpRequests        *prometheus.CounterVec
+	mcpInFlight        prometheus.Gauge
+	mcpDurations       *prometheus.HistogramVec
+	ha                 *haCollector
+	approvals          *approvalCollector
+	access             *accessCollector
+	dyn                *dynamicCollector
+	ssh                *sshCollector
+	transit            *transitCollector
+	pki                *pkiCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -314,8 +316,12 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	}, []string{"class", "status"})
 	errors := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: MetricRequestErrors,
-		Help: "Total HTTP error responses by closed API surface class and status bucket.",
+		Help: "Total HTTP request errors, including hidden synchronous signup delivery faults in auth/5xx, by closed API surface class and operational status bucket.",
 	}, []string{"class", "status"})
+	signupMailFailures := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: MetricSignupMailFailures,
+		Help: "Failed synchronous signup SMTP sends, including requests answered with uniform HTTP 202.",
+	})
 	inFlight := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: MetricRequestsInFlight,
 		Help: "Current number of API requests in flight.",
@@ -345,10 +351,10 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	sshc := newSSHCollector()
 	tr := newTransitCollector()
 	pkiGauges := newPKICollector()
-	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
+	registry.MustRegister(requests, errors, signupMailFailures, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
 
 	m := &Metrics{
-		registry: registry, inFlight: inFlight,
+		registry: registry, inFlight: inFlight, signupMailFailures: signupMailFailures,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
 		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc, pki: pkiGauges, transit: tr,
 	}
@@ -858,4 +864,13 @@ func (c *transitCollector) Describe(ch chan<- *prometheus.Desc) {
 		ch <- desc
 	}
 	ch <- c.known
+}
+
+// RecordSignupMailFailure exposes a hidden synchronous delivery failure. The
+// request counter preserves its wire 202; RED errors use the operational 5xx
+// fault category, as recovered faults after committed headers already do.
+// No address, policy, intent, or SMTP response enters the metric label set.
+func (m *Metrics) RecordSignupMailFailure() {
+	m.signupMailFailures.Inc()
+	m.errors[classAuth][status5xx].Inc()
 }
