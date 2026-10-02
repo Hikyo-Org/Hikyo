@@ -6,3 +6,5 @@ export { OIDCDone } from '../../routes/OIDCDone.tsx';
 export { SAMLDone } from '../../routes/SAMLDone.tsx';
 export { WorkspaceApprove } from '../../routes/WorkspaceApprove.tsx';
 export { WorkspaceCallback } from '../../routes/WorkspaceCallback.tsx';
+
+export { SignupVerify } from '../../routes/SignupVerify.tsx';

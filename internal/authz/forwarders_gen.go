@@ -13,6 +13,10 @@ import (
 
 var _ txForwarded = (*TxAuthorizer)(nil)
 
+func (a *TxAuthorizer) AccountByEmail(ctx context.Context, email string) (Account, error) {
+	return a.r.AccountByEmail(ctx, email)
+}
+
 // AccountByID resolves an account by id.
 func (a *TxAuthorizer) AccountByID(ctx context.Context, id string) (Account, error) {
 	return a.r.AccountByID(ctx, id)
@@ -190,6 +194,10 @@ func (a *TxAuthorizer) ConsumeOIDCTransaction(ctx context.Context, id string, at
 // consumed, in the same transaction as a fresh mint or consumption.
 func (a *TxAuthorizer) ConsumeOutstandingAuthorities(ctx context.Context, accountID string, at time.Time) error {
 	return a.r.ConsumeOutstandingAuthorities(ctx, accountID, at)
+}
+
+func (a *TxAuthorizer) ConsumeRegistrationSignup(ctx context.Context, id string, verifier []byte) (bool, error) {
+	return a.r.ConsumeRegistrationSignup(ctx, id, verifier)
 }
 
 // ConsumeSAMLTransaction spends a transaction on first presentation, success
@@ -479,6 +487,10 @@ func (a *TxAuthorizer) EnvironmentsInProject(ctx context.Context, scope domain.S
 
 func (a *TxAuthorizer) ErasePrivacyAccount(ctx context.Context, account, p, username string) error {
 	return a.r.ErasePrivacyAccount(ctx, account, p, username)
+}
+
+func (a *TxAuthorizer) ExpiredRegistrationSignups(ctx context.Context, at time.Time) ([]ExpiredRegistrationSignup, error) {
+	return a.r.ExpiredRegistrationSignups(ctx, at)
 }
 
 // ExternalIdentitiesForAccount lists an account's linked identities.
@@ -827,6 +839,10 @@ func (a *TxAuthorizer) ProviderForCallback(ctx context.Context, id string) (OIDC
 	return a.r.ProviderForCallback(ctx, id)
 }
 
+func (a *TxAuthorizer) PruneExpiredRegistrationSignup(ctx context.Context, id string, at time.Time) (bool, error) {
+	return a.r.PruneExpiredRegistrationSignup(ctx, id, at)
+}
+
 // ReactivateBinding records a restore-time re-validation (§ Restore). #76 owns
 // the operator ceremony; the write exists here because the refusal it drives
 // exists now.
@@ -862,9 +878,21 @@ func (a *TxAuthorizer) RegistrationPolicyFor(ctx context.Context, org domain.Org
 	return a.r.RegistrationPolicyFor(ctx, org)
 }
 
+func (a *TxAuthorizer) RegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error) {
+	return a.r.RegistrationSignupByEmail(ctx, email)
+}
+
+func (a *TxAuthorizer) RegistrationSignupByVerifier(ctx context.Context, verifier []byte) (RegistrationSignup, error) {
+	return a.r.RegistrationSignupByVerifier(ctx, verifier)
+}
+
 // RegistrationSignupsForPolicy lists a policy's pending local sign-ups.
 func (a *TxAuthorizer) RegistrationSignupsForPolicy(ctx context.Context, policyID string) ([]RegistrationSignupRef, error) {
 	return a.r.RegistrationSignupsForPolicy(ctx, policyID)
+}
+
+func (a *TxAuthorizer) ReissueRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error {
+	return a.r.ReissueRegistrationSignup(ctx, n)
 }
 
 // ReleaseGrantOrigin releases one origin, reporting whether it held the row.
@@ -1021,6 +1049,10 @@ func (a *TxAuthorizer) SetCredentialPolicy(ctx context.Context, p CredentialPoli
 	return a.r.SetCredentialPolicy(ctx, p, actor, at)
 }
 
+func (a *TxAuthorizer) SetLocalAccountEmail(ctx context.Context, id, email string, at time.Time) error {
+	return a.r.SetLocalAccountEmail(ctx, id, email, at)
+}
+
 // SetPinGeneration advances it. #52 owns pin creation, reassignment and release.
 func (a *TxAuthorizer) SetPinGeneration(ctx context.Context, p domain.PrincipalID, env domain.EnvID, generation int64) error {
 	return a.r.SetPinGeneration(ctx, p, env, generation)
@@ -1112,6 +1144,10 @@ func (a *TxAuthorizer) UpdateProvider(ctx context.Context, u ProviderUpdate) (bo
 // UpdateSAMLProvider compare-and-swaps a provider configuration.
 func (a *TxAuthorizer) UpdateSAMLProvider(ctx context.Context, provider SAMLProviderUpdate) (bool, error) {
 	return a.r.UpdateSAMLProvider(ctx, provider)
+}
+
+func (a *TxAuthorizer) VerifiedAccountEmailExists(ctx context.Context, email string) (bool, error) {
+	return a.r.VerifiedAccountEmailExists(ctx, email)
 }
 
 // WebAuthnCeremonyByChallenge resolves a ceremony by its challenge verifier.

@@ -8,6 +8,8 @@ import "github.com/Hikyo-Org/hikyo/internal/multicall"
 var reviewedWireExtras = wireExtras{
 	Version: 1,
 	Extensions: map[string]wireRow{
+		"http:POST /api/v1/auth/signup":                      {Events: []string{"EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationMailIntent", "EventRegistrationMailOutcome"}},
+		"http:POST /api/v1/auth/signup/verify":               {Events: []string{"EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:DELETE /api/v1/auth/identities/{id}":           {Events: []string{"EventIdentityUnlinked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		"http:DELETE /api/v1/auth/totp":                      {Events: []string{"EventAuthFactorRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		"http:DELETE /api/v1/auth/webauthn/credentials/{id}": {Events: []string{"EventAuthPasskeyRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},

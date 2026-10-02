@@ -31,6 +31,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { InstanceMailPanel } from './InstanceMailPanel.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OAuth2ProvidersPanel } from './OAuth2ProvidersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
@@ -133,6 +134,7 @@ export function InstanceAdmin() {
     </p>
     <JumpIndex sections={[
       { id: 'instance-configuration', label: 'Hikyo configuration' },
+      { id: 'instance-mail', label: 'Mailer' },
       { id: 'instance-orgs', label: 'Organisations' },
       { id: 'instance-members', label: 'Members' },
       { id: 'instance-settings', label: 'Policy' },
@@ -148,6 +150,8 @@ export function InstanceAdmin() {
     ]} />
     {failure !== null ? <Alert>{failure}</Alert> : null}
     {done !== null ? <Alert tone="done">{done}</Alert> : null}
+
+    <InstanceMailPanel />
 
     <Panel id="instance-orgs" title="Organisations">
       {/* Self-served orgs (a registration policy's fresh-org landing) are

@@ -67,3 +67,8 @@ describe('prototype mock contract shape', () => {
     }
   });
 });
+
+it('serves only static mail configuration in the generated contract shape', async () => {
+  const { zInstanceMailStatus } = await import('../../clients/ts/src/generated/zod.gen.ts');
+  expect(zInstanceMailStatus.parse(prototypeReadFixture('/api/v1/instance/mail')?.body)).toEqual({ configured: true });
+});

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -471,6 +472,9 @@ func (r *Resolver) CreatePrincipal(ctx context.Context, id domain.PrincipalID, k
 // extended code so every creator (bootstrap, SCIM, invitation) answers one
 // cross-engine refusal instead of a driver string.
 func (r *Resolver) CreateAccount(ctx context.Context, a Account) error {
+	if strings.Contains(a.Username, "@") {
+		return fmt.Errorf("%w: username must not contain @", domain.ErrInvalid)
+	}
 	if r.sq != nil {
 		return accountConstraint(r.sq.InsertAccount(ctx, sqlitegen.InsertAccountParams{
 			ID: a.ID, PrincipalID: string(a.PrincipalID), Username: a.Username,

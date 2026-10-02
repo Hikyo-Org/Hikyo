@@ -63,3 +63,6 @@ func (a *TxAuthorizer) RegistrationAuthorityHolds(ctx context.Context, principal
 		return false, fmt.Errorf("authz: operation %q is not a grant-evaluated operation", op)
 	}
 }
+
+type RegistrationSignup = authn.RegistrationSignup
+type ExpiredRegistrationSignup = authn.ExpiredRegistrationSignup

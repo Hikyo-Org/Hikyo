@@ -182,3 +182,30 @@ func TestResponseWriterKeepsFinalStatusAfterInformationalResponse(t *testing.T) 
 		t.Fatalf("forwarded statuses = %v, want %v", got, want)
 	}
 }
+
+// Signup responses stay uniform 202, but a failed synchronous SMTP send must
+// still be visible in the existing RED error collector and mail failure count.
+func TestSignupMailFailureCountsREDErrorWithoutChangingAcceptedResponse(t *testing.T) {
+	m := NewMetrics(nil)
+	a := &API{Metrics: m}
+	r := chi.NewRouter()
+	r.Use(a.observe)
+	r.Post(api.PathPrefix+"/auth/signup", func(w http.ResponseWriter, _ *http.Request) {
+		m.RecordSignupMailFailure()
+		w.WriteHeader(http.StatusAccepted)
+	})
+	recorder := httptest.NewRecorder()
+	r.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/signup", nil))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("uniform response changed: %d", recorder.Code)
+	}
+	if got := testutil.ToFloat64(m.requests[classAuth][status2xx]); got != 1 {
+		t.Fatalf("accepted requests = %v", got)
+	}
+	if got := testutil.ToFloat64(m.errors[classAuth][status5xx]); got != 1 {
+		t.Fatalf("RED delivery errors = %v", got)
+	}
+	if got := testutil.ToFloat64(m.signupMailFailures); got != 1 {
+		t.Fatalf("signup mail failures = %v", got)
+	}
+}

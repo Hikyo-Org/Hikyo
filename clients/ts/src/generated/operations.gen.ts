@@ -163,6 +163,7 @@ import {
   getFileTarget,
   getFolder,
   getInstanceConfig,
+  getInstanceMail,
   getInstanceRegistrationPolicy,
   getInstanceUpdateJob,
   getKey,
@@ -393,6 +394,8 @@ import {
   showSshProfile,
   showTransitKey,
   showWorkspaceHandoff,
+  signupRequest,
+  signupVerify,
   startCliReauth,
   startWorkspaceHandoff,
   stepUpPasskeyFinish,
@@ -401,6 +404,7 @@ import {
   syncAdapterTarget,
   testAdapterTarget,
   testInstanceConfigMail,
+  testInstanceMail,
   tombstoneDeliveryTarget,
   transitDataKey,
   transitDecrypt,
@@ -535,6 +539,7 @@ import type {
   GetFileTargetData,
   GetFolderData,
   GetInstanceConfigData,
+  GetInstanceMailData,
   GetInstanceRegistrationPolicyData,
   GetInstanceUpdateJobData,
   GetKeyData,
@@ -765,6 +770,8 @@ import type {
   ShowSshProfileData,
   ShowTransitKeyData,
   ShowWorkspaceHandoffData,
+  SignupRequestData,
+  SignupVerifyData,
   StartCliReauthData,
   StartWorkspaceHandoffData,
   StepUpPasskeyFinishData,
@@ -773,6 +780,7 @@ import type {
   SyncAdapterTargetData,
   TestAdapterTargetData,
   TestInstanceConfigMailData,
+  TestInstanceMailData,
   TombstoneDeliveryTargetData,
   TransitDataKeyData,
   TransitDecryptData,
@@ -886,6 +894,7 @@ import {
   zGetFileTargetResponse,
   zGetFolderResponse,
   zGetInstanceConfigResponse,
+  zGetInstanceMailResponse,
   zGetInstanceRegistrationPolicyResponse,
   zGetInstanceUpdateJobResponse,
   zGetKeyGroupResponse,
@@ -1216,6 +1225,7 @@ export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, t
 export const getFileTargetOp: BodyOperation<GetFileTargetData, typeof zGetFileTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFileTarget, [200], zGetFileTargetResponse);
 export const getFolderOp: BodyOperation<GetFolderData, typeof zGetFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFolder, [200], zGetFolderResponse);
 export const getInstanceConfigOp: BodyOperation<GetInstanceConfigData, typeof zGetInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceConfig, [200], zGetInstanceConfigResponse);
+export const getInstanceMailOp: BodyOperation<GetInstanceMailData, typeof zGetInstanceMailResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceMail, [200], zGetInstanceMailResponse);
 export const getInstanceRegistrationPolicyOp: BodyOperation<GetInstanceRegistrationPolicyData, typeof zGetInstanceRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceRegistrationPolicy, [200], zGetInstanceRegistrationPolicyResponse);
 export const getInstanceUpdateJobOp: BodyOperation<GetInstanceUpdateJobData, typeof zGetInstanceUpdateJobResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceUpdateJob, [200], zGetInstanceUpdateJobResponse);
 export const getKeyOp: BodyOperation<GetKeyData, typeof zGetKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKey, [200], zGetKeyResponse);
@@ -1501,5 +1511,8 @@ export const scimDeleteGroupOp: BodylessOperation<ScimDeleteGroupData> = /* @__P
 export const scimDeleteUserOp: BodylessOperation<ScimDeleteUserData> = /* @__PURE__ */ new GeneratedBodylessOperation(scimDeleteUser, [204]);
 export const setAdapterCredentialOp: BodylessOperation<SetAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(setAdapterCredential, [204]);
 export const setDynamicProviderCredentialOp: BodylessOperation<SetDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(setDynamicProviderCredential, [204]);
+export const signupRequestOp: BodylessOperation<SignupRequestData> = /* @__PURE__ */ new GeneratedBodylessOperation(signupRequest, [202]);
+export const signupVerifyOp: BodylessOperation<SignupVerifyData> = /* @__PURE__ */ new GeneratedBodylessOperation(signupVerify, [204]);
+export const testInstanceMailOp: BodylessOperation<TestInstanceMailData> = /* @__PURE__ */ new GeneratedBodylessOperation(testInstanceMail, [204]);
 export const tombstoneDeliveryTargetOp: BodylessOperation<TombstoneDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(tombstoneDeliveryTarget, [204]);
 export const watchProjectEventsOp: StreamOperation<typeof watchProjectEvents, typeof zWatchProjectEventsResponse> = /* @__PURE__ */ new GeneratedStreamOperation(watchProjectEvents, [200], zWatchProjectEventsResponse);

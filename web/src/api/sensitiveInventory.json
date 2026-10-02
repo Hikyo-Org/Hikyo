@@ -39,10 +39,10 @@
     "routes/EstablishCredential.tsx": "a22c4ec7b3937b1eb4fcd21b35e129349c0a8d9dc19ae9696842add49c20c8b6",
     "routes/HistoryDrawer.tsx": "00f6b1b2cbf2efb5af0e427621b3678e3b8b5741f20804f4780d9e2e3a3a81fb",
     "routes/ImportWizard.tsx": "57ff581b1cb54f9a99f6a36d6c6f17fdfaf4dbc8a08e8f05c83879ebe91a187b",
-    "routes/InstanceAdmin.tsx": "b4599250b7b23e4b56f3b3e1b5f3720e7316572ae5faac89b2c8f00b442920ad",
+    "routes/InstanceAdmin.tsx": "82a19f8196b3351aa0e7d6ed69744a796325e4bb73c2eb3b7b487109eb3b051e",
     "routes/InstanceConfig.tsx": "91a62d9494923fc03faf45d8a44344a3842dcec3b8351705dc20252f978d9c5d",
     "routes/InviteDialog.tsx": "0bffdf455370a982c89dad50046853f965e152d26cda1d42fb33d07b86392dff",
-    "routes/Login.tsx": "513efdb4ac0dc5910909e248317bf359de650e085c76da7b039754f09b480eea",
+    "routes/Login.tsx": "637788b5ae2b4b870ead8b36f59b132a01476b4790b33bf2bb7ce083e5c1ceb2",
     "routes/MatrixRowEditor.tsx": "cf17a821406b67d7b01d6e0a361fb34287652f7be2cf8db31c66a6853fffc0f5",
     "routes/Members.tsx": "588f70e738f3771035d7d1ed7fe6579a11fc27104b5b68eaf6e496c0230270af",
     "routes/OidcProvidersPanel.tsx": "3a9608ffaf836f0d0732f1c2c2bc6d0bfbac987b5da8384ce85c4ebf67cb6f72",
@@ -56,6 +56,9 @@
     "ui/auth/LoginForm.tsx": "fa0f6dab49fc08e792d3b63c4090c3d448d45c373c376759c444dfe368cf070b",
     "ui/auth/ProofDialog.tsx": "2ad7582557e7bc3d479e3aeb04c48b962d9dde20114ba76e516ec760ca9ac009",
     "ui/auth/SecondFactorSetup.tsx": "76405ce9c77015d38a0a8847f8e9899803ae0d063ceb62b7a16f7dbc9db14225",
-    "routes/OAuth2ProvidersPanel.tsx": "2614ad4c866841c860be599c436cf3b5143f1265fd6edb395d766e0b8e40e349"
+    "routes/OAuth2ProvidersPanel.tsx": "2614ad4c866841c860be599c436cf3b5143f1265fd6edb395d766e0b8e40e349",
+    "routes/InstanceMailPanel.tsx": "60643b0712529f67123b9bf8029db871cb98173902f56ef03da26e985f3b356e",
+    "routes/SignupVerify.tsx": "44e18a39dd3f45e70afd0108a9a711245f6d1190359c122842fe85ffa66c8892",
+    "ui/auth/LocalSignupForm.tsx": "512d0c7bd0c3bc6d8216721aaac6d0f3037cc4297b05ef93cf7fabc84e6246a6"
   }
 }

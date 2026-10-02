@@ -20,6 +20,8 @@ type Operation string
 // The registered operations. Service code names operations through these
 // constants; the registry below is keyed by them.
 const (
+	OpMailGet                    Operation = "mail.get"
+	OpMailTest                   Operation = "mail.test"
 	OpSelfConfigPreview          Operation = "self-config.preview"
 	OpSelfConfigStatus           Operation = "self-config.status"
 	OpSelfConfigAdopt            Operation = "self-config.adopt"
@@ -384,6 +386,7 @@ const (
 	// Registration policy (#606, #579): one policy per scope, administered by
 	// the scope's manage-members holder. One operation per depth and verb,
 	// the member.invite shape; the mutations are reauth-gated in the service.
+
 	OpRegistrationPolicyGetOrg         Operation = "registration-policy.get-org"
 	OpRegistrationPolicyPutOrg         Operation = "registration-policy.put-org"
 	OpRegistrationPolicyDeleteOrg      Operation = "registration-policy.delete-org"
@@ -1802,6 +1805,8 @@ var registry = mustNewRegistry(operationTable)
 // invariant 6. The table is never read directly: newRegistry validates it into
 // the immutable registry below, so no lookup can observe an unvalidated row.
 var operationTable = map[Operation]opSpec{
+	OpMailGet:           {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRegistrationMailStatusRead}},
+	OpMailTest:          {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRegistrationMailIntent, audit.EventRegistrationMailOutcome}},
 	OpSelfConfigPreview: {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigSeedInputs: true, StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventSelfConfigStatusRead}},
 	OpSelfConfigStatus: {
 		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
@@ -3907,13 +3912,9 @@ var operationTable = map[Operation]opSpec{
 	// formula is manage-members, not read), and the audit-model banner names
 	// no registration read event, so the reads record the membership-surface
 	// read the Members panel is part of.
-	OpRegistrationPolicyGetOrg: {
-		class:    ClassTenant,
-		level:    domain.LevelOrg,
-		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
-		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventGrantMembershipRead},
-	},
+
+	OpRegistrationPolicyGetOrg: {class: ClassTenant, level: domain.LevelOrg, formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}}, storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true}, events: []audit.EventType{audit.EventGrantMembershipRead}},
+
 	OpRegistrationPolicyPutOrg: {
 		class:    ClassTenant,
 		level:    domain.LevelOrg,

@@ -105,6 +105,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpCertificateIssue, authz.OpCertificateRenew)
 
 	// ---- EXEMPT ----
+	add(budgetClassExempt, "mail-test: shared instance lease, 5/hour/principal, 15-second send deadline", authz.OpMailTest)
+	add(budgetClassExempt, "static mail predicate: authenticated API admission bounds reads", authz.OpMailGet)
 	add(budgetClassExempt, "self-configuration: one unresolved durable apply, 10 intents/minute/instance and 30-second preparation deadline",
 		authz.OpSelfConfigApply)
 	add(budgetClassExempt, "self-configuration: shared instance mail-test lease, 5/hour/principal and 15-second delivery deadline",

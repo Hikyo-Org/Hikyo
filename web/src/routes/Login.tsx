@@ -70,9 +70,9 @@ function landingText(landing: AuthMethods['signup_landing']): string | null {
 /**
  * The page's sign-up door (#607): the open door of the addressed scope,
  * reduced to the configured providers it admits. Only the OIDC kind signs up
- * here; the local entry (#608) and the OAuth2 kind (#609) join it later.
+ * here; the local email entry is #608, and the OAuth2 kind joins in #609.
  * Returns null until methods arrive, while the policy is closed, or when no
- * admitted OIDC provider is configured.
+ * admitted entry is available.
  */
 function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
   if (methods === undefined || !methods.signup_open) return null;
@@ -80,7 +80,8 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
     (provider.kind === 'oidc' || provider.kind === 'oauth2') &&
     methods.signup_methods.some((method) => method !== 'local' && method.kind === provider.kind && method.slug === provider.slug),
   );
-  return admitted.length === 0 ? null : { providers: admitted, landing: landingText(methods.signup_landing) };
+  const local = methods.signup_methods.includes('local');
+  return admitted.length === 0 && !local ? null : { providers: admitted, local, landing: landingText(methods.signup_landing) };
 }
 
 /**
@@ -212,7 +213,7 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
         /* The open door of the addressed scope (#607). Paused is #606's one
            public fact about an inactive policy, said and never explained
            (#587 d3); the cause renders on the Members panel. */
-        signup={door}
+        signup={door === null ? null : { ...door, org: signupOrg }}
         initialIntent={intent}
         paused={methods.data?.signup_paused === true}
         lastUsed={lastUsed}

@@ -1081,6 +1081,22 @@
     ]
   },
   {
+    "operation": "mail.get",
+    "class": "instance",
+    "formula": [
+      "instance-config@instance"
+    ],
+    "level": "instance"
+  },
+  {
+    "operation": "mail.test",
+    "class": "instance",
+    "formula": [
+      "instance-config@instance"
+    ],
+    "level": "instance"
+  },
+  {
     "operation": "member.invite-instance",
     "class": "instance",
     "level": "instance",

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -521,6 +522,16 @@ func runRegistrationLifecycle(t *testing.T, db *store.DB) {
 	seedPendingSignup(t, db, "su_lifecycle", "lifecycle@example.test", inst.ID, "")
 	if err := reg.Delete(ctx, service.LocalPrincipal(root), instanceReg, ""); err != nil {
 		t.Fatalf("registration lifecycle instance delete: %v", err)
+	}
+
+	// #608 mail intent/outcome through the TLS SMTP sink and local lifecycle.
+	runLocalSignup(t, db)
+	auth, _, _ := localSignupHarness(t, db)
+	status := &service.InstanceMail{DB: db, Auth: auth, Capture: func(context.Context) (*runtimeconfig.Bundle, error) {
+		return runtimeconfig.Prepare(map[string]string{})
+	}}
+	if _, err := status.Configured(ctx, service.LocalPrincipal(root)); err != nil {
+		t.Fatalf("registration lifecycle mail status: %v", err)
 	}
 
 	// The federated sign-up outcomes (#607) through a real IdP round trip:

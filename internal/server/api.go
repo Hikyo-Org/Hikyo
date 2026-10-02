@@ -35,6 +35,8 @@ import (
 type AuthService interface {
 	OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
 	OAuth2Callback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
+	Signup(ctx context.Context, email string, org domain.OrgID) error
+	VerifySignup(ctx context.Context, in service.SignupVerification) error
 	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
 	UpdateMyProfile(ctx context.Context, presented string, profile service.ProfileUpdate, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
@@ -154,6 +156,7 @@ type DefinitionsService interface {
 type API struct {
 	Runtime      RuntimeStatusSource
 	SelfConfig   *service.SelfConfig
+	Mail         MailService
 	Discovery    *service.Discovery
 	Auth         AuthService
 	SAMLAuth     SAMLAuthService

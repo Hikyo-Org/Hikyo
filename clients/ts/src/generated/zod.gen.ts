@@ -3354,6 +3354,32 @@ export const zRenameKeyGroupRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
+export const zSignupRequest = z.object({
+    email: z.string().max(65536),
+    org: z.string().max(128).optional()
+});
+
+export const zSignupVerifyRequest = z.object({
+    token: z.string().max(65536),
+    password: z.string().max(65536),
+    display_name: z.string().max(256),
+    org_name: z.string().max(256).optional(),
+    landing: z.enum([
+        'none',
+        'org',
+        'fresh-org'
+    ]).optional()
+});
+
+export const zInstanceMailStatus = z.object({
+    configured: z.boolean()
+});
+
+export const zInstanceMailTestRequest = z.object({
+    to: z.string().max(254),
+    proof: z.string().max(65536)
+});
+
 /**
  * The email + password sign-up entry.
  */
@@ -6203,6 +6229,27 @@ export const zRevealValueDiffPath = z.object({
  * One row per declared key, plaintext included.
  */
 export const zRevealValueDiffResponse = zValueDiff;
+
+export const zSignupRequestBody = zSignupRequest;
+
+export const zSignupVerifyBody = zSignupVerifyRequest;
+
+/**
+ * Account and landing created. Sign in separately.
+ */
+export const zSignupVerifyResponse = z.void();
+
+export const zTestInstanceMailBody = zInstanceMailTestRequest;
+
+/**
+ * Test delivered.
+ */
+export const zTestInstanceMailResponse = z.void();
+
+/**
+ * Static status. No network probe is performed.
+ */
+export const zGetInstanceMailResponse = zInstanceMailStatus;
 
 export const zAuthMethodsQuery = z.object({
     org: z.string().max(128).optional()

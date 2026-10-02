@@ -239,6 +239,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ConsumeRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "fa06314989b112a991ef6fb1d21667a7d6c354fa07bdde2e1afc941c097e74a5",
+    "reason": "A verified signup bearer is CAS-consumed by its row id and verifier inside the account-creation transaction."
+  },
+  {
+    "engine": "postgres",
     "name": "ConsumeSAMLTransaction",
     "annotation": "authn-resolution",
     "hash": "8bf467c7a1f61280362fb1aaecf56fb1c812947a8481a9864cf8ba1ac1490858"
@@ -977,6 +984,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GetAccountByEmail",
+    "annotation": "authn-resolution",
+    "hash": "f477155c73c0856c6078e5f8bd9bb1cbd877dc6c865417d042837253c12a5978",
+    "reason": "Local login resolves a canonical verified address only to an active principal, never as a federated linking key."
+  },
+  {
+    "engine": "postgres",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
     "hash": "f22fcf605ccefe1e4ee90340a474bb91be732a17eb1e45d64b7cd6f994c08cf3"
@@ -1206,6 +1220,20 @@
     "name": "GetRecoveryCodes",
     "annotation": "authn-resolution",
     "hash": "19816dbfd2333bb4af1cfce7697245dea43bfb2c9286c348ef358b6522d4df46"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetRegistrationSignupByEmail",
+    "annotation": "authn-resolution",
+    "hash": "b81c88f6573757e7fda619c86701da174238cc46e10acc3e531237e57e9f8212",
+    "reason": "The admitted signup request resolves its canonical address to one pending signup row before issuing mail."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetRegistrationSignupByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "3cdae884b42ab051a647608c068d422e01d19519ec167f541e81534117ab10c4",
+    "reason": "The signup ceremony resolves an opaque bearer verifier without exposing the pending row to authenticated callers."
   },
   {
     "engine": "postgres",
@@ -1697,6 +1725,13 @@
     "name": "ListEnvironmentIDsInProject",
     "annotation": "authn-resolution",
     "hash": "267332698d3cdc027762d4297076689031c5dcdebcfe9b6b680b380f15e2dea1"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListExpiredRegistrationSignups",
+    "annotation": "authn-resolution",
+    "hash": "c418a2b1947cc1987f86f106fa7909dfa5e764f5d6ba9d49299dc6caba14fb2d",
+    "reason": "The singleton registration reaper enumerates only expired pending rows for audited cleanup."
   },
   {
     "engine": "postgres",
@@ -2498,6 +2533,13 @@
   },
   {
     "engine": "postgres",
+    "name": "PruneExpiredRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "ddc011ac73d087dcf774e2f2e598ed750e5e504b6f0bb9f60f2cb40bee087265",
+    "reason": "The singleton reaper deletes only its observed expired row and rechecks expiry to preserve concurrent resend."
+  },
+  {
+    "engine": "postgres",
     "name": "PruneInstanceAuditRetention",
     "annotation": "instance-scoped",
     "hash": "fda06448ca43aad9884524b2a9d30dea73ffebc474cdffac275639707c3b431d"
@@ -2627,6 +2669,13 @@
     "name": "ReencryptTotpCred",
     "annotation": "authn-resolution",
     "hash": "b7476c443aa3bb63f054cd1bda8ab6729b587c0879e7b45f295637adf5dd0b9a"
+  },
+  {
+    "engine": "postgres",
+    "name": "ReissueRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "3ab16c2081fee4b12cff80933355342497ba495879dbd196d6d94709ad577a12",
+    "reason": "The admitted local signup request rotates only the matched pending signup row under the live registration policy."
   },
   {
     "engine": "postgres",
@@ -2920,6 +2969,13 @@
   },
   {
     "engine": "postgres",
+    "name": "SetLocalAccountEmail",
+    "annotation": "authn-resolution",
+    "hash": "d01d923f5e7a50cbf794b1dae12333803f5950130b6e3abed890b3ac7946fab0",
+    "reason": "The successful single-use signup ceremony sets the verified address only on its newly created local account."
+  },
+  {
+    "engine": "postgres",
     "name": "SetPinGeneration",
     "annotation": "authn-resolution",
     "hash": "0a3b09284d40d19d206619372f70f922ae3cfdafcb438107cfe7a0fb35dab133"
@@ -3098,6 +3154,13 @@
     "name": "UpdateSelfConfigRollout",
     "annotation": "instance-scoped",
     "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
+  },
+  {
+    "engine": "postgres",
+    "name": "VerifiedAccountEmailExists",
+    "annotation": "authn-resolution",
+    "hash": "6d9ddf5a71405ca0230c9e26125844eaaeb6dc92ee15d4a73abbebc5361f3158",
+    "reason": "The admitted signup request checks address ownership regardless of principal privacy only to select the no-link notice; its public answer remains uniform."
   },
   {
     "engine": "postgres",
@@ -3332,6 +3395,13 @@
     "name": "ConsumeOutstandingAuthoritiesForAccount",
     "annotation": "authn-resolution",
     "hash": "f1bbdcf248a4111592adc73223aec7342356e7c234ba27117f41d7358562edc9"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ConsumeRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "fe3b6b0081aeec032b0d163cfd12c2f231223e9d162857b4e570381a80b7512a",
+    "reason": "A verified signup bearer is CAS-consumed by its row id and verifier inside the account-creation transaction."
   },
   {
     "engine": "sqlite",
@@ -4045,6 +4115,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetAccountByEmail",
+    "annotation": "authn-resolution",
+    "hash": "b50535ef3da220c076f74b96480998a7ad2218620f5ab5934dd3a2f8e3f3fda3",
+    "reason": "Local login resolves a canonical verified address only to an active principal, never as a federated linking key."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
     "hash": "a2dc8f82948bab44902e2554f555f5d15a179f7f5acac627f9469b7e18ec6f63"
@@ -4274,6 +4351,20 @@
     "name": "GetRecoveryCodes",
     "annotation": "authn-resolution",
     "hash": "cc0eb65452b1becf984e553ed3abdc8bebd6e6e56bbb8a2d6e031c61fc32a3ad"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetRegistrationSignupByEmail",
+    "annotation": "authn-resolution",
+    "hash": "50e9864bfef9fabd2d88f1cceaf28592a22a10ac160b987eb2e6d609e5e8a0fa",
+    "reason": "The admitted signup request resolves its canonical address to one pending signup row before issuing mail."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetRegistrationSignupByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "912835cd4b893c4cc95d3d2c33585cc2b71bde832c14a318e195da9f448c22d4",
+    "reason": "The signup ceremony resolves an opaque bearer verifier without exposing the pending row to authenticated callers."
   },
   {
     "engine": "sqlite",
@@ -4765,6 +4856,13 @@
     "name": "ListEnvironmentIDsInProject",
     "annotation": "authn-resolution",
     "hash": "284ec155ff5c54444cd832bad142788c4eb9149ac4596cb62fe3335fa8ab6ec5"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListExpiredRegistrationSignups",
+    "annotation": "authn-resolution",
+    "hash": "dac78a60e167a939304d0b75de7b60a56112573d255088ad0bf2cf2103b643bb",
+    "reason": "The singleton registration reaper enumerates only expired pending rows for audited cleanup."
   },
   {
     "engine": "sqlite",
@@ -5566,6 +5664,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "PruneExpiredRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "49239b2fe3b91dee43c2625c1fa5c544a190981d1669c8c3459b65d88914561a",
+    "reason": "The singleton reaper deletes only its observed expired row and rechecks expiry to preserve concurrent resend."
+  },
+  {
+    "engine": "sqlite",
     "name": "PruneInstanceAuditRetention",
     "annotation": "instance-scoped",
     "hash": "494e205b046dbe850ea921ca5094b9ca273ba6d8b569c657ae4d2d97cc40629b"
@@ -5695,6 +5800,13 @@
     "name": "ReencryptTotpCred",
     "annotation": "authn-resolution",
     "hash": "b7476c443aa3bb63f054cd1bda8ab6729b587c0879e7b45f295637adf5dd0b9a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReissueRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "c3b26dae41ae35514e13e4837aa49298d42fcccd5b3b799b6f5c9f37c628b60f",
+    "reason": "The admitted local signup request rotates only the matched pending signup row under the live registration policy."
   },
   {
     "engine": "sqlite",
@@ -5981,6 +6093,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "SetLocalAccountEmail",
+    "annotation": "authn-resolution",
+    "hash": "c128c0c8faae95ad009c2298bf93c9a8254d4f210affc9cf7f642731f1a51bc1",
+    "reason": "The successful single-use signup ceremony sets the verified address only on its newly created local account."
+  },
+  {
+    "engine": "sqlite",
     "name": "SetPinGeneration",
     "annotation": "authn-resolution",
     "hash": "1f2113f9be15d76853483b2bb34e0fa2f627c04278308180ff7f600bbb5f686e"
@@ -6159,6 +6278,13 @@
     "name": "UpdateSelfConfigRollout",
     "annotation": "instance-scoped",
     "hash": "4b23597f5cfc5d4fa2d483a4d9dfe9016efc240d557f7f00d4c059f9d8d8668c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "VerifiedAccountEmailExists",
+    "annotation": "authn-resolution",
+    "hash": "7b6d92e9eb77d9610d1a35969e8f114629abac226ec957e7962acbfaf6a19ce3",
+    "reason": "The admitted signup request checks address ownership regardless of principal privacy only to select the no-link notice; its public answer remains uniform."
   },
   {
     "engine": "sqlite",

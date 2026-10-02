@@ -12,6 +12,8 @@ import (
 // txForwarded is the explicitly permitted resolver surface.
 // Additions require review of the transaction authority boundary.
 type txForwarded interface {
+	VerifiedAccountEmailExists(ctx context.Context, email string) (bool, error)
+	PruneExpiredRegistrationSignup(ctx context.Context, id string, at time.Time) (bool, error)
 	// AccountByID resolves an account by id.
 	AccountByID(ctx context.Context, id string) (Account, error)
 
@@ -662,4 +664,11 @@ type txForwarded interface {
 	CredentialAuthorityByID(ctx context.Context, id string) (CredentialAuthority, error)
 	ClaimOAuth2Authority(ctx context.Context, id string, at time.Time) (bool, error)
 	StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error
+	RegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error)
+	RegistrationSignupByVerifier(ctx context.Context, verifier []byte) (RegistrationSignup, error)
+	ReissueRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error
+	ConsumeRegistrationSignup(ctx context.Context, id string, verifier []byte) (bool, error)
+	ExpiredRegistrationSignups(ctx context.Context, at time.Time) ([]ExpiredRegistrationSignup, error)
+	AccountByEmail(ctx context.Context, email string) (Account, error)
+	SetLocalAccountEmail(ctx context.Context, id, email string, at time.Time) error
 }

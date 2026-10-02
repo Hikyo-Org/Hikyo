@@ -11,6 +11,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const consumeRegistrationSignup = `-- name: ConsumeRegistrationSignup :execrows
+DELETE FROM registration_signups WHERE id = $1 AND token_verifier = $2
+`
+
+type ConsumeRegistrationSignupParams struct {
+	ID            string
+	TokenVerifier []byte
+}
+
+// hikyo:reason A verified signup bearer is CAS-consumed by its row id and verifier inside the account-creation transaction.
+// hikyo:authn-resolution
+func (q *Queries) ConsumeRegistrationSignup(ctx context.Context, arg ConsumeRegistrationSignupParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeRegistrationSignup, arg.ID, arg.TokenVerifier)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countRegistrationPolicyOrgs = `-- name: CountRegistrationPolicyOrgs :one
 SELECT COUNT(*) FROM orgs WHERE registration_policy_id = $1
 `
@@ -88,6 +107,33 @@ func (q *Queries) DeleteRegistrationSignup(ctx context.Context, id string) (int6
 	return result.RowsAffected(), nil
 }
 
+const getAccountByEmail = `-- name: GetAccountByEmail :one
+SELECT id, principal_id, username, display_name, created_at FROM accounts WHERE email = $1 AND email_verified_at IS NOT NULL AND principal_id IN (SELECT id FROM principals WHERE privacy_state = 'active')
+`
+
+type GetAccountByEmailRow struct {
+	ID          string
+	PrincipalID string
+	Username    string
+	DisplayName string
+	CreatedAt   pgtype.Timestamptz
+}
+
+// hikyo:reason Local login resolves a canonical verified address only to an active principal, never as a federated linking key.
+// hikyo:authn-resolution
+func (q *Queries) GetAccountByEmail(ctx context.Context, email pgtype.Text) (GetAccountByEmailRow, error) {
+	row := q.db.QueryRow(ctx, getAccountByEmail, email)
+	var i GetAccountByEmailRow
+	err := row.Scan(
+		&i.ID,
+		&i.PrincipalID,
+		&i.Username,
+		&i.DisplayName,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getInstanceRegistrationPolicy = `-- name: GetInstanceRegistrationPolicy :one
 SELECT id, org_id, authority_principal_id, landing, template, local_enabled,
        fresh_org_cap, row_version, created_at, updated_at
@@ -142,6 +188,50 @@ func (q *Queries) GetOrgRegistrationPolicy(ctx context.Context, orgID pgtype.Tex
 		&i.RowVersion,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRegistrationSignupByEmail = `-- name: GetRegistrationSignupByEmail :one
+SELECT id, email, token_verifier, policy_id, signup_scope_org_id, credential_epoch, created_at, expires_at FROM registration_signups WHERE email = $1
+`
+
+// hikyo:reason The admitted signup request resolves its canonical address to one pending signup row before issuing mail.
+// hikyo:authn-resolution
+func (q *Queries) GetRegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error) {
+	row := q.db.QueryRow(ctx, getRegistrationSignupByEmail, email)
+	var i RegistrationSignup
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.TokenVerifier,
+		&i.PolicyID,
+		&i.SignupScopeOrgID,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getRegistrationSignupByVerifier = `-- name: GetRegistrationSignupByVerifier :one
+SELECT id, email, token_verifier, policy_id, signup_scope_org_id, credential_epoch, created_at, expires_at FROM registration_signups WHERE token_verifier = $1
+`
+
+// hikyo:reason The signup ceremony resolves an opaque bearer verifier without exposing the pending row to authenticated callers.
+// hikyo:authn-resolution
+func (q *Queries) GetRegistrationSignupByVerifier(ctx context.Context, tokenVerifier []byte) (RegistrationSignup, error) {
+	row := q.db.QueryRow(ctx, getRegistrationSignupByVerifier, tokenVerifier)
+	var i RegistrationSignup
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.TokenVerifier,
+		&i.PolicyID,
+		&i.SignupScopeOrgID,
+		&i.CredentialEpoch,
+		&i.CreatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -272,6 +362,38 @@ func (q *Queries) InsertRegistrationSignup(ctx context.Context, arg InsertRegist
 	return err
 }
 
+const listExpiredRegistrationSignups = `-- name: ListExpiredRegistrationSignups :many
+SELECT id, policy_id, signup_scope_org_id FROM registration_signups WHERE expires_at <= $1 ORDER BY id
+`
+
+type ListExpiredRegistrationSignupsRow struct {
+	ID               string
+	PolicyID         string
+	SignupScopeOrgID pgtype.Text
+}
+
+// hikyo:reason The singleton registration reaper enumerates only expired pending rows for audited cleanup.
+// hikyo:authn-resolution
+func (q *Queries) ListExpiredRegistrationSignups(ctx context.Context, expiresAt pgtype.Timestamptz) ([]ListExpiredRegistrationSignupsRow, error) {
+	rows, err := q.db.Query(ctx, listExpiredRegistrationSignups, expiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListExpiredRegistrationSignupsRow
+	for rows.Next() {
+		var i ListExpiredRegistrationSignupsRow
+		if err := rows.Scan(&i.ID, &i.PolicyID, &i.SignupScopeOrgID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRegistrationPolicyDomains = `-- name: ListRegistrationPolicyDomains :many
 SELECT domain FROM registration_policy_domains WHERE policy_id = $1 ORDER BY domain
 `
@@ -395,6 +517,72 @@ func (q *Queries) ListRegistrationSignupsForPolicy(ctx context.Context, policyID
 	return items, nil
 }
 
+const pruneExpiredRegistrationSignup = `-- name: PruneExpiredRegistrationSignup :execrows
+DELETE FROM registration_signups WHERE id = $1 AND expires_at <= $2
+`
+
+type PruneExpiredRegistrationSignupParams struct {
+	ID        string
+	ExpiresAt pgtype.Timestamptz
+}
+
+// hikyo:reason The singleton reaper deletes only its observed expired row and rechecks expiry to preserve concurrent resend.
+// hikyo:authn-resolution
+func (q *Queries) PruneExpiredRegistrationSignup(ctx context.Context, arg PruneExpiredRegistrationSignupParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneExpiredRegistrationSignup, arg.ID, arg.ExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const reissueRegistrationSignup = `-- name: ReissueRegistrationSignup :execrows
+UPDATE registration_signups SET token_verifier = $1, policy_id = $2, signup_scope_org_id = $3, credential_epoch = $4, expires_at = $5 WHERE id = $6
+`
+
+type ReissueRegistrationSignupParams struct {
+	TokenVerifier    []byte
+	PolicyID         string
+	SignupScopeOrgID pgtype.Text
+	CredentialEpoch  int64
+	ExpiresAt        pgtype.Timestamptz
+	ID               string
+}
+
+// hikyo:reason The admitted local signup request rotates only the matched pending signup row under the live registration policy.
+// hikyo:authn-resolution
+func (q *Queries) ReissueRegistrationSignup(ctx context.Context, arg ReissueRegistrationSignupParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reissueRegistrationSignup,
+		arg.TokenVerifier,
+		arg.PolicyID,
+		arg.SignupScopeOrgID,
+		arg.CredentialEpoch,
+		arg.ExpiresAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setLocalAccountEmail = `-- name: SetLocalAccountEmail :exec
+UPDATE accounts SET email = $1, email_verified_at = $2 WHERE id = $3
+`
+
+type SetLocalAccountEmailParams struct {
+	Email           pgtype.Text
+	EmailVerifiedAt pgtype.Timestamptz
+	ID              string
+}
+
+// hikyo:reason The successful single-use signup ceremony sets the verified address only on its newly created local account.
+// hikyo:authn-resolution
+func (q *Queries) SetLocalAccountEmail(ctx context.Context, arg SetLocalAccountEmailParams) error {
+	_, err := q.db.Exec(ctx, setLocalAccountEmail, arg.Email, arg.EmailVerifiedAt, arg.ID)
+	return err
+}
+
 const updateRegistrationPolicyCAS = `-- name: UpdateRegistrationPolicyCAS :execrows
 UPDATE registration_policies
 SET authority_principal_id = $1, landing = $2, template = $3, local_enabled = $4,
@@ -429,4 +617,17 @@ func (q *Queries) UpdateRegistrationPolicyCAS(ctx context.Context, arg UpdateReg
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const verifiedAccountEmailExists = `-- name: VerifiedAccountEmailExists :one
+SELECT EXISTS(SELECT 1 FROM accounts WHERE email = $1 AND email_verified_at IS NOT NULL)
+`
+
+// hikyo:reason The admitted signup request checks address ownership regardless of principal privacy only to select the no-link notice; its public answer remains uniform.
+// hikyo:authn-resolution
+func (q *Queries) VerifiedAccountEmailExists(ctx context.Context, email pgtype.Text) (bool, error) {
+	row := q.db.QueryRow(ctx, verifiedAccountEmailExists, email)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

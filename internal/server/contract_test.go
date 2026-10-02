@@ -2522,3 +2522,6 @@ func (s stubEnvs) Parameters(context.Context, service.Actor, domain.Scope) (map[
 func (s stubEnvs) SetParameter(context.Context, service.Actor, domain.Scope, string, string, bool) error {
 	return s.outcome()
 }
+
+func (stubAuth) Signup(context.Context, string, domain.OrgID) error             { return nil }
+func (stubAuth) VerifySignup(context.Context, service.SignupVerification) error { return nil }

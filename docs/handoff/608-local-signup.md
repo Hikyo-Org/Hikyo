@@ -1,0 +1,29 @@
+# Issue #608: mailer and local email sign-up
+
+Implements [#608](https://github.com/Hikyo-Org/Hikyo/issues/608) on top of #607 using [the social-signin specification](../spec/social-signin.md), including its managed-mail configuration amendment. Delivery endpoint for this thread is a tested, reviewed, signed local commit. Push, PR, merge, and deployment were not requested.
+
+## Runtime paths
+
+- `Auth.Signup` applies pre-auth admission, canonical address validation, live local policy/mailer/domain admission, then the shared 20/hour signup budget. A transaction writes or rotates the pending row and commits a durable mail intent before exactly one synchronous TLS send. Existing verified owners, including restricted accounts, receive a no-link notice. Transport failure keeps the uniform 202, writes a failure outcome, and increments signup-mail and RED error counters. Mail content and verification artifacts never enter logs or audit payloads.
+- `Auth.VerifySignup` checks password policy first, reads and validates the opaque token without consumption, derives/seals the verifier outside the write, then rechecks expiry/epoch/policy/domain/authority and atomically consumes the row while creating account, credential, and landing. Success returns 204 without a session. Name collision rolls back consumption. Verification GET is absent and cannot consume. The hourly scheduler prunes only still-expired rows; policy deletion removes its pending rows with per-row events.
+- Login identifiers containing `@` resolve only through canonical verified account email. Every account/username writer refuses `@` in a username. Federated email remains outside identity resolution.
+- `InstanceMail` reads the active runtime bundle without a network probe. Its test operation requires instance-config plus account-security proof, shares the datastore `mail-test` bucket and `self-config-mail-test` lease with configuration-preview sends, and records its outcome even if the initiating actor is revoked during SMTP.
+- The SPA adds email request/resend, fragment-driven `/signup/verify`, and a mailer panel in instance administration. Fragment email/landing/org are presentation hints; the pending row and live policy authorize account creation. The fragment is removed from history; credential/token state is retired by sensitive hooks. Org-template policy values map to the public `landing=org` hint.
+
+## Contract integration
+
+OpenAPI, Go transport, generated Go/TypeScript/Zod operations, WebUI parity, no-proxy route pins, authz forwarding surface, audited wire extras, formula pins, query authority annotations, and sensitivity inventory are updated together. New query authority reasons remain checked; they are not added to the legacy SQL exemption set.
+
+`registration.mail_outcome` stores `intent_id` in its payload and success/failure in the existing envelope `outcome`. This is the specification's outcome field, not a redundant payload shadow, preserving the audit model's invariant 12. `registration.mail_status_read` audits the instance-scoped static predicate because that class cannot claim audited-none.
+
+Before managed adoption, external mail inputs seed configuration. After adoption only an applied managed snapshot owns active SMTP settings, and restore/configuration fences remain effective. No change to this authority boundary was made.
+
+## Verification and review
+
+Both SQLite and PostgreSQL lifecycle tests exercise new/resend/existing addresses, restricted owners, uncharged refusals, live predicate edits, uniform token refusals, no-session success, org/fresh-org landings, collision rollback, stale hint fallback, expiry replacement/reaper, failed sends without refunds, and recovery from a seeded committed intent with no outcome. Operator tests exercise both TLS modes, proof refusal, five/hour, one concurrent send, and outcomes after actor revocation. Mail posture tests assert STARTTLS downgrade refusal, hostname/CA verification, caller cancellation, and an absolute 15-second deadline.
+
+The browser flow exercises request/resend, fragment scrubbing, readonly address, fresh-org fields, password mismatch, and login redirect at desktop/mobile viewports with dark/light token and axe assertions. Protocol responses are intercepted for this UI contract flow; real SMTP/token/database authority is proven by the Go lifecycle tests. The prototype-only mail sink has no production route.
+
+Ordinary Standards and Spec reviews used the requested Codex gpt-6.1-sol/high. The org landing hint finding was fixed and re-reviewed. The separate native quota-gated review was skipped because current quota balances were not supplied; Claude was explicitly disabled after subscription expiry. No skipped review is represented as clean.
+
+Local validation: web full suite passed (152 files, 1333 tests), client verification passed (22 tests plus generation/typecheck), web lint/typecheck/build passed, and signup browser flows passed on desktop and mobile in both color schemes with axe assertions. Linux strace proved separate unconfigured and configured-mailer boots healthy and ready with zero non-loopback connect/sendto/sendmsg calls. The executable shell fixture also asserts both runs and outbound refusal. The full Go suite was executed with both engines. Its PostgreSQL container was interrupted by a tracing probe and later killed by Docker memory exhaustion; affected tests are rerun against an isolated disk-backed, memory-capped test database, with isolation cases partitioned by the repository CI planner. All affected reruns passed, including all 84 interrupted isolation cases in three disjoint shards, service, store, migration, upgrade, and release-gate cases. The two interrupted application upgrade cases also passed. The original aggregate invocation remains a recorded infrastructure failure; this is successful coverage after reruns, not a claim that its exit code was zero.

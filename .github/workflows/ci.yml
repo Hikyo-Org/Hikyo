@@ -692,7 +692,7 @@ jobs:
         # e2e/registry.ts appears in exactly one group; the aggregator proves it.
         include:
           - group: 1
-            specs: e2e/flows/reveal.spec.ts e2e/flows/members.spec.ts e2e/flows/login.spec.ts e2e/flows/scanning.spec.ts
+            specs: e2e/flows/reveal.spec.ts e2e/flows/members.spec.ts e2e/flows/login.spec.ts e2e/flows/signup.spec.ts e2e/flows/scanning.spec.ts
           - group: 2
             specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts e2e/flows/account.spec.ts
           - group: 3
