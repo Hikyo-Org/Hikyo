@@ -45,11 +45,16 @@ require_workflow_review() {
 		fail 'a fork PR that changes .github/ needs a maintainer to land it from a branch in this repository'
 	# API review author_association is historical, not current authority. Use
 	# the latest review per immutable reviewer id and check current permissions.
-	reviewers=$(gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews?per_page=100" \
-		--jq "[.[][] | select(.user.id != null)] | group_by(.user.id) |
-		map(max_by([(.submitted_at // \"\"), .id])) | .[] |
-		select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and
-		.user.id != $pr_author_id and .user.login != \"$pr_author\") | .user.login") ||
+	reviews=$(gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews?per_page=100") ||
+		fail 'cannot fetch workflow approval reviews'
+	# gh rejects --slurp together with --jq. Fetch every page first, then
+	# filter locally; keeping the fetch separate also preserves API failures.
+	reviewers=$(printf '%s\n' "$reviews" | jq -r \
+		--arg head "$HEAD_SHA" --arg author "$pr_author" --argjson author_id "$pr_author_id" '
+		[.[][] | select(.user.id != null)] | group_by(.user.id) |
+		map(max_by([(.submitted_at // ""), .id])) | .[] |
+		select(.state == "APPROVED" and .commit_id == $head and
+		.user.id != $author_id and .user.login != $author) | .user.login') ||
 		fail 'cannot verify exact-head workflow approval'
 	approved=false
 	for reviewer in $reviewers; do

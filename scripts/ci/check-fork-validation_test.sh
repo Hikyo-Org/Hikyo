@@ -11,15 +11,20 @@ mkdir "$work/bin"
 cat >"$work/bin/gh" <<'EOF'
 #!/bin/sh
 set -eu
-url= filter=.
+url= filter=. slurp=false jq_filter=false
 while [ $# -gt 0 ]; do
 	case $1 in
-	api | --paginate | --slurp) ;;
-	--jq) filter=$2; shift ;;
+	api | --paginate) ;;
+	--slurp) slurp=true ;;
+	--jq) filter=$2; jq_filter=true; shift ;;
 	*) url=$1 ;;
 	esac
 	shift
 done
+if [ "$slurp" = true ] && [ "$jq_filter" = true ]; then
+	printf 'the `--slurp` option is not supported with `--jq`\n' >&2
+	exit 1
+fi
 bump() {
 	count=0
 	if [ -f "$FIXTURES/$1-calls" ]; then count=$(cat "$FIXTURES/$1-calls"); fi
@@ -29,6 +34,7 @@ bump() {
 case $url in
 */pulls/7/files*) fixture=files ;;
 */pulls/7/reviews*)
+	[ "${REVIEWS_ERROR:-false}" = false ] || exit 1
 	bump reviews
 	fixture=reviews
 	if [ "$count" -ge "${REVIEWS_CHANGE_AT:-99999}" ]; then fixture=reviews-later; fi
@@ -149,6 +155,7 @@ same_repo
 expect_reject 'same-repo workflow edits without independent approval'
 approval
 expect_accept 'same-repo workflow edits with exact-head independent maintainer approval'
+( REVIEWS_ERROR=true expect_reject 'review API failure despite an approved fixture' )
 for permission in admin maintain; do
 	printf '{"permission":"%s"}\n' "$permission" >"$work/permission.json"
 	expect_accept "current $permission maintainer approval"
@@ -171,6 +178,9 @@ approval
 jq '.[0] += [.[0][0] | .id = 21 | .state = "DISMISSED" | .submitted_at = "2026-10-01T00:01:00Z"]' "$work/reviews.json" >"$work/reviews-new.json"
 mv "$work/reviews-new.json" "$work/reviews.json"
 expect_reject 'latest reviewer state dismissed an earlier approval'
+jq '[.[0][0:1], .[0][1:]]' "$work/reviews.json" >"$work/reviews-new.json"
+mv "$work/reviews-new.json" "$work/reviews.json"
+expect_reject 'latest review on a later API page dismissed an earlier approval'
 approval
 jq '.head.repo.id = 2' "$work/pr.json" >"$work/pr-new.json"
 mv "$work/pr-new.json" "$work/pr.json"
