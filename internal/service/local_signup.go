@@ -386,7 +386,7 @@ func (s *Auth) VerifySignup(ctx context.Context, in SignupVerification) error {
 		if e = az.WritePasswordCredential(ctx, authz.PasswordCredential{AccountID: accountID, Verifier: sealed, KDF: params, DEKVersion: dek, CredentialEpoch: epoch}, now); e != nil {
 			return e
 		}
-		lander := &oidcSignup{auth: s}
+		lander := &federatedSignup{auth: s}
 		if in.Landing == string(LandingFreshOrg) && LandingKind(p.Landing) == LandingFreshOrg {
 			lander.orgName = in.OrgName
 		}
