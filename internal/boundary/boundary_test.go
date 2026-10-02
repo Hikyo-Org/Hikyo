@@ -86,7 +86,7 @@ var protocolImportConfinements = []ImportConfinement{
 	{
 		Name:               "OAuth2",
 		DependencyPrefixes: []string{"golang.org/x/oauth2"},
-		AllowedImporters:   []string{module + "/internal/oidcrp"},
+		AllowedImporters:   []string{module + "/internal/oidcrp", module + "/internal/oauth2rp"},
 	},
 	{
 		Name:               "WebAuthn",

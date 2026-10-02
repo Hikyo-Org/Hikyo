@@ -19,6 +19,11 @@ func TestInstanceConfigProviderGrammar(t *testing.T) {
 		args []string
 		want int
 	}{
+		{"oauth2 requires verb", []string{"instance-config", "oauth2-provider"}, cli.ExitUsage},
+		{"oauth2 refuses GHES", []string{"instance-config", "oauth2-provider", "create", "--slug", "github", "--origin", "https://ghe.example", "--client-id", "id", "--client-secret-file", metadata}, cli.ExitUsage},
+		{"oauth2 requires secret file", []string{"instance-config", "oauth2-provider", "create", "--slug", "github", "--client-id", "id"}, cli.ExitUsage},
+		{"oauth2 update requires change", []string{"instance-config", "oauth2-provider", "update", "github"}, cli.ExitUsage},
+		{"oauth2 valid create reaches auth", []string{"instance-config", "oauth2-provider", "create", "--slug", "github", "--client-id", "id", "--client-secret-file", metadata, "--instance", "unknown-ref"}, cli.ExitRefused},
 		{"instance-config needs provider", []string{"instance-config"}, cli.ExitUsage},
 		{"provider needs a verb", []string{"instance-config", "provider"}, cli.ExitUsage},
 		{"unknown provider verb", []string{"instance-config", "provider", "warp"}, cli.ExitUsage},

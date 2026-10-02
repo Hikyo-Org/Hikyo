@@ -127,6 +127,13 @@
   },
   {
     "engine": "postgres",
+    "name": "BindSessionToOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "a3eb72494921cb995462a5cfd74e67021f2f45b17098660765cea730a79b2796",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
     "name": "BindSessionToSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "b5d86c12b60fdc2fdb44dd2e16bc2125228867912d25fa5903747154c73d6aad"
@@ -142,6 +149,13 @@
     "name": "CLIReauthHandoffByState",
     "annotation": "authn-resolution",
     "hash": "e71ab38813f0cf8f299b29a0c4f107f055bcc423e36a5c1c2c36c3f991cdb0b0"
+  },
+  {
+    "engine": "postgres",
+    "name": "ClaimOAuth2Authority",
+    "annotation": "authn-resolution",
+    "hash": "5f6a92c240147e70e2b5c66660cc1b3e3f894b24f2de7fff600717a76f325ea4",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -196,6 +210,13 @@
     "name": "ConsumeLoginChallenge",
     "annotation": "authn-resolution",
     "hash": "f61988c769ff22b6f1a95ab3df49c59cf0059a487ea8257a75eded80db8db171"
+  },
+  {
+    "engine": "postgres",
+    "name": "ConsumeOAuth2Transaction",
+    "annotation": "authn-resolution",
+    "hash": "d23b3feb41015db8f7c2de08a80ff55d1d9638f44f58877789bab106d058b978",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -557,6 +578,13 @@
   },
   {
     "engine": "postgres",
+    "name": "CreateOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "2de0eca1f48b7fea051de69f04a485f831873ea9d2ad830a0dcee012b136e13b",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
     "name": "CreateOIDCProvider",
     "annotation": "authn-resolution",
     "hash": "60126692e17ab926b179e3764af5115e0c0c2e140d7841552e6e050bcde79c43"
@@ -650,6 +678,13 @@
     "name": "DeleteMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "270b76256c143d16ca213dc8ed46bc197c5fae602608fd5e2e84045f30b61faa"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "31534e9e4d106e59406ca2f2d72c98515e8ce5c1501e9d04ac2e7573c3f28dc1",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -788,6 +823,13 @@
     "name": "DeleteSessionForPrincipal",
     "annotation": "authn-resolution",
     "hash": "f3a8a11bd4080679caf08f04287f461c39e2e9a8c4ec63ef21a9eec162f7f278"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteSessionsForOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "837afec3e4067377fd2085be30fb3adca7cf21a8e765cd08c8a8f2334ea3a096",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -947,6 +989,13 @@
   },
   {
     "engine": "postgres",
+    "name": "GetCredentialAuthorityByID",
+    "annotation": "authn-resolution",
+    "hash": "ee294de3972723c5d56fb76acf8571bd5e43aedd6103e5469bd3849780ab3778",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
     "name": "GetCredentialAuthorityByVerifier",
     "annotation": "authn-resolution",
     "hash": "04b2b145afcbe97db46092212fff5c4d2cd5bfffec50c33da1ac75dc12bb573a"
@@ -1016,6 +1065,27 @@
     "name": "GetLoginChallengeByID",
     "annotation": "authn-resolution",
     "hash": "a39a38c26fb30cf0f6e3b3c28ad523bbd4f850cbee7ff57760a241ec2b071fe0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOAuth2ProviderBySlug",
+    "annotation": "authn-resolution",
+    "hash": "330c38eb0b48f030a3c7fca80434f9fb40143e2db67a97bb5be0f26c11e76fc9",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOAuth2ProviderForCallback",
+    "annotation": "authn-resolution",
+    "hash": "aeb37c5298b581e1cfd82a476babff9c897c12da3ed623ea370aa346339df87d",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOAuth2TransactionByState",
+    "annotation": "authn-resolution",
+    "hash": "ed21fa63b203afee300105275feb123ec218accc24cb29951cef2a5d6ccfde14",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -1213,13 +1283,13 @@
     "engine": "postgres",
     "name": "GetSessionByID",
     "annotation": "authn-resolution",
-    "hash": "8ed5b42d3ffb2417e87a175f2558eb6028d4ce465b93b5964dc4f02164ada1a5"
+    "hash": "cdfec9224092d74cb765c04146f47d6fb86937b36b9f6308a2b11765138b50cb"
   },
   {
     "engine": "postgres",
     "name": "GetSessionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "3e42499f4e21392d1c55c8378667ea772ee526d7b314f9f445f570bb21180911"
+    "hash": "b7f48f50750dada0341cae1c68044be0477c5580a3682f1c054b64806ecad0b9"
   },
   {
     "engine": "postgres",
@@ -1256,6 +1326,13 @@
     "name": "GetWorkspaceOrigin",
     "annotation": "authn-resolution",
     "hash": "4e885fb8287dd4058b4c539934ba4656b1c7931ad4bf1f2ab68bcc0bd8346248"
+  },
+  {
+    "engine": "postgres",
+    "name": "GuardOAuth2ProviderForMint",
+    "annotation": "authn-resolution",
+    "hash": "1f1376549aed1bb192eb497824b6bfd6d1434b9a36b8a601a7d5c2103c4b8845",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -1347,6 +1424,13 @@
     "name": "InsertMachinePrincipal",
     "annotation": "authn-resolution",
     "hash": "1b3500201caf060d6465f3bfbfa0bd7d452752dce134095fbd8263485300ecf1"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertOAuth2Transaction",
+    "annotation": "authn-resolution",
+    "hash": "794d12a0b2f3be7b639499baa8b3c264760c1465befdb1f27f9df2269c0ccd80",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -1662,6 +1746,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListOAuth2Providers",
+    "annotation": "authn-resolution",
+    "hash": "00b96354fe27c9e809892a5487f91d7d2e6f60e2974a77210c83246b6f514b07",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
     "name": "ListOIDCProviders",
     "annotation": "authn-resolution",
     "hash": "f56ab37022bf6a6cbbeb747e17f235d27d52c8c9be2ae05d49aa879750882ff1"
@@ -1893,6 +1984,13 @@
     "name": "LockInstanceIdentityRow",
     "annotation": "instance-scoped",
     "hash": "5babd00a3796ac9190f998b1e4c73c39a0868dffcf12ad47a4e3f8e2914f939f"
+  },
+  {
+    "engine": "postgres",
+    "name": "LockOAuth2ProviderForDelete",
+    "annotation": "authn-resolution",
+    "hash": "2a34bdb3b9c079eb440fd363b4ecb14a14fefc48c1ba084fb66e8035498946c1",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -2782,6 +2880,13 @@
   },
   {
     "engine": "postgres",
+    "name": "StampCredentialEstablish",
+    "annotation": "authn-resolution",
+    "hash": "ce84ba5299809dec9f1ccbefd780f220eb3957913ba631cea12ed5092e7d1f55",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "postgres",
     "name": "StrandedRevealPrincipalsForEnvironment",
     "annotation": "authn-resolution",
     "hash": "95cd1f8c392587ce7700fa672088cb243f4b5581ec98a9537ec54e909eb1cdee"
@@ -2868,6 +2973,13 @@
     "name": "UpdateFederationIssuer",
     "annotation": "authn-resolution",
     "hash": "5ee2590369848941619583f839a2c11e62cacc8d6c7436ed918945904c291b20"
+  },
+  {
+    "engine": "postgres",
+    "name": "UpdateOAuth2ProviderCAS",
+    "annotation": "authn-resolution",
+    "hash": "7bde0b7f8097c874ee9eccf4f883da431df993edc595f05071ba7ef8936a0387",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "postgres",
@@ -3035,6 +3147,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "BindSessionToOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "d2cc2460958e1db75ae528b90681a43678847d33bbe3a6f51ce9dcb9ad7868d5",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
     "name": "BindSessionToSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "0641ec905f2c406364637e77395f062fb8e295ff51e1b75025c35f8d7551c2c8"
@@ -3050,6 +3169,13 @@
     "name": "CLIReauthHandoffByState",
     "annotation": "authn-resolution",
     "hash": "1b3a00de6cd65a774e90cfbc7575ef3935a644ae28cd204ffefce4f14b32bd50"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClaimOAuth2Authority",
+    "annotation": "authn-resolution",
+    "hash": "7aa3636a041dc18031b785777ec1d4daf6ac92b7bb7acdd53f8dd5a3f1cebe5d",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -3104,6 +3230,13 @@
     "name": "ConsumeLoginChallenge",
     "annotation": "authn-resolution",
     "hash": "896ea987dd89e0e06a13a8668a88de687aa8a992a47b561305d415540695ad1f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ConsumeOAuth2Transaction",
+    "annotation": "authn-resolution",
+    "hash": "cfe2662e58a26d2ff23c49fa2d90d1c794507fb389dd554bcb526da089479a1d",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -3437,6 +3570,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "CreateOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "f2e0e5bca1469d0b5021958f4dfbcb58aa8d886cfbd00974dd2969a301b38eb4",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
     "name": "CreateOIDCProvider",
     "annotation": "authn-resolution",
     "hash": "0e6cee4d1dbde7b6320270e1a40081342a2db85269679fff17d0e5789ce7f8c1"
@@ -3530,6 +3670,13 @@
     "name": "DeleteMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "63a8c584da8016bd0c411fc3d1c6276f0239b16325cc63d23c349861fc971a01"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "62f0684237535eb0210a6cacf696f037dcf31256d8b89b99896a5df53025ba82",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -3668,6 +3815,13 @@
     "name": "DeleteSessionForPrincipal",
     "annotation": "authn-resolution",
     "hash": "216fd0d87dc4fac69a639871a9363128dc4510aacb1149935a36975680f9b515"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteSessionsForOAuth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "a78a7d211bec01871cc5d6db7ef47041620b41a144e41e629b1bfc8cccf0375f",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -3827,6 +3981,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetCredentialAuthorityByID",
+    "annotation": "authn-resolution",
+    "hash": "db43a0b7ba73c3fcdc1a6e228e49d1fbc971ff1f11f84afd1168b7589c957007",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
     "name": "GetCredentialAuthorityByVerifier",
     "annotation": "authn-resolution",
     "hash": "5abea74a309c5a28410019359ddce7f6c515b46089425a6b40b6ecda9440cddb"
@@ -3896,6 +4057,27 @@
     "name": "GetLoginChallengeByID",
     "annotation": "authn-resolution",
     "hash": "2164b777f332eae71a98c5b6be1477fc405f39f38f314fd5da0360415471752a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOAuth2ProviderBySlug",
+    "annotation": "authn-resolution",
+    "hash": "aec09ece795c1e016800accfa81e6138c513dd8dc8e1a471b4033586a430e44a",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOAuth2ProviderForCallback",
+    "annotation": "authn-resolution",
+    "hash": "c4a7a4d6990251f6ac364bc646ee5f1efb48d0688996ccd32e7c38cbf87bff2e",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOAuth2TransactionByState",
+    "annotation": "authn-resolution",
+    "hash": "9de5cecdbbfb58f59f7eea46664772e567c19c041d97296dac00c5d9afac6c0f",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -4093,13 +4275,13 @@
     "engine": "sqlite",
     "name": "GetSessionByID",
     "annotation": "authn-resolution",
-    "hash": "464e09b952fb4cb854f2178936981a9e4098475c87d6a4828e3522b4fd8c5ac3"
+    "hash": "052db5aba519012346dc80f8b0fc66ddce11c46b78c135bfdc4bfcfcb49c9f90"
   },
   {
     "engine": "sqlite",
     "name": "GetSessionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "6e844a0e7ed3f02ef0cec88a8d08b6a161643972f78d9f40bdb125fc8aaa9aae"
+    "hash": "029ceb32a7cfe33a220a1de465c3d5ba13ed50310c1ee518000067f23c60d720"
   },
   {
     "engine": "sqlite",
@@ -4136,6 +4318,13 @@
     "name": "GetWorkspaceOrigin",
     "annotation": "authn-resolution",
     "hash": "6a7f483212b98c7b8ae7a6ebaace4044546fcc5657e45e7f7cce8ce1d316e6cc"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GuardOAuth2ProviderForMint",
+    "annotation": "authn-resolution",
+    "hash": "f5f67e8c68dc908964bfa8f2e8242188e74c6d02736df6df505290b8a38fff24",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -4227,6 +4416,13 @@
     "name": "InsertMachinePrincipal",
     "annotation": "authn-resolution",
     "hash": "6ca2fc07d21206201d58fce9c53c588023acdb5cce86bf56363ef895de862220"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertOAuth2Transaction",
+    "annotation": "authn-resolution",
+    "hash": "2fb3dd6dfc8afa8365154fcfda9d083cdbc2c8c3b23f79a362ea843c13891212",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -4542,6 +4738,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListOAuth2Providers",
+    "annotation": "authn-resolution",
+    "hash": "00b96354fe27c9e809892a5487f91d7d2e6f60e2974a77210c83246b6f514b07",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListOIDCProviders",
     "annotation": "authn-resolution",
     "hash": "f56ab37022bf6a6cbbeb747e17f235d27d52c8c9be2ae05d49aa879750882ff1"
@@ -4773,6 +4976,13 @@
     "name": "LockInstanceIdentityRow",
     "annotation": "instance-scoped",
     "hash": "b466c3349d89748a39885173dcecffd3b0619b5cfff89c6df6fdd3fdedc72b28"
+  },
+  {
+    "engine": "sqlite",
+    "name": "LockOAuth2ProviderForDelete",
+    "annotation": "authn-resolution",
+    "hash": "f7cbd7d58bf18004ad1e92055110c9a51cfab883444c1f6eab8dfb1ad354fb1e",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",
@@ -5655,6 +5865,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "StampCredentialEstablish",
+    "annotation": "authn-resolution",
+    "hash": "4c87ab07ff034dd049dc1fc8ff4f785a0e10da7be139b00d374062ef2991654e",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+  },
+  {
+    "engine": "sqlite",
     "name": "StrandedRevealPrincipalsForEnvironment",
     "annotation": "authn-resolution",
     "hash": "95cd1f8c392587ce7700fa672088cb243f4b5581ec98a9537ec54e909eb1cdee"
@@ -5741,6 +5958,13 @@
     "name": "UpdateFederationIssuer",
     "annotation": "authn-resolution",
     "hash": "d7c8a14c48f7fbefb9e0049cf90b8bff98db36e49af14981d788961883109bb3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateOAuth2ProviderCAS",
+    "annotation": "authn-resolution",
+    "hash": "7e6887d3329f6cd257e786e81f463f589a2d04d86a07c0f43b1585362ac52de0",
+    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
     "engine": "sqlite",

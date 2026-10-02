@@ -178,3 +178,10 @@ type NewWebAuthnCeremony = authn.NewWebAuthnCeremony
 func (a *TxAuthorizer) RecordAuthEvent(ctx context.Context, e audit.Event) error {
 	return a.r.WriteAuthEvent(ctx, e, audit.TrailInstance)
 }
+
+// OAuth2 uses its own profile and nonce-free transaction carriers.
+type OAuth2Provider = authn.OAuth2Provider
+type NewOAuth2Provider = authn.NewOAuth2Provider
+type OAuth2ProviderUpdate = authn.OAuth2ProviderUpdate
+type OAuth2Transaction = authn.OAuth2Transaction
+type NewOAuth2Transaction = authn.NewOAuth2Transaction

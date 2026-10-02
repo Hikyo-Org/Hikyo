@@ -128,7 +128,7 @@ export function CLIReauth() {
   const methodsFailed =
     disclosure &&
     slidingEnvironments.length > 0 &&
-    auth.identity?.session.assurance.method.startsWith('oidc:') === true &&
+    (auth.identity?.session.assurance.method.startsWith('oidc:') === true || auth.identity?.session.assurance.method.startsWith('oauth2:') === true) &&
     methods.isError;
 
   return (
@@ -180,6 +180,7 @@ export function CLIReauth() {
                 </li>
               ))}
             </ul>
+            {auth.identity?.session.assurance.method.startsWith('oauth2:') && !hasTotp ? <Alert>GitHub cannot reauthenticate. Use an enrolled passkey, or enrol TOTP in Settings → Security.</Alert> : null}
             {requiresTOTP || offersTOTP ? (
               <div className="field">
                 <label htmlFor="cli-reauth-totp">

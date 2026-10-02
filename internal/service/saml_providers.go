@@ -1330,7 +1330,7 @@ func (s *SAMLProviders) recordMetadataExpiryWarnings(ctx context.Context, repos 
 func (s *SAMLProviders) recordProviderRead(ctx context.Context, repos store.Repos, proof authz.Proof, principal domain.PrincipalID, query string, count int) error {
 	event, err := newAuditEvent(ctx, audit.EventOIDCProviderRead, principal,
 		audit.Object{Type: "saml_provider"}, audit.OutcomeSuccess, "",
-		audit.Payload{"query": query, "row_count": count})
+		audit.Payload{"kind": SAMLKind, "query": query, "row_count": count})
 	if err != nil {
 		return err
 	}

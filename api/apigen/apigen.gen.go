@@ -805,16 +805,34 @@ func (e ApprovalVoteRequestDecision) Valid() bool {
 
 // Defines values for AuthMethodProviderBrand.
 const (
-	Google    AuthMethodProviderBrand = "google"
-	Microsoft AuthMethodProviderBrand = "microsoft"
+	AuthMethodProviderBrandGithub    AuthMethodProviderBrand = "github"
+	AuthMethodProviderBrandGoogle    AuthMethodProviderBrand = "google"
+	AuthMethodProviderBrandMicrosoft AuthMethodProviderBrand = "microsoft"
 )
 
 // Valid indicates whether the value is a known member of the AuthMethodProviderBrand enum.
 func (e AuthMethodProviderBrand) Valid() bool {
 	switch e {
-	case Google:
+	case AuthMethodProviderBrandGithub:
 		return true
-	case Microsoft:
+	case AuthMethodProviderBrandGoogle:
+		return true
+	case AuthMethodProviderBrandMicrosoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthMethodProviderProfile.
+const (
+	AuthMethodProviderProfileGithub AuthMethodProviderProfile = "github"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodProviderProfile enum.
+func (e AuthMethodProviderProfile) Valid() bool {
+	switch e {
+	case AuthMethodProviderProfileGithub:
 		return true
 	default:
 		return false
@@ -1565,6 +1583,21 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ExternalIdentityProfile.
+const (
+	ExternalIdentityProfileGithub ExternalIdentityProfile = "github"
+)
+
+// Valid indicates whether the value is a known member of the ExternalIdentityProfile enum.
+func (e ExternalIdentityProfile) Valid() bool {
+	switch e {
+	case ExternalIdentityProfileGithub:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FileTargetKeyClassification.
 const (
 	FileTargetKeyClassificationConfig FileTargetKeyClassification = "config"
@@ -1604,6 +1637,24 @@ func (e FileTargetState) Valid() bool {
 	case FileTargetStateOffline:
 		return true
 	case FileTargetStateRefused:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IdentityLinkRequestKind.
+const (
+	IdentityLinkRequestKindOauth2 IdentityLinkRequestKind = "oauth2"
+	IdentityLinkRequestKindOidc   IdentityLinkRequestKind = "oidc"
+)
+
+// Valid indicates whether the value is a known member of the IdentityLinkRequestKind enum.
+func (e IdentityLinkRequestKind) Valid() bool {
+	switch e {
+	case IdentityLinkRequestKindOauth2:
+		return true
+	case IdentityLinkRequestKindOidc:
 		return true
 	default:
 		return false
@@ -1961,18 +2012,66 @@ func (e LocalSignupMethod) Valid() bool {
 	}
 }
 
+// Defines values for Oauth2ProviderProfile.
+const (
+	Oauth2ProviderProfileGithub Oauth2ProviderProfile = "github"
+)
+
+// Valid indicates whether the value is a known member of the Oauth2ProviderProfile enum.
+func (e Oauth2ProviderProfile) Valid() bool {
+	switch e {
+	case Oauth2ProviderProfileGithub:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Oauth2ProviderInputProfile.
+const (
+	Oauth2ProviderInputProfileGithub Oauth2ProviderInputProfile = "github"
+)
+
+// Valid indicates whether the value is a known member of the Oauth2ProviderInputProfile enum.
+func (e Oauth2ProviderInputProfile) Valid() bool {
+	switch e {
+	case Oauth2ProviderInputProfileGithub:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Oauth2StartRequestIntent.
+const (
+	Oauth2StartRequestIntentSignIn Oauth2StartRequestIntent = "sign-in"
+	Oauth2StartRequestIntentSignUp Oauth2StartRequestIntent = "sign-up"
+)
+
+// Valid indicates whether the value is a known member of the Oauth2StartRequestIntent enum.
+func (e Oauth2StartRequestIntent) Valid() bool {
+	switch e {
+	case Oauth2StartRequestIntentSignIn:
+		return true
+	case Oauth2StartRequestIntentSignUp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OidcStartRequestIntent.
 const (
-	SignIn OidcStartRequestIntent = "sign-in"
-	SignUp OidcStartRequestIntent = "sign-up"
+	OidcStartRequestIntentSignIn OidcStartRequestIntent = "sign-in"
+	OidcStartRequestIntentSignUp OidcStartRequestIntent = "sign-up"
 )
 
 // Valid indicates whether the value is a known member of the OidcStartRequestIntent enum.
 func (e OidcStartRequestIntent) Valid() bool {
 	switch e {
-	case SignIn:
+	case OidcStartRequestIntentSignIn:
 		return true
-	case SignUp:
+	case OidcStartRequestIntentSignUp:
 		return true
 	default:
 		return false
@@ -4996,7 +5095,7 @@ type Assurance struct {
 	// instance-specific by construction.
 	Method AuthMethod `json:"method"`
 
-	// Provider The configured provider slug, present only for OIDC sessions.
+	// Provider The configured provider slug, present for OIDC and OAuth2 sessions.
 	Provider *string `json:"provider,omitempty"`
 }
 
@@ -5084,8 +5183,9 @@ type AuthMethodProvider struct {
 	DisplayName string                   `json:"display_name"`
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
-	Kind IdentityProviderKind `json:"kind"`
-	Slug string               `json:"slug"`
+	Kind    IdentityProviderKind       `json:"kind"`
+	Profile *AuthMethodProviderProfile `json:"profile,omitempty"`
+	Slug    string                     `json:"slug"`
 }
 
 // AuthMethodProviderBrand The provider's published button rules apply (#587 d4,
@@ -5095,6 +5195,9 @@ type AuthMethodProvider struct {
 // tenant-specific issuer); absent for a generic OIDC provider.
 // Presentation only: admission never keys on it.
 type AuthMethodProviderBrand string
+
+// AuthMethodProviderProfile defines model for AuthMethodProvider.Profile.
+type AuthMethodProviderProfile string
 
 // AuthMethods defines model for AuthMethods.
 type AuthMethods struct {
@@ -6700,10 +6803,14 @@ type ExternalIdentity struct {
 	Issuer string `json:"issuer"`
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
-	Kind       IdentityProviderKind `json:"kind"`
-	ProviderId string               `json:"provider_id"`
-	Subject    string               `json:"subject"`
+	Kind       IdentityProviderKind     `json:"kind"`
+	Profile    *ExternalIdentityProfile `json:"profile,omitempty"`
+	ProviderId string                   `json:"provider_id"`
+	Subject    string                   `json:"subject"`
 }
+
+// ExternalIdentityProfile defines model for ExternalIdentity.Profile.
+type ExternalIdentityProfile string
 
 // FactorClass OPEN enum — new factor classes are additive.
 type FactorClass = string
@@ -7034,10 +7141,14 @@ type ID = string
 // IdentityLinkRequest defines model for IdentityLinkRequest.
 type IdentityLinkRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
-	Browser  *bool  `json:"browser,omitempty"`
-	Proof    string `json:"proof"`
-	Provider string `json:"provider"`
+	Browser  *bool                    `json:"browser,omitempty"`
+	Kind     *IdentityLinkRequestKind `json:"kind,omitempty"`
+	Proof    string                   `json:"proof"`
+	Provider string                   `json:"provider"`
 }
+
+// IdentityLinkRequestKind defines model for IdentityLinkRequest.Kind.
+type IdentityLinkRequestKind string
 
 // IdentityList defines model for IdentityList.
 type IdentityList struct {
@@ -7932,6 +8043,71 @@ type MyOrgList struct {
 	Count int     `json:"count"`
 	Items []MyOrg `json:"items"`
 }
+
+// Oauth2Provider defines model for Oauth2Provider.
+type Oauth2Provider struct {
+	ClientId    string                `json:"client_id"`
+	DisplayName string                `json:"display_name"`
+	Enabled     bool                  `json:"enabled"`
+	Issuer      string                `json:"issuer"`
+	Profile     Oauth2ProviderProfile `json:"profile"`
+	RedirectUri string                `json:"redirect_uri"`
+	Slug        string                `json:"slug"`
+}
+
+// Oauth2ProviderProfile defines model for Oauth2Provider.Profile.
+type Oauth2ProviderProfile string
+
+// Oauth2ProviderInput defines model for Oauth2ProviderInput.
+type Oauth2ProviderInput struct {
+	ClientId     string                     `json:"client_id"`
+	ClientSecret string                     `json:"client_secret"`
+	DisplayName  string                     `json:"display_name"`
+	Enabled      bool                       `json:"enabled"`
+	Issuer       string                     `json:"issuer"`
+	Profile      Oauth2ProviderInputProfile `json:"profile"`
+}
+
+// Oauth2ProviderInputProfile defines model for Oauth2ProviderInput.Profile.
+type Oauth2ProviderInputProfile string
+
+// Oauth2ProviderList defines model for Oauth2ProviderList.
+type Oauth2ProviderList struct {
+	Providers []Oauth2Provider `json:"providers"`
+}
+
+// Oauth2StartRequest defines model for Oauth2StartRequest.
+type Oauth2StartRequest struct {
+	// Browser Redirect the callback to the SPA done page instead of returning JSON.
+	Browser *bool `json:"browser,omitempty"`
+
+	// EnvironmentId Required for reauth; the window scope. Refused (400) on any other purpose.
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// Intent Valid only with purpose `login` (#604); absent = `sign-in`. It
+	// decides only what happens to an unknown identity at the callback:
+	// `sign-in` refuses it uniformly, `sign-up` enters the registration
+	// policy of the addressed scope. A known identity signs in under
+	// either. Supplied on any other purpose, the start refuses uniformly.
+	Intent *Oauth2StartRequestIntent `json:"intent,omitempty"`
+
+	// Proof Required for link; the pre-existing password.
+	Proof   *string `json:"proof,omitempty"`
+	Purpose string  `json:"purpose"`
+
+	// SignupOrg The org whose registration policy a `sign-up` addresses; absent =
+	// the instance scope. Valid only with intent `sign-up`. The start
+	// reads no policy: an unknown org refuses at the callback as a closed
+	// door.
+	SignupOrg *string `json:"signup_org,omitempty"`
+}
+
+// Oauth2StartRequestIntent Valid only with purpose `login` (#604); absent = `sign-in`. It
+// decides only what happens to an unknown identity at the callback:
+// `sign-in` refuses it uniformly, `sign-up` enters the registration
+// policy of the addressed scope. A known identity signs in under
+// either. Supplied on any other purpose, the start refuses uniformly.
+type Oauth2StartRequestIntent string
 
 // OfflineDeliveryRecord defines model for OfflineDeliveryRecord.
 type OfflineDeliveryRecord struct {
@@ -11444,6 +11620,14 @@ type AuthMethodsParams struct {
 	Org *string `form:"org,omitempty" json:"org,omitempty"`
 }
 
+// Oauth2CallbackParams defines parameters for Oauth2Callback.
+type Oauth2CallbackParams struct {
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Iss   *string `form:"iss,omitempty" json:"iss,omitempty"`
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
 // OidcCallbackParams defines parameters for OidcCallback.
 type OidcCallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
@@ -12074,6 +12258,9 @@ type LoginChallengeTotpJSONRequestBody = TotpCodeRequest
 // LoginChallengeWebauthnFinishJSONRequestBody defines body for LoginChallengeWebauthnFinish for application/json ContentType.
 type LoginChallengeWebauthnFinishJSONRequestBody = WebauthnResponse
 
+// Oauth2StartJSONRequestBody defines body for Oauth2Start for application/json ContentType.
+type Oauth2StartJSONRequestBody = Oauth2StartRequest
+
 // OidcStartJSONRequestBody defines body for OidcStart for application/json ContentType.
 type OidcStartJSONRequestBody = OidcStartRequest
 
@@ -12163,6 +12350,9 @@ type ApplyInstanceTemplateJSONRequestBody = ApplyTemplateRequest
 
 // InviteInstanceMemberJSONRequestBody defines body for InviteInstanceMember for application/json ContentType.
 type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
+
+// PutOauth2ProviderJSONRequestBody defines body for PutOauth2Provider for application/json ContentType.
+type PutOauth2ProviderJSONRequestBody = Oauth2ProviderInput
 
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
@@ -12878,6 +13068,12 @@ type ServerInterface interface {
 	// AuthMethods Enabled login methods for this instance.
 	// (GET /api/v1/auth/methods)
 	AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams)
+	// Oauth2Callback Complete an OAuth2 transaction from the IdP redirect.
+	// (GET /api/v1/auth/oauth2/{provider}/callback)
+	Oauth2Callback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params Oauth2CallbackParams)
+	// Oauth2Start Begin an OAuth2 transaction (login, link, establish or claim).
+	// (POST /api/v1/auth/oauth2/{provider}/start)
+	Oauth2Start(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams)
@@ -13025,6 +13221,18 @@ type ServerInterface interface {
 	// InviteInstanceMember Invite a human at instance scope with a local credential.
 	// (POST /api/v1/instance/invitations)
 	InviteInstanceMember(w http.ResponseWriter, r *http.Request)
+	// ListOauth2Providers List configured OAuth2 providers.
+	// (GET /api/v1/instance/oauth2-providers)
+	ListOauth2Providers(w http.ResponseWriter, r *http.Request)
+	// DeleteOauth2Provider Delete an OAuth2 provider.
+	// (DELETE /api/v1/instance/oauth2-providers/{slug})
+	DeleteOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath)
+	// GetOauth2Provider Read one OAuth2 provider.
+	// (GET /api/v1/instance/oauth2-providers/{slug})
+	GetOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath)
+	// PutOauth2Provider Create or reconfigure an OAuth2 provider.
+	// (PUT /api/v1/instance/oauth2-providers/{slug})
+	PutOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath)
 	// ListOidcProviders List configured OIDC providers.
 	// (GET /api/v1/instance/oidc-providers)
 	ListOidcProviders(w http.ResponseWriter, r *http.Request)
@@ -14033,6 +14241,18 @@ func (_ Unimplemented) AuthMethods(w http.ResponseWriter, r *http.Request, param
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Oauth2Callback Complete an OAuth2 transaction from the IdP redirect.
+// (GET /api/v1/auth/oauth2/{provider}/callback)
+func (_ Unimplemented) Oauth2Callback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params Oauth2CallbackParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Oauth2Start Begin an OAuth2 transaction (login, link, establish or claim).
+// (POST /api/v1/auth/oauth2/{provider}/start)
+func (_ Unimplemented) Oauth2Start(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // OidcCallback Complete an OIDC transaction from the IdP redirect.
 // (GET /api/v1/auth/oidc/{provider}/callback)
 func (_ Unimplemented) OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams) {
@@ -14324,6 +14544,30 @@ func (_ Unimplemented) ApplyInstanceTemplate(w http.ResponseWriter, r *http.Requ
 // InviteInstanceMember Invite a human at instance scope with a local credential.
 // (POST /api/v1/instance/invitations)
 func (_ Unimplemented) InviteInstanceMember(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListOauth2Providers List configured OAuth2 providers.
+// (GET /api/v1/instance/oauth2-providers)
+func (_ Unimplemented) ListOauth2Providers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteOauth2Provider Delete an OAuth2 provider.
+// (DELETE /api/v1/instance/oauth2-providers/{slug})
+func (_ Unimplemented) DeleteOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOauth2Provider Read one OAuth2 provider.
+// (GET /api/v1/instance/oauth2-providers/{slug})
+func (_ Unimplemented) GetOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutOauth2Provider Create or reconfigure an OAuth2 provider.
+// (PUT /api/v1/instance/oauth2-providers/{slug})
+func (_ Unimplemented) PutOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -16461,6 +16705,113 @@ func (siw *ServerInterfaceWrapper) AuthMethods(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// Oauth2Callback operation middleware
+func (siw *ServerInterfaceWrapper) Oauth2Callback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider ProviderSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params Oauth2CallbackParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "iss" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "iss", r.URL.Query(), &params.Iss, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "iss"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "iss", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Oauth2Callback(w, r, provider, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Oauth2Start operation middleware
+func (siw *ServerInterfaceWrapper) Oauth2Start(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider" -------------
+	var provider ProviderSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", chi.URLParam(r, "provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Oauth2Start(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // OidcCallback operation middleware
 func (siw *ServerInterfaceWrapper) OidcCallback(w http.ResponseWriter, r *http.Request) {
 
@@ -17357,6 +17708,98 @@ func (siw *ServerInterfaceWrapper) InviteInstanceMember(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.InviteInstanceMember(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOauth2Providers operation middleware
+func (siw *ServerInterfaceWrapper) ListOauth2Providers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOauth2Providers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteOauth2Provider operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOauth2Provider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug ProviderSlugPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOauth2Provider(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOauth2Provider operation middleware
+func (siw *ServerInterfaceWrapper) GetOauth2Provider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug ProviderSlugPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOauth2Provider(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutOauth2Provider operation middleware
+func (siw *ServerInterfaceWrapper) PutOauth2Provider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug ProviderSlugPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutOauth2Provider(w, r, slug)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -30613,6 +31056,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/auth/oidc/{provider}/callback", wrapper.OidcCallback)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/oauth2/{provider}/start", wrapper.Oauth2Start)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/oauth2/{provider}/callback", wrapper.Oauth2Callback)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/saml/{provider}/start", wrapper.SamlStart)
 	})
 	r.Group(func(r chi.Router) {
@@ -30683,6 +31132,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/v1/instance/oidc-providers/{slug}", wrapper.PutOidcProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/oauth2-providers", wrapper.ListOauth2Providers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.DeleteOauth2Provider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.GetOauth2Provider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/oauth2-providers/{slug}", wrapper.PutOauth2Provider)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/retention-health", wrapper.GetRetentionHealth)
@@ -32900,6 +33361,252 @@ func (response AuthMethods500JSONResponse) VisitAuthMethodsResponse(w http.Respo
 type AuthMethods503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response AuthMethods503JSONResponse) VisitAuthMethodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2CallbackRequestObject struct {
+	Provider ProviderSlug `json:"provider"`
+	Params   Oauth2CallbackParams
+}
+
+type Oauth2CallbackResponseObject interface {
+	VisitOauth2CallbackResponse(w http.ResponseWriter) error
+}
+
+type Oauth2Callback200JSONResponse LoginResult
+
+func (response Oauth2Callback200JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Callback303ResponseHeaders struct {
+	Location string
+}
+
+type Oauth2Callback303Response struct {
+	Headers Oauth2Callback303ResponseHeaders
+}
+
+func (response Oauth2Callback303Response) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(303)
+	return nil
+}
+
+type Oauth2Callback400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response Oauth2Callback400JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Callback401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response Oauth2Callback401JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Callback404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response Oauth2Callback404JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Callback429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response Oauth2Callback429JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Callback500JSONResponse struct{ InternalJSONResponse }
+
+func (response Oauth2Callback500JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Callback503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response Oauth2Callback503JSONResponse) VisitOauth2CallbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2StartRequestObject struct {
+	Provider ProviderSlug `json:"provider"`
+	Body     *Oauth2StartJSONRequestBody
+}
+
+type Oauth2StartResponseObject interface {
+	VisitOauth2StartResponse(w http.ResponseWriter) error
+}
+
+type Oauth2Start200JSONResponse OidcStartResult
+
+func (response Oauth2Start200JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response Oauth2Start400JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response Oauth2Start401JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response Oauth2Start404JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start409JSONResponse struct{ ConflictJSONResponse }
+
+func (response Oauth2Start409JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response Oauth2Start429JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start500JSONResponse struct{ InternalJSONResponse }
+
+func (response Oauth2Start500JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Oauth2Start503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response Oauth2Start503JSONResponse) VisitOauth2StartResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -38447,6 +39154,460 @@ func (response InviteInstanceMember500JSONResponse) VisitInviteInstanceMemberRes
 type InviteInstanceMember503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response InviteInstanceMember503JSONResponse) VisitInviteInstanceMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2ProvidersRequestObject struct {
+}
+
+type ListOauth2ProvidersResponseObject interface {
+	VisitListOauth2ProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListOauth2Providers200JSONResponse Oauth2ProviderList
+
+func (response ListOauth2Providers200JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2Providers401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListOauth2Providers401JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2Providers403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListOauth2Providers403JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2Providers404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListOauth2Providers404JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2Providers429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListOauth2Providers429JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2Providers500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListOauth2Providers500JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOauth2Providers503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListOauth2Providers503JSONResponse) VisitListOauth2ProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOauth2ProviderRequestObject struct {
+	Slug ProviderSlugPath `json:"slug"`
+}
+
+type DeleteOauth2ProviderResponseObject interface {
+	VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error
+}
+
+type DeleteOauth2Provider204Response struct {
+}
+
+func (response DeleteOauth2Provider204Response) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteOauth2Provider401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteOauth2Provider401JSONResponse) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOauth2Provider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteOauth2Provider403JSONResponse) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOauth2Provider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteOauth2Provider404JSONResponse) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOauth2Provider429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteOauth2Provider429JSONResponse) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOauth2Provider500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteOauth2Provider500JSONResponse) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOauth2Provider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteOauth2Provider503JSONResponse) VisitDeleteOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2ProviderRequestObject struct {
+	Slug ProviderSlugPath `json:"slug"`
+}
+
+type GetOauth2ProviderResponseObject interface {
+	VisitGetOauth2ProviderResponse(w http.ResponseWriter) error
+}
+
+type GetOauth2Provider200JSONResponse Oauth2Provider
+
+func (response GetOauth2Provider200JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2Provider401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetOauth2Provider401JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2Provider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetOauth2Provider403JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2Provider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetOauth2Provider404JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2Provider429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetOauth2Provider429JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2Provider500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetOauth2Provider500JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOauth2Provider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOauth2Provider503JSONResponse) VisitGetOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2ProviderRequestObject struct {
+	Slug ProviderSlugPath `json:"slug"`
+	Body *PutOauth2ProviderJSONRequestBody
+}
+
+type PutOauth2ProviderResponseObject interface {
+	VisitPutOauth2ProviderResponse(w http.ResponseWriter) error
+}
+
+type PutOauth2Provider200JSONResponse Oauth2Provider
+
+func (response PutOauth2Provider200JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutOauth2Provider400JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PutOauth2Provider401JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutOauth2Provider403JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutOauth2Provider404JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PutOauth2Provider409JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PutOauth2Provider429JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider500JSONResponse struct{ InternalJSONResponse }
+
+func (response PutOauth2Provider500JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOauth2Provider503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutOauth2Provider503JSONResponse) VisitPutOauth2ProviderResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -72596,6 +73757,12 @@ type StrictServerInterface interface {
 	// AuthMethods Enabled login methods for this instance.
 	// (GET /api/v1/auth/methods)
 	AuthMethods(ctx context.Context, request AuthMethodsRequestObject) (AuthMethodsResponseObject, error)
+	// Oauth2Callback Complete an OAuth2 transaction from the IdP redirect.
+	// (GET /api/v1/auth/oauth2/{provider}/callback)
+	Oauth2Callback(ctx context.Context, request Oauth2CallbackRequestObject) (Oauth2CallbackResponseObject, error)
+	// Oauth2Start Begin an OAuth2 transaction (login, link, establish or claim).
+	// (POST /api/v1/auth/oauth2/{provider}/start)
+	Oauth2Start(ctx context.Context, request Oauth2StartRequestObject) (Oauth2StartResponseObject, error)
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(ctx context.Context, request OidcCallbackRequestObject) (OidcCallbackResponseObject, error)
@@ -72743,6 +73910,18 @@ type StrictServerInterface interface {
 	// InviteInstanceMember Invite a human at instance scope with a local credential.
 	// (POST /api/v1/instance/invitations)
 	InviteInstanceMember(ctx context.Context, request InviteInstanceMemberRequestObject) (InviteInstanceMemberResponseObject, error)
+	// ListOauth2Providers List configured OAuth2 providers.
+	// (GET /api/v1/instance/oauth2-providers)
+	ListOauth2Providers(ctx context.Context, request ListOauth2ProvidersRequestObject) (ListOauth2ProvidersResponseObject, error)
+	// DeleteOauth2Provider Delete an OAuth2 provider.
+	// (DELETE /api/v1/instance/oauth2-providers/{slug})
+	DeleteOauth2Provider(ctx context.Context, request DeleteOauth2ProviderRequestObject) (DeleteOauth2ProviderResponseObject, error)
+	// GetOauth2Provider Read one OAuth2 provider.
+	// (GET /api/v1/instance/oauth2-providers/{slug})
+	GetOauth2Provider(ctx context.Context, request GetOauth2ProviderRequestObject) (GetOauth2ProviderResponseObject, error)
+	// PutOauth2Provider Create or reconfigure an OAuth2 provider.
+	// (PUT /api/v1/instance/oauth2-providers/{slug})
+	PutOauth2Provider(ctx context.Context, request PutOauth2ProviderRequestObject) (PutOauth2ProviderResponseObject, error)
 	// ListOidcProviders List configured OIDC providers.
 	// (GET /api/v1/instance/oidc-providers)
 	ListOidcProviders(ctx context.Context, request ListOidcProvidersRequestObject) (ListOidcProvidersResponseObject, error)
@@ -74126,6 +75305,66 @@ func (sh *strictHandler) AuthMethods(w http.ResponseWriter, r *http.Request, par
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AuthMethodsResponseObject); ok {
 		if err := validResponse.VisitAuthMethodsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Oauth2Callback operation middleware
+func (sh *strictHandler) Oauth2Callback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params Oauth2CallbackParams) {
+	var request Oauth2CallbackRequestObject
+
+	request.Provider = provider
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Oauth2Callback(ctx, request.(Oauth2CallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Oauth2Callback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(Oauth2CallbackResponseObject); ok {
+		if err := validResponse.VisitOauth2CallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Oauth2Start operation middleware
+func (sh *strictHandler) Oauth2Start(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
+	var request Oauth2StartRequestObject
+
+	request.Provider = provider
+
+	var body Oauth2StartJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Oauth2Start(ctx, request.(Oauth2StartRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Oauth2Start")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(Oauth2StartResponseObject); ok {
+		if err := validResponse.VisitOauth2StartResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -75541,6 +76780,115 @@ func (sh *strictHandler) InviteInstanceMember(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(InviteInstanceMemberResponseObject); ok {
 		if err := validResponse.VisitInviteInstanceMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOauth2Providers operation middleware
+func (sh *strictHandler) ListOauth2Providers(w http.ResponseWriter, r *http.Request) {
+	var request ListOauth2ProvidersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOauth2Providers(ctx, request.(ListOauth2ProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOauth2Providers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOauth2ProvidersResponseObject); ok {
+		if err := validResponse.VisitListOauth2ProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteOauth2Provider operation middleware
+func (sh *strictHandler) DeleteOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath) {
+	var request DeleteOauth2ProviderRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOauth2Provider(ctx, request.(DeleteOauth2ProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOauth2Provider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOauth2ProviderResponseObject); ok {
+		if err := validResponse.VisitDeleteOauth2ProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOauth2Provider operation middleware
+func (sh *strictHandler) GetOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath) {
+	var request GetOauth2ProviderRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOauth2Provider(ctx, request.(GetOauth2ProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOauth2Provider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOauth2ProviderResponseObject); ok {
+		if err := validResponse.VisitGetOauth2ProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutOauth2Provider operation middleware
+func (sh *strictHandler) PutOauth2Provider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath) {
+	var request PutOauth2ProviderRequestObject
+
+	request.Slug = slug
+
+	var body PutOauth2ProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutOauth2Provider(ctx, request.(PutOauth2ProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutOauth2Provider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutOauth2ProviderResponseObject); ok {
+		if err := validResponse.VisitPutOauth2ProviderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

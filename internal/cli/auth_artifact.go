@@ -102,6 +102,8 @@ var authRuleRows = []authRuleRow{
 		"instance-config provider create", "instance-config provider list", "instance-config provider show",
 		"instance-config provider update", "instance-config provider disable", "instance-config provider remove",
 		"instance-config provider refresh-metadata",
+		"instance-config oauth2-provider create", "instance-config oauth2-provider list",
+		"instance-config oauth2-provider show", "instance-config oauth2-provider update", "instance-config oauth2-provider delete",
 		"scim binding create", "scim binding list", "scim binding show", "scim binding delete",
 		"scim mapping add", "scim mapping update", "scim mapping remove", "scim mapping list",
 		"scim credential mint", "scim credential list", "scim credential show", "scim credential revoke",

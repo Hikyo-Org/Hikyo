@@ -126,6 +126,7 @@ import {
   deleteInstanceRegistrationPolicy,
   deleteKey,
   deleteKeyGroup,
+  deleteOauth2Provider,
   deleteOidcProvider,
   deleteOrg,
   deleteOrgRegistrationPolicy,
@@ -169,6 +170,7 @@ import {
   getMachineReveal,
   getMeta,
   getMyProfile,
+  getOauth2Provider,
   getOidcProvider,
   getOrg,
   getOrgRegistrationPolicy,
@@ -219,6 +221,7 @@ import {
   listMachineCredentials,
   listMyOrgs,
   listMySessions,
+  listOauth2Providers,
   listOidcProviders,
   listOrgGrants,
   listOrgRules,
@@ -257,6 +260,8 @@ import {
   mintLease,
   mintMachineCredential,
   mintScimCredential,
+  oauth2Callback,
+  oauth2Start,
   oidcCallback,
   oidcStart,
   passkeyLoginFinish,
@@ -268,6 +273,7 @@ import {
   publishPendingChanges,
   publishPkiIssuerCrl,
   putInstanceRegistrationPolicy,
+  putOauth2Provider,
   putOidcProvider,
   putOrgRegistrationPolicy,
   putSamlProvider,
@@ -492,6 +498,7 @@ import type {
   DeleteInstanceRegistrationPolicyData,
   DeleteKeyData,
   DeleteKeyGroupData,
+  DeleteOauth2ProviderData,
   DeleteOidcProviderData,
   DeleteOrgData,
   DeleteOrgRegistrationPolicyData,
@@ -535,6 +542,7 @@ import type {
   GetMachineRevealData,
   GetMetaData,
   GetMyProfileData,
+  GetOauth2ProviderData,
   GetOidcProviderData,
   GetOrgData,
   GetOrgRegistrationPolicyData,
@@ -585,6 +593,7 @@ import type {
   ListMachineCredentialsData,
   ListMyOrgsData,
   ListMySessionsData,
+  ListOauth2ProvidersData,
   ListOidcProvidersData,
   ListOrgGrantsData,
   ListOrgRulesData,
@@ -623,6 +632,8 @@ import type {
   MintLeaseData,
   MintMachineCredentialData,
   MintScimCredentialData,
+  Oauth2CallbackData,
+  Oauth2StartData,
   OidcCallbackData,
   OidcStartData,
   PasskeyLoginFinishData,
@@ -634,6 +645,7 @@ import type {
   PublishPendingChangesData,
   PublishPkiIssuerCrlData,
   PutInstanceRegistrationPolicyData,
+  PutOauth2ProviderData,
   PutOidcProviderData,
   PutOrgRegistrationPolicyData,
   PutSamlProviderData,
@@ -881,6 +893,7 @@ import {
   zGetMachineRevealResponse,
   zGetMetaResponse,
   zGetMyProfileResponse,
+  zGetOauth2ProviderResponse,
   zGetOidcProviderResponse,
   zGetOrgRegistrationPolicyResponse,
   zGetOrgResponse,
@@ -931,6 +944,7 @@ import {
   zListMachineCredentialsResponse,
   zListMyOrgsResponse,
   zListMySessionsResponse,
+  zListOauth2ProvidersResponse,
   zListOidcProvidersResponse,
   zListOrgGrantsResponse,
   zListOrgRulesResponse,
@@ -968,6 +982,8 @@ import {
   zMintLeaseResponse,
   zMintMachineCredentialResponse,
   zMintScimCredentialResponse,
+  zOauth2CallbackResponse,
+  zOauth2StartResponse,
   zOidcCallbackResponse,
   zOidcStartResponse,
   zPasskeyLoginFinishResponse,
@@ -979,6 +995,7 @@ import {
   zPublishPendingChangesResponse,
   zPublishPkiIssuerCrlResponse,
   zPutInstanceRegistrationPolicyResponse,
+  zPutOauth2ProviderResponse,
   zPutOidcProviderResponse,
   zPutOrgRegistrationPolicyResponse,
   zPutSamlProviderResponse,
@@ -1206,6 +1223,7 @@ export const getKeyGroupOp: BodyOperation<GetKeyGroupData, typeof zGetKeyGroupRe
 export const getMachineRevealOp: BodyOperation<GetMachineRevealData, typeof zGetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMachineReveal, [200], zGetMachineRevealResponse);
 export const getMetaOp: BodyOperation<GetMetaData, typeof zGetMetaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMeta, [200], zGetMetaResponse);
 export const getMyProfileOp: BodyOperation<GetMyProfileData, typeof zGetMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMyProfile, [200], zGetMyProfileResponse);
+export const getOauth2ProviderOp: BodyOperation<GetOauth2ProviderData, typeof zGetOauth2ProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOauth2Provider, [200], zGetOauth2ProviderResponse);
 export const getOidcProviderOp: BodyOperation<GetOidcProviderData, typeof zGetOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOidcProvider, [200], zGetOidcProviderResponse);
 export const getOrgOp: BodyOperation<GetOrgData, typeof zGetOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrg, [200], zGetOrgResponse);
 export const getOrgRegistrationPolicyOp: BodyOperation<GetOrgRegistrationPolicyData, typeof zGetOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRegistrationPolicy, [200], zGetOrgRegistrationPolicyResponse);
@@ -1256,6 +1274,7 @@ export const listLeasesOp: BodyOperation<ListLeasesData, typeof zListLeasesRespo
 export const listMachineCredentialsOp: BodyOperation<ListMachineCredentialsData, typeof zListMachineCredentialsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMachineCredentials, [200], zListMachineCredentialsResponse);
 export const listMyOrgsOp: BodyOperation<ListMyOrgsData, typeof zListMyOrgsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMyOrgs, [200], zListMyOrgsResponse);
 export const listMySessionsOp: BodyOperation<ListMySessionsData, typeof zListMySessionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMySessions, [200], zListMySessionsResponse);
+export const listOauth2ProvidersOp: BodyOperation<ListOauth2ProvidersData, typeof zListOauth2ProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOauth2Providers, [200], zListOauth2ProvidersResponse);
 export const listOidcProvidersOp: BodyOperation<ListOidcProvidersData, typeof zListOidcProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOidcProviders, [200], zListOidcProvidersResponse);
 export const listOrgGrantsOp: BodyOperation<ListOrgGrantsData, typeof zListOrgGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgGrants, [200], zListOrgGrantsResponse);
 export const listOrgRulesOp: BodyOperation<ListOrgRulesData, typeof zListOrgRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOrgRules, [200], zListOrgRulesResponse);
@@ -1293,6 +1312,8 @@ export const mintInstanceConnectionOp: BodyOperation<MintInstanceConnectionData,
 export const mintLeaseOp: BodyOperation<MintLeaseData, typeof zMintLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintLease, [200], zMintLeaseResponse);
 export const mintMachineCredentialOp: BodyOperation<MintMachineCredentialData, typeof zMintMachineCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintMachineCredential, [200], zMintMachineCredentialResponse);
 export const mintScimCredentialOp: BodyOperation<MintScimCredentialData, typeof zMintScimCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintScimCredential, [200], zMintScimCredentialResponse);
+export const oauth2CallbackOp: BodyOperation<Oauth2CallbackData, typeof zOauth2CallbackResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oauth2Callback, [200], zOauth2CallbackResponse);
+export const oauth2StartOp: BodyOperation<Oauth2StartData, typeof zOauth2StartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oauth2Start, [200], zOauth2StartResponse);
 export const oidcCallbackOp: BodyOperation<OidcCallbackData, typeof zOidcCallbackResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oidcCallback, [200], zOidcCallbackResponse);
 export const oidcStartOp: BodyOperation<OidcStartData, typeof zOidcStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(oidcStart, [200], zOidcStartResponse);
 export const passkeyLoginFinishOp: BodyOperation<PasskeyLoginFinishData, typeof zPasskeyLoginFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(passkeyLoginFinish, [200], zPasskeyLoginFinishResponse);
@@ -1304,6 +1325,7 @@ export const previewInstanceConfigAdoptionOp: BodyOperation<PreviewInstanceConfi
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200, 202], zPublishPendingChangesResponse);
 export const publishPkiIssuerCrlOp: BodyOperation<PublishPkiIssuerCrlData, typeof zPublishPkiIssuerCrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPkiIssuerCrl, [200], zPublishPkiIssuerCrlResponse);
 export const putInstanceRegistrationPolicyOp: BodyOperation<PutInstanceRegistrationPolicyData, typeof zPutInstanceRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putInstanceRegistrationPolicy, [200], zPutInstanceRegistrationPolicyResponse);
+export const putOauth2ProviderOp: BodyOperation<PutOauth2ProviderData, typeof zPutOauth2ProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOauth2Provider, [200], zPutOauth2ProviderResponse);
 export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOidcProvider, [200], zPutOidcProviderResponse);
 export const putOrgRegistrationPolicyOp: BodyOperation<PutOrgRegistrationPolicyData, typeof zPutOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOrgRegistrationPolicy, [200], zPutOrgRegistrationPolicyResponse);
 export const putSamlProviderOp: BodyOperation<PutSamlProviderData, typeof zPutSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putSamlProvider, [200], zPutSamlProviderResponse);
@@ -1448,6 +1470,7 @@ export const deleteFolderOp: BodylessOperation<DeleteFolderData> = /* @__PURE__ 
 export const deleteInstanceRegistrationPolicyOp: BodylessOperation<DeleteInstanceRegistrationPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteInstanceRegistrationPolicy, [204]);
 export const deleteKeyOp: BodylessOperation<DeleteKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteKey, [204]);
 export const deleteKeyGroupOp: BodylessOperation<DeleteKeyGroupData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteKeyGroup, [204]);
+export const deleteOauth2ProviderOp: BodylessOperation<DeleteOauth2ProviderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOauth2Provider, [204]);
 export const deleteOidcProviderOp: BodylessOperation<DeleteOidcProviderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOidcProvider, [204]);
 export const deleteOrgOp: BodylessOperation<DeleteOrgData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOrg, [204]);
 export const deleteOrgRegistrationPolicyOp: BodylessOperation<DeleteOrgRegistrationPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOrgRegistrationPolicy, [204]);

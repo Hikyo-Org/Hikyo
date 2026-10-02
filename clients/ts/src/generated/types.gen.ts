@@ -1573,7 +1573,7 @@ export type SessionArtifact = string;
 export type Assurance = {
     method: AuthMethod;
     /**
-     * The configured provider slug, present only for OIDC sessions.
+     * The configured provider slug, present for OIDC and OAuth2 sessions.
      */
     provider?: string;
     /**
@@ -4539,6 +4539,7 @@ export type RegistrationPolicy = {
 };
 
 export type AuthMethodProvider = {
+    profile?: 'github';
     slug: string;
     display_name: string;
     kind: IdentityProviderKind;
@@ -4551,10 +4552,43 @@ export type AuthMethodProvider = {
      * Presentation only: admission never keys on it.
      *
      */
-    brand?: 'google' | 'microsoft';
+    brand?: 'google' | 'microsoft' | 'github';
 };
 
 export type OidcStartRequest = {
+    purpose: string;
+    /**
+     * Valid only with purpose `login` (#604); absent = `sign-in`. It
+     * decides only what happens to an unknown identity at the callback:
+     * `sign-in` refuses it uniformly, `sign-up` enters the registration
+     * policy of the addressed scope. A known identity signs in under
+     * either. Supplied on any other purpose, the start refuses uniformly.
+     *
+     */
+    intent?: 'sign-in' | 'sign-up';
+    /**
+     * The org whose registration policy a `sign-up` addresses; absent =
+     * the instance scope. Valid only with intent `sign-up`. The start
+     * reads no policy: an unknown org refuses at the callback as a closed
+     * door.
+     *
+     */
+    signup_org?: string;
+    /**
+     * Required for reauth; the window scope. Refused (400) on any other purpose.
+     */
+    environment_id?: string;
+    /**
+     * Required for link; the pre-existing password.
+     */
+    proof?: string;
+    /**
+     * Redirect the callback to the SPA done page instead of returning JSON.
+     */
+    browser?: boolean;
+};
+
+export type Oauth2StartRequest = {
     purpose: string;
     /**
      * Valid only with purpose `login` (#604); absent = `sign-in`. It
@@ -4625,6 +4659,7 @@ export type SamlAcsRequest = {
 };
 
 export type IdentityLinkRequest = {
+    kind?: 'oidc' | 'oauth2';
     provider: string;
     proof: string;
     /**
@@ -4638,6 +4673,7 @@ export type IdentityUnlinkRequest = {
 };
 
 export type ExternalIdentity = {
+    profile?: 'github';
     id: Id;
     kind: IdentityProviderKind;
     issuer: string;
@@ -4669,6 +4705,15 @@ export type OidcProviderInput = {
     enabled: boolean;
 };
 
+export type Oauth2ProviderInput = {
+    profile: 'github';
+    display_name: string;
+    issuer: string;
+    client_id: string;
+    client_secret: string;
+    enabled: boolean;
+};
+
 export type OidcProvider = {
     slug: string;
     display_name: string;
@@ -4682,6 +4727,20 @@ export type OidcProvider = {
 
 export type OidcProviderList = {
     providers: Array<OidcProvider>;
+};
+
+export type Oauth2Provider = {
+    profile: 'github';
+    slug: string;
+    display_name: string;
+    issuer: string;
+    client_id: string;
+    redirect_uri: string;
+    enabled: boolean;
+};
+
+export type Oauth2ProviderList = {
+    providers: Array<Oauth2Provider>;
 };
 
 /**
@@ -14325,6 +14384,140 @@ export type OidcCallbackResponses = {
 
 export type OidcCallbackResponse = OidcCallbackResponses[keyof OidcCallbackResponses];
 
+export type Oauth2StartData = {
+    body: Oauth2StartRequest;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        provider: string;
+    };
+    query?: never;
+    url: '/api/v1/auth/oauth2/{provider}/start';
+};
+
+export type Oauth2StartErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type Oauth2StartError = Oauth2StartErrors[keyof Oauth2StartErrors];
+
+export type Oauth2StartResponses = {
+    /**
+     * The IdP authorization URL.
+     */
+    200: OidcStartResult;
+};
+
+export type Oauth2StartResponse = Oauth2StartResponses[keyof Oauth2StartResponses];
+
+export type Oauth2CallbackData = {
+    body?: never;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        provider: string;
+    };
+    query?: {
+        code?: string;
+        state?: string;
+        iss?: string;
+        error?: string;
+    };
+    url: '/api/v1/auth/oauth2/{provider}/callback';
+};
+
+export type Oauth2CallbackErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type Oauth2CallbackError = Oauth2CallbackErrors[keyof Oauth2CallbackErrors];
+
+export type Oauth2CallbackResponses = {
+    /**
+     * The minted or rotated session.
+     */
+    200: LoginResult;
+};
+
+export type Oauth2CallbackResponse = Oauth2CallbackResponses[keyof Oauth2CallbackResponses];
+
 export type SamlStartData = {
     body: SamlStartRequest;
     path: {
@@ -15715,6 +15908,297 @@ export type PutOidcProviderResponses = {
 };
 
 export type PutOidcProviderResponse = PutOidcProviderResponses[keyof PutOidcProviderResponses];
+
+export type ListOauth2ProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/oauth2-providers';
+};
+
+export type ListOauth2ProvidersErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListOauth2ProvidersError = ListOauth2ProvidersErrors[keyof ListOauth2ProvidersErrors];
+
+export type ListOauth2ProvidersResponses = {
+    /**
+     * The configured providers.
+     */
+    200: Oauth2ProviderList;
+};
+
+export type ListOauth2ProvidersResponse = ListOauth2ProvidersResponses[keyof ListOauth2ProvidersResponses];
+
+export type DeleteOauth2ProviderData = {
+    body?: never;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/instance/oauth2-providers/{slug}';
+};
+
+export type DeleteOauth2ProviderErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteOauth2ProviderError = DeleteOauth2ProviderErrors[keyof DeleteOauth2ProviderErrors];
+
+export type DeleteOauth2ProviderResponses = {
+    /**
+     * Deleted.
+     */
+    204: void;
+};
+
+export type DeleteOauth2ProviderResponse = DeleteOauth2ProviderResponses[keyof DeleteOauth2ProviderResponses];
+
+export type GetOauth2ProviderData = {
+    body?: never;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/instance/oauth2-providers/{slug}';
+};
+
+export type GetOauth2ProviderErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetOauth2ProviderError = GetOauth2ProviderErrors[keyof GetOauth2ProviderErrors];
+
+export type GetOauth2ProviderResponses = {
+    /**
+     * The provider.
+     */
+    200: Oauth2Provider;
+};
+
+export type GetOauth2ProviderResponse = GetOauth2ProviderResponses[keyof GetOauth2ProviderResponses];
+
+export type PutOauth2ProviderData = {
+    body: Oauth2ProviderInput;
+    path: {
+        /**
+         * Identity-provider slug.
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/instance/oauth2-providers/{slug}';
+};
+
+export type PutOauth2ProviderErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PutOauth2ProviderError = PutOauth2ProviderErrors[keyof PutOauth2ProviderErrors];
+
+export type PutOauth2ProviderResponses = {
+    /**
+     * The created or reconfigured provider.
+     */
+    200: Oauth2Provider;
+};
+
+export type PutOauth2ProviderResponse = PutOauth2ProviderResponses[keyof PutOauth2ProviderResponses];
 
 export type GetRetentionHealthData = {
     body?: never;

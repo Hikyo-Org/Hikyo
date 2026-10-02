@@ -308,10 +308,14 @@ const (
 
 	// OIDC provider administration (#54, human-auth ADR - Login methods).
 	// Instance-config operations, MFA-mandatory like every instance capability.
-	OpProviderPut    Operation = "oidc-provider.put"
-	OpProviderGet    Operation = "oidc-provider.get"
-	OpProviderList   Operation = "oidc-provider.list"
-	OpProviderDelete Operation = "oidc-provider.delete"
+	OpOAuth2ProviderPut    Operation = "oauth2-provider.put"
+	OpOAuth2ProviderGet    Operation = "oauth2-provider.get"
+	OpOAuth2ProviderList   Operation = "oauth2-provider.list"
+	OpOAuth2ProviderDelete Operation = "oauth2-provider.delete"
+	OpProviderPut          Operation = "oidc-provider.put"
+	OpProviderGet          Operation = "oidc-provider.get"
+	OpProviderList         Operation = "oidc-provider.list"
+	OpProviderDelete       Operation = "oidc-provider.delete"
 
 	// SAML provider administration (#72, saml-sp ADR). These join the same
 	// instance-config capability surface as OIDC. Metadata refresh is an action
@@ -1881,6 +1885,32 @@ var operationTable = map[Operation]opSpec{
 	// operation authorizes the caller; only the audit write is a store op here.
 	// The put/delete paths also sweep federated sessions on the resolution
 	// surface (A4).
+	OpOAuth2ProviderPut: {
+		class:   ClassInstance,
+		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{
+			StoreKeysAssertActiveDEKVersion: true, StoreAuditInstanceInsert: true,
+		},
+		events: []audit.EventType{audit.EventOIDCProviderChanged},
+	},
+	OpOAuth2ProviderGet: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventOIDCProviderRead},
+	},
+	OpOAuth2ProviderList: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventOIDCProviderRead},
+	},
+	OpOAuth2ProviderDelete: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventOIDCProviderChanged},
+	},
 	OpProviderPut: {
 		class:   ClassInstance,
 		formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},

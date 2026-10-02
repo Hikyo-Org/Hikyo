@@ -390,6 +390,8 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// before the emitter check: provider config + read, link, federated
 		// login, a refusal, and unlink.
 		runOIDCLifecycle(t, auth, ctx, boot.PrincipalID, "e2e-admin", password)
+		runOAuth2Lifecycle(t, auth, ctx, boot.PrincipalID, "e2e-admin", password)
+		runOAuth2EstablishLifecycle(t, auth)
 
 		// The full WebAuthn lifecycle, so passkey_added, passkey_cloned and
 		// passkey_removed are emitted before the emitter check.

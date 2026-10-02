@@ -497,6 +497,13 @@ type CredentialAuthority struct {
 	CreatedAt                 string
 }
 
+type CredentialEstablishEvidence struct {
+	SessionID  string
+	IdentityID string
+	Purpose    string
+	ExpiresAt  string
+}
+
 type CredentialPolicy struct {
 	ID                       int64
 	MaxFiniteLifetimeSeconds int64

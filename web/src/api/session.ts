@@ -4,6 +4,7 @@ import {
   loginChallengeTotpOp,
   logoutOp,
   oidcStartOp,
+  oauth2StartOp,
   beginRecoveryOp,
   establishCredentialOp,
 } from '@hikyo/operations';
@@ -158,8 +159,8 @@ export function useOIDCLogin() {
     // The intent is a server fact (#604): the sign-in door sends `sign-in`,
     // which never creates an account; only the sign-up door's confirmation
     // step sends `sign-up`, with the addressed org when there is one.
-    mutationFn: (start: { provider: string; intent: 'sign-in' | 'sign-up'; signupOrg?: string }) =>
-      parsed(oidcStartOp, {
+    mutationFn: (start: { provider: string; intent: 'sign-in' | 'sign-up'; signupOrg?: string; kind?: 'oidc' | 'oauth2' }) =>
+      parsed(start.kind === 'oauth2' ? oauth2StartOp : oidcStartOp, {
         path: { provider: start.provider },
         body: {
           purpose: 'login',

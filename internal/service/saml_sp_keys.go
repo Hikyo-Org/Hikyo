@@ -71,7 +71,7 @@ func (s *SAMLProviders) ListSPKeys(ctx context.Context, actor Actor) ([]SAMLSPKe
 		}
 		event, err := newAuditEvent(ctx, audit.EventOIDCProviderRead, caller.Principal,
 			audit.Object{Type: "saml_sp_key"}, audit.OutcomeSuccess, "",
-			audit.Payload{"query": "list", "row_count": len(output)})
+			audit.Payload{"kind": SAMLKind, "query": "list", "row_count": len(output)})
 		if err != nil {
 			return err
 		}

@@ -106,7 +106,7 @@ SELECT session_generation FROM principals WHERE id = $1 AND privacy_state = 'act
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id, enrolment_required
+       requesting_origin, provider_id, oauth2_provider_id, enrolment_required
 FROM sessions WHERE verifier = $1;
 
 -- hikyo:authn-resolution
@@ -114,7 +114,7 @@ FROM sessions WHERE verifier = $1;
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id, enrolment_required
+       requesting_origin, provider_id, oauth2_provider_id, enrolment_required
 FROM sessions WHERE id = $1;
 
 -- hikyo:authn-resolution

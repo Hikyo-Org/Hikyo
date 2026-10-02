@@ -123,8 +123,11 @@ const (
 	// (the ADR requires the failures, uniform response notwithstanding), with a
 	// closed cause enum covering mix-up, nonce, purpose, state, issuer,
 	// audience, signature, epoch and IdP-error refusals.
-	EventOIDCLogin   EventType = "auth.oidc_login"
-	EventOIDCRefused EventType = "auth.oidc_refused"
+	EventCredentialEstablish EventType = "auth.credential_establish"
+	EventOAuth2Login         EventType = "auth.oauth2_login"
+	EventOAuth2Refused       EventType = "auth.oauth2_refused"
+	EventOIDCLogin           EventType = "auth.oidc_login"
+	EventOIDCRefused         EventType = "auth.oidc_refused"
 	// auth.identity_linked / auth.identity_unlinked record an external identity
 	// bound to or removed from an account - account-security mutations both.
 	EventIdentityLinked   EventType = "auth.identity_linked"
@@ -1123,6 +1126,9 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
+			"kind":                        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"established_credential_kind": {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"identity_id":                 {Kind: KindString}, "provider_id": {Kind: KindString},
 			"authority_id": {Kind: KindString, Required: true},
 			"account_id":   {Kind: KindString, Required: true},
 			"credential":   {Kind: KindString, Required: true}, // the credential class established
@@ -1259,6 +1265,44 @@ var registry = map[EventType]TypeSpec{
 			"sessions_swept": {Kind: KindInt, Required: true},
 		},
 	},
+	EventCredentialEstablish: {
+		SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{"account_id": {Kind: KindString, Required: true}, "identity_id": {Kind: KindString, Required: true}, "provider_id": {Kind: KindString, Required: true}, "kind": {Kind: KindString, Required: true, Enum: []string{"oidc", "oauth2"}}, "purpose": {Kind: KindString, Required: true, Enum: []string{"account-security"}}},
+	},
+
+	EventOAuth2Login: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"method":               {Kind: KindString, Required: true}, // oidc:<issuer>
+			"purpose":              {Kind: KindString, Required: true, Enum: []string{"login", "claim"}},
+			"account_id":           {Kind: KindString, Required: true},
+			"assurance":            {Kind: KindString, Required: true, Enum: []string{"single-factor"}},
+			"provider_id":          {Kind: KindString, Required: true},
+			"provider_row_version": {Kind: KindInt, Required: true}, // policy read in the mint tx (A12)
+			// The login's recorded intent and sign-up scope (#604 d8);
+			// absent on reauth.
+			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
+			"signup_org": {Kind: KindString},
+		},
+	},
+	EventOAuth2Refused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// Closed cause enum, by class never by detail.
+			"cause":       {Kind: KindString, Required: true, Enum: []string{"mixup", "state", "purpose", "idp-error", "expired", "unknown-identity", "binding", "reconciliation", "epoch", "downgrade", "userinfo-error", "identity-exists"}},
+			"purpose":     {Kind: KindString, Enum: []string{"login", "link", "claim", "establish", "reauth"}},
+			"provider_id": {Kind: KindString},
+			// A refused login's recorded intent and sign-up scope (#604 d8).
+			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
+			"signup_org": {Kind: KindString},
+		},
+	},
 	EventOIDCLogin: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,
@@ -1329,6 +1373,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
+			"kind":           {Kind: KindString, Enum: []string{"oidc", "saml", "oauth2"}},
 			"provider_id":    {Kind: KindString, Required: true},
 			"change":         {Kind: KindString, Required: true, Enum: []string{"created", "updated", "deleted"}},
 			"sessions_swept": {Kind: KindInt, Required: true}, // federated sessions deleted (A3/A4)
@@ -1340,6 +1385,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
+			"kind":      {Kind: KindString, Enum: []string{"oidc", "saml", "oauth2"}},
 			"query":     {Kind: KindString, Required: true, Enum: []string{"get", "list"}},
 			"row_count": {Kind: KindInt, Required: true},
 		},
