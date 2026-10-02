@@ -26,5 +26,8 @@ now retrieves all pages first and filters with standalone jq, checking both
 commands for failure. Fixture tests enforce CLI compatibility and conflict
 diagnostics. Workflow edits require independent exact-head maintainer approval,
 except same-repository PRs authored by the pinned BDFL (GitHub user ID 991668)
-while that account retains current maintainer permission. Exact-head validation,
-signature, DCO and merge queue checks still apply to every PR.
+while that account retains current maintainer permission. Every PR still needs
+successful exact-head validation and DCO. GitHub's active
+[`main requires PR and release CI` ruleset](https://github.com/Hikyo-Org/Hikyo/settings/rules/20539346)
+enforces signed commits for changes landing on main. Merge queue validation
+checks the combined candidate on `merge_group` events before it lands on main.
