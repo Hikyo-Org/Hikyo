@@ -22,6 +22,7 @@
   <p>
     <a href="https://github.com/Hikyo-Org/Hikyo/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/Hikyo-Org/Hikyo/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
     <a href="./LICENSE"><img alt="Mozilla Public License 2.0" src="https://img.shields.io/badge/license-MPL--2.0-3b82f6" /></a>
+    <a href="https://app.codspeed.io/Hikyo-Org/Hikyo?utm_source=badge"><img src="https://img.shields.io/endpoint?url=https://codspeed.io/badge.json" alt="CodSpeed"/></a>
   </p>
 </div>
 
