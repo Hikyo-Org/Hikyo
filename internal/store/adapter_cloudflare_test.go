@@ -50,7 +50,11 @@ func runCloudflareTargets(t *testing.T, db *store.DB) {
 		"unknown provider":           {"cloudflare-pages", store.AdapterTargetMutation{ID: "tgt_r5", DestinationKind: "workers-script", DestinationOwner: account, DestinationName: "api", DestinationID: 7}},
 	}
 	for name, tt := range refusals {
-		if _, err := create("adp_"+name[:4], tt.provider, "https://refused."+name[:4], tt.target); !errors.Is(err, domain.ErrInvalid) {
+		origin := "https://refused." + name[:4]
+		if tt.provider == "cloudflare" {
+			origin = "https://api.cloudflare.com"
+		}
+		if _, err := create("adp_"+name[:4], tt.provider, origin, tt.target); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("%s: Create() = %v, want ErrInvalid", name, err)
 		}
 	}

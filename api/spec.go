@@ -62,7 +62,9 @@ var SpecYAML []byte
 // Revision 8 adds member access rules: rule list, create and revoke, and the
 // folder-move widening confirmation on key metadata updates and definitions
 // apply. Revision 7 had already shipped in nightlies without them.
-const Revision = 8
+// Revision 9 requires authenticated per-value snapshot receipts when offline
+// disclosures are reconciled. Legacy unsigned records must be regenerated.
+const Revision = 9
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

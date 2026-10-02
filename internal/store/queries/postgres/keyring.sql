@@ -10,6 +10,11 @@ VALUES ($1, $2, 'active', $3, $4);
 SELECT id, purpose, org_id, project_id, version, master_key_version, state, blob, created_at
 FROM tier3_keys WHERE purpose = $1 AND org_id = $2 AND project_id = $3 AND state = 'active';
 
+-- name: GetActiveTokenKeyForReceipt :one
+SELECT id, purpose, org_id, project_id, version, master_key_version, state, blob, created_at
+FROM tier3_keys WHERE purpose = 'token' AND org_id = '' AND project_id = '' AND state = 'active'
+FOR SHARE;
+
 -- GetTier3Versions returns every still-openable version of one scope's key --
 -- the 'active' version new writes use plus every 'retiring' version whose
 -- ciphertext a reencrypt has not yet moved. 'retired' rows are excluded: a

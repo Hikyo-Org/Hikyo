@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 	opclient "github.com/Hikyo-Org/hikyo/internal/operator/client"
 )
@@ -57,14 +58,15 @@ const (
 // It also serves `/meta` and the delivery-target report and tombstone routes;
 // requests counts delivery fetches only.
 type deliveryStub struct {
-	mu             sync.Mutex
-	status         int
-	json           string
-	lastCursor     string
-	lastAck        string
-	lastProjection string
-	requests       int
-	bearers        []string
+	mu              sync.Mutex
+	status          int
+	json            string
+	unmarkedRefusal bool
+	lastCursor      string
+	lastAck         string
+	lastProjection  string
+	requests        int
+	bearers         []string
 
 	meta         string
 	metaRequests int
@@ -122,8 +124,13 @@ func (s *deliveryStub) handler(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	w.Header().Set("Content-Type", "application/json")
+	// The normal fixture models Hikyo's matched canonical delivery route.
+	// Unmatched/older-server refusals deliberately omit this authority marker.
+	if status == http.StatusNotFound && !s.unmarkedRefusal {
+		w.Header().Set(delivery.RefusalHeader, delivery.RefusalVersion)
+	}
 	w.WriteHeader(status)
-	if status == http.StatusOK {
+	if s.json != "" {
 		_, _ = io.WriteString(w, s.json)
 	}
 }
@@ -529,7 +536,7 @@ func makeOwnedSecret(t *testing.T, sch *runtime.Scheme, cr *hikyov1.HikyoSecret,
 // makeOptedInDeployment builds a Deployment consuming the target (opt-in).
 func makeOptedInDeployment(name string, consumesTargets ...string) *appsv1.Deployment {
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, UID: types.UID("deployment-uid-" + name), Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.DeploymentSpec{
 			Template: emptyPodTemplate(),
 		},
@@ -538,7 +545,7 @@ func makeOptedInDeployment(name string, consumesTargets ...string) *appsv1.Deplo
 
 func makeOptedInStatefulSet(name string, consumesTargets ...string) *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, UID: types.UID("statefulset-uid-" + name), Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.StatefulSetSpec{
 			Template: emptyPodTemplate(),
 		},
@@ -547,7 +554,7 @@ func makeOptedInStatefulSet(name string, consumesTargets ...string) *appsv1.Stat
 
 func makeOptedInDaemonSet(name string, consumesTargets ...string) *appsv1.DaemonSet {
 	return &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Annotations: workloadAnnotations(consumesTargets)},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, UID: types.UID("daemonset-uid-" + name), Annotations: workloadAnnotations(consumesTargets)},
 		Spec: appsv1.DaemonSetSpec{
 			Template: emptyPodTemplate(),
 		},

@@ -113,6 +113,28 @@ func TestReencryptProjectRetrySafe(t *testing.T) {
 	t.Run("postgres", func(t *testing.T) { reencryptProjectRetrySafe(t, openPostgres) })
 }
 
+func TestProjectCryptoPreflightDoesNotMintPhantomKeys(t *testing.T) {
+	for name, open := range map[string]func(*testing.T) *store.DB{"sqlite": openSQLite, "postgres": openPostgres} {
+		t.Run(name, func(t *testing.T) {
+			db := seededDB(t, open)
+			kr := probeKeyring(t, db)
+			before := queryInt(t, db, "SELECT COUNT(*) FROM tier3_keys")
+			scope := service.DEKScope{OrgID: "org_missing", ProjectID: "prj_missing"}
+			rotation := &service.Rotation{DB: db, Keyring: kr, RootKey: probeRootSource{db: db}}
+			if _, err := rotation.RotateDEK(tctx(t), service.LocalPrincipal(root), scope); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("rotate phantom project = %v, want not found", err)
+			}
+			reencrypt := &service.Reencrypt{DB: db, Keyring: kr}
+			if _, err := reencrypt.ReencryptProject(tctx(t), service.LocalPrincipal(root), scope.OrgID, scope.ProjectID); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("reencrypt phantom project = %v, want not found", err)
+			}
+			if after := queryInt(t, db, "SELECT COUNT(*) FROM tier3_keys"); after != before {
+				t.Fatalf("phantom project key count changed from %d to %d", before, after)
+			}
+		})
+	}
+}
+
 func reencryptProjectRetrySafe(t *testing.T, open func(*testing.T) *store.DB) {
 	// Control: no injection, to learn the exact moved count for this seed (the
 	// seeded project may carry a real draft the walk also moves).

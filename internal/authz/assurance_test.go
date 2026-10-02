@@ -1,6 +1,10 @@
 package authz
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+)
 
 // AdequateAssurance is the MFA-mandatory rule the chokepoint will enforce once
 // factors ship: two distinct factor classes, or a WebAuthn assertion.
@@ -32,5 +36,11 @@ func TestAssuranceInadequateGating(t *testing.T) {
 	var a TxAuthorizer
 	if a.assuranceInadequate(Identity{Principal: "p"}, OpOrgCreate) {
 		t.Error("session-less local authority must be exempt from the MFA gate")
+	}
+}
+
+func TestAuditReadIsMFAMandatory(t *testing.T) {
+	if !MFAMandatory[domain.CapAuditRead] {
+		t.Fatal("audit-read capability is not protected by the mandatory MFA gate")
 	}
 }

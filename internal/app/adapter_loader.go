@@ -63,7 +63,7 @@ func (l *adapterLoader) LoadActivation(ctx context.Context, job adapter.Job, jou
 	}
 	release := sync.OnceFunc(func() {
 		crypto.Zero(credential)
-		lease.Release()
+		lease.ReleaseContext(ctx)
 	})
 	return adapter.LoadedActivation{
 		Module: lease.Module,
@@ -135,7 +135,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 				crypto.Zero(value)
 			}
 			crypto.Zero(credential)
-			lease.Release()
+			lease.ReleaseContext(ctx)
 			return adapter.LoadedSync{}, err
 		}
 		plain, err := openField(crypto.ProjectFieldAAD{
@@ -148,7 +148,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 				crypto.Zero(value)
 			}
 			crypto.Zero(credential)
-			lease.Release()
+			lease.ReleaseContext(ctx)
 			return adapter.LoadedSync{}, err
 		}
 		opened = append(opened, plain)
@@ -159,7 +159,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 	}
 	request := adapter.SyncRequest{
 		Config: material.Transport.Config(material.Origin), Target: material.Target,
-		Manifest: manifest, Ledger: material.Ledger,
+		Manifest: manifest, Ledger: material.Ledger, Completed: material.Completed,
 		Source: adapter.Source{OrgID: job.OrgID, ProjectID: job.ProjectID, EnvironmentID: job.EnvironmentID, Revision: material.Revision},
 	}
 	release := sync.OnceFunc(func() {
@@ -170,7 +170,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 			crypto.Zero(value)
 		}
 		crypto.Zero(credential)
-		lease.Release()
+		lease.ReleaseContext(ctx)
 	})
 	return adapter.LoadedSync{
 		Module: lease.Module, Request: request, Revision: material.Revision,

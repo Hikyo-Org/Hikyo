@@ -558,6 +558,16 @@ func runProtectedEnvironment(t *testing.T, db *store.DB) {
 	if !got.HasWindow || got.Window != 2*time.Minute || got.Protected {
 		t.Fatalf("settings after the window change = %+v", got)
 	}
+	expectedProtected := true
+	if _, err := s.SetEnvironment(ctx, service.LocalPrincipal(orgAdmin), scope, service.EnvironmentSettings{
+		ExpectedProtected: &expectedProtected, HasWindow: true, Window: time.Minute,
+	}); !errors.Is(err, service.ErrEnvironmentSettingsRace) {
+		t.Fatalf("stale protection precondition: got %v, want ErrEnvironmentSettingsRace", err)
+	}
+	got, err = s.GetEnvironment(ctx, service.LocalPrincipal(orgAdmin), scope)
+	if err != nil || got.Protected || got.Window != 2*time.Minute {
+		t.Fatalf("stale settings request mutated policy: settings=%+v err=%v", got, err)
+	}
 
 	// Raising a PROTECTED environment's window above the cap is refused —
 	// not silently clamped: the caller asked for a weaker gate on the

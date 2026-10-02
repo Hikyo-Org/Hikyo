@@ -1043,7 +1043,7 @@ func (q *Queries) PKIListProfiles(ctx context.Context) ([]PkiProfile, error) {
 }
 
 const pKIPublishCRL = `-- name: PKIPublishCRL :execrows
-UPDATE pki_issuers SET crl_der=?1,crl_number=?2,crl_revocation_seq=?3,crl_this_update=?4,crl_next_update=?5 WHERE id=?6 AND crl_number=?7 AND state IN ('active','retiring')
+UPDATE pki_issuers SET crl_der=?1,crl_number=?2,crl_revocation_seq=?3,crl_this_update=?4,crl_next_update=?5 WHERE id=?6 AND crl_number=?7 AND restore_hold=0 AND state IN ('active','retiring')
 `
 
 type PKIPublishCRLParams struct {

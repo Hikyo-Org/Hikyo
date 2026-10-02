@@ -131,6 +131,19 @@ func TestWizardSingleEnvMatchesFlagRun(t *testing.T) {
 	}
 
 	assertSameBytes(t, "template", mustEncode(t, flag.Template), mustEncode(t, wiz.Template))
+	// Values and decisions remain equivalent, but separate runs intentionally
+	// have independent private commitment keys. Verify each before normalizing.
+	for _, run := range []struct {
+		values   *ValuesFile
+		manifest *Manifest
+	}{{&flag.Values, &flag.Manifest}, {&wiz.Envs[0].Values, &wiz.Manifest}} {
+		commitment, err := ValuesCommitment(*run.values)
+		if err != nil || len(run.manifest.ValuesDigests) != 1 || run.manifest.ValuesDigests[0].Digest != commitment {
+			t.Fatalf("run commitment does not bind its protected values: %v", err)
+		}
+		run.manifest.ValuesDigests[0].Digest = "independent-private-commitment"
+		run.values.CommitmentKey = ""
+	}
 	assertSameBytes(t, "manifest", mustEncode(t, flag.Manifest), mustEncode(t, wiz.Manifest))
 	assertSameBytes(t, "values", mustEncode(t, flag.Values), mustEncode(t, wiz.Envs[0].Values))
 	fb, _ := definitions.Encode(flag.Bundle)

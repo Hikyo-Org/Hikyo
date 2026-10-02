@@ -65,9 +65,9 @@ Branch: `claude/modest-feynman-hm8knz`. Spec: `docs/adr/gitlab-adapter.md`
 
 - One Hikyo environment maps to at most one scope per project (the target
   uniqueness key does not include scope).
-- Route-move claim and activation collision checks are scope-blind, which is
-  conservative: a GitLab destination move can be refused where a scoped
-  comparison would allow it.
+- Route-move claim and activation collision checks compare the exact GitLab
+  environment scope. Identical names in distinct scopes are independent;
+  same-scope held or pending custody remains exclusive.
 - Pin and CA bundle are fixed per adapter; changing them means a new adapter.
 - File-type variables and group-to-project inheritance management are out of
   scope, as the issue states.

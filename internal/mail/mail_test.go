@@ -111,6 +111,29 @@ func TestSendCancellationInterruptsSMTPGreeting(t *testing.T) {
 	}
 }
 
+func TestSendBoundsUnauthenticatedSMTPGreeting(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.Write([]byte("220-" + strings.Repeat("x", 2<<20) + "\r\n"))
+	}()
+	client, err := mail.New(mail.Config{Addr: listener.Addr().String(), TLS: "starttls", From: "hikyo@example.com", AllowedCIDRs: "127.0.0.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Send(context.Background(), "recipient@example.com", "Test", "Test body"); !errors.Is(err, mail.ErrDelivery) {
+		t.Fatalf("oversized greeting error = %v, want redacted delivery failure", err)
+	}
+}
+
 func TestSendUsesVerifiedTLSAndPreservesPasswordBytes(t *testing.T) {
 	for _, mode := range []string{"implicit", "starttls"} {
 		t.Run(mode, func(t *testing.T) {

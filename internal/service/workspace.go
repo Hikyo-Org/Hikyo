@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -640,8 +641,18 @@ func CanonicalOrigin(raw string) (string, error) {
 		return "", fmt.Errorf("%w: an origin must not carry a query or fragment", domain.ErrInvalid)
 	case strings.Contains(u.Host, "*"):
 		return "", fmt.Errorf("%w: wildcards are not origins", domain.ErrInvalid)
+	case u.Scheme == "http" && !workspaceLoopbackHost(u.Hostname()):
+		return "", fmt.Errorf("%w: non-loopback workspace origins must use https", domain.ErrInvalid)
 	}
 	return u.Scheme + "://" + strings.ToLower(u.Host), nil
+}
+
+func workspaceLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // ---------------------------------------------------------------------------
@@ -792,6 +803,15 @@ func (s *Workspace) ApproveHandoff(ctx context.Context, actor Actor, state strin
 		// right door — a workspace bearer must not be able to approve the
 		// issuance of another workspace bearer.
 		caller, err := az.Authenticate(ctx, actor.bearer, now)
+		if err != nil {
+			return err
+		}
+		// Serialize approval with generation revocation, then re-resolve the
+		// session so old assurance cannot survive behind a newer generation.
+		if err := az.LockTargetPrincipal(ctx, caller.Principal); err != nil {
+			return err
+		}
+		caller, err = az.Authenticate(ctx, actor.bearer, now)
 		if err != nil {
 			return err
 		}
@@ -1083,6 +1103,15 @@ func (s *Workspace) RedeemHandoff(ctx context.Context, code, pkceVerifier, origi
 		}
 		if h.PrincipalID == "" {
 			return s.handoffFailure(ctx, az, h.PrincipalID, h.ID, h.Origin, "redeem", "never-approved")
+		}
+		if err := az.LockTargetPrincipal(ctx, h.PrincipalID); err != nil {
+			return err
+		}
+		// A revocation that won the lock deleted pending approvals. Reload
+		// under that same lock before consuming or stamping a new session.
+		h, err = az.WorkspaceHandoffByCode(ctx, crypto.ArtifactVerifier(code))
+		if err != nil || !h.Live(now) {
+			return s.handoffFailure(ctx, az, "", "", canonical, "redeem", "revoked-approval")
 		}
 		if pkceS256(pkceVerifier) != h.PKCEChallenge {
 			return s.handoffFailure(ctx, az, h.PrincipalID, h.ID, h.Origin, "redeem", "pkce-mismatch")

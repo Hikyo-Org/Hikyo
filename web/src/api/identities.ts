@@ -394,6 +394,8 @@ export type MachineEnvScope = {
   readonly read: boolean;
   /** `reveal` is the standing decryption capability, the ◆ in the prototype. */
   readonly reveal: boolean;
+  /** Historical plaintext is a separate standing capability, requiring read as well. */
+  readonly revealHistory: boolean;
   /** `report-delivery-status`: the controller may send value-free status reports (#790). */
   readonly report: boolean;
   /** Every origin behind the grant rows that reach this environment, deduplicated. */
@@ -424,6 +426,7 @@ export function scopeOf(
     const rows = [
       ...reaching('read', env.id),
       ...reaching('reveal', env.id),
+      ...reaching('reveal-history', env.id),
       ...reaching('report-delivery-status', env.id),
     ];
     const origins = new Map(
@@ -434,6 +437,7 @@ export function scopeOf(
       name: env.name,
       read: reaching('read', env.id).length > 0,
       reveal: reaching('reveal', env.id).length > 0,
+      revealHistory: reaching('reveal-history', env.id).length > 0,
       report: reaching('report-delivery-status', env.id).length > 0,
       origins: [...origins.values()].map(({ kind, subject }) => ({ kind, subject })),
     };
@@ -444,12 +448,32 @@ export function scopeOf(
  * postStateReach is the environments a credential of this account can decrypt:
  * the set the mint's disclosure conjunct ranges over.
  *
- * `read` is required as well as `reveal`, mirroring the server: no read means
+ * `read` is required as well as `reveal` or `reveal-history`, mirroring the server: no read means
  * no delivery at all, so neither disclosure capability reaches plaintext
  * however it is granted.
  */
-export function postStateReach(scope: readonly MachineEnvScope[]): MachineEnvScope[] {
-  return scope.filter((s) => s.read && s.reveal);
+export type MachineDisclosureReach = {
+  readonly id: string;
+  readonly name: string;
+  readonly current: boolean;
+  readonly historical: boolean;
+};
+
+export function disclosureReachText(reach: readonly MachineDisclosureReach[]): string {
+  return reach.map((environment) => {
+    const classes = environment.current && environment.historical
+      ? 'current and historical plaintext'
+      : environment.historical ? 'historical plaintext' : 'current plaintext';
+    return `${environment.name} (${classes})`;
+  }).join(', ');
+}
+
+export function postStateReach(scope: readonly MachineEnvScope[]): MachineDisclosureReach[] {
+  return scope.flatMap((environment) => {
+    const current = environment.read && environment.reveal;
+    const historical = environment.read && environment.revealHistory;
+    return current || historical ? [{ id: environment.id, name: environment.name, current, historical }] : [];
+  });
 }
 
 /**
@@ -462,22 +486,24 @@ export function postStateReach(scope: readonly MachineEnvScope[]): MachineEnvSco
  * this server-side, and a client that asked for a ceremony over the whole
  * post-state would prompt for authority the server never consumes.
  *
- * For a `read` grant the delta is empty unless the account already holds
- * `reveal` there, which is why it is vacuous today: the machine allowlist
- * admits `read` and nothing else on a workload principal.
+ * A `read` grant can newly activate either existing disclosure capability.
+ * Current and historical deltas are separate even when they share an environment.
  */
 export function grantWideningReach(
   scope: readonly MachineEnvScope[],
   environmentId: string,
   capability: MachineGrantCapability,
-): MachineEnvScope[] {
-  const after = scope.map((s) =>
-    s.id === environmentId
-      ? { ...s, read: s.read || capability === 'read', reveal: s.reveal || capability === 'reveal' }
-      : s,
-  );
-  const before = new Set(postStateReach(scope).map((s) => s.id));
-  return postStateReach(after).filter((s) => !before.has(s.id));
+): MachineDisclosureReach[] {
+  return scope.flatMap((environment) => {
+    const selected = environment.id === environmentId;
+    const read = environment.read || (selected && capability === 'read');
+    const reveal = environment.reveal || (selected && capability === 'reveal');
+    // Diff the classes independently. Existing historical reach does not make
+    // a newly added current-plaintext path (or vice versa) vacuous.
+    const current = read && reveal && !(environment.read && environment.reveal);
+    const historical = read && environment.revealHistory && !(environment.read && environment.revealHistory);
+    return current || historical ? [{ id: environment.id, name: environment.name, current, historical }] : [];
+  });
 }
 
 /** The capabilities the machine-access grant dialog hands out. */

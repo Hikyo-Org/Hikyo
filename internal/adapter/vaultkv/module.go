@@ -22,8 +22,8 @@ const (
 	// VersionKey records the KV version Hikyo last wrote. A current_version
 	// that differs is external movement.
 	VersionKey = "hikyo_version"
-	// PendingKey records the version an in-flight write will produce, written
-	// before the CAS request so a crash or ambiguous response replays safely.
+	// PendingKey records the version an in-flight write would produce. It is
+	// never proof of which writer landed after a crash or lost response.
 	PendingKey = "hikyo_pending_version"
 )
 
@@ -207,10 +207,10 @@ const (
 	// pathClean: marked for this target and current_version equals the
 	// recorded version (or the pending write provably did not land).
 	pathClean
-	// pathLanded: the pending write landed; finalize before anything else.
+	// pathLanded: current matches a pending version, but its writer is unknown.
 	pathLanded
 	// pathUnmarked: present with no Hikyo marker. Unowned unless the ledger
-	// holds it (an explicit adoption).
+	// holds fresh explicit adoption evidence or an unmarked dispatched create.
 	pathUnmarked
 	// pathForeign: marked by another Hikyo target.
 	pathForeign
@@ -221,6 +221,7 @@ const (
 type pathState struct {
 	kind    pathKind
 	version int64
+	pending bool
 	// released: the current version is soft-deleted or no version exists, so
 	// no live value would be overwritten.
 	released bool
@@ -256,9 +257,9 @@ func classify(meta Metadata, targetID string) pathState {
 	case !okRecorded || !okPending:
 		return pathState{kind: pathMoved, version: current}
 	case pending != 0 && current == pending:
-		return pathState{kind: pathLanded, version: current, released: released}
+		return pathState{kind: pathLanded, version: current, released: released, pending: true}
 	case pending != 0 && current == pending-1:
-		return pathState{kind: pathClean, version: current, released: released}
+		return pathState{kind: pathClean, version: current, released: released, pending: true}
 	case pending == 0 && current == recorded:
 		return pathState{kind: pathClean, version: current, released: released}
 	}
@@ -283,16 +284,23 @@ func (m *Module) inspect(ctx context.Context, target adapter.Target, name string
 // when this target's own marker shows a released (soft-deleted) earlier
 // delivery; everything else is `exists, unowned`. Claimed paths refuse
 // another target's marker and external version movement.
-func writable(claimed bool, claim adapter.LedgerState, state pathState) bool {
+func writable(claimed bool, claim adapter.LedgerState, adoptionPending bool, adoptionVersion *int64, state pathState) bool {
+	if claim == adapter.Dispatched {
+		return false // Unknown/crash custody never establishes a writer.
+	}
+	if claimed && adoptionPending && adoptionVersion != nil && *adoptionVersion > 0 && *adoptionVersion == state.version && state.kind != pathForeign {
+		return true
+	}
+	if state.pending {
+		return false // Legacy pending markers also require explicit review.
+	}
 	switch state.kind {
 	case pathAbsent:
 		return true
 	case pathClean, pathLanded:
 		return claimed || state.released
 	case pathUnmarked:
-		// A dispatched unmarked create can only have produced version one.
-		// Owned unmarked rows are explicit adoptions and retain that authority.
-		return claimed && (claim == adapter.Owned || state.version == 1)
+		return false // Ordinary ownership cannot re-adopt missing markers.
 	default:
 		return false
 	}
@@ -349,12 +357,17 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		}
 		disposition := adapter.Create
 		switch {
-		case !writable(owned, record.State, state):
+		case !writable(owned, record.State, record.AdoptionPending, record.AdoptionVersion, state):
 			disposition = adapter.Conflict
 		case owned && state.kind != pathAbsent:
 			disposition = adapter.Update
 		}
-		changes = append(changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: disposition})
+		change := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: disposition}
+		if disposition == adapter.Conflict {
+			version := state.version
+			change.ObservedProviderVersion = &version
+		}
+		changes = append(changes, change)
 	}
 	for key, record := range ledger {
 		if desiredSet[key] || record.State == adapter.Reserved {
@@ -393,7 +406,16 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	if err != nil {
 		return adapter.SyncResult{}, err
 	}
+	for _, record := range ledger {
+		if record.State == adapter.Dispatched {
+			return adapter.SyncResult{}, fmt.Errorf("%w: KV path %s has an unacknowledged write; obtain a fresh version-bound plan and adopt explicitly", adapter.ErrOperatorReview, record.EffectiveName)
+		}
+	}
 	rows := desiredRows(req.Target.NamePrefix, req.Manifest, !req.Teardown)
+	desiredPaths := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		desiredPaths[strings.ToUpper(row.EffectiveName)] = true
+	}
 	completed := adapter.CompletedNames(req.Completed)
 	result := adapter.SyncResult{}
 	for _, row := range rows {
@@ -417,6 +439,16 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		result.Changes = append(result.Changes, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete})
 	}
 	for _, row := range prunes {
+		if desiredPaths[strings.ToUpper(row.EffectiveName)] {
+			// Vault classifications share one physical path. A reclassification
+			// can temporarily leave the prior surface claim beside the adopted
+			// new one. Retire only the stale claim; deleting the path here would
+			// delete the value written by the desired claim above.
+			if err := m.releaseWithoutRequest(ctx, row, journal); err != nil {
+				return result, err
+			}
+			continue
+		}
 		if row.Surface == adapter.Variable && strings.EqualFold(row.EffectiveName, req.Target.NamePrefix+adapter.SentinelName) {
 			// Never written by this provider; drop any stray claim without a
 			// provider request.
@@ -452,7 +484,7 @@ func (m *Module) releaseWithoutRequest(ctx context.Context, row adapter.LedgerEn
 // error takes precedence.
 func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter.DesiredRow, ledger map[adapter.LedgerKey]adapter.LedgerEntry, journal adapter.Journal, result *adapter.SyncResult) error {
 	key := adapter.NewLedgerKey(row.Surface, row.EffectiveName)
-	effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Create, KeyID: row.KeyID}
+	effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Create, KeyID: row.KeyID, RequireExplicitRecovery: true}
 	record, claimed := ledger[key]
 	owned := claimedState(record, claimed)
 	if owned && !record.Missing {
@@ -479,7 +511,11 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		return err
 	}
 	conflict := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict}
-	if !writable(owned, record.State, live) {
+	canWrite := writable(owned, record.State, record.AdoptionPending, record.AdoptionVersion, live)
+	if live.pending && !canWrite {
+		return fmt.Errorf("%w: KV path %s has an unresolved pending version", adapter.ErrOperatorReview, row.EffectiveName)
+	}
+	if !canWrite {
 		if state == adapter.Reserved {
 			if err := journal.Refuse(ctx, effect); err != nil {
 				return err
@@ -498,6 +534,11 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		}
 		result.Conflicts = append(result.Conflicts, conflict)
 		return fmt.Errorf("%w: KV path %s moved outside Hikyo", adapter.ErrConflict, row.EffectiveName)
+	}
+	if record.AdoptionPending && record.AdoptionVersion != nil && live.kind != pathAbsent {
+		// Consent names the observed version, not the author of an old pending
+		// write. Start a new CAS without finalizing the potentially foreign one.
+		live.kind, live.pending = pathUnmarked, false
 	}
 	missing := claimed && record.State == adapter.Owned && live.kind == pathAbsent
 	if err := journal.Gate(ctx, effect); err != nil {
@@ -520,18 +561,25 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 	if writeErr != nil {
 		completion := adapter.Completion{Outcome: adapter.OutcomeUnknown, State: adapter.Dispatched}
 		casMoved := IsCASMismatch(writeErr)
-		if casMoved || definitive(writeErr) {
+		var acknowledged *acknowledgedWriteError
+		if errors.As(writeErr, &acknowledged) {
+			completion.Outcome, completion.State = adapter.OutcomeSuccess, adapter.Owned
+		} else if casMoved || definitive(writeErr) {
 			completion.Outcome = adapter.OutcomeFailure
-			// A stranded pending marker names the racer's version, so a
-			// kept claim would replay it as "our write landed" and overwrite
-			// the racer. Releasing the claim leaves the marker unable to
-			// authorize any write over a live value.
-			if state == adapter.Reserved || errors.Is(writeErr, errPendingStranded) {
+			// A stranded pending marker may name the racer's version. Keep
+			// uncertain custody Dispatched and require fresh consent; never
+			// infer ownership or release the held claim automatically.
+			if errors.Is(writeErr, errPendingStranded) {
+				completion.State, completion.Conflict = adapter.Dispatched, true
+			} else if state == adapter.Reserved {
 				completion.State, completion.ReleaseLedger = "", true
 			} else {
 				completion.State = state
 			}
 			completion.Conflict = casMoved
+		}
+		if completion.Outcome == adapter.OutcomeUnknown {
+			completion.Conflict, completion.Finding = true, "operator_review_required"
 		}
 		if missing && !completion.ReleaseLedger {
 			completion.Missing, completion.Finding = true, "owned_missing"
@@ -545,6 +593,10 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		}
 		if completion.ReleaseLedger {
 			delete(ledger, key)
+		}
+		if acknowledged != nil || completion.Outcome == adapter.OutcomeUnknown || errors.Is(writeErr, errPendingStranded) {
+			result.Failed = append(result.Failed, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: effect.Disposition})
+			return errors.Join(fmt.Errorf("%w: KV path %s; obtain a fresh version-bound plan and adopt explicitly", adapter.ErrOperatorReview, row.EffectiveName), fmt.Errorf("%w: %v", adapter.ErrIndeterminate, writeErr))
 		}
 		if casMoved {
 			result.Conflicts = append(result.Conflicts, conflict)
@@ -574,6 +626,15 @@ func versionString(version int64) *string {
 // withdrawal failed, leaving a marker that names the racing write's version.
 var errPendingStranded = errors.New("vault-kv: withdrawing the pending marker after a lost check-and-set")
 
+// Only a successful PUT response establishes this attempt's delivered writer.
+// Failure to publish metadata after that response does not erase the ACK.
+type acknowledgedWriteError struct{ cause error }
+
+func (e *acknowledgedWriteError) Error() string {
+	return "acknowledged value write; metadata finalization failed: " + e.cause.Error()
+}
+func (e *acknowledgedWriteError) Unwrap() error { return e.cause }
+
 // write delivers one value with the crash-safe marker protocol:
 //
 //  1. an absent path is created with check-and-set 0 before any metadata is
@@ -586,14 +647,12 @@ var errPendingStranded = errors.New("vault-kv: withdrawing the pending marker af
 //  3. the marker, the produced version, and a cleared pending marker are
 //     recorded in one metadata patch.
 //
-// A crash or ambiguous response between steps leaves a pending version that
-// the next attempt resolves from metadata alone: current == pending means the
-// write landed, current == pending-1 means it did not, anything else is
-// external movement. A create that landed before its marker leaves an
-// unmarked version-one path that the durable dispatched claim still covers.
-// Failed finalization after a successful value write is indeterminate and keeps
-// the claim dispatched for safe replay. Earlier metadata and write errors propagate, with
-// errPendingStranded added if withdrawal after a CAS mismatch also fails.
+// A crash or ambiguous response leaves held Dispatched custody and requires
+// operator review: neither a matching pending version nor an unmarked version
+// one establishes its writer. A fresh plan's version-bound consent starts a
+// new CAS, never finalizes the old pending version as Hikyo's. Failed metadata
+// finalization after an acknowledged PUT retains known Owned custody but also
+// stops for review. errPendingStranded reports failed CAS-marker withdrawal.
 func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.DesiredRow, live pathState) error {
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	cas := live.version
@@ -614,24 +673,21 @@ func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.D
 	version, err := m.API.WriteCAS(ctx, mount, path, row.Value, cas)
 	if err != nil {
 		if IsCASMismatch(err) && live.kind != pathAbsent {
-			// The external write that beat this one holds version cas+1, so a
-			// pending marker of cas+1 would replay as "our write landed" and
-			// take the path over. Withdraw it; a failed withdrawal is reported
-			// as errPendingStranded so syncRow releases the claim.
+			// The winning external write may hold version cas+1. Withdraw
+			// our pending metadata; failed withdrawal retains Dispatched
+			// custody and stops syncRow for explicit operator review.
 			if cleanupErr := m.API.PatchCustomMetadata(ctx, mount, path, map[string]*string{PendingKey: nil}); cleanupErr != nil {
 				return errors.Join(err, fmt.Errorf("%w: %w", errPendingStranded, cleanupErr))
 			}
 		}
 		return err
 	}
-	// The value is delivered. A failed finalize leaves either a pending
-	// version equal to current_version, which the next attempt finalizes as
-	// landed, or an unmarked create held by the dispatched claim.
+	// The successful PUT response establishes this delivered writer. Preserve
+	// that acknowledgement even if publishing ownership metadata fails.
 	if err := m.finalize(ctx, target, path, version); err != nil {
-		// The value write succeeded, so even a definitive metadata refusal
-		// cannot prove the overall effect did not apply. Keep a dispatched
-		// claim and never wrap the metadata error as a definitive write error.
-		return fmt.Errorf("%w: metadata finalization failed: %v", adapter.ErrIndeterminate, err)
+		// A metadata refusal cannot downgrade an acknowledged value write to
+		// unknown or definitively not applied.
+		return &acknowledgedWriteError{cause: err}
 	}
 	return nil
 }
@@ -659,6 +715,10 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 	if err != nil {
 		return err
 	}
+	canPrune := writable(true, row.State, row.AdoptionPending, row.AdoptionVersion, live)
+	if row.State == adapter.Dispatched || (live.pending && !canPrune) {
+		return fmt.Errorf("%w: KV path %s has unresolved write custody; refusing prune", adapter.ErrOperatorReview, row.EffectiveName)
+	}
 	if err := journal.Gate(ctx, effect); err != nil {
 		return err
 	}
@@ -672,7 +732,7 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 		return gateErr
 	}
 	deleted := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
-	if live.kind == pathUnmarked && row.State == adapter.Dispatched && live.version != 1 {
+	if live.kind == pathUnmarked && !canPrune {
 		live.kind = pathMoved
 	}
 	switch live.kind {

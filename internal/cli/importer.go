@@ -245,7 +245,7 @@ func runImport(ctx context.Context, ios IO, args []string) error {
 	// without knowing which names this run will propose.
 	fileDigest := ""
 	if !*live {
-		fileDigest = importer.Digest(in.Data)
+		fileDigest = importer.SourceFileReference(source, in.Data, result.Records)
 	}
 	planIn := importer.PlanInput{
 		Source: source, Records: result.Records, Skipped: result.Skipped,
@@ -791,12 +791,12 @@ func runValuesImport(ctx context.Context, ios IO, args []string) error {
 	// reviewed STATE, not the plaintext), and for a tokenless created environment
 	// there is no token at all. A digest mismatch means the file is not the one
 	// this manifest reviewed.
-	if manifest != nil && len(manifest.ValuesDigests) > 0 {
+	if manifest != nil {
 		ref := env
 		if createdEnvFile {
 			ref = values.EnvironmentName
 		}
-		reencoded, err := importer.Encode(values)
+		commitment, err := importer.ValuesCommitment(values)
 		if err != nil {
 			return err
 		}
@@ -812,7 +812,7 @@ func runValuesImport(ctx context.Context, ios IO, args []string) error {
 			return failf(ExitRefused,
 				"the run manifest records no values digest for %s; pair the values file with the manifest from the same run", ref)
 		}
-		if importer.Digest(reencoded) != recorded {
+		if commitment != recorded {
 			return failf(ExitRefused,
 				"the values file does not match the run manifest's recorded digest for %s; it is not the values file this manifest reviewed", ref)
 		}

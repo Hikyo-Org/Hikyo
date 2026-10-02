@@ -671,9 +671,8 @@ func runSCIMAdminMutationsMarkSerializedPhase(t *testing.T, db *store.DB) {
 	})
 }
 
-// TestSCIMSyncInvalidatesSessions is SC4.d: "being granted anything logs you
-// out, and a sync is a granter". A group-driven grant advances the affected
-// human's session generation and sweeps their sessions.
+// TestSCIMSyncInvalidatesSessions is the amended SC4.d: org-scoped sync changes
+// authorization immediately without destroying unrelated orgs' sessions.
 func TestSCIMSyncInvalidatesSessions(t *testing.T) {
 	forEngines(t, runSCIMSyncInvalidatesSessions)
 }
@@ -717,10 +716,10 @@ func runSCIMSyncInvalidatesSessions(t *testing.T, db *store.DB) {
 
 	after := queryInt(t, db,
 		`SELECT session_generation FROM principals WHERE id = '`+string(principal)+`'`)
-	if after <= before {
-		t.Fatalf("a sync-created grant must advance the generation: %d -> %d", before, after)
+	if after != before {
+		t.Fatalf("a sync-created grant must preserve instance generation: %d -> %d", before, after)
 	}
-	if n := queryInt(t, db, `SELECT COUNT(*) FROM sessions WHERE id = 'ses_sync'`); n != 0 {
-		t.Fatal("a sync-created grant must sweep the grantee's sessions")
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM sessions WHERE id = 'ses_sync'`); n != 1 {
+		t.Fatal("a sync-created grant must preserve the grantee's sessions")
 	}
 }

@@ -8,10 +8,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
-const tlsStageMode = "__hikyo-stage-tls"
+const tlsStageMode = multicall.TLSStage
 
 func runTLSStageMode(args []string) (bool, int) {
 	if len(args) == 0 || args[0] != tlsStageMode {

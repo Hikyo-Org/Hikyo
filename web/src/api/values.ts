@@ -301,7 +301,12 @@ class OIDCCeremonyError extends Error {
  * OIDCCeremonyError messages, while other API errors propagate. A missing
  * transaction state or a callback timeout rejects with an Error.
  */
-export async function runOIDCCeremony(providerSlug: string, environmentId: string): Promise<void> {
+export async function runOIDCCeremony(
+  providerSlug: string,
+  environmentId: string,
+  options: { requirePopup?: boolean; signal?: AbortSignal } = {},
+): Promise<void> {
+  options.signal?.throwIfAborted();
   const epoch = captureSessionEpoch();
   // Open synchronously while the click still carries user activation. A
   // window opened with the `noopener` feature must return null even when it
@@ -309,12 +314,16 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
   // same-origin blank first lets us detect blocking, then sever the opener
   // before any provider-controlled document is loaded.
   const popup = globalThis.open('', '_blank', 'popup=yes,width=520,height=680');
+  if (popup === null && options.requirePopup === true) {
+    throw new OIDCCeremonyError('Allow popups for this site, then retry identity-provider confirmation. This consent page must stay open.');
+  }
   if (popup !== null) popup.opener = null;
   let started;
   try {
     started = await parsed(oidcStartOp, {
       path: { provider: providerSlug },
       body: { purpose: 'reauth', environment_id: environmentId, browser: true },
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   } catch (error) {
     popup?.close();
@@ -333,6 +342,10 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
     }
     throw error;
   }
+  if (options.signal?.aborted) {
+    popup?.close();
+    options.signal.throwIfAborted();
+  }
   const state = new URL(started.authorization_url).searchParams.get('state') ?? '';
   if (state === '') {
     popup?.close();
@@ -349,16 +362,30 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
   popup.location.replace(started.authorization_url);
 
   await new Promise<void>((resolve, reject) => {
-    const timeout = globalThis.setTimeout(() => {
+    const cleanup = () => {
+      globalThis.clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', onAbort);
       channel.close();
+    };
+    const onAbort = () => {
+      cleanup();
+      popup.close();
+      reject(options.signal?.reason ?? new DOMException('The consent was retired.', 'AbortError'));
+    };
+    const timeout = globalThis.setTimeout(() => {
+      cleanup();
       reject(new Error('identity provider reauthentication timed out'));
     }, OIDC_TRANSACTION_LIFETIME_MS);
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted) {
+      onAbort();
+      return;
+    }
     channel.onmessage = (event: MessageEvent<unknown>) => {
       if (typeof event.data !== 'object' || event.data === null) return;
       const message: Record<string, unknown> = { ...event.data };
       if (message['state'] !== state || typeof message['ok'] !== 'boolean') return;
-      globalThis.clearTimeout(timeout);
-      channel.close();
+      cleanup();
       if (message['ok']) {
         resolve();
       } else {

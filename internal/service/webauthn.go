@@ -760,8 +760,16 @@ func (s *Auth) beginAccountCeremony(ctx context.Context, presented, purpose, ope
 	if err := s.requireRP(); err != nil {
 		return nil, err
 	}
+	// Authenticated starts create the same durable challenge rows as public
+	// login starts. Charge the shared source-IP budget before the write so a
+	// low-privilege session cannot create them without a sustained rate bound.
+	release, err := s.Admission.Enter(ctx, audit.FromContext(ctx).SourceIP)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var options []byte
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		id, err := az.Authenticate(ctx, presented, now)
 		if err != nil {

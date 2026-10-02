@@ -87,6 +87,7 @@ var MFAMandatory = map[domain.Capability]bool{
 	domain.CapManageMembers:   true,
 	domain.CapCredentialReset: true,
 	domain.CapInstanceConfig:  true,
+	domain.CapAuditRead:       true,
 	// The multi-instance ADR's amendment to #16 (#71). Its restatement of the
 	// "every instance capability is MFA-mandatory" rule binds HUMAN SESSIONS,
 	// and names the instance-connection machine principal as its single

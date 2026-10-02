@@ -397,7 +397,11 @@ func scimPatchGroupCommands(body map[string]any) ([]service.GroupPatchCommand, *
 				commands = append(commands, service.GroupPatchSetExternalID{ExternalID: desired.ExternalID})
 			}
 			if _, present := scimAttribute(values, "members"); present {
-				commands = append(commands, service.GroupPatchReplaceMembers{Members: desired.Members})
+				if op.Op == "add" {
+					commands = append(commands, service.GroupPatchAddMembers{Members: desired.Members})
+				} else {
+					commands = append(commands, service.GroupPatchReplaceMembers{Members: desired.Members})
+				}
 			}
 		case scimproto.PatchPlainPayload:
 			if op.Op == "remove" {

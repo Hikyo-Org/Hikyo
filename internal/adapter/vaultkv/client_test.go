@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"os"
 	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -352,7 +354,11 @@ func TestClientClassifiesProviderAnswersWithoutSurfacingBodies(t *testing.T) {
 }
 
 func TestClientRefusesUnpinnedCertificate(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+	var calls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(204)
+	}))
 	defer server.Close()
 	// httptest servers share one built-in key, so pin a different SPKI.
 	sum := sha256.Sum256([]byte("some other public key"))
@@ -368,7 +374,9 @@ func TestClientRefusesUnpinnedCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Health(t.Context()); err == nil || !strings.Contains(err.Error(), "pinned SPKI") {
+	_, err = client.Health(t.Context())
+	var transportError *url.Error
+	if !errors.As(err, &transportError) || !strings.Contains(transportError.Err.Error(), "pinned SPKI") || calls.Load() != 0 {
 		t.Fatalf("Health() with mismatched pin = %v", err)
 	}
 }

@@ -76,7 +76,7 @@ func TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody(t *testi
 		t.Run(name, func(t *testing.T) {
 			forEngines(t, func(t *testing.T, db *store.DB) {
 				seedGitLabMoves(t, db, "staging")
-				execRealAdoption(t, db, `UPDATE adapters SET credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_gitlab'`)
+				execRealAdoption(t, db, `UPDATE adapters SET credential_set_at='2026-08-17T00:00:00Z',credential_expires_at='2026-08-18T00:00:00Z' WHERE id='adp_gitlab'`)
 				execRealAdoption(t, db, `INSERT INTO adapter_outbox(id,org_id,project_id,environment_id,target_id,kind,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) VALUES ('job_cleanup_scrub','org_gitlab','prj_gitlab','env_gitlab_e2e','tgt_gitlab_a','scrub','usr_gitlab',1,'cleanup-scrub','2026-08-17T00:00:00Z','queued','2026-08-17T00:00:00Z')`)
 				var erase func(adapterQueryScope) (int64, error)
 				if db.Engine() == store.EngineSQLite {
@@ -102,15 +102,15 @@ func TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody(t *testi
 					if n, err := erase(scope); err != nil || n != 0 {
 						t.Fatalf("%s erase rows=%d err=%v", label, n, err)
 					}
-					if n := queryInt(t, db, `SELECT COUNT(*) FROM adapters WHERE id='adp_gitlab' AND credential_ciphertext IS NOT NULL AND credential_set_at IS NOT NULL`); n != 1 {
+					if n := queryInt(t, db, `SELECT COUNT(*) FROM adapters WHERE id='adp_gitlab' AND credential_ciphertext IS NOT NULL AND credential_set_at IS NOT NULL AND credential_expires_at IS NOT NULL`); n != 1 {
 						t.Fatalf("%s erased credential: %d", label, n)
 					}
 				}
 				// Isolate each guard: the other custody predicates are eligible.
 				execRealAdoption(t, db, `UPDATE adapter_targets SET state='tombstoned' WHERE adapter_id='adp_gitlab'`)
 				execRealAdoption(t, db, `UPDATE adapter_outbox SET state='succeeded' WHERE id='job_cleanup_scrub'`)
-				refuse("active adapter", own)
-				execRealAdoption(t, db, `UPDATE adapters SET state='tombstoned' WHERE id='adp_gitlab'`)
+				// Last-target teardown also erases an active adapter's unused credential.
+				// Keep the adapter active while proving every remaining custody guard.
 				execRealAdoption(t, db, `UPDATE adapter_targets SET state='active' WHERE id='tgt_gitlab_a'`)
 				refuse("retained active target", own)
 				execRealAdoption(t, db, `UPDATE adapter_targets SET state='tombstoned' WHERE id='tgt_gitlab_a'`)
@@ -124,7 +124,7 @@ func TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody(t *testi
 				if n, err := erase(own); err != nil || n != 1 {
 					t.Fatalf("settled owning erase rows=%d err=%v", n, err)
 				}
-				if n := queryInt(t, db, `SELECT COUNT(*) FROM adapters WHERE id='adp_gitlab' AND credential_ciphertext IS NULL AND credential_set_at IS NULL`); n != 1 {
+				if n := queryInt(t, db, `SELECT COUNT(*) FROM adapters WHERE id='adp_gitlab' AND credential_ciphertext IS NULL AND credential_set_at IS NULL AND credential_expires_at IS NULL`); n != 1 {
 					t.Fatalf("settled cleanup did not erase credential: %d", n)
 				}
 			})

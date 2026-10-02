@@ -326,8 +326,12 @@ type txForwarded interface {
 	// environment (the effective-window transition, B6) and returns the count.
 	//hikyo:forward DeleteReauthWindowsForEnvironment
 	InvalidateReauthWindowsForEnvironment(ctx context.Context, environmentID string) (int64, error)
+	// IncompatiblePasswordKDFCount is for startup/configuration admission, not a
+	// public authentication route. It exposes only aggregate parameter metadata.
+	IncompatiblePasswordKDFCount(ctx context.Context, kdf KDFParams) (int64, error)
 	InvalidateRestoredAdapterCredentials(ctx context.Context) error
 	InvalidateRestoredDynamicProviderCredentials(ctx context.Context) error
+	InvalidateRestoredExternalCredentials(ctx context.Context, now time.Time) error
 
 	// ListProviders lists every configured provider.
 	ListProviders(ctx context.Context) ([]OIDCProvider, error)
@@ -465,10 +469,6 @@ type txForwarded interface {
 
 	// ReleaseGrantOrigin releases one origin, reporting whether it held the row.
 	ReleaseGrantOrigin(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error)
-
-	// RemoteOrigins is the CSP `connect-src` input. See the resolver's doc comment
-	// for why this one read of a class=instance table is proof-free.
-	RemoteOrigins(ctx context.Context) ([]string, error)
 
 	// RemoveExternalIdentity removes a link (unlink).
 	//hikyo:forward DeleteExternalIdentity

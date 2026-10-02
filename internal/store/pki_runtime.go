@@ -123,8 +123,9 @@ func insertPKITenantAudit(ctx context.Context, tx adapterDBTX, row pkiSweptRow, 
 	return tx.pkiStoreQueries().runtimePKITransitionAudit(ctx, row, "pau_"+uuid.Must(uuid.NewV7()).String(), outcome, string(body), at)
 }
 
-// DueCRLs lists issuer versions whose CRL must be (re)published. Retired and
-// revoked versions have no key and are never candidates. Sequence comparison
+// DueCRLs lists issuer versions whose CRL must be (re)published. Restore-held
+// versions cannot sign until revocations are reconciled and the hold released.
+// Retired and revoked versions have no key and are never candidates. Sequence comparison
 // is independent of clock skew and keeps revocations racing publication due.
 func (r *PKIRuntime) DueCRLs(ctx context.Context, now time.Time) ([]PKICRLCandidate, error) {
 	return dbReadResult(ctx, r.db, func(db adapterDB) ([]PKICRLCandidate, error) {
@@ -155,6 +156,55 @@ func (r *PKIRuntime) PublishCRL(ctx context.Context, candidate PKICRLCandidate, 
 			return err
 		}
 		return tx.pkiStoreQueries().runtimePKIPublishedAudit(ctx, "pau_"+uuid.Must(uuid.NewV7()).String(), candidate.IssuerID, string(body), thisUpdate)
+	})
+	return published, err
+}
+
+// SignAndPublishCRL holds runtime admission throughout one local signing act.
+// Restore maintenance cannot cross the fresh hold check, key read, revocation
+// snapshot, signing callback, and publication. The callback performs only local
+// cryptography; no externally visible effect may precede the transaction commit.
+func (r *PKIRuntime) SignAndPublishCRL(ctx context.Context, candidate PKICRLCandidate, thisUpdate, nextUpdate time.Time, sign func(PKICRLCandidate, []PKIRevokedEntry) ([]byte, int64, error)) (bool, error) {
+	published := false
+	err := dbTransaction(ctx, r.db, func(tx adapterDBTX) error {
+		q := tx.pkiStoreQueries()
+		issuer, err := q.pkiGetIssuer(ctx, candidate.IssuerID)
+		if isNoRows(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if issuer.RestoreHold || !issuer.KeyPresent || (issuer.State != "active" && issuer.State != "retiring") || issuer.CRLNumber != candidate.CRLNumber {
+			return nil
+		}
+		sealed, err := q.pkiIssuerKey(ctx, issuer.ID)
+		if err != nil {
+			return err
+		}
+		fresh := PKICRLCandidate{
+			IssuerID: issuer.ID, Name: issuer.Name, Version: issuer.Version,
+			CertificateDER: issuer.CertificateDER, EncryptedPrivateKey: sealed.ciphertext,
+			DEKVersion: sealed.version, CRLNumber: issuer.CRLNumber, RevocationSeq: issuer.RevocationSeq,
+		}
+		entries, err := revokedEntries(ctx, tx, issuer.ID, thisUpdate)
+		if err != nil {
+			return err
+		}
+		der, number, err := sign(fresh, entries)
+		if err != nil {
+			return err
+		}
+		ok, err := publishCRL(ctx, tx, fresh.IssuerID, der, fresh.CRLNumber, number, fresh.RevocationSeq, thisUpdate, nextUpdate)
+		if err != nil || !ok {
+			return err
+		}
+		published = true
+		body, err := json.Marshal(map[string]any{"issuer": fresh.Name, "version": fresh.Version, "crl_number": number, "entries": len(entries)})
+		if err != nil {
+			return err
+		}
+		return q.runtimePKIPublishedAudit(ctx, "pau_"+uuid.Must(uuid.NewV7()).String(), fresh.IssuerID, string(body), thisUpdate)
 	})
 	return published, err
 }

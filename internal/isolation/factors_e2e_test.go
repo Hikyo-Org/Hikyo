@@ -241,15 +241,28 @@ func runRecoveryFlow(t *testing.T, db *store.DB) {
 	auth, password := factorAdmin.auth, factorAdmin.password
 	ctx := t.Context()
 	orgs := &service.Orgs{DB: db}
+	base := time.Now().UTC()
+	clock := base
+	auth.Now = func() time.Time { return clock }
 
 	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uri, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock = base.Add(30 * time.Second)
+	confirmed, err := auth.EnrolTOTPConfirm(ctx, login.SessionToken, totpCode(t, uri, clock))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := auth.GenerateRecoveryCodes(ctx, login.SessionToken, ""); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("missing recovery regeneration proof error = %v, want %v", err, domain.ErrUnauthenticated)
 	}
-	codes, _, err := auth.GenerateRecoveryCodes(ctx, login.SessionToken, password)
+	clock = base.Add(60 * time.Second)
+	codes, _, err := auth.GenerateRecoveryCodes(ctx, confirmed.SessionToken, totpCode(t, uri, clock))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,8 +300,20 @@ func runRecoveryFlow(t *testing.T, db *store.DB) {
 	if err := auth.EstablishCredential(ctx, rec.Authority, newPassword); err != nil {
 		t.Fatalf("establishing a credential from the recovery authority: %v", err)
 	}
-	if _, err := auth.LocalLogin(ctx, "factor-admin", newPassword, service.ArtifactCLI); err != nil {
-		t.Fatalf("login with the re-established password: %v", err)
+	auth.SecondFactorRequired = true
+	loginAfterRecovery, err := auth.LocalLogin(ctx, "factor-admin", newPassword, service.ArtifactBrowser)
+	if err != nil {
+		t.Fatalf("browser login with the re-established password: %v", err)
+	}
+	if loginAfterRecovery.Challenge != nil || loginAfterRecovery.SessionToken == "" {
+		t.Fatalf("lost factor still challenged after recovery: %+v", loginAfterRecovery.Challenge)
+	}
+	identity, err := auth.Identity(ctx, loginAfterRecovery.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !identity.EnrolmentRequired {
+		t.Fatal("recovery session bypassed mandatory replacement-factor enrolment")
 	}
 }
 

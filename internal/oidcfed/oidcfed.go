@@ -166,6 +166,9 @@ var (
 	ErrAudience = errors.New("oidcfed: token audience is not the bound audience")
 	// ErrClaim is a pinned claim that is absent or does not match byte-exactly.
 	ErrClaim = errors.New("oidcfed: a pinned claim is absent or does not match")
+	// ErrImmutableIdentityUnavailable refuses federation from an issuer whose
+	// tokens cannot bind a workload to immutable repository ownership.
+	ErrImmutableIdentityUnavailable = errors.New("oidcfed: issuer exposes no immutable workload identity")
 	// ErrEventName is the CI-specific refusal: a `pull_request` or
 	// `pull_request_target` token presented against a binding that did not
 	// separately and deliberately bind that event.
@@ -537,6 +540,9 @@ func checkTiming(c Claims, now time.Time) error {
 // to contain; the restore predicate last, because it is the only check that can
 // pass for a token that is in every other way correct.
 func CheckBinding(iss Issuer, b Binding, c Claims, now time.Time) error {
+	if iss.Type == domain.IssuerForgejo {
+		return ErrImmutableIdentityUnavailable
+	}
 	// ALL TIME-BASED PREDICATES ARE RE-CHECKED HERE, against the caller's clock
 	// -- which the chokepoint reads inside the authorizing transaction.
 	// Signature-time validation proved the token was live when it was PRESENTED;
@@ -872,16 +878,14 @@ func ValidatePointer(name string) error {
 //   - kubernetes exposes the ServiceAccount UID, nested — required through its
 //     JSON Pointer. A recreated ServiceAccount with the same name has a
 //     different UID, which is precisely what this closes.
-//   - forgejo exposes NO immutable numeric identifiers for the repository or its
-//     owner (its Actions claim set carries `repository` and `repository_owner` as
-//     names only), so the strictest available rule is the repository name plus
-//     `event_name`. Recorded as a known ceiling in the handoff: a Forgejo
-//     repository renamed and its path reused inherits the binding, and the only
-//     fix is upstream emitting ids.
+//
+// Forgejo is intentionally absent. Its Actions tokens expose repository names,
+// not immutable repository ownership. Binding them would let a reused path
+// inherit an existing machine principal, so creation and validation refuse the
+// issuer until it exposes an immutable identifier.
 var RequiredPins = map[domain.IssuerType][]string{
 	domain.IssuerGitHubActions: {"repository_id", "repository_owner_id", EventNameClaim},
 	domain.IssuerKubernetes:    {KubernetesServiceAccountUID},
-	domain.IssuerForgejo:       {"repository", EventNameClaim},
 }
 
 // KubernetesServiceAccountUID is where a projected ServiceAccount token carries

@@ -138,12 +138,10 @@ func runMachineRevealOptIn(t *testing.T, db *store.DB) {
 	if v := valueOf(off.Keys, "DATABASE_URL"); v == nil {
 		t.Fatal("withdrawal removed config delivery; only secret plaintext is governed by the opt-in")
 	}
-	// The CHANGE TOKEN is content-bound and must NOT move: nothing was
-	// published. It is the cursor's projection component that moved, which is
-	// exactly the machine-identities ADR's reason for binding the cursor to
-	// the authorized projection rather than to content alone.
-	if off.ChangeToken != on.ChangeToken {
-		t.Fatal("withdrawing the opt-in moved the change token: the fixture changed content, not authorization")
+	// The commitment covers the authorized manifest, not hidden snapshot
+	// content. Removing secret disclosure removes its value and occurrence.
+	if off.ChangeToken == on.ChangeToken {
+		t.Fatal("withdrawing secret disclosure left the full manifest commitment unchanged")
 	}
 	if _, err := settings.SetMachineReveal(ctx, operator, prjScope(), true); err != nil {
 		t.Fatalf("re-enable opt-in: %v", err)
@@ -157,6 +155,9 @@ func runMachineRevealOptIn(t *testing.T, db *store.DB) {
 	}
 	if v := valueOf(again.Keys, "DATABASE_PASSWORD"); v == nil || *v == "" {
 		t.Fatal("re-enabling the opt-in did not restore secret delivery on the next fetch")
+	}
+	if again.ChangeToken != on.ChangeToken {
+		t.Fatal("re-enabling unchanged secret disclosure did not restore the authorized manifest commitment")
 	}
 	if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'settings.machine_reveal_changed'`); n != 3 {
 		t.Fatalf("opt-in flips audited %d times, want 3", n)
@@ -189,6 +190,9 @@ func runMachineRevealOptIn(t *testing.T, db *store.DB) {
 	if roAfterOne.Current {
 		t.Fatal("an opt-in flip left a read-only workload's cursor current")
 	}
+	if roAfterOne.ChangeToken != roFirst.ChangeToken {
+		t.Fatal("an opt-in flip changed a read-only workload's unchanged authorized manifest")
+	}
 	if _, err := settings.SetMachineReveal(ctx, operator, prjScope(), true); err != nil {
 		t.Fatal(err)
 	}
@@ -201,6 +205,9 @@ func runMachineRevealOptIn(t *testing.T, db *store.DB) {
 	}
 	if roAfterPair.Current {
 		t.Fatal("an off-on-off pair between two polls landed back on a current cursor")
+	}
+	if roAfterPair.ChangeToken != roAfterOne.ChangeToken {
+		t.Fatal("an opt-in round trip changed a read-only workload's unchanged authorized manifest")
 	}
 	if _, err := settings.SetMachineReveal(ctx, operator, prjScope(), true); err != nil {
 		t.Fatal(err)

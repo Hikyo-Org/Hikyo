@@ -115,6 +115,11 @@ export const EditorFolderRule: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Admin' }));
     await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).not.toBeChecked();
     await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toBeChecked();
+    // Admin only removes Reveal here. Adding its historical counterpart turns
+    // this into a mixed replacement, which cannot be sent as separate writes.
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Reveal history' }));
+    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await expect(dialog.getByRole('alert')).toHaveTextContent('atomic rule replacement');
     const see = dialog.getByRole('checkbox', { name: 'See' });
     await expect(see).toBeDisabled();
     await expect(see).toHaveAccessibleDescription(/Not available here: needs all keys of an environment\..*Only on rules that cover all keys of an environment\./);

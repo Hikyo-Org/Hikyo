@@ -7,6 +7,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -28,7 +30,7 @@ func TestNoValueReadPathExists(t *testing.T) {
 	for i := range typeOf.NumMethod() {
 		got = append(got, typeOf.Method(i).Name)
 	}
-	want := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecretNames", "PutSecretValue", "ResolveIdentity", "RestoreSecret", "TagSecret"}
+	want := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecretNames", "PutSecretValue", "ResolveIdentity", "RestoreSecret", "TagSecret", "UpdateSecretVersionStage"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("linked AWS API operations = %v, want closed value-blind set %v", got, want)
 	}
@@ -37,7 +39,7 @@ func TestNoValueReadPathExists(t *testing.T) {
 		targets = append(targets, target)
 	}
 	slices.Sort(targets)
-	wantTargets := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecrets", "PutSecretValue", "RestoreSecret", "TagResource"}
+	wantTargets := []string{"CreateSecret", "DeleteSecret", "DescribeSecret", "ListSecrets", "PutSecretValue", "RestoreSecret", "TagResource", "UpdateSecretVersionStage"}
 	if !slices.Equal(targets, wantTargets) {
 		t.Fatalf("operation registry = %v, want %v", targets, wantTargets)
 	}
@@ -95,7 +97,8 @@ func emulatorClient(t *testing.T, server *awssmtest.Server) *Client {
 	roots.AddCert(server.Certificate())
 	client, err := NewClient(ClientConfig{
 		Origin: server.URL, Credential: staticDescriptor(server.Region), Deadline: 5 * time.Second,
-		AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
+		AllowedCIDRs:    []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+		STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +145,87 @@ func TestSignedWireLifecycleAgainstEmulator(t *testing.T) {
 	}
 }
 
+type wireWriteRaceAPI struct {
+	*Client
+	server *awssmtest.Server
+	timing string
+}
+
+func (f *wireWriteRaceAPI) PutSecretValue(ctx context.Context, name, token, value string) error {
+	if f.timing == "before-put" {
+		f.server.ExternalPut("prod/app", "concurrent wire edit")
+	}
+	err := f.Client.PutSecretValue(ctx, name, token, value)
+	if err == nil && f.timing == "after-put" {
+		f.server.ExternalPut("prod/app", "concurrent wire edit")
+	}
+	return err
+}
+
+func TestSignedWireConditionalPromotionRefusesConcurrentEdits(t *testing.T) {
+	for _, timing := range []string{"before-put", "after-put"} {
+		t.Run(timing, func(t *testing.T) {
+			server := awssmtest.New(testAccount, testRegion)
+			defer server.Close()
+			client := emulatorClient(t, server)
+			journal := newFakeJournal()
+			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "initial"}
+			if _, err := (&Module{API: client}).Sync(t.Context(), req, journal); err != nil {
+				t.Fatal(err)
+			}
+			previous := server.Tag("prod/app", VersionTag)
+			req.JobID, req.Ledger = "racing", journal.ledger()
+			result, err := (&Module{API: &wireWriteRaceAPI{Client: client, server: server, timing: timing}}).Sync(t.Context(), req, journal)
+			value, _ := server.Value("prod/app")
+			if !errors.Is(err, adapter.ErrConflict) || len(result.Conflicts) != 1 || value != "concurrent wire edit" || server.Tag("prod/app", VersionTag) != previous {
+				t.Fatalf("wire CAS lost concurrent version: result=%+v err=%v value=%q", result, err, value)
+			}
+			metadata, err := client.DescribeSecret(t.Context(), "prod/app")
+			if err != nil || !slices.Contains(metadata.Stages[previous], CurrentStage) {
+				t.Fatalf("previous ownership marker lost: metadata=%+v err=%v", metadata, err)
+			}
+			if !slices.Contains(server.Operations(), "UpdateSecretVersionStage") {
+				t.Fatal("signed metadata-only stage operation was not exercised")
+			}
+		})
+	}
+}
+
+func TestSignedWireStagingPreservesCurrentAndRequiresExactPredecessor(t *testing.T) {
+	server := awssmtest.New(testAccount, testRegion)
+	defer server.Close()
+	client := emulatorClient(t, server)
+	if err := client.CreateSecret(t.Context(), CreateSecretInput{Name: "staging"}); err != nil {
+		t.Fatal(err)
+	}
+	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	if err := client.PutSecretValue(t.Context(), "staging", first, "first value"); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := client.DescribeSecret(t.Context(), "staging")
+	if err != nil || !slices.Contains(metadata.Stages[first], awsCurrent) || !slices.Contains(metadata.Stages[first], PendingStage) {
+		t.Fatalf("AWS first-value automatic AWSCURRENT missing: %+v %v", metadata, err)
+	}
+	if err := client.PutSecretValue(t.Context(), "staging", second, "staged value"); err != nil {
+		t.Fatal(err)
+	}
+	for _, wrongPredecessor := range []string{"", strings.Repeat("c", 64)} {
+		if err := client.UpdateSecretVersionStage(t.Context(), "staging", awsCurrent, second, wrongPredecessor); !IsDefinite(err) {
+			t.Fatalf("missing/wrong conditional predecessor did not refuse: %v", err)
+		}
+		if value, _ := server.Value("staging"); value != "first value" {
+			t.Fatalf("staging or conditional refusal changed current value: %q", value)
+		}
+	}
+	if err := client.UpdateSecretVersionStage(t.Context(), "staging", awsCurrent, second, first); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err = client.DescribeSecret(t.Context(), "staging")
+	if err != nil || !slices.Contains(metadata.Stages[first], "AWSPREVIOUS") || !slices.Contains(metadata.Stages[second], awsCurrent) {
+		t.Fatalf("atomic promotion labels incorrect: %+v %v", metadata, err)
+	}
+}
+
 func TestWireErrorClassification(t *testing.T) {
 	server := awssmtest.New(testAccount, testRegion)
 	defer server.Close()
@@ -162,6 +246,56 @@ func TestWireErrorClassification(t *testing.T) {
 	server.FailNext("PutSecretValue", 500, "InternalServiceError", "")
 	if err := client.PutSecretValue(t.Context(), "x", strings.Repeat("a", 64), "v"); IsDefinite(err) {
 		t.Fatalf("5xx must be ambiguous, got definite %v", err)
+	}
+}
+
+func TestSTSResponseBodyIsBoundedBeforeSDKDeserialization(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(strings.Repeat("x", responseCap+1)))
+	}))
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	loopback := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	descriptor := `{"mode":"static","region":"eu-west-1","sts_origin":"` + server.URL + `","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"fixture"}`
+	client, err := NewClient(ClientConfig{
+		Origin: server.URL, Credential: descriptor, Deadline: 5 * time.Second,
+		AllowedCIDRs: loopback, STSAllowedCIDRs: loopback, RootCAs: roots,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Forget()
+	if _, err := client.ResolveIdentity(t.Context()); err == nil {
+		t.Fatal("oversized STS response was accepted")
+	}
+}
+
+func TestListSecretNamesRejectsRepeatedPaginationToken(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		_, _ = w.Write([]byte(`{"SecretList":[],"NextToken":"repeated"}`))
+	}))
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	loopback := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	client, err := NewClient(ClientConfig{
+		Origin: server.URL, Credential: staticDescriptor("eu-west-1"), Deadline: 5 * time.Second,
+		AllowedCIDRs: loopback, STSAllowedCIDRs: loopback, RootCAs: roots,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Forget()
+	if _, err := client.ListSecretNames(t.Context(), "prefix", 0); !errors.Is(err, ErrSecretListPagination) {
+		t.Fatalf("ListSecretNames() error = %v, want ErrSecretListPagination", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
 	}
 }
 

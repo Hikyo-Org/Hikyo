@@ -210,6 +210,7 @@ var legacyAnnotationNames = map[string]bool{
 	"InstanceConnectionByVerifier":                 true,
 	"InstanceIdentity":                             true,
 	"InvalidateRestoredAdapterCredentials":         true,
+	"InvalidateRestoredAdapterRouteMoves":          true,
 	"InvalidateRestoredDynamicProviderCredentials": true,
 	"ListAllProjects":                              true,
 	"ListCredentialsBeyondCeiling":                 true,

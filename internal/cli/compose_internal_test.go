@@ -28,6 +28,11 @@ func strPtr(s string) *string { return &s }
 // deliveryJSON marshals a DeliveryResponse the fake server returns.
 func deliveryJSON(t *testing.T, resp apigen.DeliveryResponse) string {
 	t.Helper()
+	for index := range resp.Keys {
+		if resp.Keys[index].Value != nil && resp.Keys[index].SnapshotReceipt == nil {
+			resp.Keys[index].SnapshotReceipt = strPtr("server-receipt-" + resp.Keys[index].KeyId)
+		}
+	}
 	b, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatal(err)
@@ -59,14 +64,40 @@ func composeIO(stateDir, workdir, token string, extra map[string]string) (IO, *b
 	}, &stdout, &stderr
 }
 
-func machineState(t *testing.T, origin string) (*State, string) {
+func machineState(t *testing.T, origin string, pins ...string) (*State, string) {
 	t.Helper()
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: origin}); err != nil {
+	pin := ""
+	if len(pins) != 0 {
+		pin = pins[0]
+	}
+	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: origin, SPKIPin: pin}); err != nil {
 		t.Fatal(err)
 	}
 	return st, stateDir
+}
+
+func closedPinnedMachineState(t *testing.T) (string, string) {
+	t.Helper()
+	server := httptest.NewTLSServer(http.NotFoundHandler())
+	origin, pin := server.URL, SPKIFingerprint(server.Certificate())
+	server.Close()
+	_, stateDir := machineState(t, origin, pin)
+	return origin, stateDir
+}
+
+// Current scope-separated slots cannot be opened by the other delivery mode.
+// Preserve the explicit context-refusal test against the supported old slot.
+func useLegacySnapshotSlot(t *testing.T, stateDir string) {
+	t.Helper()
+	slots, err := filepath.Glob(filepath.Join(stateDir, "snapshot-*.bin"))
+	if err != nil || len(slots) != 1 {
+		t.Fatalf("seeded snapshot slots=%d err=%v", len(slots), err)
+	}
+	if err := os.Rename(slots[0], filepath.Join(stateDir, "snapshot.bin")); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func composeCommonFlags(t *testing.T, operation AuthOperation) commonFlags {
@@ -80,12 +111,12 @@ func composeCommonFlags(t *testing.T, operation AuthOperation) commonFlags {
 
 func TestOpenComposeStackNoConfig(t *testing.T) {
 	requests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		requests++
 	}))
 	defer server.Close()
 
-	st, stateDir := machineState(t, server.URL)
+	st, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, _ := composeIO(stateDir, t.TempDir(), "wl_token", nil)
 	runFlags := composeCommonFlags(t, "run")
 	runFlags.Flags = Flags{Instance: "local", Org: "org_1", Project: "prj_1", Env: "env_1"}
@@ -118,7 +149,7 @@ func TestOpenComposeStackRuntimeDirUnresolved(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("runtime-dir refusal requires a non-root process")
 	}
-	server := httptest.NewServer(http.NotFoundHandler())
+	server := httptest.NewTLSServer(http.NotFoundHandler())
 	defer server.Close()
 
 	projectDir := t.TempDir()
@@ -126,7 +157,7 @@ func TestOpenComposeStackRuntimeDirUnresolved(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	st, stateDir := machineState(t, server.URL)
+	st, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, _ := composeIO(stateDir, projectDir, "wl_token", map[string]string{"HIKYO_COMPOSE_DOCKER": "/usr/bin/false"})
 	doctorFlags := composeCommonFlags(t, "compose doctor")
 	stack, err := openComposeStack(st, ios, doctorFlags, composeStackOptions{requireConfig: true})
@@ -153,7 +184,7 @@ func TestRunRefusesWithoutMachineCredential(t *testing.T) {
 	// A stored human session exists; run must not use it.
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: "https://hikyo.example"}); err != nil {
+	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: "https://hikyo.example", SPKIPin: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.PutSession(SessionArtifact{Instance: "local", Origin: "https://hikyo.example", Token: "human-session", Principal: "usr_1"}); err != nil {
@@ -182,7 +213,7 @@ func TestRunAllOrNothingRefusal(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"run", "--instance", "local", "--org", "org_1", "--project", "prj_1", "--env", "env_1", "--", "true"})
 	if code != ExitRefused {
@@ -199,7 +230,7 @@ func TestRunLoaderControlRefusal(t *testing.T) {
 	}))
 	defer server.Close()
 
-	st, stateDir := machineState(t, server.URL)
+	st, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"run", "--instance", "local", "--org", "org_1", "--project", "prj_1", "--env", "env_1", "--", "true"})
 	if code != ExitRefused {
@@ -218,7 +249,7 @@ func TestRunMergeCollisionAndAllowOverride(t *testing.T) {
 	}))
 	defer server.Close()
 
-	st, stateDir := machineState(t, server.URL)
+	st, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	// Without --allow-override: hard refusal.
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "wl_token", nil)
@@ -247,7 +278,7 @@ func TestRunMergeCollisionAndAllowOverride(t *testing.T) {
 func TestRunExecNotFoundAndNotExecutable(t *testing.T) {
 	server := deliveryServer(t, deliveryResp(nil))
 	defer server.Close()
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	// 127: command not found.
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "wl_token", nil)
@@ -270,7 +301,7 @@ func TestRunConfigResolveDisagreement(t *testing.T) {
 	writeComposeConfig(t, dir, "https://hikyo.example", "org_cfg", "prj_1", "env_1", "", "")
 	stateDir := t.TempDir()
 	st := &State{dir: stateDir}
-	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: "https://hikyo.example"}); err != nil {
+	if err := st.Trust().Put(TrustEntry{Name: "local", Origin: "https://hikyo.example", SPKIPin: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}); err != nil {
 		t.Fatal(err)
 	}
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
@@ -331,7 +362,7 @@ func TestRunArgMaxRefusal(t *testing.T) {
 		{KeyId: "key_big", Name: "BIG", Classification: apigen.KeyClassificationConfig, Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr(huge)},
 	}))
 	defer server.Close()
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "wl_token", nil)
 	ios.Exec = func(_ string, _, _ []string) error {
 		t.Fatal("exec must not be reached past an ARG_MAX refusal")
@@ -377,7 +408,7 @@ func TestComposeRenderCursorEligibility(t *testing.T) {
 
 	dir := t.TempDir()
 	writeComposeConfig(t, dir, server.URL, "org_1", "prj_1", "env_1", runtimeDir, "acme")
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	if code := Run(t.Context(), ios, []string{"compose", "render"}); code != ExitOK {
@@ -402,10 +433,9 @@ func TestComposeRenderCursorEligibility(t *testing.T) {
 func TestRunStaleLineOnOfflineServe(t *testing.T) {
 	// Save a snapshot + offline meta, then point the fetch at a closed server so
 	// the offline path serves and prints the stale line.
-	origin := "http://127.0.0.1:1" // closed port
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 
 	// Pre-seed the snapshot for slug "acme".
 	slug := "acme"
@@ -425,13 +455,30 @@ func TestRunStaleLineOnOfflineServe(t *testing.T) {
 	if !slices.Contains(captured, "DATABASE_URL=postgres://cached") {
 		t.Fatalf("offline value not delivered to child env: %v", captured)
 	}
+	records, _, err := compose.Pending(sd)
+	if err != nil || len(records) != 1 || records[0].SnapshotReceipt != "server-receipt" {
+		t.Fatalf("offline run dropped receipt: records=%+v err=%v", records, err)
+	}
+}
+
+func TestDeliveryReceiptsSurviveSnapshotAndReconciliationAdapters(t *testing.T) {
+	rows := deliveredRows([]apigen.DeliveredKey{
+		{KeyId: "key_valued", Name: "TOKEN", Classification: apigen.KeyClassificationSecret, Value: strPtr("value"), SnapshotReceipt: strPtr("authenticated-receipt")},
+		{KeyId: "key_presence", Name: "PRESENCE", Classification: apigen.KeyClassificationSecret},
+	})
+	if len(rows) != 1 || rows[0].Receipt != "authenticated-receipt" {
+		t.Fatalf("delivered receipt lost: %+v", rows)
+	}
+	records := toAPIRecords([]compose.OfflineRecord{{SnapshotReceipt: rows[0].Receipt}})
+	if len(records) != 1 || records[0].SnapshotReceipt != "authenticated-receipt" {
+		t.Fatalf("reconciliation receipt lost: %+v", records)
+	}
 }
 
 func TestRunOfflineExpiredRefused(t *testing.T) {
-	origin := "http://127.0.0.1:1"
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 	seedRunSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token")
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
@@ -454,12 +501,12 @@ func TestRunOfflineExpiredRefused(t *testing.T) {
 // even fully offline, with nothing mutable on disk supplying the expectation
 // (R1-3). No `server-credential` record exists to rewrite.
 func TestRunOfflineRefusesRotatedToken(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed port → offline path
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 	// Snapshot bound to token A.
 	seedRunSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "token-A")
+	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	// Present token B offline.
 	ios, _, stderr := composeIO(stateDir, dir, "token-B", nil)
@@ -481,7 +528,7 @@ func TestRunOfflineRefusesRotatedToken(t *testing.T) {
 // present in the sealed payload rows. A configured key absent from the snapshot
 // is refused BY ID (R1-3, the render-target set check at key granularity).
 func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
-	origin := "http://127.0.0.1:1"
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	// The config target declares key_1 AND key_absent; the seeded snapshot only
@@ -492,9 +539,8 @@ func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, origin)
 	seedRenderSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token", "api",
-		[]compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
+		[]compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render"})
@@ -507,11 +553,10 @@ func TestComposeRenderOfflineRefusesMissingKey(t *testing.T) {
 }
 
 func TestRunOfflineNotEnabledRefused(t *testing.T) {
-	origin := "http://127.0.0.1:1"
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	// offline_serve defaults false.
 	writeComposeConfig(t, dir, origin, "org_1", "prj_1", "env_1", "", "acme")
-	_, stateDir := machineState(t, origin)
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"run", "--", "true"})
 	if code != ExitUnavailable {
@@ -522,18 +567,21 @@ func TestRunOfflineNotEnabledRefused(t *testing.T) {
 	}
 }
 
-// TestRunStripsTokenFromChildEnv proves the workload credential (HIKYO_TOKEN)
-// in the REAL process environment never reaches the child (finding 1). It uses a
+// TestRunStripsHikyoNamespaceFromChildEnv proves Hikyo control-plane variables
+// in the REAL process environment never reach the child. It uses a
 // real os.Setenv (t.Setenv), not the injected Env getter, because sanitizedEnviron
 // reads the process environment the child would inherit.
-func TestRunStripsTokenFromChildEnv(t *testing.T) {
+func TestRunStripsHikyoNamespaceFromChildEnv(t *testing.T) {
 	t.Setenv("HIKYO_TOKEN", "super-secret-workload-token")
-	t.Setenv("HIKYO_RUN_MARKER", "kept")
+	t.Setenv("HIKYO_ROOT_KEY", "root-key")
+	t.Setenv("HIKYO_DB", "postgres://user:password@db/hikyo")
+	t.Setenv("Hikyo_Token", "mixed-case-token")
+	t.Setenv("WORKLOAD_MARKER", "kept")
 	server := deliveryServer(t, deliveryResp([]apigen.DeliveredKey{
 		{KeyId: "key_c", Name: "APP_CONFIG", Classification: apigen.KeyClassificationConfig, Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("v")},
 	}))
 	defer server.Close()
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "super-secret-workload-token", nil)
 	var gotEnv []string
 	ios.Exec = func(_ string, _, env []string) error { gotEnv = env; return nil }
@@ -542,12 +590,13 @@ func TestRunStripsTokenFromChildEnv(t *testing.T) {
 		t.Fatalf("exit=%d; stderr=%s", code, stderr)
 	}
 	for _, e := range gotEnv {
-		if strings.HasPrefix(e, "HIKYO_TOKEN=") {
-			t.Fatalf("HIKYO_TOKEN leaked into the child environment: %q", e)
+		name, _, _ := strings.Cut(e, "=")
+		if strings.HasPrefix(strings.ToUpper(name), "HIKYO_") {
+			t.Fatalf("Hikyo control variable leaked into the child environment: %q", e)
 		}
 	}
-	if !slices.Contains(gotEnv, "HIKYO_RUN_MARKER=kept") {
-		t.Fatalf("a non-credential env var was dropped: %v", envFilter(gotEnv, "HIKYO_RUN_MARKER"))
+	if !slices.Contains(gotEnv, "WORKLOAD_MARKER=kept") {
+		t.Fatalf("a non-Hikyo env var was dropped: %v", envFilter(gotEnv, "WORKLOAD_MARKER"))
 	}
 	if !slices.Contains(gotEnv, "APP_CONFIG=v") {
 		t.Fatalf("delivered value missing from child env: %v", envFilter(gotEnv, "APP_CONFIG"))
@@ -560,7 +609,7 @@ func TestRunStripsTokenFromChildEnv(t *testing.T) {
 func TestRunNonExecutableIs126(t *testing.T) {
 	server := deliveryServer(t, deliveryResp(nil))
 	defer server.Close()
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	binDir := t.TempDir()
 	prog := filepath.Join(binDir, "hikyo-nox-prog")
@@ -584,7 +633,7 @@ func TestRunNonExecutableIs126(t *testing.T) {
 func TestRunRefusesRelativePathEntry(t *testing.T) {
 	server := deliveryServer(t, deliveryResp(nil))
 	defer server.Close()
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	cwd := t.TempDir()
 	prog := filepath.Join(cwd, "cwd-prog")
@@ -640,7 +689,7 @@ func TestComposeRenderCursorRebindsOnCredentialChange(t *testing.T) {
 
 	dir := t.TempDir()
 	writeComposeConfig(t, dir, server.URL, "org_1", "prj_1", "env_1", runtimeDir, "acme")
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	// Token A: full fetch → render.
 	iosA, _, stderrA := composeIO(stateDir, dir, "token-A", nil)
@@ -662,7 +711,7 @@ func TestComposeRenderCursorRebindsOnCredentialChange(t *testing.T) {
 // render (and the context refusal is by name) — the snapshot's TargetNames bind
 // its delivery mode (finding 3).
 func TestOfflineSnapshotModeBinding(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	// Explicit runtime_dir so render does not stop at runtime resolution / the
 	// default-tmpfs gate before it reaches the snapshot's context check.
@@ -673,9 +722,9 @@ func TestOfflineSnapshotModeBinding(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, origin)
 	// Seed a RUN snapshot (TargetNames ["__run__"]) at the render slug.
 	seedRunSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token")
+	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render"})
@@ -724,7 +773,7 @@ func TestComposeRenderConfigOnlyMixedTarget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render", "--config-only"})
 	if code != ExitOK {
@@ -788,7 +837,7 @@ func TestComposeRenderConfigOnlySkipsUndeliveredKey(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render", "--config-only"})
 	if code != ExitOK {
@@ -837,7 +886,7 @@ func TestComposeRenderFlushesBeforeFetch(t *testing.T) {
 
 	dir := t.TempDir()
 	writeComposeConfig(t, dir, server.URL, "org_1", "prj_1", "env_1", runtimeDir, "acme")
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 
 	// Seed a pending offline record under the stack's state dir.
 	sd := filepath.Join(stateDir, "compose", "acme")
@@ -852,6 +901,7 @@ func TestComposeRenderFlushesBeforeFetch(t *testing.T) {
 		RecordID: rid, KeyID: "key_1", KeyName: "DATABASE_URL", Classification: "config",
 		OccurredAt: "2026-08-19T10:00:00Z", CredentialID: "cred_1",
 		Generation: "v1-00000000000000000000000000000000", ServedFrom: "2026-08-19T10:00:00Z",
+		SnapshotReceipt: "server-receipt-key_1",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -895,7 +945,7 @@ func TestComposeRenderIdenticalContentDistinctStamps(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, server.URL)
+	_, stateDir := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	if code := Run(t.Context(), ios, []string{"compose", "render"}); code != ExitOK {
 		t.Fatalf("render exit=%d; stderr=%s", code, stderr)
@@ -933,15 +983,19 @@ func TestComposeRenderSnapshotFailureLeavesPublishedGenerationUsable(t *testing.
 	}
 	defer lock.Close()
 
-	if err := os.Mkdir(filepath.Join(stateDir, "snapshot.bin"), 0o700); err != nil {
-		t.Fatal(err)
-	}
 	stack := &composeStack{
 		entry: TrustEntry{Origin: "https://hikyo.example"}, org: "org_1", project: "prj_1", env: "env_1",
 		token: "wl_token", stateDir: stateDir, runtimeDir: runtimeDir, cfgDir: projectDir,
 	}
 	binding, err := stack.newSnapshotBinding([]string{"api"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	storageKey, err := binding.StorageKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(stateDir, "snapshot-"+storageKey+".bin"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	resp := deliveryResp([]apigen.DeliveredKey{{
@@ -1019,7 +1073,11 @@ func TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(t *test
 	if err == nil || !strings.Contains(err.Error(), "save cursor") {
 		t.Fatalf("composeRenderApply err=%v, want cursor persistence failure", err)
 	}
-	if _, err := os.Stat(filepath.Join(stateDir, "snapshot.bin")); err != nil {
+	storageKey, err := binding.StorageKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "snapshot-"+storageKey+".bin")); err != nil {
 		t.Fatalf("snapshot must be durable before cursor failure: %v", err)
 	}
 	if !applyPendingExists(stateDir) {
@@ -1038,7 +1096,7 @@ func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T)
 	origin := "https://hikyo.example"
 	projectDir := t.TempDir()
 	stateDir := filepath.Join(t.TempDir(), "compose-state")
-	rows := []compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://x"}}
+	rows := []compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://x"}}
 	seedRenderSnapshot(t, stateDir, origin, "wl_token", "api", rows)
 	keys, err := crypto.LoadOrCreateLocalKey(stateDir)
 	if err != nil {
@@ -1077,7 +1135,7 @@ func TestComposeRenderOfflineRecordsDisclosureBeforePublishFailure(t *testing.T)
 	if pendingErr != nil {
 		t.Fatal(pendingErr)
 	}
-	if len(records) != 1 || records[0].KeyID != "key_1" {
+	if len(records) != 1 || records[0].KeyID != "key_1" || records[0].SnapshotReceipt != rows[0].Receipt {
 		t.Fatalf("pending offline records = %+v after err=%v, want disclosure durable before publish", records, err)
 	}
 	if stamps, stampErr := compose.CurrentStamps(projectDir); stampErr != nil || len(stamps) != 0 {
@@ -1150,7 +1208,7 @@ func TestComposeApplyPendingWriteFailureRemainsRetryVisible(t *testing.T) {
 // refused by name on offline render BEFORE any offline record is written
 // (finding 6).
 func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
 	// No acknowledge_loader_control for the target.
@@ -1160,10 +1218,9 @@ func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateDir := machineState(t, origin)
 	sd := filepath.Join(stateDir, "compose", "acme")
 	seedRenderSnapshot(t, sd, origin, "wl_token", "api",
-		[]compose.SnapshotRow{{Name: "LD_PRELOAD", KeyID: "key_ld", Classification: "config", Value: "/evil.so"}})
+		[]compose.SnapshotRow{{Receipt: "server-receipt", Name: "LD_PRELOAD", KeyID: "key_ld", Classification: "config", Value: "/evil.so"}})
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	code := Run(t.Context(), ios, []string{"compose", "render"})
@@ -1183,13 +1240,13 @@ func TestComposeRenderOfflineRefusesUnacknowledged(t *testing.T) {
 // RENDER snapshot (target-selected rows) must NOT be served to offline `run`,
 // which would bypass run's full-manifest all-or-nothing check (finding 3).
 func TestOfflineRenderSnapshotRefusedForRun(t *testing.T) {
-	origin := "http://127.0.0.1:1" // closed
+	origin, stateDir := closedPinnedMachineState(t)
 	dir := t.TempDir()
 	writeComposeConfigOffline(t, dir, origin, "org_1", "prj_1", "env_1", "acme")
-	_, stateDir := machineState(t, origin)
 	// Seed a RENDER snapshot (TargetNames ["api"]) at the run slug.
 	seedRenderSnapshot(t, filepath.Join(stateDir, "compose", "acme"), origin, "wl_token", "api",
-		[]compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
+		[]compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}})
+	useLegacySnapshotSlot(t, filepath.Join(stateDir, "compose", "acme"))
 
 	ios, _, stderr := composeIO(stateDir, dir, "wl_token", nil)
 	ios.Exec = func(_ string, _, _ []string) error { t.Fatal("run must not exec off a render snapshot"); return nil }
@@ -1221,7 +1278,7 @@ func TestSnapshotBindingLiveAndOfflineRenderPathsAreEquivalent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, composeConfigName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, stateRoot := machineState(t, server.URL)
+	_, stateRoot := machineState(t, server.URL, SPKIFingerprint(server.Certificate()))
 	now := func() time.Time { return issued.Add(time.Hour) }
 
 	liveIO, _, liveStderr := composeIO(stateRoot, projectDir, "wl_token", nil)
@@ -1313,11 +1370,19 @@ func TestLiveAndOfflineRenderAdaptersAreEquivalent(t *testing.T) {
 				{KeyId: "key_cfg", Name: "APP_MODE", Classification: apigen.KeyClassificationConfig, Value: strPtr("production")},
 				{KeyId: "key_unset", Name: "OPTIONAL", Classification: apigen.KeyClassificationConfig},
 			},
-			offline: []compose.SnapshotRow{{Name: "APP_MODE", KeyID: "key_cfg", Classification: "config", Value: "production"}},
+			offline: []compose.SnapshotRow{{Receipt: "server-receipt", Name: "APP_MODE", KeyID: "key_cfg", Classification: "config", Value: "production"}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			for index := range tt.live {
+				if tt.live[index].Value != nil {
+					tt.live[index].SnapshotReceipt = strPtr("server-receipt-" + tt.live[index].KeyId)
+				}
+			}
+			for index := range tt.offline {
+				tt.offline[index].Receipt = "server-receipt-" + tt.offline[index].KeyID
+			}
 			cfg := &compose.Config{Targets: map[string]compose.Target{"api": tt.target}}
 			live, err := compose.BuildRenderPlan(liveRenderInput(cfg, tt.configOnly, tt.live))
 			if err != nil {
@@ -1433,7 +1498,7 @@ func seedRunSnapshot(t *testing.T, stateDir, origin, token string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := []compose.SnapshotRow{{Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}}
+	rows := []compose.SnapshotRow{{Receipt: "server-receipt", Name: "DATABASE_URL", KeyID: "key_1", Classification: "config", Value: "postgres://cached"}}
 	// run's generation stamp is keyed to the run generation sentinel.
 	stamp := compose.TargetStamp(keys, runGenerationKey, canonicalRows(rows))
 	issued := time.Now().UTC().Add(-time.Hour)

@@ -86,7 +86,7 @@ SELECT certificate_der,updated_at FROM pki_issuers WHERE parent_id=sqlc.arg(issu
 -- hikyo:reason StorePKIIssuersPublishCRL verifies instance-config, or closed PKIRuntime publishes a signed global CA CRL; original active/retiring state and prior-number CAS remain.
 -- hikyo:instance-scoped
 -- name: PKIPublishCRL :execrows
-UPDATE pki_issuers SET crl_der=sqlc.arg(der),crl_number=sqlc.arg(number),crl_revocation_seq=sqlc.arg(revocation_seq),crl_this_update=sqlc.arg(this_update),crl_next_update=sqlc.arg(next_update) WHERE id=sqlc.arg(id) AND crl_number=sqlc.arg(previous_number) AND state IN ('active','retiring');
+UPDATE pki_issuers SET crl_der=sqlc.arg(der),crl_number=sqlc.arg(number),crl_revocation_seq=sqlc.arg(revocation_seq),crl_this_update=sqlc.arg(this_update),crl_next_update=sqlc.arg(next_update) WHERE id=sqlc.arg(id) AND crl_number=sqlc.arg(previous_number) AND restore_hold=0 AND state IN ('active','retiring');
 
 -- hikyo:reason StorePKIProfilesList verifies instance-config authority; certificate policy definitions are instance-wide and contain no tenant certificate rows.
 -- hikyo:instance-scoped

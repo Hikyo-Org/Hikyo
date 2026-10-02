@@ -118,7 +118,7 @@ Inside a workspace the viewing UI renders the remote's data with its own compone
 
 The workspace adds **no viewing-server state and no cross-instance account mapping** — the precise claim, narrowed from "no server-side state": the remote holds workspace-session rows (it must, per the locked session model) and its origin allowlist; the viewing server holds nothing new. The human's accounts on the two instances are simply both theirs; nothing in either database relates them. (A shared OIDC IdP makes the popup near-instant; nothing requires it.)
 
-**CSP note (#22):** the viewing instance's locked CSP baseline extends `connect-src` with exactly the origins of its configured remotes — served dynamically from the connection entries, still a closed list, never `*`. The popup is a top-level navigation to the remote origin and needs no frame allowance; the workspace never iframes a remote, and `frame-ancestors 'none'` stands everywhere.
+**CSP note (#22):** the viewing instance's locked CSP baseline extends `connect-src` with exactly the origins of its configured remotes, only on a document whose browser session authorizes the directory read. Anonymous, expired, and unauthorized sessions receive the baseline without remote topology. The list is read dynamically from the proof-gated connection entries, still closed, never `*`; successful browser login reloads the document so workspace connections remain available. The popup is a top-level navigation to the remote origin and needs no frame allowance; the workspace never iframes a remote, and `frame-ancestors 'none'` stands everywhere.
 
 ### The residual, stated plainly
 

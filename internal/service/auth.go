@@ -410,12 +410,9 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 	// would make each of them observably faster than a wrong password, which
 	// is exactly the oracle this path exists to close.
 	cause := ""
-	var (
-		upgrade       bool
-		upgradeSealed []byte
-		upgradeParams authz.KDFParams
-		upgradeDEK    int64
-	)
+	configuredKDF := authz.KDFParams{
+		MemoryKiB: s.KDF.MemoryKiB, Time: s.KDF.Time, Parallelism: s.KDF.Parallelism,
+	}
 	switch {
 	case !resolved:
 		crypto.BurnDummyVerification([]byte(password), s.KDF)
@@ -427,6 +424,13 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		// A restored verifier is inert until the operator re-establishes it.
 		crypto.BurnDummyVerification([]byte(password), s.KDF)
 		cause = "epoch-superseded"
+	case cred.KDF != configuredKDF:
+		// A verifier with a different work factor cannot share a uniform public
+		// login path with unknown accounts, and may exceed the memory reserved by
+		// admission. Refuse it behind current-cost dummy work; recovery or
+		// credential re-establishment writes a verifier at the active cost.
+		crypto.BurnDummyVerification([]byte(password), s.KDF)
+		cause = "kdf-superseded"
 	default:
 		plain, err := s.Keyring.ForInstance().OpenField(verifierAAD(account.ID), cred.Verifier)
 		if err != nil {
@@ -445,23 +449,6 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		crypto.Zero(plain)
 		if !ok {
 			cause = "bad-password"
-		} else if cred.KDF != (authz.KDFParams{MemoryKiB: s.KDF.MemoryKiB, Time: s.KDF.Time, Parallelism: s.KDF.Parallelism}) {
-			// Derive the replacement HERE, outside any transaction, beside
-			// the verification that just succeeded.
-			// The verifier was written under different parameters. Re-derive
-			// under the configured ones so stored costs converge on the
-			// instance's — this is the "re-derivation on next successful
-			// login" the ADR specifies, and it is also what keeps the
-			// unknown-account burn (which uses the configured parameters)
-			// comparable to a real verification over time.
-			upgraded, upParams, upDEK, uerr := s.sealVerifier(account.ID, password)
-			if uerr != nil {
-				// An upgrade that cannot be prepared must not fail the login:
-				// the credential that just verified is still valid.
-				s.logFault(ctx, "preparing a KDF upgrade failed", uerr, account.ID)
-			} else {
-				upgrade, upgradeSealed, upgradeParams, upgradeDEK = true, upgraded, upParams, upDEK
-			}
 		}
 	}
 
@@ -479,6 +466,9 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		}
 		// Re-read under the write transaction: the credential must not have
 		// moved while we were deriving.
+		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
+			return err
+		}
 		current, err := az.PasswordCredentialFor(ctx, account.ID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
@@ -500,22 +490,6 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 			}
 			attempt.refused = sessionRefusedUnauthenticated
 			return nil
-		}
-		if upgrade {
-			// Writer fence (invariant 7): if a rotate-dek --instance retired the
-			// version this KDF upgrade sealed under, SKIP the upgrade rather than
-			// fail the login — the credential that just verified is still valid,
-			// exactly like a losing CAS swap. Only a real store error fails here.
-			switch ferr := az.AssertActiveInstanceDEKVersion(ctx, upgradeDEK); {
-			case errors.Is(ferr, domain.ErrConflict):
-				// version rotated under us; leave the current verifier in place
-			case ferr != nil:
-				return ferr
-			default:
-				if err := s.rehash(ctx, az, account.ID, upgradeSealed, upgradeParams, upgradeDEK, current, now); err != nil {
-					return err
-				}
-			}
 		}
 		// A factor that stands is never skippable: a browser password login on an
 		// enrolled account issues a login challenge instead of a session, and the
@@ -544,26 +518,6 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 		return LoginResult{}, refused
 	}
 	return committed.result, nil
-}
-
-// rehash re-derives a verifier under the instance's configured parameters
-// after a successful login, so a raised floor propagates without locking
-// anyone out.
-//
-// The derivation happens BEFORE the write transaction for the same reason
-// everything else here does, and the swap is conditional on the version the
-// caller read: a password reset that landed while we were deriving must win,
-// and a KDF upgrade must never write a verifier derived from the OLD password
-// back over it. A losing swap is not an error — the credential is current
-// either way, and the session being minted is still legitimate.
-func (s *Auth) rehash(ctx context.Context, az *authz.TxAuthorizer, accountID string, sealed []byte, params authz.KDFParams, dekVersion int64, current authz.PasswordCredential, now time.Time) error {
-	_, err := az.ReplacePasswordCredential(ctx, authz.PasswordCredential{
-		AccountID: accountID, Verifier: sealed, KDF: params,
-		DEKVersion:      dekVersion,
-		CredentialEpoch: current.CredentialEpoch,
-		RowVersion:      current.RowVersion,
-	}, now)
-	return err
 }
 
 // logFault records a server-side fault. Nothing about it reaches the caller.

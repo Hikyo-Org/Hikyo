@@ -127,27 +127,13 @@ type releaseArgs struct {
 	cause domain.SCIMCause
 }
 
-// advancePolicy names the two session-generation rules a SCIM release can
-// carry. Deprovision and user deletion always advance because the IdP declared
-// the human gone; every other release advances only when effective authority
-// changed.
-type advancePolicy uint8
-
-const (
-	advanceIfAuthorityChanged advancePolicy = iota
-	advanceAlways
-)
-
 // accepts reports whether a grant row is in scope for this release.
 func (a releaseArgs) accepts(g domain.Grant) bool {
 	return a.grant == nil || a.grant(g)
 }
 
-// releaseSCIMOrigins is the algorithm. It never advances a session generation
-// itself: some callers must advance UNCONDITIONALLY (deprovision and delete,
-// §5.3 — "even when no grant row changes, because the IdP has declared this
-// human gone") and some only when authority moved. Folding the advance in here
-// would force one of the two to be wrong.
+// releaseSCIMOrigins is the org-scoped algorithm. Grants change atomically;
+// authorization rereads them on every operation. Instance sessions survive.
 func releaseSCIMOrigins(
 	ctx context.Context, az *authz.TxAuthorizer, principal domain.PrincipalID,
 	now time.Time, args releaseArgs,
@@ -297,7 +283,7 @@ func releaseSCIMOrigins(
 }
 
 // releaseAndSettle owns the complete release lifecycle: release origins,
-// advance sessions under the caller's policy, then raise attention for every
+// then raise attention for every
 // retention conversion. Keeping those writes together makes a retention origin
 // without its warning unrepresentable through a SCIM release path.
 //
@@ -306,25 +292,11 @@ func releaseSCIMOrigins(
 // moves here.
 func (s *SCIM) releaseAndSettle(
 	ctx context.Context, r store.Repos, az *authz.TxAuthorizer, c scimContext,
-	principal domain.PrincipalID, args releaseArgs, policy advancePolicy, now time.Time,
+	principal domain.PrincipalID, args releaseArgs, now time.Time,
 ) (releaseOutcome, []grantEventInput, error) {
 	outcome, events, err := releaseSCIMOrigins(ctx, az, principal, now, args)
 	if err != nil {
 		return releaseOutcome{}, nil, err
-	}
-
-	advance := outcome.AuthorityChanged()
-	switch policy {
-	case advanceIfAuthorityChanged:
-	case advanceAlways:
-		advance = true
-	default:
-		return releaseOutcome{}, nil, fmt.Errorf("service: invalid SCIM release advance policy %d", policy)
-	}
-	if advance {
-		if err := advanceAndSweep(ctx, az, principal); err != nil {
-			return releaseOutcome{}, nil, err
-		}
 	}
 
 	for _, grantID := range outcome.Retained {
@@ -378,9 +350,8 @@ func grantRevokedEvent(
 ) grantEventInput {
 	p := scimGrantPayload(args, principal, row, released, true)
 	p["origins_remaining"] = 0
-	// The row died, so the generation advance and the session sweep happen —
-	// either here, when authority moved, or unconditionally at the caller.
-	p["sessions_revoked"] = true
+	// The org-scoped row died, not the instance-wide login.
+	p["sessions_revoked"] = false
 	return grantEventInput{
 		typ:     audit.EventGrantRevoked,
 		object:  audit.Object{Type: "grant", ID: row.ID},
@@ -550,15 +521,9 @@ func cureLockoutRetentions(
 			if _, err := az.DeleteGrantRow(ctx, ret.ID, ret.Principal); err != nil {
 				return nil, nil, err
 			}
-			if err := az.AdvanceGeneration(ctx, ret.Principal); err != nil {
-				return nil, nil, err
-			}
-			if err := az.RevokeAllSessionsFor(ctx, ret.Principal); err != nil {
-				return nil, nil, err
-			}
 			lifecycle.typ = audit.EventGrantRevoked
 			lifecycle.payload["origins_remaining"] = 0
-			lifecycle.payload["sessions_revoked"] = true
+			lifecycle.payload["sessions_revoked"] = false
 		}
 		cured = append(cured, CureResult{
 			Binding: ret.Binding, Org: ret.Grant.Scope.Org, GrantID: ret.ID,

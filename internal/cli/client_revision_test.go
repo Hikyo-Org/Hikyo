@@ -14,7 +14,7 @@ import (
 // Existing command fixtures exercise operation-specific behavior. Give them
 // explicit current discovery without weakening their handlers or assertions.
 func newRevisionAwareFixtureServer(handler http.Handler) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == api.PathPrefix+"/meta" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
@@ -37,7 +37,7 @@ func TestClientRefusesSubminimumOperationBeforeDispatch(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			discovery, operations := 0, 0
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/v1/meta" {
 					discovery++
 					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "old-fixture", ApiRevision: tc.revision})
@@ -47,7 +47,7 @@ func TestClientRefusesSubminimumOperationBeforeDispatch(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			defer srv.Close()
-			client, err := NewClient(TrustEntry{Origin: srv.URL}, "scoped-test-bearer")
+			client, err := NewClient(pinnedTestEntry("test", srv), "scoped-test-bearer")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +64,7 @@ func TestClientRefusesSubminimumOperationBeforeDispatch(t *testing.T) {
 
 func TestClientReusesDiscoveryOnlyWithinItsOriginBoundCommand(t *testing.T) {
 	discovery, operations := 0, 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/meta" {
 			discovery++
 			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "current", ApiRevision: api.Revision})
@@ -75,7 +75,7 @@ func TestClientReusesDiscoveryOnlyWithinItsOriginBoundCommand(t *testing.T) {
 	}))
 	defer srv.Close()
 	for range 2 {
-		client, err := NewClient(TrustEntry{Origin: srv.URL}, "")
+		client, err := NewClient(pinnedTestEntry("test", srv), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,9 +92,9 @@ func TestClientReusesDiscoveryOnlyWithinItsOriginBoundCommand(t *testing.T) {
 
 func TestClientDiscoveryFailureDoesNotDispatchOperation(t *testing.T) {
 	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; http.Error(w, "unavailable", 503) }))
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; http.Error(w, "unavailable", 503) }))
 	defer srv.Close()
-	client, err := NewClient(TrustEntry{Origin: srv.URL}, "")
+	client, err := NewClient(pinnedTestEntry("test", srv), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestClientChangingOriginCannotReuseAnotherServersRevision(t *testing.T) {
 	}))
 	defer current.Close()
 	discovery, operations := 0, 0
-	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	old := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == api.PathPrefix+"/meta" {
 			discovery++
 			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "old-origin", ApiRevision: 0})
@@ -121,8 +121,10 @@ func TestClientChangingOriginCannotReuseAnotherServersRevision(t *testing.T) {
 		operations++
 		w.WriteHeader(http.StatusNoContent)
 	}))
+	old.TLS = current.TLS.Clone()
+	old.StartTLS()
 	defer old.Close()
-	client, err := NewClient(TrustEntry{Origin: current.URL}, "")
+	client, err := NewClient(pinnedTestEntry("test", current), "")
 	if err != nil {
 		t.Fatal(err)
 	}

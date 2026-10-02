@@ -470,7 +470,7 @@ func TestRefusalEventsEmitted(t *testing.T) {
 				owned := makeOwnedSecret(t, testScheme(t), cr, map[string][]byte{"API_KEY": []byte("was-here")})
 				h := newHarness(t, interceptor.Funcs{},
 					makeInstance(""), makeBootstrapSecret("boot", testInstance, "tok", true), owned, cr)
-				h.stub.set(404, "")
+				h.stub.set(404, `{"error":{"code":"not_found"}}`)
 				return h
 			},
 		},

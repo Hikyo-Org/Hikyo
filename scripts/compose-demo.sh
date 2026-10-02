@@ -158,13 +158,15 @@ export DOCKER_CONFIG="$docker_config_dir"
 read -r port ops_port < <(python3 -c 'import socket; a=socket.socket(); b=socket.socket(); a.bind(("127.0.0.1", 0)); b.bind(("127.0.0.1", 0)); print(a.getsockname()[1], b.getsockname()[1]); a.close(); b.close()')
 origin="http://127.0.0.1:$port"
 ops_origin="http://127.0.0.1:$ops_port"
+cli_socket="$work_dir/cli.sock"
 (
 	cd "$work_dir"
 	# Every CLI command now checks /meta. This finite serialization fixture
 	# exceeds the production discovery allowance when run from one loopback IP.
 	# The existing dev-only override is rejected by production configuration.
 	HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE=200 \
-	"$binary" server --dev --listen "127.0.0.1:$port" --operational-listen "127.0.0.1:$ops_port" >server.log 2>&1 &
+	"$binary" server --dev --listen "127.0.0.1:$port" --operational-listen "127.0.0.1:$ops_port" \
+		--cli-socket "$cli_socket" >server.log 2>&1 &
 	printf '%s\n' "$!" >server.pid
 )
 server_pid=$(<"$work_dir/server.pid")
@@ -253,10 +255,10 @@ while (( $(date +%s) / 30 <= confirmed_step )); do
 	sleep 0.2
 done
 
-export DEMO_BINARY="$binary" DEMO_ORIGIN="$origin" DEMO_PASSWORD="$password" DEMO_TOTP_URI="$work_dir/totp-uri"
+export DEMO_BINARY="$binary" DEMO_ORIGIN="$origin" DEMO_PASSWORD="$password" DEMO_TOTP_URI="$work_dir/totp-uri" DEMO_CLI_SOCKET="$cli_socket"
 expect <<'EOF' >/dev/null
 set timeout 15
-spawn $env(DEMO_BINARY) login $env(DEMO_ORIGIN) --local --as compose-admin
+spawn $env(DEMO_BINARY) login $env(DEMO_ORIGIN) --local --as compose-admin --socket $env(DEMO_CLI_SOCKET)
 expect -re {Record it.*:}
 send "y\r"
 expect -re {Password.*:}
@@ -266,7 +268,7 @@ catch wait result
 exit [lindex $result 3]
 EOF
 
-"$binary" context create demo --instance "$origin"
+"$binary" context create demo --instance "$origin" --socket "$cli_socket"
 export DEMO_TOTP_CODE
 DEMO_TOTP_CODE=$(totp_code "$work_dir/totp-uri")
 expect <<'EOF' >/dev/null

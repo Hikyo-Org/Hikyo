@@ -829,6 +829,7 @@ const (
 	StoreAdaptersTarget                 StoreOp = "adapters.Target"
 	StoreAdaptersGet                    StoreOp = "adapters.Get"
 	StoreAdaptersConfiguration          StoreOp = "adapters.Configuration"
+	StoreAdaptersConfigurationForUpdate StoreOp = "adapters.ConfigurationForUpdate"
 	StoreAdaptersList                   StoreOp = "adapters.List"
 	StoreAdaptersListTargets            StoreOp = "adapters.ListTargets"
 	StoreAdaptersTargetKeyIDs           StoreOp = "adapters.TargetKeyIDs"
@@ -1121,10 +1122,11 @@ const (
 	// Keyring persistence (#43). These carry no tenant chain: wrapped-key
 	// rows are instance-scoped crypto material, and the scope a tier-3 key
 	// belongs to is part of its AAD, not a tenant predicate.
-	StoreKeysActiveMasterWrappers StoreOp = "keys.ActiveMasterWrappers"
-	StoreKeysActiveTier3          StoreOp = "keys.ActiveTier3"
-	StoreKeysTier3Versions        StoreOp = "keys.Tier3Versions"
-	StoreKeysAllOpenableTier3     StoreOp = "keys.AllOpenableTier3"
+	StoreKeysActiveMasterWrappers     StoreOp = "keys.ActiveMasterWrappers"
+	StoreKeysActiveTier3              StoreOp = "keys.ActiveTier3"
+	StoreKeysActiveTokenKeyForReceipt StoreOp = "keys.ActiveTokenKeyForReceipt"
+	StoreKeysTier3Versions            StoreOp = "keys.Tier3Versions"
+	StoreKeysAllOpenableTier3         StoreOp = "keys.AllOpenableTier3"
 	// StoreKeysAssertActiveDEKVersion is the writer fence, invoked inside every
 	// ciphertext-writing operation's transaction — a read (+ FOR SHARE lock on
 	// postgres) of the sealed DEK version's state. It is in the store sets of the
@@ -1416,6 +1418,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreCatalogueRevisionGet:                 true,
 	StoreKeysActiveMasterWrappers:             true,
 	StoreKeysActiveTier3:                      true,
+	StoreKeysActiveTokenKeyForReceipt:         true,
 	StoreKeysTier3Versions:                    true,
 	StoreKeysAllOpenableTier3:                 true,
 	StoreKeysAssertActiveDEKVersion:           true,
@@ -3155,7 +3158,8 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true, StoreCatalogueList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValuesExported},
 	},
@@ -3168,7 +3172,8 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true, StoreCatalogueList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueRevealed, audit.EventValuesExported},
 	},
@@ -3181,7 +3186,8 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true, StoreCatalogueList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventValueRevealed, audit.EventValuesExported},
 	},
@@ -3331,6 +3337,7 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
 			StoreSnapshotsEntries: true, StoreSnapshotsChanges: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true,
 		},
 		auditedNone: true,
 	},
@@ -4154,7 +4161,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
+			StoreKeysActiveTokenKeyForReceipt: true,
+			StoreSnapshotsLatest:              true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
 			StoreSnapshotsAtRevision: true, StorePinsGetForWorkload: true,
 			// A workload bound to a file target (#164) is delivered that
 			// target's key selection only.
@@ -4171,8 +4179,9 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreAuditClaimOfflineRecord: true,
-			StoreAuditTenantInsert:       true,
+			StoreKeysActiveTokenKeyForReceipt: true,
+			StoreAuditClaimOfflineRecord:      true,
+			StoreAuditTenantInsert:            true,
 		},
 		events: []audit.EventType{
 			audit.EventOfflineRecordsReconciled, audit.EventValueRevealed,
@@ -4654,7 +4663,7 @@ var operationTable = map[Operation]opSpec{
 	OpAdapterConfigure: {
 		class: ClassTenant, level: domain.LevelProject, postGrantForbidden: true,
 		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAdaptersCreate: true, StoreAdaptersAddTarget: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersUpdateTarget: true, StoreAdaptersMoveTarget: true, StoreAdaptersMoveOrigin: true, StoreAdaptersCancelMove: true, StoreAdaptersReplaceMoveTarget: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersMove: true, StoreAdaptersConfiguration: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeyIDs: true, StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersEnvironments: true, StoreCatalogueList: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreAdaptersCreate: true, StoreAdaptersAddTarget: true, StoreAdaptersBeginConfigureEffect: true, StoreAdaptersFinishConfigureEffect: true, StoreAdaptersUpdateTarget: true, StoreAdaptersMoveTarget: true, StoreAdaptersMoveOrigin: true, StoreAdaptersCancelMove: true, StoreAdaptersReplaceMoveTarget: true, StoreAdaptersReplaceMoveOrigin: true, StoreAdaptersMove: true, StoreAdaptersConfiguration: true, StoreAdaptersConfigurationForUpdate: true, StoreAdaptersTarget: true, StoreAdaptersTargetKeyIDs: true, StoreAdaptersTargetKeys: true, StoreAdaptersPauseTarget: true, StoreAdaptersEnvironments: true, StoreCatalogueList: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventAdapterConfigure, audit.EventAdapterSyncRequested, audit.EventAdapterSuperseded, audit.EventAdapterScrub, audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome},
 	},
 	OpAdapterCredentialSet: {

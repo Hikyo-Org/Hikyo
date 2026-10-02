@@ -486,6 +486,13 @@ func runProtectedEnvironmentCapsTheWindow(t *testing.T, db *store.DB) {
 	if _, err := values.Get(ctx, service.Bearer(token), scope, ceremonySecretA, true); err != nil {
 		t.Fatalf("reveal under a protected ceremony: %v", err)
 	}
+	state, err = reveal.Window(ctx, service.Bearer(token), scope)
+	if err != nil {
+		t.Fatalf("reveal window (after consumption): %v", err)
+	}
+	if state.Live {
+		t.Fatalf("consumed single-decision window remained live: %+v", state)
+	}
 }
 
 func TestCopySourceTakesTheCeremony(t *testing.T) {

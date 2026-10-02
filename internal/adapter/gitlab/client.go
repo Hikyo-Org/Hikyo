@@ -165,18 +165,7 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 // CanonicalOrigin accepts an HTTPS GitLab base URL, optionally under a
 // relative URL root, and returns it without a trailing slash or /api/v4.
 func CanonicalOrigin(raw string) (string, error) {
-	if raw == "" {
-		raw = "https://gitlab.com"
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("gitlab: parse origin: %w", err)
-	}
-	path := strings.TrimSuffix(strings.TrimSuffix(u.EscapedPath(), "/"), apiPrefix)
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || strings.Contains(path, "..") {
-		return "", errors.New("gitlab: origin must be an HTTPS GitLab base URL without credentials, query, or fragment")
-	}
-	return "https://" + strings.ToLower(u.Host) + path, nil
+	return adapter.CanonicalOrigin(adapter.GitLabProvider, raw)
 }
 
 // ValidatePin checks an SPKI pin's shape: base64(sha256(SubjectPublicKeyInfo)).
@@ -328,7 +317,7 @@ func (c *Client) do(ctx context.Context, op operation, path string, body any, ou
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("gitlab: provider request: %w", err)
+		return 0, fmt.Errorf("gitlab: provider request: %w", adapter.SafeTransportError(err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseCap+1))

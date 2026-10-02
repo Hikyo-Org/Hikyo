@@ -218,6 +218,19 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 		return err
 	}
 	if cfg != nil {
+		// A human session must agree with the repository's instance declaration,
+		// just like a machine credential. Reject before disclosure or reauth I/O.
+		if strings.TrimSpace(cfg.Instance) != "" {
+			cfgOrigin, err := CanonicalOrigin(cfg.Instance)
+			if err != nil {
+				return err
+			}
+			if session.Origin != cfgOrigin {
+				return failf(ExitUsage,
+					"instance %q resolves to origin %s but %s names %s; refusing rather than picking one",
+					session.Instance, session.Origin, composeConfigName, cfgOrigin)
+			}
+		}
 		for _, d := range []struct {
 			dim Dimension
 			val string
@@ -416,9 +429,16 @@ func deliveredRows(keys []apigen.DeliveredKey) []compose.SnapshotRow {
 		if k.Value == nil {
 			continue
 		}
-		rows = append(rows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value})
+		rows = append(rows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value, Receipt: deliveryReceipt(k)})
 	}
 	return rows
+}
+
+func deliveryReceipt(key apigen.DeliveredKey) string {
+	if key.SnapshotReceipt == nil {
+		return ""
+	}
+	return *key.SnapshotReceipt
 }
 
 // rowNames returns the snapshot row names (for the loader-control check).
@@ -444,11 +464,9 @@ func canonicalRows(rows []compose.SnapshotRow) []byte {
 	return data
 }
 
-// sanitizedEnviron returns the process environment with the workload credential
-// (HIKYO_TOKEN) removed: it is the ONLY credential-transport env var (the token
-// file is a flag, not an env var), and it must never reach the child or any
-// subprocess the CLI spawns (finding 1). Building the child env from this — not
-// os.Environ() — means the credential was never present, not stripped after.
+// sanitizedEnviron returns the process environment without Hikyo's control
+// namespace. That namespace includes bearer credentials, database URLs, and
+// root encryption keys; none may reach a workload or Docker subprocess.
 //
 // CREDENTIALS_DIRECTORY is deliberately NOT stripped (R1-1, accepted): it is a
 // directory PATH, not a secret, and access to the files under it is per-open and
@@ -459,7 +477,8 @@ func sanitizedEnviron() []string {
 	src := os.Environ()
 	out := make([]string, 0, len(src))
 	for _, e := range src {
-		if strings.HasPrefix(e, "HIKYO_TOKEN=") {
+		name, _, _ := strings.Cut(e, "=")
+		if strings.HasPrefix(strings.ToUpper(name), "HIKYO_") {
 			continue
 		}
 		out = append(out, e)

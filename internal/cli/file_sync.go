@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -217,7 +216,8 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 		return s.offline(ctx, ios, dest, err)
 	}
 	present, presentStamp := "", ""
-	if stored := s.loadCursor(); stored != nil && stored.Credential == credentialFingerprint(s.token) && stored.ConfigDigest == s.configDigest() {
+	snapshotFresh := s.snapshotFreshForCursor(ios.now())
+	if stored := s.loadCursor(); snapshotFresh && stored != nil && stored.Credential == credentialFingerprint(s.token) && stored.ConfigDigest == s.configDigest() {
 		if st, ok, err := dest.Intact(s.keys, s.cfg.Target, s.policy, s.fileNames()); err == nil && ok && st.Stamp == stored.Stamp {
 			present = stored.Cursor
 			presentStamp = st.Stamp
@@ -242,7 +242,7 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 	for _, k := range resp.Keys {
 		rows = append(rows, filesync.Row{KeyID: k.KeyId, Name: k.Name, Classification: string(k.Classification), Value: k.Value})
 		if k.Value != nil {
-			snapshotRows = append(snapshotRows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value})
+			snapshotRows = append(snapshotRows, compose.SnapshotRow{Name: k.Name, KeyID: k.KeyId, Classification: string(k.Classification), Value: *k.Value, Receipt: deliveryReceipt(k)})
 		}
 	}
 	res, err := s.publish(ctx, dest, rows)
@@ -277,6 +277,44 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 	s.printResult(ios, res, fmt.Sprintf("revision %d", resp.Revision))
 	s.report(ctx, ios, "applied", resp.Revision, generation, res.Stamp)
 	return fileSyncApplied, nil
+}
+
+// snapshotFreshForCursor keeps the current-response shortcut from aging the
+// offline recovery cache out while live contact continues. A missing, invalid,
+// expired, or nearly expired snapshot forces one full authorized delivery.
+func (s *fileSyncSession) snapshotFreshForCursor(now time.Time) bool {
+	if !s.cfg.Snapshot.OfflineServe {
+		return true
+	}
+	binding, err := s.snapshotBinding()
+	if err != nil {
+		return false
+	}
+	_, stored, err := compose.LoadSnapshot(s.keys, binding, now, s.cfg.SnapshotMaxAge())
+	if err != nil {
+		return false
+	}
+	aad, err := stored.AAD()
+	if err != nil {
+		return false
+	}
+	issued, err := time.Parse(time.RFC3339, aad.IssuedAt)
+	if err != nil {
+		return false
+	}
+	expires, err := time.Parse(time.RFC3339, aad.ExpiresAt)
+	if err != nil {
+		return false
+	}
+	effective := expires
+	if capped := issued.Add(s.cfg.SnapshotMaxAge()); capped.Before(effective) {
+		effective = capped
+	}
+	refreshMargin := s.cfg.SnapshotMaxAge() / 10
+	if refreshMargin > time.Hour {
+		refreshMargin = time.Hour
+	}
+	return now.Add(refreshMargin).Before(effective)
 }
 
 // publish renders every file and commits them as one generation. Every
@@ -418,8 +456,9 @@ func (s *fileSyncSession) offline(ctx context.Context, ios IO, dest *filesync.De
 		}
 		records = append(records, compose.OfflineRecord{
 			RecordID: id, KeyID: r.KeyID, KeyName: r.Name, Classification: r.Classification,
-			OccurredAt: ios.now().UTC().Format(time.RFC3339), CredentialID: aad.CredentialID,
+			OccurredAt: ios.now().UTC().Format(time.RFC3339Nano), CredentialID: aad.CredentialID,
 			Generation: stamp, ServedFrom: aad.IssuedAt,
+			SnapshotReceipt: r.Receipt,
 		})
 	}
 	if err := compose.Append(s.stateDir, records); err != nil {
@@ -514,21 +553,33 @@ func fileSyncDoctor(ios IO, f Format, cfg *filesync.Config, policy filesync.Poli
 		}
 	}
 	s := &fileSyncSession{cfg: cfg, policy: policy, stateDir: stateDir}
-	if c := s.loadCursor(); c != nil {
+	c := s.loadCursor()
+	if c != nil {
 		add("ok", "applied", fmt.Sprintf("revision %d (target generation %d) at %s", c.Revision, c.TargetGeneration, c.AppliedAt))
 	}
-	if fi, err := os.Stat(filepath.Join(stateDir, "snapshot.bin")); err == nil {
-		age := ios.now().Sub(fi.ModTime()).Round(time.Second)
-		switch {
-		case !cfg.Snapshot.OfflineServe:
-			add("ok", "snapshot", fmt.Sprintf("saved %s ago; offline serve is off", age))
-		case age > cfg.SnapshotMaxAge():
-			add("warn", "snapshot", fmt.Sprintf("saved %s ago, past the %s maximum: offline serve will refuse", age, cfg.SnapshotMaxAge()))
-		default:
-			add("ok", "snapshot", fmt.Sprintf("saved %s ago", age))
+	if cfg.Snapshot.OfflineServe {
+		if c == nil || c.Credential == "" {
+			add("warn", "snapshot", "no recorded delivery credential; render once to establish an authenticated offline snapshot")
+		} else {
+			binding, err := crypto.NewSnapshotBinding(crypto.SnapshotBindingScope{
+				StorageDir: stateDir, InstanceOrigin: cfg.Instance,
+				OrgID: cfg.Org, ProjectID: cfg.Project, EnvironmentID: cfg.Environment,
+				CredentialFingerprint: c.Credential, TargetNames: []string{fileSyncSnapshotTarget + ":" + cfg.Target},
+			})
+			if err == nil {
+				var keys *crypto.LocalKeys
+				keys, err = crypto.LoadOrCreateLocalKey(stateDir)
+				if err == nil {
+					_, binding, err = compose.LoadSnapshot(keys, binding, ios.now(), cfg.SnapshotMaxAge())
+				}
+			}
+			if err != nil {
+				add("warn", "snapshot", "offline serve will refuse: "+err.Error())
+			} else {
+				aad, _ := binding.AAD() // LoadSnapshot validated this authenticated header.
+				add("ok", "snapshot", "authenticated offline snapshot issued at "+aad.IssuedAt)
+			}
 		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		add("error", "snapshot", err.Error())
 	}
 	report := composeDoctorReport{Status: "ok", Findings: findings}
 	rows := make([][]string, 0, len(findings))

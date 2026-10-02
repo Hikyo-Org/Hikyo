@@ -51,7 +51,7 @@ export const LoginRefused: Story = {
     await expect(canvas.getByRole('alert')).toHaveTextContent(/refused this sign-in/i);
     await expect(canvas.getByRole('link', { name: /return to sign in/i })).toHaveAttribute(
       'href',
-      '/login',
+      RETURN_TO,
     );
   },
 };

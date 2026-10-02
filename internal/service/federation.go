@@ -1002,6 +1002,9 @@ func checkRefusedAudiences(refused []string) error {
 // different questions: creation refuses a binding that could never be safe,
 // validation refuses a token that is not what the binding named.
 func checkBindingAgainstIssuer(issuer authz.FederationIssuer, audience, claimsJSON string) error {
+	if issuer.Type == domain.IssuerForgejo {
+		return fmt.Errorf("%w: Forgejo Actions tokens do not expose an immutable repository identity", ErrBindingImmutableID)
+	}
 	for _, refused := range issuer.RefusedAudiences {
 		if audience == refused {
 			return fmt.Errorf("%w (%q)", ErrBindingAudience, refused)

@@ -106,5 +106,23 @@ it('announces a successful OIDC login to other tabs before returning home', asyn
     message: { type: 'session-changed', sender: expect.any(String) },
     closed: true,
   });
+  expect(globalThis.location.replace).toHaveBeenCalledWith('/');
+  await unmount();
+});
+
+it('restores the transaction-bound workspace approval after OIDC login', async () => {
+  globalThis.sessionStorage.setItem(
+    'hikyo-oidc-return:workspace-login',
+    '/workspace/approve?state=workspace-state',
+  );
+  globalThis.history.replaceState(
+    {},
+    '',
+    '/auth/oidc/done?state=workspace-login&purpose=login',
+  );
+  const { unmount } = await renderForm(<OIDCDone />);
+  expect(globalThis.location.replace).toHaveBeenCalledWith(
+    '/workspace/approve?state=workspace-state',
+  );
   await unmount();
 });

@@ -144,6 +144,7 @@ func TestOfflineRecordReconciliation(t *testing.T) {
 
 func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 	identityFixtures(t, db)
+	seedDeliveryCatalogue(t, db)
 	ident := identitySvc(db)
 	sa, err := ident.CreateServiceAccount(t.Context(), service.LocalPrincipal(identAdmin),
 		prjScope(), "offline-workload", domain.ClassWorkload)
@@ -159,17 +160,65 @@ func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	grantMachineRead(t, db, sa.Principal, envA1)
+	now := time.Date(2026, 8, 19, 12, 0, 0, 123456789, time.UTC)
+	del := deliverySvc(t, db)
+	del.Now = func() time.Time { return now.Add(-time.Hour) }
+	fetched, err := del.Fetch(t.Context(), served.Value, scopeEnv(orgA, prjA1, envA1), "", service.FetchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var delivered service.DeliveredKey
+	for _, key := range fetched.Keys {
+		if key.Name == "DATABASE_URL" {
+			delivered = key
+		}
+		if key.Value == nil && key.SnapshotReceipt != nil {
+			t.Fatal("presence-only secret received a disclosure receipt")
+		}
+	}
+	if delivered.Value == nil || delivered.SnapshotReceipt == nil {
+		t.Fatal("delivered config omitted receipt")
+	}
 	if err := ident.RevokeCredential(t.Context(), service.LocalPrincipal(identAdmin), prjScope(), sa.ID, served.Credential.ID); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	record := service.OfflineRecord{
-		RecordID: "offline-001", KeyID: "key_fed_pw", KeyName: "DATABASE_PASSWORD",
-		Classification: string(schema.Secret), OccurredAt: now.Add(-time.Minute),
+		RecordID: "offline-001", KeyID: delivered.KeyID, KeyName: delivered.Name,
+		Classification: delivered.Classification, OccurredAt: now.Add(-time.Minute),
 		CredentialID: served.Credential.ID, Generation: "v1-0123456789abcdef0123456789abcdef",
-		ServedFrom: now.Add(-time.Hour),
+		ServedFrom:      now.Add(-time.Hour),
+		SnapshotReceipt: *delivered.SnapshotReceipt,
 	}
-	del := deliverySvc(t, db)
+	del.Now = func() time.Time { return now }
+	for name, mutate := range map[string]func(*service.OfflineRecord){
+		"unsigned legacy": func(r *service.OfflineRecord) { r.SnapshotReceipt = "" },
+		"hidden secret": func(r *service.OfflineRecord) {
+			r.KeyID = "key_fed_pw"
+			r.KeyName = "DATABASE_PASSWORD"
+			r.Classification = string(schema.Secret)
+		},
+		"unknown key":        func(r *service.OfflineRecord) { r.KeyID = "forged-key" },
+		"wrong name":         func(r *service.OfflineRecord) { r.KeyName = "FORGED" },
+		"wrong class":        func(r *service.OfflineRecord) { r.Classification = string(schema.Secret) },
+		"sibling credential": func(r *service.OfflineRecord) { r.CredentialID = presenter.Credential.ID },
+		"issuance":           func(r *service.OfflineRecord) { r.ServedFrom = r.ServedFrom.Add(time.Second) },
+		"before issuance":    func(r *service.OfflineRecord) { r.OccurredAt = r.ServedFrom.Add(-time.Second) },
+		"after expiry":       func(r *service.OfflineRecord) { r.OccurredAt = fetched.SnapshotExpiresAt.Add(time.Second) },
+		"future":             func(r *service.OfflineRecord) { r.OccurredAt = now.Add(time.Minute) },
+		"tampered receipt":   func(r *service.OfflineRecord) { r.SnapshotReceipt += "A" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := record
+			bad.RecordID = "forged-record"
+			mutate(&bad)
+			if _, err := del.ReconcileOfflineRecords(t.Context(), presenter.Value, scopeEnv(orgA, prjA1, envA1), []service.OfflineRecord{record, bad}); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("forged batch was not refused: %v", err)
+			}
+			if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='disclosure.value_revealed' AND origin='offline-reconciled'`); got != 0 {
+				t.Fatalf("forged batch committed %d disclosures", got)
+			}
+		})
+	}
 	first, err := del.ReconcileOfflineRecords(t.Context(), presenter.Value,
 		scopeEnv(orgA, prjA1, envA1), []service.OfflineRecord{record})
 	if err != nil || first.Accepted != 1 || first.Duplicates != 0 {
@@ -187,6 +236,9 @@ func runOfflineRecordReconciliation(t *testing.T, db *store.DB) {
 	if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events
 		WHERE type = 'disclosure.value_revealed' AND origin = 'offline-reconciled' AND `+asserted); got != 1 {
 		t.Fatalf("offline disclosure events = %d, want 1", got)
+	}
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='disclosure.value_revealed' AND origin='offline-reconciled' AND payload LIKE '%"receipt_verified":true%' AND payload LIKE '%"snapshot_commitment"%' AND payload LIKE '%"revision"%'`); got != 1 {
+		t.Fatal("authenticated snapshot evidence was not retained in audit metadata")
 	}
 }
 
@@ -1038,23 +1090,23 @@ func TestDeliveryPinnedCurrentBecomingHistoricalInvalidatesCursor(t *testing.T) 
 
 // runDeliveryPinnedCurrentBecomingHistorical is the #64 P1: a pin that WAS
 // current, whose revision is then overtaken by a later publish, changes what the
-// delivery discloses without moving any of the content/authority cursor
-// components — so a content-only cursor answers "current" for a state that now
-// discloses strictly less.
+// delivery discloses. A config-only fetch isolates the historical cursor
+// component because its authorized manifest remains identical.
 //
 // The fixture is built so EVERY other component is held across the transition:
-//   - the pinned snapshot (revision 1) is immutable, so the change token, which
-//     is computed over its plaintext, does not move — asserted, not assumed;
+//   - the pinned snapshot (revision 1) is immutable, so the config-only manifest
+//     and change token do not move, asserted rather than assumed;
 //   - the workload's grants are seeded BEFORE the first fetch, so its authorized
-//     delivery projection and authorization revision are identical on both sides;
+//     grant revision is identical on both sides;
 //   - no pin is created, reassigned or released across the transition, so the pin
-//     generation is identical; the mode is `full` throughout.
+//     generation is identical; each fetch keeps its original mode.
 //
 // The one thing that moves is the effective secret-value authority: pinned-current
 // discloses under `reveal` (which the workload holds), pinned-non-current under
 // `reveal-history` (which it does not), so the secret goes from delivered to
-// presence-only. Only the pinned-historical-revision cursor component catches it;
-// before the fix the stale cursor still matched and the fetch answered "current".
+// presence-only. That changes the full manifest, which must not carry hidden
+// secret values or occurrences. The separate config-only cursor must also move
+// despite its unchanged manifest, proving historical-transition binding.
 func runDeliveryPinnedCurrentBecomingHistorical(t *testing.T, db *store.DB) {
 	identityFixtures(t, db)
 	seedDeliveryCatalogue(t, db) // env_a1 at revision 1, both keys
@@ -1081,7 +1133,7 @@ func runDeliveryPinnedCurrentBecomingHistorical(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	// The workload holds `read` and `reveal` — NOT `reveal-history` — and both
-	// are seeded now, before any fetch, so its projection never moves across the
+	// are seeded now, before any fetch, so its grants never move across the
 	// transition. A `reveal`-holder is exactly the caller that loses the secret
 	// when the pin turns historical.
 	grantMachineRead(t, db, sa.Principal, envA1)
@@ -1110,6 +1162,15 @@ func runDeliveryPinnedCurrentBecomingHistorical(t *testing.T, db *store.DB) {
 	if !repeat.Current {
 		t.Fatal("the cursor a pinned-current fetch just returned was not current")
 	}
+	configOpts := service.FetchOptions{Projection: delivery.ModeConfigOnly}
+	configPin, err := del.Fetch(t.Context(), minted.Value, env, "", configOpts)
+	if err != nil {
+		t.Fatalf("pinned-current config-only fetch: %v", err)
+	}
+	configRepeat, err := del.Fetch(t.Context(), minted.Value, env, configPin.Cursor, configOpts)
+	if err != nil || !configRepeat.Current {
+		t.Fatalf("pinned-current config-only repeat: current=%v, err=%v", configRepeat.Current, err)
+	}
 
 	// A later publish makes revision 1 NON-CURRENT. The pinned snapshot is
 	// untouched, so nothing the workload is served under revision 1 changed —
@@ -1136,10 +1197,25 @@ func runDeliveryPinnedCurrentBecomingHistorical(t *testing.T, db *store.DB) {
 	if v := deliveredByName(afterOvertake.Keys)["DATABASE_PASSWORD"].Value; v != nil {
 		t.Errorf("the secret still crossed under `reveal` on a pinned NON-CURRENT delivery: %q — it requires reveal-history", *v)
 	}
-	// The change token did NOT move: the pinned snapshot's content is immutable,
-	// so this proves the cursor moved on the historical transition, not because
-	// the fixture changed the delivered content.
-	if afterOvertake.ChangeToken != currentPin.ChangeToken {
-		t.Fatal("the change token moved across the transition: the fixture changed content, so it is not proving the HISTORICAL transition invalidates")
+	// The full manifest loses secret plaintext and its occurrence, so its
+	// commitment changes even though the underlying pinned snapshot is fixed.
+	if afterOvertake.ChangeToken == currentPin.ChangeToken {
+		t.Fatal("losing secret disclosure authority left the full manifest commitment unchanged")
+	}
+	configHistorical, err := del.Fetch(t.Context(), minted.Value, env, configPin.Cursor, configOpts)
+	if err != nil {
+		t.Fatalf("historical config-only fetch: %v", err)
+	}
+	if configHistorical.Current || configHistorical.Cursor == configPin.Cursor {
+		t.Fatal("the historical transition left the config-only cursor current")
+	}
+	if configHistorical.ChangeToken != configPin.ChangeToken {
+		t.Fatal("the config-only manifest changed; the fixture did not isolate historical cursor binding")
+	}
+	if v := valueOf(configHistorical.Keys, "DATABASE_URL"); v == nil || *v != "postgres://dev" {
+		t.Fatalf("historical config-only fetch did not retain pinned config: %v", v)
+	}
+	if _, present := deliveredByName(configHistorical.Keys)["DATABASE_PASSWORD"]; present {
+		t.Fatal("config-only historical fetch disclosed secret presence")
 	}
 }

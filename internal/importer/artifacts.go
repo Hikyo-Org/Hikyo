@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -26,10 +28,13 @@ import (
 // written by a newer build and silently truncated by an older one would replay
 // a migration under choices nobody made.
 
-// FormatVersion is the artifact format version carried by the three
-// importer-owned artifacts. The definitions bundle owns its version in
-// internal/definitions.
+// FormatVersion is the mapping-template version. Run manifests and protected
+// values files use RunArtifactFormatVersion; definitions owns its own version.
 const FormatVersion = 1
+
+// RunArtifactFormatVersion v2 blinds values commitments with a private key
+// carried only in the protected values artifact. Mapping templates stay v1.
+const RunArtifactFormatVersion = 2
 
 // ConnectorContractVersion is the connector-behaviour version. It advances when
 // a connector's mapping changes — a replay recorded against a different mapping
@@ -177,8 +182,9 @@ type ManifestOccurrence struct {
 // same (project, environment) could be mispaired — run B's values imported under
 // run A's manifest, or run A's completion marker stamped for run B — because
 // project and environment alone do not distinguish runs. The digest is over the
-// canonical values-file serialization, so it is deterministic: a wizard session
-// and a flag run with coinciding choices produce the same digest.
+// canonical values-file serialization, authenticated with the private random
+// key stored only in that values file. Separate runs have different commitments
+// even when every imported value and choice is identical.
 type ValuesDigest struct {
 	Environment string `json:"environment"`
 	Digest      string `json:"digest"`
@@ -226,6 +232,7 @@ type ValuesEntry struct {
 // `definitions apply` creates the environment.
 type ValuesFile struct {
 	FormatVersion   int           `json:"format_version"`
+	CommitmentKey   string        `json:"commitment_key,omitempty"`
 	Project         string        `json:"project"`
 	Environment     string        `json:"environment,omitempty"`
 	EnvironmentName string        `json:"environment_name,omitempty"`
@@ -255,6 +262,53 @@ func Encode(v any) ([]byte, error) {
 func Digest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// SourceFileReference is informational provenance, never an integrity proof.
+// Plaintext exports must not publish a password-guessing oracle. Only fully
+// encrypted SOPS input retains its ciphertext digest; partial SOPS is private.
+func SourceFileReference(source string, data []byte, records []Record) string {
+	if source == sopsSource {
+		for _, record := range records {
+			if record.PlaintextHint {
+				return "file-export"
+			}
+		}
+		return Digest(data)
+	}
+	return "file-export"
+}
+
+// NewValuesCommitmentKey creates private blinding material for one values file.
+// Never copy this key into a committable manifest or template.
+func NewValuesCommitmentKey() (string, error) {
+	key, err := crypto.NewImportCommitmentKey()
+	if err != nil {
+		return "", fmt.Errorf("import: generate private values commitment key: %w", err)
+	}
+	defer clear(key)
+	return hex.EncodeToString(key), nil
+}
+
+// ValuesCommitment binds the canonical values content without exposing a
+// public offline password oracle. Its key exists only in the secret file.
+func ValuesCommitment(values ValuesFile) (string, error) {
+	key, err := hex.DecodeString(values.CommitmentKey)
+	if err != nil || len(key) != sha256.Size {
+		return "", failure("import", CodeMalformed, "values file", "a v2 values file needs a 256-bit private commitment_key; regenerate the import artifacts")
+	}
+	defer clear(key)
+	values.CommitmentKey = ""
+	body, err := Encode(values)
+	if err != nil {
+		return "", err
+	}
+	defer clear(body)
+	digest, err := crypto.ImportValuesCommitment(key, body)
+	if err != nil {
+		return "", err
+	}
+	return "hmac-sha256:" + hex.EncodeToString(digest), nil
 }
 
 // ParseTemplate reads a mapping template strictly.
@@ -327,8 +381,17 @@ func ParseManifest(raw []byte) (Manifest, error) {
 	if err := strictDecode(raw, "run-manifest.json", &m); err != nil {
 		return Manifest{}, err
 	}
-	if err := checkVersions("run-manifest.json", m.FormatVersion, m.ConnectorContractVersion); err != nil {
+	if m.FormatVersion != RunArtifactFormatVersion {
+		return Manifest{}, failure("import", CodeVersion, "run-manifest.json", "format_version %d is not this build's %d: version mismatch; regenerate the import artifacts to replace unkeyed values commitments", m.FormatVersion, RunArtifactFormatVersion)
+	}
+	if err := checkVersions("run-manifest.json", FormatVersion, m.ConnectorContractVersion); err != nil {
 		return Manifest{}, err
+	}
+	for _, digest := range m.ValuesDigests {
+		decoded, err := hex.DecodeString(strings.TrimPrefix(digest.Digest, "hmac-sha256:"))
+		if !strings.HasPrefix(digest.Digest, "hmac-sha256:") || err != nil || len(decoded) != sha256.Size {
+			return Manifest{}, failure("import", CodeMalformed, "run-manifest.json", "values commitments must use hmac-sha256; regenerate the import artifacts")
+		}
 	}
 	if m.Target.Project == "" {
 		return Manifest{}, failure("import", CodeMalformed, "run-manifest.json",
@@ -361,9 +424,12 @@ func ParseValuesFile(raw []byte) (ValuesFile, error) {
 	if err := strictDecode(raw, "values file", &v); err != nil {
 		return ValuesFile{}, err
 	}
-	if v.FormatVersion != FormatVersion {
+	if v.FormatVersion != RunArtifactFormatVersion {
 		return ValuesFile{}, failure("import", CodeVersion, "values file",
-			"format version %d is not this build's %d: version mismatch", v.FormatVersion, FormatVersion)
+			"format version %d is not this build's %d: version mismatch; regenerate the import artifacts with private values commitments", v.FormatVersion, RunArtifactFormatVersion)
+	}
+	if _, err := ValuesCommitment(v); err != nil {
+		return ValuesFile{}, err
 	}
 	if v.Project == "" {
 		return ValuesFile{}, failure("import", CodeMalformed, "values file",

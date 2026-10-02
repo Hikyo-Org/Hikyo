@@ -37,6 +37,17 @@ function sentinelOwner(state: unknown): number | null {
   return typeof owner === 'number' ? owner : null;
 }
 
+function sameHistoryState(first: unknown, second: unknown): boolean {
+  if (first === second) return true;
+  try {
+    return JSON.stringify(first) === JSON.stringify(second);
+  } catch {
+    // Structured-cloneable state can contain cycles/BigInts. If we cannot
+    // prove its identity, recreate the protected predecessor conservatively.
+    return false;
+  }
+}
+
 export function useNavigationGuard(active: boolean, onAttempt: () => void) {
   const attempt = useRef(onAttempt);
   useEffect(() => {
@@ -48,6 +59,8 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
     }
     const id = nextGuardId++;
     const sentinel: Sentinel = { hikyoNavigationGuard: id };
+    const protectedURL = window.location.href;
+    const protectedState: unknown = history.state;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
@@ -66,22 +79,28 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
         // A finished guard's sentinel, left under the cursor because its
         // `history.back()` consumed ours instead. Adopt it rather than
         // surface a dismissal nobody attempted.
-        history.replaceState(sentinel, '', window.location.href);
+        history.replaceState(sentinel, '', protectedURL);
         return;
       }
       // The route, or an older live guard's sentinel: a real Back press.
-      history.pushState(sentinel, '', window.location.href);
+      // A multi-entry traversal can skip the protected predecessor. Recreate
+      // that route entry before the sentinel, so finishing consumes only our
+      // sentinel rather than navigating to the older route underneath it.
+      const protectedPredecessor = window.location.href === protectedURL &&
+        (owner !== null && live.includes(owner) || sameHistoryState(event.state, protectedState));
+      if (!protectedPredecessor) history.pushState(protectedState, '', protectedURL);
+      history.pushState(sentinel, '', protectedURL);
       attempt.current();
     };
     live.push(id);
-    history.pushState(sentinel, '', window.location.href);
+    history.pushState(sentinel, '', protectedURL);
     window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('popstate', onPopState);
+    window.addEventListener('popstate', onPopState, { capture: true });
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('popstate', onPopState, { capture: true });
       live.splice(live.indexOf(id), 1);
-      history.back();
+      if (sentinelOwner(history.state) === id) history.back();
     };
   }, [active]);
 }

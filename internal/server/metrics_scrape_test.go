@@ -187,8 +187,9 @@ func TestMCPMetricsAndAccessLogsUseOnlyClosedLabels(t *testing.T) {
 	}
 
 	operational := httptest.NewRecorder()
-	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational,
-		httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	metricsRequest := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRequest.RemoteAddr = "127.0.0.1:1234"
+	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational, metricsRequest)
 	body := operational.Body.String()
 	mustContain(t, body, "# TYPE "+server.MetricMCPRequestsTotal+" counter")
 	mustContain(t, body, "# TYPE "+server.MetricMCPRequestsInFlight+" gauge")
@@ -219,12 +220,47 @@ func TestMCPMetricsRecoverAndRecordPanicsWithoutLoggingPanicValue(t *testing.T) 
 	}
 
 	operational := httptest.NewRecorder()
-	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational,
-		httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	metricsRequest := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRequest.RemoteAddr = "127.0.0.1:1234"
+	server.NewOperational(nil, stubRetentionHealth{}, metrics).ServeHTTP(operational, metricsRequest)
 	body := operational.Body.String()
 	mustContain(t, body, server.MetricMCPRequestsTotal+`{method="tools/call",status="5xx",tool="hikyo_list_definitions"} 1`)
 	if strings.Contains(logs.String(), "tenant-secret-value") {
 		t.Fatal("MCP panic value reached the access log")
+	}
+}
+
+func TestOperationalMetricsRefuseNonLoopbackClients(t *testing.T) {
+	handler := server.NewOperational(nil, stubRetentionHealth{}, server.NewMetrics(nil))
+	for _, tc := range []struct {
+		peer string
+		want int
+	}{
+		{"127.0.0.1:4321", http.StatusOK},
+		{"[::1]:4321", http.StatusOK},
+		{"192.0.2.25:4321", http.StatusForbidden},
+		{"[2001:db8::25]:4321", http.StatusForbidden},
+	} {
+		t.Run(tc.peer, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			req.RemoteAddr = tc.peer
+			// Scrape authority is the actual peer, never a forwarded header.
+			req.Header.Set("X-Forwarded-For", "127.0.0.1")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("metrics = %d, want %d", rec.Code, tc.want)
+			}
+		})
+	}
+
+	// Node-originated liveness remains available on the operational listener.
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.RemoteAddr = "192.0.2.25:4321"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("non-loopback health = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 

@@ -88,7 +88,7 @@ func (f *fixture) set() string {
 	}
 	var out []string
 	for _, e := range entries {
-		if e.Name() == completeName {
+		if e.Name() == completeName || e.Name() == previousName {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -392,6 +392,35 @@ func TestPublishCancelledBeforeCommit(t *testing.T) {
 		t.Fatal("cancelled publication committed")
 	}
 	assertOnlyGenerations(t, f.dir, old.Generation)
+}
+
+func TestCancelledPolicyChangePreservesSharedGenerationAccess(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.pol.Mode = 0o640
+	f.mustPublish(file("a", "old"))
+	f.pol.Mode = 0o600
+
+	d, err := OpenDestination(f.dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := d.Publish(ctx, f.plan(file("a", "new")), nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	fi, err := os.Stat(filepath.Join(f.dir, genDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o711 {
+		t.Fatalf("shared generation directory mode = %o, want 711", got)
+	}
+	if f.read("a") != "old" {
+		t.Fatal("cancelled publication changed the committed generation")
+	}
 }
 
 func TestConcurrentClientRefused(t *testing.T) {

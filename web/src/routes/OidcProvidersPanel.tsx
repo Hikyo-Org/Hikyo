@@ -142,7 +142,7 @@ export function OidcProvidersPanel() {
               <Button
                 type="button"
                 aria-label={`Reconfigure ${provider.display_name}`}
-                disabled={refreshingAfterConflict}
+                disabled={refreshingAfterConflict || editor !== null || deleting !== null}
                 onClick={() => openReconfigure(provider)}
               >
                 Reconfigure
@@ -151,7 +151,7 @@ export function OidcProvidersPanel() {
                 type="button"
                 variant="danger"
                 aria-label={`Delete ${provider.display_name}`}
-                disabled={refreshingAfterConflict}
+                disabled={refreshingAfterConflict || editor !== null || deleting !== null}
                 onClick={() => {
                   feedback.clear();
                   setDeleting(provider);
@@ -183,6 +183,7 @@ export function OidcProvidersPanel() {
 
       {editor !== null && providers.isSuccess ? (
         <ProviderEditor
+          key={editor.kind === 'create' ? 'create' : `reconfigure:${editor.provider.slug}`}
           target={editor}
           existing={providers.data.providers}
           onCancel={() => {
@@ -212,6 +213,9 @@ export function OidcProvidersPanel() {
           provider={deleting}
           onCancel={() => setDeleting(null)}
           onDeleted={(name) => {
+            if (editor?.kind === 'reconfigure' && editor.provider.slug === deleting.slug) {
+              setEditor(null);
+            }
             setDeleting(null);
             feedback.ok(`Deleted ${name}. Its sign-in option is gone and every session that used it has ended.`);
           }}
@@ -272,7 +276,7 @@ function ProviderEditor({
     const verb = original === null ? 'Configured' : 'Reconfigured';
     const describe = `${verb} ${result.input.displayName}. ${result.input.enabled ? 'It is advertised on the sign-in page.' : 'It is disabled and not advertised.'}`;
     setBusy(true);
-    void putOidcProvider(result.slug, result.input).then(
+    void putOidcProvider(result.slug, result.input, original?.row_version).then(
       () => {
         // The parent unmounts this editor on save, dropping the draft (and its
         // secret) from state; no local reset is needed on the success path.

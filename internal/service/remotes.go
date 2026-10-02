@@ -661,17 +661,23 @@ func (s *Remotes) RemoveRemote(ctx context.Context, actor Actor, name string) er
 // configured remote, for the dynamic `connect-src` extension. A closed list
 // read from the entries themselves, never a wildcard.
 //
-// It takes NO ACTOR and mints no proof, deliberately. Its only consumer is the
-// CSP header on the pre-authentication document response, where no caller
-// exists to authorize — and the value it returns is one the response then
-// publishes to every browser that loads the SPA. The knowing deviation is
-// recorded on the resolver method; see internal/store/authn/workspace.go.
-func (s *Remotes) RemoteOrigins(ctx context.Context) ([]string, error) {
+// Its document caller must authenticate and hold instance-directory access.
+// This metadata-only read never originates a remote connection.
+func (s *Remotes) RemoteOrigins(ctx context.Context, actor Actor) ([]string, error) {
 	var out []string
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		var e error
-		out, e = az.RemoteOrigins(ctx)
-		return e
+	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, proof, err := authorize(ctx, az, actor, authz.OpRemoteList, domain.Scope{}, s.now())
+		if err != nil {
+			return err
+		}
+		rows, err := r.Remotes().List(ctx, proof)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			out = append(out, row.URL)
+		}
+		return nil
 	})
 	return out, err
 }

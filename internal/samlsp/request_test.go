@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"errors"
 	"io"
 	"math/big"
 	"net/url"
@@ -46,6 +47,11 @@ func TestBuildAuthnRequestBuildsSignedRedirectOverExactWireValues(t *testing.T) 
 	}
 	if parsed.Query().Get("RelayState") != "opaque state/+" {
 		t.Fatalf("RelayState = %q", parsed.Query().Get("RelayState"))
+	}
+	for _, parameter := range []string{"SAMLRequest", "RelayState", "SigAlg", "Signature"} {
+		if len(parsed.Query()[parameter]) != 1 {
+			t.Fatalf("%s occurred %d times", parameter, len(parsed.Query()[parameter]))
+		}
 	}
 	if parsed.Query().Get("SigAlg") != SignatureRSASHA256 {
 		t.Fatalf("SigAlg = %q", parsed.Query().Get("SigAlg"))
@@ -109,6 +115,48 @@ func TestBuildAuthnRequestBuildsUnsignedLoginRequest(t *testing.T) {
 	}
 	if parsed.Query().Has("Signature") || parsed.Query().Has("SigAlg") {
 		t.Fatalf("unsigned query = %q", parsed.RawQuery)
+	}
+}
+
+func TestBuildAuthnRequestRejectsReservedEndpointParameters(t *testing.T) {
+	for _, parameter := range []string{"SAMLRequest", "SAMLResponse", "RelayState", "SigAlg", "Signature", "Relay%53tate"} {
+		for _, sign := range []bool{false, true} {
+			_, err := BuildAuthnRequest(AuthnRequestConfig{
+				IDPSSOURL:  "https://idp.example/sso?tenant=example&" + parameter + "=old",
+				SPEntityID: "https://hikyo.example/saml/metadata", ACSURL: "https://hikyo.example/acs",
+				RelayState: "fresh", Sign: sign, Now: time.Now(),
+			})
+			if !errors.Is(err, ErrInvalidAuthnRequestConfig) {
+				t.Fatalf("parameter %s signed %v: %v", parameter, sign, err)
+			}
+		}
+	}
+}
+
+func TestBuildAuthnRequestRefusesUnsafeNavigationURLs(t *testing.T) {
+	t.Parallel()
+
+	base := AuthnRequestConfig{
+		IDPSSOURL:  "https://idp.example/sso",
+		SPEntityID: "https://hikyo.example/saml/metadata",
+		ACSURL:     "https://hikyo.example/api/v1/auth/saml/provider/acs",
+		RelayState: "opaque",
+		Now:        time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC),
+	}
+	for name, mutate := range map[string]func(*AuthnRequestConfig){
+		"plaintext SSO": func(c *AuthnRequestConfig) { c.IDPSSOURL = "http://idp.example/sso" },
+		"non-web SSO":   func(c *AuthnRequestConfig) { c.IDPSSOURL = "ftp://idp.example/sso" },
+		"SSO userinfo":  func(c *AuthnRequestConfig) { c.IDPSSOURL = "https://user@idp.example/sso" },
+		"SSO fragment":  func(c *AuthnRequestConfig) { c.IDPSSOURL = "https://idp.example/sso#fragment" },
+		"plaintext ACS": func(c *AuthnRequestConfig) { c.ACSURL = "http://hikyo.example/acs" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			config := base
+			mutate(&config)
+			if _, err := BuildAuthnRequest(config); err == nil {
+				t.Fatal("unsafe navigation URL was accepted")
+			}
+		})
 	}
 }
 

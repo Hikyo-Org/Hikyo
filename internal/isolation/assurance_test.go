@@ -19,7 +19,7 @@ func TestMFAMandatorySetMatchesTheADR(t *testing.T) {
 	// machine principal never has.
 	want := []string{
 		"reveal", "reveal-history", "manage-members", "credential-reset",
-		"instance-config", "instance-directory",
+		"instance-config", "instance-directory", "audit-read",
 	}
 	if len(authz.MFAMandatory) != len(want) {
 		t.Fatalf("the MFA-mandatory set has %d members, the ADR names %d: %v",

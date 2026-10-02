@@ -195,6 +195,14 @@ func TestParseImportedKey(t *testing.T) {
 	}
 }
 
+func TestAlgorithmOfPrivateRejectsInconsistentEd25519PublicHalf(t *testing.T) {
+	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize))
+	key[ed25519.SeedSize] ^= 0xff
+	if _, _, err := algorithmOfPrivate(key); !errors.Is(err, ErrUnsupportedKey) {
+		t.Fatalf("algorithmOfPrivate() error = %v, want ErrUnsupportedKey", err)
+	}
+}
+
 func TestUserPrivateKeyIsOpenSSHFormat(t *testing.T) {
 	key, _ := GenerateKey(AlgorithmECDSAP256)
 	text, err := MarshalUserPrivateKey(key, "hikyo")

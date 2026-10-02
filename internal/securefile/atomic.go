@@ -21,7 +21,7 @@ func WriteAtomic(path string, contents []byte, mode os.FileMode) error {
 // publication. A nil prepare is a plain WriteAtomic; a prepare error aborts the
 // publication and removes the temporary file.
 func WriteAtomicPrepared(path string, contents []byte, mode os.FileMode, prepare func(*os.File) error) (returnErr error) {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".secure-write-*")
+	tmp, err := createAtomicTemp(filepath.Dir(path), mode)
 	if err != nil {
 		return err
 	}

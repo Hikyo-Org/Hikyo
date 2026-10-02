@@ -225,7 +225,7 @@ func reauthWindowState(ctx context.Context, auth *Auth, az *authz.TxAuthorizer,
 		return RevealWindow{}, err
 	}
 	now := auth.now()
-	if w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
+	if w.Consumed || w.CredentialEpoch != epoch || !now.Before(w.HardExpiresAt) || !now.Before(w.WindowExpiresAt) {
 		return out, nil
 	}
 	out.Live = true

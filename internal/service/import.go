@@ -83,6 +83,9 @@ type ImportEntry struct {
 // ImportPrecondition is the run manifest's expected-state half, the one
 // declared additive input `values import` gained.
 type ImportPrecondition struct {
+	// DefinitionsRevision is phase 1 evidence only. Applying the reviewed
+	// definitions bundle advances the project revision before phase 2, so
+	// per-key occurrence tokens provide the enforceable freshness fence.
 	DefinitionsRevision int64
 	// Environments are every environment the manifest names. read(E) is
 	// re-evaluated for each of them inside the import's own transaction, ON TOP
@@ -457,6 +460,27 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 		// delivery and revision history advance atomically with the import rather
 		// than exposing value_entries that no committed snapshot contains.
 		if len(result.Imported) > 0 {
+			settings, err := az.EnvironmentReauthSettings(ctx, string(scope.Env))
+			if err != nil {
+				return err
+			}
+			if settings.Protected && !skipsCeremony(caller) {
+				unit := make([]string, 0, len(result.Imported))
+				for _, name := range result.Imported {
+					key, err := keyByName(keys, name)
+					if err != nil {
+						return err
+					}
+					unit = append(unit, key.ID)
+				}
+				intent, err := NewPublishReauthIntent(string(scope.Env), unit)
+				if err != nil {
+					return err
+				}
+				if err := requireCeremony(ctx, s.Auth, az, caller, intent); err != nil {
+					return err
+				}
+			}
 			published, err = republish(ctx, r, az, caller, sealer, s.Keyring, scope,
 				store.CanonTime(time.Now()), "import", &groupIndexPhase{})
 			if err != nil {

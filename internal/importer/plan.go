@@ -528,12 +528,12 @@ func BuildProjectPlan(in ProjectPlanInput) (*ProjectPlan, error) {
 		if !env.HasValues {
 			continue
 		}
-		body, err := Encode(env.Values)
+		commitment, err := ValuesCommitment(env.Values)
 		if err != nil {
 			return nil, err
 		}
 		plan.Manifest.ValuesDigests = append(plan.Manifest.ValuesDigests,
-			ValuesDigest{Environment: env.Ref(), Digest: Digest(body)})
+			ValuesDigest{Environment: env.Ref(), Digest: commitment})
 	}
 	plan.Manifest.ValuesDigests = nonNil(plan.Manifest.ValuesDigests)
 	// Created environments are explicit, reviewable bundle lines (ADR § Targeting
@@ -676,8 +676,13 @@ func planEnvironment(in ProjectPlanInput, e EnvInput, rows []mappedRecord, decis
 	}
 
 	envPlan := EnvPlan{EnvID: envID, EnvName: e.EnvName, Create: e.Create}
+	commitmentKey, err := NewValuesCommitmentKey()
+	if err != nil {
+		return EnvPlan{}, err
+	}
 	envPlan.Values = ValuesFile{
-		FormatVersion: FormatVersion,
+		FormatVersion: RunArtifactFormatVersion,
+		CommitmentKey: commitmentKey,
 		Project:       in.Project,
 	}
 	// A created environment has no id at phase 1, so its values file carries the
@@ -786,7 +791,7 @@ func buildManifest(in ProjectPlanInput, encodedTemplate []byte, envRows [][]mapp
 	decisions map[string]keyDecision) (Manifest, error) {
 	first := in.Envs[0]
 	m := Manifest{
-		FormatVersion:            FormatVersion,
+		FormatVersion:            RunArtifactFormatVersion,
 		ConnectorContractVersion: ConnectorContractVersion,
 		Template:                 TemplateReference{Digest: Digest(encodedTemplate)},
 		SourceIdentity:           SourceIdentity{Kind: in.Source, Context: sourceContext(first)},

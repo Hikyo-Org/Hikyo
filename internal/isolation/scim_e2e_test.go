@@ -234,10 +234,8 @@ func runSCIMUserLifecycle(t *testing.T, db *store.DB) {
 
 	// §5.3, the ZERO-GRANT-DELTA fixture the acceptance row names by hand:
 	// dana holds nothing, so deactivating her changes no grant row at all — and
-	// the session generation MUST advance anyway, because the IdP has declared
-	// this human gone and surviving sessions must re-prove. This is the one
-	// assertion that distinguishes the ADR's unconditional rule from the
-	// ordinary "advance when authority moved" gate every other release uses.
+	// the instance-wide session generation MUST remain unchanged: this binding
+	// cannot revoke login authority belonging to unrelated organizations.
 	principal := principalOf(t, db, accountOf(t, db, user.ID))
 	generationBefore := queryInt(t, db,
 		`SELECT session_generation FROM principals WHERE id = '`+string(principal)+`'`)
@@ -255,8 +253,8 @@ func runSCIMUserLifecycle(t *testing.T, db *store.DB) {
 	}
 	generationAfter := queryInt(t, db,
 		`SELECT session_generation FROM principals WHERE id = '`+string(principal)+`'`)
-	if generationAfter <= generationBefore {
-		t.Fatalf("deprovision must advance the session generation unconditionally: %d -> %d",
+	if generationAfter != generationBefore {
+		t.Fatalf("deprovision must preserve the instance session generation: %d -> %d",
 			generationBefore, generationAfter)
 	}
 	on := true

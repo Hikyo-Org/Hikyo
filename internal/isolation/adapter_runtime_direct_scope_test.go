@@ -21,7 +21,7 @@ import (
 // changed independently while durable identities stay constant.
 func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
-		seedGitLabMoves(t, db, "staging")
+		seedGitLabMoves(t, db, "production")
 		observed := time.Now().UTC()
 		if err := gitLabMoveWrite(t, db, func(ctx context.Context, repos store.Repos, proof authz.Proof) error {
 			_, err := repos.Adapters().MoveTarget(ctx, proof, store.AdapterRouteMoveMutation{MoveID: "arm_direct_runtime", Target: gitLabPendingTarget("tgt_gitlab_a", "production", "new-api"), ExpectedGeneration: 1, AuthorityPrincipalID: "usr_gitlab", KeepRemote: true, At: observed})
@@ -122,6 +122,17 @@ func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 		}
 
 		owning := adapterQueryScope{org: "org_gitlab", project: "prj_gitlab", environment: "env_gitlab_e2e"}
+		// The shared-namespace positive must match GitLab's exact variable
+		// environment scope. A different scope remains independent.
+		for _, query := range queries {
+			if query.name == "AdapterWorkerReservePendingQuery" {
+				execRealAdoption(t, db, `UPDATE adapter_targets SET destination_scope='staging' WHERE id='tgt_gitlab_b'`)
+				if n, err := query.read(t.Context(), adapterQueryScope{org: owning.org, project: owning.project, environment: "env_gitlab_second"}); err != nil || n != 0 {
+					t.Fatalf("distinct GitLab scope collision: %d %v", n, err)
+				}
+				execRealAdoption(t, db, `UPDATE adapter_targets SET destination_scope='production' WHERE id='tgt_gitlab_b'`)
+			}
+		}
 		snapshot := func() []string {
 			return []string{
 				queryString(t, db, "SELECT state||':'||sync_status FROM adapter_targets WHERE id='tgt_gitlab_a'"),
@@ -185,8 +196,8 @@ func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 			`INSERT INTO projects(id,org_id,name,created_at) VALUES ('prj_runtime_foreign','org_runtime_foreign','Foreign','2026-08-17T00:00:00Z')`,
 			`INSERT INTO environments(id,org_id,project_id,name,note,created_at,display_order) VALUES ('env_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','foreign','','2026-08-17T00:00:00Z',0)`,
 			`INSERT INTO adapters(id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','gitlab','https://gitlab.old.example','usr_gitlab','active','2026-08-17T00:00:00Z')`,
-			`INSERT INTO adapter_targets(id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','adp_runtime_foreign','repository','team','api-a',77,'P_',1,'active','never','2026-08-17T00:00:00Z')`,
-			`INSERT INTO adapter_ledger(id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,destination_id,repository_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','tgt_runtime_foreign','https://gitlab.old.example','repository',77,0,'secret','P_TOKEN','P_TOKEN','owned','2026-08-17T00:00:00Z')`,
+			`INSERT INTO adapter_targets(id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at,destination_scope) VALUES ('tgt_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','adp_runtime_foreign','repository','team','api-a',77,'P_',1,'active','never','2026-08-17T00:00:00Z','production')`,
+			`INSERT INTO adapter_ledger(id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,destination_id,repository_id,surface,effective_name,normalized_name,state,updated_at,destination_scope) VALUES ('led_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','tgt_runtime_foreign','https://gitlab.old.example','repository',77,0,'secret','P_TOKEN','P_TOKEN','owned','2026-08-17T00:00:00Z','production')`,
 		} {
 			execRealAdoption(t, db, statement)
 		}
@@ -203,7 +214,7 @@ func TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain(t *testing.T) {
 			`DELETE FROM adapter_route_move_claims WHERE move_id='arm_direct_runtime'`,
 			`INSERT INTO adapter_route_moves(id,org_id,project_id,adapter_id,target_id,kind,authority_principal_id,state,keep_remote,created_at) VALUES ('arm_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','adp_runtime_foreign','tgt_runtime_foreign','target','usr_gitlab','activating',TRUE,'2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapter_route_move_targets(move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix) VALUES ('arm_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','tgt_runtime_foreign','repository','team','api-a',77,'P_')`,
-			`INSERT INTO adapter_route_move_claims(move_id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,destination_owner,destination_name,surface,effective_name,normalized_name) VALUES ('arm_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','tgt_runtime_foreign','https://gitlab.old.example','repository','team','api-a','secret','P_TOKEN','P_TOKEN')`,
+			`INSERT INTO adapter_route_move_claims(move_id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,destination_owner,destination_name,surface,effective_name,normalized_name,destination_scope) VALUES ('arm_runtime_foreign','org_runtime_foreign','prj_runtime_foreign','env_runtime_foreign','tgt_runtime_foreign','https://gitlab.old.example','repository','team','api-a','secret','P_TOKEN','P_TOKEN','production')`,
 		} {
 			execRealAdoption(t, db, statement)
 		}

@@ -1,6 +1,9 @@
 package crypto
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -111,6 +114,39 @@ func (b SnapshotBinding) StorageDir() (string, error) {
 		return "", err
 	}
 	return b.scope.StorageDir, nil
+}
+
+// StorageKey identifies the complete locally known snapshot scope without
+// exposing any part of it in a filename. Run, render, config-only, credentials,
+// and target sets therefore retain independent offline caches and high-water
+// marks inside the same stack state directory. The directory itself is only a
+// locator and does not affect this identity.
+func (b SnapshotBinding) StorageKey() (string, error) {
+	return b.storageKey(false)
+}
+
+// LegacyStorageKey identifies the former directory-dependent cache slot.
+// It is used only to retain existing high-water marks during migration.
+func (b SnapshotBinding) LegacyStorageKey() (string, error) {
+	return b.storageKey(true)
+}
+
+func (b SnapshotBinding) storageKey(includeLocator bool) (string, error) {
+	if err := b.validateScope(); err != nil {
+		return "", err
+	}
+	scope := b.scope
+	if !includeLocator {
+		// A filesystem locator is not part of credential or delivery identity.
+		// Moving the complete state directory must retain the same cache slot.
+		scope.StorageDir = ""
+	}
+	raw, err := json.Marshal(scope)
+	if err != nil {
+		return "", fmt.Errorf("crypto: marshal snapshot storage scope: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // ParseSnapshotBinding validates an existing serialized AAD header without

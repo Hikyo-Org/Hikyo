@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -326,7 +327,7 @@ type SCIMRepo interface {
 	RemoveMembershipsForUser(ctx context.Context, p authz.Proof, bindingID, userID string) error
 	DeleteGroupMembersForBinding(ctx context.Context, p authz.Proof, bindingID string) error
 
-	EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) error
+	EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) (bool, error)
 	ClearAttention(ctx context.Context, p authz.Proof, bindingID, state, subjectRef string) (int64, error)
 	DeleteAttentionForBinding(ctx context.Context, p authz.Proof, bindingID string) error
 }
@@ -1211,6 +1212,9 @@ func (r scimRepo) GroupMembers(ctx context.Context, p authz.Proof, bindingID, gr
 		if err != nil {
 			return nil, err
 		}
+		if len(rows) > MaxSCIMGroupMembers {
+			return nil, ErrSCIMGroupMemberLimit
+		}
 		for _, row := range rows {
 			m, err := sqliteGroupMember(row)
 			if err != nil {
@@ -1226,11 +1230,21 @@ func (r scimRepo) GroupMembers(ctx context.Context, p authz.Proof, bindingID, gr
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) > MaxSCIMGroupMembers {
+		return nil, ErrSCIMGroupMemberLimit
+	}
 	for _, row := range rows {
 		out = append(out, pgMember(row))
 	}
 	return out, nil
 }
+
+// MaxSCIMGroupMembers bounds both reconciliation work and resource expansion.
+// The generated member queries fetch at most this ceiling plus one sentinel
+// row, and oversized legacy groups fail closed rather than returning a subset.
+const MaxSCIMGroupMembers = 1000
+
+var ErrSCIMGroupMemberLimit = fmt.Errorf("%w: SCIM groups support at most %d distinct members; the identity provider must retire excess provisioned users and reprovision them into smaller groups", domain.ErrInvalid, MaxSCIMGroupMembers)
 
 func (r scimRepo) MembershipsForUser(ctx context.Context, p authz.Proof, bindingID, userID string) ([]SCIMGroupMember, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMMembershipsForUser, r.tok)
@@ -1338,25 +1352,31 @@ func (r scimRepo) DeleteGroupMembersForBinding(ctx context.Context, p authz.Proo
 // Attention states
 // ---------------------------------------------------------------------------
 
-func (r scimRepo) EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) error {
+func (r scimRepo) EnterAttention(ctx context.Context, p authz.Proof, a SCIMAttentionRow) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreSCIMEnterAttention, r.tok)
 	if err != nil {
-		return err
+		return false, err
 	}
+	var affected int64
 	if r.sq != nil {
-		return constraint(r.sq.EnterSCIMAttention(ctx, sqlitegen.EnterSCIMAttentionParams{
+		affected, err = r.sq.EnterSCIMAttention(ctx, sqlitegen.EnterSCIMAttentionParams{
 			ID:        a.ID,
 			OrgID:     string(chain.Org),
 			BindingID: a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
 			EnteredAt: CanonTime(a.EnteredAt).Format(timeFormat),
-		}))
+		})
+	} else {
+		affected, err = r.pg.EnterSCIMAttention(ctx, pggen.EnterSCIMAttentionParams{
+			ID:         a.ID,
+			ChainOrgID: string(chain.Org),
+			BindingID:  a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
+			EnteredAt: pgtype.Timestamptz{Time: CanonTime(a.EnteredAt), Valid: true},
+		})
 	}
-	return constraint(r.pg.EnterSCIMAttention(ctx, pggen.EnterSCIMAttentionParams{
-		ID:         a.ID,
-		ChainOrgID: string(chain.Org),
-		BindingID:  a.BindingID, State: a.State, SubjectRef: a.SubjectRef, Cause: a.Cause,
-		EnteredAt: pgtype.Timestamptz{Time: CanonTime(a.EnteredAt), Valid: true},
-	}))
+	if err != nil {
+		return false, constraint(err)
+	}
+	return affected == 1, nil
 }
 
 func (r scimRepo) Attention(ctx context.Context, p authz.Proof, bindingID string) ([]SCIMAttentionRow, error) {

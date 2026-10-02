@@ -1,7 +1,9 @@
 package service
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -14,8 +16,8 @@ func TestPasswordPolicy(t *testing.T) {
 		"below the floor":             {"short", ErrWeakPassword},
 		"exactly at the floor":        {"twelvechars", ErrWeakPassword}, // 11
 		"one character repeated":      {"aaaaaaaaaaaaaa", ErrWeakPassword},
-		"on the list":                 {"correcthorsebatterystaple", ErrCommonPassword},
-		"on the list, different case": {"CorrectHorseBatteryStaple", ErrCommonPassword},
+		"on the list":                 {"qwerty123456", ErrCommonPassword},
+		"on the list, different case": {"Qwerty123456", ErrCommonPassword},
 		"fine":                        {"a perfectly ordinary passphrase", nil},
 		// No composition rules: a long all-lowercase phrase with no digit,
 		// symbol or capital is accepted, because demanding them produces
@@ -41,21 +43,13 @@ func TestPasswordPolicy(t *testing.T) {
 	}
 }
 
-// The bundled list is a starter set, not the specified top-100k. This test is
-// what stops the two being confused: it fails when the file grows past the
-// placeholder bound WITHOUT the bound moving, which is exactly the moment
-// someone drops the real list in and should also update the claim in
-// docs/handoff/47-first-slice.md.
-func TestCommonListIsAKnownPlaceholder(t *testing.T) {
+func TestCommonListIsPinnedTop100KCorpus(t *testing.T) {
+	const wantSHA256 = "c2e5696882c603b76bb67a47ee970897e5a76fc4c3f5547abe3d0ca340c576e0"
+	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(commonPasswords))); got != wantSHA256 {
+		t.Fatalf("common-password corpus SHA-256 = %s, want %s", got, wantSHA256)
+	}
 	n := len(commonList())
-	if n == 0 {
-		t.Fatal("the bundled list is empty — the check would be vacuous")
+	if n < 97_000 {
+		t.Fatalf("common-password corpus has %d effective entries, want at least 97,000", n)
 	}
-	if n >= PlaceholderListBound {
-		t.Fatalf("the bundled list has %d entries, past the placeholder bound of %d. "+
-			"If the specified top-100k has landed: raise PlaceholderListBound, add the CI hash pin the "+
-			"ops spec requires, and correct deviation 5 in docs/handoff/47-first-slice.md, which currently "+
-			"records this as a known data gap.", n, PlaceholderListBound)
-	}
-	t.Logf("bundled list: %d entries (placeholder; the ops spec specifies the top-100k)", n)
 }

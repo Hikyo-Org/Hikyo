@@ -268,9 +268,11 @@ export function MatrixKeyCreate({
       initialFocus={nameField}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+		if (!busy && !applying) onClose();
       }}
-      onBackdropClick={onClose}
+      onBackdropClick={() => {
+		if (!busy && !applying) onClose();
+	  }}
     >
       <form
         onSubmit={(event) => {
@@ -554,8 +556,8 @@ export function MatrixKeyCreate({
         {/* The row stays in the form because the classification hint below it
             explains the choice the form makes permanent. */}
         <div className="dialog__actions">
-          <Button type="button" onClick={onClose}>
-            Cancel
+          <Button type="button" onClick={onClose} disabled={busy || applying}>
+            {busy || applying ? 'Declaring…' : 'Cancel'}
           </Button>
           <Button type="submit" variant="primary" disabled={busy || applying || gitManaged}>
             {busy || applying ? 'Declaring…' : 'Declare'}

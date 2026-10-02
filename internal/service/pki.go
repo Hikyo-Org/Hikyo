@@ -53,7 +53,7 @@ var (
 	ErrPKIIssuerState    = fmt.Errorf("%w: the PKI issuer version is not in the required lifecycle state", domain.ErrConflict)
 	ErrPKIIssuerRace     = fmt.Errorf("%w: the PKI issuer changed underneath this write", domain.ErrConflict)
 	ErrPKIIssuerLive     = fmt.Errorf("%w: the PKI issuer version still has unexpired certificates requiring CRL coverage; wait for them to expire", domain.ErrConflict)
-	ErrPKIIssuerHeld     = fmt.Errorf("%w: the PKI issuer is held after a restore; release its hold (`hikyo pki issuer release-hold`) before issuing", domain.ErrConflict)
+	ErrPKIIssuerHeld     = fmt.Errorf("%w: the PKI issuer is held after a restore; reconcile revocations and release its hold (`hikyo pki issuer release-hold`) before issuing certificates or signing fresh CRLs", domain.ErrConflict)
 	ErrPKINoActiveIssuer = fmt.Errorf("%w: none of the profile's issuers has an active version", domain.ErrConflict)
 	ErrPKIProfileExists  = fmt.Errorf("%w: a certificate profile with this name already exists", domain.ErrConflict)
 	ErrPKIProfileRace    = fmt.Errorf("%w: the certificate profile changed underneath this write", domain.ErrConflict)
@@ -708,6 +708,9 @@ func (s *PKI) demoteActive(ctx context.Context, r store.Repos, proof authz.Proof
 
 // issuerSigner opens an issuer version's key for one signing act.
 func (s *PKI) issuerSigner(ctx context.Context, r store.Repos, proof authz.Proof, issuer store.PKIIssuer) (crypto.Signer, *x509.Certificate, error) {
+	if issuer.RestoreHold {
+		return nil, nil, ErrPKIIssuerHeld
+	}
 	sealed, _, err := r.PKI().IssuerKey(ctx, proof, issuer.ID)
 	if err != nil {
 		return nil, nil, err

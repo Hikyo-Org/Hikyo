@@ -45,6 +45,33 @@ func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags
 	if err != nil {
 		return false, nil, err
 	}
+	lock, err := stack.beginRender()
+	if err != nil {
+		return false, stack, err
+	}
+	defer lock.Close()
+	return composeRenderLocked(ctx, ios, stack, lock)
+}
+
+func (stack *composeStack) beginRender() (*compose.RenderLock, error) {
+	if stack.runtimeErr != nil {
+		return nil, stack.runtimeErr
+	}
+	// Establish and validate the private state directory before flock creates
+	// its file. The render phase reloads these same durable local keys.
+	if _, err := loadLocalKeys(stack.stateDir); err != nil {
+		return nil, err
+	}
+	lock, err := compose.NewWriter(stack.stateDir, nil).BeginRender(stack.cfgDir)
+	if err != nil {
+		return nil, failf(ExitRefused, "another hikyo compose process holds the lock for %s", stack.slug)
+	}
+	return lock, nil
+}
+
+// composeRenderLocked requires a caller-owned project lock. Sync retains it
+// through resolved Docker validation, apply, and applied-state bookkeeping.
+func composeRenderLocked(ctx context.Context, ios IO, stack *composeStack, lock *compose.RenderLock) (bool, *composeStack, error) {
 	snapshotBinding, err := stack.newSnapshotBinding(stack.cfg.TargetNames())
 	if err != nil {
 		return false, stack, failf(ExitRefused, "compose render: snapshot binding: %v", err)
@@ -71,20 +98,14 @@ func composeRenderCore(ctx context.Context, ios IO, st *State, flags commonFlags
 		return false, stack, err
 	}
 
-	w := compose.NewWriter(stack.stateDir, nil)
-	lock, err := w.BeginRender(stack.cfgDir)
-	if err != nil {
-		return false, stack, failf(ExitRefused, "another hikyo compose process holds the lock for %s", stack.slug)
-	}
-	defer lock.Close()
-
 	// 1. Recover incomplete (torn) generations before anything reads them.
 	if err := lock.Recover(stack.runtimeDir); err != nil {
 		return false, stack, failf(ExitInternal, "compose render: recover: %v", err)
 	}
 	// 2. Flush-before-fetch.
 	if err := stack.flushOffline(ctx); err != nil {
-		return false, stack, err
+		moved, offlineErr := stack.renderOffline(ctx, ios, lock, keys, snapshotBinding, err)
+		return moved, stack, offlineErr
 	}
 	// 3. Cursor: present it only when the full local eligibility test holds.
 	currentStamps, err := compose.CurrentStamps(stack.cfgDir)
@@ -210,8 +231,9 @@ func (s *composeStack) renderOffline(ctx context.Context, ios IO, lock *compose.
 			}
 			records = append(records, compose.OfflineRecord{
 				RecordID: id, KeyID: row.KeyID, KeyName: row.Name, Classification: row.Classification,
-				OccurredAt: ios.now().UTC().Format(time.RFC3339), CredentialID: aad.CredentialID,
+				OccurredAt: ios.now().UTC().Format(time.RFC3339Nano), CredentialID: aad.CredentialID,
 				Generation: stamp, ServedFrom: aad.IssuedAt,
+				SnapshotReceipt: row.Receipt,
 			})
 		}
 	}
@@ -293,6 +315,7 @@ func liveRenderInput(cfg *compose.Config, configOnly bool, keys []apigen.Deliver
 	for _, key := range keys {
 		row := compose.RenderSourceRow{
 			KeyID: key.KeyId, Name: key.Name, Classification: string(key.Classification),
+			Receipt: deliveryReceipt(key),
 		}
 		switch {
 		case !configOnly && isUnrevealedSecret(key):
@@ -314,6 +337,7 @@ func offlineRenderInput(cfg *compose.Config, configOnly bool, rows []compose.Sna
 		sourceRows = append(sourceRows, compose.RenderSourceRow{
 			KeyID: row.KeyID, Name: row.Name, Classification: row.Classification,
 			State: compose.RenderRowValued, Value: row.Value,
+			Receipt: row.Receipt,
 		})
 	}
 	return renderInput(cfg, configOnly, compose.AbsentKeyRefuseNotInSnapshot, sourceRows)

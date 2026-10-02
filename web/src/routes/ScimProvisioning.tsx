@@ -475,7 +475,7 @@ function scopeLevel(row: ScimMapping): Level {
   return 'org';
 }
 
-function MappingRow({
+export function MappingRow({
   org,
   binding,
   row,
@@ -506,7 +506,12 @@ function MappingRow({
     feedback.clear();
     setResult(null);
     update.mutate(
-      { groupId: row.group_id, template, ...scopeOfMapping(row) },
+      {
+        groupId: row.group_id,
+        template,
+        ...(row.project_id === undefined ? {} : { projectId: row.project_id }),
+        ...(row.environment_id === undefined ? {} : { environmentId: row.environment_id }),
+      },
       {
         onSuccess: (next) => {
           setResult(next);

@@ -50,9 +50,17 @@ func seedSessionFactors(t *testing.T, db *store.DB, p domain.PrincipalID, factor
 	}
 	now := time.Now().UTC()
 	err = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		generation, err := az.PrincipalGeneration(ctx, p)
+		if err != nil {
+			return err
+		}
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
 		return az.MintSession(ctx, authn.NewSession{
 			ID: "ses_" + base64.RawURLEncoding.EncodeToString(raw), PrincipalID: p,
-			Verifier: verifier, Artifact: "cli", SessionGeneration: 1, CredentialEpoch: 1,
+			Verifier: verifier, Artifact: "cli", SessionGeneration: generation, CredentialEpoch: epoch,
 			AuthMethod: "local-password", Factors: factors,
 			AuthenticatedAt: now, CreatedAt: now,
 			IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(24 * time.Hour),

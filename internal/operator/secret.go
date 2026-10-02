@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -178,7 +179,8 @@ func dataEqual(a, b map[string][]byte) bool {
 		return false
 	}
 	for k, v := range a {
-		if !bytes.Equal(v, b[k]) {
+		other, ok := b[k]
+		if !ok || !bytes.Equal(v, other) {
 			return false
 		}
 	}
@@ -268,14 +270,21 @@ func (r *HikyoSecretReconciler) withdraw(ctx context.Context, cr *hikyov1.HikyoS
 	// the error for backoff so the next reconcile re-attempts the roll — the
 	// Secret stays scrubbed, the workload is retried, never silently left
 	// referencing the pre-scrub stamp.
-	if _, patchErr := r.patchWorkloads(ctx, cr, stamp); patchErr != nil {
+	stalled, patchErr := r.patchWorkloads(ctx, cr, stamp)
+	if patchErr != nil {
 		if res, derr, handled := r.accessError(ctx, cr, patchErr, "workload patch"); handled {
 			return res, derr
 		}
 		r.setCond(cr, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled, patchErr.Error())
 		return r.done(ctx, cr, ctrl.Result{}, patchErr)
 	}
-	meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionRollout)
+	if len(stalled) > 0 {
+		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonStalled, "opted-in workloads not progressed: %s", strings.Join(stalled, ", "))
+		r.setCond(cr, hikyov1.ConditionRollout, metav1.ConditionFalse, hikyov1.ReasonStalled,
+			fmt.Sprintf("opted-in workloads not progressed after the stamp patch: %s", strings.Join(stalled, ", ")))
+	} else {
+		meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionRollout)
+	}
 	return r.done(ctx, cr, r.resyncResult(cr), nil)
 }
 

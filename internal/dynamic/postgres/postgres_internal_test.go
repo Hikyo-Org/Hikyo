@@ -1,13 +1,17 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/Hikyo-Org/hikyo/internal/dynamic"
 )
@@ -108,5 +112,27 @@ func TestNewRejectsWeakConfig(t *testing.T) {
 	}
 	if _, err := New(Config{Origin: "postgres://u@h:5432/db", Password: "p", Deadline: 0}); err == nil {
 		t.Error("New accepted a zero deadline")
+	}
+}
+
+func TestNewBoundsPostgresWireMessageBody(t *testing.T) {
+	provider, err := New(Config{Origin: "postgres://admin@db.example:5432/app", Password: "p", Deadline: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.connConfig.BuildFrontend == nil {
+		t.Fatal("provider does not install the bounded wire decoder")
+	}
+	message := []byte{'E', 0, 0, 0, 0}
+	binary.BigEndian.PutUint32(message[1:], maxPostgresMessageBody+5)
+	frontend := provider.connConfig.BuildFrontend(bytes.NewReader(message), io.Discard)
+	_, err = frontend.Receive()
+	var exceeded *pgproto3.ExceededMaxBodyLenErr
+	if !errors.As(err, &exceeded) {
+		t.Fatalf("oversized provider message = %v, want bounded-header rejection before reading body", err)
+	}
+	frontend = provider.connConfig.BuildFrontend(bytes.NewReader([]byte{'Z', 0, 0, 0, 5, 'I'}), io.Discard)
+	if _, err := frontend.Receive(); err != nil {
+		t.Fatalf("valid provider message refused: %v", err)
 	}
 }

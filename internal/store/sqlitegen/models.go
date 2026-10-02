@@ -134,20 +134,21 @@ type AdapterConfigureFence struct {
 }
 
 type AdapterConflict struct {
-	ID               string
-	ArtifactID       string
-	OrgID            string
-	ProjectID        string
-	EnvironmentID    string
-	TargetID         string
-	JobID            sql.NullString
-	DestinationID    int64
-	TargetGeneration int64
-	Surface          string
-	EffectiveName    string
-	CreatedAt        string
-	AdoptedAt        sql.NullString
-	RepositoryID     int64
+	ID                      string
+	ArtifactID              string
+	OrgID                   string
+	ProjectID               string
+	EnvironmentID           string
+	TargetID                string
+	JobID                   sql.NullString
+	DestinationID           int64
+	TargetGeneration        int64
+	Surface                 string
+	EffectiveName           string
+	CreatedAt               string
+	AdoptedAt               sql.NullString
+	RepositoryID            int64
+	ObservedProviderVersion sql.NullInt64
 }
 
 type AdapterEffect struct {

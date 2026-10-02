@@ -1,10 +1,17 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import type { MachineCredential, ServiceAccount } from '../api/identities.ts';
 import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { BindingDialog } from './machineAccess/FederationBindings.tsx';
+
+const mocks = vi.hoisted(() => ({ ceremony: vi.fn() }));
+vi.mock('../api/values.ts', async (importActual) => ({
+  ...(await importActual<typeof import('../api/values.ts')>()),
+  runPasskeyCeremony: mocks.ceremony,
+}));
+beforeEach(() => mocks.ceremony.mockReset().mockResolvedValue(undefined));
 
 const account: ServiceAccount = {
   id: 'msa_123e4567-e89b-12d3-a456-426614174020',
@@ -26,6 +33,65 @@ const predecessor = (value: bigint): MachineCredential => ({
   ],
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it('runs a mint-purpose ceremony before replacing a historical-only binding', async () => {
+  const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
+    new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
+      status: 422, headers: { 'Content-Type': 'application/json' },
+    }),
+  ));
+  vi.stubGlobal('fetch', fetchMock);
+  const view = await renderForm(
+    <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
+      replaces={predecessor(7n)} reachFor={() => [{ id: 'env-prod', name: 'production', current: false, historical: true }]}
+      onClose={() => {}} onCreated={() => {}} />,
+  );
+  try {
+    await submitReplacement(view.container);
+    expect(mocks.ceremony).toHaveBeenCalledExactlyOnceWith({ operation: 'mint', environmentId: 'env-prod', keyIds: [] });
+    const ceremonyOrder = mocks.ceremony.mock.invocationCallOrder[0];
+    const requestOrder = fetchMock.mock.invocationCallOrder[0];
+    if (ceremonyOrder === undefined || requestOrder === undefined) throw new Error('ceremony or request missing');
+    expect(ceremonyOrder).toBeLessThan(requestOrder);
+  } finally { await view.unmount(); }
+});
+
+it.each([
+  { pin: { claim: 'repository_id', string_value: '42' }, expected: '"claim":"repository_id","string_value":"42"' },
+  { pin: { claim: 'repository_id', bool_value: true }, expected: '"claim":"repository_id","bool_value":true' },
+])('preserves the predecessor scalar type without silently converting it', async ({ pin, expected }) => {
+  const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) => Promise.resolve(
+    new Response(JSON.stringify({ code: 'refused', message: 'fixture refusal' }), {
+      status: 422, headers: { 'Content-Type': 'application/json' },
+    }),
+  ));
+  vi.stubGlobal('fetch', fetchMock);
+  const base = predecessor(7n);
+  const existing = { ...base, required_claims: (base.required_claims ?? []).map((original) => original.claim === pin.claim ? pin : original) };
+  const view = await renderForm(
+    <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
+      replaces={existing} reachFor={() => []} onClose={() => {}} onCreated={() => {}} />,
+  );
+  try {
+    await submitReplacement(view.container);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0]?.[0];
+    if (!(request instanceof Request)) throw new Error('binding request missing');
+    expect(await request.clone().text()).toContain(expected);
+  } finally { await view.unmount(); }
+});
+
+it('disables Forgejo Actions and explains the immutable-identity refusal', async () => {
+  const view = await renderForm(
+    <BindingDialog project={{ org: 'acme', project: 'payments' }} accounts={[account]} initial={account}
+      reachFor={() => []} onClose={() => {}} onCreated={() => {}} />,
+  );
+  try {
+    const forgejo = Array.from(view.container.querySelectorAll('button')).find((button) => button.textContent === 'Forgejo Actions');
+    expect(forgejo?.disabled).toBe(true);
+    expect(view.container.textContent).toContain('immutable repository identity');
+  } finally { await view.unmount(); }
+});
 
 async function submitReplacement(container: HTMLElement) {
   const submit = Array.from(container.querySelectorAll('button')).find(

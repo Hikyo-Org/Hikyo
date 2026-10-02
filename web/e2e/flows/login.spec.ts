@@ -156,6 +156,26 @@ async function expectOIDCDoneSurface(page: Page, theme: 'dark' | 'light') {
   });
 }
 
+async function expectSAMLDoneSurface(page: Page, theme: 'dark' | 'light') {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.goto('/auth/saml/done?state=not-started');
+  const card = page.locator('.login__card');
+  const heading = page.getByRole('heading', { name: 'Returning from your identity provider' });
+  const refusal = card.getByRole('alert');
+  const back = card.getByRole('link', { name: 'Return to sign in' });
+  await expect(refusal).toContainText('transaction is missing or already completed');
+  await expect(back).toHaveAttribute('href', '/login');
+  await expectPinnedAssertionSet(page, {
+    flow: 'login', surface: 'saml-done', theme,
+    text: [heading, refusal],
+    radii: [[card, 'container'], [back, 'control']],
+    fonts: [[heading, 'ui']],
+    colours: [[card, 'backgroundColor', '--bg-raise'], [card, 'borderTopColor', '--line']],
+    hairlines: [card],
+    density: [[back, '--control']],
+  });
+}
+
 async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
   await page.emulateMedia({ colorScheme: theme });
   await page.goto('/establish');
@@ -254,6 +274,9 @@ test.describe('login', () => {
     test(`OIDC done page meets the pinned assertion set in ${theme} mode`, async ({ page }) => {
       await expectOIDCDoneSurface(page, theme);
     });
+    test(`SAML done page meets the pinned assertion set in ${theme} mode`, async ({ page }) => {
+      await expectSAMLDoneSurface(page, theme);
+    });
   }
   test.beforeEach(async ({ context }) => {
     await context.clearCookies();
@@ -299,13 +322,14 @@ test.describe('login', () => {
     const provider = { slug: 'e2e-reg-paused', displayName: 'Registration Paused' };
     const policyPath = '/api/v1/instance/registration-policy';
     const providerPath = `/api/v1/instance/oidc-providers/${provider.slug}`;
-    const providerBody = (enabled: boolean) => ({
+    const providerBody = (enabled: boolean, rowVersion?: number) => ({
       display_name: provider.displayName,
       issuer: WEBUI_OIDC.issuer,
       client_id: 'e2e-reg-client',
       client_secret: 'e2e-reg-secret',
       scopes: 'openid email',
       enabled,
+      row_version: rowVersion,
     });
     const operator = await enrolledAccount(browser, 'reg-paused-operator', 'instance');
     const admin = operator.bearer;
@@ -318,14 +342,20 @@ test.describe('login', () => {
     await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
     await expect(page.getByText('Sign-up is paused.')).toHaveCount(0);
     try {
-      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(true));
+      const created = await fixtureApiCall(
+        admin,
+        'PUT',
+        providerPath,
+        z.object({ row_version: z.number().int().positive() }).passthrough(),
+        providerBody(true),
+      );
       await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
         external: [{ provider: { kind: 'oidc', slug: provider.slug } }],
         landing: { kind: 'none' },
         proof: await operator.ledger.next(),
       });
       expect((await methods()).signup_open).toBe(true);
-      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(false));
+      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(false, created.row_version));
       const door = await methods();
       expect(door.signup_open).toBe(false);
       expect(door.signup_paused).toBe(true);

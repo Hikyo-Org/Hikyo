@@ -249,12 +249,12 @@ func TestManifestBindsEachValuesFileByDigest(t *testing.T) {
 		if !env.HasValues {
 			continue
 		}
-		body, err := Encode(env.Values)
+		commitment, err := ValuesCommitment(env.Values)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := byRef[env.EnvID]; got != Digest(body) {
-			t.Errorf("env %s digest = %q, want %q (the values file's own digest)", env.EnvID, got, Digest(body))
+		if got := byRef[env.EnvID]; got != commitment {
+			t.Errorf("env %s commitment = %q, want %q", env.EnvID, got, commitment)
 		}
 	}
 	// A tampered values file (a changed value) no longer matches — the property
@@ -262,8 +262,8 @@ func TestManifestBindsEachValuesFileByDigest(t *testing.T) {
 	tampered := plan.Envs[0].Values
 	tampered.Entries = append([]ValuesEntry{}, tampered.Entries...)
 	tampered.Entries[0].Value += "X"
-	body, _ := Encode(tampered)
-	if Digest(body) == byRef[plan.Envs[0].EnvID] {
+	commitment, _ := ValuesCommitment(tampered)
+	if commitment == byRef[plan.Envs[0].EnvID] {
 		t.Error("a changed value produced the same digest")
 	}
 }
@@ -904,7 +904,7 @@ func TestTemplateRequiresEveryTargetEnvironment(t *testing.T) {
 
 func TestValuesFileIsStrict(t *testing.T) {
 	good := ValuesFile{
-		FormatVersion: FormatVersion, Project: "prj_1", Environment: "env_prod",
+		FormatVersion: RunArtifactFormatVersion, CommitmentKey: strings.Repeat("ab", 32), Project: "prj_1", Environment: "env_prod",
 		Entries: []ValuesEntry{{Key: "A", Value: "1"}},
 	}
 	raw, err := Encode(good)
@@ -914,8 +914,10 @@ func TestValuesFileIsStrict(t *testing.T) {
 	if _, err := ParseValuesFile(raw); err != nil {
 		t.Fatal(err)
 	}
-	dup := `{"format_version":1,"project":"p","environment":"e","entries":[{"key":"A","value":"1"},{"key":"A","value":"2"}]}`
-	_, err = ParseValuesFile([]byte(dup))
+	duplicate := good
+	duplicate.Entries = []ValuesEntry{{Key: "A", Value: "1"}, {Key: "A", Value: "2"}}
+	dup, _ := Encode(duplicate)
+	_, err = ParseValuesFile(dup)
 	wantCode(t, err, CodeDuplicateKey)
 
 	good.Project = ""

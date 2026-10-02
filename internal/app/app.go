@@ -19,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
+	"github.com/Hikyo-Org/hikyo/internal/localsocket"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/server"
@@ -73,10 +74,12 @@ type Server struct {
 	Maintenance        bool
 	Addr               string
 	OperationalAddr    string
+	CLISocket          string
 	db                 *store.DB
 	keyring            *crypto.Keyring // held for the process lifetime
 	publicLn           net.Listener
 	operationalLn      net.Listener
+	cliLn              net.Listener
 	publicHandler      http.Handler
 	operationalHandler http.Handler
 	log                *slog.Logger
@@ -399,6 +402,17 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	diagnostics.Printf(ctx, 2, "Public and operational sockets are bound")
 	guard.add(func() error { return resources.closeListener(srv.publicLn) })
 	guard.add(func() error { return resources.closeListener(srv.operationalLn) })
+	if cfg.CLISocket != "" {
+		srv.cliLn, err = localsocket.Listen(cfg.CLISocket)
+		if err != nil {
+			return nil, fmt.Errorf("boot: local CLI socket: %w", err)
+		}
+		srv.CLISocket = cfg.CLISocket
+		owner.cliServer = newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			owner.handler(false).ServeHTTP(w, r)
+		}))
+		guard.add(func() error { return resources.closeListener(srv.cliLn) })
+	}
 	if cfg.Store.PostgresPoolMax != bootstrap.Store.PostgresPoolMax {
 		pool, err := db.PreparePostgresPool(ctx, cfg.Store.PostgresPoolMax)
 		if err != nil {
@@ -455,7 +469,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	}
 	publicAddress, operationalAddress := endpoints.public.listener.Addr().String(), endpoints.operational.listener.Addr().String()
 	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
-		"addr", publicAddress, "operational_addr", operationalAddress, "dev", cfg.Dev,
+		"addr", publicAddress, "operational_addr", operationalAddress, "cli_socket", cfg.CLISocket, "dev", cfg.Dev,
 		"argon2_memory_kib", cfg.Argon2MemoryKiB, "mcp_enabled", cfg.MCPEnabled, "mcp_write_enabled", cfg.MCPWriteEnabled)
 
 	// Ownership transfers only after the Server is complete. Nothing remains
@@ -647,7 +661,11 @@ func (s *Server) Close() error {
 	if s.selfConfig != nil {
 		runtimeErr = s.selfConfig.CloseRuntime()
 	}
-	return errors.Join(runtimeErr, s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
+	var cliErr error
+	if s.cliLn != nil {
+		cliErr = s.cliLn.Close()
+	}
+	return errors.Join(runtimeErr, cliErr, s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
 }
 
 // accessMetricsSource adapts the temporary-access service to the metrics

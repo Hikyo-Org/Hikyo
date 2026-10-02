@@ -185,11 +185,12 @@ test.describe('app chrome', () => {
 
   test('a deep link is served by the instance, not just by the router', async ({ page }) => {
     // The SPA-fallback rule seen from the outside: a full page load of an
-    // application route must return the document, uncached, not a 404.
+    // application route must return the document, not a 404. Its per-response
+    // CSP nonce requires revalidation and must not enter a shared cache.
     const response = await page.goto('/projects');
     expect(response?.status(), 'a deep link did not fall back to the document').toBe(200);
-    expect(response?.headers()['cache-control'], 'the document was served cacheable').toBe(
-      'no-cache',
+    expect(response?.headers()['cache-control'], 'the nonce-bearing document permits shared caching').toBe(
+      'private, no-cache',
     );
     await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   });

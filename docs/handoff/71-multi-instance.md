@@ -50,8 +50,10 @@ the work shipped.
 - **`instance_identity` is read proof-free** by `Resolver.InstanceIdentity` on
   the resolution surface (self-connection refusal and directory-serve are both
   authn-adjacent, and the value is neither tenant data nor secret); recorded as a
-  knowing deviation in `Resolver.RemoteOrigins`' doc comment rather than
-  re-annotated `class=authn`.
+  a named resolution-surface exception rather than re-annotated `class=authn`.
+  Remote origins for the document CSP are different: the browser session must
+  authorize `OpRemoteList`, and the read uses the proof-gated remote repository.
+  Anonymous documents retain the baseline policy and expose no remote topology.
 
 ## Owner-ratified bounds (2026-08-13)
 
@@ -396,4 +398,3 @@ redemption only after the popup leaves B).
 3. **RESOLVED.** The #58 ceremony seam now derives the matching authz operation from every reauthentication purpose, so a correctly bound workspace window is spendable by the real reveal path and a different operation still refuses.
 4. **ACKNOWLEDGED — NO CHANGE.** The single-serving-process invariant remains documented at `fetchGate`; no distributed limiter was requested.
 5. **ACKNOWLEDGED — NO CHANGE.** `remote.auth_failed` and `remote.workspace_session_expired` remain unregistered because neither has an honest emitter.
-

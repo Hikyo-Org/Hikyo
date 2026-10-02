@@ -1,12 +1,14 @@
-# Fork pull-request validation (#813). actions/checkout refuses fork code under
-# pull_request_target, correctly: there the runtime token can write the base
-# branch's cache. A fork's validation therefore runs here, under pull_request,
-# with a read-only token, no secrets, and PR-scoped cache writes.
+# Pull-request validation (#813). PR code runs only under pull_request, with a
+# read-only token, no secrets, and PR-scoped cache writes. This applies to
+# same-repository branches too: pull_request_target's base cache scope is not a
+# safe place to execute code merely because the author can push a branch.
 #
 # This run's result is not a merge gate by itself: the YAML comes from the PR's
 # merge ref. trusted-ci's ci-required (base-controlled) accepts it only when the
-# PR leaves .github/ untouched and this workflow's aggregate gate passed on the
-# exact head (scripts/ci/check-fork-validation.sh). Never add a job named
+# PR leaves .github/ untouched, or a same-repo PR has an independent current
+# maintainer's latest approval on the exact head. Fork workflow edits are never
+# accepted. This workflow's aggregate gate must pass on that same head
+# (scripts/ci/check-fork-validation.sh). Never add a job named
 # ci-required here: a skipped job would satisfy the required check.
 #
 # Only vouched authors get a validation run (.github/VOUCHED.td, read from the
@@ -14,7 +16,8 @@
 # repeats the check; this copy only saves runners for unvouched authors.
 name: fork-ci
 # check-fork-validation.sh binds a run to its PR by this title. The YAML is
-# base-identical whenever that gate accepts, so a fork cannot forge it.
+# base-identical for accepted forks; same-repo YAML edits require the gate's
+# independently checked maintainer review, so a fork cannot forge acceptance.
 run-name: "fork-ci #${{ github.event.pull_request.number }}"
 
 on:
@@ -30,10 +33,10 @@ concurrency:
 
 jobs:
   vouch:
-    if: github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Require a vouched author
+        if: github.event.pull_request.head.repo.full_name != github.repository
         uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
         with:
           user: ${{ github.event.pull_request.user.login }}
@@ -42,7 +45,6 @@ jobs:
 
   validation:
     needs: vouch
-    if: github.event.pull_request.head.repo.full_name != github.repository
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read

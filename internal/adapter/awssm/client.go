@@ -34,12 +34,16 @@ const (
 	responseCap        = 1 << 20
 	listPageSize       = 100
 	secretNameLimit    = 10_000
+	listPageLimit      = 100
+	listDeadline       = 30 * time.Second
 	recoveryWindowDays = 30
 	serviceName        = "secretsmanager"
-	// CurrentStage is the staging label Hikyo moves with every write. A value
+	// CurrentStage is the staging label Hikyo moves after promoting a write. A value
 	// written by anyone else moves AWSCURRENT without it, which is how an
 	// external update is detected without reading the value.
 	CurrentStage = "HIKYO_CURRENT"
+	// PendingStage stages a value without replacing an existing AWSCURRENT.
+	PendingStage = "HIKYO_PENDING"
 	// VersionTag names the version Hikyo last wrote. An operator accepts an
 	// overwrite of an external edit by setting it to that edit's version id.
 	VersionTag = "HIKYO_VERSION"
@@ -49,6 +53,7 @@ const (
 )
 
 var ErrSecretListLimit = errors.New("aws-secrets-manager: secret name listing reached the 10000-name safety limit before exhaustion")
+var ErrSecretListPagination = errors.New("aws-secrets-manager: secret name pagination did not converge within its safety bound")
 
 // Identity is the caller identity STS reports for the adapter credential.
 type Identity struct {
@@ -84,6 +89,7 @@ type API interface {
 	ListSecretNames(ctx context.Context, prefix string, limit int) ([]string, error)
 	CreateSecret(context.Context, CreateSecretInput) error
 	PutSecretValue(ctx context.Context, name, token, value string) error
+	UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error
 	TagSecret(ctx context.Context, name string, tags map[string]string) error
 	RestoreSecret(context.Context, string) error
 	DeleteSecret(context.Context, string) error
@@ -92,20 +98,22 @@ type API interface {
 // operationRegistry is the closed Secrets Manager surface this client can
 // sign. Anything not listed here cannot be sent.
 var operationRegistry = map[string]string{
-	"describe-secret":  "DescribeSecret",
-	"list-secrets":     "ListSecrets",
-	"create-secret":    "CreateSecret",
-	"put-secret-value": "PutSecretValue",
-	"tag-resource":     "TagResource",
-	"restore-secret":   "RestoreSecret",
-	"delete-secret":    "DeleteSecret",
+	"describe-secret":             "DescribeSecret",
+	"list-secrets":                "ListSecrets",
+	"create-secret":               "CreateSecret",
+	"put-secret-value":            "PutSecretValue",
+	"update-secret-version-stage": "UpdateSecretVersionStage",
+	"tag-resource":                "TagResource",
+	"restore-secret":              "RestoreSecret",
+	"delete-secret":               "DeleteSecret",
 }
 
 type ClientConfig struct {
-	Origin       string
-	Credential   string
-	AllowedCIDRs []netip.Prefix
-	Deadline     time.Duration
+	Origin          string
+	Credential      string
+	AllowedCIDRs    []netip.Prefix
+	STSAllowedCIDRs []netip.Prefix
+	Deadline        time.Duration
 	// WorkloadIdentity is the instance operator's opt-in for descriptors that
 	// borrow the server's own AWS identity.
 	WorkloadIdentity bool
@@ -117,6 +125,7 @@ type ClientConfig struct {
 type Client struct {
 	route       route
 	http        *http.Client
+	stsHTTP     *http.Client
 	credentials aws.CredentialsProvider
 	sts         *sts.Client
 	signer      *v4.Signer
@@ -144,32 +153,53 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 	if err != nil {
 		return nil, configError(err)
 	}
-	publicDialer, err := netpolicy.NewPublicDialer(cfg.AllowedCIDRs, resolver, dialer)
+	secretsDialer, err := netpolicy.NewPublicDialer(cfg.AllowedCIDRs, resolver, dialer)
 	if err != nil {
 		return nil, fmt.Errorf("aws-secrets-manager: egress policy: %w", err)
 	}
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.RootCAs}
-	vetted := &http.Client{
-		Transport: &http.Transport{
-			Proxy:           nil,
-			TLSClientConfig: tlsConfig,
-			DialContext:     publicDialer.DialContext,
-		},
-		Timeout: cfg.Deadline,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return errors.New("aws-secrets-manager: redirects are refused")
-		},
+	stsDialer, err := netpolicy.NewPublicDialer(cfg.STSAllowedCIDRs, resolver, dialer)
+	if err != nil {
+		return nil, fmt.Errorf("aws-secrets-manager: STS egress policy: %w", err)
 	}
-	creds, err := credentialProvider(descriptor, r, vetted, cfg.WorkloadIdentity)
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.RootCAs}
+	secretsHTTP := vettedHTTPClient(cfg.Deadline, tlsConfig.Clone(), secretsDialer)
+	stsHTTP := vettedHTTPClient(cfg.Deadline, tlsConfig.Clone(), stsDialer)
+	creds, err := credentialProvider(descriptor, r, stsHTTP, cfg.WorkloadIdentity)
 	if err != nil {
 		return nil, configError(err)
 	}
 	return &Client{
-		route: r, http: vetted, credentials: creds,
-		sts:    newSTS(r, creds, vetted),
+		route: r, http: secretsHTTP, stsHTTP: stsHTTP, credentials: creds,
+		sts:    newSTS(r, creds, stsHTTP),
 		signer: v4.NewSigner(),
 		now:    time.Now,
 	}, nil
+}
+
+type responseLimitedTransport struct{ *http.Transport }
+
+func (t *responseLimitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	response, err := t.Transport.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	response.Body = http.MaxBytesReader(nil, response.Body, responseCap)
+	return response, nil
+}
+
+func vettedHTTPClient(deadline time.Duration, tlsConfig *tls.Config, dialer *netpolicy.PublicDialer) *http.Client {
+	transport := &responseLimitedTransport{Transport: &http.Transport{
+		Proxy:           nil,
+		TLSClientConfig: tlsConfig,
+		DialContext:     dialer.DialContext,
+	}}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   deadline,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("aws-secrets-manager: redirects are refused")
+		},
+	}
 }
 
 // Region is the signing region the client resolved from origin and descriptor.
@@ -181,21 +211,19 @@ func (c *Client) Forget() {
 	c.credentials = nil
 	c.sts = nil
 	c.http.CloseIdleConnections()
+	c.stsHTTP.CloseIdleConnections()
 }
 
-// ResponseError is a refused Secrets Manager request. Code is AWS's closed
-// error type name; the message is dropped because a provider can echo request
-// material, and request material may be plaintext.
+// ResponseError is a refused Secrets Manager request. Code is a bounded,
+// receiver-controlled identifier retained only for typed classification. Neither
+// it nor the provider message is formatted: either can echo protected input.
 type ResponseError struct {
 	Status int
 	Code   string
 }
 
 func (e *ResponseError) Error() string {
-	if e.Code == "" {
-		return "aws-secrets-manager: provider refused request with status " + strconv.Itoa(e.Status)
-	}
-	return "aws-secrets-manager: provider refused request with " + e.Code + " (status " + strconv.Itoa(e.Status) + ")"
+	return "aws-secrets-manager: provider refused request with status " + strconv.Itoa(e.Status)
 }
 
 // Definite reports that AWS answered and refused, so nothing was applied.
@@ -269,7 +297,7 @@ func (c *Client) do(ctx context.Context, operation string, in, out any) error {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("aws-secrets-manager: provider request: %w", err)
+		return fmt.Errorf("aws-secrets-manager: provider request: %w", adapter.SafeTransportError(err))
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, responseCap+1))
@@ -351,9 +379,9 @@ func credentialError(err error) error {
 	if errors.As(err, &api) {
 		code := errorCode(api.ErrorCode())
 		if throttleCodes[code] {
-			return errors.Join(adapter.ErrRateLimited, fmt.Errorf("aws-secrets-manager: credential source throttled (%s)", code))
+			return errors.Join(adapter.ErrRateLimited, errors.New("aws-secrets-manager: credential source throttled"))
 		}
-		return errors.Join(adapter.ErrProviderAuth, fmt.Errorf("aws-secrets-manager: credential source refused (%s)", code))
+		return errors.Join(adapter.ErrProviderAuth, errors.New("aws-secrets-manager: credential source refused"))
 	}
 	if errors.Is(err, ErrWorkloadIdentityDisabled) {
 		return errors.Join(adapter.ErrProviderAuth, ErrWorkloadIdentityDisabled)
@@ -415,6 +443,8 @@ func (c *Client) DescribeSecret(ctx context.Context, name string) (SecretMetadat
 // prefix match, so the exact prefix is re-checked here. limit 0 means all
 // names up to the safety limit.
 func (c *Client) ListSecretNames(ctx context.Context, prefix string, limit int) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, listDeadline)
+	defer cancel()
 	type filter struct {
 		Key    string   `json:"Key"`
 		Values []string `json:"Values"`
@@ -432,7 +462,14 @@ func (c *Client) ListSecretNames(ctx context.Context, prefix string, limit int) 
 		request.MaxResults = limit
 	}
 	var names []string
+	seenTokens := make(map[string]struct{})
+	scanned := 0
+	pages := 0
 	for {
+		pages++
+		if pages > listPageLimit {
+			return nil, ErrSecretListPagination
+		}
 		var page struct {
 			SecretList []struct {
 				Name string `json:"Name"`
@@ -443,6 +480,10 @@ func (c *Client) ListSecretNames(ctx context.Context, prefix string, limit int) 
 			return nil, err
 		}
 		for _, entry := range page.SecretList {
+			scanned++
+			if scanned > secretNameLimit {
+				return nil, ErrSecretListLimit
+			}
 			if strings.HasPrefix(entry.Name, prefix) {
 				names = append(names, entry.Name)
 			}
@@ -450,12 +491,13 @@ func (c *Client) ListSecretNames(ctx context.Context, prefix string, limit int) 
 		if limit > 0 && len(names) >= limit {
 			return names[:limit], nil
 		}
-		if len(names) > secretNameLimit {
-			return nil, ErrSecretListLimit
-		}
 		if page.NextToken == "" {
 			return names, nil
 		}
+		if _, repeated := seenTokens[page.NextToken]; repeated {
+			return nil, ErrSecretListPagination
+		}
+		seenTokens[page.NextToken] = struct{}{}
 		request.NextToken = page.NextToken
 	}
 }
@@ -470,16 +512,29 @@ func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) erro
 	return c.do(ctx, "create-secret", request, nil)
 }
 
-// PutSecretValue writes one version under an idempotency token and moves both
-// AWSCURRENT and CurrentStage to it atomically.
+// PutSecretValue stages an idempotent version without moving an existing
+// AWSCURRENT. AWS automatically makes the very first version current.
 func (c *Client) PutSecretValue(ctx context.Context, name, token, value string) error {
 	request := struct {
 		SecretID           string   `json:"SecretId"`
 		ClientRequestToken string   `json:"ClientRequestToken"`
 		SecretString       string   `json:"SecretString"`
 		VersionStages      []string `json:"VersionStages"`
-	}{SecretID: name, ClientRequestToken: token, SecretString: value, VersionStages: []string{awsCurrent, CurrentStage}}
+	}{SecretID: name, ClientRequestToken: token, SecretString: value, VersionStages: []string{PendingStage}}
 	return c.do(ctx, "put-secret-value", request, nil)
+}
+
+// UpdateSecretVersionStage conditionally moves a metadata label: AWS refuses
+// when the existing label is on a version other than removeFrom. An omitted
+// removeFrom refuses a label already attached to another version.
+func (c *Client) UpdateSecretVersionStage(ctx context.Context, name, stage, moveTo, removeFrom string) error {
+	request := struct {
+		SecretID            string `json:"SecretId"`
+		VersionStage        string `json:"VersionStage"`
+		MoveToVersionID     string `json:"MoveToVersionId"`
+		RemoveFromVersionID string `json:"RemoveFromVersionId,omitempty"`
+	}{SecretID: name, VersionStage: stage, MoveToVersionID: moveTo, RemoveFromVersionID: removeFrom}
+	return c.do(ctx, "update-secret-version-stage", request, nil)
 }
 
 func (c *Client) TagSecret(ctx context.Context, name string, tags map[string]string) error {

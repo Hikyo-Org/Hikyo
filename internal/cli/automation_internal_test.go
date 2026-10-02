@@ -21,7 +21,7 @@ func TestAutomationVerbsReachServerWithMachineCredential(t *testing.T) {
 	} {
 		t.Run(command, func(t *testing.T) {
 			requests := 0
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == api.PathPrefix+"/meta" {
 					_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
@@ -35,7 +35,7 @@ func TestAutomationVerbsReachServerWithMachineCredential(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
 			}))
 			defer srv.Close()
-			_, stateDir := machineState(t, srv.URL)
+			_, stateDir := machineState(t, srv.URL, SPKIFingerprint(srv.Certificate()))
 			ios, _, stderr := composeIO(stateDir, t.TempDir(), "automation-token", nil)
 			ios.Stdin = strings.NewReader("new-password")
 			args := append(strings.Fields(command), "--instance", "local", "--org", "org_one", "--project", "prj_one", "--env", "env_one")

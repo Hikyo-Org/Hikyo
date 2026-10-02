@@ -4,10 +4,9 @@
 # classified and posted out-of-band by fuzz-report.yml (workflow_run), so no
 # write request here can startup-fail the run or reach untrusted PR code (#189).
 #
-# Fork pull requests are validated by ci-fork.yml under pull_request, because
-# actions/checkout refuses fork code here (#813). ci-required still decides
-# their merge from this base-controlled file: the author must be vouched
-# (.github/VOUCHED.td on the default branch), then check-fork-validation.sh.
+# Every pull request is validated by ci-fork.yml under pull_request, so PR code
+# cannot write caches in the base branch's runtime scope. ci-required still
+# decides mergeability from this base-controlled file.
 name: trusted-ci
 
 on:
@@ -26,7 +25,7 @@ concurrency:
 
 jobs:
   validation:
-    if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read
@@ -49,7 +48,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Require trusted validation
-        if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'merge_group'
         env:
           VALIDATION_RESULT: ${{ needs.validation.result }}
         run: test "$VALIDATION_RESULT" = success
@@ -65,13 +64,13 @@ jobs:
       # Base branch only: checkout refuses the fork head here, and this job must
       # never run PR code.
       - name: Check out the base branch
-        if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
+        if: github.event_name == 'pull_request_target'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
-      - name: Require fork validation
-        if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
+      - name: Require PR-scoped validation
+        if: github.event_name == 'pull_request_target'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

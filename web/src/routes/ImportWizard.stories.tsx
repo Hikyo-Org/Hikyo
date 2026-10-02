@@ -5,6 +5,7 @@ import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ } from '../testkit/ids.ts';
+import { revealWindow } from '../testkit/ceremony.ts';
 import { ImportWizard } from './ImportWizard.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -81,6 +82,12 @@ const app = (responses: readonly MockRoute[] = []) => ({
       ...occurrenceRows(),
       // The declare contract answers 201; any other status is a refusal.
       { url: `${PROJECT_URL}/keys`, method: 'POST', status: 201, body: declared },
+      { url: `${PROJECT_URL}/keys`, body: { count: NAMES.length, schema_revision: 3, items: NAMES.map((name, index) => ({
+        ...declared, id: `key_123e4567-e89b-12d3-a456-4266141740${String(90 + index)}`, name,
+      })) } },
+      ...[DEV, PRD].map((environment) => ({
+        url: `${PROJECT_URL}/environments/${environment}/reveal-window`, body: { ...revealWindow(false), protected: false },
+      })),
       ...importRows(),
     ],
   },

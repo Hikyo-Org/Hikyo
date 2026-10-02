@@ -91,6 +91,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_BACKUP_RETAIN_DAYS", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_BACKUP_RPO", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_BACKUP_RTO_TARGET", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
+	{Key: "HIKYO_CLI_SOCKET", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_COMPOSE_DOCKER", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_CONTEXT", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_DB", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: true, Import: VariableExternal},

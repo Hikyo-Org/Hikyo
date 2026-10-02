@@ -32,15 +32,22 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title='Fallback security channel health check failed'
-          issue_number=$(gh issue list --state open --search "$title in:title" \
-            --json number,title \
-            --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)
+          label='security-channel-alert'
+          marker='<!-- hikyo-security-channel-alert -->'
+          gh label create "$label" --force --color B60205 \
+            --description 'Automation-owned fallback security channel alert'
+          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
+            --json number,title,author,body \
+            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
           if [ -n "$issue_number" ]; then
-            printf 'Degradation is already tracked in issue #%s\n' "$issue_number"
+            gh issue comment "$issue_number" --body "The scheduled fallback-channel gate failed again: $RUN_URL"
             exit 0
           fi
           gh issue create --title "$title" \
-            --body "The scheduled fallback-channel gate failed: $RUN_URL"
+            --label "$label" \
+            --body "$marker
+
+          The scheduled fallback-channel gate failed: $RUN_URL"
       - name: Close resolved fallback-channel alert
         if: success()
         env:
@@ -48,9 +55,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           title='Fallback security channel health check failed'
-          issue_number=$(gh issue list --state open --search "$title in:title" \
-            --json number,title \
-            --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)
+          label='security-channel-alert'
+          marker='<!-- hikyo-security-channel-alert -->'
+          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
+            --json number,title,author,body \
+            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
           if [ -n "$issue_number" ]; then
             gh issue close "$issue_number" \
               --comment 'The scheduled fallback-channel gate is healthy again.'

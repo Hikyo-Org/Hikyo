@@ -481,17 +481,17 @@ func runAccessWireQueryTrace(t *testing.T, db *store.DB) {
 		{"grant_list_missing_org", list(missOrg), base},
 		{"grant_list_missing_project", list(missProject), base},
 		{"grant_create_missing_env", create(missEnv), base},
-		{"settings_read_missing_env", readSettings(missEnv), base},
+		{"settings_read_missing_env", readSettings(missEnv), base + 1},
 
-		{"grant_list_denied_existing_org", list(realOrg), base + 1},
-		{"grant_list_denied_existing_project", list(realProject), base + 1},
-		{"grant_create_denied_existing_env", create(realEnv), base + 1},
+		{"grant_list_denied_existing_org", list(realOrg), base},
+		{"grant_list_denied_existing_project", list(realProject), base},
+		{"grant_create_denied_existing_env", create(realEnv), base},
 		// read@environment is an atom a member access rule can satisfy, so a
 		// denial also reads the principal's rules (member-access-rules ADR):
 		// one more query, fixed per operation, never dependent on the object.
 		// The grant operations above carry only manage-members, which rules
 		// never satisfy, and keep their cost.
-		{"settings_read_denied_existing_env", readSettings(realEnv), base + 2},
+		{"settings_read_denied_existing_env", readSettings(realEnv), base + 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			n := serviceQueryCount(t, tc.run)

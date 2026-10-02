@@ -18,6 +18,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -213,6 +214,9 @@ type API struct {
 	// ceiling, so it is charged here. Nil means unlimited, which is only for
 	// tests.
 	Admission *admission.Limiter
+	// RequestBudget charges authenticated human requests at the service's
+	// transaction-local admission hook, never from a guessed wire subject.
+	RequestBudget *service.Budget
 	// Metrics is the shared RED collector (#513). The same instance is handed to
 	// NewOperational so the /metrics reader and this middleware's writer see one
 	// set of counters. Nil disables collection (tests), leaving the access log
@@ -598,11 +602,19 @@ func (a *API) Middleware() []func(http.Handler) http.Handler {
 	return []func(http.Handler) http.Handler{
 		a.recoverPanics,
 		a.wireContext,
+		a.admitAuthenticatedRequests,
 		a.stashRequest,
 		a.extractBearer,
 		a.requireCSRF,
 		a.validateAgainstContract,
 	}
+}
+
+func (a *API) admitAuthenticatedRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := operation.WithRequestAdmission(r.Context(), a.RequestBudget.AdmitAuthenticatedAPI)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // requestKey carries the raw request so the OIDC handlers can read cookies (the
@@ -871,12 +883,12 @@ func (a *API) scimBodyIsOneValue(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	// One byte past the bound: a short read proves it fits.
-	raw, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, api.SCIMBodyBound+1))
 	if err != nil {
 		a.writeSCIMRequestError(w, r, scimproto.ErrInvalidSyntax("The request body could not be read."))
 		return false
 	}
-	if int64(len(raw)) > MaxRequestBytes {
+	if int64(len(raw)) > api.SCIMBodyBound {
 		// An over-bound body is an ADMISSION decision (§9), not an invalid
 		// resource: one status, 413, with the ADR's own named refusal.
 		a.writeSCIMRequestError(w, r, scimproto.ErrBodyTooLarge)

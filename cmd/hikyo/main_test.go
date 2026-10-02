@@ -17,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/console"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
+	"github.com/Hikyo-Org/hikyo/internal/multicall"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
@@ -189,15 +190,17 @@ func TestUsageCoversEveryMode(t *testing.T) {
 	// The mode switch in run() and the multicall help must not drift apart:
 	// every dispatched mode has a synopsis line, and no line names a mode
 	// that does not dispatch. Client verbs are appended from cli.Verbs.
-	modes := []string{"server", "migrate", "upgrade", "operator", "config-rollout", "updater",
-		"version", "about", "welcome", "admin", "backup", "escrow", "restore"}
 	var out bytes.Buffer
 	usage(&out)
 	text := out.String()
 	if strings.Contains(text, "—") {
 		t.Error("usage contains an em-dash")
 	}
-	for _, mode := range modes {
+	for _, entry := range multicall.Modes() {
+		if entry.Hidden {
+			continue
+		}
+		mode := entry.Name
 		if !strings.Contains(text, "  hikyo "+mode) && !strings.Contains(text, "  sudo hikyo "+mode) {
 			t.Errorf("usage has no synopsis for mode %q", mode)
 		}

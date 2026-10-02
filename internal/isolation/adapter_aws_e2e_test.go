@@ -46,6 +46,30 @@ type awsTestLoader struct {
 	build   func(adapter.Config, string) (*adapter.ModuleLease, error)
 }
 
+type awsRevokeAfterCreateClient struct {
+	*awssm.Client
+	afterCreate func(context.Context) error
+}
+
+type awsInterruptedAdoptionClient struct {
+	*awssm.Client
+	afterStage func(context.Context) error
+}
+
+func (client *awsInterruptedAdoptionClient) PutSecretValue(ctx context.Context, id, token, value string) error {
+	if err := client.Client.PutSecretValue(ctx, id, token, value); err != nil {
+		return err
+	}
+	return client.afterStage(ctx)
+}
+
+func (client *awsRevokeAfterCreateClient) CreateSecret(ctx context.Context, input awssm.CreateSecretInput) error {
+	if err := client.Client.CreateSecret(ctx, input); err != nil {
+		return err
+	}
+	return client.afterCreate(ctx)
+}
+
 func (l awsTestLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Journal) (adapter.LoadedSync, error) {
 	if err := journal.Gate(ctx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "manifest", Disposition: adapter.Update}); err != nil {
 		return adapter.LoadedSync{}, err
@@ -99,15 +123,24 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	t.Cleanup(emulator.Close)
 	roots := x509.NewCertPool()
 	roots.AddCert(emulator.Certificate())
+	var afterCreate func(context.Context) error
+	var afterStage func(context.Context) error
 	build := func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		client, err := awssm.NewClient(awssm.ClientConfig{
 			Origin: config.Origin, Credential: credential, Deadline: 5 * time.Second,
-			AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
+			AllowedCIDRs:    []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+			STSAllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, RootCAs: roots,
 		})
 		if err != nil {
 			return nil, err
 		}
-		return adapter.NewModuleLease(&awssm.Module{API: client}, client.Forget)
+		var api awssm.API = client
+		if afterCreate != nil {
+			api = &awsRevokeAfterCreateClient{Client: client, afterCreate: afterCreate}
+		} else if afterStage != nil {
+			api = &awsInterruptedAdoptionClient{Client: client, afterStage: afterStage}
+		}
+		return adapter.NewModuleLease(&awssm.Module{API: api}, client.Forget)
 	}
 	kr := probeKeyring(t, db)
 	svc := &service.Adapters{
@@ -306,6 +339,179 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	if linked < 3 {
 		t.Fatalf("per-key INTENT/OUTCOME pairs = %d, want create, update, and delete", linked)
 	}
+
+	for _, interruption := range []string{"lost-stage-response", "pre-promotion-refusal"} {
+		t.Run("adoption/"+interruption, func(t *testing.T) {
+			name := "prod/adopt-" + interruption
+			emulator.Seed(name, "approved legacy", map[string]string{})
+			target, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+				EnvironmentID: string(envA1), DestinationKind: string(adapter.JSONObject),
+				DestinationOwner: awsAccount, DestinationName: name, KeySelection: selection,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			planned, err := svc.Plan(ctx, operator, scope, target.ID)
+			if err != nil || planned.ArtifactID == "" {
+				t.Fatalf("fresh adoption artifact: %v", err)
+			}
+			if _, err := svc.Adopt(ctx, operator, scope, service.AdoptAdapterRequest{
+				TargetID: target.ID, ArtifactID: planned.ArtifactID,
+				ExpectedGeneration: target.Generation, ExpectedDestinationID: target.DestinationID,
+				Entries: []store.AdapterConflictEntry{{Surface: string(adapter.Secret), EffectiveName: name}},
+			}); err != nil {
+				t.Fatalf("explicit adoption: %v", err)
+			}
+			interrupted := false
+			afterStage = func(context.Context) error {
+				interrupted = true
+				afterStage = nil
+				if interruption == "lost-stage-response" {
+					return errors.New("response lost after staged value committed")
+				}
+				emulator.FailNext("UpdateSecretVersionStage", 503, "ServiceUnavailable", "")
+				return nil
+			}
+			defer func() { afterStage = nil }()
+			for attempt := 0; attempt < 8 && !interrupted; attempt++ {
+				clock = clock.Add(time.Second)
+				if worked, err := worker.RunOnce(ctx); err != nil || !worked {
+					t.Fatalf("adoption worker before injected interruption: worked=%v err=%v", worked, err)
+				}
+			}
+			if !interrupted || emulator.Versions(name) != 2 {
+				t.Fatal("fixture did not actually stage the adopted value")
+			}
+			if got, _ := emulator.Value(name); got != "approved legacy" {
+				t.Fatalf("promotion unexpectedly committed before retry: %q", got)
+			}
+			if count := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='dispatched'`, target.ID)); count != 1 {
+				t.Fatalf("ambiguous adoption did not persist Dispatched: %d", count)
+			}
+			clock = clock.Add(time.Minute)
+			drain()
+			got, _ := emulator.Value(name)
+			var delivered map[string]string
+			if err := json.Unmarshal([]byte(got), &delivered); err != nil || delivered["SHARED_KEY"] != awsSecretV2 || emulator.Versions(name) != 2 || inspect(target.ID).Health() != adapter.HealthConverged {
+				t.Fatalf("adoption retry did not converge once: value=%q versions=%d err=%v", got, emulator.Versions(name), err)
+			}
+		})
+	}
+
+	for _, loss := range []string{"tag-removed", "resource-recreated"} {
+		for _, state := range []string{"owned", "dispatched"} {
+			for _, foreign := range []bool{false, true} {
+				t.Run(fmt.Sprintf("fresh-held-adoption/%s/%s/foreign=%v", loss, state, foreign), func(t *testing.T) {
+					name := fmt.Sprintf("prod/recover-%s-%s-%v", loss, state, foreign)
+					target, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{EnvironmentID: string(envA1), DestinationKind: string(adapter.JSONObject), DestinationOwner: awsAccount, DestinationName: name, KeySelection: selection})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := svc.SyncTarget(ctx, operator, scope, target.ID); err != nil {
+						t.Fatal(err)
+					}
+					drain()
+					if emulator.Versions(name) != 1 {
+						t.Fatal("fixture did not establish previously delivered custody")
+					}
+					if state == "dispatched" {
+						execRaw(t, db, fmt.Sprintf(`UPDATE adapter_ledger SET state='dispatched' WHERE target_id='%s'`, target.ID))
+					}
+					if loss == "tag-removed" {
+						emulator.RemoveTag(name, adapter.SentinelName)
+					} else {
+						emulator.Recreate(name, "replacement value")
+					}
+					planned, err := svc.Plan(ctx, operator, scope, target.ID)
+					if err != nil || planned.ArtifactID == "" || len(planned.Plan.Changes) != 1 || planned.Plan.Changes[0].Disposition != adapter.Conflict {
+						t.Fatalf("fresh held adoption plan = %+v, %v", planned, err)
+					}
+					current := inspect(target.ID)
+					adoption := service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: planned.ArtifactID, ExpectedGeneration: current.Generation, ExpectedDestinationID: current.DestinationID, Entries: []store.AdapterConflictEntry{{Surface: string(adapter.Secret), EffectiveName: name}}}
+					// A fresh artifact cannot repurpose held custody for a
+					// different provider origin or resolved destination.
+					if state == "owned" && !foreign {
+						for _, change := range []struct{ mutation, restore string }{
+							{"provider_origin=provider_origin||'/foreign'", fmt.Sprintf("provider_origin='%s'", emulator.URL)},
+							{"destination_id=destination_id+1", fmt.Sprintf("destination_id=%d", current.DestinationID)},
+						} {
+							execRaw(t, db, fmt.Sprintf(`UPDATE adapter_ledger SET %s WHERE target_id='%s'`, change.mutation, target.ID))
+							if _, err := svc.Adopt(ctx, operator, scope, adoption); !errors.Is(err, domain.ErrConflict) {
+								t.Fatalf("adoption rebound foreign custody: %v", err)
+							}
+							execRaw(t, db, fmt.Sprintf(`UPDATE adapter_ledger SET %s WHERE target_id='%s'`, change.restore, target.ID))
+						}
+					}
+					if _, err := svc.Adopt(ctx, operator, scope, adoption); err != nil {
+						t.Fatalf("fresh adoption of held custody: %v", err)
+					}
+					if foreign {
+						afterStage = func(context.Context) error {
+							afterStage = nil
+							emulator.ExternalPut(name, "concurrent external value")
+							return nil
+						}
+						defer func() { afterStage = nil }()
+					}
+					drain()
+					if rows := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state<>'released'`, target.ID)); rows != 1 {
+						t.Fatalf("held adoption duplicated or lost custody: %d", rows)
+					}
+					got, _ := emulator.Value(name)
+					if foreign {
+						if got != "concurrent external value" || inspect(target.ID).LastErrorClass != adapter.ErrorClassConflict {
+							t.Fatalf("fresh adoption overwrote later foreign CAS: value=%q target=%+v", got, inspect(target.ID))
+						}
+						return
+					}
+					var delivered map[string]string
+					if err := json.Unmarshal([]byte(got), &delivered); err != nil || delivered["SHARED_KEY"] != awsSecretV2 || emulator.Tag(name, adapter.SentinelName) != target.ID || inspect(target.ID).Health() != adapter.HealthConverged {
+						t.Fatalf("fresh held adoption did not converge: value=%q err=%v", got, err)
+					}
+				})
+			}
+		}
+	}
+
+	t.Run("revocation-after-create-stops-plaintext", func(t *testing.T) {
+		// The provider accepted creation, but authority is independently
+		// withdrawn before its response reaches apply's next request boundary.
+		// Exercise the real durable gate, not a simulated journal refusal.
+		revoked, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+			EnvironmentID: string(envA1), DestinationKind: string(adapter.JSONObject),
+			DestinationOwner: awsAccount, DestinationName: "prod/revoked", KeySelection: selection,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		requestsAtRevocation := -1
+		afterCreate = func(context.Context) error {
+			execRaw(t, db, `DELETE FROM grants WHERE id='g_aws_reveal'`)
+			requestsAtRevocation = len(emulator.Operations())
+			afterCreate = nil
+			return nil
+		}
+		defer func() {
+			afterCreate = nil
+			execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_aws_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',`+ts+`)`)
+		}()
+		if _, err := svc.SyncTarget(ctx, operator, scope, revoked.ID); err != nil {
+			t.Fatal(err)
+		}
+		drain()
+		if requestsAtRevocation < 0 || len(emulator.Operations()) != requestsAtRevocation {
+			t.Fatalf("provider requests continued after real grant revocation: at=%d operations=%v", requestsAtRevocation, emulator.Operations())
+		}
+		if _, delivered := emulator.Value("prod/revoked"); delivered {
+			t.Fatal("plaintext delivered after real grant revocation")
+		}
+		if emulator.Tag("prod/revoked", adapter.SentinelName) != revoked.ID {
+			t.Fatal("fixture did not actually create the tagged provider resource")
+		}
+		if count := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND effective_name='prod/revoked' AND state='dispatched'`, revoked.ID)); count != 1 {
+			t.Fatalf("partially created resource lost durable custody: %d rows", count)
+		}
+	})
 }
 
 func TestAdapterAWSSecretsManagerLifecycle(t *testing.T) {

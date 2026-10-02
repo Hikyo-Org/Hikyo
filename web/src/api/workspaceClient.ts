@@ -1,11 +1,55 @@
-import { createClient, createConfig, type Client } from '@hikyo/runtime-core';
+import { createClient, createConfig, type Client } from "@hikyo/runtime-core";
+import { boundedWorkspaceEvents } from './workspaceEvents.ts';
 
 import {
   dropWorkspaceSession,
+  HANDOFF_REQUEST_TIMEOUT_MS,
+  readBoundedWorkspaceBody,
   workspaceSession,
+  WORKSPACE_DATA_RESPONSE_MAX_BYTES,
   WorkspaceError,
   type WorkspaceSessionReference,
-} from './workspace.ts';
+} from "./workspace.ts";
+
+async function hardenedWorkspaceFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const original = new Request(input, init);
+  const events =
+    original.method === "GET" &&
+    new URL(original.url).pathname.endsWith("/events");
+
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(new WorkspaceError("The remote request timed out.")),
+    HANDOFF_REQUEST_TIMEOUT_MS,
+  );
+  const signal = AbortSignal.any([original.signal, deadline.signal]);
+  try {
+    const response = await globalThis.fetch(new Request(original, { signal }));
+    // Deadline bounds the handshake, not a healthy stream's lifetime. Each
+    // complete or incomplete frame is capped before the generated SSE parser.
+    if (events && response.ok) return boundedWorkspaceEvents(response, signal);
+    const body = await readBoundedWorkspaceBody(
+      response,
+      signal,
+      WORKSPACE_DATA_RESPONSE_MAX_BYTES,
+    );
+    const headers = new Headers(response.headers);
+    // Fetch exposes decoded bytes. Reusing the remote's encoding or declared
+    // length on the locally buffered response would describe a different body.
+    headers.delete("Content-Encoding");
+    headers.set("Content-Length", String(body.byteLength));
+    return new Response(response.body === null ? null : body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * The workspace tier's DATA transport (#71, multi-instance ADR § What the
@@ -47,7 +91,8 @@ export function createWorkspaceClient(origin: string): Client {
       baseUrl: origin,
       // See the file comment: this is the whole reason the workspace tier can
       // exist without a server-side proxy and without touching CSRF.
-      credentials: 'omit',
+      credentials: "omit",
+      fetch: hardenedWorkspaceFetch,
     }),
   );
 
@@ -65,10 +110,10 @@ export function createWorkspaceClient(origin: string): Client {
       // between a drop and an in-flight render must not leak an anonymous
       // request to a foreign origin.
       throw new WorkspaceError(
-        'This workspace is no longer connected. Reconnect to the remote to continue.',
+        "This workspace is no longer connected. Reconnect to the remote to continue.",
       );
     }
-    request.headers.set('Authorization', `Bearer ${session.bearer.value}`);
+    request.headers.set("Authorization", `Bearer ${session.bearer.value}`);
     sentUnder.set(request, session);
     return request;
   });

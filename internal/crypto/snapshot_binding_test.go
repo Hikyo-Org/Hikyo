@@ -173,6 +173,53 @@ func TestSnapshotBindingContextMatchesCanonicalScope(t *testing.T) {
 	}
 }
 
+func TestSnapshotBindingStorageKeyExcludesOnlyDirectory(t *testing.T) {
+	original, err := NewSnapshotBinding(baseSnapshotScope())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := original.StorageKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*SnapshotBindingScope){
+		"directory":   func(s *SnapshotBindingScope) { s.StorageDir = "/relocated/state" },
+		"instance":    func(s *SnapshotBindingScope) { s.InstanceOrigin = "https://other.example" },
+		"org":         func(s *SnapshotBindingScope) { s.OrgID = "org_2" },
+		"project":     func(s *SnapshotBindingScope) { s.ProjectID = "prj_2" },
+		"environment": func(s *SnapshotBindingScope) { s.EnvironmentID = "env_2" },
+		"credential":  func(s *SnapshotBindingScope) { s.CredentialFingerprint = "fp_2" },
+		"mode":        func(s *SnapshotBindingScope) { s.ConfigOnly = true },
+		"targets":     func(s *SnapshotBindingScope) { s.TargetNames = []string{"api"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			scope := baseSnapshotScope()
+			mutate(&scope)
+			binding, err := NewSnapshotBinding(scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := binding.StorageKey()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (got == key) != (name == "directory") {
+				t.Fatalf("storage-key equality for changed %s = %v", name, got == key)
+			}
+			if name == "directory" {
+				legacy, err := original.LegacyStorageKey()
+				if err != nil {
+					t.Fatal(err)
+				}
+				movedLegacy, err := binding.LegacyStorageKey()
+				if err != nil || legacy == movedLegacy {
+					t.Fatalf("compatibility key does not retain former directory binding: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestSnapshotBindingScopeCannotProduceAAD(t *testing.T) {
 	binding, err := NewSnapshotBinding(baseSnapshotScope())
 	if err != nil {

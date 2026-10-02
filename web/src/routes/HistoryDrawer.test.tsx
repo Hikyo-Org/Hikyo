@@ -10,6 +10,8 @@ import { HistoryDrawer, PinReleaseOutcome, shortPrincipal } from './HistoryDrawe
 type HistoryDrawerMocks = {
   preview: RetentionConsequence;
   schemaOverride: boolean;
+  currentSticky: boolean;
+  currentDetailReady: boolean;
   ceremonyRun: ReturnType<typeof vi.fn>;
   releaseMutate: ReturnType<typeof vi.fn>;
   setPinMutate: ReturnType<typeof vi.fn>;
@@ -19,6 +21,8 @@ type HistoryDrawerMocks = {
 const mocks = vi.hoisted<HistoryDrawerMocks>(() => ({
   preview: 'retained',
   schemaOverride: false,
+  currentSticky: false,
+  currentDetailReady: true,
   ceremonyRun: vi.fn(),
   releaseMutate: vi.fn(),
   setPinMutate: vi.fn(),
@@ -66,12 +70,12 @@ vi.mock('../api/history.ts', async (importActual) => {
       data: { inherited: false, mode: 'keep-if-either', max_age_seconds: 3600, last_revisions: 1 },
       isError: false,
     }),
-    useRevisionDetail: () => ({
-      data: {
-        keys: [{ key_id: 'key_secret', name: 'TOKEN', classification: 'secret' }],
+    useRevisionDetail: (_env: object, revision: bigint | null) => ({
+      data: revision === 7n && !mocks.currentDetailReady ? undefined : {
+        keys: [{ key_id: 'key_secret', name: 'TOKEN', classification: mocks.currentSticky ? 'config' : 'secret', sensitive: mocks.currentSticky && revision === 7n }],
       },
-      isSuccess: true,
-      isError: false,
+      isSuccess: revision !== 7n || mocks.currentDetailReady,
+      isError: revision === 7n && !mocks.currentDetailReady,
     }),
     useRestoreRevision: () => ({ mutate: mocks.restoreMutate, isPending: false }),
     useSetRevisionPin: () => ({ mutate: mocks.setPinMutate, isPending: false }),
@@ -118,6 +122,8 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
 beforeEach(() => {
   mocks.preview = 'retained';
   mocks.schemaOverride = false;
+  mocks.currentSticky = false;
+  mocks.currentDetailReady = true;
   mocks.ceremonyRun.mockReset();
   mocks.releaseMutate.mockReset();
   mocks.setPinMutate.mockReset();
@@ -175,7 +181,7 @@ function drawer(
         keys={[]}
         currentRevisions={new Map([['env_a', 7n], ['env_b', 2n]])}
         protectedEnvironmentIds={[]}
-        cellsByEnvironment={new Map()}
+        cellsByEnvironment={new Map([['env_a', [{ keyId: 'key_secret', classification: 'config', set: true }]]])}
         pendingByEnvironment={new Map()}
         pendingByOthersByEnvironment={new Map([['env_a', pendingByOthers]])}
         currentValuesByEnvironment={new Map()}
@@ -370,6 +376,50 @@ describe('HistoryDrawer head', () => {
 });
 
 describe('HistoryDrawer restore sheet', () => {
+  it('displays an already-matching restore without registering an empty preview', async () => {
+    mocks.ceremonyRun.mockImplementation((_units: object, act: () => void) => {
+      act();
+      return Promise.resolve();
+    });
+    mocks.restoreMutate.mockImplementation((_input, options) => options.onSuccess({
+      changes: [], preview: { token: '', environments: [] },
+    }));
+    const view = await renderForm(drawer());
+    try {
+      await act(async () => buttonNamed(view.container, 'Restore r4…').click());
+      await act(async () => buttonNamed(view.container, 'Stage the restore from r4').click());
+      await settle();
+      expect(view.container.textContent).toContain('already matches, nothing to stage');
+      expect(view.container.querySelector('#history-restore-no-drafts')).not.toBeNull();
+    } finally { await view.unmount(); }
+  });
+
+  it('binds restoration to current sticky sensitivity despite config classification', async () => {
+    mocks.currentSticky = true;
+    const view = await renderForm(drawer());
+    try {
+      await act(async () => buttonNamed(view.container, 'Restore r4…').click());
+      await act(async () => buttonNamed(view.container, 'Stage the restore from r4').click());
+      expect(mocks.ceremonyRun.mock.calls[0]?.[0]).toEqual([{
+        environmentId: 'env_a', environmentName: 'production',
+        keys: [{ id: 'key_secret', name: 'TOKEN' }], purpose: 'restore',
+      }]);
+      expect(mocks.restoreMutate).not.toHaveBeenCalled();
+    } finally { await view.unmount(); }
+  });
+
+  it('does not stage or guess a ceremony when current sensitivity is unavailable', async () => {
+    mocks.currentDetailReady = false;
+    const view = await renderForm(drawer());
+    try {
+      await act(async () => buttonNamed(view.container, 'Restore r4…').click());
+      await act(async () => buttonNamed(view.container, 'Stage the restore from r4').click());
+      expect(mocks.restoreMutate).not.toHaveBeenCalled();
+      expect(mocks.ceremonyRun).not.toHaveBeenCalled();
+      expect(view.container.textContent).toContain('Current revision sensitivity could not be read');
+    } finally { await view.unmount(); }
+  });
+
   it('counts changes pending by others without inventing names', async () => {
     const { container } = await renderForm(drawer(undefined, 2));
     expect(container.querySelector('.history__pending')?.textContent).toBe('2 changes pending by others');

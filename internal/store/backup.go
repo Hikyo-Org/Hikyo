@@ -418,6 +418,44 @@ func pgSequencePositions(ctx context.Context, tx pgx.Tx) (map[string]int64, erro
 	return out, nil
 }
 
+type pgSequenceBound struct {
+	min int64
+	max int64
+}
+
+// A structurally valid manifest must not place a noncycling counter at (or
+// arbitrarily close to) exhaustion. Reserve at least half the canonical range.
+// Hikyo's BIGINT audit counters retain over 4e18 allocations; restoring a
+// genuinely exhausted installation requires a supported counter migration,
+// not silently admitting an archive that disables future audited mutations.
+func validRestoredSequencePosition(bound pgSequenceBound, value int64) bool {
+	if bound.max <= bound.min || value < bound.min {
+		return false
+	}
+	// Unsigned subtraction avoids overflow for ranges spanning negative values.
+	midpoint := bound.min + int64((uint64(bound.max)-uint64(bound.min))/2)
+	return value <= midpoint
+}
+
+func pgSequenceBounds(ctx context.Context, tx pgx.Tx) (map[string]pgSequenceBound, error) {
+	rows, err := tx.Query(ctx,
+		`SELECT sequencename, min_value, max_value FROM pg_sequences WHERE schemaname = current_schema()`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list sequence bounds: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]pgSequenceBound{}
+	for rows.Next() {
+		var name string
+		var bound pgSequenceBound
+		if err := rows.Scan(&name, &bound.min, &bound.max); err != nil {
+			return nil, fmt.Errorf("store: list sequence bounds: %w", err)
+		}
+		out[name] = bound
+	}
+	return out, rows.Err()
+}
+
 func writeManifest(tw *tar.Writer, m Manifest) error {
 	body, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -842,6 +880,22 @@ func restorePostgresChecked(ctx context.Context, db *DB, archive io.Reader, plan
 			return Manifest{}, errors.New("restore archive table inventory differs from verified source schema")
 		}
 	}
+	sequenceBounds, err := pgSequenceBounds(ctx, tx)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if len(sequenceBounds) != len(m.Sequences) {
+		return Manifest{}, errors.New("restore archive sequence inventory differs from target schema")
+	}
+	for name, value := range m.Sequences {
+		bound, ok := sequenceBounds[name]
+		if !ok {
+			return Manifest{}, errors.New("restore archive sequence inventory differs from target schema")
+		}
+		if !validRestoredSequencePosition(bound, value) {
+			return Manifest{}, fmt.Errorf("%w: sequence %q value is outside its safe restore range", ErrArchiveFormat, name)
+		}
+	}
 	quoted := make([]string, 0, len(m.Tables))
 	for _, t := range m.Tables {
 		quoted = append(quoted, pgIdent(t))
@@ -886,7 +940,7 @@ func restorePostgresChecked(ctx context.Context, db *DB, archive io.Reader, plan
 		}
 	}
 	for name, value := range m.Sequences {
-		if _, err := tx.Exec(ctx, "SELECT setval($1, $2, true)", name, value); err != nil {
+		if _, err := tx.Exec(ctx, "SELECT setval((quote_ident(current_schema()) || '.' || quote_ident($1))::regclass, $2, true)", name, value); err != nil {
 			return Manifest{}, fmt.Errorf("store: restore sequence %s: %w", name, err)
 		}
 	}

@@ -1,4 +1,4 @@
-import { parseAllDocuments } from 'yaml';
+import { Lexer, parseAllDocuments } from 'yaml';
 
 /**
  * Pure, React-free connector layer for the browser import wizard (#496).
@@ -44,6 +44,7 @@ export type FileConnector = 'k8s' | 'infisical' | 'vault';
 export const MAX_FILE_BYTES = 10 << 20;
 const MAX_DECODED_BYTES = 50 << 20;
 const MAX_RECORDS = 50000;
+const MAX_PARSE_NODES = 50000;
 const MAX_VALUE_BYTES = 65536;
 const MAX_KEY_NAME_BYTES = 128;
 const MAX_DEPTH = 32;
@@ -162,6 +163,7 @@ export function safeName(value: string): string {
     } else {
       out += char;
     }
+    if (out.length >= MAX_SHOWN_NAME_BYTES) return `${out.slice(0, MAX_SHOWN_NAME_BYTES)}..."`;
   }
   out += '"';
   return out.length <= MAX_SHOWN_NAME_BYTES ? out : `${out.slice(0, MAX_SHOWN_NAME_BYTES)}..."`;
@@ -251,8 +253,10 @@ function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof JsonNumber);
 }
 
-function parseJsonLossless(text: string): JsonValue {
-  const parser = new JsonParser(text);
+type JsonParseBudget = { nodes: number };
+
+function parseJsonLossless(text: string, work: JsonParseBudget = { nodes: 0 }): JsonValue {
+  const parser = new JsonParser(text, work);
   const value = parser.parseValue();
   parser.skipWhitespace();
   if (!parser.atEnd()) {
@@ -264,7 +268,7 @@ function parseJsonLossless(text: string): JsonValue {
 class JsonParser {
   private i = 0;
   private depth = 0;
-  constructor(private readonly s: string) {}
+  constructor(private readonly s: string, private readonly work: JsonParseBudget) {}
 
   atEnd(): boolean {
     return this.i >= this.s.length;
@@ -278,6 +282,7 @@ class JsonParser {
 
   parseValue(): JsonValue {
     this.skipWhitespace();
+    this.chargeNode();
     const char = this.s[this.i];
     // Bound nesting the way `importer.normalizeTree` does (depth 32). Without
     // this a deeply nested leaf would recurse until the JS stack overflows, an
@@ -323,7 +328,8 @@ class JsonParser {
       this.skipWhitespace();
       if (this.s[this.i] !== '"') refuse('the JSON object is malformed');
       const key = this.parseString();
-      const folded = key.toLowerCase();
+      this.chargeNode();
+      const folded = foldJSONMember(key);
       if (seen.has(folded)) {
         refuse(`a JSON object declares the member ${safeName(key)} more than once`);
       }
@@ -436,6 +442,36 @@ class JsonParser {
     }
     return new JsonNumber(literal);
   }
+
+  private chargeNode(): void {
+    this.work.nodes += 1;
+    if (this.work.nodes > MAX_PARSE_NODES) {
+      refuse(`the JSON holds more than the ${MAX_PARSE_NODES}-node parser bound`);
+    }
+  }
+}
+
+// Go's unicode.SimpleFold has a small set of multi-member cycles that Unicode
+// lowercase alone does not collapse. This table is generated from the pinned
+// Go toolchain's fold table and keeps browser duplicate handling byte-for-byte
+// aligned with the CLI importer.
+const simpleFoldExtras: Readonly<Record<string, string>> = Object.freeze({
+  'ſ': 's', 'Ι': 'ͅ', 'Μ': 'µ', 'ι': 'ͅ', 'μ': 'µ', 'ς': 'σ',
+  'ϐ': 'β', 'ϑ': 'θ', 'ϕ': 'φ', 'ϖ': 'π', 'ϰ': 'κ', 'ϱ': 'ρ', 'ϵ': 'ε',
+  'ᲀ': 'в', 'ᲁ': 'д', 'ᲂ': 'о', 'ᲃ': 'с', 'ᲄ': 'т', 'ᲅ': 'т',
+  'ᲆ': 'ъ', 'ᲇ': 'ѣ', 'ẛ': 'ṡ', 'ι': 'ͅ', 'ΐ': 'ΐ', 'ΰ': 'ΰ',
+  'Ꙋ': 'ᲈ', 'ꙋ': 'ᲈ', 'ﬆ': 'ﬅ',
+});
+
+function foldJSONMember(value: string): string {
+  return Array.from(value, (char) => {
+    const extra = simpleFoldExtras[char];
+    if (extra !== undefined) return extra;
+    const lower = char.toLowerCase();
+    // SimpleFold never expands one rune (notably dotted capital I), nor uses
+    // contextual lowercasing such as final sigma in a whole string.
+    return Array.from(lower).length === 1 ? lower : char;
+  }).join('');
 }
 
 /**
@@ -496,6 +532,7 @@ function compareCodePoints(a: string, b: string): number {
  * decoded value's UTF-8/NUL and size checks run uniformly afterwards.
  */
 function readK8s(text: string, budget: Budget): SourceRecord[] {
+  assertYAMLLexerBudget(text);
   // `uniqueKeys` refuses a mapping that declares a key twice; the lib's default
   // `maxAliasCount` (100) caps YAML alias expansion so a billion-laughs bomb
   // fails loud rather than in the allocator.
@@ -515,6 +552,7 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
       }
       refuse(`the ${where} is not parseable as YAML or JSON`);
     }
+    assertYAMLNodeBudget(doc.contents, where);
     let object: unknown;
     try {
       object = doc.toJS();
@@ -542,6 +580,9 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
     const name = typeof metadata.name === 'string' ? metadata.name : '';
     if (name === '') {
       refuse(`the Secret in ${where} carries no metadata.name; one Secret maps onto one folder named after it`);
+    }
+    if (byteLength(name) > MAX_KEY_NAME_BYTES) {
+      refuse(`the Secret metadata.name in ${where} exceeds the ${MAX_KEY_NAME_BYTES}-byte source-name bound`);
     }
     names.push(name);
     const merged = new Map<string, { value: string; byteLength: number; binary: boolean }>();
@@ -590,6 +631,35 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
   return records;
 }
 
+function assertYAMLLexerBudget(text: string): void {
+  let tokens = 0;
+  for (const _token of new Lexer().lex(text)) {
+    tokens += 1;
+    if (tokens > MAX_PARSE_NODES) {
+      refuse(`the YAML holds more than the ${MAX_PARSE_NODES}-token parser bound`);
+    }
+  }
+}
+
+function assertYAMLNodeBudget(root: unknown, where: string): void {
+  const stack: unknown[] = [root];
+  const seen = new WeakSet<object>();
+  let nodes = 0;
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (typeof node !== 'object' || node === null || seen.has(node)) continue;
+    seen.add(node);
+    nodes += 1;
+    if (nodes > MAX_PARSE_NODES) {
+      refuse(`the ${where} holds more than the ${MAX_PARSE_NODES}-node parser bound`);
+    }
+    const candidate = node as { items?: unknown; key?: unknown; value?: unknown };
+    if (Array.isArray(candidate.items)) stack.push(...candidate.items);
+    if (candidate.key !== undefined) stack.push(candidate.key);
+    if (candidate.value !== undefined) stack.push(candidate.value);
+  }
+}
+
 /** Decodes one `data` value from base64 and classifies its bytes. A K8s Secret
  * can hold arbitrary bytes; a value that is not UTF-8 text (or carries NUL) is
  * marked binary and refused by name in the uniform value check. */
@@ -618,7 +688,7 @@ function decodeK8sData(
   let value = '';
   let binary = bytes.includes(0);
   try {
-    value = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    value = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     binary = true;
   }
@@ -663,7 +733,14 @@ function readInfisical(text: string, budget: Budget): { records: SourceRecord[];
     if (!isJsonObject(raw)) {
       refuse(`the ${where} is not a secret object`);
     }
-    const entry = raw;
+    // Go's typed JSON decoder matches modeled fields case-insensitively.
+    // Resolve those spellings before type checks, never discard a Value/VALUE.
+    const entry: { [key: string]: JsonValue } = Object.create(null);
+    const fields = ['key', 'value', 'type', 'secretPath', '_id'];
+    for (const [name, value] of Object.entries(raw)) {
+      const modeled = fields.find((field) => foldJSONMember(field) === foldJSONMember(name));
+      if (modeled !== undefined) entry[modeled] = value;
+    }
     // Mirror Go's typed `json.Unmarshal`: a field present with the wrong JSON
     // type refuses the WHOLE export (before mapping and before the personal-skip
     // branch), never coerces. Coercing a non-string `value` to `""`, the
@@ -743,13 +820,15 @@ function readVault(text: string, budget: Budget): { records: SourceRecord[]; ski
     data: { [key: string]: JsonValue };
   };
   const captures: Capture[] = [];
+  // All retained capture graphs share one parser-work bound, not one per line.
+  const work: JsonParseBudget = { nodes: 0 };
   const seen = new Set<string>();
   const lines = text.split('\n');
   for (let index = 0; index < lines.length; index += 1) {
     const raw = (lines[index] ?? '').trim();
     if (raw === '') continue;
     const where = `line ${index + 1}`;
-    const parsed = parseJsonLossless(raw);
+    const parsed = parseJsonLossless(raw, work);
     if (!isJsonObject(parsed)) {
       refuse(
         `the ${where} is not one pinned Vault/OpenBao capture record; see ` +

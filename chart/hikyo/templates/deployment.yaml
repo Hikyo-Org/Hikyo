@@ -200,7 +200,7 @@ spec:
             - name: HIKYO_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "database.existingSecret is required" .Values.database.existingSecret }}
+                  name: {{ required "database.existingSecret is required" .Values.database.existingSecret | quote }}
                   key: HIKYO_DB
             {{- if .Values.rollout.enabled }}
             - name: HIKYO_NODE_ID
@@ -384,13 +384,15 @@ spec:
             claimName: {{ .Values.upgrade.stateExistingClaim }}
         - name: root-key-source
           secret:
-            secretName: {{ .Values.rootKey.existingSecret }}
+            secretName: {{ .Values.rootKey.existingSecret | quote }}
             defaultMode: 0400
             items:
-              - key: {{ .Values.rootKey.key }}
+              - key: {{ .Values.rootKey.key | quote }}
                 path: root-key
         - name: root-key
-          emptyDir: {}
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Ki
         - name: tmp
           emptyDir: {}
         {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
@@ -399,13 +401,15 @@ spec:
             name: {{ include "hikyo.rollout.name" . }}-enrollment
         - name: rollout-authority-source
           secret:
-            secretName: {{ .Values.rollout.authorityExistingSecret }}
+            secretName: {{ .Values.rollout.authorityExistingSecret | quote }}
             defaultMode: 0440
             items:
-              - key: {{ .Values.rollout.authorityKey }}
+              - key: {{ .Values.rollout.authorityKey | quote }}
                 path: authority.key
         - name: rollout-authority
-          emptyDir: {}
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
         - name: rollout-selection
           downwardAPI:
             items:
@@ -444,37 +448,39 @@ spec:
         {{- range $alias, $source := .Values.rollout.databaseSources }}
         - name: rollout-database-{{ $alias }}
           secret:
-            secretName: {{ $source.name }}
+            secretName: {{ $source.name | quote }}
             defaultMode: 0440
             items:
-              - key: {{ $source.key }}
+              - key: {{ $source.key | quote }}
                 path: dsn
         {{- end }}
         {{- range $alias, $source := .Values.rollout.rootSources }}
         - name: rollout-root-source-{{ $alias }}
           secret:
-            secretName: {{ $source.name }}
+            secretName: {{ $source.name | quote }}
             defaultMode: 0400
             items:
-              - key: {{ $source.key }}
+              - key: {{ $source.key | quote }}
                 path: root-key
         - name: rollout-root-{{ $alias }}
-          emptyDir: {}
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Ki
         {{- end }}
         {{- end }}
         {{- if .Values.database.tls.existingSecret }}
         - name: database-ca
           secret:
-            secretName: {{ .Values.database.tls.existingSecret }}
+            secretName: {{ .Values.database.tls.existingSecret | quote }}
             defaultMode: 0444
             items:
-              - key: {{ .Values.database.tls.key }}
+              - key: {{ .Values.database.tls.key | quote }}
                 path: ca.crt
         {{- end }}
         {{- if .Values.tls.existingSecret }}
         - name: tls-source
           secret:
-            secretName: {{ .Values.tls.existingSecret }}
+            secretName: {{ .Values.tls.existingSecret | quote }}
             defaultMode: 0400
             items:
               - key: tls.crt
@@ -482,5 +488,7 @@ spec:
               - key: tls.key
                 path: tls.key
         - name: tls
-          emptyDir: {}
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
       {{- end }}

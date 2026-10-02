@@ -243,12 +243,15 @@ func DecodeUser(raw []byte) (User, *Error) {
 	if err := json.Unmarshal(raw, &u); err != nil {
 		return User{}, bad(TypeInvalidSyntax, "The request body is not a valid User resource.")
 	}
-	if v, present := generic["active"]; present {
-		active, e := NormalizeActive(v)
-		if e != nil {
-			return User{}, e
+	for name, value := range generic {
+		if strings.EqualFold(name, "active") {
+			active, e := NormalizeActive(value)
+			if e != nil {
+				return User{}, e
+			}
+			u.Active = &active
+			break
 		}
-		u.Active = &active
 	}
 	if e := boundStrings("", generic, 0); e != nil {
 		return User{}, e

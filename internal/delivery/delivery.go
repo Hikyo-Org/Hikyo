@@ -35,7 +35,7 @@ const MaxAcknowledgedKeys = 64
 // different encodings of the same content could produce the same token under a
 // scheme change, which is the collision a version prefix on the outside cannot
 // prevent.
-const ManifestVersion = "v1"
+const ManifestVersion = "v2"
 
 // Mode is the delivery projection: which keys the fetch is authorized to
 // deliver at all. It is a SERVER-SIDE AUTHORIZED TERM (k8s ADR § Refresh), not
@@ -95,6 +95,10 @@ const (
 type Row struct {
 	Key            string
 	Classification string
+	// Occurrence is the server-generated value-entry identity. Including it
+	// makes an accepted same-value rewrite a distinct rollout without exposing
+	// plaintext equality to a publisher who lacks reveal.
+	Occurrence string
 	// Value is the plaintext the snapshot delivers for this key. It is the
 	// third element of the ADR's triple, and it is why the token moves when a
 	// value moves -- which is the whole point of a change token.
@@ -126,6 +130,7 @@ func Manifest(rows []Row) []byte {
 	for _, r := range sorted {
 		out = appendField(out, r.Key)
 		out = appendField(out, r.Classification)
+		out = appendField(out, r.Occurrence)
 		out = appendField(out, r.Value)
 	}
 	return out

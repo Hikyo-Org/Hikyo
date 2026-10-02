@@ -49,8 +49,7 @@ export function OIDCDone() {
         : purpose === 'link'
           ? 'Your identity provider refused this link. Return to account security and try again.'
           : 'Your identity provider refused this reauthentication. Go back and try again.';
-  const returnTarget =
-    invalid || error === null ? null : purpose === 'login' ? '/login' : peekOIDCReturn(state);
+  const returnTarget = invalid || error === null ? null : peekOIDCReturn(state);
 
   useEffect(() => {
     if (invalid) {
@@ -58,12 +57,13 @@ export function OIDCDone() {
     }
     if (purpose === 'login') {
       // A refused sign-in only shows the derived failure; it neither broadcasts
-      // nor navigates. A success announces the new session and lands home.
+      // nor navigates. A success announces the new session and restores the
+      // same-origin page that owns the OIDC transaction, defaulting home.
       if (error !== null) {
         return;
       }
       announceSessionChange();
-      globalThis.location.replace('/');
+      globalThis.location.replace(takeOIDCReturn(state));
       return;
     }
 

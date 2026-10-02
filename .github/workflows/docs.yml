@@ -20,8 +20,6 @@ on:
       - "SECURITY.md"
       - "SUPPORT.md"
       - "TRADEMARK.md"
-  workflow_dispatch:
-
 concurrency:
   group: github-pages
   cancel-in-progress: false

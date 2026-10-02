@@ -58,6 +58,24 @@ func (n *principalNames) get(ctx context.Context, az *authz.TxAuthorizer, id dom
 	return name, nil
 }
 
+// visibleInProject requires an independently stored grant in the policy's
+// tenant before a caller-authored roster entry can trigger a global name lookup.
+func (n *principalNames) visibleInProject(ctx context.Context, az *authz.TxAuthorizer, id domain.PrincipalID, scope domain.Scope) (bool, error) {
+	grants, err := az.GrantsOf(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	for _, grant := range grants {
+		if grant.Scope.Org == "" {
+			return true, nil
+		}
+		if grant.Scope.Org == scope.Org && (grant.Scope.Project == "" || grant.Scope.Project == scope.Project) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func nameAuditActors(ctx context.Context, az *authz.TxAuthorizer, page *AuditPage) error {
 	names := newPrincipalNames()
 	page.ActorNames = make(map[string]string)

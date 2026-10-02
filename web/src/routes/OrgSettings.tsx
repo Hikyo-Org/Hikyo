@@ -316,9 +316,31 @@ export function CompactOrgRetention({
   const [count, setCount] = useState(String(policy.last_revisions ?? 6));
   const [refusal, setRefusal] = useState<string | null>(null);
 
-  useResetOnChange(String(policy.last_revisions), () => {
+  useResetOnChange(`${policy.mode}:${String(policy.last_revisions)}`, () => {
     setCount(String(policy.last_revisions ?? 6));
   });
+
+  if (policy.mode === 'unlimited') {
+    return (
+      <div className="settings-row">
+        <div className="settings-row__copy">
+          <span className="settings-row__title">Default revision retention</span>
+          <span className="settings-row__detail">Unlimited: keep every revision payload.</span>
+        </div>
+        <span className="settings-row__spacer" />
+        <button
+          className="btn"
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            onSave({ mode: 'keep-if-either', max_age_seconds: 7_776_000, last_revisions: 6 })
+          }
+        >
+          Use bounded retention
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

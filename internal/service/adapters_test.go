@@ -1368,7 +1368,7 @@ func TestAdapterOriginMoveKeepsOldRouteAndCredentialThroughScrubBarrier(t *testi
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", "https://git.next.example", []byte("new-token"), false)
+	move, err := svc.MoveOrigin(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "adp_1", "https://GIT.next.example:443/", []byte("new-token"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1516,7 +1516,7 @@ func TestAdapterPendingOriginReplacementAuditsTransactionAuthorityTransition(t *
 		}
 		return fakeAdapterConfigureModule{gates: new(int)}, nil, nil
 	})}
-	resumed, err := svc.ResumeOriginMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "move_origin_resume", "https://git.fixed.example", []byte("fixed-token"))
+	resumed, err := svc.ResumeOriginMove(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, "move_origin_resume", "https://GIT.fixed.example:443/", []byte("fixed-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1944,15 +1944,38 @@ func TestAdapterCredentialReplaceAndRevokeFenceWithoutAutoConverge(t *testing.T)
 	}
 	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
 	now := time.Now().UTC()
-	job, ok, err := runtime.ClaimDue(t.Context(), "worker_revoke", now, now.Add(adapter.LeaseTime))
-	if err != nil || !ok {
-		t.Fatalf("ClaimDue() = %+v, %v, %v", job, ok, err)
+	var retired int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id WHERE j.id='job_before_revoke' AND j.state='superseded' AND j.finished_at IS NOT NULL AND j.lease_owner IS NULL AND j.lease_expires_at IS NULL AND t.active_job_id IS NULL`).Scan(&retired); err != nil {
+		t.Fatal(err)
 	}
-	gateErr := runtime.Journal(job).Gate(t.Context(), adapter.Effect{})
-	if !errors.Is(gateErr, adapter.ErrSuperseded) {
-		t.Fatalf("revoked queued job Gate() = %v, want generation stop", gateErr)
+	if retired != 1 {
+		t.Fatalf("revoked pending job not atomically retired and detached: %d", retired)
 	}
-	if err := runtime.Fail(t.Context(), job, 0, now, gateErr); err != nil {
+	if job, ok, err := runtime.ClaimDue(t.Context(), "worker_revoke", now, now.Add(adapter.LeaseTime)); err != nil || ok {
+		t.Fatalf("retired queued job was claimable: %+v, %v, %v", job, ok, err)
+	}
+	if _, err := svc.ReplaceCredential(t.Context(), LocalPrincipal("usr_adapter"), scope, "adp_1", []byte("replacement-token")); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_outbox WHERE target_id IN ('tgt_one','tgt_two')`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 {
+		t.Fatalf("credential restoration auto-enqueued work: %d", jobs)
+	}
+	queued, err := svc.SyncTarget(t.Context(), LocalPrincipal("usr_adapter"), scope, "tgt_one")
+	if err != nil {
+		t.Fatalf("explicit sync after credential restoration: %v", err)
+	}
+	now = time.Now().UTC()
+	job, ok, err := runtime.ClaimDue(t.Context(), "worker_restored", now, now.Add(adapter.LeaseTime))
+	if err != nil || !ok || job.ID != queued.JobID {
+		t.Fatalf("restored explicit sync ClaimDue() = %+v, %v, %v; want %s", job, ok, err, queued.JobID)
+	}
+	if err := runtime.Journal(job).Gate(t.Context(), adapter.Effect{}); err != nil {
+		t.Fatalf("restored explicit sync Gate() = %v", err)
+	}
+	if err := runtime.Succeed(t.Context(), job, 0, nil, now); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -2125,10 +2148,20 @@ func TestAdapterPlanPersistsProviderConflictArtifactAndInspectReturnsIt(t *testi
 	}
 }
 
-func TestCompleteRestoreClearsRestoredAdapterCredential(t *testing.T) {
+func TestCompleteRestoreClearsEveryRestoredOutboundCredential(t *testing.T) {
 	db := adapterServiceDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `UPDATE adapters SET credential_ciphertext=X'010203',credential_set_at='2026-08-17T00:00:00Z' WHERE id='adp_1'`); err != nil {
 		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO adapter_route_moves (id,org_id,project_id,adapter_id,kind,pending_origin,pending_credential_ciphertext,authority_principal_id,state,keep_remote,created_at) VALUES ('move_restore','org_adapter','prj_adapter','adp_1','origin','https://redirect.attacker',X'010203','usr_adapter','activating',0,'2026-08-17T00:00:00Z')`,
+		`INSERT INTO oidc_providers (id,slug,display_name,kind,issuer,client_id,client_secret,scopes,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('oidc_restore','oidc-restore','OIDC Restore','oidc','https://oidc.attacker','client',X'010203','openid','https://hikyo.example/callback',1,1,1,'2026-08-17T00:00:00Z','2026-08-17T00:00:00Z')`,
+		`INSERT INTO oauth2_providers (id,slug,display_name,kind,profile,issuer,client_id,client_secret,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('oauth_restore','oauth-restore','OAuth Restore','oauth2','github','https://oauth.attacker','client',X'040506','https://hikyo.example/callback',1,1,1,'2026-08-17T00:00:00Z','2026-08-17T00:00:00Z')`,
+		`INSERT INTO remotes (id,name,url,spki_pin,credential_sealed,created_at,created_by) VALUES ('remote_restore','restored','https://remote.attacker','pin',X'070809','2026-08-17T00:00:00Z','usr_adapter')`,
+	} {
+		if _, err := db.SQLiteWrite().ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
 	}
 	complete := CompleteRestore(time.Now().UTC(), store.Manifest{Engine: store.EngineSQLite, SchemaVersion: 24})
 	if err := storetx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error { return complete(ctx, az) }); err != nil {
@@ -2140,6 +2173,31 @@ func TestCompleteRestoreClearsRestoredAdapterCredential(t *testing.T) {
 	}
 	if credential != nil || setAt != nil {
 		t.Fatalf("restored adapter credential survived: credential=%v set_at=%v", credential, setAt)
+	}
+	var pendingCredential, pendingOrigin any
+	var moveState string
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT pending_credential_ciphertext,pending_origin,state FROM adapter_route_moves WHERE id='move_restore'`).Scan(&pendingCredential, &pendingOrigin, &moveState); err != nil {
+		t.Fatal(err)
+	}
+	if pendingCredential != nil || pendingOrigin != nil || moveState != "canceled" {
+		t.Fatal("restored pending route retained outbound credential or activation authority")
+	}
+	for _, table := range []string{"oidc_providers", "oauth2_providers"} {
+		var secret []byte
+		var enabled int
+		if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT client_secret,enabled FROM `+table+` WHERE id LIKE '%_restore'`).Scan(&secret, &enabled); err != nil {
+			t.Fatal(err)
+		}
+		if len(secret) != 0 || enabled != 0 {
+			t.Fatalf("restored %s credential survived: secret=%x enabled=%d", table, secret, enabled)
+		}
+	}
+	var remotes int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM remotes WHERE id='remote_restore'`).Scan(&remotes); err != nil {
+		t.Fatal(err)
+	}
+	if remotes != 0 {
+		t.Fatal("restored remote credential survived")
 	}
 }
 

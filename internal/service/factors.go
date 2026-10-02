@@ -1095,6 +1095,32 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 			refused = domain.ErrUnauthenticated
 			return nil
 		}
+		// Recovery means the enrolled authenticators are no longer in the
+		// account holder's custody. Retire them in the same transaction that
+		// spends the code and mints the password-establishment authority. The
+		// next browser password login can then enter the mandatory enrolment
+		// gate instead of challenging with a factor the holder has lost.
+		if err := az.RemoveTOTPForAccount(ctx, account.ID); err != nil {
+			return err
+		}
+		passkeys, err := az.WebAuthnCredentialsForAccount(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		retiredPasskeys := 0
+		for _, credential := range passkeys {
+			if credential.Disabled {
+				continue
+			}
+			disabled, err := az.DisableWebAuthnCredential(ctx, credential.ID, credential.RowVersion, now)
+			if err != nil {
+				return err
+			}
+			if !disabled {
+				return domain.ErrConflict
+			}
+			retiredPasskeys++
+		}
 		// Minting an authority sweeps every outstanding one for this account.
 		if err := az.ConsumeOutstandingAuthorities(ctx, account.ID, now); err != nil {
 			return err
@@ -1128,7 +1154,8 @@ func (s *Auth) attemptRecovery(ctx context.Context, username, code string) (Reco
 		}
 		e, err := newAuditEvent(ctx, audit.EventAuthRecoveryCodeConsumed, account.PrincipalID,
 			audit.Object{Type: "account", ID: account.ID}, audit.OutcomeSuccess, "",
-			audit.Payload{"subject_resolved": true, "account_id": account.ID, "authority_id": authorityID})
+			audit.Payload{"subject_resolved": true, "account_id": account.ID, "authority_id": authorityID,
+				"factors_retired": true, "passkeys_retired": retiredPasskeys})
 		if err != nil {
 			return err
 		}

@@ -42,6 +42,7 @@ type RenderSourceRow struct {
 	Classification string
 	State          RenderRowState
 	Value          string
+	Receipt        string
 }
 
 // RenderInput contains every policy and datum needed to build a render plan.
@@ -142,6 +143,7 @@ func BuildRenderPlan(in RenderInput) (RenderPlan, error) {
 			rows = append(rows, Row{Name: row.Name, Value: row.Value})
 			snapshotRows = append(snapshotRows, SnapshotRow{
 				Name: row.Name, KeyID: row.KeyID, Classification: row.Classification, Value: row.Value,
+				Receipt: row.Receipt,
 			})
 			names = append(names, row.Name)
 		}

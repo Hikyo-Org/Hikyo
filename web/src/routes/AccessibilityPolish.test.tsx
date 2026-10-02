@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
-import { act, type ReactNode } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, type ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Grant } from '../api/identities.ts';
-import type { RetentionPolicy } from '../api/settings.ts';
-import { renderForm } from '../testkit/renderForm.tsx';
-import { Members } from './Members.tsx';
-import { OrgSettings } from './OrgSettings.tsx';
+import type { Grant } from "../api/identities.ts";
+import type { RetentionPolicy } from "../api/settings.ts";
+import { renderForm } from "../testkit/renderForm.tsx";
+import { Members } from "./Members.tsx";
+import { OrgSettings } from "./OrgSettings.tsx";
 
 type RouteMocks = {
   grants: {
@@ -52,10 +52,10 @@ const mocks = vi.hoisted<RouteMocks>(() => ({
   },
   org: {
     data: {
-      id: 'org_acme',
-      name: 'Acme',
+      id: "org_acme",
+      name: "Acme",
       active: true,
-      created_at: '2026-08-24T08:00:00Z',
+      created_at: "2026-08-24T08:00:00Z",
     },
     isError: false,
   },
@@ -78,9 +78,9 @@ const mocks = vi.hoisted<RouteMocks>(() => ({
   },
 }));
 
-vi.mock('../api/access.ts', async (importActual) => {
-  const actual = await importActual<typeof import('../api/access.ts')>();
-  const { useState } = await import('react');
+vi.mock("../api/access.ts", async (importActual) => {
+  const actual = await importActual<typeof import("../api/access.ts")>();
+  const { useState } = await import("react");
   return {
     ...actual,
     useOrgGrants: () => mocks.grants,
@@ -99,8 +99,8 @@ vi.mock('../api/access.ts', async (importActual) => {
   };
 });
 
-vi.mock('../api/settings.ts', async (importActual) => {
-  const actual = await importActual<typeof import('../api/settings.ts')>();
+vi.mock("../api/settings.ts", async (importActual) => {
+  const actual = await importActual<typeof import("../api/settings.ts")>();
   return {
     ...actual,
     useDeleteOrg: () => ({ isPending: false, mutate: vi.fn() }),
@@ -114,30 +114,30 @@ vi.mock('../api/settings.ts', async (importActual) => {
   };
 });
 
-vi.mock('../app/AuthProvider.tsx', () => ({
-  useAuth: () => ({ identity: { principal: { id: 'usr_current' } } }),
+vi.mock("../app/AuthProvider.tsx", () => ({
+  useAuth: () => ({ identity: { principal: { id: "usr_current" } } }),
 }));
 
 const grants: readonly Grant[] = [
   {
-    id: 'grn_edit',
-    principal_id: 'usr_alice',
-    capability: 'edit',
-    scope: { org_id: 'org_acme' },
-    origins: [{ kind: 'manual', subject: 'usr_admin' }],
-    created_at: '2026-08-24T08:00:00Z',
+    id: "grn_edit",
+    principal_id: "usr_alice",
+    capability: "edit",
+    scope: { org_id: "org_acme" },
+    origins: [{ kind: "manual", subject: "usr_admin" }],
+    created_at: "2026-08-24T08:00:00Z",
   },
   {
-    id: 'grn_reveal',
-    principal_id: 'usr_alice',
-    capability: 'reveal',
-    scope: { org_id: 'org_acme' },
-    origins: [{ kind: 'manual', subject: 'usr_admin' }],
-    created_at: '2026-08-24T08:00:00Z',
+    id: "grn_reveal",
+    principal_id: "usr_alice",
+    capability: "reveal",
+    scope: { org_id: "org_acme" },
+    origins: [{ kind: "manual", subject: "usr_admin" }],
+    created_at: "2026-08-24T08:00:00Z",
   },
 ];
 
-function pendingGrants(): RouteMocks['grants'] {
+function pendingGrants(): RouteMocks["grants"] {
   return {
     data: undefined,
     error: null,
@@ -148,7 +148,7 @@ function pendingGrants(): RouteMocks['grants'] {
   };
 }
 
-function loadedGrants(items: readonly Grant[]): RouteMocks['grants'] {
+function loadedGrants(items: readonly Grant[]): RouteMocks["grants"] {
   return {
     data: { items: [...items], count: items.length },
     error: null,
@@ -179,92 +179,116 @@ function atRoute(path: string, pattern: string, node: ReactNode) {
 }
 
 async function renderMembers() {
-  return renderForm(atRoute('/orgs/org_acme/members', '/orgs/:org/members', <Members scope={{ kind: 'org' }} />));
+  return renderForm(
+    atRoute(
+      "/orgs/org_acme/members",
+      "/orgs/:org/members",
+      <Members scope={{ kind: "org" }} />,
+    ),
+  );
 }
 
 async function renderOrgSettings() {
   return renderForm(
-    atRoute('/orgs/org_acme/settings', '/orgs/:org/settings', <OrgSettings />),
+    atRoute("/orgs/org_acme/settings", "/orgs/:org/settings", <OrgSettings />),
   );
 }
 
-describe('Members accessibility polish', () => {
-  it('announces the initial list load only while grants are pending', async () => {
+describe("Members accessibility polish", () => {
+  it("announces the initial list load only while grants are pending", async () => {
     const pending = await renderMembers();
-    expect(pending.container.querySelector('#members-list [role="status"]')?.textContent).toBe(
-      'Loading members…',
-    );
+    expect(
+      pending.container.querySelector('#members-list [role="status"]')
+        ?.textContent,
+    ).toBe("Loading members…");
     await pending.unmount();
 
     mocks.grants = loadedGrants(grants);
     const loaded = await renderMembers();
 
-    expect(loaded.container.querySelector('#members-list [role="status"]')).toBeNull();
-    expect(loaded.container.querySelector('#members-list table')).not.toBeNull();
+    expect(
+      loaded.container.querySelector('#members-list [role="status"]'),
+    ).toBeNull();
+    expect(
+      loaded.container.querySelector("#members-list table"),
+    ).not.toBeNull();
     await loaded.unmount();
   });
 
-  it('attributes an in-flight revoke to only the acting row', async () => {
+  it("attributes an in-flight revoke to only the acting row", async () => {
     mocks.grants = loadedGrants(grants);
     const view = await renderMembers();
-    const buttons = [...view.container.querySelectorAll<HTMLButtonElement>('#members-list button')]
-      .filter((button) => button.textContent === 'Revoke');
+    const buttons = [
+      ...view.container.querySelectorAll<HTMLButtonElement>(
+        "#members-list button",
+      ),
+    ].filter((button) => button.textContent === "Revoke");
     const acting = buttons[0];
     const sibling = buttons[1];
     if (acting === undefined || sibling === undefined) {
-      throw new Error('expected two revoke buttons');
+      throw new Error("expected two revoke buttons");
     }
 
     await act(async () => acting.click());
 
-    expect(acting.textContent).toBe('Revoking…');
+    expect(acting.textContent).toBe("Revoking…");
     expect(acting.disabled).toBe(true);
-    expect(acting.getAttribute('aria-busy')).toBe('true');
-    expect(sibling.textContent).toBe('Revoke');
+    expect(acting.getAttribute("aria-busy")).toBe("true");
+    expect(sibling.textContent).toBe("Revoke");
     expect(sibling.disabled).toBe(false);
-    expect(sibling.hasAttribute('aria-busy')).toBe(false);
+    expect(sibling.hasAttribute("aria-busy")).toBe(false);
     await view.unmount();
   });
 });
 
-describe('Organisation settings accessibility polish', () => {
-  it('announces the retention read only while it is pending', async () => {
+describe("Organisation settings accessibility polish", () => {
+  it("announces the retention read only while it is pending", async () => {
     const pending = await renderOrgSettings();
-    expect(pending.container.querySelector('#org-retention [role="status"]')?.textContent).toBe(
-      'Loading the retention policy…',
-    );
+    expect(
+      pending.container.querySelector('#org-retention [role="status"]')
+        ?.textContent,
+    ).toBe("Loading the retention policy…");
     await pending.unmount();
 
     mocks.retention = {
-      data: { mode: 'unlimited', max_age_seconds: null, last_revisions: null },
+      data: { mode: "unlimited", max_age_seconds: null, last_revisions: null },
       isError: false,
       isPending: false,
     };
     const loaded = await renderOrgSettings();
 
     expect(
-      [...loaded.container.querySelectorAll('#org-retention [role="status"]')].some(
-        (status) => status.textContent === 'Loading the retention policy…',
+      [
+        ...loaded.container.querySelectorAll('#org-retention [role="status"]'),
+      ].some(
+        (status) => status.textContent === "Loading the retention policy…",
       ),
     ).toBe(false);
     expect(
-      loaded.container.querySelector<HTMLInputElement>(
-        '#org-retention input[aria-label="Org default revisions kept"]',
-      )?.value,
-    ).toBe('6');
+      loaded.container.querySelector("#org-retention")?.textContent,
+    ).toContain("Unlimited: keep every revision payload.");
+    expect(
+      [
+        ...loaded.container.querySelectorAll<HTMLButtonElement>(
+          "#org-retention button",
+        ),
+      ].some((candidate) => candidate.textContent === "Use bounded retention"),
+    ).toBe(true);
     await loaded.unmount();
   });
 
-  it('associates the organisation Name input with its visible label', async () => {
+  it("associates the organisation Name input with its visible label", async () => {
     const view = await renderOrgSettings();
     const input = view.container.querySelector<HTMLInputElement>(
       '#org-identity input:not([type="range"]):not([type="file"])',
     );
     if (input === null) {
-      throw new Error('organisation Name input is missing');
+      throw new Error("organisation Name input is missing");
     }
-    const label = view.container.querySelector<HTMLLabelElement>(`label[for="${input.id}"]`);
-    expect(label?.textContent).toBe('Name');
+    const label = view.container.querySelector<HTMLLabelElement>(
+      `label[for="${input.id}"]`,
+    );
+    expect(label?.textContent).toBe("Name");
     await view.unmount();
   });
 });

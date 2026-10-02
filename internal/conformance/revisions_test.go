@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 // Revisions, drafts and publishing (#51) — the cross-engine acceptance corpus
@@ -46,7 +48,9 @@ func init() {
 		scenario{"required_in_absent_vetoes_publish", scenarioRequiredInVeto},
 		scenario{"revision_ciphertext_is_owner_bound", scenarioRevisionCiphertextBinding},
 		scenario{"advisory_projects_authorization_per_event", scenarioAdvisoryAuthorization},
+		scenario{"advisory_revoked_credential_closes_stream", scenarioAdvisoryRevokedCredential},
 		scenario{"historical_export_takes_reveal_history_not_reveal", scenarioHistoricalExportFormula},
+		scenario{"historical_export_masks_sticky_secret_occurrences", scenarioHistoricalExportStickySecrecy},
 		scenario{"restore_of_superseded_secret_takes_reveal_history", scenarioRestoreSupersededSecret},
 		scenario{"restore_gate_uses_written_time_classification", scenarioRestoreWrittenTimeClassification},
 		scenario{"restore_secret_formulas_are_side_specific", scenarioRestoreSideSpecificSecretFormula},
@@ -59,6 +63,42 @@ func init() {
 		scenario{"pin_lifecycle_quota_and_expiry_refusals_by_name", scenarioPinLifecycle},
 		scenario{"delivery_retry_clears_rolled_back_pin_metadata", scenarioDeliveryRetryClearsPinMetadata},
 	)
+}
+
+func scenarioHistoricalExportStickySecrecy(t *testing.T, db *store.DB) {
+	who, scope, values, envs, keys := valueFixture(t, db, "exportsticky")
+	actor := service.LocalPrincipal(who)
+	dev := mustEnv(t, envs, actor, scope, "dev")
+	key := mustKey(t, keys, actor, scope, "STICKY", string(schema.Config), schema.DefaultPresenceRules())
+	publishValue(t, db, values, actor, dev, "STICKY", "historical-secret")
+	historical := latestRevisionOf(t, db, string(dev.Env))
+	seed(t, db, []string{fmt.Sprintf(`
+		INSERT INTO secret_value_occurrences (value_entry_id,org_id,project_id,environment_id)
+		SELECT e.value_entry_id,e.org_id,e.project_id,e.environment_id
+		FROM snapshot_entries e JOIN snapshots s ON s.id=e.snapshot_id
+		WHERE s.environment_id='%s' AND s.revision=%d AND e.key_id='%s'
+		ON CONFLICT (value_entry_id) DO NOTHING`, dev.Env, historical, key.ID)})
+	publishValue(t, db, values, actor, dev, "STICKY", "current-config")
+
+	revisions := revisionSvc(t, db)
+	masked, _, err := revisions.ExportWithParameters(t.Context(), actor, dev, historical, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(masked) != 1 || masked[0].Classification != string(schema.Secret) || masked[0].Revealed || masked[0].Value != "" {
+		t.Fatalf("non-reveal historical export = %+v, want authoritative secret presence only", masked)
+	}
+	historian := service.LocalPrincipal(newPrincipal(t, db,
+		"usr_export_sticky_historian_"+string(scope.Project), []grantSpec{
+			{"read", domain.Scope{Org: scope.Org}}, {"reveal-history", domain.Scope{Org: scope.Org}},
+		}))
+	revealed, _, err := revisions.ExportWithParameters(t.Context(), historian, dev, historical, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revealed) != 1 || !revealed[0].Revealed || revealed[0].Value != "historical-secret" {
+		t.Fatalf("reveal-history export = %+v, want historical plaintext", revealed)
+	}
 }
 
 func scenarioRevisionListDetailCollectionParity(t *testing.T, db *store.DB) {
@@ -92,7 +132,7 @@ func scenarioAdapterCrashReservationRelease(t *testing.T, db *store.DB) {
 	who, scope, _, envs, _ := valueFixture(t, db, "adapterreserve")
 	env := mustEnv(t, envs, service.LocalPrincipal(who), scope, "prod")
 	seed(t, db, []string{
-		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_reservation_release','%s','%s','forgejo','https://git.example/adapterreserve','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
+		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_reservation_release','%s','%s','forgejo','https://adapterreserve.git.example','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
 		fmt.Sprintf(`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,active_job_id,created_at) VALUES ('tgt_reservation_release','%s','%s','%s','adp_reservation_release','repository','acme','app',4201,'',1,'active','converging','job_reservation_old','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, env.Env),
 		fmt.Sprintf(`INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,authority_principal_id,generation,dedup_key,attempt_count,next_attempt_at,state,lease_owner,lease_expires_at,created_at) VALUES ('job_reservation_old','%s','%s','%s','tgt_reservation_release','converge','%s',1,'tgt_reservation_release',1,'2026-08-17T00:00:00Z','running','worker_old','2099-08-17T00:00:00Z','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, env.Env, who),
 	})
@@ -155,7 +195,7 @@ func scenarioPublishEnqueuesAdapterSync(t *testing.T, db *store.DB) {
 	prod := mustEnv(t, envs, actor, scope, "prod")
 	key := mustKey(t, keys, actor, scope, "SYNCED", string(schema.Config), schema.DefaultPresenceRules())
 	seed(t, db, []string{
-		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_publish_hook','%s','%s','forgejo','https://git.example/adapterpublish','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
+		fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_publish_hook','%s','%s','forgejo','https://adapterpublish.git.example','%s','active','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, who),
 		fmt.Sprintf(`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_publish_dev','%s','%s','%s','adp_publish_hook','repository','acme','dev',4101,'DEV_',1,'active','never','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, dev.Env),
 		fmt.Sprintf(`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_publish_prod','%s','%s','%s','adp_publish_hook','repository','acme','prod',4102,'PROD_',1,'active','never','2026-08-17T00:00:00Z')`, scope.Org, scope.Project, prod.Env),
 	})
@@ -1303,6 +1343,12 @@ func scenarioAdvisoryAuthorization(t *testing.T, db *store.DB) {
 		(id, principal_id, capability, org_id, project_id, env_id, created_at)
 		VALUES ($1, $2, 'read', $3, $4, $5, '2026-01-01T00:00:00Z')`,
 		"grt_advisory_scoped_"+string(scope.Project), string(reader), string(scope.Org), string(scope.Project), string(dev.Env))
+	if err := tx.Read(t.Context(), db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, err := az.Authorize(ctx, authz.Identity{Principal: reader}, authz.OpAdvisoryEvent, prod)
+		return err
+	}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("object-level advisory refusal = %v, want masked ErrNotFound", err)
+	}
 
 	prodDraft, err := values.Set(t.Context(), actor, prod, "NOTICE", "hidden", nil)
 	if err != nil {
@@ -1336,6 +1382,64 @@ func scenarioAdvisoryAuthorization(t *testing.T, db *store.DB) {
 		case <-deadline.C:
 			t.Fatal("authorized dev advisory did not arrive")
 		}
+	}
+}
+
+func scenarioAdvisoryRevokedCredential(t *testing.T, db *store.DB) {
+	who, scope, values, envs, keys := valueFixture(t, db, "advisoryrevoked")
+	actor := service.LocalPrincipal(who)
+	dev := mustEnv(t, envs, actor, scope, "dev")
+	mustKey(t, keys, actor, scope, "NOTICE", string(schema.Config), schema.DefaultPresenceRules())
+	reader := newPrincipal(t, db, "usr_advisory_revoked_"+string(scope.Project), []grantSpec{
+		{"read", scope},
+	})
+	artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	err = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		generation, err := az.PrincipalGeneration(ctx, reader)
+		if err != nil {
+			return err
+		}
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		return az.MintSession(ctx, authz.NewSession{
+			ID: "ses_advisory_revoked", PrincipalID: reader, Verifier: verifier,
+			Artifact: "cli", SessionGeneration: generation, CredentialEpoch: epoch,
+			AuthMethod: "local-password", Factors: `["password"]`,
+			AuthenticatedAt: now, CreatedAt: now,
+			IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(24 * time.Hour),
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advisory := service.NewAdvisory()
+	values.Advisory = advisory
+	revisions := &service.Revisions{DB: db, Keyring: sharedKeyring(t, db), Advisory: advisory}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events, err := revisions.Watch(ctx, service.Bearer(artifact), scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (&service.Auth{DB: db}).Logout(t.Context(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := values.Set(t.Context(), actor, dev, "NOTICE", "after-revocation", nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev, ok := <-events:
+		if ok {
+			t.Fatalf("revoked credential stream delivered an event instead of closing: %+v", ev)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("revoked credential stream stayed open after per-event authentication failed")
 	}
 }
 

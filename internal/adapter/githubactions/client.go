@@ -321,18 +321,7 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 }
 
 func canonicalOrigin(raw string) (string, error) {
-	if raw == "" {
-		raw = "https://api.github.com"
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("github-actions: parse origin: %w", err)
-	}
-	path := strings.TrimSuffix(u.EscapedPath(), "/")
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (path != "" && path != "/api/v3") {
-		return "", errors.New("github-actions: origin must be https://api.github.com or an HTTPS GHES /api/v3 base URL")
-	}
-	return "https://" + u.Host + path, nil
+	return adapter.CanonicalOrigin(adapter.GitHubActionsProvider, raw)
 }
 
 type ResponseError struct{ Status int }
@@ -426,7 +415,7 @@ func (c *Client) do(ctx context.Context, op operation, path string, body any, ou
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("github-actions: provider request: %w", err)
+		return 0, fmt.Errorf("github-actions: provider request: %w", adapter.SafeTransportError(err))
 	}
 	defer resp.Body.Close()
 	c.captureCredentialExpiry(resp.Header)

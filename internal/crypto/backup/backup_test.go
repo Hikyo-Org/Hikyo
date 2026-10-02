@@ -202,6 +202,26 @@ func TestScryptExclusivityRefusedOnOpen(t *testing.T) {
 	}
 }
 
+func TestOversizedHeaderIsRefusedBeforeAgeMaterializesIt(t *testing.T) {
+	identity, _ := mustIdentity(t)
+	header := []byte("age-encryption.org/v1\n-> X25519 " + strings.Repeat("A", 300<<10))
+	_, err := extract(backup.Unlock{Identity: identity}, header)
+	if !errors.Is(err, backup.ErrHeaderTooLarge) {
+		t.Fatalf("oversized header error = %v, want ErrHeaderTooLarge", err)
+	}
+}
+
+func TestRecipientCountIsBoundedAtExport(t *testing.T) {
+	_, recipient := mustIdentity(t)
+	recipients := make([]string, 257)
+	for i := range recipients {
+		recipients[i] = recipient
+	}
+	if _, err := backup.Encrypt(io.Discard, backup.Options{Recipients: recipients}); !errors.Is(err, backup.ErrTooManyRecipients) {
+		t.Fatalf("too many recipients error = %v, want ErrTooManyRecipients", err)
+	}
+}
+
 // stanzaLines returns the "-> type ..." line and its body lines from a
 // container's header.
 func stanzaLines(t *testing.T, container []byte, kind string) string {

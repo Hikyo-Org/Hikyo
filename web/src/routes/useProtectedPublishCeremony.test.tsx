@@ -9,6 +9,7 @@ import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 
 const mocks = vi.hoisted(() => ({
   fetchRevealWindow: vi.fn(),
+  transport: { client: undefined as unknown },
 }));
 
 vi.mock('../api/values.ts', async (importActual) => {
@@ -17,7 +18,7 @@ vi.mock('../api/values.ts', async (importActual) => {
 });
 
 vi.mock('../api/transport.tsx', () => ({
-  useTransport: () => ({ client: undefined }),
+  useTransport: () => mocks.transport,
 }));
 
 type Guard = ReturnType<typeof useProtectedPublishCeremony>;
@@ -39,6 +40,7 @@ function guard(): Guard {
 beforeEach(() => {
   latestGuard = undefined;
   mocks.fetchRevealWindow.mockReset();
+  mocks.transport.client = undefined;
 });
 
 describe('useProtectedPublishCeremony latest-run ownership', () => {
@@ -149,6 +151,26 @@ describe('useProtectedPublishCeremony latest-run ownership', () => {
     });
 
     expect(guard().request?.purpose).toBe('approve');
+    expect(complete).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('does not reuse a live operation-bound workspace window', async () => {
+    mocks.transport.client = {};
+    mocks.fetchRevealWindow.mockResolvedValueOnce(revealWindow(true));
+    const { unmount } = await renderForm(<Harness />);
+    const complete = vi.fn();
+
+    await act(async () => {
+      await guard().run([{
+        environmentId: 'production',
+        environmentName: 'Production',
+        keys: [{ id: 'key-next', name: 'KEY_NEXT' }],
+        purpose: 'restore',
+      }], complete, 'guard failed');
+    });
+
+    expect(guard().request?.purpose).toBe('restore');
     expect(complete).not.toHaveBeenCalled();
     await unmount();
   });

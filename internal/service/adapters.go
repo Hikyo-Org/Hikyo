@@ -317,11 +317,8 @@ type AdapterTeardownResult struct {
 func (s *Adapters) providerGate(actor Actor, operation authz.Operation, projectScope domain.Scope, environmentID string) func(context.Context) error {
 	return func(ctx context.Context) error {
 		return tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, s.now())
+			caller, _, err := authorize(ctx, az, actor, operation, projectScope, store.CanonTime(s.now()))
 			if err != nil {
-				return err
-			}
-			if _, err := az.Authorize(ctx, caller, operation, projectScope); err != nil {
 				return err
 			}
 			_, err = az.Authorize(ctx, caller, authz.OpAdapterPush, domain.Scope{Org: projectScope.Org, Project: projectScope.Project, Env: domain.EnvID(environmentID)})
@@ -337,17 +334,40 @@ func (s *Adapters) providerGate(actor Actor, operation authz.Operation, projectS
 func (s *Adapters) gate(actor Actor, op authz.Operation, scope domain.Scope) func(context.Context) error {
 	return func(ctx context.Context) error {
 		return tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			caller, err := actor.resolve(ctx, az, s.now())
-			if err != nil {
-				return err
-			}
-			_, err = az.Authorize(ctx, caller, op, scope)
+			_, _, err := authorize(ctx, az, actor, op, scope, store.CanonTime(s.now()))
 			return err
 		})
 	}
 }
 
+func (s *Adapters) enterProviderBudget(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) (func(), error) {
+	var principal domain.PrincipalID
+	if err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+		caller, _, err := authorize(ctx, az, actor, op, scope, store.CanonTime(s.now()))
+		if err != nil {
+			return err
+		}
+		principal = caller.Principal
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	release, err := s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
+	if err != nil {
+		return nil, err
+	}
+	charged := false
+	if err := s.Budget.chargeOnce(&charged, budgetAdapterRate, budgetKeys{Principal: principal}); err != nil {
+		release()
+		return nil, err
+	}
+	return release, nil
+}
+
 func (s *Adapters) requireAdapterCeremony(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, projectScope domain.Scope, environmentIDs []string, operation authz.Operation, now time.Time) error {
+	// Sibling targets may share an environment. One consent unit must consume
+	// that environment's single-decision window only once.
+	environmentIDs = adapterEnvironmentSet(environmentIDs)
 	intent, err := newReauthIntentForAdapterOperation(operation, environmentIDs)
 	if err != nil {
 		return err
@@ -389,15 +409,26 @@ func adapterEnvironmentSet(environmentIDs []string, additional ...string) []stri
 	return canonicalSet(out)
 }
 
-func (s *Adapters) consumeAdapterCeremony(ctx context.Context, actor Actor, scope domain.Scope, environmentIDs []string, operation authz.Operation, now time.Time) (authz.Identity, error) {
-	var caller authz.Identity
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		var err error
-		caller, err = actor.resolve(ctx, az, now)
-		if err != nil {
+// authorizeAdapterEnvironments rechecks the live delegation authority after
+// provider work. Consent was already consumed before dispatch; it is not
+// consumed again when the provider response arrives.
+func authorizeAdapterEnvironments(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, projectScope domain.Scope, environmentIDs []string) error {
+	for _, environmentID := range adapterEnvironmentSet(environmentIDs) {
+		envScope := domain.Scope{Org: projectScope.Org, Project: projectScope.Project, Env: domain.EnvID(environmentID)}
+		if _, err := az.Authorize(ctx, caller, authz.OpAdapterPush, envScope); err != nil {
 			return err
 		}
-		if _, err := az.Authorize(ctx, caller, operation, scope); err != nil {
+	}
+	return nil
+}
+
+func (s *Adapters) consumeAdapterCeremony(ctx context.Context, actor Actor, scope domain.Scope, environmentIDs []string, operation authz.Operation) (authz.Identity, error) {
+	var caller authz.Identity
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
+		var err error
+		caller, _, err = authorize(ctx, az, actor, operation, scope, now)
+		if err != nil {
 			return err
 		}
 		return s.requireAdapterCeremony(ctx, az, caller, scope, adapterEnvironmentSet(environmentIDs), operation, now)
@@ -416,20 +447,28 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if scope.Project == "" || scope.Env != "" || request.Origin == "" || len(request.Credential) == 0 || request.Target.EnvironmentID == "" {
 		return AdapterView{}, fmt.Errorf("%w: adapter create requires project scope, credential, and first target", domain.ErrInvalid)
 	}
+	request.Origin, err = adapter.CanonicalOrigin(provider, request.Origin)
+	if err != nil {
+		return AdapterView{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
 	if provider != adapter.GitLabProvider && request.config().HasProviderOptions() {
 		return AdapterView{}, fmt.Errorf("%w: spki_pin, ca_bundle, and allow_personal_token apply only to GitLab adapters", domain.ErrInvalid)
 	}
 	if err := normalizeTargetInput(request.Provider, &request.Target); err != nil {
 		return AdapterView{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterConfigure, scope)
+	if err != nil {
+		return AdapterView{}, err
+	}
+	defer release()
 	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
 		return AdapterView{}, err
 	}
 	if len(request.Target.KeyIDs) == 0 {
 		return AdapterView{}, fmt.Errorf("%w: adapter create requires project scope, credential, and first target", domain.ErrInvalid)
 	}
-	now := store.CanonTime(s.now())
-	if _, err := s.consumeAdapterCeremony(ctx, actor, scope, []string{request.Target.EnvironmentID}, authz.OpAdapterConfigure, now); err != nil {
+	if _, err := s.consumeAdapterCeremony(ctx, actor, scope, []string{request.Target.EnvironmentID}, authz.OpAdapterConfigure); err != nil {
 		return AdapterView{}, err
 	}
 	adapterID, err := newID("adp")
@@ -454,7 +493,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err != nil {
 		return AdapterView{}, err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	if err := lease.Module.ValidateConfig(request.config()); err != nil {
 		return AdapterView{}, err
 	}
@@ -470,8 +509,12 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 	var out AdapterView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
+			return err
+		}
+		if err := authorizeAdapterEnvironments(ctx, az, caller, scope, []string{request.Target.EnvironmentID}); err != nil {
 			return err
 		}
 		// Writer fence (invariant 7): refuse if a rotate-dek retired the DEK
@@ -580,6 +623,11 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	if err := requireProjectScope(scope, "target add requires adapter, environment, destination, and keys", adapterID, input.EnvironmentID); err != nil {
 		return store.AdapterTarget{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterConfigure, scope)
+	if err != nil {
+		return store.AdapterTarget{}, err
+	}
+	defer release()
 	if err := s.resolveTargetKeys(ctx, actor, scope, &input); err != nil {
 		return store.AdapterTarget{}, err
 	}
@@ -589,9 +637,9 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	var record store.AdapterRecord
 	var ciphertext []byte
 	var authorizedEnvironments []string
-	now := store.CanonTime(s.now())
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
+	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
+		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
 		}
@@ -639,7 +687,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	if err != nil {
 		return store.AdapterTarget{}, err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	targetID, err := newID("tgt")
 	if err != nil {
 		return store.AdapterTarget{}, err
@@ -656,9 +704,25 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	}
 	var out store.AdapterTarget
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
+		}
+		current, currentCiphertext, err := r.Adapters().ConfigurationForUpdate(ctx, p, adapterID)
+		if err != nil {
+			return err
+		}
+		// Parent-lock acquisition can wait without changing the configuration
+		// or causing a serialization retry. Recheck live authority after that
+		// wait, without consuming the already staged consent again.
+		now = store.CanonTime(s.now())
+		caller, p, err = authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
+		if err != nil {
+			return err
+		}
+		if current.Provider != record.Provider || current.Origin != record.Origin || current.Transport() != record.Transport() || current.CredentialSetAt != record.CredentialSetAt || current.CredentialPresent != record.CredentialPresent || !slices.Equal(currentCiphertext, ciphertext) {
+			return fmt.Errorf("%w: adapter configuration changed during provider verification", domain.ErrConflict)
 		}
 		environmentIDs, err := r.Adapters().Environments(ctx, p, adapterID)
 		if err != nil {
@@ -666,6 +730,9 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 		}
 		if currentSet := adapterEnvironmentSet(environmentIDs, input.EnvironmentID); !slices.Equal(currentSet, authorizedEnvironments) {
 			return ErrReauthUnitMismatch
+		}
+		if err := authorizeAdapterEnvironments(ctx, az, caller, scope, authorizedEnvironments); err != nil {
+			return err
 		}
 		added, err := r.Adapters().AddTarget(ctx, p, store.AdapterTargetUpdate{CredentialExpiresAt: connection.CredentialExpiresAt, AuthorityPrincipalID: string(caller.Principal), At: now, Target: targetMutation(targetID, adapterID, input, connection)})
 		if err != nil {
@@ -774,27 +841,27 @@ func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope d
 		return nil, err
 	}
 	release := func() {}
+	var rateCharged bool
 	if !preparedMove {
 		if keepRemote {
 			return nil, fmt.Errorf("%w: keep_remote applies only to a destination move", domain.ErrInvalid)
-		}
-		if err := s.preflightTargetRouting(ctx, actor, scope, request); err != nil {
-			return nil, err
 		}
 		release, err = s.Budget.acquire(budgetAdapter, budgetKeys{Org: scope.Org})
 		if err != nil {
 			return nil, err
 		}
+		defer release()
+		if err := s.preflightTargetRouting(ctx, actor, scope, request, &rateCharged); err != nil {
+			return nil, err
+		}
 	}
-	defer release()
 	// § 179 adapter sync/trigger concurrency: 4 per org, held for the reconfigure
 	// exactly as SyncTarget holds it. Preparation acquires it only for an update;
 	// generation fencing refuses any classification drift before mutation.
-	now := store.CanonTime(s.now())
 	var result TargetMutationResult
-	var rateCharged bool
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, p, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
@@ -912,12 +979,12 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 	return updated.Target, nil
 }
 
-func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest) error {
+func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest, rateCharged *bool) error {
 	var current store.AdapterTarget
 	var record store.AdapterRecord
 	var ciphertext []byte
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		_, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, s.now())
 		if err != nil {
 			return err
 		}
@@ -932,7 +999,13 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 			return nil
 		}
 		record, ciphertext, err = r.Adapters().Configuration(ctx, proof, current.AdapterID)
-		return err
+		if err != nil {
+			return err
+		}
+		// Recipient verification is provider work even when the later ceremony
+		// refuses the mutation. Charge before any provider request, once across
+		// preflight and the transaction/provider-fence retry loops.
+		return s.Budget.chargeOnce(rateCharged, budgetAdapterRate, budgetKeys{Principal: caller.Principal})
 	})
 	if err != nil || record.ID == "" {
 		return err
@@ -957,7 +1030,7 @@ func (s *Adapters) preflightTargetRouting(ctx context.Context, actor Actor, scop
 	if err != nil {
 		return err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	destination := adapterDestination(request.Target)
 	destination.NumericID = current.DestinationID
 	destination.RepositoryID = current.RepositoryID
@@ -1040,6 +1113,10 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
+	origin, err = adapter.CanonicalOrigin(provider, origin)
+	if err != nil {
+		return store.AdapterRouteMoveBatch{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
 	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
 	// The stored transport policy (GitLab pin and trust bundle) moves with the
@@ -1049,7 +1126,7 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	if err := lease.Module.ValidateConfig(config); err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
@@ -1061,10 +1138,10 @@ func (s *Adapters) MoveOrigin(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return store.AdapterRouteMoveBatch{}, err
 	}
-	now := store.CanonTime(s.now())
 	var out store.AdapterRouteMoveBatch
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
@@ -1147,9 +1224,9 @@ func (s *Adapters) CancelMove(ctx context.Context, actor Actor, scope domain.Sco
 	if err := requireProjectScope(scope, "adapter move cancellation requires project scope and move id", moveID); err != nil {
 		return store.AdapterMove{}, err
 	}
-	now := store.CanonTime(s.now())
 	var out store.AdapterMove
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
@@ -1185,9 +1262,9 @@ func (s *Adapters) ResumeTargetMove(ctx context.Context, actor Actor, scope doma
 	if scope.Project == "" || scope.Env != "" || moveID == "" || request.TargetID == "" || len(request.Target.KeyIDs) == 0 {
 		return store.AdapterMove{}, fmt.Errorf("%w: pending target replacement requires project, move, target, and full keys", domain.ErrInvalid)
 	}
-	now := store.CanonTime(s.now())
 	var out store.AdapterMove
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
@@ -1253,6 +1330,10 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 	if err != nil {
 		return store.AdapterMove{}, err
 	}
+	origin, err = adapter.CanonicalOrigin(provider, origin)
+	if err != nil {
+		return store.AdapterMove{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
 	plain := slices.Clone(credential)
 	defer crypto.Zero(plain)
 	config := record.Transport().Config(origin)
@@ -1260,13 +1341,13 @@ func (s *Adapters) ResumeOriginMove(ctx context.Context, actor Actor, scope doma
 	if err != nil {
 		return store.AdapterMove{}, err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	if err := lease.Module.ValidateConfig(config); err != nil {
 		return store.AdapterMove{}, err
 	}
-	now := store.CanonTime(s.now())
 	var out store.AdapterMove
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 		if err != nil {
 			return err
@@ -1324,11 +1405,11 @@ func (s *Adapters) SyncTarget(ctx context.Context, actor Actor, scope domain.Sco
 		return store.AdapterEnqueueResult{}, err
 	}
 	defer release()
-	now := store.CanonTime(s.now())
 	var result store.AdapterEnqueueResult
 	var rateCharged bool
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterSync, scope, now)
 			if err != nil {
 				return err
@@ -1378,10 +1459,10 @@ func (s *Adapters) PauseTarget(ctx context.Context, actor Actor, scope domain.Sc
 	if err := requireProjectScope(scope, "adapter target pause requires project scope and target id", targetID); err != nil {
 		return store.AdapterTarget{}, err
 	}
-	now := store.CanonTime(s.now())
 	var out store.AdapterTarget
 	err := retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterConfigure, scope, now)
 			if err != nil {
 				return err
@@ -1430,11 +1511,11 @@ func (s *Adapters) ResumeTarget(ctx context.Context, actor Actor, scope domain.S
 		return store.AdapterResumeResult{}, err
 	}
 	defer release()
-	now := store.CanonTime(s.now())
 	var result store.AdapterResumeResult
 	var rateCharged bool
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterSync, scope, now)
 			if err != nil {
 				return err
@@ -1477,6 +1558,11 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 	if err := requireProjectScope(scope, "adapter connection test requires project scope and target id", targetID); err != nil {
 		return adapter.Connection{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterTest, scope)
+	if err != nil {
+		return adapter.Connection{}, err
+	}
+	defer release()
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterTest, scope)
 	if err != nil {
 		return adapter.Connection{}, err
@@ -1509,7 +1595,7 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return adapter.Connection{}, err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{
 		Config: material.Transport.Config(material.Target.Origin), Destination: adapterTarget(material.Target).Destination,
 		Access: adapter.Access{Credential: string(credential)}, Gate: s.gate(actor, authz.OpAdapterTest, scope),
@@ -1517,8 +1603,8 @@ func (s *Adapters) TestTarget(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return adapter.Connection{}, err
 	}
-	now := store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterTest, scope, now)
 		if err != nil {
 			return err
@@ -1566,15 +1652,11 @@ func (s *Adapters) ReplaceCredential(ctx context.Context, actor Actor, scope dom
 	if err != nil {
 		return store.AdapterCredentialResult{}, err
 	}
-	now := store.CanonTime(s.now())
 	var result store.AdapterCredentialResult
 	err = retryAdapterProviderFence(ctx, func() error {
 		committed, err := tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (store.AdapterCredentialResult, error) {
-			caller, err := actor.resolve(ctx, az, now)
-			if err != nil {
-				return store.AdapterCredentialResult{}, err
-			}
-			proof, err := az.Authorize(ctx, caller, authz.OpAdapterCredentialSet, scope)
+			now := store.CanonTime(s.now())
+			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterCredentialSet, scope, now)
 			if err != nil {
 				return store.AdapterCredentialResult{}, err
 			}
@@ -1625,13 +1707,9 @@ func (s *Adapters) RevokeCredential(ctx context.Context, actor Actor, scope doma
 	if err := requireProjectScope(scope, "credential revocation requires project scope and adapter id", adapterID); err != nil {
 		return store.AdapterCredentialResult{}, err
 	}
-	now := store.CanonTime(s.now())
 	return tx.WriteResult(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) (store.AdapterCredentialResult, error) {
-		caller, err := actor.resolve(ctx, az, now)
-		if err != nil {
-			return store.AdapterCredentialResult{}, err
-		}
-		proof, err := az.Authorize(ctx, caller, authz.OpAdapterCredentialRevoke, scope)
+		now := store.CanonTime(s.now())
+		caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterCredentialRevoke, scope, now)
 		if err != nil {
 			return store.AdapterCredentialResult{}, err
 		}
@@ -1711,6 +1789,11 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	if err := requireProjectScope(scope, "adapter plan requires project scope and target id", targetID); err != nil {
 		return AdapterPlanResult{}, err
 	}
+	release, err := s.enterProviderBudget(ctx, actor, authz.OpAdapterPlan, scope)
+	if err != nil {
+		return AdapterPlanResult{}, err
+	}
+	defer release()
 	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpAdapterPlan, scope)
 	if err != nil {
 		return AdapterPlanResult{}, err
@@ -1743,7 +1826,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}
-	defer lease.Release()
+	defer lease.ReleaseContext(ctx)
 	plan, err := lease.Module.Plan(ctx, adapter.PlanRequest{Config: material.Transport.Config(material.Target.Origin), Target: adapterTarget(material.Target), Manifest: material.Manifest, Ledger: material.Ledger, Gate: s.gate(actor, authz.OpAdapterPlan, scope)})
 	if err != nil {
 		return AdapterPlanResult{}, err
@@ -1752,8 +1835,8 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 	if err != nil {
 		return AdapterPlanResult{}, err
 	}
-	now := store.CanonTime(s.now())
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		now := store.CanonTime(s.now())
 		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterPlan, scope, now)
 		if err != nil {
 			return err
@@ -1770,7 +1853,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 		for _, change := range plan.Changes {
 			changes = append(changes, string(change.Surface)+":"+change.EffectiveName+":"+string(change.Disposition))
 			if change.Disposition == adapter.Conflict {
-				conflicts = append(conflicts, store.AdapterConflictEntry{Surface: string(change.Surface), EffectiveName: change.EffectiveName})
+				conflicts = append(conflicts, store.AdapterConflictEntry{Surface: string(change.Surface), EffectiveName: change.EffectiveName, ObservedProviderVersion: change.ObservedProviderVersion})
 			}
 		}
 		if len(conflicts) != 0 {
@@ -1847,10 +1930,10 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 	if err != nil {
 		return AdoptAdapterResult{}, err
 	}
-	now := store.CanonTime(s.now())
 	var out AdoptAdapterResult
 	err = retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, p, err := authorize(ctx, az, actor, authz.OpAdapterAdopt, scope, now)
 			if err != nil {
 				return err
@@ -1885,6 +1968,17 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 			if err != nil {
 				return err
 			}
+			// Custody scans and ledger locks can wait without a serialization
+			// retry. Recheck the live caller and every participating environment
+			// before committing this entirely local transaction. A refusal rolls
+			// back custody, jobs and staged consent; consent is not consumed twice.
+			caller, p, err = authorize(ctx, az, actor, authz.OpAdapterAdopt, scope, store.CanonTime(s.now()))
+			if err != nil {
+				return err
+			}
+			if err := authorizeAdapterEnvironments(ctx, az, caller, scope, environments); err != nil {
+				return err
+			}
 			entryNames := make([]string, 0, len(request.Entries))
 			for _, entry := range request.Entries {
 				entryNames = append(entryNames, entry.Surface+":"+entry.EffectiveName)
@@ -1913,10 +2007,10 @@ func (s *Adapters) RemoveTarget(ctx context.Context, actor Actor, scope domain.S
 	if err := requireProjectScope(scope, "adapter target removal requires project scope and target id", targetID); err != nil {
 		return AdapterTeardownResult{}, err
 	}
-	now := store.CanonTime(s.now())
 	var result store.AdapterTeardownResult
 	err := retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterDelete, scope, now)
 			if err != nil {
 				return err
@@ -1941,10 +2035,10 @@ func (s *Adapters) Delete(ctx context.Context, actor Actor, scope domain.Scope, 
 	if err := requireProjectScope(scope, "adapter deletion requires project scope and adapter id", adapterID); err != nil {
 		return AdapterTeardownResult{}, err
 	}
-	now := store.CanonTime(s.now())
 	var batch store.AdapterTeardownBatch
 	err := retryAdapterProviderFence(ctx, func() error {
 		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			now := store.CanonTime(s.now())
 			caller, proof, err := authorize(ctx, az, actor, authz.OpAdapterDelete, scope, now)
 			if err != nil {
 				return err

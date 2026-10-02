@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -8,6 +9,27 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
+
+func adapterVersionWitness(value int64, valid bool) *int64 {
+	if !valid || value <= 0 {
+		return nil
+	}
+	return &value
+}
+
+func adapterOptionalVersion(value *int64) sql.NullInt64 {
+	if value == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *value, Valid: true}
+}
+
+func adapterRequireVersion(provider string) int64 {
+	if provider == "vault-kv" {
+		return 1
+	}
+	return 0
+}
 
 func adapterCounter(value int64, valid bool) *int64 {
 	if !valid {

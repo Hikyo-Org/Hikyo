@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -314,13 +312,6 @@ func identityKind(b store.SCIMBinding) string {
 	return OIDCKind
 }
 
-// subjectDigest is the SHA-256 hex of a derived subject. The subject itself is
-// identity material and never appears in plaintext in the trail (§10).
-func subjectDigest(subject string) string {
-	sum := sha256.Sum256([]byte(subject))
-	return hex.EncodeToString(sum[:])
-}
-
 // scopeObject is §10's `scope` payload type: the DEEPEST level addressed and
 // that level's own id. It is a pair rather than a rendered chain because a
 // reader must be able to tell which id is which level without parsing.
@@ -482,7 +473,10 @@ func (s *SCIM) applyMappings(
 			if _, err := lockAndClassify(ctx, az, target, capability, scope, s.now); err != nil {
 				return nil, 0, err
 			}
-			out, err := writeGrantRow(ctx, az, spec, origin, now)
+			// A binding controls only this org's grants. It must not retire
+			// an instance-wide login or pending proof when policy moves here.
+			// Every authorized operation reads current grants in its transaction.
+			out, err := writeGrantRowState(ctx, az, spec, origin, now)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -587,11 +581,15 @@ func (s *SCIM) enterAttention(
 	if err != nil {
 		return nil, err
 	}
-	if err := r.SCIM().EnterAttention(ctx, c.proof, store.SCIMAttentionRow{
+	inserted, err := r.SCIM().EnterAttention(ctx, c.proof, store.SCIMAttentionRow{
 		ID: id, BindingID: c.binding.ID, State: string(state),
 		SubjectRef: subjectRef, Cause: string(cause), EnteredAt: now,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
+	}
+	if !inserted {
+		return nil, nil
 	}
 	return []grantEventInput{{
 		typ:    audit.EventSCIMAttentionEntered,

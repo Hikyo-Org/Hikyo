@@ -466,7 +466,7 @@ and `hikyo adapter credential set`.
 
 The IAM policy needs, on the target secret ARNs:
 `secretsmanager:DescribeSecret`, `CreateSecret`, `PutSecretValue`,
-`TagResource`, `RestoreSecret`, and `DeleteSecret`; plus `secretsmanager:ListSecrets`
+`UpdateSecretVersionStage`, `TagResource`, `RestoreSecret`, and `DeleteSecret`; plus `secretsmanager:ListSecrets`
 (which AWS does not scope to resources) for per-key planning and connection
 tests, `sts:GetCallerIdentity`, and `kms:GenerateDataKey` and `kms:Decrypt` on a
 customer KMS key. Do not grant `GetSecretValue` to the adapter's role.
@@ -475,9 +475,12 @@ customer KMS key. Do not grant `GetSecretValue` to the adapter's role.
 
 The Hikyo ledger is the only ownership record. On the AWS side each owned
 secret carries the tag `MANAGED_BY_HIKYO=<target id>`, written when the secret
-is created (before its first value). Every Hikyo write sets the `AWSCURRENT` and
-`HIKYO_CURRENT` staging labels in one call and then records the version in the
-`HIKYO_VERSION` tag.
+is created (before its first value). Hikyo stages a value with `HIKYO_PENDING`,
+then conditionally moves `AWSCURRENT` from the exact observed predecessor using
+`UpdateSecretVersionStage`. Only after promotion does it move `HIKYO_CURRENT`
+and record the version in the `HIKYO_VERSION` tag. AWS automatically makes the
+first-ever version current, but conditional promotion still refuses a different
+version that became current concurrently.
 
 - **Unowned names.** A name that exists without Hikyo ownership is a conflict,
   never a silent overwrite. Adopt it from a plan like any other adapter; Hikyo
@@ -487,6 +490,8 @@ is created (before its first value). Every Hikyo write sets the `AWSCURRENT` and
   overwritten. To let Hikyo replace that exact version, tag the secret
   `HIKYO_VERSION=<that version id>` (the conflict message names it) and resync.
   A later edit is not covered by that consent.
+  A concurrent edit between inspection and promotion also refuses the update;
+  the staged Hikyo value does not replace the external current value.
 - **Retries.** Each write carries an idempotency token that is identical for
   every retry of one outbox job, so replaying an ambiguous outcome cannot
   create a second version. A new job writes a new version.

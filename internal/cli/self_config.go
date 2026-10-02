@@ -63,6 +63,7 @@ func runSelfConfig(ctx context.Context, ios IO, sub string, args []string) error
 		target.SchemaVersion = binding.SchemaVersion
 	}
 	operation := "self-config.apply"
+	var applyRequest *apigen.InstanceConfigApplyRequest
 	if idempotency == "" {
 		idempotency = rand.Text()
 	}
@@ -84,7 +85,7 @@ func runSelfConfig(ctx context.Context, ios IO, sub string, args []string) error
 		target.To = ""
 		operation = "self-config.adopt"
 	case "apply", "test-email":
-		if !status.Managed || revision < 1 || expected < 0 {
+		if !status.Managed || revision < 1 || expected < 1 {
 			return failf(ExitUsage, "%s needs a managed project, --revision N and --expected-generation N", sub)
 		}
 		if sub == "test-email" {
@@ -95,6 +96,31 @@ func runSelfConfig(ctx context.Context, ios IO, sub string, args []string) error
 			operation = "self-config.test"
 		} else if to != "" {
 			return failf(ExitUsage, "--to is only valid for test-email")
+		} else {
+			// Emit the exact retry key before the first durable request. A
+			// preparation or browser failure must not hide a live job's key.
+			fmt.Fprintf(ios.Stderr, "Apply retry key: --idempotency-key %s (revision %d, expected generation %d).\n", idempotency, revision, expected)
+			prepareOnly := true
+			request := apigen.InstanceConfigApplyRequest{
+				Revision: revision, ExpectedGeneration: expected, SchemaVersion: target.SchemaVersion,
+				IdempotencyKey: idempotency, ConfirmRestoredCredentials: confirmRestored, PrepareOnly: &prepareOnly,
+			}
+			var prepared apigen.InstanceConfigStatus
+			if err := client.Do(ctx, http.MethodPost, "/api/v1/instance/config/apply", request, &prepared); err != nil {
+				return err
+			}
+			if prepared.Job == nil || prepared.Job.Prepared == nil || !*prepared.Job.Prepared {
+				return failf(ExitRefused, "instance-config apply did not finish preparing the exact deployment plan; retry with --idempotency-key %s", idempotency)
+			}
+			request.PrepareOnly = nil
+			request.PlanDigest = prepared.Job.PlanDigest
+			applyRequest = &request
+			target.PlanDigest = prepared.Job.PlanDigest
+			if prepared.Job.PlanDigest != nil {
+				fmt.Fprintf(ios.Stderr, "Prepared controlled deployment plan %s. Review this digest before browser authorization.\n", *prepared.Job.PlanDigest)
+			} else {
+				fmt.Fprintln(ios.Stderr, "Prepared configuration apply; no controlled deployment rollout is required.")
+			}
 		}
 	default:
 		return failf(ExitUsage, "unknown configuration action %q", sub)
@@ -107,7 +133,10 @@ func runSelfConfig(ctx context.Context, ios IO, sub string, args []string) error
 	case "adopt":
 		err = client.Do(ctx, http.MethodPost, "/api/v1/instance/config/adoption", apigen.InstanceConfigAdoptRequest{PreviewToken: target.PreviewToken, IdempotencyKey: idempotency}, &status)
 	case "apply":
-		err = client.Do(ctx, http.MethodPost, "/api/v1/instance/config/apply", apigen.InstanceConfigApplyRequest{Revision: revision, ExpectedGeneration: expected, SchemaVersion: target.SchemaVersion, IdempotencyKey: idempotency, ConfirmRestoredCredentials: confirmRestored}, &status)
+		if applyRequest == nil {
+			return failf(ExitInternal, "instance-config apply plan was not prepared")
+		}
+		err = client.Do(ctx, http.MethodPost, "/api/v1/instance/config/apply", *applyRequest, &status)
 	case "test-email":
 		var result apigen.InstanceConfigMailTestResult
 		err = client.Do(ctx, http.MethodPost, "/api/v1/instance/config/mail/test", apigen.InstanceConfigMailTestRequest{Revision: revision, ExpectedGeneration: expected, SchemaVersion: target.SchemaVersion, To: openapi_types.Email(to)}, &result)

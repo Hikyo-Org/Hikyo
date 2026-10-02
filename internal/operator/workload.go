@@ -2,6 +2,8 @@ package operator
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -184,8 +186,57 @@ func (r *HikyoSecretReconciler) walkWorkloads(ctx context.Context, cr *hikyov1.H
 // with a strategic-merge patch — the minimal mutation that requests a rollout
 // under the workload's own update strategy.
 func (r *HikyoSecretReconciler) patchPodTemplateAnnotation(ctx context.Context, obj client.Object, annKey, stamp string) error {
-	patch := fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{%q:%q}}}}}`, annKey, stamp)
-	return r.Patch(ctx, obj, client.RawPatch(types.StrategicMergePatchType, []byte(patch)))
+	fresh, ok := obj.DeepCopyObject().(client.Object)
+	if !ok {
+		return errors.New("workload object cannot be copied for an authoritative consent check")
+	}
+	reader := r.Reader
+	if reader == nil {
+		reader = r.Client
+	}
+	if err := reader.Get(ctx, client.ObjectKeyFromObject(obj), fresh); err != nil {
+		return err
+	}
+	targets := fresh.GetAnnotations()[hikyov1.AnnotationWorkloadSecrets]
+	if fresh.GetUID() != obj.GetUID() || !consumesTarget(fresh.GetAnnotations(), strings.TrimPrefix(annKey, hikyov1.StampAnnotationPrefix)) {
+		return errors.New("workload identity or rollout consent changed before patch")
+	}
+	type operation struct {
+		Op    string `json:"op"`
+		Path  string `json:"path"`
+		Value any    `json:"value"`
+	}
+	escapePointer := strings.NewReplacer("~", "~0", "/", "~1")
+	operations := []operation{
+		{Op: "test", Path: "/metadata/uid", Value: string(fresh.GetUID())},
+		{Op: "test", Path: "/metadata/resourceVersion", Value: fresh.GetResourceVersion()},
+		{Op: "test", Path: "/metadata/annotations/" + escapePointer.Replace(hikyov1.AnnotationWorkloadSecrets), Value: targets},
+	}
+	annotations := podTemplateAnnotations(fresh)
+	if annotations == nil {
+		operations = append(operations, operation{Op: "add", Path: "/spec/template/metadata/annotations", Value: map[string]string{annKey: stamp}})
+	} else {
+		escaped := escapePointer.Replace(annKey)
+		operations = append(operations, operation{Op: "add", Path: "/spec/template/metadata/annotations/" + escaped, Value: stamp})
+	}
+	patch, err := json.Marshal(operations)
+	if err != nil {
+		return err
+	}
+	return r.Patch(ctx, fresh, client.RawPatch(types.JSONPatchType, patch))
+}
+
+func podTemplateAnnotations(obj client.Object) map[string]string {
+	switch workload := obj.(type) {
+	case *appsv1.Deployment:
+		return workload.Spec.Template.Annotations
+	case *appsv1.StatefulSet:
+		return workload.Spec.Template.Annotations
+	case *appsv1.DaemonSet:
+		return workload.Spec.Template.Annotations
+	default:
+		return nil
+	}
 }
 
 // consumesTarget reports whether a workload's hikyo.dev/secrets annotation names
@@ -211,16 +262,36 @@ func podAnnotation(annotations map[string]string, key string) string {
 }
 
 // deploymentProgressed reports whether the Deployment has observed its latest
-// generation and has no unavailable replicas — a best-effort read of the
-// controller's own status (§ 0.3 Rollout uses observedGeneration/unavailable).
+// generation and every desired replica is updated and available.
 func deploymentProgressed(d *appsv1.Deployment) bool {
-	return d.Status.ObservedGeneration >= d.Generation && d.Status.UnavailableReplicas == 0
+	desired := int32(1)
+	if d.Spec.Replicas != nil {
+		desired = *d.Spec.Replicas
+	}
+	if desired == 0 {
+		return d.Status.ObservedGeneration >= d.Generation && d.Status.Replicas == 0
+	}
+	return !d.Spec.Paused && d.Status.ObservedGeneration >= d.Generation &&
+		d.Status.Replicas == desired && d.Status.UpdatedReplicas == desired &&
+		d.Status.AvailableReplicas == desired && d.Status.UnavailableReplicas == 0
 }
 
 func statefulSetProgressed(s *appsv1.StatefulSet) bool {
-	return s.Status.ObservedGeneration >= s.Generation && s.Status.UpdatedReplicas == s.Status.Replicas
+	desired := int32(1)
+	if s.Spec.Replicas != nil {
+		desired = *s.Spec.Replicas
+	}
+	if desired == 0 {
+		return s.Status.ObservedGeneration >= s.Generation && s.Status.Replicas == 0
+	}
+	return s.Status.ObservedGeneration >= s.Generation && s.Status.Replicas == desired &&
+		s.Status.UpdatedReplicas == desired && s.Status.ReadyReplicas == desired &&
+		s.Status.CurrentRevision != "" && s.Status.CurrentRevision == s.Status.UpdateRevision
 }
 
 func daemonSetProgressed(d *appsv1.DaemonSet) bool {
-	return d.Status.ObservedGeneration >= d.Generation && d.Status.NumberUnavailable == 0
+	desired := d.Status.DesiredNumberScheduled
+	return d.Status.ObservedGeneration >= d.Generation &&
+		d.Status.UpdatedNumberScheduled == desired && d.Status.NumberAvailable == desired &&
+		d.Status.NumberUnavailable == 0
 }

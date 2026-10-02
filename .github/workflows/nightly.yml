@@ -3,14 +3,11 @@ name: nightly-release
 on:
   schedule:
     - cron: "0 2 * * *"
-  workflow_dispatch:
-    inputs:
-      allow_missing_predecessor:
-        description: >-
-          Build without a signed predecessor release. Only for a deliberate
-          chain restart; installations below the gap need a recovery bridge.
-        type: boolean
-        default: false
+  # repository_dispatch always loads this workflow from the default branch.
+  # This preserves the deliberate chain-restart path without exposing release
+  # credentials to a branch-selected workflow definition.
+  repository_dispatch:
+    types: [nightly-chain-restart]
 
 permissions:
   actions: read
@@ -26,6 +23,10 @@ env:
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
+    # Required operator gate: this environment must allow only main, and the
+    # app private key must exist here, never as a repository-scoped secret.
+    # See docs/handoff/nightly-release-custody.md before enabling publication.
+    environment: nightly-release
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.identity.outputs.tag }}
@@ -51,7 +52,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: refs/heads/main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Pin checked-out main commit
         id: source
@@ -168,7 +169,7 @@ jobs:
         if: steps.identity.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          ALLOW_MISSING_PREDECESSOR: ${{ inputs.allow_missing_predecessor == true }}
+          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.allow_missing_predecessor == true }}
           PREDECESSOR_EDGES: 8
         run: |
           set -o pipefail
@@ -197,7 +198,7 @@ jobs:
             # Every nightly declares its signed predecessor as an upgrade source.
             # No predecessor means the chain was cut, usually by deleting a
             # release. A silent build here strands every installation below it.
-            echo '::error::No signed predecessor release is available. Revoke bad nightlies instead of deleting them; to restart the chain deliberately, dispatch with allow_missing_predecessor=true and publish a recovery bridge.'
+            echo '::error::No signed predecessor release is available. Revoke bad nightlies instead of deleting them; to restart the chain deliberately, send the nightly-chain-restart repository dispatch with allow_missing_predecessor=true and publish a recovery bridge.'
             exit 1
           fi
       - name: Generate nightly compatibility from both migrated engines
@@ -321,7 +322,7 @@ jobs:
       - name: Verify exact signed inventory and assemble runtime evidence
         if: steps.identity.outputs.skip != 'true'
         env:
-          ALLOW_MISSING_PREDECESSOR: ${{ inputs.allow_missing_predecessor == true }}
+          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.allow_missing_predecessor == true }}
         run: |
           go run ./scripts/release/nightly verify --directory nightly-payloads
           if [ -d "$RUNNER_TEMP/previous-nightly" ]; then
@@ -345,7 +346,7 @@ jobs:
         if: steps.identity.outputs.skip != 'true'
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
-          ALLOW_MISSING_PREDECESSOR: ${{ inputs.allow_missing_predecessor == true }}
+          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.allow_missing_predecessor == true }}
         run: |
           if [ ! -d "$RUNNER_TEMP/previous-nightly" ] && [ "$ALLOW_MISSING_PREDECESSOR" != true ]; then
             echo '::error::Signed predecessor missing at the populated upgrade proof'
@@ -471,4 +472,5 @@ jobs:
         env:
           IMAGE: ${{ steps.inputs.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest || steps.existing.outputs.digest }}
+          IMAGE_BUILT: ${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}
         run: ./scripts/release/nightly-image.sh promote

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { deferred } from '../testkit/ceremony.ts';
-import { act } from 'react';
+import { act, useLayoutEffect } from 'react';
 import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,6 +47,29 @@ afterEach(() => {
 });
 
 describe('useWorkspaceHandoff', () => {
+  it('cannot launch the previous origin between a target render and passive effects', async () => {
+    const next = deferred<PreparedWorkspace>();
+    workspace.prepareWorkspace.mockResolvedValueOnce(prepared).mockReturnValueOnce(next.promise);
+    workspace.openPrepared.mockResolvedValue(undefined);
+    const phaseAtChangedCommit = vi.fn();
+    function Harness({ target }: { target: string }) {
+      const handoff = useWorkspaceHandoff(target, {
+        preparation: { kind: 'establishment' }, onFailMessage: () => 'refused',
+      });
+      useLayoutEffect(() => {
+        if (target === origin) return;
+        phaseAtChangedCommit(handoff.phase.kind);
+        handoff.authorise();
+      }, [target, handoff]);
+      return <output>{handoff.phase.kind}</output>;
+    }
+    const mounted = await renderForm(<Harness target={origin} />);
+    await settle();
+    await mounted.rerender(<Harness target="https://next.example" />);
+    expect(phaseAtChangedCommit).toHaveBeenNthCalledWith(1, 'contacting');
+    expect(workspace.openPrepared).not.toHaveBeenCalled();
+    await mounted.unmount();
+  });
   it('moves from contacting through authorising to success without re-arming', async () => {
     const preparation = deferred<PreparedWorkspace>();
     const authorisation = deferred<void>();

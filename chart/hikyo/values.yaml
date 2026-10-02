@@ -1,5 +1,11 @@
 replicaCount: 1
 
+# /metrics is loopback-only, including in Kubernetes. This chart does not
+# expose a metrics Service or support direct Prometheus scraping of pod IPs.
+# A collector in the same pod may read http://127.0.0.1:8081/metrics and forward
+# it through its own authenticated transport; configure that collector separately.
+# Operational port 8081 remains unavailable to ordinary cluster clients.
+
 # Multi-node application-tier high availability (#146). Requires an externally
 # highly available PostgreSQL datastore (HIKYO_DB) and the shared root key
 # (rootKey.existingSecret) every replica mounts. When enabled the server runs

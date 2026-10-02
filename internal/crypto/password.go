@@ -25,10 +25,9 @@ const SaltSize = 16
 // verifierSize is the Argon2id output length.
 const verifierSize = 32
 
-// PasswordParams are the Argon2id cost parameters recorded per verifier, so
-// the floor can be raised later without invalidating existing credentials —
-// a verifier is re-derived on the next successful login under the
-// compare-and-swap rule.
+// PasswordParams are the Argon2id cost parameters recorded per verifier.
+// Serving configuration must match live-epoch credentials: changing costs
+// requires deliberate credential re-establishment, not a silent login lockout.
 type PasswordParams struct {
 	MemoryKiB   uint32
 	Time        uint32
@@ -46,6 +45,10 @@ var PasswordFloor = PasswordParams{MemoryKiB: 64 * 1024, Time: 3, Parallelism: 2
 // path can name the exact parameter that is short.
 var ErrBelowFloor = errors.New("crypto: Argon2id parameters below the boot-verified floor")
 
+// ErrAboveCeiling prevents new verifiers from being written with parameters
+// the login path must reject for resource safety.
+var ErrAboveCeiling = errors.New("crypto: Argon2id parameters above the verification safety ceiling")
+
 // CheckFloor is the boot check. Fail fast, fail loud: an installation
 // configured below the floor does not start.
 func (p PasswordParams) CheckFloor() error {
@@ -56,6 +59,12 @@ func (p PasswordParams) CheckFloor() error {
 		return fmt.Errorf("%w: time %d < %d", ErrBelowFloor, p.Time, PasswordFloor.Time)
 	case p.Parallelism < PasswordFloor.Parallelism:
 		return fmt.Errorf("%w: parallelism %d < %d", ErrBelowFloor, p.Parallelism, PasswordFloor.Parallelism)
+	case p.MemoryKiB > MaxPasswordMemoryKiB:
+		return fmt.Errorf("%w: memory %d KiB > %d KiB", ErrAboveCeiling, p.MemoryKiB, MaxPasswordMemoryKiB)
+	case p.Time > MaxPasswordTime:
+		return fmt.Errorf("%w: time %d > %d", ErrAboveCeiling, p.Time, MaxPasswordTime)
+	case p.Parallelism > MaxPasswordParallelism:
+		return fmt.Errorf("%w: parallelism %d > %d", ErrAboveCeiling, p.Parallelism, MaxPasswordParallelism)
 	}
 	return nil
 }

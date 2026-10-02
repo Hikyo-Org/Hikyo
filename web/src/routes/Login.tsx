@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { useAuthMethods } from '../api/account.ts';
 import { ApiError, parsed } from '../api/client.ts';
 import { readLastSignIn, rememberLastSignIn } from '../api/lastSignIn.ts';
+import { rememberSAMLTransaction } from '../api/samlTransaction.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
 import {
@@ -28,9 +29,13 @@ import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 /** A SAML provider's login leg: the same artifact as OIDC, over the SP-initiated redirect. */
 function useSAMLLogin() {
   return useSensitiveMutation({
-    mutationFn: (provider: string) =>
+    mutationFn: ({ provider }: { provider: string; returnTo?: string }) =>
       parsed(samlStartOp, { path: { provider }, body: { purpose: 'login' } }),
-    onSuccess: (result) => globalThis.location.assign(result.redirect_url),
+    onSuccess: (result, start) => {
+      const state = new URL(result.redirect_url).searchParams.get('RelayState') ?? '';
+      rememberSAMLTransaction(state, start.returnTo);
+      globalThis.location.assign(result.redirect_url);
+    },
   });
 }
 
@@ -85,7 +90,7 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
  * may address an org with `?org=<id>` (the link the Members panel hands out).
  *
  * Local credentials and configured OIDC or SAML providers establish the same
- * browser session. OIDC callbacks return through OIDCDone.
+ * browser session. Their callbacks return through OIDCDone or SAMLDone.
  *
  * Refusal presentation follows the locked rule that no state is carried by
  * colour alone: the message is text, it is announced through `role="alert"`,
@@ -97,7 +102,7 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
  * discovery, which is about the page rather than the credential, stays outside
  * the card.
  */
-export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
+export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent; returnTo?: string } = {}) {
   const [search] = useSearchParams();
   const signupOrg = intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
   const login = useLogin();
@@ -118,6 +123,13 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
   } | null>(null);
   const challengeTotp = useLoginChallengeTotp(challenge?.id ?? '');
   const challengePasskey = useLoginChallengePasskey(challenge?.id ?? '');
+  const finishLogin = () => {
+    // Cookie authentication changes document CSP authority. API responses and
+    // SPA navigation cannot refresh the active document's connect-src policy.
+    const target = new URL(returnTo ?? '/', globalThis.location.origin);
+    globalThis.location.assign(target.origin === globalThis.location.origin && target.username === '' && target.password === ''
+      ? `${target.pathname}${target.search}${target.hash}` : '/');
+  };
   // The provider being contacted, so only ITS button shows the busy label.
   const [contacting, setContacting] = useState<ProviderIdentity | null>(null);
   // Read once per mount: the badge describes the previous visit, and the row
@@ -181,11 +193,11 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
           }
           onCode={(code) => {
             retireChallengeLegs();
-            challengeTotp.mutate(code);
+            challengeTotp.mutate(code, { onSuccess: finishLogin });
           }}
           onPasskey={() => {
             retireChallengeLegs();
-            challengePasskey.mutate();
+            challengePasskey.mutate(undefined, { onSuccess: finishLogin });
           }}
         />
       </main>
@@ -217,13 +229,18 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
                   factors: outcome.challenge.factors,
                   username: outcome.username,
                 });
+              } else {
+                finishLogin();
               }
             },
           });
         }}
         onPasskey={() => {
           retireEveryLeg();
-          passkey.mutate(undefined, { onSuccess: () => rememberLastSignIn({ kind: 'passkey' }) });
+          passkey.mutate(undefined, { onSuccess: () => {
+            rememberLastSignIn({ kind: 'passkey' });
+            finishLogin();
+          } });
         }}
         onProvider={(provider, startIntent) => {
           retireEveryLeg();
@@ -232,8 +249,13 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
           rememberLastSignIn({ kind: 'provider', providerKind: provider.kind, slug: provider.slug });
           // The row names its protocol (a slug is unique per kind only); the
           // sign-up door admits the OIDC kind alone, so a SAML start signs in.
-          if (provider.kind === 'saml') saml.mutate(provider.slug);
-          else oidc.mutate({ provider: provider.slug, intent: startIntent, signupOrg });
+          if (provider.kind === 'saml') saml.mutate({ provider: provider.slug, ...(returnTo === undefined ? {} : { returnTo }) });
+          else oidc.mutate({
+            provider: provider.slug,
+            intent: startIntent,
+            signupOrg,
+            ...(returnTo === undefined ? {} : { returnTo }),
+          });
         }}
         /* Quiet links, demoted from buttons: the CSS keeps them on the 44px
            touch floor (#567) without reading as a third way to sign in. */

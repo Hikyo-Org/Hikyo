@@ -55,7 +55,7 @@ func TestValuesImportDiagnostics(t *testing.T) {
 					data = []byte("SECRET_SENTINEL=value-sentinel\n")
 				} else {
 					var err error
-					data, err = importer.Encode(importer.ValuesFile{FormatVersion: importer.FormatVersion, Project: "prj_70", Environment: "env_70", Entries: []importer.ValuesEntry{{Key: "SECRET_SENTINEL", Value: "value-sentinel"}}})
+					data, err = importer.Encode(importer.ValuesFile{FormatVersion: importer.RunArtifactFormatVersion, CommitmentKey: strings.Repeat("ab", 32), Project: "prj_70", Environment: "env_70", Entries: []importer.ValuesEntry{{Key: "SECRET_SENTINEL", Value: "value-sentinel"}}})
 					if err != nil {
 						t.Fatal(err)
 					}

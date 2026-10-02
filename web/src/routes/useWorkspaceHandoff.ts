@@ -82,6 +82,7 @@ export function useWorkspaceHandoff(
       : { kind: 'contacting' },
   );
   const phaseRef = useRef(phase);
+  const preparedTargetRef = useRef<string | undefined>(undefined);
   const attemptRef = useRef<AbortController | undefined>(undefined);
   const onFailMessageRef = useRef(options.onFailMessage);
   const onAuthorisedRef = useRef(options.onAuthorised);
@@ -101,10 +102,14 @@ export function useWorkspaceHandoff(
     options.preparation.kind === 'step-up' ? options.preparation.params.keySet.join(',') : undefined;
   const unavailableMessage =
     options.preparation.kind === 'refused' ? options.preparation.message : undefined;
+  // Render and click ownership must not wait for the target-change effect.
+  // The tuple binds every field the remote transaction commits to.
+  const target = JSON.stringify([origin, preparationKind, session, operation, environment, keySetKey]);
+  const [phaseTarget, setPhaseTarget] = useState(target);
   const visiblePhase: HandoffPhase =
     preparationKind === 'refused'
       ? { kind: 'failed', message: unavailableMessage ?? 'Workspace handoff is unavailable.' }
-      : phase;
+      : phaseTarget === target ? phase : { kind: 'contacting' };
 
   // The async attempt only. The mount effect runs this directly, so it must not
   // set phase synchronously: the initial phase is already seeded 'contacting'
@@ -113,6 +118,15 @@ export function useWorkspaceHandoff(
   const kickoff = useCallback(() => {
     const { signal } = beginAttempt(attemptRef);
     if (preparationKind === 'refused') return;
+    const contacting: HandoffPhase = { kind: 'contacting' };
+    phaseRef.current = contacting;
+    preparedTargetRef.current = undefined;
+    queueMicrotask(() => {
+      if (!signal.aborted) {
+        setPhase(contacting);
+        setPhaseTarget(target);
+      }
+    });
 
     const stepUp =
       session === undefined || operation === undefined || environment === undefined
@@ -127,7 +141,9 @@ export function useWorkspaceHandoff(
       .then((prepared) => {
         if (signal.aborted) return;
         const ready: HandoffPhase = { kind: 'ready', prepared };
+        preparedTargetRef.current = target;
         phaseRef.current = ready;
+        setPhaseTarget(target);
         setPhase(ready);
       })
       .catch((error: unknown) => {
@@ -139,7 +155,7 @@ export function useWorkspaceHandoff(
         phaseRef.current = failed;
         setPhase(failed);
       });
-  }, [environment, keySetKey, operation, origin, preparationKind, session]);
+  }, [environment, keySetKey, operation, origin, preparationKind, session, target]);
 
   const retry = useCallback(() => {
     if (preparationKind === 'refused') {
@@ -149,14 +165,16 @@ export function useWorkspaceHandoff(
       };
       phaseRef.current = failed;
       setPhase(failed);
+      setPhaseTarget(target);
       beginAttempt(attemptRef);
       return;
     }
     const contacting: HandoffPhase = { kind: 'contacting' };
     phaseRef.current = contacting;
     setPhase(contacting);
+    setPhaseTarget(target);
     kickoff();
-  }, [kickoff, preparationKind, unavailableMessage]);
+  }, [kickoff, preparationKind, unavailableMessage, target]);
 
   useEffect(() => () => attemptRef.current?.abort(), []);
 
@@ -166,7 +184,7 @@ export function useWorkspaceHandoff(
 
   const authorise = useCallback(() => {
     const ready = phaseRef.current;
-    if (ready.kind !== 'ready') return;
+    if (ready.kind !== 'ready' || preparedTargetRef.current !== target) return;
 
     const { signal } = beginAttempt(attemptRef);
     const authorising: HandoffPhase = { kind: 'authorising', prepared: ready.prepared };
@@ -188,7 +206,7 @@ export function useWorkspaceHandoff(
         phaseRef.current = failed;
         setPhase(failed);
       });
-  }, []);
+  }, [target]);
 
   return { phase: visiblePhase, retry, authorise };
 }

@@ -5,15 +5,15 @@ import type { z } from 'zod';
 
 import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
-import { createBody, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
+import { createBody, replacementSaveRefusal, savePlan, type Key, type Rule } from '../routes/accessRules/model.ts';
 import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
 
 /**
  * Member access rules (member-access-rules ADR) as the Members surface reads
  * and writes them. The server stores one capability per rule; the page edits
- * the set sharing one Where, so a save is a short sequence of creates and
- * revokes (see `savePlan`). There is no rule update on the server: an edit is
- * a create plus a revoke.
+ * the set sharing one Where. Add-only and removal-only saves are monotonic.
+ * Mixed replacements cannot be safely expressed by separate requests, so they
+ * are refused until the server provides an atomic replacement operation.
  */
 
 type RuleList = z.infer<typeof zRuleList>;
@@ -60,13 +60,14 @@ export function useKeyCatalogues(org: string, projects: readonly string[]): { re
   return { keys, isPending: results.some((r) => r.isPending) };
 }
 
-/** A save that created part of a rule and could not finish: which half stands. */
+/** A dispatched rule mutation whose complete effect cannot be confirmed. */
 export class RuleSaveFailure extends Error {
   override readonly cause: unknown;
 
   constructor(
-    readonly stage: 'create' | 'rollback' | 'revoke',
+    readonly stage: 'create' | 'rollback' | 'revoke' | 'remove' | 'refresh',
     cause: unknown,
+    readonly confirmedRevoked: readonly string[] = [],
   ) {
     super(`rule save failed at ${stage}`, { cause });
     this.name = 'RuleSaveFailure';
@@ -74,12 +75,16 @@ export class RuleSaveFailure extends Error {
   }
 }
 
+class AtomicRuleReplacementRequired extends Error {}
+
 /**
- * saveRule makes the server's rules match the draft. Creates come first: when
- * one is refused, the ones already created are revoked again, so the member's
- * access is what it was. Only then are the replaced rows revoked.
+ * saveRule permits only monotonic changes. A mixed create/revoke plan is
+ * refused before dispatch; its intermediate union could grant unintended
+ * authority. Failed add-only runs attempt to undo their newly created rows.
  */
 export async function saveRule(org: string, before: Rule | null, draft: Rule): Promise<void> {
+  const refusal = replacementSaveRefusal(before, draft);
+  if (refusal !== null) throw new AtomicRuleReplacementRequired(refusal);
   const plan = savePlan(before, draft);
   const created: string[] = [];
   try {
@@ -87,31 +92,73 @@ export async function saveRule(org: string, before: Rule | null, draft: Rule): P
       created.push((await parsed(createRuleOp, { path: { org }, body: createBody(draft, capability) })).id);
     }
   } catch (error) {
+    const rolledBack: string[] = [];
     try {
-      for (const rule of created) await ok(revokeRuleOp, { path: { org, rule } });
-    } catch {
-      throw new RuleSaveFailure('rollback', error);
+      for (const rule of created) {
+        await ok(revokeRuleOp, { path: { org, rule } });
+        rolledBack.push(rule);
+      }
+    } catch (rollbackError) {
+      throw new RuleSaveFailure('rollback', rollbackError, rolledBack);
     }
-    throw new RuleSaveFailure('create', error);
+    // Even complete rollback of confirmed IDs cannot undo a create whose
+    // response was lost or rejected by parsing/session reconciliation. Do not
+    // classify by ApiError alone: reconciliation can also throw that class.
+    throw new RuleSaveFailure('create', error, rolledBack);
   }
+  const revoked: string[] = [];
   try {
-    for (const rule of plan.revoke) await ok(revokeRuleOp, { path: { org, rule } });
+    for (const rule of plan.revoke) {
+      await ok(revokeRuleOp, { path: { org, rule } });
+      revoked.push(rule);
+    }
   } catch (error) {
-    throw new RuleSaveFailure('revoke', error);
+    throw new RuleSaveFailure('revoke', error, revoked);
   }
 }
 
 /** Revoke every server rule a rule is made of. */
 export async function removeRule(org: string, rule: Rule): Promise<void> {
   if (rule.source.kind !== 'rule') return;
-  for (const part of rule.source.parts) await ok(revokeRuleOp, { path: { org, rule: part.id } });
+  const revoked: string[] = [];
+  try {
+    for (const part of rule.source.parts) {
+      await ok(revokeRuleOp, { path: { org, rule: part.id } });
+      revoked.push(part.id);
+    }
+  } catch (error) {
+    // A masked 404 is still a refusal, not evidence of a deleted row. Resume
+    // only by reopening the authoritative listing, never this stale part set.
+    throw new RuleSaveFailure('remove', error, revoked);
+  }
 }
 
 /** Save and remove, refreshing the listings and this session (a rule change can end the holder's sessions). */
 export function useRuleMutations(org: string) {
   const auth = useAuth();
   const queries = useQueryClient();
-  const settle = () => Promise.all([queries.invalidateQueries({ queryKey: ['rules', org] }), auth.refreshSession()]);
+  const settle = async (_result: void, failure: Error | null) => {
+    try {
+      // The session owner invalidates all queries both before and after
+      // whoami. A concurrent third refetch can inherit a canceled retryer and
+      // report uncertainty even when the authoritative listing succeeded.
+      // Settle the owner first, then confirm this listing before enabling edits.
+      try {
+        await auth.refreshSession();
+      } finally {
+        // An owner refusal is not evidence that the write did not commit.
+        // Still retire the old listing; the outer catch retains the refusal.
+        await queries.invalidateQueries({ queryKey: ['rules', org] }, { throwOnError: true });
+      }
+    } catch (error) {
+      // The mutation already failed and its caller must abandon the draft.
+      // Do not rethrow inside TanStack's error-settlement callback, which
+      // reports callback failures as unhandled rejections instead of replacing
+      // the original mutation error. The query/session owners retain refusal.
+      if (failure !== null) return;
+      throw new RuleSaveFailure('refresh', error);
+    }
+  };
   return {
     save: useMutation({ mutationFn: (input: { before: Rule | null; draft: Rule }) => saveRule(org, input.before, input.draft), onSettled: settle }),
     remove: useMutation({ mutationFn: (rule: Rule) => removeRule(org, rule), onSettled: settle }),
@@ -138,14 +185,21 @@ function refusalText(error: unknown): string {
 
 /** A save or remove failure in words, saying which half of an edit stands. */
 export function ruleFailureText(error: unknown): string {
+  if (error instanceof AtomicRuleReplacementRequired) return error.message;
   if (error instanceof RuleSaveFailure) {
+    const progress = error.confirmedRevoked.length === 1
+      ? '1 rule part was confirmed removed.'
+      : `${error.confirmedRevoked.length} rule parts were confirmed removed.`;
     switch (error.stage) {
       case 'create':
-        return `Nothing changed: ${refusalText(error.cause)}`;
+        return `The save could not be confirmed. A new rule may still apply even if confirmed additions were undone. Check the refreshed rules and reopen the editor before retrying. ${refusalText(error.cause)}`;
       case 'rollback':
-        return `Part of the new rule was saved and could not be undone: reload and check this member's rules. ${refusalText(error.cause)}`;
+        return `Some new rules may still apply because rollback could not finish. ${progress} Check the refreshed rules and reopen the editor before retrying. ${refusalText(error.cause)}`;
       case 'revoke':
-        return `The new rule is saved, but the rule it replaces could not be removed, so both apply: remove the old one. ${refusalText(error.cause)}`;
+      case 'remove':
+        return `Removal stopped. ${progress} Other removals could not be confirmed. Check the refreshed rules and reopen the editor before retrying. ${refusalText(error.cause)}`;
+      case 'refresh':
+        return `The requests completed, but the current rules or session could not be confirmed. Reload and check the rules before making another change. ${refusalText(error.cause)}`;
     }
   }
   return refusalText(error);

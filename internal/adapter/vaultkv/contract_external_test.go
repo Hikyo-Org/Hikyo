@@ -11,9 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/netip"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -252,18 +254,115 @@ func runKVContract(t *testing.T, name string) {
 		}
 	}
 
-	// Ambiguous outcome: the write applies but the response is lost. Replay
-	// resolves it from metadata alone.
+	// Ambiguous outcome: the write applies but the response is lost. Matching
+	// pending metadata does not establish its writer: sync and teardown must
+	// retain custody and stop until a fresh version-bound operator decision.
 	entries[0].Value = "postgres://two"
 	ambiguous := &Module{API: &ambiguousKV{API: client, path: "apps/pay/DATABASE_URL"}}
-	if _, err := ambiguous.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
-		t.Fatalf("ambiguous sync = %v, want indeterminate", err)
+	if _, err := ambiguous.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrIndeterminate) || !errors.Is(err, adapter.ErrOperatorReview) {
+		t.Fatalf("ambiguous sync = %v, want indeterminate and operator review", err)
 	}
+	if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+		t.Fatal("unknown response did not retain dispatched custody")
+	}
+	paths := []string{"apps/pay/DATABASE_URL", "apps/pay/LOG_LEVEL", "apps/pay/MANAGED_BY_HIKYO"}
+	metadataBefore := make(map[string]Metadata, len(paths))
+	valuesBefore := make(map[string]string, len(paths))
+	for _, path := range paths {
+		metadata, err := client.ReadMetadata(t.Context(), mount, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadataBefore[path] = metadata
+		value, exists := h.readValue(mount, path)
+		if !exists {
+			t.Fatalf("acknowledged fixture path %s missing", path)
+		}
+		valuesBefore[path] = value
+	}
+	if valuesBefore[paths[0]] != "postgres://two" || metadataBefore[paths[0]].CustomMetadata[PendingKey] == "" {
+		t.Fatal("fixture lacks the applied but unacknowledged pending write")
+	}
+	journalBefore := *journal
+	journalBefore.states = maps.Clone(journal.states)
+	journalBefore.missing = maps.Clone(journal.missing)
+	journalBefore.releases = maps.Clone(journal.releases)
+	journalBefore.conflicts = slices.Clone(journal.conflicts)
+	journalBefore.outcomes = slices.Clone(journal.outcomes)
+	for _, teardown := range []bool{false, true} {
+		if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: journal.ledger(), Teardown: teardown}, journal); !errors.Is(err, adapter.ErrOperatorReview) {
+			t.Fatalf("held replay teardown=%v: %v; want operator review", teardown, err)
+		}
+		for _, path := range paths {
+			metadata, err := client.ReadMetadata(t.Context(), mount, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, exists := h.readValue(mount, path)
+			if !exists || value != valuesBefore[path] || !reflect.DeepEqual(metadata, metadataBefore[path]) {
+				t.Fatalf("held replay changed value/version/history/markers of %s", path)
+			}
+		}
+		if !reflect.DeepEqual(*journal, journalBefore) {
+			t.Fatal("held replay changed journal outcomes or custody")
+		}
+	}
+
+	plan, err = module.Plan(t.Context(), adapter.PlanRequest{Target: target, Manifest: entries, Ledger: journal.ledger(), Gate: gate})
+	if err != nil {
+		t.Fatalf("fresh recovery plan: %v", err)
+	}
+	var witness int64
+	for _, change := range plan.Changes {
+		if change.EffectiveName == "DATABASE_URL" {
+			if change.Disposition != adapter.Conflict || change.ObservedProviderVersion == nil || *change.ObservedProviderVersion <= 0 {
+				t.Fatalf("held path lacks positive version-bound conflict: %+v", change)
+			}
+			witness = *change.ObservedProviderVersion
+		}
+	}
+	if witness != metadataBefore[paths[0]].CurrentVersion {
+		t.Fatalf("recovery plan witness=%d; want exact observed current version", witness)
+	}
+	// Model the sanctioned adoption seam: explicit operator consent changes
+	// only this held name to Owned, binds the positive plan witness, and advances
+	// the target generation. It does not prove who produced the old version.
+	journal.states["secret:DATABASE_URL"] = adapter.Owned
+	target.Generation++
+	adoptedLedger := journal.ledger()
+	for i := range adoptedLedger {
+		if adoptedLedger[i].EffectiveName == "DATABASE_URL" {
+			adoptedLedger[i].AdoptionPending = true
+			adoptedLedger[i].AdoptionVersion = &witness
+		}
+	}
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: adoptedLedger}, journal); err != nil {
+		t.Fatalf("explicit fresh version-bound recovery: %v", err)
+	}
+	recovered, err := client.ReadMetadata(t.Context(), mount, paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.CurrentVersion != witness+1 || recovered.CustomMetadata[VersionKey] != fmt.Sprint(witness+1) || recovered.CustomMetadata[PendingKey] != "" || journal.states["secret:DATABASE_URL"] != adapter.Owned {
+		t.Fatal("recovery did not perform a new acknowledged CAS and retain ownership")
+	}
+	if got, ok := h.readValue(mount, paths[0]); !ok || got != "postgres://two" {
+		t.Fatal("explicit recovery changed delivered plaintext")
+	}
+	// Acknowledged custody remains eligible for normal convergence. As the
+	// accepted no-value-read contract requires, re-delivery creates a new version.
 	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: journal.ledger()}, journal); err != nil {
-		t.Fatalf("replay sync: %v", err)
+		t.Fatalf("acknowledged replay: %v", err)
 	}
-	if got, _ := h.readValue(mount, "apps/pay/DATABASE_URL"); got != "postgres://two" {
-		t.Fatalf("replayed value = %q", got)
+	acknowledged, err := client.ReadMetadata(t.Context(), mount, paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acknowledged.CurrentVersion != recovered.CurrentVersion+1 || acknowledged.CustomMetadata[VersionKey] != fmt.Sprint(acknowledged.CurrentVersion) || acknowledged.CustomMetadata[PendingKey] != "" || journal.states["secret:DATABASE_URL"] != adapter.Owned {
+		t.Fatal("acknowledged replay lost version/custody")
+	}
+	if got, ok := h.readValue(mount, paths[0]); !ok || got != "postgres://two" {
+		t.Fatal("acknowledged replay changed delivered plaintext")
 	}
 
 	// External movement is a CAS conflict, never an overwrite.

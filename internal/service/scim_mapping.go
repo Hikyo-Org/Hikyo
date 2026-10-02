@@ -432,7 +432,7 @@ func (s *SCIM) releaseRow(
 			binding: c.binding.ID, org: domain.OrgID(c.binding.OrgID),
 			match: matchMappingRows(c.binding.ID, map[string]bool{row.ID: true}), cause: cause,
 			grant: grant,
-		}, advanceIfAuthorityChanged, now)
+		}, now)
 		if err != nil {
 			return nil, 0, err
 		}

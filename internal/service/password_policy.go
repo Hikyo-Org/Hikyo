@@ -22,20 +22,13 @@ import (
 
 // commonPasswords is the bundled list.
 //
-// STATED GAP: the ops spec calls for the embedded top-100k (SecLists/HIBP-
-// derived), pinned and hash-checked in CI. What ships here is a starter set,
-// because sourcing the full list needs a network fetch and a licence review
-// that this ticket did not do. The MECHANISM is complete and on the right
-// path; the DATA is not, and TestCommonListIsAKnownPlaceholder fails the day
-// someone mistakes one for the other.
+// It is the NCSC 100k most-used-password corpus distributed by SecLists,
+// pinned to SecLists commit e749176aa4e3261ff41f7d197d7a01a0a705030e.
+// password_policy_test.go pins both its minimum effective size and SHA-256;
+// common-passwords.LICENSE records the source and redistribution terms.
 //
 //go:embed common-passwords.txt
 var commonPasswords string
-
-// PlaceholderListBound is the size below which the bundled list is understood
-// to be the starter set rather than the specified one. Replacing the file
-// with the real top-100k is what removes the placeholder status.
-const PlaceholderListBound = 1000
 
 var (
 	commonOnce sync.Once

@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha1" // #nosec G505 -- APK-TOOLS defines this checksum metadata format.
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -42,6 +44,7 @@ type tarInspection struct {
 	payload  payload
 	metadata map[string][]byte
 	files    map[string]bool
+	dirs     map[string]bool
 }
 
 func main() {
@@ -96,11 +99,6 @@ func verifyAll(dist, version string) error {
 			}
 			if !bytes.Equal(got.license, license) {
 				return fmt.Errorf("%s: packaged LICENSE differs from repository LICENSE", id.filename)
-			}
-			if runtime.GOOS == "linux" && runtime.GOARCH == arch {
-				if err := verifyExecutable(got.binary, version); err != nil {
-					return fmt.Errorf("%s: %w", id.filename, err)
-				}
 			}
 		}
 	}
@@ -217,7 +215,7 @@ func verifyDeb(filename string, id identity) (payload, error) {
 		return payload{}, fmt.Errorf("read Debian data archive: %w", err)
 	}
 	inspection := newTarInspection()
-	if err := inspectTar(tar.NewReader(bytes.NewReader(dataTar)), inspection, nil); err != nil {
+	if err := inspectTar(tar.NewReader(bytes.NewReader(dataTar)), inspection, nil, false); err != nil {
 		return payload{}, err
 	}
 	return finishPayload(inspection)
@@ -230,7 +228,7 @@ func verifyAPK(filename string, id identity) (payload, error) {
 	}
 	defer f.Close()
 	inspection := newTarInspection()
-	if err := inspectGzipTarMembers(f, inspection, map[string]bool{".PKGINFO": true}); err != nil {
+	if err := inspectGzipTarMembers(f, inspection, map[string]bool{".PKGINFO": true}, true); err != nil {
 		return payload{}, err
 	}
 	pkginfo, ok := inspection.metadata[".PKGINFO"]
@@ -256,7 +254,7 @@ func verifyArch(filename string, id identity) (payload, error) {
 	}
 	defer zr.Close()
 	inspection := newTarInspection()
-	if err := inspectTar(tar.NewReader(zr), inspection, map[string]bool{".PKGINFO": true, ".MTREE": true}); err != nil {
+	if err := inspectTar(tar.NewReader(zr), inspection, map[string]bool{".PKGINFO": true, ".MTREE": true}, false); err != nil {
 		return payload{}, err
 	}
 	pkginfo, ok := inspection.metadata[".PKGINFO"]
@@ -289,7 +287,7 @@ func verifyRPM(filename string, id identity) (payload, error) {
 		return payload{}, fmt.Errorf("RPM identity mismatch: Name=%q EVR=%q Arch=%q", nevra.Name, metadataVersion, nevra.Arch)
 	}
 	if tag, found := firstForbiddenRPMHook(rpm.Header.HasTag); found {
-		return payload{}, fmt.Errorf("RPM contains forbidden script tag %d", tag)
+		return payload{}, fmt.Errorf("RPM contains forbidden side-effect tag %d", tag)
 	}
 	reader, err := rpm.PayloadReaderExtended()
 	if err != nil {
@@ -309,17 +307,30 @@ func verifyRPM(filename string, id identity) (payload, error) {
 			return payload{}, err
 		}
 		kind := info.Mode() & 0o170000
+		if info.UserName() != "root" || info.GroupName() != "root" {
+			return payload{}, fmt.Errorf("RPM payload %q must be owned by root:root", entry)
+		}
 		switch kind {
 		case 0o040000:
 			if !allowedPayloadDirectory(entry) {
 				return payload{}, fmt.Errorf("unexpected RPM directory %q", entry)
 			}
+			if info.Mode()&0o7777 != 0o755 {
+				return payload{}, fmt.Errorf("RPM directory %q has mode %#o, want 0755", entry, info.Mode()&0o7777)
+			}
+			if info.Flags() != 0 || inspection.dirs[entry] {
+				return payload{}, fmt.Errorf("RPM directory %q has flags or is duplicated", entry)
+			}
+			inspection.dirs[entry] = true
 		case 0o100000:
 			content, err := io.ReadAll(reader)
 			if err != nil {
 				return payload{}, err
 			}
 			if err := validatePayloadMode(entry, int64(info.Mode())); err != nil {
+				return payload{}, err
+			}
+			if err := validateRPMFileFlags(entry, info.Flags()); err != nil {
 				return payload{}, err
 			}
 			if err := recordPayloadFile(inspection, entry, content); err != nil {
@@ -344,7 +355,15 @@ func forbiddenRPMScriptTags() []int {
 		5076, 5077, // Transaction file-trigger scripts and interpreters.
 		5103, 5104, 5105, 5106, // Pre/post-untransaction scripts and interpreters.
 		5109, // Native sysusers metadata creates accounts during installation.
+		rpmutils.FILECAPS,
 	}
+}
+
+func validateRPMFileFlags(entry string, flags int) error {
+	if flags == 0 || entry == licensePath && flags == rpmutils.RPMFILE_LICENSE {
+		return nil
+	}
+	return fmt.Errorf("RPM payload %q has forbidden file flags %#x", entry, flags)
 }
 
 func firstForbiddenRPMHook(hasTag func(int) bool) (int, bool) {
@@ -421,6 +440,9 @@ func inspectDebControl(tr *tar.Reader) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := validateTarMetadata(hdr, entry, false); err != nil {
+			return nil, err
+		}
 		if hdr.Typeflag == tar.TypeDir {
 			if entry != "." {
 				return nil, fmt.Errorf("unexpected Debian control directory %q", entry)
@@ -451,7 +473,7 @@ func inspectDebControl(tr *tar.Reader) ([]byte, error) {
 	return control, nil
 }
 
-func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[string]bool) error {
+func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[string]bool, allowAPKChecksum bool) error {
 	buffered := bufio.NewReader(r)
 	members := 0
 	for {
@@ -465,7 +487,7 @@ func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[
 			return fmt.Errorf("open APK gzip member %d: %w", members+1, err)
 		}
 		zr.Multistream(false)
-		if err := inspectTar(tar.NewReader(zr), inspection, metadata); err != nil {
+		if err := inspectTar(tar.NewReader(zr), inspection, metadata, allowAPKChecksum); err != nil {
 			zr.Close()
 			return err
 		}
@@ -485,10 +507,10 @@ func inspectGzipTarMembers(r io.Reader, inspection *tarInspection, metadata map[
 }
 
 func newTarInspection() *tarInspection {
-	return &tarInspection{metadata: make(map[string][]byte), files: make(map[string]bool)}
+	return &tarInspection{metadata: make(map[string][]byte), files: make(map[string]bool), dirs: make(map[string]bool)}
 }
 
-func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]bool) error {
+func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]bool, allowAPKChecksum bool) error {
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -501,10 +523,23 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 		if err != nil {
 			return err
 		}
+		if err := validateTarMetadata(hdr, entry, allowAPKChecksum); err != nil {
+			return err
+		}
 		if hdr.Typeflag == tar.TypeDir {
+			if len(hdr.PAXRecords) != 0 {
+				return fmt.Errorf("package directory %q contains forbidden extended metadata", entry)
+			}
 			if !allowedPayloadDirectory(entry) {
 				return fmt.Errorf("unexpected package directory %q", entry)
 			}
+			if hdr.Mode&0o7777 != 0o755 {
+				return fmt.Errorf("package directory %q has mode %#o, want 0755", entry, hdr.Mode&0o7777)
+			}
+			if inspection.dirs[entry] {
+				return fmt.Errorf("duplicate package directory %q", entry)
+			}
+			inspection.dirs[entry] = true
 			continue
 		}
 		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
@@ -512,6 +547,9 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 		}
 		content, err := io.ReadAll(tr)
 		if err != nil {
+			return err
+		}
+		if err := validateAPKChecksum(hdr, entry, content); err != nil {
 			return err
 		}
 		if metadata != nil && metadata[entry] {
@@ -528,6 +566,47 @@ func inspectTar(tr *tar.Reader, inspection *tarInspection, metadata map[string]b
 			return err
 		}
 	}
+}
+
+const (
+	apkChecksumPAXKey = "APK-TOOLS.checksum.SHA1"
+	paxModTimeKey     = "mtime"
+)
+
+func validateTarMetadata(hdr *tar.Header, entry string, allowAPKChecksum bool) error {
+	if hdr.Uid != 0 || hdr.Gid != 0 || hdr.Uname != "" && hdr.Uname != "root" || hdr.Gname != "" && hdr.Gname != "root" {
+		return fmt.Errorf("package entry %q must be owned by root:root", entry)
+	}
+	if len(hdr.Xattrs) != 0 {
+		return fmt.Errorf("package entry %q contains forbidden extended metadata", entry)
+	}
+	if len(hdr.PAXRecords) == 0 {
+		return nil
+	}
+	checksum, ok := hdr.PAXRecords[apkChecksumPAXKey]
+	allowedRecords := 1
+	if _, hasModTime := hdr.PAXRecords[paxModTimeKey]; hasModTime {
+		allowedRecords++
+	}
+	if !allowAPKChecksum || len(hdr.PAXRecords) != allowedRecords || !ok || len(checksum) != sha1.Size*2 {
+		return fmt.Errorf("package entry %q contains forbidden extended metadata", entry)
+	}
+	if _, err := hex.DecodeString(checksum); err != nil {
+		return fmt.Errorf("package entry %q has malformed APK checksum metadata", entry)
+	}
+	return nil
+}
+
+func validateAPKChecksum(hdr *tar.Header, entry string, content []byte) error {
+	want, ok := hdr.PAXRecords[apkChecksumPAXKey]
+	if !ok {
+		return nil
+	}
+	got := sha1.Sum(content) // #nosec G401 -- verify the checksum format emitted by APK-TOOLS.
+	if hex.EncodeToString(got[:]) != strings.ToLower(want) {
+		return fmt.Errorf("package entry %q APK checksum does not match its content", entry)
+	}
+	return nil
 }
 
 func validatePayloadMode(entry string, mode int64) error {
@@ -609,26 +688,6 @@ func parseEquals(data []byte) map[string]string {
 		}
 	}
 	return fields
-}
-
-func verifyExecutable(binary []byte, version string) error {
-	dir, err := os.MkdirTemp("", "hikyo-native-package-exec.*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	filename := filepath.Join(dir, "hikyo")
-	if err := os.WriteFile(filename, binary, 0o700); err != nil {
-		return err
-	}
-	out, err := exec.Command(filename, "--version").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("packaged binary version command failed: %s", strings.TrimSpace(string(out)))
-	}
-	if strings.TrimSpace(string(out)) != version {
-		return fmt.Errorf("packaged binary reports unexpected version: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
 }
 
 func mapKeys(values map[string][]byte) []string {

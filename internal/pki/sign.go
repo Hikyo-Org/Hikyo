@@ -208,6 +208,9 @@ func ParseCSR(input []byte) (*x509.CertificateRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidCSR, err)
 	}
+	if _, err := AlgorithmOf(csr.PublicKey); err != nil {
+		return nil, fmt.Errorf("%w: unsupported public key: %v", ErrInvalidCSR, err)
+	}
 	if err := csr.CheckSignature(); err != nil {
 		return nil, fmt.Errorf("%w: signature does not verify", ErrInvalidCSR)
 	}

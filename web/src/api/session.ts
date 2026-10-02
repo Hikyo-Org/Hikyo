@@ -12,10 +12,11 @@ import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-quer
 import type { z } from 'zod';
 
 import { commonRefusalText, statusText } from './statusText.ts';
-import { useSensitiveMutation } from './sensitiveMutation.ts';
-import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
-import { useTransport } from './transport.tsx';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { ApiError, ok, parsed, transportRefusalText } from './client.ts';
+import { rememberOIDCReturn } from './oidcChannel.ts';
+import { useSensitiveMutation } from './sensitiveMutation.ts';
+import { useTransport } from './transport.tsx';
 
 /**
  * loginFailureText turns a login failure into something true.
@@ -158,7 +159,7 @@ export function useOIDCLogin() {
     // The intent is a server fact (#604): the sign-in door sends `sign-in`,
     // which never creates an account; only the sign-up door's confirmation
     // step sends `sign-up`, with the addressed org when there is one.
-    mutationFn: (start: { provider: string; intent: 'sign-in' | 'sign-up'; signupOrg?: string }) =>
+    mutationFn: (start: { provider: string; intent: 'sign-in' | 'sign-up'; signupOrg?: string; returnTo?: string }) =>
       parsed(oidcStartOp, {
         path: { provider: start.provider },
         body: {
@@ -168,7 +169,17 @@ export function useOIDCLogin() {
           ...(start.intent === 'sign-up' && start.signupOrg !== undefined ? { signup_org: start.signupOrg } : {}),
         },
       }),
-    onSuccess: (result) => globalThis.location.assign(result.authorization_url),
+    onSuccess: (result, start) => {
+      if (start.returnTo !== undefined) {
+        const target = new URL(start.returnTo, globalThis.location.origin);
+        const state = new URL(result.authorization_url).searchParams.get('state') ?? '';
+        if (target.origin !== globalThis.location.origin || state === '') {
+          throw new Error('the OIDC continuation is not a valid same-origin transaction');
+        }
+        rememberOIDCReturn(state, `${target.pathname}${target.search}${target.hash}`);
+      }
+      globalThis.location.assign(result.authorization_url);
+    },
   });
 }
 

@@ -16,7 +16,7 @@ import {
   type ClaimPin,
   type FederationPreset,
   type MachineCredential,
-  type MachineEnvScope,
+  type MachineDisclosureReach,
   type ProjectRef,
   type ServiceAccount,
 } from '../../api/identities.ts';
@@ -170,6 +170,19 @@ export function carriedClaims(
     .filter((pin) => !rendered.has(pin.claim));
 }
 
+export function unsafeNumericClaim(credential: MachineCredential): string | null {
+  for (const pin of credential.required_claims ?? []) {
+    if (
+      pin.number_value !== undefined &&
+      (pin.number_value > BigInt(Number.MAX_SAFE_INTEGER) ||
+        pin.number_value < BigInt(Number.MIN_SAFE_INTEGER))
+    ) {
+      return pin.claim;
+    }
+  }
+  return null;
+}
+
 /** Convert only numeric pins the request contract can carry exactly. */
 function toRequestPin(pin: ClaimPin): FederatedClaimPin | null {
   if (pin.string_value !== undefined) {
@@ -237,11 +250,10 @@ export function BindingDialog({
    * The selected account's post-state reach. A binding is a mint (#62), so the
    * server demands the same disclosure formula the credential mint does: one
    * fresh window per environment the account can decrypt in the resulting
-   * state. Vacuous today for the same reason the mint's is, nothing a machine
-   * can hold reaches plaintext, but the leg exists so the form does not start
-   * failing with a bare 403 the day the reveal opt-in lands.
+   * state, whether current or historical plaintext. The environment union
+   * consumes one ceremony even when both disclosure classes reach it.
    */
-  reachFor: (accountId: string) => readonly MachineEnvScope[];
+  reachFor: (accountId: string) => readonly MachineDisclosureReach[];
   onClose: () => void;
   onCreated: (message: string) => void;
 }) {
@@ -252,11 +264,13 @@ export function BindingDialog({
   // pinned; a fresh binding starts on Kubernetes. The account is locked to the
   // row the replace was launched from, because a binding belongs to one.
   const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
+  const unsafeClaim = replaces === undefined ? null : unsafeNumericClaim(replaces);
   // Predecessor pins no form field renders, carried verbatim so a replacement
   // never silently drops an identity constraint the form could not show.
   const carried = replaces === undefined ? [] : carriedClaims(seedPreset, replaces);
   const [account, setAccount] = useState(initial.id);
   const [preset, setPreset] = useState<FederationPreset>(seedPreset);
+  const unsupportedPreset = preset.id === 'forgejo';
   const [issuer, setIssuer] = useState(replaces?.issuer ?? seedPreset.issuer);
   const [subject, setSubject] = useState(replaces?.subject ?? seedPreset.subject);
   const [audience, setAudience] = useState(replaces?.audience ?? '');
@@ -299,7 +313,19 @@ export function BindingDialog({
     const pins: FederatedClaimPin[] = [];
     for (const field of preset.claims) {
       const raw = claims[field.claim] ?? '';
-      if (field.kind === 'number') {
+      const original = replaces?.required_claims?.find((pin) => pin.claim === field.claim);
+      if (original?.string_value !== undefined) {
+        pins.push({ claim: field.claim, string_value: raw });
+        continue;
+      }
+      if (original?.bool_value !== undefined) {
+        if (raw !== 'true' && raw !== 'false') {
+          return `${field.label} (${field.claim}) preserves a boolean pin: enter true or false. Use the CLI for a deliberate type change. Nothing was bound.`;
+        }
+        pins.push({ claim: field.claim, bool_value: raw === 'true' });
+        continue;
+      }
+      if (original?.number_value !== undefined || field.kind === 'number') {
         const value = parseClaimNumber(raw);
         if (value === null) {
           return `${field.label} (${field.claim}) must be a whole number the issuer actually mints: digits only, and inside the range this contract can carry exactly. Nothing was bound.`;
@@ -316,6 +342,16 @@ export function BindingDialog({
   };
 
   const submit = async () => {
+    if (unsupportedPreset) {
+      setFailure('Forgejo Actions tokens do not expose the immutable repository identity required for a binding. Nothing was bound.');
+      return;
+    }
+    if (unsafeClaim !== null) {
+      setFailure(
+        `Claim ${unsafeClaim} is outside the browser's exact integer range. Replace this binding with the CLI so its constraint is not rounded.`,
+      );
+      return;
+    }
     if (refusal !== null && !deliberate) {
       setFailure(
         'This binding pins a pull-request event. Acknowledge deliberately below, or pin another event.',
@@ -370,7 +406,7 @@ export function BindingDialog({
     try {
       // A binding is a mint: one reauthentication per environment the account
       // decrypts in the post-state, in the same purpose the server consumes.
-      // Empty today, no machine reaches plaintext, so no ceremony runs.
+      // Current and historical reach share one ceremony per environment.
       for (const environment of reachFor(account)) {
         await runPasskeyCeremony({
           operation: 'mint',
@@ -432,7 +468,7 @@ export function BindingDialog({
           <Button type="button" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" type="button" disabled={busy} onClick={() => void submit()}>
+          <Button variant="primary" type="button" disabled={busy || unsafeClaim !== null || unsupportedPreset} onClick={() => void submit()}>
             {busy
               ? replacing
                 ? 'Replacing…'
@@ -448,7 +484,14 @@ export function BindingDialog({
           form as submitted, so nothing here may change until it resolves,
           otherwise the success or failure sentence describes one account while
           the operator is looking at another. */}
-      <fieldset className="machine__lock" disabled={busy}>
+      {unsafeClaim === null ? null : (
+        <Alert>
+          A preserved numeric pin cannot be carried exactly by this contract. Claim <code>{unsafeClaim}</code> is
+          outside the browser&apos;s exact integer range. Use the CLI to replace this binding without
+          rounding its authentication constraint. Nothing was bound.
+        </Alert>
+      )}
+      <fieldset className="machine__lock" disabled={busy || unsafeClaim !== null || unsupportedPreset}>
       {replacing ? null : (
         <div className="machine__presets">
           {FEDERATION_PRESETS.map((entry) => (
@@ -456,6 +499,7 @@ export function BindingDialog({
               key={entry.id}
               type="button"
               aria-pressed={preset.id === entry.id}
+              disabled={entry.id === 'forgejo'}
               onClick={() => choose(entry)}
             >
               {preset.id === entry.id ? <><Glyph name="check" /> </> : null}
@@ -464,6 +508,12 @@ export function BindingDialog({
           ))}
         </div>
       )}
+      {replacing ? (
+        <p className="field__hint">Replacement fields preserve each predecessor pin&apos;s scalar type. Use the CLI for a deliberate type change.</p>
+      ) : null}
+      {!replacing || unsupportedPreset ? (
+        <p className="field__hint">Forgejo Actions is unavailable: its tokens do not expose the immutable repository identity required for a binding. Deployment adapters remain supported.</p>
+      ) : null}
 
       <div className="field">
         <label htmlFor="binding-account">Service account</label>

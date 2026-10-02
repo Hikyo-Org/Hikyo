@@ -237,6 +237,13 @@ func replaceAdapterMoveOrigin(ctx context.Context, db adapterDB, chain domain.Sc
 	if move.State != "attention_required" || move.Kind != "origin" {
 		return AdapterMove{}, fmt.Errorf("%w: pending origin replacement requires an attention-required origin move", domain.ErrConflict)
 	}
+	provider, err := db.adapterStoreQueries().adapterProvider(ctx, chain, move.AdapterID)
+	if err != nil {
+		return AdapterMove{}, err
+	}
+	if err := requireCanonicalAdapterOrigin(provider, origin); err != nil {
+		return AdapterMove{}, err
+	}
 	previousAuthority := move.AuthorityPrincipalID
 	var collisions int
 
@@ -276,7 +283,8 @@ func replaceAdapterMoveOrigin(ctx context.Context, db adapterDB, chain domain.Sc
 			ID: target.TargetID, AdapterID: move.AdapterID, EnvironmentID: target.EnvironmentID,
 			DestinationKind: target.DestinationKind, DestinationOwner: target.DestinationOwner,
 			DestinationName: target.DestinationName, DestinationEnvironment: target.DestinationEnvironment, DestinationScope: target.DestinationScope,
-			RepositoryID: target.RepositoryID, Visibility: target.Visibility, SelectedRepositoryIDs: target.SelectedRepositoryIDs,
+			// Repository pins belong to the replaced endpoint, not its successor.
+			RepositoryID: 0, Visibility: target.Visibility, SelectedRepositoryIDs: target.SelectedRepositoryIDs,
 			NamePrefix: target.NamePrefix, KeyIDs: keyIDs,
 		}); err != nil {
 			return AdapterMove{}, err
@@ -345,6 +353,13 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 	if lookupAdapterResult.ProviderBusy != 0 {
 		return AdapterRouteMoveBatch{}, adapter.ErrProviderBusy
 	}
+	provider, err := db.adapterStoreQueries().adapterProvider(ctx, chain, mutation.AdapterID)
+	if err != nil {
+		return AdapterRouteMoveBatch{}, err
+	}
+	if err := requireCanonicalAdapterOrigin(provider, mutation.Origin); err != nil {
+		return AdapterRouteMoveBatch{}, err
+	}
 	if lookupAdapterResult.CurrentOrigin == mutation.Origin {
 		return AdapterRouteMoveBatch{}, fmt.Errorf("%w: adapter origin is unchanged", domain.ErrInvalid)
 	}
@@ -371,6 +386,9 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 	}
 	var targets []originTarget
 	for _, targetQueryRow := range rows {
+		if targetQueryRow.Paused {
+			return AdapterRouteMoveBatch{}, fmt.Errorf("%w: resume paused targets explicitly before moving the adapter origin", domain.ErrConflict)
+		}
 		target := originTarget{id: targetQueryRow.Id, environmentID: targetQueryRow.EnvironmentID, kind: targetQueryRow.Kind, owner: targetQueryRow.Owner, name: targetQueryRow.Name, destinationEnvironment: targetQueryRow.DestinationEnvironment, destinationScope: targetQueryRow.DestinationScope, destinationID: targetQueryRow.DestinationID, repositoryID: targetQueryRow.RepositoryID, visibility: targetQueryRow.Visibility, prefix: targetQueryRow.Prefix, generation: targetQueryRow.Generation, activeJob: targetQueryRow.ActiveJob}
 		selectedRaw := targetQueryRow.SelectedRaw
 		orphanRaw := targetQueryRow.OrphanRaw
@@ -405,7 +423,7 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 		orphanJSON, _ := json.Marshal(pendingOrphans)
 		selectedJSON, _ := json.Marshal(target.selectedRepositoryIDs)
 
-		if affected, err := db.adapterMoveQueries().insertTarget(ctx, mutation.MoveID, chain.Org, chain.Project, target.environmentID, target.id, target.kind, target.owner, target.name, target.destinationEnvironment, target.destinationScope, target.repositoryID, target.visibility, selectedJSON, target.prefix, string(orphanJSON)); err != nil || affected != 1 {
+		if affected, err := db.adapterMoveQueries().insertTarget(ctx, mutation.MoveID, chain.Org, chain.Project, target.environmentID, target.id, target.kind, target.owner, target.name, target.destinationEnvironment, target.destinationScope, 0, target.visibility, selectedJSON, target.prefix, string(orphanJSON)); err != nil || affected != 1 {
 			if err != nil {
 				return AdapterRouteMoveBatch{}, err
 			}
@@ -434,7 +452,7 @@ func beginAdapterOriginMove(ctx context.Context, db adapterDB, chain domain.Scop
 		if err := reserveAdapterMoveClaims(ctx, db, chain, mutation.MoveID, mutation.Origin, AdapterTargetMutation{
 			ID: target.id, AdapterID: mutation.AdapterID, EnvironmentID: target.environmentID,
 			DestinationKind: target.kind, DestinationOwner: target.owner, DestinationName: target.name,
-			DestinationEnvironment: target.destinationEnvironment, DestinationScope: target.destinationScope, RepositoryID: target.repositoryID,
+			DestinationEnvironment: target.destinationEnvironment, DestinationScope: target.destinationScope, RepositoryID: 0,
 			Visibility: target.visibility, SelectedRepositoryIDs: target.selectedRepositoryIDs,
 			NamePrefix: target.prefix, KeyIDs: keyIDs,
 		}); err != nil {
@@ -547,6 +565,9 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 	}
 	if err != nil {
 		return AdapterRouteMoveResult{}, err
+	}
+	if lookupResult.Paused {
+		return AdapterRouteMoveResult{}, fmt.Errorf("%w: resume the paused target explicitly before moving its destination", domain.ErrConflict)
 	}
 	if lookupResult.ProviderBusy != 0 {
 		return AdapterRouteMoveResult{}, adapter.ErrProviderBusy

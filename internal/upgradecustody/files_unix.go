@@ -58,6 +58,10 @@ func custodyDirectory(path string, create bool, owner int) (*os.File, error) {
 }
 
 func publish(dir *os.File, ciphertext []byte, replace bool) error {
+	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX); err != nil {
+		return errors.New("lock operator custody directory")
+	}
+	defer unix.Flock(int(dir.Fd()), unix.LOCK_UN)
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return errors.New("create encrypted custody temporary name")
@@ -102,6 +106,10 @@ func publish(dir *os.File, ciphertext []byte, replace bool) error {
 }
 
 func read(dir *os.File, owner int) ([]byte, error) {
+	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX); err != nil {
+		return nil, errors.New("lock operator custody directory")
+	}
+	defer unix.Flock(int(dir.Fd()), unix.LOCK_UN)
 	fd, err := unix.Openat(int(dir.Fd()), fileName, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, errors.New("open encrypted operator custody")
@@ -109,7 +117,18 @@ func read(dir *os.File, owner int) ([]byte, error) {
 	f := os.NewFile(uintptr(fd), fileName)
 	defer f.Close()
 	var st unix.Stat_t
-	if unix.Fstat(fd, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Mode&07777 != 0600 || st.Uid != uint32(owner) || st.Nlink != 1 || st.Size <= 0 || st.Size > maxCiphertext {
+	if unix.Fstat(fd, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Mode&07777 != 0600 || st.Uid != uint32(owner) || st.Size <= 0 || st.Size > maxCiphertext {
+		return nil, errors.New("operator custody file has unsafe type, ownership, permissions, links, or size")
+	}
+	if st.Nlink == 2 {
+		if err := recoverInterruptedPublication(dir, st, owner); err != nil {
+			return nil, err
+		}
+		if unix.Fstat(fd, &st) != nil {
+			return nil, errors.New("restat recovered operator custody")
+		}
+	}
+	if st.Nlink != 1 {
 		return nil, errors.New("operator custody file has unsafe type, ownership, permissions, links, or size")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, maxCiphertext+1))
@@ -117,4 +136,49 @@ func read(dir *os.File, owner int) ([]byte, error) {
 		return nil, errors.New("read encrypted operator custody")
 	}
 	return raw, nil
+}
+
+// recoverInterruptedPublication removes only the private temporary name left
+// by publish after its atomic no-overwrite link succeeded. An unrelated hard
+// link remains a refusal: recovery requires the one expected name, inode,
+// owner, mode, size, and link count while the directory is exclusively locked.
+func recoverInterruptedPublication(dir *os.File, final unix.Stat_t, owner int) error {
+	if _, err := dir.Seek(0, 0); err != nil {
+		return errors.New("rewind operator custody directory")
+	}
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return errors.New("inspect operator custody publication")
+	}
+	match := ""
+	for _, name := range names {
+		if !strings.HasPrefix(name, ".operator-") {
+			continue
+		}
+		fd, openErr := unix.Openat(int(dir.Fd()), name, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if openErr != nil {
+			continue
+		}
+		var candidate unix.Stat_t
+		statErr := unix.Fstat(fd, &candidate)
+		unix.Close(fd)
+		if statErr == nil && candidate.Dev == final.Dev && candidate.Ino == final.Ino &&
+			candidate.Mode&unix.S_IFMT == unix.S_IFREG && candidate.Mode&07777 == 0600 &&
+			candidate.Uid == uint32(owner) && candidate.Nlink == 2 && candidate.Size == final.Size {
+			if match != "" {
+				return errors.New("operator custody publication has ambiguous temporary links")
+			}
+			match = name
+		}
+	}
+	if match == "" {
+		return errors.New("operator custody file has an unrelated hard link")
+	}
+	if err := unix.Unlinkat(int(dir.Fd()), match, 0); err != nil {
+		return errors.New("recover encrypted operator custody publication")
+	}
+	if err := dir.Sync(); err != nil {
+		return errors.New("sync recovered operator custody directory")
+	}
+	return nil
 }

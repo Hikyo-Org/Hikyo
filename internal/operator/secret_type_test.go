@@ -177,7 +177,7 @@ func TestTypedSecretWithdrawal(t *testing.T) {
 			if missingKey {
 				h.stub.set(200, deliveryJSON(false, "v1:new", "v1:token", []deliveredKey{secretVal("CERT", "new-cert")}, nil))
 			} else {
-				h.stub.set(404, "")
+				h.stub.set(404, `{"error":{"code":"not_found"}}`)
 			}
 			for range 2 {
 				if _, err := h.reconcile("app"); err != nil {
@@ -219,7 +219,7 @@ func TestTypedWithdrawalReplacementRacesFailClosed(t *testing.T) {
 			if err := h.cl.Create(t.Context(), sec); err != nil {
 				t.Fatal(err)
 			}
-			h.stub.set(404, "")
+			h.stub.set(404, `{"error":{"code":"not_found"}}`)
 			if _, err := h.reconcile("app"); err == nil {
 				t.Fatal("race incorrectly reported success")
 			}
@@ -272,7 +272,7 @@ func TestTypedWithdrawalWaitsForFinalizers(t *testing.T) {
 	if err := h.cl.Create(t.Context(), sec); err != nil {
 		t.Fatal(err)
 	}
-	h.stub.set(404, "")
+	h.stub.set(404, `{"error":{"code":"not_found"}}`)
 	if _, err := h.reconcile("app"); err == nil {
 		t.Fatal("pending deletion reported successful scrub")
 	}
