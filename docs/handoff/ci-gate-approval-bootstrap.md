@@ -8,7 +8,9 @@ are preserved. Regression fixtures enforce the real CLI option restriction.
 
 The gate also rejects known merge conflicts immediately instead of polling for
 a `pull_request` validation run that GitHub cannot start. Unknown mergeability
-continues polling. Fixture coverage checks the immediate diagnostic.
+continues polling even after validation completes; the gate passes only after
+GitHub reports mergeable=true. Fixture coverage checks the immediate conflict
+diagnostic, pending mergeability at the final check, and resolution on a later poll.
 
 This PR deliberately contains no `.github/` changes: the existing gate can
 validate it through ordinary PR-scoped CI without calling the broken approval
