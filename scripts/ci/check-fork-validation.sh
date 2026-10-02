@@ -57,7 +57,7 @@ require_workflow_review() {
 	# filter locally; keeping the fetch separate also preserves API failures.
 	reviewers=$(printf '%s\n' "$reviews" | jq -r \
 		--arg head "$HEAD_SHA" --arg author "$pr_author" --argjson author_id "$pr_author_id" '
-		[.[][] | select(.user.id != null)] | group_by(.user.id) |
+		[.[][] | select(.user.id != null and .user.type != "Bot")] | group_by(.user.id) |
 		map(max_by([(.submitted_at // ""), .id])) | .[] |
 		select(.state == "APPROVED" and .commit_id == $head and
 		.user.id != $author_id and .user.login != $author) | .user.login') ||

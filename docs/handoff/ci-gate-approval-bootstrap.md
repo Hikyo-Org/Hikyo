@@ -11,6 +11,9 @@ a `pull_request` validation run that GitHub cannot start. Unknown mergeability
 continues polling even after validation completes; the gate passes only after
 GitHub reports mergeable=true. Fixture coverage checks the immediate conflict
 diagnostic, pending mergeability at the final check, and resolution on a later poll.
+Bot reviews are excluded from workflow approval candidates: they neither grant
+authority nor prevent a valid independent maintainer approval from being checked.
+Fixtures cover bot-only approval and a bot review preceding a human approval.
 
 This PR deliberately contains no `.github/` changes: the existing gate can
 validate it through ordinary PR-scoped CI without calling the broken approval
