@@ -42,3 +42,29 @@ it('clears a refused write-only secret and keeps it outside the query caches', a
   expect(client.getMutationCache().getAll()).toHaveLength(0);
   expect(JSON.stringify(client.getQueryCache().getAll().map(q => q.state.data))).not.toContain('private-fixture-secret');
 });
+
+it('pins edits to the displayed provider version and preserves a concurrent disable on refusal', async () => {
+  const requests: Request[] = [];
+  const provider = {profile:'github',slug:'github',display_name:'GitHub',issuer:'https://github.com',client_id:'client',redirect_uri:'https://hikyo.test/callback',enabled:true,row_version:7};
+  vi.stubGlobal('fetch', vi.fn((request: Request) => {
+    requests.push(request);
+    return Promise.resolve(request.method === 'GET'
+      ? Response.json({providers:[provider]})
+      : Response.json({error:{code:'conflict',message:'Conflict'}},{status:409}));
+  }));
+  const {container,unmount}=await renderForm(<OAuth2ProvidersPanel />);
+  cleanups.push(unmount);await settleTask();
+  const edit=[...container.querySelectorAll('button')].find(b=>b.textContent==='Reconfigure GitHub');
+  if(!edit)throw new Error('missing edit action');
+  await act(async()=>edit.click());
+  const secret=container.querySelector('#oauth2-secret');
+  const form=container.querySelector('form');
+  if(!(secret instanceof HTMLInputElement)||!form)throw new Error('missing editor');
+  await act(async()=>typeInto(secret,'replacement'));
+  await act(async()=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  await settleTask();
+  const write=requests.find(r=>r.method==='PUT');
+  expect(await write?.clone().json()).toMatchObject({row_version:7});
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Refresh');
+  expect(secret.value).toBe('');
+});

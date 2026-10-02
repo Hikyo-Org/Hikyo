@@ -48,7 +48,7 @@ func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObje
 			provider.Profile = &profile
 		}
 		if p.Brand != "" {
-			brand := apigen.AuthMethodProviderBrand(p.Brand)
+			brand := p.Brand
 			provider.Brand = &brand
 		}
 		out.Providers = append(out.Providers, provider)

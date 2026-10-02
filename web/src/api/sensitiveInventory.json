@@ -56,6 +56,6 @@
     "ui/auth/LoginForm.tsx": "fa0f6dab49fc08e792d3b63c4090c3d448d45c373c376759c444dfe368cf070b",
     "ui/auth/ProofDialog.tsx": "2ad7582557e7bc3d479e3aeb04c48b962d9dde20114ba76e516ec760ca9ac009",
     "ui/auth/SecondFactorSetup.tsx": "76405ce9c77015d38a0a8847f8e9899803ae0d063ceb62b7a16f7dbc9db14225",
-    "routes/OAuth2ProvidersPanel.tsx": "b33f95b1ac287bab35a50c37f2dd3ec589f5bb709a4db5b5e353a0f2980e78b9"
+    "routes/OAuth2ProvidersPanel.tsx": "2614ad4c866841c860be599c436cf3b5143f1265fd6edb395d766e0b8e40e349"
   }
 }

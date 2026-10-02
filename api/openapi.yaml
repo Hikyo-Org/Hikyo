@@ -20984,7 +20984,7 @@ components:
           $ref: "#/components/schemas/IdentityProviderKind"
         brand:
           type: string
-          enum: [google, microsoft, github]
+          x-extensible-enum: [google, microsoft, github]
           description: |
             The provider's published button rules apply (#587 d4,
             docs/research/social-providers.md): Google's standard-colour G,
@@ -21225,6 +21225,11 @@ components:
         client_id: {type: string, minLength: 1, maxLength: 1024}
         client_secret: {type: string, minLength: 1, maxLength: 4096}
         enabled: {type: boolean}
+        row_version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
 
     OidcProvider:
       type: object
@@ -21265,7 +21270,7 @@ components:
     Oauth2Provider:
       type: object
       additionalProperties: false
-      required: [profile, slug, display_name, issuer, client_id, redirect_uri, enabled]
+      required: [profile, slug, display_name, issuer, client_id, redirect_uri, enabled, row_version]
       properties:
         profile: {type: string, enum: [github]}
         slug:
@@ -21278,6 +21283,7 @@ components:
           type: string
         redirect_uri:
           type: string
+        row_version: {type: integer, format: int64, minimum: 1}
         enabled:
           type: boolean
 

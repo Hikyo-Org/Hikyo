@@ -18,7 +18,7 @@ export function useOAuth2Providers() {
 }
 // Secrets stay in the one-shot request, outside React Query's mutation cache.
 export function putOAuth2Provider(slug: string, body: OAuth2ProviderInput) {
-  return parsed(putOauth2ProviderOp, { path: { slug }, body });
+  return parsed(putOauth2ProviderOp, { path: { slug }, body: { ...body, row_version: body.row_version === undefined ? undefined : Number(body.row_version) } });
 }
 export function deleteOAuth2Provider(slug: string) {
   return ok(deleteOauth2ProviderOp, { path: { slug } });

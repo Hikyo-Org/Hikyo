@@ -43,7 +43,7 @@ type Mocks = {
         kind: string;
         slug: string;
         display_name: string;
-        brand?: 'google' | 'microsoft' | 'github';
+        brand?: string;
         profile?: 'github';
       }[];
       signup_open: boolean;
@@ -734,4 +734,16 @@ it('brands GitHub and routes sign-in to the OAuth2 kind', async () => {
  await act(async()=>button?.click());
  expect(mocks.oidc.mutate).toHaveBeenCalledWith({kind:'oauth2',provider:'github',intent:'sign-in',signupOrg:undefined});
  await unmount();
+});
+
+it('renders an unknown future brand as a usable generic provider', async () => {
+  mocks.methods.data.providers = [{kind:'oidc',slug:'future',display_name:'Future IdP',brand:'future-brand'}];
+  const container = document.createElement('div');
+  const {unmount} = await mount(container);
+  const button = buttonNamed(container,'Continue with Future IdP');
+  expect(button).toBeDefined();
+  expect(button?.querySelector('svg')).toBeNull();
+  await act(async () => button?.click());
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({kind:'oidc',provider:'future',intent:'sign-in',signupOrg:undefined});
+  await unmount();
 });

@@ -3452,7 +3452,8 @@ export const zOauth2ProviderInput = z.object({
     issuer: z.string().min(1).max(2048),
     client_id: z.string().min(1).max(1024),
     client_secret: z.string().min(1).max(4096),
-    enabled: z.boolean()
+    enabled: z.boolean(),
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
 export const zOidcProvider = z.object({
@@ -3478,6 +3479,7 @@ export const zOauth2Provider = z.object({
     issuer: z.string(),
     client_id: z.string(),
     redirect_uri: z.string(),
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     enabled: z.boolean()
 });
 
@@ -3551,11 +3553,7 @@ export const zAuthMethodProvider = z.object({
     slug: z.string(),
     display_name: z.string(),
     kind: zIdentityProviderKind,
-    brand: z.enum([
-        'google',
-        'microsoft',
-        'github'
-    ]).optional()
+    brand: z.string().optional()
 });
 
 export const zAuthMethods = z.object({

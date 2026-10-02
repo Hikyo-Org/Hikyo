@@ -169,6 +169,7 @@ function OAuth2Editor({
         client_id: client,
         client_secret: value,
         enabled,
+        ...(provider ? { row_version: provider.row_version } : {}),
       }),
     onSuccess: onSaved,
     onSettled: () => setSecret(''),

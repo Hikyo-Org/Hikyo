@@ -4586,7 +4586,7 @@ export type AuthMethodProvider = {
      * Presentation only: admission never keys on it.
      *
      */
-    brand?: 'google' | 'microsoft' | 'github';
+    brand?: string;
 };
 
 export type OidcStartRequest = {
@@ -4753,6 +4753,10 @@ export type Oauth2ProviderInput = {
     client_id: string;
     client_secret: string;
     enabled: boolean;
+    /**
+     * Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
+     */
+    row_version?: number;
 };
 
 export type OidcProvider = {
@@ -4778,6 +4782,7 @@ export type Oauth2Provider = {
     issuer: string;
     client_id: string;
     redirect_uri: string;
+    row_version: number;
     enabled: boolean;
 };
 

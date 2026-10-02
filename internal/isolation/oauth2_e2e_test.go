@@ -405,3 +405,44 @@ func TestOAuth2ClaimAllowlistRefused(t *testing.T) {
 		}
 	})
 }
+
+func TestOAuth2ProviderWriteVersion(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h := newSignupHarness(t, db)
+		p, _ := configureGithub(t, h)
+		in := service.OAuth2ProviderInput{Profile: "github", DisplayName: "Changed", Issuer: "https://github.com", ClientID: "client", ClientSecret: "replacement", Enabled: false, CreateOnly: true}
+		if _, err := p.Put(t.Context(), service.LocalPrincipal(root), "github", in); !errors.Is(err, service.ErrOAuth2ProviderExists) {
+			t.Fatalf("create overwrote provider: %v", err)
+		}
+		view, err := p.Get(t.Context(), service.LocalPrincipal(root), "github")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if view.RowVersion != 1 || !view.Enabled {
+			t.Fatalf("create refusal changed row: %+v", view)
+		}
+		in.CreateOnly = false
+		in.ExpectedRowVersion = &view.RowVersion
+		updated, err := p.Put(t.Context(), service.LocalPrincipal(root), "github", in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated.RowVersion != 2 || updated.Enabled {
+			t.Fatalf("versioned update: %+v", updated)
+		}
+		in.Enabled = true
+		if _, err := p.Put(t.Context(), service.LocalPrincipal(root), "github", in); !errors.Is(err, service.ErrProviderRace) {
+			t.Fatalf("stale update admitted: %v", err)
+		}
+		current, err := p.Get(t.Context(), service.LocalPrincipal(root), "github")
+		if err != nil || current.Enabled || current.RowVersion != 2 {
+			t.Fatalf("stale update changed row: %+v %v", current, err)
+		}
+		if err := p.Delete(t.Context(), service.LocalPrincipal(root), "github"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Put(t.Context(), service.LocalPrincipal(root), "github", in); !errors.Is(err, service.ErrProviderRace) {
+			t.Fatalf("deleted update recreated row: %v", err)
+		}
+	})
+}

@@ -2,8 +2,9 @@ package service
 
 import (
 	"encoding/json"
-	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 func rawClaims(t *testing.T, doc string) map[string]json.RawMessage {

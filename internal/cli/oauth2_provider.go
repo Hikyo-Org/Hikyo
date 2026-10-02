@@ -115,6 +115,7 @@ func runOAuth2Provider(ctx context.Context, ios IO, args []string) error {
 		input.DisplayName = old.DisplayName
 		input.ClientId = old.ClientId
 		input.Enabled = old.Enabled
+		input.RowVersion = &old.RowVersion
 	}
 	if verb == "create" && !name.set {
 		input.DisplayName = slug

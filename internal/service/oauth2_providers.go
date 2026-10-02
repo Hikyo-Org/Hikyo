@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
+
+var ErrOAuth2ProviderExists = fmt.Errorf("%w: service: an OAuth2 provider with that slug already exists", domain.ErrConflict)
 
 func oauth2ProviderSecretAAD(id string) crypto.InstanceFieldAAD {
 	return crypto.InstanceFieldAAD{OwnerTable: "oauth2_providers", OwnerRowID: id, FieldTag: "client_secret"}
@@ -42,6 +45,7 @@ type OAuth2ProviderView struct {
 	ClientID    string
 	RedirectURI string
 	Enabled     bool
+	RowVersion  int64
 }
 
 func oauth2ProviderView(p authz.OAuth2Provider) OAuth2ProviderView {
@@ -49,17 +53,20 @@ func oauth2ProviderView(p authz.OAuth2Provider) OAuth2ProviderView {
 		Slug: p.Slug, DisplayName: p.DisplayName, Issuer: p.Issuer, ClientID: p.ClientID, Profile: p.Profile,
 		RedirectURI: p.RedirectURI,
 		Enabled:     p.Enabled,
+		RowVersion:  p.RowVersion,
 	}
 }
 
 // OAuth2ProviderInput is a create-or-update request body.
 type OAuth2ProviderInput struct {
-	Profile      string
-	DisplayName  string
-	Issuer       string
-	ClientID     string
-	ClientSecret string
-	Enabled      bool
+	Profile            string
+	DisplayName        string
+	Issuer             string
+	ClientID           string
+	ClientSecret       string
+	Enabled            bool
+	CreateOnly         bool
+	ExpectedRowVersion *int64
 }
 
 func (s *OAuth2Providers) redirectURI(slug string) string {
@@ -84,9 +91,18 @@ func (s *OAuth2Providers) Put(ctx context.Context, actor Actor, slug string, in 
 		existing, err := az.OAuth2ProviderBySlug(ctx, slug)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
+			if in.ExpectedRowVersion != nil {
+				return ErrProviderRace
+			}
 			return s.create(ctx, r, az, p, caller.Principal, slug, in, &out)
 		case err != nil:
 			return err
+		}
+		if in.CreateOnly {
+			return ErrOAuth2ProviderExists
+		}
+		if in.ExpectedRowVersion != nil && *in.ExpectedRowVersion != existing.RowVersion {
+			return ErrProviderRace
 		}
 		if existing.Issuer != in.Issuer {
 			return ErrIssuerImmutable
@@ -142,6 +158,7 @@ func (s *OAuth2Providers) create(ctx context.Context, r store.Repos, az *authz.T
 		Slug: slug, DisplayName: in.DisplayName, Issuer: in.Issuer, ClientID: in.ClientID, Profile: in.Profile,
 		RedirectURI: prov.RedirectURI,
 		Enabled:     in.Enabled,
+		RowVersion:  1,
 	})
 	return nil
 }
@@ -183,6 +200,7 @@ func (s *OAuth2Providers) update(ctx context.Context, r store.Repos, az *authz.T
 		Slug: existing.Slug, DisplayName: in.DisplayName, Issuer: existing.Issuer, ClientID: in.ClientID, Profile: existing.Profile,
 		RedirectURI: upd.RedirectURI,
 		Enabled:     in.Enabled,
+		RowVersion:  existing.RowVersion + 1,
 	})
 	return nil
 }

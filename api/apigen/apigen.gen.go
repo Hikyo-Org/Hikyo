@@ -803,27 +803,6 @@ func (e ApprovalVoteRequestDecision) Valid() bool {
 	}
 }
 
-// Defines values for AuthMethodProviderBrand.
-const (
-	AuthMethodProviderBrandGithub    AuthMethodProviderBrand = "github"
-	AuthMethodProviderBrandGoogle    AuthMethodProviderBrand = "google"
-	AuthMethodProviderBrandMicrosoft AuthMethodProviderBrand = "microsoft"
-)
-
-// Valid indicates whether the value is a known member of the AuthMethodProviderBrand enum.
-func (e AuthMethodProviderBrand) Valid() bool {
-	switch e {
-	case AuthMethodProviderBrandGithub:
-		return true
-	case AuthMethodProviderBrandGoogle:
-		return true
-	case AuthMethodProviderBrandMicrosoft:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for AuthMethodProviderProfile.
 const (
 	AuthMethodProviderProfileGithub AuthMethodProviderProfile = "github"
@@ -5179,22 +5158,14 @@ type AuthMethodProvider struct {
 	// Derived from the pinned issuer (Google's, or an Entra
 	// tenant-specific issuer); absent for a generic OIDC provider.
 	// Presentation only: admission never keys on it.
-	Brand       *AuthMethodProviderBrand `json:"brand,omitempty"`
-	DisplayName string                   `json:"display_name"`
+	Brand       *string `json:"brand,omitempty"`
+	DisplayName string  `json:"display_name"`
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind    IdentityProviderKind       `json:"kind"`
 	Profile *AuthMethodProviderProfile `json:"profile,omitempty"`
 	Slug    string                     `json:"slug"`
 }
-
-// AuthMethodProviderBrand The provider's published button rules apply (#587 d4,
-// docs/research/social-providers.md): Google's standard-colour G,
-// or the Microsoft logo with the row's display name as the tenant.
-// Derived from the pinned issuer (Google's, or an Entra
-// tenant-specific issuer); absent for a generic OIDC provider.
-// Presentation only: admission never keys on it.
-type AuthMethodProviderBrand string
 
 // AuthMethodProviderProfile defines model for AuthMethodProvider.Profile.
 type AuthMethodProviderProfile string
@@ -8061,6 +8032,7 @@ type Oauth2Provider struct {
 	Issuer      string                `json:"issuer"`
 	Profile     Oauth2ProviderProfile `json:"profile"`
 	RedirectUri string                `json:"redirect_uri"`
+	RowVersion  int64                 `json:"row_version"`
 	Slug        string                `json:"slug"`
 }
 
@@ -8075,6 +8047,9 @@ type Oauth2ProviderInput struct {
 	Enabled      bool                       `json:"enabled"`
 	Issuer       string                     `json:"issuer"`
 	Profile      Oauth2ProviderInputProfile `json:"profile"`
+
+	// RowVersion Required for reconfiguration and omitted for create. A stale or deleted row returns 409.
+	RowVersion *int64 `json:"row_version,omitempty"`
 }
 
 // Oauth2ProviderInputProfile defines model for Oauth2ProviderInput.Profile.

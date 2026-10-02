@@ -2,14 +2,15 @@ package cli
 
 import (
 	"encoding/json"
-	"github.com/Hikyo-Org/hikyo/api"
-	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
 func TestOAuth2CreateRefusesOverwriteAndOversizedSecret(t *testing.T) {

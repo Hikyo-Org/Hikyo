@@ -148,7 +148,7 @@ func oauth2ProviderViewWire(v service.OAuth2ProviderView) apigen.Oauth2Provider 
 	return apigen.Oauth2Provider{
 		Slug: v.Slug, DisplayName: v.DisplayName, Issuer: v.Issuer, ClientId: v.ClientID,
 		Profile: apigen.Oauth2ProviderProfile(v.Profile), RedirectUri: v.RedirectURI,
-		Enabled: v.Enabled,
+		Enabled: v.Enabled, RowVersion: v.RowVersion,
 	}
 }
 
@@ -179,7 +179,8 @@ func (a *API) PutOauth2Provider(ctx context.Context, req apigen.PutOauth2Provide
 	in := service.OAuth2ProviderInput{
 		DisplayName: req.Body.DisplayName, Issuer: req.Body.Issuer, ClientID: req.Body.ClientId,
 		ClientSecret: req.Body.ClientSecret, Profile: string(req.Body.Profile),
-		Enabled: req.Body.Enabled,
+		Enabled:    req.Body.Enabled,
+		CreateOnly: req.Body.RowVersion == nil, ExpectedRowVersion: req.Body.RowVersion,
 	}
 	v, err := a.OAuth2Providers.Put(ctx, service.Bearer(bearer(ctx)), string(req.Slug), in)
 	if err != nil {
