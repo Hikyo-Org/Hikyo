@@ -6,6 +6,7 @@
 #   1. the PR head is still HEAD_SHA (a newer push gets its own gate),
 #   2. .github/ is untouched, or a same-repository PR has an independent,
 #      currently authorized maintainer's latest approval on this exact head,
+#      or is authored by the pinned BDFL who still has maintainer permission,
 #   3. fork-ci's latest run for this PR (run title "fork-ci #N") and HEAD_SHA
 #      completed, and its aggregate gate ("validation / ci-required")
 #      succeeded. Another PR sharing the commit may target a different base,
@@ -17,6 +18,9 @@ set -eu
 timeout_seconds=${FORK_GATE_TIMEOUT_SECONDS:-5400}
 poll_seconds=${FORK_GATE_POLL_SECONDS:-30}
 gate_job='validation / ci-required'
+# Repository policy, loaded from the trusted base, never from PR input or env.
+# Dunky13's immutable GitHub user ID survives account renames.
+bdfl_author_id=991668
 
 fail() {
 	printf 'fork validation gate: %s\n' "$1" >&2
@@ -49,6 +53,20 @@ require_workflow_review() {
 	check_current_pr
 	[ "$head_repository" = "$GH_REPO" ] ||
 		fail 'a fork PR that changes .github/ needs a maintainer to land it from a branch in this repository'
+	if [ "$pr_author_id" = "$bdfl_author_id" ]; then
+		case "$pr_author" in '' | *[!a-zA-Z0-9-]*) fail 'invalid BDFL author identity' ;; esac
+		authority=$(gh api "repos/$GH_REPO/collaborators/$pr_author/permission" \
+			--jq '[(.user.id | tostring), .permission] | join(" ")') ||
+			fail 'cannot verify current BDFL maintainer permission'
+		[ "${authority%% *}" = "$bdfl_author_id" ] ||
+			fail 'BDFL permission lookup returned a different user identity'
+		case "${authority#* }" in
+			write | maintain | admin) ;;
+			*) fail 'BDFL workflow exemption requires current maintainer permission' ;;
+		esac
+		check_current_pr
+		return
+	fi
 	# API review author_association is historical, not current authority. Use
 	# the latest review per immutable reviewer id and check current permissions.
 	reviews=$(gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews?per_page=100") ||

@@ -24,4 +24,7 @@ immediately when the API reports `mergeable: false` (unknown remains pending).
 Workflow approval lookup combined unsupported `gh api --slurp --jq` flags; it
 now retrieves all pages first and filters with standalone jq, checking both
 commands for failure. Fixture tests enforce CLI compatibility and conflict
-diagnostics. Independent exact-head maintainer approval remains required.
+diagnostics. Workflow edits require independent exact-head maintainer approval,
+except same-repository PRs authored by the pinned BDFL (GitHub user ID 991668)
+while that account retains current maintainer permission. Exact-head validation,
+signature, DCO and merge queue checks still apply to every PR.
