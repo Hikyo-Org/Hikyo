@@ -476,14 +476,26 @@ func (r *Resolver) RegistrationSignupByVerifier(ctx context.Context, verifier []
 	}
 	return r.RegistrationSignupByEmail(ctx, row.Email)
 }
+
+// ReissueRegistrationSignup refuses a pending row deleted since its snapshot.
+// Callers must not record an intent or send a token whose verifier was not stored.
 func (r *Resolver) ReissueRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error {
+	var affected int64
+	var err error
 	if r.sq != nil {
-		_, err := r.sq.ReissueRegistrationSignup(ctx, sqlitegen.ReissueRegistrationSignupParams{TokenVerifier: n.TokenVerifier, PolicyID: n.PolicyID, SignupScopeOrgID: sql.NullString{String: string(n.SignupScopeOrgID), Valid: n.SignupScopeOrgID != ""}, CredentialEpoch: n.CredentialEpoch, ExpiresAt: encodeTime(n.ExpiresAt), ID: n.ID})
+		affected, err = r.sq.ReissueRegistrationSignup(ctx, sqlitegen.ReissueRegistrationSignupParams{TokenVerifier: n.TokenVerifier, PolicyID: n.PolicyID, SignupScopeOrgID: sql.NullString{String: string(n.SignupScopeOrgID), Valid: n.SignupScopeOrgID != ""}, CredentialEpoch: n.CredentialEpoch, ExpiresAt: encodeTime(n.ExpiresAt), ID: n.ID})
+	} else {
+		affected, err = r.pg.ReissueRegistrationSignup(ctx, pggen.ReissueRegistrationSignupParams{TokenVerifier: n.TokenVerifier, PolicyID: n.PolicyID, SignupScopeOrgID: pgtype.Text{String: string(n.SignupScopeOrgID), Valid: n.SignupScopeOrgID != ""}, CredentialEpoch: n.CredentialEpoch, ExpiresAt: pgTimestamp(n.ExpiresAt), ID: n.ID})
+	}
+	if err != nil {
 		return err
 	}
-	_, err := r.pg.ReissueRegistrationSignup(ctx, pggen.ReissueRegistrationSignupParams{TokenVerifier: n.TokenVerifier, PolicyID: n.PolicyID, SignupScopeOrgID: pgtype.Text{String: string(n.SignupScopeOrgID), Valid: n.SignupScopeOrgID != ""}, CredentialEpoch: n.CredentialEpoch, ExpiresAt: pgTimestamp(n.ExpiresAt), ID: n.ID})
-	return err
+	if affected != 1 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
+
 func (r *Resolver) ConsumeRegistrationSignup(ctx context.Context, id string, verifier []byte) (bool, error) {
 	var count int64
 	var err error

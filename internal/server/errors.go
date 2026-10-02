@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/mail"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/transit"
@@ -76,7 +77,7 @@ type WireError struct {
 // this table with the OpenAPI enum, so adding a public code without deciding
 // all four fields fails the suite.
 var wirePolicies = map[apigen.ErrorCode]WireError{
-	apigen.ErrorCodeServiceUnavailable: {status: http.StatusServiceUnavailable, code: apigen.ErrorCodeServiceUnavailable, message: "runtime configuration is not ready; retry shortly", detailPolicy: redactDetail},
+	apigen.ErrorCodeServiceUnavailable: {status: http.StatusServiceUnavailable, code: apigen.ErrorCodeServiceUnavailable, message: "service is unavailable; retry shortly", detailPolicy: redactDetail},
 	apigen.ErrorCodeBadRequest:         {status: http.StatusBadRequest, code: apigen.ErrorCodeBadRequest, message: "the request does not satisfy the API contract", detailPolicy: allowSafeDetail},
 	apigen.ErrorCodeUnauthenticated:    {status: http.StatusUnauthorized, code: apigen.ErrorCodeUnauthenticated, message: "authentication required", detailPolicy: redactDetail},
 	apigen.ErrorCodeForbidden:          {status: http.StatusForbidden, code: apigen.ErrorCodeForbidden, message: "not permitted", detailPolicy: redactDetail},
@@ -185,6 +186,10 @@ var wireErrorRules = []struct {
 	code  apigen.ErrorCode
 }{
 	{service.ErrSelfConfigUnavailable, apigen.ErrorCodeServiceUnavailable},
+	// Explicit operator sends may find mail disabled or an unreachable relay.
+	// Both use the closed unavailable policy, without SMTP response details.
+	{mail.ErrDisabled, apigen.ErrorCodeServiceUnavailable},
+	{mail.ErrDelivery, apigen.ErrorCodeServiceUnavailable},
 	{service.ErrSelfConfigMailLimited, apigen.ErrorCodeTooManyRequests},
 	// Reveal and account-security refusals.
 	{service.ErrNoReauthWindow, apigen.ErrorCodeForbidden},

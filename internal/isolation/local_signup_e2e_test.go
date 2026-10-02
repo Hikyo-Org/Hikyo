@@ -10,9 +10,11 @@ import (
 	"net/mail"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -484,6 +486,13 @@ func TestLocalSignupExpiredRowReplacementAndReaper(t *testing.T) {
 		if err := auth.Signup(ctx, "replace@example.test", ""); err != nil {
 			t.Fatal(err)
 		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='registration.signup_expired'"); n != 1 {
+			t.Fatalf("replacement expiry events %d", n)
+		}
+		payload := queryString(t, db, "SELECT payload FROM audit_instance_events WHERE type='registration.signup_expired'")
+		if !strings.Contains(payload, original.ID) || !strings.Contains(payload, original.PolicyID) || !strings.Contains(payload, `"expired"`) {
+			t.Fatalf("replacement expiry payload %s", payload)
+		}
 		if len(sink.Messages()) != 2 {
 			t.Fatalf("replacement sends %d", len(sink.Messages()))
 		}
@@ -508,6 +517,116 @@ func TestLocalSignupExpiredRowReplacementAndReaper(t *testing.T) {
 		}
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM registration_signups"); n != 1 {
 			t.Fatalf("reaper pruned live row count %d", n)
+		}
+	})
+}
+
+func TestLocalSignupReissueRefusesDeletedPendingRow(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		auth, reg, _ := localSignupHarness(t, db)
+		ctx := t.Context()
+		if _, err := reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{Local: &service.RegistrationLocalEntry{}, Landing: service.RegistrationLanding{Kind: service.LandingNone}}, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := auth.Signup(ctx, "reissue-race@example.test", ""); err != nil {
+			t.Fatal(err)
+		}
+		var snapshot authz.RegistrationSignup
+		if err := tx.Read(ctx, db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+			var e error
+			snapshot, e = az.RegistrationSignupByEmail(ctx, "reissue-race@example.test")
+			return e
+		}); err != nil {
+			t.Fatal(err)
+		}
+		// Model verification winning after the request read, before UPDATE.
+		if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			_, e := az.DeleteRegistrationSignup(ctx, snapshot.ID)
+			return e
+		}); err != nil {
+			t.Fatal(err)
+		}
+		_, verifier, err := crypto.NewArtifact(crypto.ArtifactSignup)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot.TokenVerifier = verifier
+		err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			return az.ReissueRegistrationSignup(ctx, snapshot)
+		})
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("missing row reissue = %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM registration_signups"); n != 0 {
+			t.Fatalf("missing row revived %d", n)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='registration.mail_intent'"); n != 1 {
+			t.Fatalf("missing-row reissue created intent: %d", n)
+		}
+	})
+}
+
+func TestLocalSignupReleasesAdmissionBeforeSlowSMTP(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		auth, reg, _ := localSignupHarness(t, db)
+		ctx := audit.WithContext(t.Context(), audit.Context{SourceIP: "192.0.2.42", Origin: audit.OriginAPI})
+		limiter, err := admission.New(admission.Config{BudgetMiB: 80, ArgonMemoryKiB: 64 * 1024})
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth.Admission = limiter
+		started, finish := make(chan struct{}), make(chan struct{})
+		var once sync.Once
+		releaseSMTP := func() { once.Do(func() { close(finish) }) }
+		defer releaseSMTP()
+		sink := mailtest.NewWithOptions(t, mailtest.Options{Mode: "implicit", OnMessage: func(mailtest.Message) error { close(started); <-finish; return nil }})
+		bundle, err := runtimeconfig.Prepare(map[string]string{"HIKYO_MAIL_ADDR": sink.Addr, "HIKYO_MAIL_TLS": "implicit", "HIKYO_MAIL_FROM": "hikyo@example.test", "HIKYO_MAIL_CA_PEM": sink.CAPEM, "HIKYO_MAIL_ALLOWED_CIDRS": "127.0.0.0/8"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth.EnableLocalSignup(func(context.Context) (*runtimeconfig.Bundle, error) { return bundle, nil })
+		if _, err = reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{Local: &service.RegistrationLocalEntry{}, Landing: service.RegistrationLanding{Kind: service.LandingNone}}, ""); err != nil {
+			t.Fatal(err)
+		}
+		result := make(chan error, 1)
+		go func() { result <- auth.Signup(ctx, "slow@example.test", "") }()
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("SMTP did not start")
+		}
+		if current := limiter.Snapshot(); current.InFlight != 0 {
+			t.Fatalf("SMTP held %d password admission slots", current.InFlight)
+		}
+		// A login's expensive work can be admitted while the mail transport is blocked.
+		enterCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		release, err := limiter.Enter(enterCtx, "")
+		if err != nil {
+			t.Fatalf("SMTP blocked password admission: %v", err)
+		}
+		release()
+		for range admission.PerIPPerMinute - 1 {
+			release, e := limiter.Enter(ctx, "192.0.2.42")
+			if e != nil {
+				t.Fatalf("remaining per-IP admission: %v", e)
+			}
+			release()
+		}
+		if _, e := limiter.Enter(ctx, "192.0.2.42"); !errors.Is(e, admission.ErrOverloaded) {
+			t.Fatalf("SMTP release refunded per-IP charge: %v", e)
+		}
+		releaseSMTP()
+		select {
+		case err = <-result:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("signup did not finish")
+		}
+		if current := limiter.Snapshot(); current.InFlight != 0 {
+			t.Fatalf("signup leaked %d admission slots", current.InFlight)
 		}
 	})
 }

@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"sort"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
@@ -81,6 +83,14 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 		t.Fatalf("totp enrol confirm: %v", err)
 	}
 	token = confirmed.SessionToken
+	// Instance mail configuration also requires an MFA session. Establish
+	// that assurance so its probe reaches the distinct proof requirement.
+	clk = base.Add(60 * time.Second)
+	stepped, err := auth.StepUpTOTP(ctx, token, totpCode(t, uri, clk))
+	if err != nil {
+		t.Fatalf("totp step-up: %v", err)
+	}
+	token = stepped.SessionToken
 	profile, err := auth.MyProfile(ctx, token)
 	if err != nil {
 		t.Fatal(err)
@@ -89,10 +99,17 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 	actor := service.Bearer(token)
 	reg := newRegistration(t, service.RegistrationConfig{DB: db, Auth: auth, PublicOriginExplicit: true})
 	scim := &service.SCIM{DB: db, Auth: auth}
+	instanceMail := &service.InstanceMail{DB: db, Auth: auth, Capture: func(context.Context) (*runtimeconfig.Bundle, error) {
+		t.Fatal("proof-less operator mail reached runtime mail configuration")
+		return nil, nil
+	}}
 	orgIn := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("gate-idp")}, Landing: orgTemplateLanding()}
 	instanceIn := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("gate-idp")}, Landing: service.RegistrationLanding{Kind: service.LandingNone}}
 
 	probes := map[string]func() error{
+		"testInstanceMail": func() error {
+			return instanceMail.Test(ctx, actor, "recipient@example.com", "")
+		},
 		"putOrgRegistrationPolicy": func() error {
 			_, err := reg.Put(ctx, actor, service.OrgRegistrationScope(orgA), orgIn, "")
 			return err

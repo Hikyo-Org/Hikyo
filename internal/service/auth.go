@@ -322,6 +322,14 @@ func (s *Auth) LocalLogin(ctx context.Context, username, password string, artifa
 		return LoginResult{}, fmt.Errorf("%w: unknown session artifact %q", domain.ErrInvalid, artifact)
 	}
 
+	// Email login and its failure bucket use the same canonical identifier.
+	// Domain case variants must not buy separate guesses against one verifier.
+	if strings.Contains(username, "@") {
+		if canonical, err := domain.CanonicalEmail(username); err == nil {
+			username = canonical
+		}
+	}
+
 	// The per-account delay is evaluated BEFORE the semaphore, not after.
 	// Sleeping while holding an expensive-work slot would let an attacker put
 	// a handful of identifiers into backoff and then occupy every slot doing

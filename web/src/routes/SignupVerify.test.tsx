@@ -64,3 +64,25 @@ it('keeps the token retryable after a name collision but retires it after unifor
     expect(view.container.querySelector('[name="password"]')).toBeNull();
   } finally { await view.unmount(); }
 });
+
+it('returns a refused org-scoped verification to the same encoded signup scope', async () => {
+  verify.mockRejectedValueOnce(new ApiError(401, 'refused'));
+  const view = await mount('org', '&org=org_acme%2F%26');
+  try {
+    await fill(view.container);
+    expect(view.container.querySelector('output')?.textContent).toBe('/signup/verify');
+    expect(view.container.querySelector('a')?.getAttribute('href')).toBe('/signup?org=org_acme%2F%26');
+    expect(verify).toHaveBeenCalledWith({ token: 'su_test', password: 'twelvecharacters', display_name: 'Alex', landing: 'org' });
+    expect(view.container.querySelector('[name="password"]')).toBeNull();
+  } finally { await view.unmount(); }
+});
+
+it('returns a refused instance-scoped verification to signup without an org query', async () => {
+  verify.mockRejectedValueOnce(new ApiError(401, 'refused'));
+  const view = await mount();
+  try {
+    await fill(view.container);
+    expect(view.container.querySelector('a')?.getAttribute('href')).toBe('/signup');
+    expect(view.container.querySelector('output')?.textContent).toBe('/signup/verify');
+  } finally { await view.unmount(); }
+});

@@ -31,6 +31,9 @@ export function SignupVerify() {
     // Remove bearer material from the current history entry after capture.
     void navigate(`${location.pathname}${location.search}`, { replace: true });
   }, [location.hash, location.pathname, location.search, navigate, setToken]);
+  // Retain only the non-authoritative scope hint when requesting a new link.
+  const signupPath = surfaceById('signup').path;
+  const recoveryPath = org === null ? signupPath : `${signupPath}?${new URLSearchParams({ org }).toString()}`;
   const fresh = landing === 'fresh-org' && org === null;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -55,7 +58,7 @@ export function SignupVerify() {
     {failure === null ? null : <Alert>{failure}</Alert>}
     {refused || token === '' ? <>
       {failure === null ? <Alert>This link can't be used. Start again from the sign-up page.</Alert> : null}
-      <Link className="btn btn--primary" to={surfaceById('signup').path}>Go to sign-up</Link>
+      <Link className="btn btn--primary" to={recoveryPath}>Go to sign-up</Link>
     </> : <>
       <p className="login__landing">{fresh ? 'You’ll get your own organisation, with you as its first administrator.' : landing === 'org' ? 'You’ll join this organisation.' : 'You’ll get an account with no organisation yet. An administrator grants access afterwards.'}</p>
       <Input label="Email" name="email" type="email" autoComplete="username" readOnly value={email} />

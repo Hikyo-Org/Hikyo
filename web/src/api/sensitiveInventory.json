@@ -58,7 +58,7 @@
     "ui/auth/SecondFactorSetup.tsx": "76405ce9c77015d38a0a8847f8e9899803ae0d063ceb62b7a16f7dbc9db14225",
     "routes/OAuth2ProvidersPanel.tsx": "2614ad4c866841c860be599c436cf3b5143f1265fd6edb395d766e0b8e40e349",
     "routes/InstanceMailPanel.tsx": "60643b0712529f67123b9bf8029db871cb98173902f56ef03da26e985f3b356e",
-    "routes/SignupVerify.tsx": "44e18a39dd3f45e70afd0108a9a711245f6d1190359c122842fe85ffa66c8892",
+    "routes/SignupVerify.tsx": "921f12ac062abe74c9b612fbf41216fe3f915eeabc4c1df26549046b18da539c",
     "ui/auth/LocalSignupForm.tsx": "512d0c7bd0c3bc6d8216721aaac6d0f3037cc4297b05ef93cf7fabc84e6246a6"
   }
 }

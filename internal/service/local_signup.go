@@ -153,8 +153,14 @@ func (s *Auth) Signup(ctx context.Context, email string, org domain.OrgID) error
 				return e
 			}
 			if e == nil && !now.Before(row.ExpiresAt) {
-				if _, e = az.DeleteRegistrationSignup(ctx, row.ID); e != nil {
+				gone, e := az.PruneExpiredRegistrationSignup(ctx, row.ID, now)
+				if e != nil {
 					return e
+				}
+				if gone {
+					if e = signupExpired(ctx, az, row.ID, row.PolicyID); e != nil {
+						return e
+					}
 				}
 				row.ID = ""
 			}
@@ -167,6 +173,9 @@ func (s *Auth) Signup(ctx context.Context, email string, org domain.OrgID) error
 				e = az.CreateRegistrationSignup(ctx, n)
 			} else {
 				e = az.ReissueRegistrationSignup(ctx, n)
+				if errors.Is(e, domain.ErrNotFound) {
+					return signupRefused(ctx, az, org, p.ID, "unknown")
+				}
 			}
 			if e != nil {
 				return e
@@ -195,6 +204,9 @@ func (s *Auth) Signup(ctx context.Context, email string, org domain.OrgID) error
 		admitted = true
 		return az.RecordAuthEvent(ctx, ev)
 	})
+	// Enter's release is idempotent and retains its already-charged per-IP
+	// admission. SMTP and outcome persistence do not consume Argon2 memory.
+	release()
 	if err != nil {
 		return err
 	}
@@ -404,6 +416,14 @@ func (s *Auth) VerifySignup(ctx context.Context, in SignupVerification) error {
 	return nil
 }
 
+func signupExpired(ctx context.Context, az *authz.TxAuthorizer, id, policyID string) error {
+	ev, err := newAuditEvent(ctx, audit.EventRegistrationSignupExpired, "", audit.Object{Type: "registration-signup", ID: id}, audit.OutcomeSuccess, "", audit.Payload{"signup_id": id, "policy_id": policyID, "cause": "expired"})
+	if err != nil {
+		return err
+	}
+	return az.RecordAuthEvent(ctx, ev)
+}
+
 // ReapSignups prunes only expired pending rows, atomically with their trail events.
 func (s *Auth) ReapSignups(ctx context.Context) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
@@ -420,11 +440,7 @@ func (s *Auth) ReapSignups(ctx context.Context) error {
 			if !gone {
 				continue
 			}
-			ev, err := newAuditEvent(ctx, audit.EventRegistrationSignupExpired, "", audit.Object{Type: "registration-signup", ID: row.ID}, audit.OutcomeSuccess, "", audit.Payload{"signup_id": row.ID, "policy_id": row.PolicyID, "cause": "expired"})
-			if err != nil {
-				return err
-			}
-			if err = az.RecordAuthEvent(ctx, ev); err != nil {
+			if err = signupExpired(ctx, az, row.ID, row.PolicyID); err != nil {
 				return err
 			}
 		}
