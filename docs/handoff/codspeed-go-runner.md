@@ -14,3 +14,14 @@ Compatibility reference: <https://codspeed.io/docs/benchmarks/go#compatibility>.
 Validation: Actionlint, existing workflow action-pin tests, and the CodSpeed job
 on the pull request. The hosted job is the integration check for instrumentation
 and upload; native `go test` alone cannot validate CodSpeed's argument parsing.
+
+Hosted run 36993711345 passed on ed30893f2620a435402cbc8dd7b5bafb0697aa97:
+11 benchmark cases executed and performance data uploaded in a 3m 37s job.
+
+The trusted gate also had two independent defects. A conflicted PR could wait
+for a `pull_request` validation run that GitHub cannot start; it now fails
+immediately when the API reports `mergeable: false` (unknown remains pending).
+Workflow approval lookup combined unsupported `gh api --slurp --jq` flags; it
+now retrieves all pages first and filters with standalone jq, checking both
+commands for failure. Fixture tests enforce CLI compatibility and conflict
+diagnostics. Independent exact-head maintainer approval remains required.

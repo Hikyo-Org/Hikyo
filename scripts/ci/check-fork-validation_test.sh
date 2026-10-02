@@ -11,15 +11,20 @@ mkdir "$work/bin"
 cat >"$work/bin/gh" <<'EOF'
 #!/bin/sh
 set -eu
-url= filter=.
+url= filter=. slurp=false filtered=false
 while [ $# -gt 0 ]; do
 	case $1 in
-	api | --paginate | --slurp) ;;
-	--jq) filter=$2; shift ;;
+	api | --paginate) ;;
+	--slurp) slurp=true ;;
+	--jq) filter=$2; filtered=true; shift ;;
 	*) url=$1 ;;
 	esac
 	shift
 done
+if [ "$slurp" = true ] && [ "$filtered" = true ]; then
+	printf 'the `--slurp` option is not supported with `--jq` or `--template`\n' >&2
+	exit 1
+fi
 bump() {
 	count=0
 	if [ -f "$FIXTURES/$1-calls" ]; then count=$(cat "$FIXTURES/$1-calls"); fi
@@ -135,6 +140,13 @@ fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":
 expect_pending 'a fork-ci run awaiting maintainer approval'
 fixture 1 "$docs" '{"workflow_runs":[]}' success
 expect_pending 'no fork-ci run at all'
+jq '.mergeable = false' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'a conflicted PR whose validation cannot start'
+grep -F 'PR has merge conflicts' "$work/stderr" >/dev/null || {
+	printf 'fork gate fixture failed: conflicted PR did not fail immediately\n' >&2
+	exit 1
+}
 
 fixture 2 '[{"filename":"docs/a.md"},{"filename":".github/workflows/ci-fork.yml"}]' "$done_run" success
 expect_reject 'a fork PR that edits a workflow'
