@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# mvp-boundary O7 + ops-spec §13 / CI invariant 4: an instrumented boot+idle run
-# of `hikyo server`, with NOTHING configured (no remotes, no recipients, no
-# adapters, no IdPs), and with a configured mailer, originates ZERO outbound
-# connections and still boots AND
-# serves. strace records every outbound syscall (connect/sendto/sendmsg); the
+# mvp-boundary O7 + ops-spec §13 / CI invariant 4: two instrumented boot+idle
+# runs of `hikyo server`, one with NOTHING configured (no remotes, no
+# recipients, no adapters, no IdPs) and one with a configured mailer. Both
+# originate ZERO outbound connections and still boot AND serve.
+# strace records every outbound syscall (connect/sendto/sendmsg); the
 # run fails if any targets a non-loopback address, or if the server cannot serve.
 #
 # Linux-only: it depends on strace and syscall tracing. Runs in CI, not on a

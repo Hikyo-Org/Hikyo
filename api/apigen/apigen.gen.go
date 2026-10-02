@@ -34868,34 +34868,6 @@ func (response SignupRequest401JSONResponse) VisitSignupRequestResponse(w http.R
 	return err
 }
 
-type SignupRequest403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response SignupRequest403JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SignupRequest404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response SignupRequest404JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type SignupRequest409JSONResponse struct{ ConflictJSONResponse }
 
 func (response SignupRequest409JSONResponse) VisitSignupRequestResponse(w http.ResponseWriter) error {

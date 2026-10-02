@@ -28,7 +28,12 @@ export function InstanceMailPanel() {
   const send = useSensitiveMutation({ mutationFn: testInstanceMail });
   const [to, setTo] = useState('');
   const [proofing, setProofing] = useState(false);
-  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); send.reset(); setProofing(true); };
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (send.isPending || mail.data?.configured !== true || !event.currentTarget.reportValidity()) return;
+    send.reset();
+    setProofing(true);
+  };
   return <Panel id="instance-mail" title="Mailer">
     {mail.isPending ? <p role="status">Loading mailer status…</p> : null}
     {mail.isError ? <Alert>{mailFailureText(mail.error)}</Alert> : null}

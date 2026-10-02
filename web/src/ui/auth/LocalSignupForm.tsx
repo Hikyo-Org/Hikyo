@@ -16,7 +16,7 @@ export function LocalSignupForm({ landing, org, onBack }: {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [resent, setResent] = useState(false);
-  useEffect(() => { heading.current?.focus(); }, [sent]);
+  useEffect(() => { if (sent) heading.current?.focus(); }, [sent]);
   const request = useSensitiveMutation({ mutationFn: requestSignup });
   const submit = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();

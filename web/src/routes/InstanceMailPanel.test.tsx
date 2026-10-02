@@ -43,3 +43,16 @@ it('disables sending when the mailer is unconfigured', async () => {
     expect(mocks.send).not.toHaveBeenCalled();
   } finally { await view.unmount(); }
 });
+
+it.each(['', 'not-an-email'])('rejects invalid recipient %j before asking for proof', async (recipient) => {
+  const view = await renderForm(<MemoryRouter><InstanceMailPanel /></MemoryRouter>);
+  try {
+    const input = view.container.querySelector('input');
+    if (!(input instanceof HTMLInputElement)) throw new Error('missing recipient');
+    await act(async () => typeInto(input, recipient));
+    await act(async () => view.container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(input.validity.valid).toBe(false);
+  } finally { await view.unmount(); }
+});
