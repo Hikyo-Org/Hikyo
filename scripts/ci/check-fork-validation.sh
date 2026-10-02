@@ -26,7 +26,7 @@ fail() {
 check_current_pr() {
 	pr=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.sha, (.changed_files | tostring),
 		(if .head.repo.id != null and .head.repo.id == .base.repo.id and .head.repo.full_name == .base.repo.full_name then .head.repo.full_name else "fork" end),
-		.user.login, (.user.id | tostring)] | join(" ")')
+		.user.login, (.user.id | tostring), (.mergeable | tostring)] | join(" ")')
 	current_head=${pr%% *}
 	[ "$current_head" = "$HEAD_SHA" ] ||
 		fail "PR head moved from $HEAD_SHA to $current_head; the newer run decides"
@@ -36,7 +36,13 @@ check_current_pr() {
 	head_repository=${fields%% *}
 	fields=${fields#* }
 	pr_author=${fields%% *}
-	pr_author_id=${fields#* }
+	fields=${fields#* }
+	pr_author_id=${fields%% *}
+	mergeable=${fields#* }
+	# pull_request validation cannot start while GitHub reports conflicts.
+	# null means GitHub is still computing mergeability; keep polling then.
+	[ "$mergeable" != false ] ||
+		fail 'PR has merge conflicts; resolve them before pull_request validation can start'
 }
 
 require_workflow_review() {
@@ -45,11 +51,16 @@ require_workflow_review() {
 		fail 'a fork PR that changes .github/ needs a maintainer to land it from a branch in this repository'
 	# API review author_association is historical, not current authority. Use
 	# the latest review per immutable reviewer id and check current permissions.
-	reviewers=$(gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews?per_page=100" \
-		--jq "[.[][] | select(.user.id != null)] | group_by(.user.id) |
-		map(max_by([(.submitted_at // \"\"), .id])) | .[] |
-		select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\" and
-		.user.id != $pr_author_id and .user.login != \"$pr_author\") | .user.login") ||
+	reviews=$(gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews?per_page=100") ||
+		fail 'cannot fetch workflow approval reviews'
+	# gh rejects --slurp together with --jq. Fetch every page first, then
+	# filter locally; keeping the fetch separate also preserves API failures.
+	reviewers=$(printf '%s\n' "$reviews" | jq -r \
+		--arg head "$HEAD_SHA" --arg author "$pr_author" --argjson author_id "$pr_author_id" '
+		[.[][] | select(.user.id != null)] | group_by(.user.id) |
+		map(max_by([(.submitted_at // ""), .id])) | .[] |
+		select(.state == "APPROVED" and .commit_id == $head and
+		.user.id != $author_id and .user.login != $author) | .user.login') ||
 		fail 'cannot verify exact-head workflow approval'
 	approved=false
 	for reviewer in $reviewers; do
