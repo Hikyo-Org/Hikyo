@@ -26,6 +26,7 @@ type PermGroup = 'Values' | 'Secrets' | 'Administration';
  * The narrowest Where a permission can sit on, as the server's `ruleShapes`
  * holds it: `key` may be narrowed by environment and key, `env` by
  * environment only, `project` needs every environment and key of its projects.
+ * See can share a key-limited rule, but its reach stays environment-wide (D5).
  */
 type PermShape = 'key' | 'env' | 'project';
 
@@ -39,9 +40,9 @@ export type Perm = {
 
 /** The vocabulary: the single source for every permission word the screens use (D2). */
 export const PERMS: readonly Perm[] = [
-  { id: 'read', label: 'See', desc: 'Key names, descriptions, schemas, validation, and config (non-secret) values. Secret values stay masked.', group: 'Values', shape: 'env' },
+  { id: 'read', label: 'See', desc: 'Key names, descriptions, schemas, validation, and config (non-secret) values. Secret values stay masked.', group: 'Values', shape: 'key' },
   { id: 'edit', label: 'Edit', desc: 'Change values as a draft. A draft does nothing until someone publishes it.', group: 'Values', shape: 'key' },
-  { id: 'publish', label: 'Publish', desc: 'Make drafts live, and roll back to an earlier revision.', group: 'Values', shape: 'env' },
+  { id: 'publish', label: 'Publish', desc: 'Make drafts live, and roll back to an earlier revision.', group: 'Values', shape: 'key' },
   { id: 'pin', label: 'Pin', desc: 'Hold workloads on a specific revision of an environment.', group: 'Values', shape: 'env' },
   { id: 'reveal', label: 'Reveal', desc: 'Show current secret values. Asks you to confirm it is you first. Needs See as well.', group: 'Secrets', shape: 'key' },
   { id: 'reveal-history', label: 'Reveal history', desc: 'Show old (replaced) secret values. Needs See as well.', group: 'Secrets', shape: 'key' },
@@ -215,7 +216,8 @@ export const allowed = (id: PermId, rule: Shaped) => availability(id, rule).ok;
  * only flips whether the condition currently blocks.
  */
 export function requirement(id: PermId): string | undefined {
-  if (id === 'manage-members') return 'Saved on the rule, but gives nothing yet: grant Manage access on the project instead.';
+  if (id === 'read') return 'Always covers the whole environment: key limits narrow the other permissions only.';
+  if (id === 'manage-members') return "Delegate only inside this rule's Where, and only permissions you hold there.";
   if (id === 'definitions-edit') return 'Takes effect in a project only where the rule covers all of its environments.';
   const { shape } = perm(id);
   return shape === 'key' ? undefined : `Only on rules that cover ${SHAPE_NEEDS[shape]}.`;
@@ -233,15 +235,8 @@ export function presetOf(rule: Pick<Rule, 'perms' | 'envs' | 'keys'>): string | 
 
 /* ---------- evaluation ---------- */
 
-/**
- * The permissions some operation checks against ONE key, so a key-narrowed rule
- * can satisfy them: single-value reveal (read and reveal, but read is never
- * key-narrowed), staging one value (edit) and key create, rename, move and
- * delete (definitions-edit). Everything else (bulk reveal, history, pins, and
- * publishing, which is environment-wide in this slice) names no key and is out
- * of a key-narrowed rule's reach.
- */
-const KEY_AWARE: ReadonlySet<PermId> = new Set(['reveal', 'edit', 'definitions-edit']);
+/** Permissions whose key selector applies to single-key operations. See is environment-wide (D5). */
+const KEY_AWARE: ReadonlySet<PermId> = new Set(['edit', 'publish', 'reveal', 'reveal-history', 'definitions-edit', 'manage-members']);
 
 /** The level the server evaluates a permission at: key operations need the whole project for Define keys. */
 const atProject = (id: PermId) => id === 'definitions-edit' || perm(id).shape === 'project';
@@ -255,12 +250,11 @@ const OK: Reach = { hit: true, ok: true };
  * Does this rule give this permission here? `hit` with `ok: false` means it
  * would, but one of its own excepts (or its key limit) leaves this out. A
  * port of `domain.Rule.Reaches`: folder excepts cover subfolders, only-picks
- * match the folder exactly, Manage access on a rule is inert, and a
+ * match the folder exactly, See ignores the key axis, and a
  * key-narrowed rule counts only for a permission checked against one key.
  */
 export function reach(world: World, rule: Rule, id: PermId, project: string, env: string, key: Key | undefined): Reach {
   if (!effective(rule).includes(id)) return MISS;
-  if (id === 'manage-members' && rule.source.kind !== 'grant') return MISS;
   if (!projectsOf(world, rule).includes(project)) return MISS;
   const envs = rule.envs.items.filter((e) => e.project === project).map((e) => e.environment);
   if (atProject(id)) {
@@ -271,13 +265,14 @@ export function reach(world: World, rule: Rule, id: PermId, project: string, env
     if (rule.envs.mode === 'only' && !listed) return MISS;
     if (rule.envs.mode === 'all' && listed) return { hit: true, ok: false, why: `except ${envName(world, env)}` };
   }
+  if (id === 'read') return OK;
   const items = rule.keys.items.filter((k) => k.project === project);
   if (rule.keys.mode === 'all' && items.length === 0) return OK;
   const matches = (item: KeyItem, k: Key) =>
     isFolder(item) ? item.folder === k.folder || (rule.keys.mode === 'all' && item.folder !== '' && k.folder.startsWith(`${item.folder}/`)) : item.key === k.id;
   const matched = key === undefined ? undefined : items.find((item) => matches(item, key));
   if (rule.keys.mode === 'only' && key !== undefined && matched === undefined) return MISS;
-  if (key === undefined || !KEY_AWARE.has(id)) return { hit: true, ok: false, why: 'limited to some keys, and this is never checked for one key' };
+  if (key === undefined || !KEY_AWARE.has(id)) return { hit: true, ok: false, why: 'limited to some keys; pick a key to check its reach' };
   if (rule.keys.mode === 'only') return OK;
   return matched === undefined ? OK : { hit: true, ok: false, why: `except ${itemLabel(world, matched).text}` };
 }
@@ -539,8 +534,7 @@ export function createBody(rule: Rule, id: PermId) {
  * What saving a draft over the rule it edits must do. With the Where
  * unchanged only the permissions that changed move (a duplicate create would
  * store a second row); with a new Where every permission is created fresh and
- * every old row revoked. Creates come first, so a refused create changes
- * nothing.
+ * every old row revoked. The API applies the complete plan atomically.
  */
 export function savePlan(before: Rule | null, draft: Rule): { create: PermId[]; revoke: string[] } {
   const next = effective(draft);
@@ -550,29 +544,4 @@ export function savePlan(before: Rule | null, draft: Rule): { create: PermId[]; 
     create: next.filter((id) => !parts.some((p) => p.perm === id)),
     revoke: parts.filter((p) => !next.includes(p.perm)).map((p) => p.id),
   };
-}
-
-/**
- * Refuse a self-edit that needs more than one request. Each successful rule
- * mutation invalidates the affected principal's sessions, so a later request
- * would run without the authority needed to finish the edit.
- */
-export function selfSaveRefusal(before: Rule | null, draft: Rule, actingPrincipal: string): string | null {
-  if (draft.member !== actingPrincipal) return null;
-  const plan = savePlan(before, draft);
-  if (plan.create.length + plan.revoke.length <= 1) return null;
-  return 'This change needs multiple requests, but the first would end your session before the rest finish. Ask another administrator to change your access.';
-}
-
-/** Separate creates and revokes cannot represent one atomic authority change. */
-export function replacementSaveRefusal(before: Rule | null, draft: Rule): string | null {
-  const plan = savePlan(before, draft);
-  if (plan.create.length === 0 || plan.revoke.length === 0) return null;
-  return 'This edit requires atomic rule replacement, which this server does not provide. No changes were sent. Keep the existing rule until atomic replacement is available; separate requests could expose combined permissions.';
-}
-
-/** A multi-part self-removal has the same partial-commit risk as a self-edit. */
-export function selfRemoveRefusal(rule: Rule, actingPrincipal: string): string | null {
-  if (rule.member !== actingPrincipal || rule.source.kind !== 'rule' || rule.source.parts.length <= 1) return null;
-  return 'Removing this rule needs multiple requests, but the first would end your session before the rest finish. Ask another administrator to remove your access.';
 }

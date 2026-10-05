@@ -104,7 +104,7 @@ func (s *Revisions) Diff(ctx context.Context, actor Actor, scope domain.Scope, l
 					if snapshot.Revision != latest.Revision {
 						op = authz.OpValueExportRevealHistory
 					}
-					proofs[side], err = az.Authorize(ctx, caller, op, scope)
+					proofs[side], err = az.AuthorizeKey(ctx, caller, op, scope, authz.KeyByID(id))
 					if err != nil {
 						return RevisionDiff{}, err
 					}

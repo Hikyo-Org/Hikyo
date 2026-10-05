@@ -24,6 +24,8 @@ const (
 	keyByName
 	keyToCreate
 	keyMovedTo
+	keyPendingVersion
+	keyApprovalRequest
 )
 
 // KeyTarget names the key a key-aware authorization addresses. The folder a
@@ -40,6 +42,14 @@ type KeyTarget struct {
 
 // KeyByID addresses an existing key by its stable id.
 func KeyByID(id string) KeyTarget { return KeyTarget{kind: keyByID, id: id} }
+
+// KeyPendingVersion addresses an owned live draft by key metadata only.
+func KeyPendingVersion(id string) KeyTarget { return KeyTarget{kind: keyPendingVersion, id: id} }
+
+// KeyApprovalRequest addresses the first pinned key of an approval request.
+// Eligible approvers may act on another person's request; ownership is checked
+// separately by the approval policy, never inferred from this metadata lookup.
+func KeyApprovalRequest(id string) KeyTarget { return KeyTarget{kind: keyApprovalRequest, id: id} }
 
 // KeyByName addresses an existing key by its name within the project.
 func KeyByName(name string) KeyTarget { return KeyTarget{kind: keyByName, name: name} }
@@ -74,7 +84,7 @@ func (a *TxAuthorizer) AuthorizeKey(ctx context.Context, caller Identity, op Ope
 		// it through the key-aware path.
 		return a.Authorize(ctx, caller, op, scope)
 	}
-	return a.authorizeTenant(ctx, caller, op, spec, scope, &key)
+	return a.authorizeTenant(ctx, caller, op, spec, scope, &key, nil)
 }
 
 // rulesApply reports whether a caller's rules may be consulted. The rule
@@ -84,12 +94,9 @@ func rulesApply(caller Identity) bool {
 	return caller.Class == "" || caller.Class == domain.ClassHuman
 }
 
-// ruleSatisfiable reports whether any atom of the formula is one a rule could
-// ever satisfy: a rule-shaped capability other than manage-members, at
-// project or environment depth. A formula with none (every org and instance
-// operation, every member-management operation) never reads rules, so its
-// cost and its answer are exactly what they were before rules existed. It
-// depends on the operation only, never on the addressed object.
+// ruleSatisfiable identifies ordinary project/environment formulas that may
+// consult rules. Management uses AuthorizeRule's complete selector instead;
+// explicit metadata navigation operations use a filtered rule projection.
 func ruleSatisfiable(f Formula) bool {
 	for _, atom := range f {
 		if _, ok := domain.RuleShapeOf(atom.Cap); !ok || atom.Cap == domain.CapManageMembers {
@@ -102,8 +109,12 @@ func ruleSatisfiable(f Formula) bool {
 	return false
 }
 
-func (a *TxAuthorizer) resolveKeyTarget(ctx context.Context, chain domain.Scope, k KeyTarget) (domain.RuleKey, error) {
+func (a *TxAuthorizer) resolveKeyTarget(ctx context.Context, chain domain.Scope, k KeyTarget, principal domain.PrincipalID) (domain.RuleKey, error) {
 	switch k.kind {
+	case keyApprovalRequest:
+		return a.r.ResolveRuleApprovalKey(ctx, chain, k.id)
+	case keyPendingVersion:
+		return a.r.ResolveRulePendingKey(ctx, chain, principal, k.id)
 	case keyByID:
 		return a.r.ResolveRuleKey(ctx, string(chain.Org), string(chain.Project), k.id, "")
 	case keyByName:
@@ -199,4 +210,31 @@ func (a *TxAuthorizer) RuleLinesInOrg(ctx context.Context, org domain.OrgID) ([]
 // that project's items.
 func (a *TxAuthorizer) RuleLinesInProject(ctx context.Context, s domain.Scope) ([]RuleLine, error) {
 	return a.r.RuleLinesInProject(ctx, string(s.Org), string(s.Project))
+}
+
+// AuthorizePublishKeys proves the complete changed-key set of one environment.
+// Snapshot materialization may carry unchanged cells forward, but may mutate
+// only these keys. Empty selections never mint a collection proof.
+func (a *TxAuthorizer) AuthorizePublishKeys(ctx context.Context, caller Identity, scope domain.Scope, ids []string) (Proof, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("authz: empty publish key selection")
+	}
+	var first Proof
+	keys := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		p, err := a.AuthorizeKey(ctx, caller, OpValuePublish, scope, KeyByID(id))
+		if err != nil {
+			return nil, err
+		}
+		if first == nil {
+			first = p
+		}
+		keys[id] = true
+	}
+	// Only the chokepoint can construct this proof. Preserve all assurance,
+	// transaction, operation and tenant bindings from the checked proof.
+	result := *first.proof()
+	result.key = nil
+	result.publishKeys = keys
+	return &result, nil
 }

@@ -33,6 +33,7 @@ import {
   type GrantFailureContext,
   type IssuedAuthority,
   type Names,
+  type ProjectNode,
   type ScopeOption,
 } from '../api/access.ts';
 import { ApiError } from '../api/client.ts';
@@ -45,10 +46,10 @@ import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
-import { Glyph } from '../ui/Glyph.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Select } from '../ui/Select.tsx';
+import { ExistingAccessCard } from './accessRules/ExistingAccess.tsx';
 import { AccessGlossary } from './accessRules/AccessGlossary.tsx';
 import {
   kindOfId,
@@ -105,16 +106,6 @@ const prototypePrincipalNames = prototypeMode
       ['prn_66666666-6666-4666-8666-666666666666', 'priya'],
     ])
   : null;
-
-const projectCapabilityOrder = new Map([
-  ['read', 0],
-  ['edit', 1],
-  ['publish', 2],
-  ['manage-members', 3],
-  ['reveal', 4],
-  ['reveal-history', 5],
-  ['audit-read', 6],
-]);
 
 const projectInspectorCapabilities = [
   'reveal',
@@ -173,18 +164,31 @@ export function Members({ scope }: { scope: MembersScope }) {
   const instanceGrants = useInstanceGrants(instance);
   const grants = instance ? instanceGrants : orgGrants;
   const topology = useOrgTopology(org);
-  // Access rules (member-access-rules ADR): read only once the grant listing
-  // has admitted this caller, since both need manage-members at this depth.
-  const rules = useRules(org, projectId, !instance && grants.isSuccess);
+  // A project rule listing admits narrowed managers independently of the
+  // organisation grant listing, and returns only rules they may delegate.
+  const rules = useRules(org, projectId, !instance && (projectId !== '' || grants.isSuccess));
   const ruleMutations = useRuleMutations(org);
+  // A narrowed manager need not hold See. The authoritative rule listing
+  // already discloses these selector IDs; reuse only those IDs when directory
+  // metadata is unavailable, keeping names and protection state unknown.
+  const selectorTopologyOnly = projectId !== '' && !grants.isSuccess && rules.isSuccess
+    && !rules.isFetching && !topology.ready;
+  const disclosedEnvironmentIDs = [...new Set((rules.data?.items ?? []).flatMap((rule) =>
+    rule.where.environments.items.filter((item) => item.project === projectId).map((item) => item.environment),
+  ))];
+  const memberProjects: readonly ProjectNode[] = selectorTopologyOnly
+    ? [{ id: projectId, name: projectId, environments: disclosedEnvironmentIDs.map((id) => ({ id, name: id, isProtected: null })) }]
+    : topology.projects;
   const askable = instance
     ? []
     : projectId === ''
-      ? topology.projects.map((p) => p.id)
-      : topology.projects.filter((p) => p.id === projectId).map((p) => p.id);
+      ? memberProjects.map((p) => p.id)
+      : memberProjects.filter((p) => p.id === projectId).map((p) => p.id);
   const catalogues = useKeyCatalogues(org, askable);
   const [find, setFind] = useState('');
   const [editing, setEditing] = useState<{ readonly before: Rule | null; readonly draft: Rule } | null>(null);
+  if (rules.isError && editing !== null) setEditing(null);
+  const [existingAccessKey, setExistingAccessKey] = useState<string | null>(null);
   const [editorFailure, setEditorFailure] = useState<string | null>(null);
   const auth = useAuth();
   const revoke = useRevokeGrant();
@@ -198,8 +202,8 @@ export function Members({ scope }: { scope: MembersScope }) {
     { principal: string; issued: IssuedAuthority } | null
   >(null);
 
-  const orgName = orgQuery.data?.name ?? org;
-  const project = topology.projects.find((candidate) => candidate.id === projectId);
+  const orgName = orgQuery.isError ? org : orgQuery.data?.name ?? org;
+  const project = memberProjects.find((candidate) => candidate.id === projectId);
   const projectName = project?.name ?? projectId;
   const scopeName = instance ? 'Instance' : projectId === '' ? orgName : projectName;
   // Instance-scope lines never name an organisation (`listInstanceGrants`
@@ -207,9 +211,9 @@ export function Members({ scope }: { scope: MembersScope }) {
   // provoked here; the org name is the addressed org's.
   const names = {
     org: () => orgName,
-    project: (id: string) => topology.projects.find((p) => p.id === id)?.name ?? id,
+    project: (id: string) => memberProjects.find((p) => p.id === id)?.name ?? id,
     environment: (id: string) =>
-      topology.projects.flatMap((p) => p.environments).find((e) => e.id === id)?.name ?? id,
+      memberProjects.flatMap((p) => p.environments).find((e) => e.id === id)?.name ?? id,
   };
   // Instance scope has exactly one option: there is nothing narrower to prefer,
   // and the modal's level-driven capability and template lists follow from it.
@@ -223,11 +227,11 @@ export function Members({ scope }: { scope: MembersScope }) {
   };
   const allOptions = instance
     ? [instanceOption]
-    : scopeOptions(orgQuery.data?.id ?? org, orgName, topology.projects);
+    : scopeOptions(orgQuery.data?.id ?? org, orgName, memberProjects);
   // No topology gates an instance grant: the scope is the whole instance.
-  const topologyReady = instance ? true : topology.ready;
-  const topologyPending = instance ? false : topology.isPending;
-  const topologyError = instance ? false : topology.isError;
+  const topologyReady = instance || topology.ready || selectorTopologyOnly;
+  const topologyPending = !instance && !selectorTopologyOnly && topology.isPending;
+  const topologyError = !instance && !selectorTopologyOnly && topology.isError;
   const projectOptions = projectId === ''
     ? []
     : allOptions.filter((option) =>
@@ -266,6 +270,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         return scope.kind !== 'instance' && scope.kind !== 'org' && scope.project === projectId;
       });
   const rows = membershipRows(visibleLines, names);
+  const existingAccess = rows.find((row) => row.key === existingAccessKey) ?? null;
   const me = auth.identity?.principal.id ?? '';
   const ruleItems = rules.isError ? [] : (rules.data?.items ?? []);
   const memberName = (id: string) =>
@@ -277,7 +282,7 @@ export function Members({ scope }: { scope: MembersScope }) {
   // with no key limits, so Who can...? answers over both.
   const world: World = {
     people: principals.map((id): Person => ({ id, kind: kindOfId(id), name: memberName(id) })),
-    projects: topology.projects.map((p) => ({
+    projects: memberProjects.map((p) => ({
       id: p.id,
       name: p.name,
       envs: p.environments.map((e) => ({ id: e.id, name: e.name, protected: e.isProtected })),
@@ -289,16 +294,15 @@ export function Members({ scope }: { scope: MembersScope }) {
   const needle = find.trim().toLocaleLowerCase();
   const matchesFind = (id: string) =>
     needle === '' || id.toLocaleLowerCase().includes(needle) || memberName(id).toLocaleLowerCase().includes(needle);
-  const shownRows = rows.filter((row) => matchesFind(row.principal));
   const rulePeople = world.people.filter(
     (person) =>
-      person.kind === 'person' &&
       matchesFind(person.id) &&
       (projectId === '' ||
         visibleLines.some((line) => line.principal_id === person.id) ||
         ruleItems.some((rule) => rule.principal_id === person.id)),
   );
-  const rulesPanelVisible = !instance && grants.isSuccess;
+  const rulesPanelVisible = !instance && (projectId !== '' || grants.isSuccess);
+  const scopedRulesOnly = projectId !== '' && !grants.isSuccess && rules.isSuccess;
   const canEditRules = rulesPanelVisible && rules.isSuccess && !rules.isFetching && topologyReady
     && !ruleMutations.save.isPending && !ruleMutations.remove.isPending;
   // The prototype's compact project presentation never applies at instance
@@ -391,19 +395,18 @@ export function Members({ scope }: { scope: MembersScope }) {
     <div className="page page--chrome page--members">
       <h1>{`Members\u00a0·\u00a0${scopeName}`}</h1>
       <p className="page__lede">
-        One row per member per scope; each capability chip is still its own revocable grant; roles
-        are templates that expand at grant time, so revoking a chip never drags a bundle with it.
+        Each card gives a member permissions on projects, environments and keys. Access adds up
+        across cards; an except narrows only its own rule.
       </p>
 
       <JumpIndex
         sections={[
+          { id: 'members-list', label: 'Members' },
           { id: 'members-inspect', label: 'Who can…?' },
           ...(rulesPanelVisible ? [{ id: 'members-whocan', label: 'Who can reach one key?' }] : []),
           ...(registrationVisible ? [{ id: 'members-registration', label: 'Open registration' }] : []),
-          { id: 'members-list', label: 'Members' },
           ...(rulesPanelVisible
             ? [
-                { id: 'members-rules', label: 'Access rules' },
                 { id: 'members-glossary', label: 'Glossary' },
               ]
             : []),
@@ -419,16 +422,151 @@ export function Members({ scope }: { scope: MembersScope }) {
         <p role="status">
           {instance
             ? 'Instance grants are not disclosed to this session.'
-            : 'You hold no manage-members here: this list shows only what you are allowed to see.'}
+            : projectId !== ''
+              ? 'Scope-wide access is not disclosed to this session. The project rule list shows only access you may delegate.'
+              : 'You hold no manage-members here: this list shows only what you are allowed to see.'}
         </p>
       ) : grants.isError ? (
         <Alert>{membershipFailureText(grants.error)}</Alert>
       ) : null}
-      {!instance && orgQuery.isError ? (
+      {!instance && orgQuery.isError && !selectorTopologyOnly ? (
         <Alert>The organisation could not be read. Reload before managing its grants.</Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
+
+      <div className="access-filter">
+        <Input
+          label="Find a member"
+          type="search"
+          hint="By name or id."
+          value={find}
+          onChange={(event) => setFind(event.target.value)}
+        />
+      </div>
+
+      <Panel id="members-list" title="Members">
+        {selectorTopologyOnly ? <p role="status">Project and environment IDs come from the disclosed rules. Names and protection settings are unavailable without See; existing selectors can still be edited.</p> : null}
+        {instance ? (
+          <p>
+            Every grant written at instance scope. These inherit downward into every organisation;
+            each origin and its subject remain visible so incident provenance is not reduced to a
+            colour.
+          </p>
+        ) : null}
+        {!instance && projectId === '' ? (
+          <p className="visually-hidden">
+            Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
+            by inheritance and are deliberately absent: this page has no authority over an instance
+            operator, so it does not offer to revoke one.
+          </p>
+        ) : null}
+
+        {noManageMembers || !grants.isSuccess || grants.isFetching ? null : (
+        <div className="panel__actions">
+          {topologyPending ? (
+            <p role="status">Loading the complete organisation topology before a new grant can open…</p>
+          ) : topologyError ? (
+            <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
+          ) : null}
+          <Button
+            type="button"
+            variant="primary"
+            disabled={!topologyReady}
+            onClick={() => {
+              feedback.clear();
+              setDraft(freshDraft(
+                grantOptions,
+                projectId !== '' && prototypeMode ? prototypeDefaultPrincipal : '',
+              ));
+              setModal('grant');
+            }}
+          >
+            Add access
+          </Button>
+          {/* Invite (#568) lives at organisation and instance scope only: a
+              project has no accounts of its own, and the org page is one
+              click up from the project projection. */}
+          {projectId === '' ? (
+            <Button
+              type="button"
+              onClick={() => {
+                feedback.clear();
+                setModal('invite');
+              }}
+            >
+              Invite
+            </Button>
+          ) : null}
+        </div>
+        )}
+
+        {grants.isPending ? <p role="status">Loading members…</p> : null}
+
+        {grants.isSuccess || rulesPanelVisible ? (
+          <div id="members-rules">
+            {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error)}</Alert> : null}
+            {rulesPanelVisible && !rules.isSuccess && !rules.isError ? <p role="status">Loading access rules…</p> : null}
+            {rulePeople.length === 0 ? (
+              grants.isSuccess || rules.isSuccess ? <p role="status">{needle === '' ? scopedRulesOnly ? 'No delegable rules are disclosed here.' : 'No members with access here yet.' : `No member matches “${find.trim()}”.`}</p> : null
+            ) : (
+              <RulesPanel
+                world={world}
+                people={rulePeople}
+                you={me}
+                canEdit={canEditRules}
+                showReach={!selectorTopologyOnly}
+                onEdit={(rule) => openEditor(rule)}
+                onAdd={(person) => openEditor(null, person)}
+                existingAccess={(person) => rows.filter((row) => row.principal === person).map((row) => (
+                  <ExistingAccessCard
+                    key={row.key}
+                    access={row}
+                    names={names}
+                    revoking={revoke.isPending && row.grants.some((grant) => grant.id === revoke.variables?.grant.id)
+                      ? revoke.variables?.grant.capability : undefined}
+                    protectedScope={row.grants.some((grant) => {
+                      const scope = scopeOf(grant);
+                      return scope.kind === 'environment' && memberProjects.some((p) => p.environments.some(
+                        (env) => env.id === scope.environment && env.isProtected === true,
+                      ));
+                    })}
+                    onEdit={grants.isFetching || revoke.isPending ? undefined : () => {
+                      feedback.clear();
+                      setExistingAccessKey(row.key);
+                    }}
+                  />
+                ))}
+                personActions={!grants.isSuccess || grants.isFetching ? undefined : (person) => (
+                  <>
+                    {!compactPresentation && person.kind === 'person' && person.id !== me ? (
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        disabled={resetPending !== null}
+                        aria-busy={resetPending === person.id ? true : undefined}
+                        aria-label={`Reset credential for ${person.name}`}
+                        onClick={() => void onReset(person.id)}
+                      >
+                        {resetPending === person.id ? 'Resetting…' : 'Reset credential'}
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="quiet" disabled={!topologyReady || grants.isFetching} onClick={() => {
+                      feedback.clear();
+                      setDraft(freshDraft(grantOptions, person.id));
+                      setModal('grant');
+                    }}>
+                      Add scope-wide access<span className="visually-hidden"> for {person.name}</span>
+                    </Button>
+                  </>
+                )}
+              />
+            )}
+          </div>
+        ) : null}
+
+
+      </Panel>
 
       <Inspect
         options={inspectOptions}
@@ -447,7 +585,9 @@ export function Members({ scope }: { scope: MembersScope }) {
             Answered over the grants and the access rules on this page. Grants reach every key of
             their scope; a rule can leave keys, folders or environments out.
           </p>
-          {rules.isError ? (
+          {scopedRulesOnly ? (
+            <p role="status">This list contains only rules inside your delegated access. Scope-wide grants and other rules are not disclosed, so it cannot answer who has access across the project.</p>
+          ) : rules.isError ? (
             <Alert>{rulesListingText(rules.error)}</Alert>
           ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
             <p role="status">Loading the grants, rules, topology and key names before answering…</p>
@@ -478,259 +618,54 @@ export function Members({ scope }: { scope: MembersScope }) {
         />
       ) : null}
 
-      <div className="access-filter">
-        <Input
-          label="Find a member"
-          type="search"
-          hint="By name or id. Narrows the grant lines and the access rules."
-          value={find}
-          onChange={(event) => setFind(event.target.value)}
-        />
-      </div>
-
-      <Panel id="members-list" title="Members">
-        {instance ? (
-          <p>
-            Every grant written at instance scope. These inherit downward into every organisation;
-            each origin and its subject remain visible so incident provenance is not reduced to a
-            colour.
-          </p>
-        ) : null}
-        {!instance && projectId === '' ? (
-          <p className="visually-hidden">
-            Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
-            by inheritance and are deliberately absent: this page has no authority over an instance
-            operator, so it does not offer to revoke one.
-          </p>
-        ) : null}
-
-        {grants.isPending ? <p role="status">Loading members…</p> : null}
-
-        {grants.isSuccess && rows.length === 0 ? (
-          <p role="status">
-            {instance
-              ? 'No instance-scope grants.'
-              : projectId === ''
-              ? 'No grants inside this organisation yet. Everyone reaching it does so from instance scope.'
-              : 'No direct project or environment grants yet. Organisation and instance grants may still reach this project; use Who can…? to inspect inherited access.'}
-          </p>
-        ) : null}
-
-        {rows.length !== 0 && shownRows.length === 0 ? (
-          <p role="status">No member matches “{find.trim()}”.</p>
-        ) : null}
-
-        {shownRows.length === 0 ? null : (
-          <table className="grants">
-            <caption className="visually-hidden">
-              Members of {scopeName}, one row per principal and scope
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Member</th>
-                <th scope="col">Scope</th>
-                <th scope="col">Capabilities</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shownRows.map((row, index) => {
-                const protectedScope = row.grants.some((grant) => {
-                  const scope = scopeOf(grant);
-                  return scope.kind === 'environment' && project?.environments.some(
-                    (environment) =>
-                      environment.id === scope.environment && environment.isProtected === true,
-                  ) === true;
-                });
-                const visibleScopeLabel = compactPresentation
-                  ? compactGrantScopeLabel(row.grants, row.scopeLabel, names)
-                  : row.scopeLabel;
-                return (
-                  <tr key={row.key}>
-                    <td>
-                      <span className="member-name" title={row.principal}>
-                        {principalLabel(row.principal, lines)}
-                      </span>
-                      {row.principal === me && !compactPresentation ? <Badge>you</Badge> : null}
-                      {/* Reset credential (#568): humans only (`mch_` is a
-                          machine, which has no password), never yourself (a
-                          reset revokes the target's sessions, this one
-                          included), once per principal even when they hold
-                          lines at several scopes, and not on the compact
-                          project projection. */}
-                      {!compactPresentation &&
-                      !row.principal.startsWith('mch_') &&
-                      row.principal !== me &&
-                      shownRows.findIndex((candidate) => candidate.principal === row.principal) === index ? (
-                        <Button
-                          type="button"
-                          variant="quiet"
-                          disabled={resetPending !== null}
-                          aria-busy={resetPending === row.principal ? true : undefined}
-                          aria-label={`Reset credential for ${principalLabel(row.principal, lines)}`}
-                          onClick={() => void onReset(row.principal)}
-                        >
-                          {resetPending === row.principal ? 'Resetting…' : 'Reset credential'}
-                        </Button>
-                      ) : null}
-                    </td>
-                    <td>
-                      <Badge
-                        mono
-                        className="member-scope"
-                        tone={protectedScope ? 'danger' : 'neutral'}
-                        aria-label={protectedScope ? `${visibleScopeLabel}, protected` : undefined}
-                      >
-                        {visibleScopeLabel}
-                      </Badge>
-                    </td>
-                    <td>
-                      <ul className="capabilities">
-                        {orderedMembershipGrants(row.grants, compactPresentation).map((grant) => {
-                          const revoking =
-                            revoke.isPending && revoke.variables?.grant.id === grant.id;
-                          const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${principalLabel(row.principal, lines)}`;
-                          const revokeText = compactPresentation
-                            ? (revoking ? '…' : <Glyph name="cross" />)
-                            : (revoking ? 'Revoking…' : 'Revoke');
-                          return (
-                            <li
-                              key={grant.id}
-                              className={compactPresentation
-                                ? 'capability capability--compact'
-                                : 'capability'}
-                              title={compactPresentation
-                                ? `${grant.capability} · ${grant.origins.map((origin) => `${origin.kind}: ${origin.subject}`).join(', ')}`
-                                : undefined}
-                            >
-                              <span className="capability__name mono">{grant.capability}</span>
-                              {/* Origin chips per capability line: the SCIM
-                                  amendment's own requirement, and the one thing
-                                  that tells a break-glass grant from an ordinary
-                                  one after an incident. */}
-                              {!compactPresentation ? grant.origins.map((origin) => (
-                                  <Badge key={`${origin.kind}:${origin.subject}`}>
-                                    {origin.kind}: {origin.subject}
-                                  </Badge>
-                                )) : (
-                                  <>
-                                    <span className="visually-hidden">
-                                      Origins: {grant.origins
-                                        .map((origin) => `${origin.kind}: ${origin.subject}`)
-                                        .join(', ')}.
-                                    </span>
-                                    {grant.origins
-                                      .filter((origin) => origin.kind !== 'manual')
-                                      .map((origin) => (
-                                        <Badge
-                                          className="capability__origin"
-                                          key={`${origin.kind}:${origin.subject}`}
-                                        >
-                                          ! {origin.kind}
-                                        </Badge>
-                                      ))}
-                                  </>
-                                )}
-                              <Button
-                                type="button"
-                                variant="quiet"
-                                icon={compactPresentation}
-                                disabled={revoking}
-                                aria-busy={revoking ? true : undefined}
-                                aria-label={revokeLabel}
-                                onClick={() => onRevoke(grant)}
-                              >
-                                {revokeText}
-                              </Button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        {noManageMembers ? null : (
-        <div className="panel__actions">
-          {topologyPending ? (
-            <p role="status">Loading the complete organisation topology before a new grant can open…</p>
-          ) : topologyError ? (
-            <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
-          ) : null}
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!topologyReady}
-            onClick={() => {
-              feedback.clear();
-              setDraft(freshDraft(
-                grantOptions,
-                projectId !== '' && prototypeMode ? prototypeDefaultPrincipal : '',
-              ));
-              setModal('grant');
-            }}
-          >
-            {compactPresentation ? '+ new grant' : 'New grant'}
-          </Button>
-          {/* Invite (#568) lives at organisation and instance scope only: a
-              project has no accounts of its own, and the org page is one
-              click up from the project projection. */}
-          {projectId === '' ? (
-            <Button
-              type="button"
-              onClick={() => {
-                feedback.clear();
-                setModal('invite');
-              }}
-            >
-              Invite
-            </Button>
-          ) : null}
-        </div>
-        )}
-      </Panel>
-
-      {rulesPanelVisible ? (
-        <Panel id="members-rules" title="Access rules">
-          <p>
-            A rule gives a person permissions on some projects, environments, folders or keys. Rules
-            add up with each other and with the grants above; an except narrows only its own rule.
-            Machines keep their grants.
-          </p>
-          {rules.isError ? (
-            <p role="status">{rulesListingText(rules.error)}</p>
-          ) : !rules.isSuccess ? (
-            <p role="status">Loading access rules…</p>
-          ) : rulePeople.length === 0 ? (
-            <p role="status">{needle === '' ? 'No people here yet.' : `No member matches “${find.trim()}”.`}</p>
-          ) : (
-            <RulesPanel
-              world={world}
-              people={rulePeople}
-              you={me}
-              canEdit={canEditRules}
-              onEdit={(rule) => openEditor(rule)}
-              onAdd={(person) => openEditor(null, person)}
-            />
-          )}
-        </Panel>
-      ) : null}
-
       {rulesPanelVisible ? (
         <Panel id="members-glossary" title="Glossary">
           <AccessGlossary />
         </Panel>
       ) : null}
 
-      {editing === null ? null : (
+      {existingAccess === null || !grants.isSuccess || grants.isFetching ? null : (
+        <Dialog
+          title={`Edit access for ${memberName(existingAccess.principal)}`}
+          lede={`Permissions on ${existingAccess.scopeLabel}. Removing a permission ends sessions carrying that authority; other origins may keep it effective.`}
+          onCancel={(event) => { event.preventDefault(); setExistingAccessKey(null); }}
+          actions={
+            <>
+              <Button type="button" onClick={() => setExistingAccessKey(null)}>Close</Button>
+              <Button type="button" disabled={!topologyReady} onClick={() => {
+                const first = existingAccess.grants[0];
+                if (first === undefined) return;
+                setDraft({ ...freshDraft(grantOptions, existingAccess.principal), scope: scopeValue(scopeOf(first)) });
+                setExistingAccessKey(null);
+                setModal('grant');
+              }}>Add permissions</Button>
+            </>
+          }
+        >
+          <ul className="capabilities">
+            {existingAccess.grants.map((grant) => (
+              <li key={grant.id} className="capability">
+                <span className="capability__name mono">{grant.capability}</span>
+                {grant.origins.map((origin) => (
+                  <Badge key={`${origin.kind}:${origin.subject}`}>{origin.kind}: {origin.subject}</Badge>
+                ))}
+                <Button type="button" variant="quiet" disabled={revoke.isPending}
+                  aria-label={`Revoke ${grant.capability} on ${existingAccess.scopeLabel} for ${memberName(existingAccess.principal)}`}
+                  onClick={() => { setExistingAccessKey(null); onRevoke(grant); }}>
+                  Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Dialog>
+      )}
+
+      {editing === null || !rules.isSuccess || rules.isFetching ? null : (
         <RuleEditorDialog
           world={world}
           rule={editing.draft}
+          showReach={!selectorTopologyOnly}
           projects={askable}
-          actingPrincipal={me}
           busy={ruleMutations.save.isPending || ruleMutations.remove.isPending}
           failure={editorFailure}
           onCancel={() => setEditing(null)}
@@ -761,9 +696,8 @@ export function Members({ scope }: { scope: MembersScope }) {
                   );
                 },
                 onError: (error) => {
-                  // An unconfirmed create can have committed without returning
-                  // its ID. Never retry a stale draft, even after rollback of
-                  // every confirmed create; reopen only the refreshed listing.
+                  // An atomic change can commit before its response is lost.
+                  // Never retry the old IDs or draft; reopen the refreshed listing.
                   if (error instanceof RuleSaveFailure) {
                     setEditing(null);
                     feedback.report(new RuleRefusal(error));
@@ -814,7 +748,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           draft={draft}
           effectiveScope={effectiveScope}
           stage={modal}
-          projects={topology.projects}
+          projects={memberProjects}
           topologyReady={topologyReady}
           topologyPending={topologyPending}
           topologyError={topologyError}
@@ -875,12 +809,12 @@ function Inspect({
     <Panel id="members-inspect" title="Who can…? Answer by inspection">
       {projectContext ? null : level === 'instance' ? (
         <p>
-          Answered by inspection over the instance-scope lines below. Grants inherit downward, so
+          Answered by inspection over the instance-scope access cards above. Grants inherit downward, so
           every line here reaches every organisation, project and environment.
         </p>
       ) : (
         <p>
-          Answered by inspection over the lines below, including the ones ABOVE the scope you pick:
+          Answered by inspection over the access cards above, including the ones ABOVE the scope you pick:
           grants inherit downward, so an organisation-scoped grant answers for every environment in
           it.
         </p>
@@ -1079,18 +1013,6 @@ function membersFailureText(error: unknown): string {
 function principalLabel(principal: string, grants: readonly Grant[]): string {
   return grants.find((grant) => grant.principal_id === principal)?.principal_name
     ?? prototypePrincipalNames?.get(principal) ?? principal;
-}
-
-function orderedMembershipGrants(
-  grants: readonly Grant[],
-  projectContext: boolean,
-): readonly Grant[] {
-  if (!projectContext) return grants;
-  return [...grants].sort(
-    (left, right) =>
-      (projectCapabilityOrder.get(left.capability) ?? Number.MAX_SAFE_INTEGER) -
-      (projectCapabilityOrder.get(right.capability) ?? Number.MAX_SAFE_INTEGER),
-  );
 }
 
 // --- the grant modal --------------------------------------------------------
@@ -1372,7 +1294,7 @@ export function GrantModal({
 
   return (
     <Dialog
-      title="New grant"
+      title="Add scope-wide access"
       lede={
         projectContext && prototypeMode ? (
           <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>

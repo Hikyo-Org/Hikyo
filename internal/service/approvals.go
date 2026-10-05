@@ -382,12 +382,15 @@ func (s *Approvals) CeremonyBinding(ctx context.Context, actor Actor, scope doma
 	now := s.now()
 	var out ApprovalCeremonyBinding
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalVote, scope, now)
+		caller, p, err := authorizeKey(ctx, az, actor, authz.OpApprovalVote, scope, authz.KeyApprovalRequest(requestID), now)
 		if err != nil {
 			return err
 		}
 		req, err := r.Approvals().GetRequest(ctx, p, requestID)
 		if err != nil {
+			return err
+		}
+		if err := authorizeApprovalKeys(ctx, az, caller, scope, req.KeyIDs); err != nil {
 			return err
 		}
 		if req.EnvironmentID != string(scope.Env) {
@@ -417,12 +420,15 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 	var refusal error
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		refusal = nil
-		caller, p, err := authorize(ctx, az, actor, authz.OpApprovalVote, scope, now)
+		caller, p, err := authorizeKey(ctx, az, actor, authz.OpApprovalVote, scope, authz.KeyApprovalRequest(requestID), now)
 		if err != nil {
 			return err
 		}
 		req, err := r.Approvals().GetRequest(ctx, p, requestID)
 		if err != nil {
+			return err
+		}
+		if err := authorizeApprovalKeys(ctx, az, caller, scope, req.KeyIDs); err != nil {
 			return err
 		}
 		existing, existingErr := r.Approvals().GetVote(ctx, p, requestID, string(caller.Principal))
@@ -841,7 +847,7 @@ func countEligibleApprovals(ctx context.Context, r store.Repos, az *authz.TxAuth
 		// Re-authorize the participant at execution time (AC): a voter whose
 		// publish authority was revoked after voting no longer counts, exactly
 		// as an approver removed from the set does not.
-		holds, err := az.CallerHolds(ctx, authz.Identity{Principal: domain.PrincipalID(v.PrincipalID)}, authz.OpApprovalVote, scope)
+		holds, err := az.CallerHoldsApprovalKeys(ctx, authz.Identity{Principal: domain.PrincipalID(v.PrincipalID)}, scope, req.KeyIDs)
 		if err != nil {
 			return 0, err
 		}
@@ -1283,4 +1289,21 @@ func sanitizePurpose(raw string) (string, error) {
 		return "", fmt.Errorf("%w: the change purpose is too long", domain.ErrInvalid)
 	}
 	return purpose, nil
+}
+
+// authorizeApprovalKeys bounds decisions to every pinned key before policy,
+// vote or ceremony detail is exposed. The first-key proof is only admission.
+func authorizeApprovalKeys(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, ids []string) error {
+	if len(ids) == 0 {
+		return domain.ErrNotFound
+	}
+	for i, id := range ids {
+		if id == "" || slices.Contains(ids[:i], id) {
+			return domain.ErrNotFound
+		}
+		if _, err := az.AuthorizeKey(ctx, caller, authz.OpApprovalVote, scope, authz.KeyByID(id)); err != nil {
+			return err
+		}
+	}
+	return nil
 }

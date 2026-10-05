@@ -309,6 +309,7 @@ import {
   renewCertificate,
   renewLease,
   reorderEnvironments,
+  replaceRules,
   reportDeliveryTarget,
   reportFileTarget,
   requestInstanceUpdate,
@@ -685,6 +686,7 @@ import type {
   RenewCertificateData,
   RenewLeaseData,
   ReorderEnvironmentsData,
+  ReplaceRulesData,
   ReportDeliveryTargetData,
   ReportFileTargetData,
   RequestInstanceUpdateData,
@@ -1038,6 +1040,7 @@ import {
   zRenewCertificateResponse,
   zRenewLeaseResponse,
   zReorderEnvironmentsResponse,
+  zReplaceRulesResponse,
   zRequestInstanceUpdateResponse,
   zResetCredentialResponse,
   zResumeAdapterMoveResponse,
@@ -1369,6 +1372,7 @@ export const renameRemoteOp: BodyOperation<RenameRemoteData, typeof zRenameRemot
 export const renewCertificateOp: BodyOperation<RenewCertificateData, typeof zRenewCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renewCertificate, [200], zRenewCertificateResponse);
 export const renewLeaseOp: BodyOperation<RenewLeaseData, typeof zRenewLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(renewLease, [200], zRenewLeaseResponse);
 export const reorderEnvironmentsOp: BodyOperation<ReorderEnvironmentsData, typeof zReorderEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reorderEnvironments, [200], zReorderEnvironmentsResponse);
+export const replaceRulesOp: BodyOperation<ReplaceRulesData, typeof zReplaceRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(replaceRules, [200], zReplaceRulesResponse);
 export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, typeof zRequestInstanceUpdateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(requestInstanceUpdate, [202], zRequestInstanceUpdateResponse);
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);

@@ -2352,11 +2352,11 @@ paths:
       summary: Create one member access rule.
       description: |
         One capability for one person, with a `where` of projects,
-        environments and keys. The caller needs `manage-members` held as a
-        grant on every project the rule names; a project-scope member manager
-        may only grant a capability it holds as a grant on each of those whole
-        projects. Rules are for people: a machine principal is refused. An
-        edit is a revoke plus a create.
+        environments and keys. The caller needs `manage-members` covering the
+        complete selector on every project and may delegate only capabilities
+        held there, unless org or instance authority permits unheld grants.
+        Rules are for people: a machine principal is refused. Use replaceRules
+        to edit a grouped rule card atomically.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -2392,6 +2392,53 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/rules/replace:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    post:
+      operationId: replaceRules
+      tags: [access]
+      summary: Atomically change a person's access rule card.
+      description: |
+        Authorizes every removal and addition against the original access,
+        then commits the complete change in one transaction. All rows must
+        belong to the named person. A missing removal refuses the whole batch.
+        Sessions are invalidated only after all authorization checks succeed.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.replace
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 9
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceRulesRequest"
+      responses:
+        "200":
+          description: Newly created rules. An empty list means removal only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/orgs/{org}/rules/{rule}:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -2402,8 +2449,8 @@ paths:
       summary: Revoke one member access rule.
       description: |
         Removes the rule whole and ends its holder's sessions. The caller needs
-        `manage-members` held as a grant on every project the rule names; a
-        rule it cannot reach answers exactly like one that does not exist.
+        `manage-members` covering the complete rule selector on every project;
+        a rule it cannot reach answers exactly like one that does not exist.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.revoke
       x-hikyo-formula: [manage-members@project]
@@ -20040,14 +20087,34 @@ components:
         where:
           $ref: "#/components/schemas/RuleWhere"
 
+    ReplaceRulesRequest:
+      type: object
+      additionalProperties: false
+      required: [principal, revoke, create]
+      properties:
+        principal:
+          $ref: "#/components/schemas/ID"
+        revoke:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ID"
+        create:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CreateRuleRequest"
+
     RuleCapability:
       type: string
       description: |
         The capabilities a member access rule may carry (member-access-rules
-        ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+        ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+        `publish` and `manage-members` accept key selectors. Member management
+        delegates only within its selector and the caller's held capabilities.
         `manage-identities`, `manage-adapters` and `project-settings` need a
-        whole project. `manage-members` is stored but grants nothing until
-        delegation containment exists.
+        whole project.
       enum: [read, edit, publish, pin, reveal, reveal-history, definitions-edit, manage-members, manage-identities, manage-adapters, project-settings]
 
     RuleAxisMode:

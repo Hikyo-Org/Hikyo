@@ -567,7 +567,11 @@ func (s *Projects) List(ctx context.Context, actor Actor, org domain.OrgID) ([]P
 			return err
 		}
 		out, err = r.Projects().List(ctx, p)
-		return err
+		if err != nil {
+			return err
+		}
+		out = slices.DeleteFunc(out, func(row store.Project) bool { return !authz.NavigationProjectAllowed(p, domain.ProjectID(row.ID)) })
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -892,7 +896,11 @@ func (s *Environments) List(ctx context.Context, actor Actor, scope domain.Scope
 			return err
 		}
 		out, err = r.Environments().List(ctx, p)
-		return err
+		if err != nil {
+			return err
+		}
+		out = slices.DeleteFunc(out, func(row store.Environment) bool { return !authz.NavigationEnvironmentAllowed(p, domain.EnvID(row.ID)) })
+		return nil
 	})
 	if err != nil {
 		return nil, err

@@ -202,7 +202,6 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 
 	t.Run("shape_refusals", func(t *testing.T) {
 		for name, spec := range map[string]service.RuleSpec{
-			"read narrowed by keys": {Target: gina, Capability: domain.CapRead, Org: orgA, Where: whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))},
 			"pin narrowed by keys":  {Target: gina, Capability: domain.CapPin, Org: orgA, Where: whereIn(domain.AxisAll, nil, domain.AxisOnly, folderItem("db"))},
 			"settings on some envs": {Target: gina, Capability: domain.CapProjectSettings, Org: orgA, Where: whereIn(domain.AxisOnly, map[domain.ProjectID][]domain.EnvID{prjA1: {envA1}}, domain.AxisAll)},
 			"manage-projects":       {Target: gina, Capability: domain.CapManageProjects, Org: orgA, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)},
@@ -215,16 +214,16 @@ func runMemberAccessRules(t *testing.T, db *store.DB) {
 		}
 	})
 
-	t.Run("rule_based_manage_members_grants_nothing", func(t *testing.T) {
+	t.Run("rule_based_manage_members_is_selector_bound", func(t *testing.T) {
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapManageMembers, Org: orgA,
 			Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapRead, Org: orgA,
 			Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
-		// Not even inside its own where, not even an atom frank holds.
+		// A held atom may be delegated inside the management selector.
 		_, err := f.rules.Create(t.Context(), service.LocalPrincipal(frank), service.RuleSpec{
 			Target: gina, Capability: domain.CapRead, Org: orgA, Where: whereIn(domain.AxisAll, nil, domain.AxisAll)})
-		if !errors.Is(err, domain.ErrNotFound) {
-			t.Fatalf("rule create by a rule-based member manager = %v, want not found", err)
+		if err != nil {
+			t.Fatalf("rule create by a rule-based member manager = %v", err)
 		}
 		grants := &service.Grants{DB: db}
 		if _, err := grants.Create(t.Context(), service.LocalPrincipal(frank), service.GrantSpec{

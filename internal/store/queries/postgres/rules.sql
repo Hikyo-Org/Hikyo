@@ -160,3 +160,21 @@ FROM rules AS r
 JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.org_id = sqlc.arg(org_id) AND i.org_id = sqlc.arg(org_id) AND i.project_id = sqlc.arg(project_id)
 ORDER BY r.id, i.id;
+
+-- Resolve only the addressed draft's key metadata for key-scoped Publish.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() resolves only the caller-owned draft key metadata within the resolved environment before minting a key-scoped Publish proof; ciphertext remains proof-gated.
+-- name: ResolveRulePendingKey :one
+SELECT k.id, k.folder_path
+FROM pending_changes AS p
+JOIN keys AS k ON k.org_id = p.org_id AND k.project_id = p.project_id AND k.id = p.key_id
+WHERE p.org_id = sqlc.arg(org_id) AND p.project_id = sqlc.arg(project_id)
+ AND p.environment_id = sqlc.arg(env_id) AND p.owner_id = sqlc.arg(owner_id) AND p.id = sqlc.arg(id);
+
+-- Resolve only the pinned approval key ids before key-scoped Publish auth.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() resolves pinned approval key metadata within the resolved environment before minting a key-scoped proof; request details and ciphertext remain proof-gated.
+-- name: ResolveRuleApprovalKeys :one
+SELECT key_ids FROM approval_requests
+WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
+ AND environment_id = sqlc.arg(env_id) AND id = sqlc.arg(id);

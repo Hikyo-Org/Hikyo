@@ -2476,10 +2476,11 @@ export const zCreateGrantRequest = z.object({
 
 /**
  * The capabilities a member access rule may carry (member-access-rules
- * ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+ * ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+ * `publish` and `manage-members` accept key selectors. Member management
+ * delegates only within its selector and the caller's held capabilities.
  * `manage-identities`, `manage-adapters` and `project-settings` need a
- * whole project. `manage-members` is stored but grants nothing until
- * delegation containment exists.
+ * whole project.
  *
  */
 export const zRuleCapability = z.enum([
@@ -3155,6 +3156,12 @@ export const zCreateRuleRequest = z.object({
     principal: zId,
     capability: zRuleCapability,
     where: zRuleWhere
+});
+
+export const zReplaceRulesRequest = z.object({
+    principal: zId,
+    revoke: z.array(zId).max(32),
+    create: z.array(zCreateRuleRequest).max(32)
 });
 
 export const zRule = z.object({
@@ -5605,6 +5612,17 @@ export const zCreateRulePath = z.object({
  * The rule as stored.
  */
 export const zCreateRuleResponse = zRule;
+
+export const zReplaceRulesBody = zReplaceRulesRequest;
+
+export const zReplaceRulesPath = z.object({
+    org: zId
+});
+
+/**
+ * Newly created rules. An empty list means removal only.
+ */
+export const zReplaceRulesResponse = zRuleList;
 
 export const zRevokeRulePath = z.object({
     org: zId,

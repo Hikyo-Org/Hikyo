@@ -221,7 +221,8 @@ test.describe('instance administration', () => {
     // The seeding grants are written by the host-local `admin grant` verb, so
     // they carry the break-glass origin, the one distinction the membership
     // surface exists to preserve.
-    await expect(grants.getByText('break-glass').first()).toBeVisible();
+    await grants.getByRole('button', { name: 'Permission origins', exact: true }).first().click();
+    await expect(grants.getByText(/^break-glass:/).first()).toBeVisible();
     await expect(grants.locator(`.member-name[title="${seed.principal}"]`).first()).toHaveText(ADMIN.displayName);
     await expect(grants).toContainText('manage-projects');
     await expect(grants).toContainText('inherit downward into every organisation');
@@ -387,7 +388,7 @@ test.describe('instance administration', () => {
 
   test('creates and revokes an instance grant with visible provenance', async ({ page }) => {
     await page.goto('/instance/members');
-    await page.getByRole('button', { name: 'New grant' }).click();
+    await page.getByRole('button', { name: 'Add access' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
     await dialog.getByLabel('Principal').fill(INSTANCE_GRANT_TARGET);
@@ -396,9 +397,10 @@ test.describe('instance administration', () => {
     await dialog.getByRole('button', { name: 'Grant', exact: true }).click();
     const granted = page.locator('.notice').filter({ hasText: `Grant results for ${INSTANCE_GRANT_TARGET}` });
     await expectStatusIsTextAndAria(page, granted);
-    const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${INSTANCE_GRANT_TARGET}"]`) });
+    const row = page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${INSTANCE_GRANT_TARGET}"]`) });
     await expect(row).toContainText(`manual: ${seed.principal}`);
-    await row
+    await row.getByRole('button', { name: 'Edit access on instance · everything', exact: true }).click();
+    await page.getByRole('dialog')
       .getByRole('button', { name: `Revoke read on instance · everything for ${INSTANCE_GRANT_TARGET}` })
       .click();
     const revoked = page.locator('.notice').filter({ hasText: 'Revoked read' });
@@ -438,7 +440,7 @@ test.describe('instance administration', () => {
         page.locator('.notice').filter({ hasText: `Invited ${username} at Instance as operator` }),
       );
       // Every expanded line is the inviter's, at instance scope.
-      const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+      const row = page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
       await expect(row.locator('.member-name')).toHaveText('Second Operator');
       await expect(row).toContainText('manage-members');
       await expect(row).toContainText(`manual: ${seed.principal}`);
@@ -589,7 +591,7 @@ test.describe('instance administration', () => {
     const principal = seededGrant.principal_id;
     try {
       await page.goto('/instance/members');
-      await page.getByRole('button', { name: 'New grant' }).click();
+      await page.getByRole('button', { name: 'Add access' }).click();
       const dialog = page.getByRole('dialog');
       await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
       await dialog.getByLabel('Principal').fill(principal);
@@ -1152,8 +1154,9 @@ test.describe('instance administration', () => {
         const heading = page.getByRole('heading', { name: 'Members · Instance', level: 1 });
         const well = page.locator('.panel').first();
         const jump = page.getByRole('link', { name: 'Who can…?' });
-        const chip = page.locator('.member-scope').first();
-        const newGrant = page.getByRole('button', { name: 'New grant' });
+        const chip = page.locator('#members-list .access-rule__perms .badge').first();
+        await page.locator('#members-list').getByRole('button', { name: 'Permission origins', exact: true }).first().click();
+        const newGrant = page.getByRole('button', { name: 'Add access' });
 
         await expectPinnedAssertionSet(page, {
           flow: 'instance-admin',

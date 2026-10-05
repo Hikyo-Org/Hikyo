@@ -88,7 +88,7 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 
 	switch spec.class {
 	case ClassTenant:
-		return a.authorizeTenant(ctx, caller, op, spec, scope, nil)
+		return a.authorizeTenant(ctx, caller, op, spec, scope, nil, nil)
 	case ClassInstance:
 		if scope != (domain.Scope{}) {
 			return nil, fmt.Errorf("authz: instance operation %q addressed with a tenant scope", op)
@@ -152,7 +152,7 @@ func (a *TxAuthorizer) assuranceInadequate(caller Identity, op Operation) bool {
 	return caller.SessionID != "" && FormulaDemandsMFA(op) && !AdequateAssurance(caller.Assurance)
 }
 
-func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, scope domain.Scope, key *KeyTarget) (Proof, error) {
+func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, scope domain.Scope, key *KeyTarget, targetRule *domain.Rule) (Proof, error) {
 	principal := caller.Principal
 	level, err := scope.Level()
 	if err != nil {
@@ -172,7 +172,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		// claims). Any other resolver error is a loud bug, not a probe
 		// outcome, and mints no event.
 		if errors.Is(err, domain.ErrNotFound) {
-			if workErr := a.missingScopeRefusalWork(ctx, caller, spec, key); workErr != nil {
+			if workErr := a.missingScopeRefusalWork(ctx, caller, op, spec, key); workErr != nil {
 				return nil, workErr
 			}
 			a.captureDenial(ctx, principal, op, spec, resolutionUnresolvable, domain.Scope{}, scope)
@@ -186,11 +186,11 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 	}
 	held := evaluate(spec.formula, chain, grants)
 	var bound *domain.RuleKey
-	if !held && rulesApply(caller) && ruleSatisfiable(spec.formula) {
-		// Member access rules (member-access-rules ADR) are read ONLY here,
-		// and only when the legacy grants alone do not satisfy the formula,
-		// so every other predicate in the system stays blind to them. A
-		// key-aware call resolves its key from the database on this path
+	var navigation []domain.Rule
+	if rulesApply(caller) && (ruleSatisfiable(spec.formula) || targetRule != nil || ruleNavigationOperation(op)) && (!held || targetRule != nil) {
+		// Rules join ordinary atom evaluation, complete delegation selectors,
+		// and explicitly filtered metadata navigation inside this chokepoint.
+		// A key-aware call resolves its key from the database on this path
 		// whether or not any rule needs it: the denial's query count then
 		// depends on the operation, never on which rules or keys exist.
 		rules, err := a.r.Rules(ctx, principal)
@@ -199,7 +199,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		}
 		var target *domain.RuleKey
 		if key != nil {
-			resolved, err := a.resolveKeyTarget(ctx, chain, *key)
+			resolved, err := a.resolveKeyTarget(ctx, chain, *key, caller.Principal)
 			if errors.Is(err, domain.ErrNotFound) {
 				a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 				return nil, domain.ErrNotFound
@@ -210,7 +210,18 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 			target = &resolved
 			bound = target
 		}
-		held = evaluateWithRules(spec.formula, chain, grants, rules, target)
+		if targetRule != nil {
+			held, err = a.ruleDelegationHeld(ctx, spec.formula, chain, grants, rules, *targetRule)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			held = evaluateWithRules(spec.formula, chain, grants, rules, target)
+			if !held {
+				navigation = ruleNavigationReach(op, chain, rules, grants)
+				held = len(navigation) > 0
+			}
+		}
 	}
 	if !held {
 		// Resolvable, unauthorized: the truthful resolved chain, tenant
@@ -264,7 +275,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected, key: bound}, nil
+	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected, key: bound, navigation: navigation}, nil
 }
 
 // missingScopeRefusalWork equalizes application-controlled query work with a
@@ -272,18 +283,18 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 // read; key metadata uses an empty decoy chain, never caller-asserted ancestry.
 // All results are discarded. The caller retains the original missing result
 // and cannot enter formula evaluation or proof construction from this helper.
-func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Identity, spec authorizationSpec, key *KeyTarget) error {
+func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, key *KeyTarget) error {
 	if _, err := a.r.Grants(ctx, caller.Principal); err != nil {
 		return err
 	}
-	if !rulesApply(caller) || !ruleSatisfiable(spec.formula) {
+	if !rulesApply(caller) || (!ruleSatisfiable(spec.formula) && !ruleNavigationOperation(op)) {
 		return nil
 	}
 	if _, err := a.r.Rules(ctx, caller.Principal); err != nil {
 		return err
 	}
 	if key != nil {
-		_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key)
+		_, err := a.resolveKeyTarget(ctx, domain.Scope{}, *key, caller.Principal)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}

@@ -30,7 +30,12 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 	if revision <= 0 {
 		return RestoreResult{}, invalidDetail("restore revision must be positive")
 	}
-	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpRevisionRestore, scope)
+	var keyTarget *authz.KeyTarget
+	if keyName != "" {
+		key := authz.KeyByName(keyName)
+		keyTarget = &key
+	}
+	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, authz.OpRevisionRestore, scope, keyTarget)
 	if err != nil {
 		return RestoreResult{}, err
 	}
@@ -47,7 +52,14 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 		out.Preview = ImpactPreview{}
 		announced = nil
 		now := s.now()
-		caller, p, err := authorize(ctx, az, actor, authz.OpRevisionRestore, scope, now)
+		var caller authz.Identity
+		var p authz.Proof
+		var err error
+		if keyTarget != nil {
+			caller, p, err = authorizeKey(ctx, az, actor, authz.OpRevisionRestore, scope, *keyTarget, now)
+		} else {
+			caller, p, err = authorize(ctx, az, actor, authz.OpRevisionRestore, scope, now)
+		}
 		if err != nil {
 			return err
 		}
@@ -73,6 +85,9 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 		if keyName != "" {
 			key, err := keyByName(keys, keyName)
 			if err != nil {
+				return err
+			}
+			if err := requireBoundKey(p, key.ID); err != nil {
 				return err
 			}
 			keys = []store.CatalogueKey{key}
@@ -150,13 +165,17 @@ func (s *Revisions) Restore(ctx context.Context, actor Actor, scope domain.Scope
 				}
 			}
 			if needsHistoricalReveal {
-				if _, err := az.Authorize(ctx, caller, authz.OpRevisionRestoreHistory, scope); err != nil {
-					return err
+				for id := range historicalSecrets {
+					if _, err := az.AuthorizeKey(ctx, caller, authz.OpRevisionRestoreHistory, scope, authz.KeyByID(id)); err != nil {
+						return err
+					}
 				}
 			}
 			if needsCurrentReveal {
-				if _, err := az.Authorize(ctx, caller, authz.OpRevisionRestoreCurrent, scope); err != nil {
-					return err
+				for id := range currentSecrets {
+					if _, err := az.AuthorizeKey(ctx, caller, authz.OpRevisionRestoreCurrent, scope, authz.KeyByID(id)); err != nil {
+						return err
+					}
 				}
 			}
 			if len(unit) > 0 {

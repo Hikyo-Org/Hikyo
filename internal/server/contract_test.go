@@ -1685,6 +1685,10 @@ func (s stubSCIM) DirectoryGroups(context.Context, service.Actor, domain.OrgID, 
 // the uniformity tests differ ONLY in which sentinel the service returned.
 type stubRules struct{ stubHierarchy }
 
+func (s stubRules) Replace(context.Context, service.Actor, service.ReplaceRulesSpec) ([]service.RuleView, error) {
+	return nil, s.outcome()
+}
+
 func (s stubRules) Create(context.Context, service.Actor, service.RuleSpec) (service.RuleView, error) {
 	return service.RuleView{}, s.outcome()
 }

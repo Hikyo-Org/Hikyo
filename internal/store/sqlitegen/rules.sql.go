@@ -690,3 +690,68 @@ func (q *Queries) ResolveKeyByName(ctx context.Context, arg ResolveKeyByNamePara
 	err := row.Scan(&i.ID, &i.FolderPath)
 	return i, err
 }
+
+const resolveRuleApprovalKeys = `-- name: ResolveRuleApprovalKeys :one
+SELECT key_ids FROM approval_requests
+WHERE org_id = ?1 AND project_id = ?2
+ AND environment_id = ?3 AND id = ?4
+`
+
+type ResolveRuleApprovalKeysParams struct {
+	OrgID     string
+	ProjectID string
+	EnvID     string
+	ID        string
+}
+
+// Resolve only the pinned approval key ids before key-scoped Publish auth.
+// hikyo:authn-resolution
+// hikyo:reason authorize() resolves pinned approval key metadata within the resolved environment before minting a key-scoped proof; request details and ciphertext remain proof-gated.
+func (q *Queries) ResolveRuleApprovalKeys(ctx context.Context, arg ResolveRuleApprovalKeysParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, resolveRuleApprovalKeys,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvID,
+		arg.ID,
+	)
+	var key_ids string
+	err := row.Scan(&key_ids)
+	return key_ids, err
+}
+
+const resolveRulePendingKey = `-- name: ResolveRulePendingKey :one
+SELECT k.id, k.folder_path
+FROM pending_changes AS p
+JOIN keys AS k ON k.org_id = p.org_id AND k.project_id = p.project_id AND k.id = p.key_id
+WHERE p.org_id = ?1 AND p.project_id = ?2
+ AND p.environment_id = ?3 AND p.owner_id = ?4 AND p.id = ?5
+`
+
+type ResolveRulePendingKeyParams struct {
+	OrgID     string
+	ProjectID string
+	EnvID     string
+	OwnerID   string
+	ID        string
+}
+
+type ResolveRulePendingKeyRow struct {
+	ID         string
+	FolderPath string
+}
+
+// Resolve only the addressed draft's key metadata for key-scoped Publish.
+// hikyo:authn-resolution
+// hikyo:reason authorize() resolves only the caller-owned draft key metadata within the resolved environment before minting a key-scoped Publish proof; ciphertext remains proof-gated.
+func (q *Queries) ResolveRulePendingKey(ctx context.Context, arg ResolveRulePendingKeyParams) (ResolveRulePendingKeyRow, error) {
+	row := q.db.QueryRowContext(ctx, resolveRulePendingKey,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvID,
+		arg.OwnerID,
+		arg.ID,
+	)
+	var i ResolveRulePendingKeyRow
+	err := row.Scan(&i.ID, &i.FolderPath)
+	return i, err
+}

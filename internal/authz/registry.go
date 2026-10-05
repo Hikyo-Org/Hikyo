@@ -401,8 +401,9 @@ const (
 	// these address PROJECT depth. The atom is legacy `manage-members`: rules
 	// themselves never satisfy it (it is inert on rules until delegation
 	// containment exists), so only a grant-holding member manager edits rules.
-	OpRuleCreate Operation = "rule.create"
-	OpRuleRevoke Operation = "rule.revoke"
+	OpRuleCreate  Operation = "rule.create"
+	OpRuleReplace Operation = "rule.replace"
+	OpRuleRevoke  Operation = "rule.revoke"
 	// The rule listing mirrors the grant listing: one operation per addressed
 	// depth, legacy `manage-members` at that depth.
 	OpRuleListOrg         Operation = "rule.list-org"
@@ -3748,6 +3749,13 @@ var operationTable = map[Operation]opSpec{
 		// it) is a MODIFICATION; only the release that deleted the row is a
 		// revocation. Both are reachable from this operation.
 		events: []audit.EventType{audit.EventGrantRevoked, audit.EventGrantModified},
+	},
+	OpRuleReplace: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRuleCreated, audit.EventRuleRevoked},
 	},
 	OpRuleCreate: {
 		class:    ClassTenant,

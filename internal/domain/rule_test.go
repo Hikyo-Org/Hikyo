@@ -55,7 +55,6 @@ func TestRuleValidateRefusesWideningShapes(t *testing.T) {
 	base := func(c Capability, w Where) Rule { return Rule{ID: "r", Capability: c, Org: "org", Where: w} }
 	keys := map[ProjectID][]RuleKeyItem{"p": {{KeyID: "k"}}}
 	for name, r := range map[string]Rule{
-		"read by key":          base(CapRead, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll, Keys: keys}),
 		"pin by key":           base(CapPin, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisOnly, Keys: keys}),
 		"settings by env":      base(CapProjectSettings, Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{"p": {"e"}}, KeyMode: AxisAll}),
 		"manage-projects":      base(CapManageProjects, Where{Projects: []ProjectID{"p"}, EnvMode: AxisAll, KeyMode: AxisAll}),
@@ -119,5 +118,27 @@ func TestRuleFolderSelectorsAreHierarchicalOnlyForExcepts(t *testing.T) {
 		if got := tc.r.Reaches(CapEdit, LevelEnv, dev, &RuleKey{ID: "k", Folder: tc.folder}); got != tc.want {
 			t.Errorf("%s: Reaches = %v, want %v", name, got, tc.want)
 		}
+	}
+}
+
+func TestSeeIgnoresKeysButPublishDoesNot(t *testing.T) {
+	w := Where{Projects: []ProjectID{"p"}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{"p": {"dev"}}, KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{"p": {{KeyID: "one"}}}}
+	scope := Scope{Org: "org", Project: "p", Env: "dev"}
+	read := Rule{Org: "org", Capability: CapRead, Where: w}
+	publish := Rule{Org: "org", Capability: CapPublish, Where: w}
+	for _, r := range []Rule{read, publish} {
+		if err := r.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !read.Reaches(CapRead, LevelEnv, scope, nil) || !read.Reaches(CapRead, LevelEnv, scope, &RuleKey{ID: "other"}) {
+		t.Fatal("See must cover the environment catalogue")
+	}
+	if !publish.Reaches(CapPublish, LevelEnv, scope, &RuleKey{ID: "one"}) || publish.Reaches(CapPublish, LevelEnv, scope, &RuleKey{ID: "other"}) || publish.Reaches(CapPublish, LevelEnv, scope, nil) {
+		t.Fatal("Publish must require the selected key")
+	}
+	scope.Env = "prod"
+	if read.Reaches(CapRead, LevelEnv, scope, nil) {
+		t.Fatal("key-independent See escaped its environment selector")
 	}
 }

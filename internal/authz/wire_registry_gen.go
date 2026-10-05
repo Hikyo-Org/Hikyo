@@ -416,6 +416,7 @@ var wireRegistry = map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/projects/{project}/values/declare":                                                         {Class: ClassTenant, Ops: []Operation{OpValueSet, OpValuePublish}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal":                                                     {Class: ClassTenant, Ops: []Operation{OpValueReveal}},
 	"http:POST /api/v1/orgs/{org}/rules":                                                                                     {Class: ClassTenant, Ops: []Operation{OpRuleCreate}},
+	"http:POST /api/v1/orgs/{org}/rules/replace":                                                                             {Class: ClassTenant, Ops: []Operation{OpRuleReplace}},
 	"http:POST /api/v1/orgs/{org}/scim-bindings":                                                                             {Class: ClassTenant, Ops: []Operation{OpSCIMBindingCreate}},
 	"http:POST /api/v1/orgs/{org}/scim-bindings/{binding}/credentials":                                                       {Class: ClassTenant, Ops: []Operation{OpSCIMCredentialMint}},
 	"http:POST /api/v1/orgs/{org}/scim-bindings/{binding}/mappings":                                                          {Class: ClassTenant, Ops: []Operation{OpSCIMMappingCreate}},

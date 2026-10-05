@@ -17,6 +17,7 @@ import (
 
 // RuleService is the domain surface this transport exposes.
 type RuleService interface {
+	Replace(ctx context.Context, actor service.Actor, spec service.ReplaceRulesSpec) ([]service.RuleView, error)
 	Create(ctx context.Context, actor service.Actor, spec service.RuleSpec) (service.RuleView, error)
 	Revoke(ctx context.Context, actor service.Actor, org domain.OrgID, id string) error
 	List(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.RuleView, error)
@@ -164,4 +165,20 @@ func wireWidening(count int, gains []service.WideningGain) *apigen.WideningRefus
 	}
 	out.Gainers = &gainers
 	return out
+}
+
+func (a *API) ReplaceRules(ctx context.Context, req apigen.ReplaceRulesRequestObject) (apigen.ReplaceRulesResponseObject, error) {
+	spec := service.ReplaceRulesSpec{Org: domain.OrgID(req.Org), Target: domain.PrincipalID(req.Body.Principal), Revoke: req.Body.Revoke}
+	for _, add := range req.Body.Create {
+		where, err := ruleWhere(add.Where)
+		if err != nil {
+			return nil, err
+		}
+		spec.Create = append(spec.Create, service.RuleSpec{Org: spec.Org, Target: domain.PrincipalID(add.Principal), Capability: domain.Capability(add.Capability), Where: where})
+	}
+	views, err := a.Rules.Replace(ctx, service.Bearer(bearer(ctx)), spec)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.ReplaceRules200JSONResponse(wireAccessRules(views)), nil
 }

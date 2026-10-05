@@ -3,9 +3,12 @@ package authn
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -483,4 +486,75 @@ func (r *Resolver) RuleLinesInProject(ctx context.Context, org, project string) 
 		}
 	}
 	return foldRuleLines(rows), nil
+}
+
+// ResolveRulePendingKey resolves only metadata for an owned live draft in the
+// addressed environment. No value material crosses the pre-authorization path.
+func (r *Resolver) ResolveRulePendingKey(ctx context.Context, scope domain.Scope, principal domain.PrincipalID, id string) (domain.RuleKey, error) {
+	if r.sq != nil {
+		row, err := r.sq.ResolveRulePendingKey(ctx, sqlitegen.ResolveRulePendingKeyParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), OwnerID: string(principal), ID: id})
+		if err != nil {
+			return domain.RuleKey{}, rulePendingNotFound(err)
+		}
+		return domain.RuleKey{ID: row.ID, Folder: row.FolderPath}, nil
+	}
+	row, err := r.pg.ResolveRulePendingKey(ctx, pggen.ResolveRulePendingKeyParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), OwnerID: string(principal), ID: id})
+	if err != nil {
+		return domain.RuleKey{}, rulePendingNotFound(err)
+	}
+	return domain.RuleKey{ID: row.ID, Folder: row.FolderPath}, nil
+}
+
+func rulePendingNotFound(err error) error {
+	if err == sql.ErrNoRows || err == pgx.ErrNoRows {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
+// ResolveRuleApprovalKey reads only pinned key-id metadata, then resolves the
+// first key inside the same chain. Policy eligibility and all-key authority
+// must still be proved before rendering details or changing the request.
+func (r *Resolver) ResolveRuleApprovalKey(ctx context.Context, scope domain.Scope, id string) (domain.RuleKey, error) {
+	var encoded string
+	if r.sq != nil {
+		value, err := r.sq.ResolveRuleApprovalKeys(ctx, sqlitegen.ResolveRuleApprovalKeysParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), ID: id})
+		if err != nil {
+			if rulePendingNotFound(err) == domain.ErrNotFound {
+				return r.refuseRuleApprovalKey(ctx, scope)
+			}
+			return domain.RuleKey{}, rulePendingNotFound(err)
+		}
+		encoded = value
+	} else {
+		value, err := r.pg.ResolveRuleApprovalKeys(ctx, pggen.ResolveRuleApprovalKeysParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), ID: id})
+		if err != nil {
+			if rulePendingNotFound(err) == domain.ErrNotFound {
+				return r.refuseRuleApprovalKey(ctx, scope)
+			}
+			return domain.RuleKey{}, rulePendingNotFound(err)
+		}
+		encoded = value
+	}
+	var ids []string
+	if json.Unmarshal([]byte(encoded), &ids) != nil || len(ids) == 0 {
+		return r.refuseRuleApprovalKey(ctx, scope)
+	}
+	for i, keyID := range ids {
+		if keyID == "" || slices.Contains(ids[:i], keyID) {
+			return r.refuseRuleApprovalKey(ctx, scope)
+		}
+	}
+	return r.ResolveRuleKey(ctx, string(scope.Org), string(scope.Project), ids[0], "")
+}
+
+func (r *Resolver) refuseRuleApprovalKey(ctx context.Context, scope domain.Scope) (domain.RuleKey, error) {
+	// Match the metadata-plus-key work of an existing inaccessible request.
+	// The decoy result never becomes authority, even if an imported database
+	// happens to contain that identifier.
+	_, err := r.ResolveRuleKey(ctx, string(scope.Org), string(scope.Project), "approval-no-key", "")
+	if err != nil && rulePendingNotFound(err) != domain.ErrNotFound {
+		return domain.RuleKey{}, err
+	}
+	return domain.RuleKey{}, domain.ErrNotFound
 }

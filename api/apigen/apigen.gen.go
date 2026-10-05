@@ -5899,10 +5899,11 @@ type CreateProjectRequest struct {
 // CreateRuleRequest defines model for CreateRuleRequest.
 type CreateRuleRequest struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
-	// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+	// ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+	// `publish` and `manage-members` accept key selectors. Member management
+	// delegates only within its selector and the caller's held capabilities.
 	// `manage-identities`, `manage-adapters` and `project-settings` need a
-	// whole project. `manage-members` is stored but grants nothing until
-	// delegation containment exists.
+	// whole project.
 	Capability RuleCapability `json:"capability"`
 
 	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
@@ -9111,6 +9112,15 @@ type RenewLeaseRequest struct {
 	MaxTtlSeconds *int64 `json:"max_ttl_seconds,omitempty"`
 }
 
+// ReplaceRulesRequest defines model for ReplaceRulesRequest.
+type ReplaceRulesRequest struct {
+	Create []CreateRuleRequest `json:"create"`
+
+	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
+	Principal ID   `json:"principal"`
+	Revoke    []ID `json:"revoke"`
+}
+
 // ResumeAdapterMoveRequest defines model for ResumeAdapterMoveRequest.
 type ResumeAdapterMoveRequest struct {
 	union json.RawMessage
@@ -9494,10 +9504,11 @@ type RotateSSHCARequest struct {
 // Rule defines model for Rule.
 type Rule struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
-	// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+	// ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+	// `publish` and `manage-members` accept key selectors. Member management
+	// delegates only within its selector and the caller's held capabilities.
 	// `manage-identities`, `manage-adapters` and `project-settings` need a
-	// whole project. `manage-members` is stored but grants nothing until
-	// delegation containment exists.
+	// whole project.
 	Capability RuleCapability `json:"capability"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
@@ -9530,10 +9541,11 @@ type Rule struct {
 type RuleAxisMode string
 
 // RuleCapability The capabilities a member access rule may carry (member-access-rules
-// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+// ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+// `publish` and `manage-members` accept key selectors. Member management
+// delegates only within its selector and the caller's held capabilities.
 // `manage-identities`, `manage-adapters` and `project-settings` need a
-// whole project. `manage-members` is stored but grants nothing until
-// delegation containment exists.
+// whole project.
 type RuleCapability string
 
 // RuleEnvironmentAxis defines model for RuleEnvironmentAxis.
@@ -11268,10 +11280,11 @@ type WhoAmI struct {
 // WideningGainer defines model for WideningGainer.
 type WideningGainer struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
-	// ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+	// ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+	// `publish` and `manage-members` accept key selectors. Member management
+	// delegates only within its selector and the caller's held capabilities.
 	// `manage-identities`, `manage-adapters` and `project-settings` need a
-	// whole project. `manage-members` is stored but grants nothing until
-	// delegation containment exists.
+	// whole project.
 	Capability RuleCapability `json:"capability"`
 
 	// Environments The environment ids newly reached; empty for a project-wide capability only.
@@ -12776,6 +12789,9 @@ type SetOrgRetentionJSONRequestBody = RetentionPolicy
 // CreateRuleJSONRequestBody defines body for CreateRule for application/json ContentType.
 type CreateRuleJSONRequestBody = CreateRuleRequest
 
+// ReplaceRulesJSONRequestBody defines body for ReplaceRules for application/json ContentType.
+type ReplaceRulesJSONRequestBody = ReplaceRulesRequest
+
 // CreateScimBindingJSONRequestBody defines body for CreateScimBinding for application/json ContentType.
 type CreateScimBindingJSONRequestBody = CreateScimBindingRequest
 
@@ -14265,6 +14281,9 @@ type ServerInterface interface {
 	// CreateRule Create one member access rule.
 	// (POST /api/v1/orgs/{org}/rules)
 	CreateRule(w http.ResponseWriter, r *http.Request, org OrgID)
+	// ReplaceRules Atomically change a person's access rule card.
+	// (POST /api/v1/orgs/{org}/rules/replace)
+	ReplaceRules(w http.ResponseWriter, r *http.Request, org OrgID)
 	// RevokeRule Revoke one member access rule.
 	// (DELETE /api/v1/orgs/{org}/rules/{rule})
 	RevokeRule(w http.ResponseWriter, r *http.Request, org OrgID, rule RuleID)
@@ -16431,6 +16450,12 @@ func (_ Unimplemented) ListOrgRules(w http.ResponseWriter, r *http.Request, org 
 // CreateRule Create one member access rule.
 // (POST /api/v1/orgs/{org}/rules)
 func (_ Unimplemented) CreateRule(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReplaceRules Atomically change a person's access rule card.
+// (POST /api/v1/orgs/{org}/rules/replace)
+func (_ Unimplemented) ReplaceRules(w http.ResponseWriter, r *http.Request, org OrgID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -29448,6 +29473,32 @@ func (siw *ServerInterfaceWrapper) CreateRule(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ReplaceRules operation middleware
+func (siw *ServerInterfaceWrapper) ReplaceRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReplaceRules(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokeRule operation middleware
 func (siw *ServerInterfaceWrapper) RevokeRule(w http.ResponseWriter, r *http.Request) {
 
@@ -31194,6 +31245,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules", wrapper.CreateRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/rules/replace", wrapper.ReplaceRules)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/rules/{rule}", wrapper.RevokeRule)
@@ -70606,6 +70660,143 @@ func (response CreateRule503JSONResponse) VisitCreateRuleResponse(w http.Respons
 	return err
 }
 
+type ReplaceRulesRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *ReplaceRulesJSONRequestBody
+}
+
+type ReplaceRulesResponseObject interface {
+	VisitReplaceRulesResponse(w http.ResponseWriter) error
+}
+
+type ReplaceRules200JSONResponse RuleList
+
+func (response ReplaceRules200JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReplaceRules400JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReplaceRules401JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReplaceRules403JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReplaceRules404JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReplaceRules409JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ReplaceRules429JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReplaceRules500JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplaceRules503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReplaceRules503JSONResponse) VisitReplaceRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeRuleRequestObject struct {
 	Org  OrgID  `json:"org"`
 	Rule RuleID `json:"rule"`
@@ -75625,6 +75816,9 @@ type StrictServerInterface interface {
 	// CreateRule Create one member access rule.
 	// (POST /api/v1/orgs/{org}/rules)
 	CreateRule(ctx context.Context, request CreateRuleRequestObject) (CreateRuleResponseObject, error)
+	// ReplaceRules Atomically change a person's access rule card.
+	// (POST /api/v1/orgs/{org}/rules/replace)
+	ReplaceRules(ctx context.Context, request ReplaceRulesRequestObject) (ReplaceRulesResponseObject, error)
 	// RevokeRule Revoke one member access rule.
 	// (DELETE /api/v1/orgs/{org}/rules/{rule})
 	RevokeRule(ctx context.Context, request RevokeRuleRequestObject) (RevokeRuleResponseObject, error)
@@ -86052,6 +86246,39 @@ func (sh *strictHandler) CreateRule(w http.ResponseWriter, r *http.Request, org 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateRuleResponseObject); ok {
 		if err := validResponse.VisitCreateRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReplaceRules operation middleware
+func (sh *strictHandler) ReplaceRules(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request ReplaceRulesRequestObject
+
+	request.Org = org
+
+	var body ReplaceRulesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReplaceRules(ctx, request.(ReplaceRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReplaceRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReplaceRulesResponseObject); ok {
+		if err := validResponse.VisitReplaceRulesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

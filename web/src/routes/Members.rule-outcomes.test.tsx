@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { client } from '@hikyo/runtime';
-import { zCreateRuleRequest, zRule } from '@hikyo/zod';
+import { zReplaceRulesRequest, zRule } from '@hikyo/zod';
 import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -73,28 +73,26 @@ beforeEach(() => {
       return json({ items: rows, count: rows.length });
     }
     if (request.method === 'GET' && path.endsWith('/keys')) return json({ items: [], count: 0, schema_revision: 0 });
-    if (request.method === 'POST' && path.endsWith('/rules')) {
-      const body = zCreateRuleRequest.parse(await request.json());
-      const id = ruleIDs[createCount++];
-      if (id === undefined) throw new Error('Unexpected duplicate create.');
-      const created = row(id, body.capability);
-      rows.push(created); // The server has committed before the response fails.
-      if (createCount === 2 && createFailure === 'lost') throw new TypeError('Response lost after commit.');
-      if (createCount === 2 && createFailure === 'malformed') return json({ capability: created.capability }, 201);
-      return json(created, 201);
-    }
-    if (request.method === 'DELETE' && path.includes('/rules/')) {
-      const id = path.split('/').at(-1);
-      if (id === undefined) throw new Error('Missing rule ID.');
-      deleted.push(id);
-      if (id === ruleIDs[1] && deleteFailure) {
+    if (request.method === 'POST' && path.endsWith('/rules/replace')) {
+      const body = zReplaceRulesRequest.parse(await request.json());
+      if (body.principal !== member || body.revoke.some((id) => !rows.some((item) => item.id === id))) {
+        return json({ error: 'not_found' }, 404);
+      }
+      if (deleteFailure && body.revoke.length > 0) {
         deleteFailure = false;
         return json({ error: 'unavailable' }, 503);
       }
-      const index = rows.findIndex((item) => item.id === id);
-      if (index === -1) return json({ error: 'not_found' }, 404);
-      rows.splice(index, 1);
-      return new Response(null, { status: 204 });
+      const created = body.create.map((add) => {
+        const id = ruleIDs[createCount++];
+        if (id === undefined) throw new Error('Unexpected duplicate create.');
+        return { ...row(id, add.capability), where: add.where };
+      });
+      deleted.push(...body.revoke);
+      rows = [...rows.filter((item) => !body.revoke.includes(item.id)), ...created];
+      // The complete transaction commits before its response is lost or invalid.
+      if (createFailure === 'lost') throw new TypeError('Response lost after commit.');
+      if (createFailure === 'malformed') return json({ items: [{ capability: 'read' }], count: 1 });
+      return json({ items: created, count: created.length });
     }
     throw new Error(`Unexpected request: ${request.method} ${path}`);
   }));
@@ -132,14 +130,14 @@ for (const failure of createFailures) {
       await click(view.container, 'Save');
       await settleTask();
       expect(createCount).toBe(2);
-      expect(rows.map((item) => item.id)).toEqual([ruleIDs[1]]);
-      expect(deleted).toEqual([ruleIDs[0]]);
+      expect(rows.map((item) => item.id)).toEqual(ruleIDs);
+      expect(deleted).toEqual([]);
       expect(listingCount).toBeGreaterThan(1);
       expect(view.container.querySelector('dialog')).toBeNull();
       expect(view.container.textContent).not.toContain('Nothing changed');
       expect(view.container.textContent).toContain('could not be confirmed');
       expect(view.container.querySelector('#members-rules')?.textContent).toContain('Reveal');
-      await click(view.container, 'Edit');
+      await click(view.container, 'Edit rule');
       expect(view.container.querySelector('dialog')?.textContent).toContain('Edit rule');
       // Reopening reads the committed permission, not the old two-create draft.
       await click(view.container, 'Save');
@@ -148,22 +146,22 @@ for (const failure of createFailures) {
   });
 }
 
-it('closes a partially removed grouped rule and reopening removes only the remaining authoritative ID', async () => {
+it('closes a refused atomic removal and reopening retries the complete authoritative card', async () => {
   rows = [row(ruleIDs[0], 'read'), row(ruleIDs[1], 'reveal')];
   deleteFailure = true;
   const view = await renderMembers();
   try {
     await settleTask();
-    await click(view.container, 'Edit');
+    await click(view.container, 'Edit rule');
     await click(view.container, 'Remove rule');
-    expect(rows.map((item) => item.id)).toEqual([ruleIDs[1]]);
-    expect(deleted).toEqual(ruleIDs);
+    expect(rows.map((item) => item.id)).toEqual(ruleIDs);
+    expect(deleted).toEqual([]);
     expect(view.container.querySelector('dialog')).toBeNull();
-    expect(view.container.textContent).toContain('1 rule part was confirmed removed');
+    expect(view.container.textContent).toContain('atomic change could not be confirmed');
     expect(listingCount).toBeGreaterThan(1);
-    await click(view.container, 'Edit');
+    await click(view.container, 'Edit rule');
     await click(view.container, 'Remove rule');
-    expect(deleted).toEqual([ruleIDs[0], ruleIDs[1], ruleIDs[1]]);
+    expect(deleted).toEqual(ruleIDs);
     expect(rows).toEqual([]);
     expect(view.container.querySelector('dialog')).toBeNull();
   } finally { await view.unmount(); }
@@ -189,7 +187,7 @@ for (const change of successfulChanges) {
         releaseListing();
       });
       if (change === 'remove') {
-        await click(view.container, 'Edit');
+        await click(view.container, 'Edit rule');
         await click(view.container, 'Remove rule');
         expect(rows).toEqual([]);
         expect(deleted).toEqual(ruleIDs);
@@ -222,7 +220,7 @@ it('closes a committed-create editor when the post-write session refresh cannot 
     expect(view.container.textContent).not.toContain('Nothing changed');
     expect(view.container.textContent).not.toContain('Added a rule for');
     expect(listingCount).toBeGreaterThan(1);
-    expect([...view.container.querySelectorAll('#members-rules button')].map((button) => button.textContent)).toContain('Edit rule 1 of Dana');
+    expect([...view.container.querySelectorAll('#members-rules [data-rule-action]')].map((button) => button.textContent)).toContain('Edit rule 1 of Dana');
   } finally { await view.unmount(); }
 });
 
@@ -234,15 +232,15 @@ it('does not expose stale edit actions while the authoritative listing is still 
   try {
     await settleTask();
     listingWait = new Promise<void>((resolve) => { release = resolve; });
-    await click(view.container, 'Edit');
+    await click(view.container, 'Edit rule');
     await click(view.container, 'Remove rule');
-    expect([...view.container.querySelectorAll('#members-rules button')]).toEqual([]);
+    expect([...view.container.querySelectorAll('#members-rules [data-rule-action]')]).toEqual([]);
     expect([...view.container.querySelectorAll<HTMLButtonElement>('dialog .dialog__actions button')].every((button) => button.disabled)).toBe(true);
     await act(async () => release());
     await settleTask();
     expect(view.container.querySelector('dialog')).toBeNull();
-    expect(rows.map((item) => item.id)).toEqual([ruleIDs[1]]);
-    await click(view.container, 'Edit');
+    expect(rows.map((item) => item.id)).toEqual(ruleIDs);
+    await click(view.container, 'Edit rule');
   } finally {
     release();
     await view.unmount();
@@ -259,7 +257,7 @@ it('keeps rule actions unavailable when the authoritative post-write listing is 
     await click(view.container, 'Save');
     expect(createCount).toBe(1);
     expect(view.container.querySelector('dialog')).toBeNull();
-    expect([...view.container.querySelectorAll('#members-rules button')]).toEqual([]);
+    expect([...view.container.querySelectorAll('#members-rules [data-rule-action]')]).toEqual([]);
     expect(view.container.textContent).toContain('current rules or session could not be confirmed');
     expect(view.container.textContent).not.toContain('Added a rule for');
   } finally { await view.unmount(); }

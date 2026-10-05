@@ -20,8 +20,8 @@ import (
 // A rule is stored whole and never modified in place: an edit is a revoke
 // plus a create, so the session invalidation is exactly the grant surface's.
 // Rules are human-only; machines keep their legacy grants and allowlists.
-// Only authorize() reads rules. Every other predicate stays blind to them and
-// therefore conservative.
+// Delegation checks run at the authorization chokepoint against the whole
+// selector; ordinary scope-wide grant operations remain blind to management rules.
 
 var (
 	// ErrRuleMachine refuses a rule for a machine principal. The machine
@@ -174,75 +174,16 @@ type RuleSpec struct {
 	Where      domain.Where
 }
 
-// Create writes one rule. The grantor must hold legacy manage-members on
-// every project the rule names; a project-scope member manager may grant only
-// a capability it holds (as a grant) on each of those whole projects. Rules
-// never satisfy manage-members, so rule-based member management grants
-// nothing and never counts in the lockout census.
+// Create writes one rule. Manage access must cover its complete selector,
+// and the grantor must hold the delegated capability throughout that selector.
+// Existing org- and instance-scope managers retain the grant-unheld exception.
 func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleView, error) {
-	rule := domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
-	if err := rule.Validate(); err != nil {
-		return RuleView{}, err
-	}
-	for _, items := range spec.Where.Keys {
-		for _, it := range items {
-			if it.IsFolder {
-				if err := checkKeyFolderPath(it.Folder); err != nil {
-					return RuleView{}, err
-				}
-			}
-		}
-	}
 	var out RuleView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
-		first := domain.Scope{Org: spec.Org, Project: spec.Where.Projects[0]}
-		caller, p, err := authorize(ctx, az, actor, authz.OpRuleCreate, first, now)
+		rule, caller, p, unheld, err := prepareRuleCreate(ctx, az, actor, spec, now)
 		if err != nil {
 			return err
-		}
-		for _, project := range spec.Where.Projects[1:] {
-			if _, err := az.Authorize(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}); err != nil {
-				return err
-			}
-		}
-		if err := az.LockTargetPrincipal(ctx, spec.Target); err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return ErrUnknownPrincipal
-			}
-			return err
-		}
-		class, err := az.PrincipalClass(ctx, spec.Target)
-		if errors.Is(err, domain.ErrNotFound) {
-			return ErrUnknownPrincipal
-		}
-		if err != nil {
-			return err
-		}
-		if class != domain.ClassHuman {
-			return ErrRuleMachine
-		}
-		if err := checkRuleReferences(ctx, az, rule); err != nil {
-			return err
-		}
-		// The grantor bound, on legacy grants only (rules are invisible here):
-		// org- or instance-scope manage-members may grant what it does not
-		// hold; project-scope manage-members only what it holds as a grant on
-		// the whole project, which is at least the rule's reach there.
-		grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
-		if err != nil {
-			return err
-		}
-		unheld := false
-		for _, project := range spec.Where.Projects {
-			scope := domain.Scope{Org: spec.Org, Project: project}
-			if holds(grantorGrants, spec.Capability, scope) {
-				continue
-			}
-			if !mayGrantUnheld(grantorGrants, scope) {
-				return ErrGrantorLacksCapability
-			}
-			unheld = true
 		}
 		existing, err := az.RuleIDsForOrg(ctx, spec.Org)
 		if err != nil {
@@ -277,6 +218,74 @@ func (s *Rules) Create(ctx context.Context, actor Actor, spec RuleSpec) (RuleVie
 		return r.Audit().InsertTenant(ctx, p, ev)
 	})
 	return out, err
+}
+
+// prepareRuleCreate validates authority before any rule or session mutation.
+func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor, spec RuleSpec, now time.Time) (rule domain.Rule, caller authz.Identity, proof authz.Proof, unheld bool, err error) {
+	rule = domain.Rule{Principal: spec.Target, Capability: spec.Capability, Org: spec.Org, Where: spec.Where}
+	if err := rule.Validate(); err != nil {
+		return rule, caller, proof, unheld, err
+	}
+	for _, items := range spec.Where.Keys {
+		for _, it := range items {
+			if it.IsFolder {
+				if err := checkKeyFolderPath(it.Folder); err != nil {
+					return rule, caller, proof, unheld, err
+				}
+			}
+		}
+	}
+	first := domain.Scope{Org: spec.Org, Project: spec.Where.Projects[0]}
+	caller, proof, err = authorizeRule(ctx, az, actor, authz.OpRuleCreate, first, rule, now)
+	if err != nil {
+		return rule, caller, proof, unheld, err
+	}
+	for _, project := range spec.Where.Projects[1:] {
+		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleCreate, domain.Scope{Org: spec.Org, Project: project}, rule); err != nil {
+			return rule, caller, proof, unheld, err
+		}
+	}
+	if err := az.LockTargetPrincipal(ctx, spec.Target); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return rule, caller, proof, unheld, ErrUnknownPrincipal
+		}
+		return rule, caller, proof, unheld, err
+	}
+	class, err := az.PrincipalClass(ctx, spec.Target)
+	if errors.Is(err, domain.ErrNotFound) {
+		return rule, caller, proof, unheld, ErrUnknownPrincipal
+	}
+	if err != nil {
+		return rule, caller, proof, unheld, err
+	}
+	if class != domain.ClassHuman {
+		return rule, caller, proof, unheld, ErrRuleMachine
+	}
+	if err := checkRuleReferences(ctx, az, rule); err != nil {
+		return rule, caller, proof, unheld, err
+	}
+	// Management and capability reach are independent. Only existing org-
+	// and instance-scope managers retain the grant-unheld exception.
+	grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
+	if err != nil {
+		return rule, caller, proof, unheld, err
+	}
+	unheld = false
+	for _, project := range spec.Where.Projects {
+		scope := domain.Scope{Org: spec.Org, Project: project}
+		held, err := az.RuleCapabilityHeld(ctx, caller, rule, project)
+		if err != nil {
+			return rule, caller, proof, unheld, err
+		}
+		if held {
+			continue
+		}
+		if !mayGrantUnheld(grantorGrants, scope) {
+			return rule, caller, proof, unheld, ErrGrantorLacksCapability
+		}
+		unheld = true
+	}
+	return
 }
 
 // RuleView is one rule on the listing surface. On a project listing Where
@@ -317,7 +326,18 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 	}
 	var out []RuleView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, op, scope, s.now())
+		var caller authz.Identity
+		var p authz.Proof
+		var err error
+		if level == domain.LevelProject {
+			caller, err = actor.resolve(ctx, az, s.now())
+			if err == nil {
+				az.SetClock(s.now())
+				p, err = az.AuthorizeRuleList(ctx, caller, scope)
+			}
+		} else {
+			caller, p, err = authorize(ctx, az, actor, op, scope, s.now())
+		}
 		if err != nil {
 			return err
 		}
@@ -333,12 +353,21 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		names := newPrincipalNames()
 		out = make([]RuleView, 0, len(lines))
 		for _, line := range lines {
+			where := whereFromItems(line.Items)
+			where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
+			if level == domain.LevelProject {
+				manageable, err := az.RuleManageable(ctx, caller, domain.Rule{Org: scope.Org, Capability: line.Capability, Where: where}, scope.Project)
+				if err != nil {
+					return err
+				}
+				if !manageable {
+					continue
+				}
+			}
 			name, err := names.get(ctx, az, line.Principal)
 			if err != nil {
 				return err
 			}
-			where := whereFromItems(line.Items)
-			where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
 			out = append(out, RuleView{
 				ID: line.ID, Principal: line.Principal, PrincipalName: name, Capability: line.Capability,
 				Org: scope.Org, Where: where, OtherProjects: line.OtherProjects,
@@ -385,25 +414,58 @@ func checkRuleReferences(ctx context.Context, az *authz.TxAuthorizer, rule domai
 func (s *Rules) Revoke(ctx context.Context, actor Actor, org domain.OrgID, id string) error {
 	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
-		stored, _, err := az.GetRule(ctx, id)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return err
-		}
-		projects := storedProjects(stored)
-		if err != nil || stored.Rule.Org != org || len(projects) == 0 {
-			return refuseMissingRule(ctx, az, actor, org, id, now)
-		}
-		caller, p, err := authorize(ctx, az, actor, authz.OpRuleRevoke, domain.Scope{Org: org, Project: projects[0]}, now)
+		stored, caller, p, err := prepareRuleRevoke(ctx, az, actor, org, id, now)
 		if err != nil {
 			return err
 		}
-		for _, project := range projects[1:] {
-			if _, err := az.Authorize(ctx, caller, authz.OpRuleRevoke, domain.Scope{Org: org, Project: project}); err != nil {
-				return err
-			}
-		}
 		return revokeRule(ctx, r, az, p, caller.Principal, stored, "revoked")
 	})
+}
+
+func prepareRuleRevoke(ctx context.Context, az *authz.TxAuthorizer, actor Actor, org domain.OrgID, id string, now time.Time) (stored authz.StoredRule, caller authz.Identity, proof authz.Proof, err error) {
+	var valid bool
+	stored, valid, err = az.GetRule(ctx, id)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return stored, caller, proof, err
+	}
+	projects := storedProjects(stored)
+	if err != nil || stored.Rule.Org != org || len(projects) == 0 {
+		return stored, caller, proof, refuseMissingRule(ctx, az, actor, org, id, now)
+	}
+	if !valid {
+		// Corrupt/pruned rows have no evaluable selector. Preserve cleanup
+		// for scope-wide managers without inventing narrow authority.
+		caller, proof, err = authorize(ctx, az, actor, authz.OpRuleRevoke, domain.Scope{Org: org, Project: projects[0]}, now)
+		if err != nil {
+			return
+		}
+		for _, project := range projects[1:] {
+			if _, err = az.Authorize(ctx, caller, authz.OpRuleRevoke, domain.Scope{Org: org, Project: project}); err != nil {
+				return
+			}
+		}
+		return
+	}
+	caller, proof, err = authorizeRule(ctx, az, actor, authz.OpRuleRevoke, domain.Scope{Org: org, Project: projects[0]}, stored.Rule, now)
+	if err != nil {
+		return stored, caller, proof, err
+	}
+	for _, project := range projects[1:] {
+		if _, err := az.AuthorizeRule(ctx, caller, authz.OpRuleRevoke, domain.Scope{Org: org, Project: project}, stored.Rule); err != nil {
+			return stored, caller, proof, err
+		}
+	}
+	return
+}
+
+func authorizeRule(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op authz.Operation, scope domain.Scope, rule domain.Rule, now time.Time) (caller authz.Identity, proof authz.Proof, err error) {
+	caller, err = actor.resolve(ctx, az, now)
+	if err != nil {
+		return
+	}
+	az.SetClock(now)
+	proof, err = az.AuthorizeRule(ctx, caller, op, scope, rule)
+	return
 }
 
 // refuseMissingRule answers a revoke of a rule that does not exist in org
@@ -612,10 +674,9 @@ func releaseOrgRules(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 }
 
 // moveWideningCaps are the capabilities a folder move can widen through a
-// rule: the key-shaped ones (read and pin are never key-narrowed, and
-// manage-members is inert on rules).
+// rule: key-shaped atoms, including selector-bound delegation authority.
 var moveWideningCaps = []domain.Capability{
-	domain.CapEdit, domain.CapPublish, domain.CapReveal, domain.CapRevealHistory, domain.CapDefinitionsEdit,
+	domain.CapEdit, domain.CapPublish, domain.CapReveal, domain.CapRevealHistory, domain.CapDefinitionsEdit, domain.CapManageMembers,
 }
 
 // moveWidening computes, inside the moving transaction, what people gain on
@@ -640,12 +701,19 @@ func moveWidening(ctx context.Context, az *authz.TxAuthorizer, scope domain.Scop
 		key := &domain.RuleKey{ID: keyID, Folder: folder}
 		for _, rule := range rules {
 			for _, c := range moveWideningCaps {
-				if rule.Reaches(c, domain.LevelProject, domain.Scope{Org: scope.Org, Project: scope.Project}, key) {
+				evaluated, capability := rule, c
+				if c == domain.CapManageMembers && rule.Capability == c {
+					// Ordinary operations cannot use management rules. The move
+					// census nevertheless tracks their selector reach as Edit,
+					// which shares exactly the same key/environment shape.
+					evaluated.Capability, capability = domain.CapEdit, domain.CapEdit
+				}
+				if evaluated.Reaches(capability, domain.LevelProject, domain.Scope{Org: scope.Org, Project: scope.Project}, key) {
 					out[atom{rule.Principal, c, ""}] = true
 				}
 				for _, env := range envIDs {
 					s := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(env)}
-					if rule.Reaches(c, domain.LevelEnv, s, key) {
+					if evaluated.Reaches(capability, domain.LevelEnv, s, key) {
 						out[atom{rule.Principal, c, domain.EnvID(env)}] = true
 					}
 				}

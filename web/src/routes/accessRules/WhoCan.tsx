@@ -210,7 +210,7 @@ function AnswerTable({
               <td>
                 <RuleWhere world={world} rule={rule} />
                 {note === undefined ? null : <p className="access-table__note">{note}</p>}
-                {rule.source.kind === 'grant' ? <p className="access-table__note">A grant: change it in the grant list.</p> : null}
+                {rule.source.kind === 'grant' ? <p className="access-table__note">Scope-wide access: edit its card in Members.</p> : null}
               </td>
               <td>
                 {onEditRule !== undefined && rule.source.kind === 'rule' && !rule.source.otherProjects ? (
