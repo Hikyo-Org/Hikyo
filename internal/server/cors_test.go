@@ -36,7 +36,7 @@ func corsHandler(allowed ...string) http.Handler {
 func TestCORSSameOriginMutationSkipsAllowlistConsult(t *testing.T) {
 	const externalOrigin = "https://hikyo.example"
 	workspace := &countingWorkspaceOriginCheck{}
-	h := NewPublic(nil, &API{Workspace: workspace}, nil, PublicOptions{ExternalOrigin: externalOrigin})
+	h := NewPublic(&API{Workspace: workspace}, nil, PublicOptions{ExternalOrigin: externalOrigin})
 
 	req := httptest.NewRequest(http.MethodPost, "/same-origin-mutation", nil)
 	req.Header.Set("Origin", "https://HIKYO.example/")

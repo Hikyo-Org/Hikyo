@@ -21,11 +21,7 @@ func TestUnixControlRefusesSubmissionAndPreservesHistoricalOutcomes(t *testing.T
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	socket := filepath.Join(dir, "updater.sock")
 	journal := &Journal{Path: filepath.Join(dir, "state.json")}
-	runner := &recordingRunner{}
-	control := &ControlServer{
-		Executor: Executor{Config: fixtureConfig(t, BackendFlux), Runner: runner},
-		Journal:  journal,
-	}
+	control := &ControlServer{Journal: journal}
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)
@@ -53,8 +49,8 @@ func TestUnixControlRefusesSubmissionAndPreservesHistoricalOutcomes(t *testing.T
 		t.Fatalf("old queued submission=%v, want disabled", err)
 	}
 	queued, err := client.Job(t.Context(), queuedID)
-	if err != nil || queued.State != StateQueued || len(runner.calls) != 0 {
-		t.Fatalf("queued history changed or executed: job=%+v calls=%v err=%v", queued, runner.calls, err)
+	if err != nil || queued.State != StateQueued {
+		t.Fatalf("queued history changed: job=%+v err=%v", queued, err)
 	}
 	pending, err := client.PendingOutcomes(t.Context())
 	if err != nil {

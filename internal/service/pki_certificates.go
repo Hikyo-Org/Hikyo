@@ -92,9 +92,61 @@ func encodeSANs(resolved pki.Resolved) (string, error) {
 	return string(body), err
 }
 
-func pkiCertificateView(cert store.PKICertificate, issuer store.PKIIssuer) CertificateView {
+func decodeCertificateSANs(cert store.PKICertificate) (certificateSANs, error) {
 	var sans certificateSANs
-	_ = json.Unmarshal([]byte(cert.SANs), &sans)
+	if err := json.Unmarshal([]byte(cert.SANs), &sans); err != nil {
+		return certificateSANs{}, fmt.Errorf("service: certificate %s SAN metadata: %w", cert.ID, err)
+	}
+	return sans, nil
+}
+
+// pkiCertificatePublicView recovers corrupt redundant SAN metadata only from
+// the signed leaf bound to this record's issuer, serial and public key. Reads
+// and fail-safe revocation can still return accurate names; issuance/renewal
+// use the strict metadata decoder so recovery cannot hide settlement errors.
+func pkiCertificatePublicView(cert store.PKICertificate, issuer store.PKIIssuer) (CertificateView, error) {
+	sans, metadataErr := decodeCertificateSANs(cert)
+	if metadataErr == nil {
+		return certificateViewWithSANs(cert, issuer, sans), nil
+	}
+	leaf, err := x509.ParseCertificate(cert.CertificateDER)
+	if err != nil {
+		return CertificateView{}, fmt.Errorf("%w; signed SAN recovery: %v", metadataErr, err)
+	}
+	parent, err := x509.ParseCertificate(issuer.CertificateDER)
+	if err != nil {
+		return CertificateView{}, fmt.Errorf("%w; SAN recovery issuer: %v", metadataErr, err)
+	}
+	if err := leaf.CheckSignatureFrom(parent); err != nil {
+		return CertificateView{}, fmt.Errorf("%w; SAN recovery signature: %v", metadataErr, err)
+	}
+	serial, err := pki.ParseSerialHex(cert.Serial)
+	if err != nil || leaf.SerialNumber.Cmp(serial) != 0 {
+		return CertificateView{}, fmt.Errorf("%w; SAN recovery serial mismatch", metadataErr)
+	}
+	fingerprint, err := pki.KeyFingerprint(leaf.PublicKey)
+	if err != nil || fingerprint != cert.KeyFingerprint {
+		return CertificateView{}, fmt.Errorf("%w; SAN recovery public key mismatch", metadataErr)
+	}
+	sans = certificateSANs{DNS: leaf.DNSNames}
+	for _, ip := range leaf.IPAddresses {
+		sans.IP = append(sans.IP, ip.String())
+	}
+	for _, uri := range leaf.URIs {
+		sans.URI = append(sans.URI, uri.String())
+	}
+	return certificateViewWithSANs(cert, issuer, sans), nil
+}
+
+func pkiCertificateView(cert store.PKICertificate, issuer store.PKIIssuer) (CertificateView, error) {
+	sans, err := decodeCertificateSANs(cert)
+	if err != nil {
+		return CertificateView{}, err
+	}
+	return certificateViewWithSANs(cert, issuer, sans), nil
+}
+
+func certificateViewWithSANs(cert store.PKICertificate, issuer store.PKIIssuer, sans certificateSANs) CertificateView {
 	view := CertificateView{
 		ID: cert.ID, EnvironmentID: cert.EnvironmentID, ProfileName: cert.ProfileName, IssuerID: cert.IssuerID,
 		IssuerName: issuer.Name, IssuerVersion: issuer.Version, Serial: cert.Serial, State: cert.State,
@@ -299,8 +351,8 @@ func recordCertificateOutcome(ctx context.Context, r store.Repos, proof authz.Pr
 // or caller gate, or lost issuer fence records `failed`. Authorization and
 // transaction errors are returned and can leave the row `issuing` for the
 // worker to mark `unknown`. The boolean reports issuance only when err is nil.
-func (s *PKI) settleLeaf(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope, plan leafPlan, der []byte, kind string, generated bool, onSuccess, onFailure func(context.Context, store.Repos, authz.Proof) error) (store.PKICertificate, bool, error) {
-	var settled store.PKICertificate
+func (s *PKI) settleLeaf(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope, plan leafPlan, der []byte, kind string, generated bool, onSuccess, onFailure func(context.Context, store.Repos, authz.Proof) error) (CertificateView, bool, error) {
+	var settled CertificateView
 	var issued bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := store.CanonTime(s.now())
@@ -364,7 +416,13 @@ func (s *PKI) settleLeaf(ctx context.Context, actor Actor, op authz.Operation, s
 		// Read the settled row in this SAME transaction, so the response
 		// never depends on a fallible post-commit read that could lose a
 		// display-once key after the certificate is already live.
-		settled, err = r.PKI().GetCertificate(ctx, proof, plan.certID)
+		cert, err := r.PKI().GetCertificate(ctx, proof, plan.certID)
+		if err != nil {
+			return err
+		}
+		// Decode before commit: corrupt metadata aborts settlement, so no
+		// certificate goes live after its display-once key is discarded.
+		settled, err = pkiCertificateView(cert, plan.issuer)
 		return err
 	})
 	return settled, issued, err
@@ -486,7 +544,7 @@ func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Sc
 	if !issued {
 		return CertificateIssueResult{}, ErrPKISigning
 	}
-	result := CertificateIssueResult{Certificate: pkiCertificateView(settled, plan.issuer)}
+	result := CertificateIssueResult{Certificate: settled}
 	if generatedKey != nil {
 		pkcs8, err := pki.MarshalPrivateKey(generatedKey)
 		if err != nil {
@@ -535,7 +593,10 @@ func (s *PKI) RenewCertificate(ctx context.Context, actor Actor, scope domain.Sc
 			if err != nil {
 				return err
 			}
-			view := pkiCertificateView(next, issuer)
+			view, err := pkiCertificateView(next, issuer)
+			if err != nil {
+				return err
+			}
 			successor = &view
 			return nil
 		}
@@ -563,8 +624,8 @@ func (s *PKI) RenewCertificate(ctx context.Context, actor Actor, scope domain.Sc
 		if err != nil {
 			return err
 		}
-		var sans certificateSANs
-		if err := json.Unmarshal([]byte(current.SANs), &sans); err != nil {
+		sans, err := decodeCertificateSANs(current)
+		if err != nil {
 			return err
 		}
 		// X.509 and database timestamps may lose subsecond precision. Keep the
@@ -633,12 +694,14 @@ func (s *PKI) RenewCertificate(ctx context.Context, actor Actor, scope domain.Sc
 	if !issued {
 		return CertificateView{}, ErrPKISigning
 	}
-	return pkiCertificateView(settled, plan.issuer), nil
+	return settled, nil
 }
 
 // RevokeCertificate revokes a leaf with a caller-chosen RFC 5280 reason. It
 // never re-checks that the profile still permits the names: revocation is the
 // fail-safe direction. Revoking a revoked certificate returns it unchanged.
+// If neither SAN metadata nor its signed leaf can render the response, the
+// authorized revocation still commits; the returned error says it is revoked.
 func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.Scope, certificateID, reason string) (CertificateView, error) {
 	if err := envScopeRequired(scope, "certificate revoke"); err != nil {
 		return CertificateView{}, err
@@ -648,7 +711,9 @@ func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 		return CertificateView{}, pkiInvalid(err)
 	}
 	var out CertificateView
+	var viewErr error
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		viewErr = nil
 		now := store.CanonTime(s.now())
 		caller, proof, err := authorize(ctx, az, actor, authz.OpCertificateRevoke, scope, now)
 		if err != nil {
@@ -663,7 +728,7 @@ func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 			return err
 		}
 		if current.State == "revoked" {
-			out = pkiCertificateView(current, issuer)
+			out, viewErr = pkiCertificatePublicView(current, issuer)
 			return nil
 		}
 		revoked, err := r.PKI().RevokeCertificate(ctx, proof, certificateID, string(parsed), now)
@@ -680,10 +745,17 @@ func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 		if err != nil {
 			return err
 		}
-		out = pkiCertificateView(updated, issuer)
+		// Display corruption must not undo fail-safe revocation or its audit.
+		out, viewErr = pkiCertificatePublicView(updated, issuer)
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return CertificateView{}, err
+	}
+	if viewErr != nil {
+		return CertificateView{}, fmt.Errorf("service: certificate is revoked, but response metadata unavailable: %w", viewErr)
+	}
+	return out, nil
 }
 
 // ListCertificates returns up to 500 certificates in the authorized
@@ -713,7 +785,11 @@ func (s *PKI) ListCertificates(ctx context.Context, actor Actor, scope domain.Sc
 				}
 				issuers[row.IssuerID] = issuer
 			}
-			out = append(out, pkiCertificateView(row, issuer))
+			view, err := pkiCertificatePublicView(row, issuer)
+			if err != nil {
+				return err
+			}
+			out = append(out, view)
 		}
 		return nil
 	})
@@ -741,8 +817,8 @@ func (s *PKI) ShowCertificate(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return err
 		}
-		out = pkiCertificateView(cert, issuer)
-		return nil
+		out, err = pkiCertificatePublicView(cert, issuer)
+		return err
 	})
 	return out, err
 }

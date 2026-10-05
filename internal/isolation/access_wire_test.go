@@ -103,7 +103,7 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 		wireEnv, org.ID, wireProject, ts))
 
 	workspace := &service.Workspace{DB: db, Version: "wire"}
-	srv := httptest.NewServer(server.New(&service.System{DB: db}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth:         auth,
 		Orgs:         orgs,
 		Projects:     &service.Projects{DB: db},

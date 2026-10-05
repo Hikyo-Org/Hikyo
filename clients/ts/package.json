@@ -6,16 +6,20 @@
   "packageManager": "pnpm@11.24.0",
   "description": "Generated TypeScript client and Zod schemas for the Hikyo API. Generated from ../../api/openapi.yaml - never edited by hand.",
   "scripts": {
-    "generate": "openapi-ts && node --experimental-strip-types scripts/generate-operations.ts",
+    "generate": "openapi-ts && node --experimental-strip-types scripts/install-json-parser.ts && node --experimental-strip-types scripts/generate-operations.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types 'src/*.test.ts'",
     "verify": "pnpm run generate && tsc --noEmit && node --test --experimental-strip-types 'src/*.test.ts'"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.97.3",
-    "@typescript/native": "npm:typescript@7.0.2",
     "@types/node": "^26.2.0",
+    "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "zod": "4.4.3"
+  },
+  "dependencies": {
+    "@ungap/raw-json": "0.4.4",
+    "bignumber.js": "9.3.1"
   }
 }

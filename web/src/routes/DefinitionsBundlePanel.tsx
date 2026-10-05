@@ -112,7 +112,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
       action !== undefined
     )
       setScan({ findings: error.findings, action });
-    setFailure(bundleRefusalText(error));
+    setFailure(bundleRefusalText(error, action === 'apply' ? 'apply' : 'check'));
   };
   const selectFile = async (file: File | undefined) => {
     const signal = begin();
@@ -220,7 +220,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
       }
       if (confirmWidening.length > 0) {
         setWidening((current) =>
-          current === null ? null : { ...current, failure: bundleRefusalText(error) },
+          current === null ? null : { ...current, failure: bundleRefusalText(error, 'apply') },
         );
         return;
       }

@@ -273,3 +273,66 @@ describe('definitions bundle boundary', () => {
     expect(await seen[0]?.text()).toBe(JSON.stringify(bundle));
   });
 });
+
+// Response decoding can fail after the server has already applied the plan.
+it('distinguishes network and contract failures and requires refresh before retrying apply', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+  const networkError = await checkBundle(scope, { format_version: 1, environments: [], key_groups: [], keys: [] }, {}, new AbortController().signal).then(
+    () => null, (error: unknown) => error,
+  );
+  expect(bundleRefusalText(networkError)).toContain('could not be reached');
+  expect(bundleRefusalText(new Error('schema mismatch'))).toContain('cannot understand');
+  const request = vi.fn(async (request: Request) => new Response(
+    JSON.stringify(request.method === 'GET' ? { definitions_source: 'db' } : { malformed: true }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  ));
+  vi.stubGlobal('fetch', request);
+  const error = await applyBundle(scope, plan, false, {}, new AbortController().signal).then(
+    () => null, (error: unknown) => error,
+  );
+  expect(error).toBeInstanceOf(Error);
+  expect(bundleRefusalText(error, 'apply')).toContain('Refresh the project status before retrying');
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+it('preserves documented bad-request details from a real apply refusal without uncertain-result guidance', async () => {
+  const detail = 'unknown key "MISSING_KEY"';
+  const request = vi.fn(async (request: Request) => new Response(
+    JSON.stringify(request.method === 'GET'
+      ? { definitions_source: 'db' }
+      : { error: { code: 'bad_request', message: 'invalid bundle', detail } }),
+    { status: request.method === 'GET' ? 200 : 400, headers: { 'Content-Type': 'application/json' } },
+  ));
+  vi.stubGlobal('fetch', request);
+  const error = await applyBundle(scope, plan, false, {}, new AbortController().signal).then(
+    () => null, (error: unknown) => error,
+  );
+  expect(error).toBeInstanceOf(ApiError);
+  expect(bundleRefusalText(error)).toBe(detail);
+  expect(bundleRefusalText(error, 'apply')).toBe(detail);
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  [400, 'HTTP 400'],
+  [401, 'HTTP 401'],
+  [403, 'definitions-edit'],
+  [404, 'definitions-edit'],
+  [409, 'reconcile'],
+  [429, 'open-plan limit'],
+])('keeps HTTP %i definite refusals actionable in check and apply', (status, guidance) => {
+  for (const phase of ['check', 'apply'] satisfies readonly ('check' | 'apply')[]) {
+    const text = bundleRefusalText(new ApiError(status, 'refused'), phase);
+    expect(text).toContain(guidance);
+    expect(text).not.toContain('uncertain');
+    expect(text).not.toContain('Refresh');
+    expect(bundleRefusalText(new ApiError(status, 'refused', 'specific recovery guidance'), phase))
+      .toBe('specific recovery guidance');
+  }
+});
+
+it('keeps server failure apply results uncertain and requires refresh before retry', () => {
+  expect(bundleRefusalText(new ApiError(500, 'server failed'))).toContain('server error 500');
+  expect(bundleRefusalText(new ApiError(500, 'server failed'), 'apply'))
+    .toContain('Refresh the project status before retrying');
+});

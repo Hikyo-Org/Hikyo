@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestExampleProfilesReferenceShippedExecutableAdapters(t *testing.T) {
+func TestHistoricalExampleProfilesReferenceShippedRefusalAdapters(t *testing.T) {
 	root := filepath.Join("..", "..", "install", "updater")
 	for _, backend := range []Backend{BackendFlux, BackendCompose, BackendSystemd} {
 		profilePath := filepath.Join(root, string(backend)+".json.example")
@@ -17,18 +17,22 @@ func TestExampleProfilesReferenceShippedExecutableAdapters(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var config Config
-		if err := json.Unmarshal(raw, &config); err != nil {
+		var profile struct {
+			Backend  Backend            `json:"backend"`
+			Commands map[string]Command `json:"commands"`
+		}
+		if err := json.Unmarshal(raw, &profile); err != nil {
 			t.Fatal(err)
 		}
-		if err := config.Validate(); err != nil {
-			t.Fatal(err)
+		if profile.Backend != backend || len(profile.Commands) != 6 {
+			t.Fatalf("%s does not describe its historical backend and six phases", profilePath)
 		}
 		adapter := "hikyo-update-" + string(backend)
-		for _, command := range []Command{
-			config.Commands.Plan, config.Commands.Backup, config.Commands.Verify,
-			config.Commands.Apply, config.Commands.Health, config.Commands.Rollback,
-		} {
+		for _, phase := range []string{"plan", "backup", "verify", "apply", "health", "rollback"} {
+			command, present := profile.Commands[phase]
+			if !present {
+				t.Fatalf("%s is missing historical phase %s", profilePath, phase)
+			}
 			if filepath.Base(command.Name) != adapter {
 				t.Fatalf("%s references %q, want shipped %s", profilePath, command.Name, adapter)
 			}

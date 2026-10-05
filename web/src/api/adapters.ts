@@ -42,6 +42,7 @@ import type { z } from 'zod';
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed } from './client.ts';
+import { requestInteger } from './requestInteger.ts';
 
 export type Adapter = z.infer<typeof zAdapter>;
 export type AdapterList = z.infer<typeof zAdapterList>;
@@ -294,7 +295,7 @@ function updateBody(input: UpdateAdapterTargetInput): UpdateAdapterTargetRequest
     ...(input.input.variable_protected === undefined ? {} : { variable_protected: input.input.variable_protected }),
     ...(input.input.variable_hidden === undefined ? {} : { variable_hidden: input.input.variable_hidden }),
     ...(input.input.variable_expand === undefined ? {} : { variable_expand: input.input.variable_expand }),
-    expected_generation: Number(input.expectedGeneration),
+    expected_generation: requestInteger(input.expectedGeneration, 'expected generation', 1n),
   };
 }
 
@@ -362,9 +363,9 @@ export function useAdoptAdapterNames(ref: ProjectRef) {
         path: { ...ref, target: input.target },
         body: {
           artifact_id: input.artifact.id,
-          target_generation: Number(input.targetGeneration),
-          destination_id: Number(input.artifact.destination_id),
-          repository_id: Number(input.artifact.repository_id),
+          target_generation: requestInteger(input.targetGeneration, 'target generation', 1n),
+          destination_id: requestInteger(input.artifact.destination_id, 'destination id', 1n),
+          repository_id: requestInteger(input.artifact.repository_id, 'repository id', 0n),
           entries: [...input.entries],
         },
       }),

@@ -1,3 +1,4 @@
+import { blockSessionEpoch, settleSessionEpoch } from './sessionEpoch.ts';
 import { getMetaOp, logoutOp } from '@hikyo/operations';
 import { createClient, createConfig } from '@hikyo/runtime-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -261,4 +262,19 @@ describe('transportRefusalText', () => {
       'The passkey prompt was dismissed or timed out. Nothing was sent.',
     );
   });
+});
+
+it('refuses an in-flight bodyless response after the browser session changes', async () => {
+  let release: ((response: Response) => void) | undefined;
+  const response = new Promise<Response>((resolve) => { release = resolve; });
+  vi.spyOn(globalThis, 'fetch').mockReturnValue(response);
+  const pending = ok(logoutOp, transport);
+  await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));
+  blockSessionEpoch();
+  release?.(new Response(null, { status: 204 }));
+  try {
+    await expect(pending).rejects.toThrow('browser session changed');
+  } finally {
+    settleSessionEpoch();
+  }
 });

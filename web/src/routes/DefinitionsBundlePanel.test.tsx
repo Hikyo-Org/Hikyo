@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
+import { createClient, createConfig } from '@hikyo/runtime-core';
 import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
@@ -47,7 +48,8 @@ vi.mock('../api/settings.ts', async (importActual) => {
   };
 });
 
-beforeEach(() => mocks.apply.mockReset());
+beforeEach(() => { mocks.apply.mockReset(); });
+afterEach(() => vi.unstubAllGlobals());
 
 describe('the Git-mode bundle notice', () => {
   it('keeps the normative sentence verbatim with its command names in mono', () => {
@@ -122,6 +124,31 @@ describe('applying a plan whose folder moves widen access', () => {
     await settle();
     return view;
   }
+
+  it('shows refresh-before-retry guidance when the real apply response is malformed', async () => {
+    const actual = await vi.importActual<typeof import('../api/definitions-bundle.ts')>('../api/definitions-bundle.ts');
+    const seen: Request[] = [];
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      seen.push(request);
+      return new Response(
+        JSON.stringify(request.method === 'GET' ? { definitions_source: 'db' } : { malformed: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', request);
+    const transport = { client: createClient(createConfig({ baseUrl: 'https://hikyo.test', fetch: request })) };
+    mocks.apply.mockImplementation((...args: Parameters<typeof actual.applyBundle>) => {
+      const [ref, plan, allowDelete, , signal, acknowledgements, confirmWidening] = args;
+      return actual.applyBundle(ref, plan, allowDelete, transport, signal, acknowledgements, confirmWidening);
+    });
+    const view = await applyOnce();
+    expect(view.container.textContent).toContain('cannot understand');
+    expect(view.container.textContent).toContain('Refresh the project status before retrying');
+    expect(mocks.apply).toHaveBeenCalledTimes(1);
+    expect(seen.filter((request) => request.method === 'POST')).toHaveLength(1);
+    await view.unmount();
+  });
 
   it('opens the confirmation naming the gainers and resends the plan with confirm_widening', async () => {
     mocks.apply

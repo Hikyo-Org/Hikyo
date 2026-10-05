@@ -417,7 +417,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// B6 library takes the caller's transaction (#55's project-settings knob is
 		// the arriving caller); exercised directly here as it has no operation row.
 		if err := tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-			_, _, e := auth.LowerEffectiveWindow(ctx, az, "env_e2e_window", time.Minute, time.Now())
+			_, _, e := auth.LowerEffectiveWindow(ctx, az, "env_e2e_window", time.Minute)
 			return e
 		}); err != nil {
 			t.Fatalf("lower effective window: %v", err)

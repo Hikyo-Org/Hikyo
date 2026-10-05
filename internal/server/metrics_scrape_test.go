@@ -33,7 +33,7 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
 		Metrics: metrics,
 	}
-	public := httptest.NewServer(server.New(stubReady{}, apiSrv, nil))
+	public := httptest.NewServer(server.New(apiSrv, nil))
 	t.Cleanup(public.Close)
 	operational := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}, metrics))
 	t.Cleanup(operational.Close)

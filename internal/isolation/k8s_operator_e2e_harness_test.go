@@ -283,7 +283,7 @@ func newOpEnv(t *testing.T, restCfg *rest.Config, sch *runtime.Scheme, withFeder
 		api.Delivery = &service.Delivery{DB: db, Keyring: kr, Federation: e.fed, Now: time.Now}
 	}
 
-	srv := httptest.NewTLSServer(server.New(&service.System{DB: db}, api, nil))
+	srv := httptest.NewTLSServer(server.New(api, nil))
 	t.Cleanup(srv.Close)
 	e.server = srv
 	e.caPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})

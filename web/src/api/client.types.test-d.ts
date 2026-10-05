@@ -1,8 +1,8 @@
 import { getMeta } from '@hikyo/client';
-import { getMetaOp, logoutOp } from '@hikyo/operations';
+import { getMetaOp, logoutOp, whoamiOp } from '@hikyo/operations';
 import { zOrg } from '@hikyo/zod';
 
-import { parsed } from './client.ts';
+import { ok, parsed } from './client.ts';
 
 // Compile-time negative fixture for #213: an operation descriptor is the only
 // parser-bearing argument. A caller cannot supply another operation's schema.
@@ -19,3 +19,6 @@ void parsed(spreadForged, {});
 
 // @ts-expect-error bodyless descriptors cannot cross the body-parser seam.
 void parsed(logoutOp, {});
+
+// @ts-expect-error whoami has a response body and cannot bypass schema validation.
+void ok(whoamiOp, {});

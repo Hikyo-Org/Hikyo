@@ -40,7 +40,7 @@ func (s *exhaustedRequestGrantService) Create(ctx context.Context, _ service.Act
 
 func TestAuthenticatedAPIOverflowReturnsUniformRetryAfter(t *testing.T) {
 	budget := service.NewBudget()
-	h := New(nil, &API{RequestBudget: budget, Grants: &exhaustedRequestGrantService{budget: budget}}, nil)
+	h := New(&API{RequestBudget: budget, Grants: &exhaustedRequestGrantService{budget: budget}}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/orgs/org_01900000-0000-7000-8000-000000000001/projects/prj_01900000-0000-7000-8000-000000000002/grants", strings.NewReader(`{"principal":"usr_01900000-0000-7000-8000-000000000003","capability":"read"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer presented-session")

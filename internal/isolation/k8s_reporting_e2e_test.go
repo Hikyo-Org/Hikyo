@@ -232,7 +232,7 @@ func TestK8sReportingBrowser(t *testing.T) {
 	w.browser = httptest.NewUnstartedServer(nil)
 	origin := "https://" + w.browser.Listener.Addr().String()
 	w.delivery = &service.Delivery{DB: w.db, Keyring: kr, Now: w.clock.Now}
-	w.router = server.NewPublic(&service.System{DB: w.db}, &server.API{
+	w.router = server.NewPublic(&server.API{
 		Runtime:      &service.System{DB: w.db},
 		Auth:         auth,
 		Registration: newRegistration(t, service.RegistrationConfig{DB: w.db, Auth: auth}),

@@ -67,7 +67,7 @@ func (s instanceMailStub) Test(_ context.Context, _ service.Actor, to, proof str
 }
 func TestInstanceMailWire(t *testing.T) {
 	var to, proof string
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{Auth: stubAuth{}, Orgs: stubOrgs{}, Mail: instanceMailStub{&to, &proof}}, nil))
+	srv := httptest.NewServer(server.New(&server.API{Auth: stubAuth{}, Orgs: stubOrgs{}, Mail: instanceMailStub{&to, &proof}}, nil))
 	t.Cleanup(srv.Close)
 	response, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/instance/mail", "hik_1_cli_x", nil)
 	if response.StatusCode != 200 || string(payload) != "{\"configured\":true}\n" {
