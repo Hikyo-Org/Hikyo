@@ -28,8 +28,7 @@ func TestSelectedEnvironmentDefinitionAndInitialDraft(t *testing.T) {
 			t.Fatalf("initial value needs Publish: %v", err)
 		}
 		f.create(t, orgAdmin, service.RuleSpec{Target: frank, Capability: domain.CapPublish, Org: orgA, Where: where})
-		draft, err := f.values.Initialize(t.Context(), actor, dev, key.Name, "initial", nil)
-		if err != nil {
+		if _, err := f.values.Initialize(t.Context(), actor, dev, key.Name, "initial", nil); err != nil {
 			t.Fatalf("initial draft without Edit: %v", err)
 		}
 		if _, err := f.values.Initialize(t.Context(), actor, dev, key.Name, "ack replay", nil); err != nil {
@@ -45,7 +44,7 @@ func TestSelectedEnvironmentDefinitionAndInitialDraft(t *testing.T) {
 			t.Fatalf("excluded destination: %v", err)
 		}
 		// Consume the revised version; initialization itself left delivery absent.
-		draft, err = f.values.Initialize(t.Context(), actor, dev, key.Name, "published", nil)
+		draft, err := f.values.Initialize(t.Context(), actor, dev, key.Name, "published", nil)
 		if err != nil {
 			t.Fatal(err)
 		}

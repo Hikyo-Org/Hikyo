@@ -1680,7 +1680,7 @@ func validateSpec(op Operation, spec opSpec) error {
 		// An atom cannot sit deeper than the capability's own deepest grantable
 		// level or the chain the operation addresses. Instance operations address
 		// LevelNone, so this also keeps every InstanceProof formula instance-scoped.
-		if deepest, _ := domain.DeepestLevel(atom.Cap); atom.At > deepest && !(atom.Cap == domain.CapDefinitionsEdit && atom.At == domain.LevelEnv && (op == OpKeySchemaPublishValues || op == OpValueInitialize)) {
+		if deepest, _ := domain.DeepestLevel(atom.Cap); atom.At > deepest && !allowsEnvironmentDefinitionsAtom(op, atom) {
 			return fmt.Errorf("authz registry: operation %q has capability %q at level %d deeper than its deepest %d", op, atom.Cap, atom.At, deepest)
 		}
 		if atom.At > spec.level {
@@ -1700,6 +1700,13 @@ func validateSpec(op Operation, spec opSpec) error {
 		return err
 	}
 	return nil
+}
+
+// allowsEnvironmentDefinitionsAtom keeps the selected-environment exception
+// limited to schema publication and initial value drafts.
+func allowsEnvironmentDefinitionsAtom(op Operation, atom Atom) bool {
+	return atom.Cap == domain.CapDefinitionsEdit && atom.At == domain.LevelEnv &&
+		(op == OpKeySchemaPublishValues || op == OpValueInitialize)
 }
 
 // validateAuditDisposition requires exactly one audit disposition — events,

@@ -2921,21 +2921,27 @@ export type DefinitionsSettings = {
     definitions_source: 'db' | 'git';
     last_apply?: DefinitionsLastApply;
     /**
-     * Whether THE CALLER would pass a key declaration in this project
-     * right now: `definitions-edit` on the project AND `publish` on every
-     * one of its environments, because a declaration fans a schema
-     * publish out to each. A UI affordance, never an authorization
-     * decision: a refused declaration is still 404.
-     * Independent of `definitions_source`.
+     * Whether THE CALLER has authority to create an empty, ungrouped key
+     * in at least one permitted folder in this project. Includes legacy
+     * project-wide `definitions-edit` grants and matching folder or
+     * all-key access rules, including rules for selected environments.
+     * A single-key rule alone does not permit creation. Initial values
+     * additionally require Define and Publish in the destination.
+     * A UI affordance, never authority for an arbitrary declaration,
+     * folder, linked group, or bulk write. Actual writes authorize their
+     * complete scope and may return 404. Independent of `definitions_source`.
      *
      */
     can_declare_keys?: boolean;
     /**
-     * Whether THE CALLER holds `definitions-edit` on this project: enough
-     * for the edits that republish nothing (folders, linked-key set
-     * create and rename, key metadata). Every edit that republishes
-     * needs `can_declare_keys` instead. A UI affordance, never an
-     * authorization decision. Independent of `definitions_source`.
+     * Whether THE CALLER has any matching Define authority in this
+     * project, from a legacy `definitions-edit` grant or an access rule,
+     * including single-key and selected-environment rules. A UI
+     * affordance, never authority to edit every definition or folder.
+     * Shared semantic edits require Define and Publish in every project
+     * environment; linked-group changes require whole-environment
+     * authority. Actual writes authorize their complete scope and may
+     * return 404. Independent of `definitions_source`.
      *
      */
     can_edit_definitions?: boolean;
