@@ -273,3 +273,24 @@ describe('definitions bundle boundary', () => {
     expect(await seen[0]?.text()).toBe(JSON.stringify(bundle));
   });
 });
+
+// Response decoding can fail after the server has already applied the plan.
+it('distinguishes network and contract failures and requires refresh before retrying apply', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+  const networkError = await checkBundle(scope, { format_version: 1, environments: [], key_groups: [], keys: [] }, {}, new AbortController().signal).then(
+    () => null, (error: unknown) => error,
+  );
+  expect(bundleRefusalText(networkError)).toContain('could not be reached');
+  expect(bundleRefusalText(new Error('schema mismatch'))).toContain('cannot understand');
+  const request = vi.fn(async (request: Request) => new Response(
+    JSON.stringify(request.method === 'GET' ? { definitions_source: 'db' } : { malformed: true }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  ));
+  vi.stubGlobal('fetch', request);
+  const error = await applyBundle(scope, plan, false, {}, new AbortController().signal).then(
+    () => null, (error: unknown) => error,
+  );
+  expect(error).toBeInstanceOf(Error);
+  expect(bundleRefusalText(error, 'apply')).toContain('Refresh the project status before retrying');
+  expect(request).toHaveBeenCalledTimes(2);
+});

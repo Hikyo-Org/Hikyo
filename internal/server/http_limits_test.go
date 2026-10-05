@@ -13,7 +13,7 @@ func TestPublicRequestAdmissionIsBoundedAndReleasesSlots(t *testing.T) {
 	completed := make(chan struct{}, 512)
 	var running sync.WaitGroup
 	t.Cleanup(func() { close(release); running.Wait() })
-	h := NewPublic(nil, nil, nil, PublicOptions{HSTS: true, MCP: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := NewPublic(nil, nil, PublicOptions{HSTS: true, MCP: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Hold") == "yes" {
 			entered <- struct{}{}
 			<-release

@@ -70,7 +70,7 @@ func TestRecoveryRendersUniformInternalBody(t *testing.T) {
 func TestRecoveryCoversTheLiveRouter(t *testing.T) {
 	var pipeline bytes.Buffer
 	api := &API{Log: slog.New(slog.NewJSONHandler(&pipeline, nil))}
-	handler := NewPublic(nil, api, nil, PublicOptions{})
+	handler := NewPublic(api, nil, PublicOptions{})
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/orgs", nil))

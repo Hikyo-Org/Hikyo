@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -56,7 +54,6 @@ var (
 )
 
 const (
-	maxConfigBytes  = 1 << 20
 	maxJournalBytes = 4 << 20
 	maxJournalJobs  = 100
 )
@@ -103,85 +100,10 @@ type Command struct {
 	TimeoutSeconds int      `json:"timeout_seconds"`
 }
 
-func (c Command) validate(phase string) error {
-	if strings.TrimSpace(c.Name) == "" {
-		return fmt.Errorf("updater: %s command name is required", phase)
-	}
-	if !filepath.IsAbs(c.Name) {
-		return fmt.Errorf("updater: %s command name must be an absolute path", phase)
-	}
-	if c.TimeoutSeconds < 1 || c.TimeoutSeconds > 3600 {
-		return fmt.Errorf("updater: %s timeout_seconds must be between 1 and 3600", phase)
-	}
-	for _, arg := range c.Argv {
-		if strings.ContainsRune(arg, '\x00') {
-			return fmt.Errorf("updater: %s command contains NUL", phase)
-		}
-	}
-	return nil
-}
-
-type PhaseCommands struct {
-	Plan     Command `json:"plan"`
-	Backup   Command `json:"backup"`
-	Verify   Command `json:"verify"`
-	Apply    Command `json:"apply"`
-	Health   Command `json:"health"`
-	Rollback Command `json:"rollback"`
-}
-
+// Config retains the backend identity reported by the refused executor.
+// Executable phase policy is retired and is never loaded.
 type Config struct {
-	Backend   Backend       `json:"backend"`
-	Socket    string        `json:"socket"`
-	StateFile string        `json:"state_file"`
-	Commands  PhaseCommands `json:"commands"`
-}
-
-func (c Config) Validate() error {
-	if !c.Backend.Valid() {
-		return fmt.Errorf("updater: backend must be flux, compose, or systemd, got %q", c.Backend)
-	}
-	for phase, command := range map[string]Command{
-		"plan": c.Commands.Plan, "backup": c.Commands.Backup, "verify": c.Commands.Verify,
-		"apply": c.Commands.Apply, "health": c.Commands.Health, "rollback": c.Commands.Rollback,
-	} {
-		if err := command.validate(phase); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func LoadConfig(path string) (Config, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return Config{}, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return Config{}, err
-	}
-	if info.Mode().Perm()&0o022 != 0 {
-		return Config{}, fmt.Errorf("updater: config %q must not be group/world writable", path)
-	}
-	if info.Size() > maxConfigBytes {
-		return Config{}, fmt.Errorf("updater: config %q exceeds %d bytes", path, maxConfigBytes)
-	}
-	decoder := json.NewDecoder(io.LimitReader(f, maxConfigBytes))
-	decoder.DisallowUnknownFields()
-	var config Config
-	if err := decoder.Decode(&config); err != nil {
-		return Config{}, fmt.Errorf("updater: parse config: %w", err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return Config{}, errors.New("updater: config must contain exactly one JSON value")
-	}
-	if err := config.Validate(); err != nil {
-		return Config{}, err
-	}
-	return config, nil
+	Backend Backend `json:"backend"`
 }
 
 type Runner interface {
@@ -197,11 +119,7 @@ func (CommandRunner) Run(context.Context, Command, Request) error {
 
 type Executor struct {
 	Config Config
-	Runner Runner
 	Now    func() time.Time
-	// Progress is a legacy callback. Retired execution never invokes it or
-	// rewrites historical journal state.
-	Progress func(Job) error
 }
 
 func (e Executor) now() time.Time {

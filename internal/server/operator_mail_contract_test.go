@@ -30,7 +30,7 @@ func TestInstanceMailUnavailableWire(t *testing.T) {
 	var uniformBody string
 	for name, cause := range map[string]error{"unconfigured": mail.ErrDisabled, "delivery failure": mail.ErrDelivery} {
 		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+			srv := httptest.NewServer(server.New(&server.API{
 				Auth: stubAuth{}, Orgs: stubOrgs{},
 				Mail: unavailableInstanceMail{err: fmt.Errorf("private relay refused recipient: %w", cause)},
 			}, nil))

@@ -1,3 +1,4 @@
+import { WorkspaceSettingsLink } from './WorkspaceSettingsLink.tsx';
 import { useSelfConfig } from '../api/selfConfig.ts';
 import { SystemProjectNotice } from './InstanceConfig.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -1022,14 +1023,14 @@ export function Matrix({
               <p>
                 A matrix needs at least one environment before any key can hold a value. Add one
                 under{' '}
-                <Link
-                  to={generatePath(surfaceById('project-settings').path, {
+                <WorkspaceSettingsLink
+                  path={generatePath(surfaceById('project-settings').path, {
                     org: ref.org,
                     project: ref.project,
                   })}
                 >
                   Project settings › New environment
-                </Link>
+                </WorkspaceSettingsLink>
                 .
               </p>
             </div>

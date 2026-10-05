@@ -86,7 +86,7 @@ func TestOIDCStartNamesThePolicylessReauthRefusal(t *testing.T) {
 // The public methods list carries the presentation brand (#587 d4) and the
 // open door's landing kind (the confirmation step's landing line).
 func TestAuthMethodsCarriesBrandAndLanding(t *testing.T) {
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: signupAuth{seen: &[]string{}, providers: []service.AuthMethodProvider{
 			{Slug: "google", DisplayName: "Google", Kind: "oidc", Brand: "google"},
 			{Slug: "contoso", DisplayName: "Contoso", Kind: "oidc", Brand: "microsoft"},

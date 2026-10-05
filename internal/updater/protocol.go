@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -31,10 +30,7 @@ type Control interface {
 }
 
 type ControlServer struct {
-	Executor Executor
-	Journal  *Journal
-	Log      *slog.Logger
-	Context  context.Context
+	Journal *Journal
 }
 
 func (s *ControlServer) Handler() http.Handler {

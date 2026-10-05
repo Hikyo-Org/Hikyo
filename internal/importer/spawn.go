@@ -198,7 +198,7 @@ func boundedSubprocessExit(err error) (int, bool) {
 // external program a connector's work pulls in can see it. Exported so the
 // acceptance test asserts the rule at the shared path rather than restating it.
 func Stripped(name string) bool {
-	return strings.HasPrefix(name, hikyoEnvPrefix)
+	return strings.HasPrefix(strings.ToUpper(name), hikyoEnvPrefix)
 }
 
 // SanitizedEnv returns env with every stripped variable removed. env is in

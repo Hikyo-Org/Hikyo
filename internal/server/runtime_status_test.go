@@ -36,7 +36,7 @@ func TestRuntimeStatusPublicContract(t *testing.T) {
 		{"inconsistent ready", runtimeStatusStub{status: service.RuntimeStatus{State: "ready", Phase: "backup"}}, 503, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewPublic(nil, &API{Runtime: tc.source}, nil, PublicOptions{})
+			h := NewPublic(&API{Runtime: tc.source}, nil, PublicOptions{})
 			r := httptest.NewRequest(http.MethodGet, "/api/v1/runtime/status", nil)
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)

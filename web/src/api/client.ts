@@ -294,13 +294,12 @@ export async function ok<TData extends TDataShape>(
   operation: BodylessOperation<TData>,
   options: Options<TData, false>,
 ): Promise<void> {
-  // whoami is the authority that reopens the fence.
-  const epoch = isIdentityCheck(operation) ? undefined : captureSessionEpoch();
+  const epoch = captureSessionEpoch();
   const result = await operation.call(ownedOptions(options, epoch));
-  if (epoch !== undefined) await reconcileSessionResponse(epoch);
+  await reconcileSessionResponse(epoch);
   const response = requireResponse(result);
   if (!response.ok) {
-    if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
+    if (response.status === 401 && options.client === undefined) {
       checkSessionRefusal();
     }
     throw refusal(response, result.error);

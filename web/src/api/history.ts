@@ -104,7 +104,8 @@ export const zHistoryRollbackResult = zRollbackResult.superRefine((result, conte
 /**
  * revisionNumber narrows a parsed revision back to the wire's request shape.
  *
- * Responses parse `int64` to `bigint` (no precision loss); the generated
+ * The shared wire decoder preserves integer tokens before Zod parses `int64`
+ * to `bigint`; the generated
  * REQUEST types are plain `number`, which is the generator's shape and not
  * something this file gets to change. The conversion is therefore explicit and
  * fails loud past `Number.MAX_SAFE_INTEGER` rather than silently addressing a

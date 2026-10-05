@@ -159,7 +159,7 @@ func (s *ProjectSettings) SetEnvironment(ctx context.Context, actor Actor, scope
 		// invalidates the environment's open windows, RETAINS grants, and
 		// enumerates and audits the principals the transition strands.
 		if afterEff < beforeEff {
-			if _, _, err := s.Auth.LowerEffectiveWindow(ctx, az, string(scope.Env), afterEff, s.now()); err != nil {
+			if _, _, err := s.Auth.LowerEffectiveWindow(ctx, az, string(scope.Env), afterEff); err != nil {
 				return err
 			}
 		}

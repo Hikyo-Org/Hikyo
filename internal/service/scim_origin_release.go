@@ -19,8 +19,8 @@ import (
 // ONE algorithm governs every SCIM-side origin release, whatever triggered it —
 // user deprovision or delete, group membership removal, group delete, mapping
 // row delete or narrowing, binding delete: release the named `scim` origins;
-// revoke rows whose last origin that was; advance the affected principals'
-// session generations in the same transaction; emit the audit events.
+// revoke rows whose last origin that was; emit audit events in the same
+// transaction. Authorization rereads org grants; instance sessions survive.
 //
 // The one place it bends is the lockout interplay, and it bends by CONVERTING
 // rather than refusing. The locked refusal — removing the last org
@@ -82,13 +82,10 @@ func matchMappingRows(binding string, rows map[string]bool) releaseMatch {
 }
 
 // releaseOutcome reports what one principal's release actually did, so the
-// caller can build its own event truthfully and decide about the generation
-// advance without a second read.
+// caller can build its own event truthfully without a second read.
 type releaseOutcome struct {
 	// Released counts origins actually removed.
 	Released int
-	// RowsRevoked counts grant rows whose LAST origin this was.
-	RowsRevoked int
 	// Retained names the grants converted to `lockout-retention` instead of
 	// being revoked.
 	Retained []string
@@ -103,12 +100,6 @@ type releaseOutcome struct {
 	// inventing a state for it here would widen the closed enumeration.
 	ManualRemains bool
 }
-
-// AuthorityChanged reports whether effective policy actually moved. A release
-// that only shed one of several origins took nothing away, so killing the
-// holder's sessions for it would be a denial of service dressed as security —
-// the same rule the human revoke path already applies.
-func (o releaseOutcome) AuthorityChanged() bool { return o.RowsRevoked > 0 }
 
 // releaseArgs carries one release. It is a struct rather than eight parameters
 // because every caller sets all of them and a positional mistake between two
@@ -276,7 +267,6 @@ func releaseSCIMOrigins(
 		if _, err := az.DeleteGrantRow(ctx, id, principal); err != nil {
 			return out, nil, err
 		}
-		out.RowsRevoked++
 		events = append(events, grantRevokedEvent(args, principal, st.grant, doomed))
 	}
 	return out, events, nil
@@ -341,14 +331,14 @@ func grantModifiedEvent(
 	return grantEventInput{
 		typ:     audit.EventGrantModified,
 		object:  audit.Object{Type: "grant", ID: row.ID},
-		payload: scimGrantPayload(args, principal, row, released, false),
+		payload: scimGrantPayload(args, principal, row, released),
 	}
 }
 
 func grantRevokedEvent(
 	args releaseArgs, principal domain.PrincipalID, row authz.GrantRow, released []authz.Origin,
 ) grantEventInput {
-	p := scimGrantPayload(args, principal, row, released, true)
+	p := scimGrantPayload(args, principal, row, released)
 	p["origins_remaining"] = 0
 	// The org-scoped row died, not the instance-wide login.
 	p["sessions_revoked"] = false
@@ -365,7 +355,7 @@ func grantRevokedEvent(
 // makes "why can they?" answerable from the trail and not only from the row.
 func scimGrantPayload(
 	args releaseArgs, principal domain.PrincipalID, row authz.GrantRow,
-	released []authz.Origin, revoked bool,
+	released []authz.Origin,
 ) audit.Payload {
 	p := audit.Payload{
 		"target_principal": string(principal),
@@ -389,7 +379,6 @@ func scimGrantPayload(
 	}
 	p["origin_mapping_row"] = joinSorted(rows)
 	p["origin_group"] = joinSorted(groups)
-	_ = revoked
 	return p
 }
 

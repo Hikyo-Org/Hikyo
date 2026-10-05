@@ -819,7 +819,7 @@ func runLowerEffectiveWindowStranding(t *testing.T, db *store.DB) {
 	var invalidated int
 	err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		var e error
-		stranded, invalidated, e = auth.LowerEffectiveWindow(ctx, az, "env_a1", 0, time.Now().UTC())
+		stranded, invalidated, e = auth.LowerEffectiveWindow(ctx, az, "env_a1", 0)
 		return e
 	})
 	if err != nil {

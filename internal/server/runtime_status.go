@@ -20,7 +20,7 @@ type RuntimeStatusSource interface {
 // no tenant API, auth service, workspace directory, or MCP handler.
 func NewMaintenance(source RuntimeStatusSource, ui fs.FS, options PublicOptions) http.Handler {
 	options.MCP = nil
-	assets := NewPublic(nil, nil, ui, options)
+	assets := NewPublic(nil, ui, options)
 	a := &API{Runtime: source}
 	return securityHeaders(options.HSTS)(boundPublicRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

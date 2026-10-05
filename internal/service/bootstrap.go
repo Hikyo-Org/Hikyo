@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -217,22 +216,4 @@ func (s *Auth) BootstrapAdmin(ctx context.Context, username, displayName, delive
 		Authority: value, AuthorityID: authorityID, AccountID: accountID,
 		PrincipalID: domain.PrincipalID(principalID), Username: username, ExpiresAt: expires,
 	}, nil
-}
-
-// BootstrapPending reports whether the instance still has no account, so the
-// CLI can tell an operator what to do next without guessing.
-func (s *Auth) BootstrapPending(ctx context.Context) (bool, error) {
-	var pending bool
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		n, err := az.AccountCount(ctx)
-		if err != nil {
-			return err
-		}
-		pending = n == 0
-		return nil
-	})
-	if err != nil {
-		return false, fmt.Errorf("service: bootstrap state: %w", err)
-	}
-	return pending, nil
 }

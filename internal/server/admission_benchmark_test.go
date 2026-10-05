@@ -22,7 +22,7 @@ func BenchmarkAuthenticatedAPIRequests(b *testing.B) {
 		ID: testOrgID, Name: "acme", Active: true,
 		Metadata: []byte(`{}`), CreatedAt: liveIdentity.CreatedAt, Origin: "manual",
 	}
-	handler := server.New(stubReady{}, &server.API{
+	handler := server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn},
 		Orgs: stubOrgs{
 			list: func(context.Context, service.Actor) ([]service.Org, error) {

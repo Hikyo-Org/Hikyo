@@ -13,7 +13,7 @@ func TestMCPRouteIsExactAndFeatureGated(t *testing.T) {
 		w.Header().Set("X-MCP-Test", "reached")
 		w.WriteHeader(http.StatusAccepted)
 	})
-	enabled := NewPublic(nil, nil, nil, PublicOptions{MCP: marker})
+	enabled := NewPublic(nil, nil, PublicOptions{MCP: marker})
 	for _, path := range []string{"/mcp", "/mcp/codex"} {
 		rec := httptest.NewRecorder()
 		enabled.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
@@ -31,7 +31,7 @@ func TestMCPRouteIsExactAndFeatureGated(t *testing.T) {
 		}
 	}
 
-	disabled := NewPublic(nil, nil, fstest.MapFS{"index.html": {Data: []byte("SPA")}}, PublicOptions{})
+	disabled := NewPublic(nil, fstest.MapFS{"index.html": {Data: []byte("SPA")}}, PublicOptions{})
 	rec = httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Accept", "text/html")

@@ -381,7 +381,7 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 	}
 
 	values := &service.Values{DB: db, Keyring: kr, Scan: rs, Auth: auth}
-	srv := httptest.NewServer(server.New(&service.System{DB: db}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth:         auth,
 		Orgs:         orgs,
 		Projects:     &service.Projects{DB: db},

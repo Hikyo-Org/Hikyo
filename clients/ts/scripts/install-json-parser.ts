@@ -1,0 +1,22 @@
+// Owned runtime adaptation after hey-api generation. The upstream fetch/SSE
+// runtimes have no JSON-parser option. Fail on template drift rather than
+// silently regenerating a client that rounds int64 values before validation.
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const targets = [
+  { path: 'client/client.gen.ts', calls: ['JSON.parse(text)', 'JSON.parse(textError)'] },
+  { path: 'core/serverSentEvents.gen.ts', calls: ['JSON.parse(rawData)'] },
+];
+
+for (const target of targets) {
+  const path = new URL(`../src/generated/${target.path}`, import.meta.url);
+  let source = readFileSync(path, 'utf8');
+  for (const call of target.calls) {
+    if (source.split(call).length !== 2) {
+      throw new Error(`Generated JSON parser template changed: ${target.path}: ${call}`);
+    }
+    source = source.replace(call, call.replace('JSON.parse', 'parseJson'));
+  }
+  source = source.replace('\n\n', "\n\nimport { parseJson } from '../../parseJson';\n\n");
+  writeFileSync(path, source);
+}

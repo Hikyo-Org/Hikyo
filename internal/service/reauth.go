@@ -314,7 +314,7 @@ func adapterReauthOperation(operation authz.Operation) bool {
 // for the window openers — this is the writer, that is the reader, one value —
 // so once #55 persists per-environment overrides, a lowering here is what
 // ReauthTOTP/OIDC read there; they cannot diverge onto the global window (A2).
-func (s *Auth) LowerEffectiveWindow(ctx context.Context, az *authz.TxAuthorizer, envID string, newValue time.Duration, now time.Time) ([]domain.PrincipalID, int, error) {
+func (s *Auth) LowerEffectiveWindow(ctx context.Context, az *authz.TxAuthorizer, envID string, newValue time.Duration) ([]domain.PrincipalID, int, error) {
 	invalidated, err := az.InvalidateReauthWindowsForEnvironment(ctx, envID)
 	if err != nil {
 		return nil, 0, err
