@@ -337,9 +337,9 @@ func scenarioDeclarationRejections(t *testing.T, db *store.DB) {
 }
 
 // scenarioCanDeclareKeys pins the `can_declare_keys` and `can_edit_definitions`
-// affordances to the writes they describe. A declaration needs `definitions-edit` on the project AND
-// `publish` on every environment the schema fan-out republishes; a flag that
-// read only the first half would offer an action the server then refuses.
+// affordances to empty-key creation. Define alone can create an empty key;
+// these flags do not promise authority for existing shared semantic edits,
+// which still need Define and Publish in every project environment.
 func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 	kr := sharedKeyring(t, db)
 	keys := &service.Keys{DB: db, Keyring: kr}
@@ -379,15 +379,17 @@ func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 	}
 
 	for _, tc := range []struct {
-		label    string
-		actor    service.Actor
-		want     bool
-		wantEdit bool
+		label          string
+		actor          service.Actor
+		want           bool
+		wantEdit       bool
+		wantSharedEdit bool
 	}{
-		{"reader", principal("reader", nil, nil), false, false},
-		{"publisher", principal("publisher", nil, envIDs), false, false},
-		{"partial", principal("partial", []string{"definitions-edit"}, envIDs[:1]), false, true},
-		{"maintainer", principal("maintainer", []string{"definitions-edit"}, envIDs), true, true},
+		{"reader", principal("reader", nil, nil), false, false, false},
+		{"publisher", principal("publisher", nil, envIDs), false, false, false},
+		{"definer", principal("definer", []string{"definitions-edit"}, nil), true, true, false},
+		{"partial", principal("partial", []string{"definitions-edit"}, envIDs[:1]), true, true, false},
+		{"maintainer", principal("maintainer", []string{"definitions-edit"}, envIDs), true, true, true},
 	} {
 		settings, err := defs.GetSettings(t.Context(), tc.actor, scope)
 		if err != nil {
@@ -408,13 +410,22 @@ func scenarioCanDeclareKeys(t *testing.T, db *store.DB) {
 			t.Fatalf("%s: withheld the folder edit, but the write answered %v", tc.label, err)
 		}
 		// The flag and the write must agree, and a refusal is the uniform nonexistent.
-		_, err = keys.Create(t.Context(), tc.actor, scope,
+		created, err := keys.Create(t.Context(), tc.actor, scope,
 			keySpec("KEY_"+strings.ToUpper(tc.label), string(schema.Config), decl(schema.Rule{Type: schema.TypeString})), nil)
 		if tc.want && err != nil {
 			t.Fatalf("%s: offered the declaration, then refused it: %v", tc.label, err)
 		}
 		if !tc.want && !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("%s: withheld the declaration, but the write answered %v", tc.label, err)
+		}
+		if tc.want {
+			_, err := keys.Rename(t.Context(), tc.actor, scope, created.ID, "RENAMED_"+strings.ToUpper(tc.label), nil)
+			if tc.wantSharedEdit && err != nil {
+				t.Fatalf("%s: complete Define and Publish should permit shared edit: %v", tc.label, err)
+			}
+			if !tc.wantSharedEdit && !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("%s: declaration affordance must not authorize shared edit: %v", tc.label, err)
+			}
 		}
 	}
 }
