@@ -417,7 +417,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 				postgresStorage.CloseIdleConnections()
 			}
 		},
-		publicHandler: server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{
+		publicHandler: server.NewPublic(api, webui.Assets(), server.PublicOptions{
 			HSTS:           config.EmitHSTS(cfg.ExternalOrigin),
 			ExternalOrigin: cfg.ExternalOrigin,
 			MCP:            mcpHandler,

@@ -220,10 +220,9 @@ func (s *Dynamic) reauthorizeLease(ctx context.Context, lease store.ClaimedLease
 			Class:     domain.PrincipalClass(lease.PrincipalClass),
 		}
 		scope := domain.Scope{Org: domain.OrgID(lease.OrgID), Project: domain.ProjectID(lease.ProjectID), Env: domain.EnvID(lease.EnvironmentID)}
-		projectScope := domain.Scope{Org: scope.Org, Project: scope.Project}
 		if _, err := az.Authorize(ctx, caller, op, scope); err != nil {
 			return err
 		}
-		return s.leaseDisclosureGate(ctx, az, caller, scope, projectScope, s.now(), false)
+		return s.leaseDisclosureGate(ctx, az, caller, scope, s.now(), false)
 	})
 }

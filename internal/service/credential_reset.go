@@ -83,7 +83,7 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 			// An authenticated caller reaching for a principal that does not exist:
 			// audit the attempt (ADR - Recovery: failures are audited), answer
 			// uniformly. The event commits; the sentinel is returned after the tx.
-			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, "", causeUnknownTarget, now); aerr != nil {
+			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, "", causeUnknownTarget); aerr != nil {
 				return aerr
 			}
 			refused = ErrNoResetTarget
@@ -95,7 +95,7 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 		if errors.Is(err, domain.ErrNotFound) {
 			// The principal exists but is not a resettable human account (a machine
 			// principal): same uniform, audited refusal.
-			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, "", causeUnknownTarget, now); aerr != nil {
+			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, "", causeUnknownTarget); aerr != nil {
 				return aerr
 			}
 			refused = ErrNoResetTarget
@@ -121,7 +121,7 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 			if _, err := az.Authorize(ctx, caller, authz.OpCredentialResetInstance, domain.Scope{}); err != nil {
 				return err
 			}
-			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, account.ID, causeInstanceTarget, now); aerr != nil {
+			if aerr := s.stageResetRefusal(ctx, az, caller.Principal, targetPrincipal, account.ID, causeInstanceTarget); aerr != nil {
 				return aerr
 			}
 			refused = ErrNoResetTarget
@@ -161,7 +161,7 @@ const (
 // so the trail carries the attempt (ADR - Recovery), on the same fail-closed
 // contract as failRecovery: a nil return means the record is staged and the
 // caller may return the sentinel; a non-nil return must be propagated loudly.
-func (s *Auth) stageResetRefusal(ctx context.Context, az *authz.TxAuthorizer, actor domain.PrincipalID, targetPrincipal, targetAccount, cause string, now time.Time) error {
+func (s *Auth) stageResetRefusal(ctx context.Context, az *authz.TxAuthorizer, actor domain.PrincipalID, targetPrincipal, targetAccount, cause string) error {
 	payload := audit.Payload{
 		"target_principal": targetPrincipal,
 		"issued_by":        "credential-reset",

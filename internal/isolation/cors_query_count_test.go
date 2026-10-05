@@ -79,7 +79,7 @@ func TestCORSRequestsIssueNoAllowlistQueriesAfterSnapshot(t *testing.T) {
 	if err := workspace.PrimeOriginAllowlist(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	handler := server.NewPublic(nil, &server.API{Workspace: workspace}, nil, server.PublicOptions{
+	handler := server.NewPublic(&server.API{Workspace: workspace}, nil, server.PublicOptions{
 		ExternalOrigin: "https://hikyo.example",
 	})
 

@@ -36,7 +36,7 @@ func TestRuleReplacementAcceptsOneSidedBatches(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var spec service.ReplaceRulesSpec
-			srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+			srv := httptest.NewServer(server.New(&server.API{
 				Auth:  stubAuth{identity: liveIdentityFn},
 				Rules: capturingRuleReplacement{spec: &spec}, Version: "test",
 			}, nil))

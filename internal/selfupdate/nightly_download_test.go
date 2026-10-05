@@ -2,6 +2,8 @@ package selfupdate
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +13,83 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 )
+
+func TestApplyNightlyAuthenticatesBeforeDownloadingAndReusesPreparation(t *testing.T) {
+	for _, stages := range []bool{false, true} {
+		for _, preparation := range []string{"invalid signature", "fresh", "cached"} {
+			t.Run(fmt.Sprintf("stages=%t/%s", stages, preparation), func(t *testing.T) {
+				installer, status, target, _, _, responses := preparedNightlyFixture(t, nil)
+				installer.stageNightlies = stages
+				native := mustArchiveName(t, status.LatestVersion)
+				if preparation == "invalid signature" {
+					for index := range status.Assets {
+						asset := &status.Assets[index]
+						if asset.Name == "release-manifest.sigstore.json" {
+							raw := []byte("{}")
+							responses[asset.URL] = raw
+							asset.Size, asset.Digest = int64(len(raw)), "sha256:"+string(releaseidentity.Hash(raw))
+						}
+					}
+				}
+				transport := installer.client.Transport
+				archives := map[string]int{}
+				installer.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+					name := filepath.Base(request.URL.Path)
+					if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".deb") {
+						archives[name]++
+					}
+					return transport.RoundTrip(request)
+				})
+				if preparation == "cached" {
+					if _, err := installer.PrepareNightly(t.Context(), status); err != nil {
+						t.Fatal(err)
+					}
+				}
+				err := installer.Apply(t.Context(), status)
+				var staged *StagedNightly
+				if preparation == "invalid signature" {
+					if err == nil || errors.As(err, &staged) || !strings.Contains(err.Error(), "authenticate nightly manifest") {
+						t.Fatalf("invalid signature error=%v, want authentication refusal", err)
+					}
+					if len(archives) != 0 {
+						t.Fatalf("downloaded executable before authentication: %v", archives)
+					}
+				} else {
+					if (stages && !errors.As(err, &staged)) || (!stages && err != nil) {
+						t.Fatalf("apply error=%v, stages=%t", err, stages)
+					}
+					if len(archives) != 1 || archives[native] != 1 {
+						t.Fatalf("want one native archive across preparation and apply: %v", archives)
+					}
+				}
+				want := "new hikyo binary\n"
+				if stages || preparation == "invalid signature" {
+					want = "old hikyo binary\n"
+				}
+				if raw, err := os.ReadFile(target); err != nil || string(raw) != want {
+					t.Fatalf("executable=%q error=%v, want %q", raw, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestApplyNightlyRefusesUnreplaceableExecutableBeforeDownloading(t *testing.T) {
+	installer, status, _, _, _, _ := preparedNightlyFixture(t, nil)
+	installer.executablePath = func() (string, error) { return t.TempDir(), nil }
+	requests := 0
+	transport := installer.client.Transport
+	installer.client.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		return transport.RoundTrip(request)
+	})
+	if err := installer.Apply(t.Context(), status); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("apply error=%v, want unreplaceable executable refusal", err)
+	}
+	if requests != 0 {
+		t.Fatalf("unreplaceable executable caused %d downloads", requests)
+	}
+}
 
 func TestNightlyDownloadsOnlyNativeArchiveAndMetadata(t *testing.T) {
 	installer, status, _, _, _, _ := preparedNightlyFixture(t, nil)

@@ -125,10 +125,6 @@ func TestSAMLACSConsumesInitiatorAndMintsOrdinaryBrowserCookie(t *testing.T) {
 	}
 }
 
-type samlReady struct{}
-
-func (samlReady) Ready(context.Context) error { return nil }
-
 func samlHTTPRequest(t *testing.T, stub *stubSAMLAuth, accept, relay string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{"SAMLResponse": {"c2lnbmVkLXJlc3BvbnNl"}, "RelayState": {relay}}
@@ -137,7 +133,7 @@ func samlHTTPRequest(t *testing.T, stub *stubSAMLAuth, accept, relay string) *ht
 	request.Header.Set("Accept", accept)
 	request.AddCookie(&http.Cookie{Name: samlBindingCookieName("corp", relay), Value: "initiator-secret"})
 	recorder := httptest.NewRecorder()
-	New(samlReady{}, &API{SAMLAuth: stub}, nil).ServeHTTP(recorder, request)
+	New(&API{SAMLAuth: stub}, nil).ServeHTTP(recorder, request)
 	if err := api.ValidateResponse(request, recorder.Code, recorder.Header(), recorder.Body.Bytes()); err != nil {
 		t.Fatalf("SAML HTTP response violates contract: %v; status=%d body=%s", err, recorder.Code, recorder.Body)
 	}

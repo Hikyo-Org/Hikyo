@@ -15,7 +15,7 @@ import {
   zDefinitionsBundlePresence,
 } from '@hikyo/zod';
 import type { DefinitionsBundle, DefinitionsDiff } from '@hikyo/client';
-import { ApiError, parsed } from './client.ts';
+import { ApiError, parsed, transportRefusalText } from './client.ts';
 import { z } from 'zod';
 import { parseDocument } from 'yaml';
 import type { MatrixRef } from './keys.ts';
@@ -165,8 +165,10 @@ export async function applyBundle(
     },
   });
 }
-export function bundleRefusalText(error: unknown): string {
-  if (error instanceof ApiError) {
+export function bundleRefusalText(error: unknown, phase: 'check' | 'apply' = 'check'): string {
+  // A 4xx response is a definite refusal, including documented 400 details.
+  // Keep its recovery guidance separate from uncertain transport/contract results.
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
     if (error.detail) return error.detail;
     if (error.status === 403 || error.status === 404)
       return 'This operation was refused. You need definitions-edit on this project and publish on every affected environment to apply. The project or plan may also be unavailable to you.';
@@ -176,5 +178,11 @@ export function bundleRefusalText(error: unknown): string {
       return 'The instance refused this operation because its request or open-plan limit was reached. Try again later.';
     return `The instance refused the bundle operation (HTTP ${error.status}). Check the bundle and try again.`;
   }
-  return 'The bundle operation could not complete. Check your connection and try again.';
+  const generic = transportRefusalText(error);
+  if (generic !== null) {
+    return phase === 'apply'
+      ? `${generic} The apply result is uncertain. Refresh the project status before retrying.`
+      : generic;
+  }
+  return 'The instance refused the bundle operation.';
 }

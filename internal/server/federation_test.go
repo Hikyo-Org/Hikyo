@@ -157,7 +157,7 @@ func (s stubFederation) CreateBinding(_ context.Context, _ service.Actor, _ doma
 
 func federationServer(t *testing.T, fed server.FederationService, del server.DeliveryService) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Folders: stubFolders{},
 		Federation: fed, Delivery: del,

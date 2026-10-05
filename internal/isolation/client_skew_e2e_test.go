@@ -36,7 +36,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		admin.auth.Now = func() time.Time { return clk }
 		elevated := enrolTOTPAndStepUp(t, admin.auth, t.Context(), base, &clk, admin.password)
 		// The clock stops changing before HTTP workers start.
-		httpServer := httptest.NewServer(server.New(&service.System{DB: db}, &server.API{
+		httpServer := httptest.NewServer(server.New(&server.API{
 			Auth: admin.auth, Orgs: &service.Orgs{DB: db}, Version: "current-server-skew-fixture",
 		}, nil))
 		defer httpServer.Close()

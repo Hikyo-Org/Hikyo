@@ -88,12 +88,12 @@ func remoteOriginSource(a *API) func(*http.Request) []string {
 	}
 }
 
-func New(ready ReadyChecker, a *API, ui fs.FS) http.Handler {
-	return NewPublic(ready, a, ui, PublicOptions{})
+func New(a *API, ui fs.FS) http.Handler {
+	return NewPublic(a, ui, PublicOptions{})
 }
 
 // NewPublic builds the public router with explicit transport policy.
-func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions) http.Handler {
+func NewPublic(a *API, ui fs.FS, publicOptions PublicOptions) http.Handler {
 	r := chi.NewRouter()
 	// The static security baseline, on every response including refusals. The
 	// dynamic part — `connect-src` extended with authorized configured remotes'

@@ -78,7 +78,7 @@ func getEncoded(t *testing.T, srv *httptest.Server, method, requestPath, accept,
 
 func uiServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(server.New(stubReady{}, nil, testUI()))
+	srv := httptest.NewServer(server.New(nil, testUI()))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -435,7 +435,7 @@ func TestHSTSFollowsTheConfiguredExternalOriginAcrossDeploymentShapes(t *testing
 		{"loopback development instance", "https://127.0.0.1:8443", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(server.NewPublic(nil, nil, testUI(), server.PublicOptions{
+			srv := httptest.NewServer(server.NewPublic(nil, testUI(), server.PublicOptions{
 				HSTS:           config.EmitHSTS(tc.externalOrigin),
 				ExternalOrigin: tc.externalOrigin,
 			}))
@@ -456,7 +456,7 @@ func TestHSTSFollowsTheConfiguredExternalOriginAcrossDeploymentShapes(t *testing
 // working API server — the frontend is an addition, never a prerequisite —
 // and every path answers in the contract's vocabulary.
 func TestNoEmbeddedUIStillServesTheAPI(t *testing.T) {
-	srv := httptest.NewServer(server.New(stubReady{}, nil, nil))
+	srv := httptest.NewServer(server.New(nil, nil))
 	t.Cleanup(srv.Close)
 
 	resp, body := get(t, srv, http.MethodGet, "/", htmlAccept)
@@ -601,7 +601,7 @@ func (c *countingRemotes) RemoveRemote(context.Context, service.Actor, string) e
 func countingServer(t *testing.T, ui fs.FS) (*httptest.Server, *countingRemotes) {
 	t.Helper()
 	remotes := &countingRemotes{t: t, items: []string{stubRemoteOrigin}}
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{Remotes: remotes}, ui))
+	srv := httptest.NewServer(server.New(&server.API{Remotes: remotes}, ui))
 	t.Cleanup(srv.Close)
 	return srv, remotes
 }

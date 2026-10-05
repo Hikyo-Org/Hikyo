@@ -73,7 +73,6 @@ func newInstance(t *testing.T, name string) *instanceUnderTest {
 	// headers, the artifact extraction and the strict handler. A hand-rolled
 	// mux here would test the service layer twice and the transport never.
 	handler := server.New(
-		&service.System{DB: db, Store: cfg},
 		&server.API{
 			// Auth is wired because the middleware chain slides the session
 			// idle clock on every request; a nil one panics before any handler

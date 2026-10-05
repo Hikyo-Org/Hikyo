@@ -1,3 +1,4 @@
+import { WorkspaceSettingsLink } from './WorkspaceSettingsLink.tsx';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { RetentionConsequence } from '@hikyo/client';
 import { exportValuesOp } from '@hikyo/operations';
@@ -246,10 +247,7 @@ export function HistoryDrawer({
     workspace?.remote ?? '',
   );
   // The retention knob lives on the project-settings Policy panel (`#project-policy`).
-  const policyPath = `${withRemote(
-    generatePath(surfaceById('project-settings').path, refData),
-    workspace?.remote ?? '',
-  )}#project-policy`;
+  const policyPath = `${generatePath(surfaceById('project-settings').path, refData)}#project-policy`;
   const environmentNames = new Map(environments.map((candidate) => [candidate.id, candidate.name]));
 
   useResetOnChange(`${environmentId} ${keyFilter}`, () => {
@@ -609,10 +607,10 @@ export function HistoryDrawer({
               <span className="history__badge" title={line.badgeTitle}>
                 {line.badge}
               </span>
-              <Link className="history__settings-pointer" to={policyPath}>
+              <WorkspaceSettingsLink className="history__settings-pointer" path={policyPath}>
                 <span aria-hidden="true">→ </span>
                 change it in project settings › Policy
-              </Link>
+              </WorkspaceSettingsLink>
             </p>
           )}
 

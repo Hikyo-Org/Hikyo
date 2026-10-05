@@ -105,7 +105,7 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 	// subscriber saw half the events.
 	advisory := service.NewAdvisory()
 	kr := probeKeyring(t, db)
-	httpSrv := httptest.NewServer(recorded(server.New(&service.System{DB: db}, &server.API{
+	httpSrv := httptest.NewServer(recorded(server.New(&server.API{
 		Auth: auth, Orgs: orgs,
 		Projects:     &service.Projects{DB: db},
 		Environments: &service.Environments{DB: db, Keyring: kr, Auth: auth, Advisory: advisory},

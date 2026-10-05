@@ -258,8 +258,10 @@ func TestUnsignedNightlyCannotReplaceWorkingBinary(t *testing.T) {
 }
 
 func TestInstallerRefusesChecksumMismatchWithoutChangingTheBinary(t *testing.T) {
-	installer, status, target, _ := installerFixture(t,
-		strings.Repeat("0", 64)+"  "+mustArchiveName(t, nightlyTestVersion)+"\n")
+	const version = "1.0.1"
+	installer, status, target, _ := installerFixtureForVersion(t, version, false,
+		strings.Repeat("0", 64)+"  "+mustArchiveName(t, version)+"\n")
+	status.Channel = updatecheck.ChannelStable
 	if err := installer.Apply(context.Background(), status); err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Fatalf("Apply() error = %v, want checksum refusal", err)
 	}
@@ -273,7 +275,8 @@ func TestInstallerRefusesChecksumMismatchWithoutChangingTheBinary(t *testing.T) 
 }
 
 func TestInstallerRefusesAnUnpinnedAssetURLBeforeDownload(t *testing.T) {
-	installer, status, target, _ := installerFixture(t, "")
+	installer, status, target, _ := installerFixtureForVersion(t, "1.0.1", false, "")
+	status.Channel = updatecheck.ChannelStable
 	status.Assets[0].URL = "https://downloads.example/hikyo.tar.gz"
 	if err := installer.Apply(t.Context(), status); err == nil || !strings.Contains(err.Error(), "unexpected download URL") {
 		t.Fatalf("Apply() error = %v, want URL refusal", err)

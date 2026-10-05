@@ -493,7 +493,7 @@ var liveIdentity = service.Identity{
 
 func newTestServer(t *testing.T, auth server.AuthService, orgs server.OrgService) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: auth, Orgs: orgs, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{}, Version: "test",
 		// Every door closed: the public discovery read always asks for one.
 		Registration: stubRegistration{},
@@ -580,7 +580,7 @@ func callNoRedirect(t *testing.T, srv *httptest.Server, path string, cookies ...
 
 func TestListPasskeysMachineCredentialNotFoundUsesCentralWirePolicy(t *testing.T) {
 	var logs bytes.Buffer
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: missingPasskeyAccount{}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{}, Version: "test",
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
 		Log: slog.New(slog.NewJSONHandler(&logs, nil)),
@@ -1342,7 +1342,7 @@ func testDefinitionsPlan() service.PlanView {
 
 func definitionsServer(t *testing.T, definitionsService server.DefinitionsService) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Definitions: definitionsService, Version: "test",
 	}, nil))
 	t.Cleanup(srv.Close)
@@ -1770,7 +1770,7 @@ func (e namedRefusal) SafeDetail() string { return e.detail }
 // A write-time precondition refuses 400 and names the failing item and the
 // provider row in `detail`, the one member a bad_request may carry (#606).
 func TestRegistrationPolicyPreconditionIsNamedOnTheWire(t *testing.T) {
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{}, Version: "test",
 		Registration: stubRegistration{putErr: namedRefusal{detail: "provider-disabled: oidc:off"}},
 	}, nil))
@@ -1793,7 +1793,7 @@ func TestRegistrationPolicyPreconditionIsNamedOnTheWire(t *testing.T) {
 // the service unchanged and the door fields are on the contract.
 func TestAuthMethodsRendersTheAddressedSignupDoor(t *testing.T) {
 	var seen service.RegistrationScope
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{}, Version: "test",
 		Registration: stubRegistration{doorOrg: &seen, door: service.SignupDoor{Open: true, Methods: []service.SignupMethod{
 			{Kind: service.SignupMethodOIDC, Slug: "corp"}, {Kind: service.SignupMethodLocal},
@@ -1884,7 +1884,7 @@ func (s stubRevisions) RotateScanningKey(context.Context, service.Actor) (servic
 
 func hierarchyServer(t *testing.T, outcome error) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Projects:     stubHierarchy{err: outcome},
 		Environments: stubEnvs{stubHierarchy{err: outcome}}, Values: stubValues{stubHierarchy{err: outcome}},
@@ -2052,7 +2052,7 @@ func TestOrdinaryUpdateRefusesAClassificationChange(t *testing.T) {
 	// the two outcomes below are distinguishable ONLY by where the request
 	// stopped: 400 means the transport refused the field, 404 means it reached
 	// the service.
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Keys: stubKeys{}, Version: "test",
 	}, nil))
@@ -2215,7 +2215,7 @@ func TestWorkspaceHandoffInvalidPreservesContextualRefusals(t *testing.T) {
 			return service.WorkspaceSession{}, fmt.Errorf("redeem: %w", service.ErrHandoffInvalid)
 		},
 	}
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
 		Workspace: workspace, Version: "test",
@@ -2246,7 +2246,7 @@ func TestWorkspaceHandoffStepUpResponseUsesRequiredBranch(t *testing.T) {
 			EnvID:            testEnvID, KeySet: []string{testKeyID}, ExpiresAt: time.Now().UTC().Add(time.Minute),
 		}, nil
 	}}
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
 		Workspace: workspace, Version: "test",
@@ -2284,7 +2284,7 @@ func TestWorkspaceHandoffResponseRejectsUnknownPurpose(t *testing.T) {
 	workspace := stubWorkspace{show: func(context.Context, service.Actor, string) (service.HandoffView, error) {
 		return service.HandoffView{Purpose: service.HandoffPurpose("future")}, nil
 	}}
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
 		Workspace: workspace, Version: "test",
@@ -2304,7 +2304,7 @@ func TestWorkspaceStepUpBoundaryRejectsMixedIntentVariants(t *testing.T) {
 		called = true
 		return service.HandoffStart{}, errors.New("service must not receive an invalid intent")
 	}}
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Projects: stubHierarchy{}, Environments: stubEnvs{}, Values: stubValues{}, Folders: stubFolders{},
 		Workspace: workspace, Version: "test",
@@ -2348,7 +2348,7 @@ func TestWorkspaceStepUpBoundaryRejectsMixedIntentVariants(t *testing.T) {
 // IF AND ONLY IF its formula is MFA-mandatory is asserted against the registry
 // in internal/isolation/contract_test.go, which can see both.
 func TestAssuranceRefusalOnATenantRouteIsForbidden(t *testing.T) {
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{},
 		Orgs: stubOrgs{
 			rename: func(context.Context, service.Actor, domain.OrgID, string) (service.Org, error) {
@@ -2389,7 +2389,7 @@ const (
 // surfaces, so a test can drive one handler's exact refusal without a datastore.
 func newValueServer(t *testing.T, envs server.EnvironmentService, values server.ValueService) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, OAuth2Providers: stubOAuth2Providers{}, Version: "test",
 		Projects: stubHierarchy{}, Environments: envs, Values: values, Folders: stubFolders{},
 	}, nil))

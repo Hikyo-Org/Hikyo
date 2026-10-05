@@ -107,34 +107,6 @@ func (i *Installer) Apply(ctx context.Context, status updatecheck.Status) error 
 		return err
 	}
 
-	archiveFile, err := archiveName(status.LatestVersion, runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		return err
-	}
-	archiveAsset, err := exactAsset(status.LatestVersion, archiveFile, status.Assets)
-	if err != nil {
-		return err
-	}
-	checksumAsset, err := exactAsset(status.LatestVersion, "checksums.txt", status.Assets)
-	if err != nil {
-		return err
-	}
-	checksumFile, err := i.download(ctx, checksumAsset, maxChecksumBytes)
-	if err != nil {
-		return err
-	}
-	wantArchiveDigest, err := checksumFor(archiveFile, checksumFile)
-	if err != nil {
-		return err
-	}
-	archive, err := i.download(ctx, archiveAsset, maxArchiveBytes)
-	if err != nil {
-		return err
-	}
-	gotArchiveDigest := sha256.Sum256(archive)
-	if !bytes.Equal(wantArchiveDigest, gotArchiveDigest[:]) {
-		return fmt.Errorf("selfupdate: archive checksum mismatch for %s", archiveFile)
-	}
 	var binary []byte
 	if isPrerelease {
 		if i.stageNightlies {
@@ -156,6 +128,34 @@ func (i *Installer) Apply(ctx context.Context, status updatecheck.Status) error 
 			return err
 		}
 	} else {
+		archiveFile, err := archiveName(status.LatestVersion, runtime.GOOS, runtime.GOARCH)
+		if err != nil {
+			return err
+		}
+		archiveAsset, err := exactAsset(status.LatestVersion, archiveFile, status.Assets)
+		if err != nil {
+			return err
+		}
+		checksumAsset, err := exactAsset(status.LatestVersion, "checksums.txt", status.Assets)
+		if err != nil {
+			return err
+		}
+		checksumFile, err := i.download(ctx, checksumAsset, maxChecksumBytes)
+		if err != nil {
+			return err
+		}
+		wantArchiveDigest, err := checksumFor(archiveFile, checksumFile)
+		if err != nil {
+			return err
+		}
+		archive, err := i.download(ctx, archiveAsset, maxArchiveBytes)
+		if err != nil {
+			return err
+		}
+		gotArchiveDigest := sha256.Sum256(archive)
+		if !bytes.Equal(wantArchiveDigest, gotArchiveDigest[:]) {
+			return fmt.Errorf("selfupdate: archive checksum mismatch for %s", archiveFile)
+		}
 		if err := i.verifyStable(ctx, status, archiveFile, archive); err != nil {
 			return err
 		}

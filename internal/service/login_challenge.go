@@ -134,7 +134,7 @@ func (s *Auth) issueLoginChallenge(ctx context.Context, az *authz.TxAuthorizer, 
 // by default: a challenge offering only webauthn cannot be satisfied on the totp
 // endpoint. Restore safety is enforced on the FACTOR at finish (its live-epoch
 // check), not on this ephemeral token, which stores no epoch.
-func (s *Auth) liveChallenge(ctx context.Context, az *authz.TxAuthorizer, c authz.LoginChallenge, factor string) error {
+func (s *Auth) liveChallenge(c authz.LoginChallenge, factor string) error {
 	if c.Consumed || !s.now().Before(c.ExpiresAt) {
 		return domain.ErrNotFound
 	}
@@ -171,7 +171,7 @@ func (s *Auth) LoginChallengeTOTP(ctx context.Context, challengeID, code string)
 		if err != nil {
 			return err
 		}
-		if err := s.liveChallenge(ctx, az, challenge, "totp"); err != nil {
+		if err := s.liveChallenge(challenge, "totp"); err != nil {
 			return err
 		}
 		account, err = az.AccountByID(ctx, challenge.AccountID)
@@ -235,7 +235,7 @@ func (s *Auth) LoginChallengeTOTP(ctx context.Context, challengeID, code string)
 		}
 		// Re-check against the write-tx clock/epoch: a request delayed past the
 		// window or an epoch bump between the phases must not still mint.
-		if err := s.liveChallenge(ctx, az, challenge, "totp"); err != nil {
+		if err := s.liveChallenge(challenge, "totp"); err != nil {
 			return err
 		}
 		// CAS on the row whose seed was VERIFIED in phase 1, not a freshly read
@@ -295,7 +295,7 @@ func (s *Auth) LoginChallengeWebauthnStart(ctx context.Context, challengeID stri
 		if err != nil {
 			return err
 		}
-		if err := s.liveChallenge(ctx, az, challenge, "webauthn"); err != nil {
+		if err := s.liveChallenge(challenge, "webauthn"); err != nil {
 			return err
 		}
 		account, err := az.AccountByID(ctx, challenge.AccountID)
@@ -368,7 +368,7 @@ func (s *Auth) LoginChallengeWebauthnFinish(ctx context.Context, challengeID str
 		if err != nil {
 			return err
 		}
-		if err := s.liveChallenge(ctx, az, challenge, "webauthn"); err != nil {
+		if err := s.liveChallenge(challenge, "webauthn"); err != nil {
 			return err
 		}
 		account, err = az.AccountByID(ctx, challenge.AccountID)
@@ -425,7 +425,7 @@ func (s *Auth) LoginChallengeWebauthnFinish(ctx context.Context, challengeID str
 			}
 			return err
 		}
-		if err := s.liveChallenge(ctx, az, challenge, "webauthn"); err != nil {
+		if err := s.liveChallenge(challenge, "webauthn"); err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				attempt.refused = sessionRefusedUnauthenticated
 				return nil

@@ -757,7 +757,7 @@ func TestLiveRouterSurfaceIsExhaustivelyPinned(t *testing.T) {
 		name    string
 		handler http.Handler
 	}{
-		{"public", server.New(nil, &server.API{}, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}})},
+		{"public", server.New(&server.API{}, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}})},
 		{"operational", server.NewOperational(nil, nil, nil)},
 	}
 	for _, candidate := range handlers {
@@ -813,7 +813,7 @@ func TestLiveRouterSurfaceIsExhaustivelyPinned(t *testing.T) {
 }
 
 func TestPublicAndOperationalRouterPartitionsDoNotOverlap(t *testing.T) {
-	public := server.New(nil, &server.API{}, nil)
+	public := server.New(&server.API{}, nil)
 	operational := server.NewOperational(nil, nil, nil)
 	for _, route := range []string{"/healthz", "/readyz", "/metrics"} {
 		req := httptest.NewRequest(http.MethodGet, route, nil)

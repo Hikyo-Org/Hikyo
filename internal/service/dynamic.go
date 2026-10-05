@@ -421,7 +421,6 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 	}
 	defer release()
 
-	projectScope := domain.Scope{Org: scope.Org, Project: scope.Project}
 	leaseID, err := newID("dls")
 	if err != nil {
 		return MintLeaseResult{}, err
@@ -447,7 +446,7 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 		if err != nil {
 			return err
 		}
-		if err := s.leaseDisclosureGate(ctx, az, caller, scope, projectScope, now, true); err != nil {
+		if err := s.leaseDisclosureGate(ctx, az, caller, scope, now, true); err != nil {
 			return err
 		}
 		provider, err := r.Dynamic().GetProvider(ctx, proof, req.ProviderID)
@@ -536,7 +535,7 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 			// in the same tx as the disclosure. If it was withdrawn, do not
 			// disclose: settle to `revoking` so the worker drops the role that
 			// was created, and the password never leaves this process.
-			if err := s.leaseDisclosureGate(ctx, az, caller, scope, projectScope, settleNow, false); err != nil {
+			if err := s.leaseDisclosureGate(ctx, az, caller, scope, settleNow, false); err != nil {
 				finishState, mintOutcome, disclosed = "revoking", "failure", false
 			}
 		}
@@ -597,7 +596,7 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 // applies); a human additionally consumes a fresh mint ceremony when
 // consumeCeremony is set. A missing grant answers the uniform nonexistent
 // response so the surface is not an authority oracle.
-func (s *Dynamic) leaseDisclosureGate(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope, projectScope domain.Scope, now time.Time, consumeCeremony bool) error {
+func (s *Dynamic) leaseDisclosureGate(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, scope domain.Scope, now time.Time, consumeCeremony bool) error {
 	grants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
 	if err != nil {
 		return err

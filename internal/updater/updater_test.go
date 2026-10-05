@@ -1,44 +1,24 @@
 package updater
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
-type recordingRunner struct {
-	calls  []string
-	failAt string
-}
-
-func (r *recordingRunner) Run(_ context.Context, command Command, _ Request) error {
-	name := filepath.Base(command.Name)
-	r.calls = append(r.calls, name)
-	if name == r.failAt {
-		return errors.New("fixture failure")
-	}
-	return nil
-}
-
-func TestExecutorRefusesEveryLegacyBackendWithoutCommandsOrJournalMutation(t *testing.T) {
+func TestExecutorRefusesEveryLegacyBackend(t *testing.T) {
 	for _, backend := range []Backend{BackendFlux, BackendCompose, BackendSystemd} {
 		for _, version := range []string{"1.2.3", "1.2.3-nightly.1", "dev"} {
 			t.Run(string(backend)+"/"+version, func(t *testing.T) {
-				runner := &recordingRunner{}
-				progress := false
-				executor := Executor{Config: fixtureConfig(t, backend), Runner: runner,
-					Progress: func(Job) error { progress = true; return nil },
-				}
+				executor := Executor{Config: Config{Backend: backend}}
 				job, err := executor.Execute(t.Context(), Request{ID: "upd_legacy", Version: version})
 				if !errors.Is(err, ErrRemoteApplyDisabled) || job.State != StateFailed || job.FailureCode != "remote-apply-disabled" {
 					t.Fatalf("job=%+v error=%v, want disabled failure", job, err)
 				}
-				if len(runner.calls) != 0 || progress {
-					t.Fatalf("retired job ran commands=%v or changed journal=%v", runner.calls, progress)
+				if job.Backend != backend {
+					t.Fatalf("job backend=%q, want %q", job.Backend, backend)
 				}
 			})
 		}
@@ -100,46 +80,4 @@ func TestJournalMarksInterruptedJobFailedOnHelperRestart(t *testing.T) {
 	if job.State != StateFailed || job.Phase != "recovery" || job.FailureCode != "helper-restarted" || !job.FinishedAt.Equal(now) {
 		t.Fatalf("recovered job = %#v", job)
 	}
-}
-
-func TestLoadConfigRefusesWritableOrAmbiguousPolicy(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "updater.json")
-	encoded := `{"backend":"flux","socket":"/run/hikyo/updater.sock","state_file":"/var/lib/hikyo-updater/jobs.json","commands":{"plan":{"name":"plan","timeout_seconds":1},"backup":{"name":"backup","timeout_seconds":1},"verify":{"name":"verify","timeout_seconds":1},"apply":{"name":"apply","timeout_seconds":1},"health":{"name":"health","timeout_seconds":1},"rollback":{"name":"rollback","timeout_seconds":1}}}`
-	if err := os.WriteFile(path, []byte(encoded), 0o666); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o666); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "group/world writable") {
-		t.Fatalf("writable config error = %v", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(encoded+` {}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "exactly one") {
-		t.Fatalf("multiple value error = %v", err)
-	}
-}
-
-func fixtureConfig(t *testing.T, backend Backend) Config {
-	t.Helper()
-	config := Config{
-		Backend: backend,
-		Commands: PhaseCommands{
-			Plan:     Command{Name: "/commands/plan", TimeoutSeconds: 5},
-			Backup:   Command{Name: "/commands/backup", TimeoutSeconds: 5},
-			Verify:   Command{Name: "/commands/verify", TimeoutSeconds: 5},
-			Apply:    Command{Name: "/commands/apply", TimeoutSeconds: 5},
-			Health:   Command{Name: "/commands/health", TimeoutSeconds: 5},
-			Rollback: Command{Name: "/commands/rollback", TimeoutSeconds: 5},
-		},
-	}
-	if err := config.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	return config
 }

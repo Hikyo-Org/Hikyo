@@ -262,7 +262,7 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 		mcpHandler := mcpProfile(setupMCPHandler(t, sealer, services), codex)
 		var logs bytes.Buffer
 		metrics := server.NewMetrics(nil)
-		handler := server.NewPublic(nil, &server.API{
+		handler := server.NewPublic(&server.API{
 			Metrics: metrics,
 			Log:     slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		}, nil, server.PublicOptions{ExternalOrigin: "https://hikyo.example.com", MCP: mcpHandler})

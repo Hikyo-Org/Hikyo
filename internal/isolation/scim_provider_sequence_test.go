@@ -91,7 +91,7 @@ func scimWireServerWithSubject(t *testing.T, db *store.DB, slug, subjectSource s
 	bindingID, token := binding.ID, mint.Token
 	// The same construction production and the demo flow use: a hand-minimal
 	// API would route around middleware the real one runs.
-	srv := httptest.NewServer(server.New(&service.System{DB: db}, &server.API{
+	srv := httptest.NewServer(server.New(&server.API{
 		Auth:         auth,
 		Orgs:         &service.Orgs{DB: db},
 		Projects:     &service.Projects{DB: db},

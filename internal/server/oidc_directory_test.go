@@ -23,7 +23,7 @@ func (s emptyOIDCDirectory) List(context.Context, service.Actor) ([]service.Prov
 
 func TestEmptyOIDCProviderDirectoryEncodesArray(t *testing.T) {
 	for _, rows := range [][]service.ProviderView{nil, {}} {
-		srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		srv := httptest.NewServer(server.New(&server.API{
 			Auth: stubAuth{}, Providers: emptyOIDCDirectory{rows: rows},
 		}, nil))
 		response, body := call(t, srv, http.MethodGet, api.PathPrefix+"/instance/oidc-providers", "live", nil)

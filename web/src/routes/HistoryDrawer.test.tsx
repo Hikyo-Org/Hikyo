@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { createClient } from '@hikyo/runtime-core';
+import { WorkspaceContextProvider } from '../api/transport.tsx';
 import type { RetentionConsequence } from '@hikyo/client';
 import { act, createRef } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
@@ -491,4 +493,10 @@ describe('HistoryDrawer key filter', () => {
       'No revision has moved key_deleted (unknown key) in this environment.',
     );
   });
+});
+
+it('takes the remote retention settings pointer to the remote full-page settings', async () => {
+  const view = await renderForm(<WorkspaceContextProvider value={{ origin: 'https://remote.example', remote: 'other', client: createClient() }}>{drawer()}</WorkspaceContextProvider>);
+  expect(view.container.querySelector('.history__settings-pointer')?.getAttribute('href')).toBe('https://remote.example/orgs/org_a/projects/prj_a/settings#project-policy');
+  await view.unmount();
 });

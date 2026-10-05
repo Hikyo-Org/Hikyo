@@ -42,7 +42,7 @@ func TestAutomationPreviewLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		srv := httptest.NewServer(server.New(&service.System{DB: db}, &server.API{
+		srv := httptest.NewServer(server.New(&server.API{
 			Auth:         wire.auth,
 			Environments: &service.Environments{DB: db, Keyring: keyring},
 			Values:       values, Revisions: revisions,

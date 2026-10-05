@@ -1,13 +1,29 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
+import { createClient } from '@hikyo/runtime-core';
+import type { WorkspaceContextValue } from '../api/transport.tsx';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
 
-const mocks = vi.hoisted(() => ({
-  source: 'db' as 'db' | 'git',
+const mocks = vi.hoisted<{
+  source: 'db' | 'git';
+  workspace: WorkspaceContextValue | null;
+  emptyEnvironments: boolean;
+  canDeclare: boolean;
+  canEdit: boolean;
+  groupId: string;
+  folder: string;
+  create: ReturnType<typeof vi.fn>;
+  initialize: ReturnType<typeof vi.fn>;
+  stage: ReturnType<typeof vi.fn>;
+  publish: ReturnType<typeof vi.fn>;
+}>(() => ({
+  source: 'db',
+  workspace: null,
+  emptyEnvironments: false,
   canDeclare: true,
   canEdit: true,
   groupId: '',
@@ -30,7 +46,7 @@ vi.mock('@tanstack/react-virtual', () => ({
 
 vi.mock('../api/transport.tsx', async (importActual) => {
   const actual = await importActual<typeof import('../api/transport.tsx')>();
-  return { ...actual, useWorkspaceContext: () => null };
+  return { ...actual, useWorkspaceContext: () => mocks.workspace };
 });
 
 vi.mock('../api/definitions.ts', async (importActual) => {
@@ -56,7 +72,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
   return {
     ...actual,
     useMatrixProject: () => ({
-      environments: { data: { items: [environment], count: 1 }, isPending: false, isError: false },
+      environments: { data: { items: mocks.emptyEnvironments ? [] : [environment], count: mocks.emptyEnvironments ? 0 : 1 }, isPending: false, isError: false },
       keys: {
         data: {
           items: [{
@@ -80,7 +96,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
         isError: false,
       },
       groups: { data: { items: [{ id: 'linked_a', name: 'Database credentials' }], count: 1 }, isPending: false, isError: false },
-      environmentRows: [{
+      environmentRows: mocks.emptyEnvironments ? [] : [{
         environmentId: 'env_a',
         environment,
         readiness: 'ready',
@@ -118,6 +134,8 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
 
 afterEach(() => {
   mocks.source = 'db';
+  mocks.workspace = null;
+  mocks.emptyEnvironments = false;
   mocks.canDeclare = true;
   mocks.canEdit = true;
   mocks.groupId = '';
@@ -259,5 +277,14 @@ it('keeps linked keys in their folder and shows their relationship separately', 
   expect(view.container.querySelector('.matrix__linked-keys')?.getAttribute('title')).toContain(
     'Pending changes publish together',
   );
+  await view.unmount();
+});
+
+it('takes the remote empty-matrix environment link to that instance settings', async () => {
+  mocks.emptyEnvironments = true;
+  mocks.workspace = { origin: 'https://remote.example', remote: 'other', client: createClient() };
+  const view = await render();
+  const link = [...view.container.querySelectorAll('a')].find((link) => link.textContent === 'Project settings › New environment');
+  expect(link?.href).toBe('https://remote.example/orgs/org_a/projects/project_a/settings');
   await view.unmount();
 });
