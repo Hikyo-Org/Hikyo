@@ -1,8 +1,9 @@
 package authz
 
 import (
-	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 func TestNavigationProjectionKeepsMixedReadSelectorValid(t *testing.T) {

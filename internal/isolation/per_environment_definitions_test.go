@@ -2,11 +2,12 @@ package isolation
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"testing"
 )
 
 func TestSelectedEnvironmentDefinitionAndInitialDraft(t *testing.T) {
