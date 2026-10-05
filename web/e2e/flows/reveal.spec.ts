@@ -419,6 +419,9 @@ test.describe('reveal ceremonies', () => {
   });
 
   test('a write-only key offers replacement, never a disabled field', async () => {
+    // Install before loading the surface so its remask ticker uses this clock.
+    await page.clock.install();
+    await page.goto(VALUES_PATH);
     const secret = seed.secrets[0] ?? '';
     await page.getByRole('button', { name: secret, exact: true }).click();
     const field = page.getByLabel(`New value for ${secret}`);
@@ -437,6 +440,11 @@ test.describe('reveal ceremonies', () => {
     await page.getByRole('button', { name: `Reveal ${secret}` }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Use a passkey' }).click();
     await expect(auditLines(page).first()).toBeVisible();
+    await expect(page.getByText(/re-masks in \d+s/).first()).toBeVisible();
+    // Keep the disclosure state present while the full accessibility and
+    // contrast set runs. The separate remask test advances this same clock
+    // to prove that disclosure still expires after ten seconds.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()));
 
     await expectPinnedAssertionSet(page, {
       flow: 'reveal',
