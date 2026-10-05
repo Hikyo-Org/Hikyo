@@ -729,3 +729,62 @@ func (q *Queries) ResolveRulePendingKey(ctx context.Context, arg ResolveRulePend
 	err := row.Scan(&i.ID, &i.FolderPath)
 	return i, err
 }
+
+const ruleKeyConflictingDraftCount = `-- name: RuleKeyConflictingDraftCount :one
+SELECT COUNT(*) FROM pending_changes
+WHERE org_id = $1 AND project_id = $2
+ AND environment_id = $3 AND key_id = $4
+ AND (owner_id <> $5 OR staged_from_entry <> '')
+`
+
+type RuleKeyConflictingDraftCountParams struct {
+	OrgID     string
+	ProjectID string
+	EnvID     string
+	KeyID     string
+	OwnerID   string
+}
+
+// Initial drafts cannot replace another owner's work or an existing-value draft.
+// hikyo:authn-resolution
+// hikyo:reason authorize() checks only draft ownership and absent-baseline metadata before minting an initial-cell draft proof; ciphertext is never selected.
+func (q *Queries) RuleKeyConflictingDraftCount(ctx context.Context, arg RuleKeyConflictingDraftCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, ruleKeyConflictingDraftCount,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvID,
+		arg.KeyID,
+		arg.OwnerID,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const ruleKeyValueCount = `-- name: RuleKeyValueCount :one
+SELECT COUNT(*) FROM value_entries
+WHERE org_id = $1 AND project_id = $2
+ AND environment_id = $3 AND key_id = $4
+`
+
+type RuleKeyValueCountParams struct {
+	OrgID     string
+	ProjectID string
+	EnvID     string
+	KeyID     string
+}
+
+// Metadata-only schema proofs cannot alter a key's existing value delivery.
+// hikyo:authn-resolution
+// hikyo:reason authorize() checks target-key value absence before minting an internal metadata-only schema snapshot proof; ciphertext is never selected.
+func (q *Queries) RuleKeyValueCount(ctx context.Context, arg RuleKeyValueCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, ruleKeyValueCount,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvID,
+		arg.KeyID,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}

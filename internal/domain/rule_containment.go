@@ -113,15 +113,16 @@ func (outer Where) ContainsWhereInProject(inner Where, project ProjectID, keyFol
 	o, i := outer.Keys[project], inner.Keys[project]
 	if inner.KeyMode == AxisOnly {
 		for _, selected := range i {
-			if outer.KeyMode == AxisOnly {
+			switch outer.KeyMode {
+			case AxisOnly:
 				if !slices.ContainsFunc(o, func(item RuleKeyItem) bool { return keySelectionContains(item, selected, keyFolders) }) {
 					return false
 				}
-			} else if outer.KeyMode == AxisAll {
+			case AxisAll:
 				if slices.ContainsFunc(o, func(excluded RuleKeyItem) bool { return keySelectionOverlapsExclusion(selected, excluded, keyFolders) }) {
 					return false
 				}
-			} else {
+			default:
 				return false
 			}
 		}

@@ -194,3 +194,47 @@ func TestMemberAccessRulesPublishHidesUnmanagedGroupDrafts(t *testing.T) {
 		}
 	})
 }
+
+func TestMemberAccessRulesRestorePreviewHidesUnmanagedGroupDrafts(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedRulesFixture(t, db)
+		project := scopeProject(orgA, prjA1)
+		group, err := (&service.KeyGroups{DB: db}).Create(t.Context(), service.LocalPrincipal(custodian), project, "restore-linked", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{f.dbKeyID, f.strKeyID} {
+			if _, err := f.keys.SetGroup(t.Context(), service.LocalPrincipal(custodian), project, id, group.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		dev := scopeEnv(orgA, prjA1, envA1)
+		draft, err := f.values.Set(t.Context(), service.LocalPrincipal(custodian), dev, "DB_PASSWORD", "changed-before-restore", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revisions := revisionSvc(t, db)
+		published, err := revisions.PublishPlanned(t.Context(), service.LocalPrincipal(custodian), dev, service.PublishRequest{VersionIDs: []string{draft.VersionID}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := published.Environments[0].Revision - 1
+		mode, envs := onlyEnvs(envA1)
+		one := whereIn(mode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: f.dbKeyID})
+		for _, capability := range []domain.Capability{domain.CapRead, domain.CapEdit, domain.CapReveal, domain.CapRevealHistory} {
+			f.create(t, orgAdmin, service.RuleSpec{Target: carol, Capability: capability, Org: orgA, Where: one})
+		}
+		f.create(t, orgAdmin, service.RuleSpec{Target: dave, Capability: domain.CapEdit, Org: orgA, Where: whereIn(mode, envs, domain.AxisAll)})
+		_, absent := revisions.Restore(t.Context(), service.LocalPrincipal(carol), dev, target, "DB_PASSWORD")
+		if _, err := f.values.Set(t.Context(), service.LocalPrincipal(dave), dev, "STRIPE_KEY", "other-owner", nil); err != nil {
+			t.Fatal(err)
+		}
+		_, present := revisions.Restore(t.Context(), service.LocalPrincipal(carol), dev, target, "DB_PASSWORD")
+		assertUniformNotFound(t, absent, present)
+		f.create(t, orgAdmin, service.RuleSpec{Target: carol, Capability: domain.CapEdit, Org: orgA,
+			Where: whereIn(mode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: f.strKeyID})})
+		if _, err := revisions.Restore(t.Context(), service.LocalPrincipal(carol), dev, target, "DB_PASSWORD"); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("authorized restore conflict control: %v", err)
+		}
+	})
+}

@@ -1,6 +1,7 @@
 package authz
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -11,7 +12,7 @@ import (
 // filter their results through the proof's selector before returning them.
 func ruleNavigationOperation(op Operation) bool {
 	switch op {
-	case OpOrgGet, OpProjectList, OpProjectGet, OpEnvList, OpKeyList, OpFolderList:
+	case OpOrgGet, OpProjectList, OpProjectGet, OpEnvList, OpKeyList, OpKeyGet, OpFolderList, OpFolderGet, OpKeyGroupList, OpKeyGroupGet, OpDefinitionsSettingsGet:
 		return true
 	default:
 		return false
@@ -41,7 +42,30 @@ func ruleNavigationReach(op Operation, chain domain.Scope, rules []domain.Rule, 
 		if rule.Org != chain.Org || rule.Capability != domain.CapRead || rule.Validate() != nil {
 			continue
 		}
-		if chain.Project != "" && !slices.Contains(rule.Where.Projects, chain.Project) {
+		// See ignores a card's key axis, including items attached solely
+		// to projects with no selected environment (ADR D5).
+		rule.Where.KeyMode, rule.Where.Keys = domain.AxisAll, nil
+		// An only-environments rule may name several projects but select
+		// environments in only some of them. Project metadata follows actual
+		// environment reach, rather than the unfiltered project axis.
+		if rule.Where.EnvMode == domain.AxisOnly {
+			rule.Where.Projects = slices.DeleteFunc(slices.Clone(rule.Where.Projects), func(project domain.ProjectID) bool {
+				return len(rule.Where.Envs[project]) == 0
+			})
+			rule.Where.Envs = maps.Clone(rule.Where.Envs)
+			rule.Where.Keys = maps.Clone(rule.Where.Keys)
+			for project := range rule.Where.Envs {
+				if !slices.Contains(rule.Where.Projects, project) {
+					delete(rule.Where.Envs, project)
+				}
+			}
+			for project := range rule.Where.Keys {
+				if !slices.Contains(rule.Where.Projects, project) {
+					delete(rule.Where.Keys, project)
+				}
+			}
+		}
+		if len(rule.Where.Projects) == 0 || chain.Project != "" && !slices.Contains(rule.Where.Projects, chain.Project) {
 			continue
 		}
 		reached = append(reached, rule)

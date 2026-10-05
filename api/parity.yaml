@@ -221,6 +221,7 @@ operations:
   # One value into several environments: the matrix row editor sets the
   # cells and copy-values fans an environment out; no relationship between the
   # copies either way.
+  initializeValue:            {webui: matrix}
   declareValues:               {webui: matrix, via: [setValue, copyValues]}
   copyValues:                  {webui: matrix}
   # The matrix IS the side-by-side comparison of environments.

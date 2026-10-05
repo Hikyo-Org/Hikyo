@@ -114,6 +114,7 @@ export const EditorFolderRule: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Admin' }));
     await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).not.toBeChecked();
     await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toHaveAccessibleDescription(/Key definitions are shared.*every project environment/);
     // Mixed permission changes save as one atomic replacement.
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Reveal history' }));
     await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
@@ -238,7 +239,14 @@ export const WhoCan: Story = {
     const excepted = within(canvas.getByRole('table', { name: 'No, left out by an except: 2' }));
     await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText('Left out: this rule has except prod.')).toBeVisible();
     await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
-    await expect(canvas.queryByText('Chen Li')).toBeNull();
+    const noRule = canvas.getByRole('button', { name: 'No, no rule reaches: 2' });
+    await expect(noRule).toHaveAttribute('aria-expanded', 'false');
+    await expect(canvas.getByText('Chen Li')).not.toBeVisible();
+    await userEvent.click(noRule);
+    await expect(noRule).toHaveAttribute('aria-expanded', 'true');
+    await expect(canvas.getByText('Chen Li')).toBeVisible();
+    await expect(canvas.getAllByText('None of their rules or scope-wide access gives Reveal here.')).toHaveLength(2);
+    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
 
     // See is never narrowed by keys: an except narrows only its own rule.
     await userEvent.selectOptions(permission, 'read');

@@ -54,11 +54,54 @@ func (a *TxAuthorizer) AuthorizeRuleList(ctx context.Context, caller Identity, s
 }
 
 func (a *TxAuthorizer) RuleManageable(ctx context.Context, caller Identity, target domain.Rule, project domain.ProjectID) (bool, error) {
-	if target.Capability == domain.CapRead {
-		target.Where.KeyMode, target.Where.Keys = domain.AxisAll, nil
+	held, err := a.RulesManageable(ctx, caller, []domain.Rule{target}, project)
+	if err != nil {
+		return false, err
 	}
-	target.Capability = domain.CapManageMembers
-	return a.RuleCapabilityHeld(ctx, caller, target, project)
+	return held[0], nil
+}
+
+// RulesManageable evaluates a listing against one live authorization snapshot.
+// Key metadata is shared only inside this call, never across later mutations.
+func (a *TxAuthorizer) RulesManageable(ctx context.Context, caller Identity, targets []domain.Rule, project domain.ProjectID) ([]bool, error) {
+	grants, err := a.r.Grants(ctx, caller.Principal)
+	if err != nil {
+		return nil, err
+	}
+	var rules []domain.Rule
+	if rulesApply(caller) {
+		rules, err = a.r.Rules(ctx, caller.Principal)
+		if err != nil {
+			return nil, err
+		}
+	}
+	type keyAddress struct {
+		org domain.OrgID
+		id  string
+	}
+	folders := map[keyAddress]domain.RuleKey{}
+	held := make([]bool, len(targets))
+	for i, target := range targets {
+		if target.Capability == domain.CapRead {
+			target.Where.KeyMode, target.Where.Keys = domain.AxisAll, nil
+		}
+		resolve := func(id string) (domain.RuleKey, error) {
+			address := keyAddress{org: target.Org, id: id}
+			if key, ok := folders[address]; ok {
+				return key, nil
+			}
+			key, err := a.r.ResolveRuleKey(ctx, string(target.Org), string(project), id, "")
+			if err == nil {
+				folders[address] = key
+			}
+			return key, err
+		}
+		held[i], err = a.ruleSelectorHeldResolving(ctx, domain.Scope{Org: target.Org, Project: project}, grants, rules, domain.CapManageMembers, target.Where, resolve)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return held, nil
 }
 
 func (a *TxAuthorizer) ruleDelegationHeld(ctx context.Context, f Formula, chain domain.Scope, grants []domain.Grant, rules []domain.Rule, target domain.Rule) (bool, error) {
@@ -105,6 +148,13 @@ func (a *TxAuthorizer) RuleCapabilityHeld(ctx context.Context, caller Identity, 
 }
 
 func (a *TxAuthorizer) ruleSelectorHeld(ctx context.Context, chain domain.Scope, grants []domain.Grant, rules []domain.Rule, capability domain.Capability, target domain.Where) (bool, error) {
+	resolve := func(id string) (domain.RuleKey, error) {
+		return a.r.ResolveRuleKey(ctx, string(chain.Org), string(chain.Project), id, "")
+	}
+	return a.ruleSelectorHeldResolving(ctx, chain, grants, rules, capability, target, resolve)
+}
+
+func (a *TxAuthorizer) ruleSelectorHeldResolving(ctx context.Context, chain domain.Scope, grants []domain.Grant, rules []domain.Rule, capability domain.Capability, target domain.Where, resolve func(string) (domain.RuleKey, error)) (bool, error) {
 	// Legacy grants still satisfy the same atom. Environment grants can cover
 	// an only-environments selector, but never an all/future selector.
 	if evaluate(Formula{{Cap: capability, At: domain.LevelProject}}, chain, grants) {
@@ -150,7 +200,7 @@ func (a *TxAuthorizer) ruleSelectorHeld(ctx context.Context, chain domain.Scope,
 				if item.IsFolder {
 					continue
 				}
-				key, err := a.r.ResolveRuleKey(ctx, string(chain.Org), string(chain.Project), item.KeyID, "")
+				key, err := resolve(item.KeyID)
 				if err != nil {
 					return false, err
 				}

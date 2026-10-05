@@ -3158,11 +3158,18 @@ export const zCreateRuleRequest = z.object({
     where: zRuleWhere
 });
 
-export const zReplaceRulesRequest = z.object({
+export const zReplaceRulesRequest = z.intersection(z.union([
+    z.object({
+        revoke: z.array(zId).min(1)
+    }),
+    z.object({
+        create: z.array(zCreateRuleRequest).min(1)
+    })
+]), z.object({
     principal: zId,
     revoke: z.array(zId).max(32),
     create: z.array(zCreateRuleRequest).max(32)
-});
+}));
 
 export const zRule = z.object({
     id: zId,
@@ -6148,6 +6155,20 @@ export const zDeclareValuesPath = z.object({
  * The cells as stored, one per environment.
  */
 export const zDeclareValuesResponse = zValueList;
+
+export const zInitializeValueBody = zSetValueRequest;
+
+export const zInitializeValuePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    key: zKeyName
+});
+
+/**
+ * The staged pending change. It never echoes the value back.
+ */
+export const zInitializeValueResponse = zPendingChange;
 
 export const zCopyValuesBody = zCopyValuesRequest;
 

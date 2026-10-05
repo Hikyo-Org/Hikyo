@@ -29,6 +29,7 @@ type ValueService interface {
 	Get(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string, reveal bool) (service.ValueCell, error)
 	List(ctx context.Context, actor service.Actor, scope domain.Scope, reveal bool) ([]service.ValueCell, error)
 	Set(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, value string, acks []string) (service.StagedChange, error)
+	Initialize(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, value string, acks []string) (service.StagedChange, error)
 	Unset(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) (service.StagedChange, error)
 	Declare(ctx context.Context, actor service.Actor, scope domain.Scope, envIDs []string, keyName, value string) ([]service.ValueCell, []service.Finding, error)
 	Copy(ctx context.Context, actor service.Actor, scope domain.Scope, req service.CopyRequest) (service.CopyResult, error)
@@ -168,6 +169,14 @@ func wireStagedChange(c service.StagedChange) apigen.PendingChange {
 		out.Findings = &fs
 	}
 	return out
+}
+
+func (a *API) InitializeValue(ctx context.Context, req apigen.InitializeValueRequestObject) (apigen.InitializeValueResponseObject, error) {
+	staged, err := a.Values.Initialize(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), req.Key, req.Body.Value, derefAcks(req.Body.Acknowledgements))
+	if err != nil {
+		return nil, err
+	}
+	return apigen.InitializeValue200JSONResponse(wireStagedChange(staged)), nil
 }
 
 func (a *API) DeclareValues(ctx context.Context, req apigen.DeclareValuesRequestObject) (apigen.DeclareValuesResponseObject, error) {

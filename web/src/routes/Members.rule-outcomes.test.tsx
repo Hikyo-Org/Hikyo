@@ -36,7 +36,7 @@ vi.mock('../api/access.ts', async (original) => ({
 vi.mock('../ui/useModalDialog.ts', () => ({ useModalDialog: () => ({ current: null }) }));
 
 let rows: z.infer<typeof zRule>[] = [];
-let createFailure: 'none' | 'lost' | 'malformed' = 'none';
+let createFailure: 'none' | 'lost' | 'malformed' | 'refused' = 'none';
 let deleteFailure = false;
 let createCount = 0;
 let listingCount = 0;
@@ -82,6 +82,7 @@ beforeEach(() => {
         deleteFailure = false;
         return json({ error: 'unavailable' }, 503);
       }
+      if (createFailure === 'refused') return json({ error: { code: 'invalid', message: 'Rule refused', detail: 'Adjust the selection.' } }, 400);
       const created = body.create.map((add) => {
         const id = ruleIDs[createCount++];
         if (id === undefined) throw new Error('Unexpected duplicate create.');
@@ -260,5 +261,28 @@ it('keeps rule actions unavailable when the authoritative post-write listing is 
     expect([...view.container.querySelectorAll('#members-rules [data-rule-action]')]).toEqual([]);
     expect(view.container.textContent).toContain('current rules or session could not be confirmed');
     expect(view.container.textContent).not.toContain('Added a rule for');
+  } finally { await view.unmount(); }
+});
+
+it('retains an edited draft after a definite atomic refusal and retries it unchanged', async () => {
+  rows = [row(ruleIDs[0], 'read')];
+  createCount = 1;
+  createFailure = 'refused';
+  const view = await renderMembers();
+  try {
+    await settleTask();
+    await click(view.container, 'Edit rule');
+    const reveal = [...view.container.querySelectorAll<HTMLLabelElement>('dialog label')].find((label) => label.textContent === 'Reveal');
+    if (reveal === undefined) throw new Error('No Reveal permission.');
+    await act(async () => reveal.click());
+    await click(view.container, 'Save');
+    expect(view.container.querySelector('dialog')).not.toBeNull();
+    expect(view.container.querySelector('dialog')?.textContent).not.toContain('could not be confirmed');
+    expect(rows.map((item) => item.capability)).toEqual(['read']);
+    expect(deleted).toEqual([]);
+    createFailure = 'none';
+    await click(view.container, 'Save');
+    expect(view.container.querySelector('dialog')).toBeNull();
+    expect(rows.map((item) => item.capability)).toEqual(['read', 'reveal']);
   } finally { await view.unmount(); }
 });

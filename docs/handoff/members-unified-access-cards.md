@@ -40,6 +40,18 @@ and merges check the pinned key set. Restore and history disclosure authorize
 the addressed key. Key-definition changes authorize their automatic publication
 in every affected environment before mutation.
 
+Definitions are shared across the project. A selected-environment Define rule
+can create an empty key outside a linked key group. Existing semantic definition
+changes require Define and Publish in every project environment, regardless of
+value presence. Creating or changing linked key group membership requires that
+authority over whole environments before inspecting group state.
+
+First values use the new Initialize endpoint under Define and Publish at the
+destination. It stages a draft only when the published cell is absent, refuses
+another owner's draft, and rechecks after the project lock. Ordinary edits retain
+Edit authority; publishing stays explicit. New-key scanner acknowledgement
+retries use Initialize too.
+
 Manage access contains the target rule's complete selector, including future
 environments, folder descendants and exceptions. Delegated managers can assign
 only permissions they hold. Assigning See requires management over all keys of
@@ -56,7 +68,7 @@ access keep their existing scope-wide path.
 The new dialog stores only a grouping key for public permission metadata.
 Credential-reset authority stays in `useSensitiveState` and its display-once
 dialog. No reset results enter a query/mutation cache. Sensitive inventory hashes
-are refreshed only after reviewing the changed Members and rule API sources.
+are refreshed after reviewing changed Members, rule, matrix and client sources.
 
 ## Entry points
 
@@ -68,7 +80,7 @@ are refreshed only after reviewing the changed Members and rule API sources.
 ## Validation
 
 Typecheck, lint, design checks and SPA build pass. The full web unit suite passes
-1,484 tests; the affected Storybook browser suites pass 15 tests. Desktop and
+1,494 tests; the affected AccessRules Storybook browser suite passes 11 tests. Desktop and
 390px browser inspection confirms the cards and single-key editor without
 horizontal overflow. Real-server desktop and mobile coverage creates a single-key Publisher
 card, checks sibling exclusion, atomically switches the selected key, then removes

@@ -297,3 +297,31 @@ func TestFileTargetBatchKeysOnlyInspection(t *testing.T) {
 		}
 	}
 }
+
+// Internal schema refresh proofs must never become draft or value writers.
+func TestSchemaRefreshProofsCannotWriteValuesOrDrafts(t *testing.T) {
+	for _, op := range []Operation{OpKeySchemaPublishEmpty, OpKeySchemaPublishValues} {
+		spec := operationTable[op]
+		for _, write := range []StoreOp{StoreValuesPut, StoreValuesClear, StorePendingStage} {
+			if spec.storeOps[write] {
+				t.Fatalf("%s licenses a value/draft write %s", op, write)
+			}
+		}
+	}
+}
+
+func TestEnvironmentDefinitionFormulaExceptionRemainsClosed(t *testing.T) {
+	spec := baseSpec()
+	spec.formula = Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelEnv}}
+	rejects(t, "ordinary env Definition operation", spec)
+	// The persisted legacy grant depth remains unchanged; these formulas are
+	// rule-specific, with project grants still inherited into the environment.
+	if deepest, _ := domain.DeepestLevel(domain.CapDefinitionsEdit); deepest != domain.LevelProject {
+		t.Fatalf("legacy Define grant depth widened: %d", deepest)
+	}
+	for _, op := range []Operation{OpKeySchemaPublishValues, OpValueInitialize} {
+		if err := validateSpec(op, operationTable[op]); err != nil {
+			t.Fatalf("reviewed rule-aware formula %s: %v", op, err)
+		}
+	}
+}

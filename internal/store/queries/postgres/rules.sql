@@ -178,3 +178,20 @@ WHERE p.org_id = sqlc.arg(org_id) AND p.project_id = sqlc.arg(project_id)
 SELECT key_ids FROM approval_requests
 WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
  AND environment_id = sqlc.arg(env_id) AND id = sqlc.arg(id);
+
+-- Metadata-only schema proofs cannot alter a key's existing value delivery.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() checks target-key value absence before minting an internal metadata-only schema snapshot proof; ciphertext is never selected.
+-- name: RuleKeyValueCount :one
+SELECT COUNT(*) FROM value_entries
+WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
+ AND environment_id = sqlc.arg(env_id) AND key_id = sqlc.arg(key_id);
+
+-- Initial drafts cannot replace another owner's work or an existing-value draft.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() checks only draft ownership and absent-baseline metadata before minting an initial-cell draft proof; ciphertext is never selected.
+-- name: RuleKeyConflictingDraftCount :one
+SELECT COUNT(*) FROM pending_changes
+WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
+ AND environment_id = sqlc.arg(env_id) AND key_id = sqlc.arg(key_id)
+ AND (owner_id <> sqlc.arg(owner_id) OR staged_from_entry <> '');

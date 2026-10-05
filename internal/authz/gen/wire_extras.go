@@ -8,6 +8,8 @@ import "github.com/Hikyo-Org/hikyo/internal/multicall"
 var reviewedWireExtras = wireExtras{
 	Version: 1,
 	Extensions: map[string]wireRow{
+		// Replacement prepares independent create and revoke proofs in one transaction.
+		"http:POST /api/v1/orgs/{org}/rules/replace":         {Ops: []string{"OpRuleRevoke"}},
 		"http:POST /api/v1/auth/signup":                      {Events: []string{"EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupExpired", "EventRegistrationMailIntent", "EventRegistrationMailOutcome"}},
 		"http:POST /api/v1/auth/signup/verify":               {Events: []string{"EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:DELETE /api/v1/auth/identities/{id}":           {Events: []string{"EventIdentityUnlinked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},

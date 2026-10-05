@@ -4,7 +4,8 @@ import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { useDeleteKey, useKey, useMatrixProject } from './matrix.ts';
+import { useDeleteKey, useInitializeMatrixValue, useKey, useMatrixProject, useStageMatrixValue } from './matrix.ts';
+import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { pendingDraftsKey, signalsKey, valuesKey } from './keys.ts';
 
 const ref = { org: 'org_a', project: 'project_a' };
@@ -32,6 +33,48 @@ const production = {
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.replaceChildren();
+});
+
+describe('matrix first-value draft routing', () => {
+  it('uses the initializer for first drafts and keeps ordinary edits on setValue', async () => {
+    const calls: { readonly path: string; readonly method: string; readonly body: string }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(new URL(String(input), 'http://localhost'), init);
+      calls.push({ path: new URL(request.url).pathname, method: request.method, body: await request.text() });
+      return new Response(JSON.stringify({
+        version_id: 'pcv_01989abc-def0-7123-8123-123456789abc',
+        key_id: keyId,
+        name: 'NEW_KEY',
+        classification: 'config',
+        operation: 'set',
+        staged_from_revision: 1,
+        created_at: '2026-10-05T08:00:00Z',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    function DraftActions() {
+      const initialize = useInitializeMatrixValue(ref);
+      const stage = useStageMatrixValue(ref);
+      return <>
+        <button onClick={() => { void initialize.mutateAsync({ environment: devId, key: 'NEW_KEY', value: 'first' }); }}>Initialize</button>
+        <button onClick={() => { void stage.mutateAsync({ environment: devId, key: 'NEW_KEY', value: 'edit' }); }}>Edit</button>
+      </>;
+    }
+    const view = await renderForm(<DraftActions />);
+    const buttons = view.container.querySelectorAll('button');
+    await act(async () => buttons[0]?.click());
+    await settleTask();
+    await act(async () => buttons[1]?.click());
+    await settleTask();
+    const path = `/api/v1/orgs/org_a/projects/project_a/environments/${devId}/values/NEW_KEY`;
+    expect(calls).toEqual([
+      { path: `${path}/initialize`, method: 'POST', body: JSON.stringify({ value: 'first' }) },
+      { path, method: 'PUT', body: JSON.stringify({ value: 'edit' }) },
+    ]);
+    // Mutation results and typed value arguments never enter the query cache.
+    expect(view.client.getQueryCache().getAll()).toEqual([]);
+    expect(view.client.getMutationCache().getAll()).toEqual([]);
+    await view.unmount();
+  });
 });
 
 describe('useMatrixProject query ownership', () => {

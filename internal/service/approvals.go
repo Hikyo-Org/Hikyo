@@ -487,7 +487,7 @@ func (s *Approvals) Vote(ctx context.Context, actor Actor, scope domain.Scope, r
 		if decision == store.ApprovalDecisionApprove && self && !policy.AllowSelfApproval {
 			return fmt.Errorf("%w: the requester cannot approve their own change under this policy", domain.ErrUnauthorized)
 		}
-		digest, err := s.requestPreviewDigest(ctx, r, az, p, scope, req)
+		digest, err := s.requestPreviewDigest(ctx, r, az, caller, p, scope, req)
 		if err != nil {
 			if errors.Is(err, ErrStalePending) {
 				cause := driftCause(ctx, r, p, req)
@@ -895,7 +895,7 @@ func loadPolicyView(ctx context.Context, r store.Repos, p authz.Proof, id string
 // requester's current pending state. Voting therefore pins a still-live review,
 // not a digest that may already have drifted before the first decision.
 func (s *Approvals) requestPreviewDigest(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
-	p authz.Proof, scope domain.Scope, req store.ApprovalRequest) (string, error) {
+	caller authz.Identity, p authz.Proof, scope domain.Scope, req store.ApprovalRequest) (string, error) {
 	selected, byID, err := resolveVersions(ctx, r, p, domain.PrincipalID(req.RequesterPrincipalID), req.VersionIDs)
 	if err != nil {
 		return "", err
@@ -904,7 +904,13 @@ func (s *Approvals) requestPreviewDigest(ctx context.Context, r store.Repos, az 
 	if err != nil {
 		return "", err
 	}
-	selection, closed, err := selectVersions(ctx, r, p, domain.PrincipalID(req.RequesterPrincipalID), selected, byID, groups)
+	selection, closed, err := selectVersions(ctx, r, p, domain.PrincipalID(req.RequesterPrincipalID), selected, byID, groups, func(envID, keyID string) error {
+		// Membership can change after the reviewed request was pinned. Prove
+		// every current member before reading another owner's pending marker
+		// or returning a conflict that names an inaccessible sibling key.
+		_, err := az.AuthorizeKey(ctx, caller, authz.OpApprovalVote, domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}, authz.KeyByID(keyID))
+		return err
+	})
 	if err != nil {
 		return "", err
 	}

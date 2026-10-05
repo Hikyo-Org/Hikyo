@@ -192,6 +192,7 @@ import {
   getUpdateStatus,
   getValue,
   importValues,
+  initializeValue,
   installPkiIssuerCertificate,
   inviteInstanceMember,
   inviteOrgMember,
@@ -569,6 +570,7 @@ import type {
   GetUpdateStatusData,
   GetValueData,
   ImportValuesData,
+  InitializeValueData,
   InstallPkiIssuerCertificateData,
   InviteInstanceMemberData,
   InviteOrgMemberData,
@@ -925,6 +927,7 @@ import {
   zGetUpdateStatusResponse,
   zGetValueResponse,
   zImportValuesResponse,
+  zInitializeValueResponse,
   zInstallPkiIssuerCertificateResponse,
   zInviteInstanceMemberResponse,
   zInviteOrgMemberResponse,
@@ -1257,6 +1260,7 @@ export const getTotpStatusOp: BodyOperation<GetTotpStatusData, typeof zGetTotpSt
 export const getUpdateStatusOp: BodyOperation<GetUpdateStatusData, typeof zGetUpdateStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getUpdateStatus, [200], zGetUpdateStatusResponse);
 export const getValueOp: BodyOperation<GetValueData, typeof zGetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getValue, [200], zGetValueResponse);
 export const importValuesOp: BodyOperation<ImportValuesData, typeof zImportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(importValues, [200], zImportValuesResponse);
+export const initializeValueOp: BodyOperation<InitializeValueData, typeof zInitializeValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(initializeValue, [200], zInitializeValueResponse);
 export const installPkiIssuerCertificateOp: BodyOperation<InstallPkiIssuerCertificateData, typeof zInstallPkiIssuerCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(installPkiIssuerCertificate, [200], zInstallPkiIssuerCertificateResponse);
 export const inviteInstanceMemberOp: BodyOperation<InviteInstanceMemberData, typeof zInviteInstanceMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteInstanceMember, [201], zInviteInstanceMemberResponse);
 export const inviteOrgMemberOp: BodyOperation<InviteOrgMemberData, typeof zInviteOrgMemberResponse> = /* @__PURE__ */ new GeneratedBodyOperation(inviteOrgMember, [201], zInviteOrgMemberResponse);

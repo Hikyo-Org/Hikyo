@@ -2402,10 +2402,12 @@ paths:
       description: |
         Authorizes every removal and addition against the original access,
         then commits the complete change in one transaction. All rows must
-        belong to the named person. A missing removal refuses the whole batch.
+        belong to the named person. Each create[].principal must equal the
+        top-level principal. At least one revoke or create item is required.
+        A missing removal refuses the whole batch.
         Sessions are invalidated only after all authorization checks succeed.
       x-hikyo-class: tenant
-      x-hikyo-operation: rule.replace
+      x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 9
@@ -4104,6 +4106,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValueList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    post:
+      operationId: initializeValue
+      tags: [values]
+      summary: Stage an initial value for an empty cell.
+      description: |
+        Stages the first value under Define keys and Publish for this key and
+        environment. Delivery changes only when its pending version is published.
+        Refuses a published cell or another principal's draft. The owner may
+        revise their initial draft while the published cell remains absent.
+      x-hikyo-class: tenant
+      x-hikyo-operation: value.initialize
+      x-hikyo-formula: [definitions-edit@environment, publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetValueRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The staged pending change. It never echoes the value back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingChange"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -20091,6 +20141,23 @@ components:
       type: object
       additionalProperties: false
       required: [principal, revoke, create]
+      anyOf:
+        - type: object
+          required: [revoke]
+          properties:
+            revoke:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/ID"
+        - type: object
+          required: [create]
+          properties:
+            create:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/CreateRuleRequest"
       properties:
         principal:
           $ref: "#/components/schemas/ID"

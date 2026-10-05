@@ -231,7 +231,16 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 	envs := w.Envs[s.Project]
 	switch at {
 	case LevelProject:
-		if w.EnvMode != AxisAll || len(envs) > 0 {
+		if c == CapDefinitionsEdit && key != nil {
+			// The catalogue is shared by every environment. A key-aware
+			// catalogue mutation may use an environment-scoped Define rule;
+			// existing shared semantic changes independently require authority
+			// in every environment. New empty keys need no value writes.
+			// Bulk definitions stay project-wide.
+			if w.EnvMode == AxisOnly && len(envs) == 0 {
+				return false
+			}
+		} else if w.EnvMode != AxisAll || len(envs) > 0 {
 			return false
 		}
 	case LevelEnv:

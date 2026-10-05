@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
+import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { renderForm } from '../testkit/renderForm.tsx';
+import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   canEdit: true,
   groupId: '',
   folder: 'app',
+  create: vi.fn(),
+  initialize: vi.fn(),
+  stage: vi.fn(),
+  publish: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-virtual', () => ({
@@ -91,9 +96,11 @@ vi.mock('../api/matrix.ts', async (importActual) => {
         pendingDrafts: { status: 'ready', data: { items: [], count: 0 } },
       }],
     }),
-    useStageMatrixValue: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCreateKey: () => ({ mutateAsync: mocks.create, isPending: false }),
+    useInitializeMatrixValue: () => ({ mutateAsync: mocks.initialize, isPending: false }),
+    useStageMatrixValue: () => ({ mutateAsync: mocks.stage, isPending: false }),
     useClearMatrixValue: () => ({ mutateAsync: vi.fn(), isPending: false }),
-    usePublishMatrix: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
+    usePublishMatrix: () => ({ mutate: mocks.publish, isPending: false, isError: false, error: null }),
     useCopyMatrixConfig: () => ({ mutate: vi.fn(), isPending: false }),
     useReclassifyKey: () => ({ mutateAsync: vi.fn() }),
   };
@@ -115,6 +122,10 @@ afterEach(() => {
   mocks.canEdit = true;
   mocks.groupId = '';
   mocks.folder = 'app';
+  mocks.create.mockReset();
+  mocks.initialize.mockReset();
+  mocks.stage.mockReset();
+  mocks.publish.mockReset();
 });
 
 function render() {
@@ -132,6 +143,44 @@ function hasButton(container: HTMLElement, text: string): boolean {
 }
 
 describe('Matrix declaration availability by definitions source', () => {
+  it('stages supplied first values through initialization without publishing them', async () => {
+    mocks.create.mockResolvedValue({ id: 'key_new' });
+    mocks.initialize.mockResolvedValueOnce({ findings: [{ rule_id: 'test-rule', locator: 'NEW_KEY', acknowledgement: 'keep-token' }] });
+    mocks.initialize.mockResolvedValue({ findings: [] });
+    const view = await render();
+    const open = [...view.container.querySelectorAll('button')].find((button) => button.textContent === '+ New key');
+    if (open === undefined) throw new Error('New key action missing');
+    await act(async () => open.click());
+    const folder = view.container.querySelector<HTMLInputElement>('#matrix-create-folder');
+    const name = view.container.querySelector<HTMLInputElement>('#matrix-create-name');
+    const value = view.container.querySelector<HTMLTextAreaElement>('#matrix-create-value');
+    const form = view.container.querySelector<HTMLFormElement>('form');
+    if (folder === null || name === null || value === null || form === null) throw new Error('Declaration form missing');
+    await act(async () => {
+      typeInto(folder, 'app');
+      typeInto(name, 'NEW_KEY');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (setter === undefined) throw new Error('Textarea value setter missing');
+      setter.call(value, 'first value');
+      value.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    await settle();
+    expect(mocks.create).toHaveBeenCalledOnce();
+    expect(mocks.initialize).toHaveBeenCalledExactlyOnceWith({ environment: 'env_a', key: 'NEW_KEY', value: 'first value' });
+    expect(mocks.stage).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(view.container.textContent).toContain('draft');
+    const keep = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Keep as config');
+    if (keep === undefined) throw new Error('Opening-value warning missing');
+    await act(async () => keep.click());
+    await settle();
+    expect(mocks.initialize).toHaveBeenLastCalledWith({ environment: 'env_a', key: 'NEW_KEY', value: 'first value', acknowledgements: ['keep-token'] });
+    expect(mocks.stage).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
   it('offers the declare actions when definitions live in the database', async () => {
     mocks.source = 'db';
     const view = await render();

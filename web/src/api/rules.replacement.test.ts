@@ -1,3 +1,4 @@
+import { replaceRulesOp, whoamiOp } from '@hikyo/operations';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 import { ALL, type Rule } from '../routes/accessRules/model.ts';
@@ -39,10 +40,25 @@ it('removes all grouped parts in one request', async () => {
 });
 
 it('keeps committed-response uncertainty without sending rollback requests', async () => {
-  writes.parsed.mockRejectedValueOnce(new ApiError(401, 'session_reconciliation_failed'));
+  writes.parsed.mockRejectedValueOnce(new ApiError(401, 'request failed with 401', undefined, undefined, [], undefined, whoamiOp));
   const error = await saveRule('org_a', null, before).catch((cause: unknown) => cause);
   expect(error).toBeInstanceOf(RuleSaveFailure);
   expect(ruleFailureText(error)).toContain('could not be confirmed');
   expect(ruleFailureText(error)).toContain('lost response');
   expect(writes.ok).not.toHaveBeenCalled();
+});
+
+for (const status of [400, 401, 403, 404, 409, 429]) {
+  it(`preserves definite atomic ${status} refusals for save and removal`, async () => {
+    const refusal = new ApiError(status, `request failed with ${status}`, undefined, undefined, [], undefined, replaceRulesOp);
+    writes.parsed.mockRejectedValue(refusal);
+    await expect(saveRule('org_a', before, { ...before, perms: ['read'] })).rejects.toBe(refusal);
+    await expect(removeRule('org_a', before)).rejects.toBe(refusal);
+    expect(ruleFailureText(refusal)).not.toContain('could not be confirmed');
+  });
+}
+
+it('keeps 5xx responses uncertain even when their operation is known', async () => {
+  writes.parsed.mockRejectedValue(new ApiError(503, 'request failed with 503', undefined, undefined, [], undefined, replaceRulesOp));
+  await expect(saveRule('org_a', null, before)).rejects.toBeInstanceOf(RuleSaveFailure);
 });

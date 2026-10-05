@@ -63,15 +63,17 @@ const (
 	// definitions bundle — "keys, rules, folder paths, and environment
 	// topology" — and which explicitly RETIRES the schema-model ADR's earlier
 	// `schema-edit` name for the same grant.
-	OpKeyCreate            Operation = "key.create"
-	OpKeyGet               Operation = "key.get"
-	OpKeyList              Operation = "key.list"
-	OpKeyRename            Operation = "key.rename"
-	OpKeyUpdateDeclaration Operation = "key.update-declaration"
-	OpKeyUpdateMetadata    Operation = "key.update-metadata"
-	OpKeySetGroup          Operation = "key.set-group"
-	OpKeyDelete            Operation = "key.delete"
-	OpKeyReclassify        Operation = "key.reclassify"
+	OpKeyCreate              Operation = "key.create"
+	OpKeyGet                 Operation = "key.get"
+	OpKeyList                Operation = "key.list"
+	OpKeyRename              Operation = "key.rename"
+	OpKeyUpdateDeclaration   Operation = "key.update-declaration"
+	OpKeyUpdateMetadata      Operation = "key.update-metadata"
+	OpKeySetGroup            Operation = "key.set-group"
+	OpKeyDelete              Operation = "key.delete"
+	OpKeyReclassify          Operation = "key.reclassify"
+	OpKeySchemaPublishEmpty  Operation = "key.schema-publish-empty"
+	OpKeySchemaPublishValues Operation = "key.schema-publish-values"
 
 	// The two reveal gates. They are OPERATIONS rather than an inline
 	// capability check because the chokepoint is the only place authorization
@@ -209,8 +211,9 @@ const (
 	// (mcp-write ADR § 1). It carries `edit@env`, the authority to make the
 	// change it validates, and it is audited: an authority-bearing action,
 	// not a pure read whose result the trail would duplicate.
-	OpValueValidate Operation = "value.validate"
-	OpValuePublish  Operation = "value.publish"
+	OpValueValidate   Operation = "value.validate"
+	OpValuePublish    Operation = "value.publish"
+	OpValueInitialize Operation = "value.initialize"
 	// The one bulk-disclosure verb and its two material halves. `values export`
 	// carries `read ∧ reveal` for CURRENT material and `read ∧ reveal-history`
 	// for historical material; a mixed export evaluates each formula over
@@ -401,9 +404,8 @@ const (
 	// these address PROJECT depth. The atom is legacy `manage-members`: rules
 	// themselves never satisfy it (it is inert on rules until delegation
 	// containment exists), so only a grant-holding member manager edits rules.
-	OpRuleCreate  Operation = "rule.create"
-	OpRuleReplace Operation = "rule.replace"
-	OpRuleRevoke  Operation = "rule.revoke"
+	OpRuleCreate Operation = "rule.create"
+	OpRuleRevoke Operation = "rule.revoke"
 	// The rule listing mirrors the grant listing: one operation per addressed
 	// depth, legacy `manage-members` at that depth.
 	OpRuleListOrg         Operation = "rule.list-org"
@@ -1678,7 +1680,7 @@ func validateSpec(op Operation, spec opSpec) error {
 		// An atom cannot sit deeper than the capability's own deepest grantable
 		// level or the chain the operation addresses. Instance operations address
 		// LevelNone, so this also keeps every InstanceProof formula instance-scoped.
-		if deepest, _ := domain.DeepestLevel(atom.Cap); atom.At > deepest {
+		if deepest, _ := domain.DeepestLevel(atom.Cap); atom.At > deepest && !(atom.Cap == domain.CapDefinitionsEdit && atom.At == domain.LevelEnv && (op == OpKeySchemaPublishValues || op == OpValueInitialize)) {
 			return fmt.Errorf("authz registry: operation %q has capability %q at level %d deeper than its deepest %d", op, atom.Cap, atom.At, deepest)
 		}
 		if atom.At > spec.level {
@@ -2681,6 +2683,28 @@ var operationTable = map[Operation]opSpec{
 		},
 		events: []audit.EventType{audit.EventValueSet, audit.EventScanningFindingWarned},
 	},
+	// Initial supplied values use Define keys plus Publish, only while the
+	// target cell is absent. Ordinary replacements retain Edit plus Publish.
+	OpValueInitialize: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelEnv}, {Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreProjectsLock: true, StoreCatalogueList: true,
+			StoreValuesGet: true, StoreSnapshotsLatest: true,
+			StorePendingStage: true, StoreAuditTenantInsert: true,
+			StorePendingCountForProjectExcludingCell: true,
+			// The environment-scoped Surface-1 config-value ingress is where the
+			// scanner runs (#74, ADR section 7 warn transaction): the sticky-match
+			// lookup that suppresses a re-warn, and the "keep as config" dismissal
+			// this same principal records under the write authority they already
+			// hold. The full scan/dismiss wiring lands with the scanning stream;
+			// this is the store authority that write path needs.
+			StoreScanningDismissalsExists: true, StoreScanningDismissalsInsert: true,
+			StoreKeysAssertActiveDEKVersion: true,
+		},
+		events: []audit.EventType{audit.EventValueStaged, audit.EventScanningFindingWarned, audit.EventScanningFindingDismissed},
+	},
 	OpValueClear: {
 		class: ClassTenant,
 		level: domain.LevelEnv,
@@ -2927,6 +2951,37 @@ var operationTable = map[Operation]opSpec{
 			audit.EventApprovalInvalidated,
 			audit.EventApprovalBypassed,
 		},
+	},
+
+	// Internal schema refreshes never consume drafts or write values. Empty
+	// target cells additionally require an absence check at the chokepoint.
+	OpKeySchemaPublishEmpty: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
+			StoreValuesList: true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
+			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true,
+			StoreSnapshotsRecordSecretValueOccurrence: true, StoreSnapshotsInsertChange: true,
+			StoreEnvironmentParametersGet: true, StoreAdaptersEnqueuePublished: true,
+			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreValuesPayloadBytesForProject: true, StoreSnapshotsPayloadBytesForProject: true,
+		},
+		events: []audit.EventType{audit.EventRevisionPublished, audit.EventValueSet, audit.EventValueCleared, audit.EventAdapterSyncRequested, audit.EventAdapterSuperseded},
+	},
+	OpKeySchemaPublishValues: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelEnv}, {Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
+			StoreValuesList: true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
+			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true,
+			StoreSnapshotsRecordSecretValueOccurrence: true, StoreSnapshotsInsertChange: true,
+			StoreEnvironmentParametersGet: true, StoreAdaptersEnqueuePublished: true,
+			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
+			StoreValuesPayloadBytesForProject: true, StoreSnapshotsPayloadBytesForProject: true,
+		},
+		events: []audit.EventType{audit.EventRevisionPublished, audit.EventValueSet, audit.EventValueCleared, audit.EventAdapterSyncRequested, audit.EventAdapterSuperseded},
 	},
 
 	// SECRET-CHANGE APPROVALS (#151).
@@ -3749,13 +3804,6 @@ var operationTable = map[Operation]opSpec{
 		// it) is a MODIFICATION; only the release that deleted the row is a
 		// revocation. Both are reachable from this operation.
 		events: []audit.EventType{audit.EventGrantRevoked, audit.EventGrantModified},
-	},
-	OpRuleReplace: {
-		class:    ClassTenant,
-		level:    domain.LevelProject,
-		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
-		events:   []audit.EventType{audit.EventRuleCreated, audit.EventRuleRevoked},
 	},
 	OpRuleCreate: {
 		class:    ClassTenant,

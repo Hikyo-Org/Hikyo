@@ -508,13 +508,19 @@ type StagedChange struct {
 // work in progress into external notepads, which for secrets is exactly where
 // it must not go. Every one of those refusals lives at publish instead.
 func (s *Values) Set(ctx context.Context, actor Actor, scope domain.Scope, keyName, value string, acks []string) (StagedChange, error) {
-	return s.stage(ctx, actor, scope, keyName, store.PendingSet, value, acks)
+	return s.stage(ctx, actor, scope, keyName, store.PendingSet, value, acks, authz.OpValueStage)
+}
+
+// Initialize stages the first value under Define keys and Publish. It does
+// not replace a published cell or another principal's pending work.
+func (s *Values) Initialize(ctx context.Context, actor Actor, scope domain.Scope, keyName, value string, acks []string) (StagedChange, error) {
+	return s.stage(ctx, actor, scope, keyName, store.PendingSet, value, acks, authz.OpValueInitialize)
 }
 
 // Unset stages a clear: the cell goes to `absent` when the draft is published.
 // It writes no value, so it never scans and takes no acknowledgements.
 func (s *Values) Unset(ctx context.Context, actor Actor, scope domain.Scope, keyName string) (StagedChange, error) {
-	return s.stage(ctx, actor, scope, keyName, store.PendingUnset, "", nil)
+	return s.stage(ctx, actor, scope, keyName, store.PendingUnset, "", nil, authz.OpValueStage)
 }
 
 type stageWriteResult struct {
@@ -525,14 +531,14 @@ type stageWriteResult struct {
 }
 
 func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, keyName string,
-	operation store.PendingOperation, value string, acks []string) (StagedChange, error) {
+	operation store.PendingOperation, value string, acks []string, op authz.Operation) (StagedChange, error) {
 	if scope.Env == "" {
 		return StagedChange{}, fmt.Errorf("%w: a value addresses an environment", domain.ErrInvalid)
 	}
 	// A draft addresses exactly one key, so a key-narrowed member access rule
 	// may admit it.
 	keyTarget := authz.KeyByName(keyName)
-	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, authz.OpValueStage, scope, &keyTarget)
+	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, op, scope, &keyTarget)
 	if err != nil {
 		return StagedChange{}, err
 	}
@@ -541,7 +547,7 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		if err != nil {
 			return stageWriteResult{}, err
 		}
-		p, err := az.AuthorizeKey(ctx, caller, authz.OpValueStage, scope, keyTarget)
+		p, err := az.AuthorizeKey(ctx, caller, op, scope, keyTarget)
 		if err != nil {
 			return stageWriteResult{}, err
 		}
@@ -550,6 +556,14 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		// between reading that entry and writing the row that pins it.
 		if err := r.Projects().Lock(ctx, p); err != nil {
 			return stageWriteResult{}, err
+		}
+		// Recheck initial-cell metadata after serializing with publishers and
+		// other draft writers. The preflight cannot authorize a later overwrite.
+		if op == authz.OpValueInitialize {
+			p, err = az.AuthorizeKey(ctx, caller, op, scope, keyTarget)
+			if err != nil {
+				return stageWriteResult{}, err
+			}
 		}
 		key, err := findKey(ctx, r.Catalogue(), p, keyName)
 		if err != nil {

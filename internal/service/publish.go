@@ -671,7 +671,13 @@ func buildImpactPreview(ctx context.Context, r store.Repos, p authz.Proof, seale
 	if err != nil {
 		return ImpactPreview{}, err
 	}
-	selection, _, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex)
+	// Restore previews share publish's group closure. Check every member before
+	// observing sibling drafts, even when only one key was restored.
+	selection, _, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex, func(envID, keyID string) error {
+		_, err := az.AuthorizeKey(ctx, caller, authz.OpRevisionRestore,
+			domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}, authz.KeyByID(keyID))
+		return err
+	})
 	if err != nil {
 		return ImpactPreview{}, err
 	}

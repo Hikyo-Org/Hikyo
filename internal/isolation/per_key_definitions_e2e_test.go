@@ -41,8 +41,11 @@ func TestPerKeyDefinitionMutations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.keys.SetGroup(t.Context(), actor, project, f.dbKeyID, group.ID); err != nil {
-			t.Fatalf("group held key: %v", err)
+		if _, err := f.keys.SetGroup(t.Context(), actor, project, f.dbKeyID, group.ID); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("membership changes require authority beyond one key: %v", err)
+		}
+		if _, err := f.keys.SetGroup(t.Context(), service.LocalPrincipal(custodian), project, f.dbKeyID, group.ID); err != nil {
+			t.Fatalf("whole-environment group change: %v", err)
 		}
 		if _, err := f.keys.SetGroup(t.Context(), actor, project, f.strKeyID, group.ID); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("group sibling key: %v", err)

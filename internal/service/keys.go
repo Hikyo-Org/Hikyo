@@ -184,17 +184,21 @@ func (p *schemaPublisher) fanOut(ctx context.Context, r store.Repos, az *authz.T
 	advanced, err := fanOutSchemaPublishProofs(ctx, r, az, caller, proof, p.sealer, p.keyring, scope,
 		store.CanonTime(time.Now()), trigger, p.keyProofs)
 	if err != nil {
-		return err
+		return concealBeyondRule(proof, err)
 	}
 	p.advanced = advanced
 	return nil
 }
 
-// authorizeKeyFanOut proves each affected environment before the catalogue
-// mutation. Deletion can prune the caller's own rules, so those proofs must be
+// authorizeKeyFanOut proves every environment before an existing shared
+// definition changes, independent of hidden value presence. A new key uses a
+// snapshot-only refresh because no environment can hold that generated key.
+// Creation in an existing group requires whole-environment authority: group
+// validation must not expose excluded members' value presence.
+// Deletion can prune the caller's own rules, so those proofs must be
 // retained in this transaction rather than re-resolving a deleted key.
 func (p *schemaPublisher) authorizeKeyFanOut(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
-	caller authz.Identity, proof authz.Proof, scope domain.Scope, key authz.KeyTarget) error {
+	caller authz.Identity, proof authz.Proof, scope domain.Scope, key authz.KeyTarget, creating, wholeEnvironment bool) error {
 	p.keyProofs = nil
 	environments, err := r.Environments().List(ctx, proof)
 	if err != nil {
@@ -203,7 +207,16 @@ func (p *schemaPublisher) authorizeKeyFanOut(ctx context.Context, r store.Repos,
 	proofs := make(map[string]authz.Proof, len(environments))
 	for _, env := range environments {
 		s := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(env.ID)}
-		envProof, err := az.AuthorizeKey(ctx, caller, authz.OpValuePublish, s, key)
+		op := authz.OpKeySchemaPublishValues
+		if creating {
+			op = authz.OpKeySchemaPublishEmpty
+		}
+		var envProof authz.Proof
+		if wholeEnvironment {
+			envProof, err = az.Authorize(ctx, caller, authz.OpKeySchemaPublishValues, s)
+		} else {
+			envProof, err = az.AuthorizeKey(ctx, caller, op, s, key)
+		}
 		if err != nil {
 			return err
 		}
@@ -630,6 +643,9 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 			return fmt.Errorf("%w: a project declares at most %d keys",
 				domain.ErrLimitExceeded, schema.MaxKeysPerProject)
 		}
+		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, true, spec.GroupID != ""); err != nil {
+			return err
+		}
 		if err := concealBeyondRule(p, checkGroupMembership(ctx, r, p, spec.GroupID, id, spec.Presence)); err != nil {
 			return err
 		}
@@ -643,9 +659,7 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 		// Name uniqueness among LIVE keys is the table's constraint, not a
 		// read-then-write here: a pre-check would be a race, and the UNIQUE
 		// index is the only answer that cannot be interleaved past.
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget); err != nil {
-			return err
-		}
+
 		if err := concealBeyondRule(p, r.Catalogue().Create(ctx, p, row)); err != nil {
 			return err
 		}
@@ -822,7 +836,7 @@ func (s *Keys) Rename(ctx context.Context, actor Actor, scope domain.Scope, id, 
 			nonEmptyLeaf(locKeyName, name), newAckSet(acks), ingressEdit); err != nil {
 			return err
 		}
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget); err != nil {
+		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
 			return err
 		}
 		if err := concealBeyondRule(p, r.Catalogue().Rename(ctx, p, id, name)); err != nil {
@@ -1133,7 +1147,7 @@ func (s *Keys) UpdateDeclaration(ctx context.Context, actor Actor, scope domain.
 		if err := applyDeclarationScan(ctx, r, p, az, s.Keyring, s.Scan, caller.Principal, scope, declarationLeaves(compiled.Declaration()), newAckSet(acks), ingressEdit); err != nil {
 			return err
 		}
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget); err != nil {
+		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
 			return err
 		}
 		if err := r.Catalogue().UpdateDeclaration(ctx, p, id, store.KeyDeclaration{
@@ -1265,7 +1279,7 @@ func (s *Keys) Reclassify(ctx context.Context, actor Actor, scope domain.Scope, 
 				return err
 			}
 		}
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget); err != nil {
+		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
 			return err
 		}
 		if err := r.Catalogue().SetClassification(ctx, p, id, classification); err != nil {
@@ -1426,6 +1440,12 @@ func (s *Keys) SetGroup(ctx context.Context, actor Actor, scope domain.Scope, id
 			out, err = keyOf(before, presence)
 			return err
 		}
+		// Changing co-publish membership can expose another member's
+		// presence through schema validation. Prove whole-environment
+		// authority before reading either group's membership.
+		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, true); err != nil {
+			return err
+		}
 		var presence []store.KeyPresence
 		if groupID == "" {
 			presence, err = r.Catalogue().ListPresence(ctx, p)
@@ -1456,9 +1476,7 @@ func (s *Keys) SetGroup(ctx context.Context, actor Actor, scope domain.Scope, id
 				return err
 			}
 		}
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget); err != nil {
-			return err
-		}
+
 		if err := r.Catalogue().SetGroup(ctx, p, id, groupID); err != nil {
 			return err
 		}
@@ -1537,7 +1555,7 @@ func (s *Keys) Delete(ctx context.Context, actor Actor, scope domain.Scope, id s
 		// The presence rows reference this key, so they go first: the composite
 		// foreign key would otherwise refuse the delete, which is the correct
 		// refusal for an unhandled case and the wrong one for a handled one.
-		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget); err != nil {
+		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, false, false); err != nil {
 			return err
 		}
 		if err := r.Catalogue().ReplacePresence(ctx, p, id, nil); err != nil {

@@ -563,12 +563,14 @@ var pinnedContractSurface = map[string]bool{
 	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}":      true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/reveal":       true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/reveal": true,
-	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window":        true,
-	"POST /api/v1/orgs/{org}/projects/{project}/environments/clone":                             true,
-	"GET /api/v1/orgs/{org}/projects/{project}/values/diff":                                     true,
-	"POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal":                             true,
-	"POST /api/v1/orgs/{org}/projects/{project}/values/copy":                                    true,
-	"POST /api/v1/orgs/{org}/projects/{project}/values/declare":                                 true,
+	// Initial drafts stay local and never fetch data from another instance.
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize": true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window":            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/clone":                                 true,
+	"GET /api/v1/orgs/{org}/projects/{project}/values/diff":                                         true,
+	"POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal":                                 true,
+	"POST /api/v1/orgs/{org}/projects/{project}/values/copy":                                        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/values/declare":                                     true,
 
 	// Revisions and publishing (#51): every route reads or mutates this
 	// instance's own pending changes, immutable snapshots, or advisory event

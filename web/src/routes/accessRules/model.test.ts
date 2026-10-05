@@ -211,15 +211,18 @@ describe('evaluation, as the server decides it', () => {
     }
   });
 
-  it('Define keys needs every environment of the project', () => {
+  it('Define keys follows its key and environment selectors', () => {
     const world = makeWorld();
-    // Alice's folder rule names only staging and prod, so it never defines keys.
-    expect(state(world, IDS.alice, 'definitions-edit', PROD, DB_PASSWORD)).toBe('no');
+    // Alice's folder rule admits db keys in staging and prod, while dev stays outside.
+    expect(state(world, IDS.alice, 'definitions-edit', PROD, DB_PASSWORD)).toBe('yes');
+    expect(state(world, IDS.alice, 'definitions-edit', DEV, DB_PASSWORD)).toBe('no');
+    expect(state(world, IDS.alice, 'definitions-edit', PROD, LOG_LEVEL)).toBe('no');
     const folder = only([{ perms: ['definitions-edit'], projects: [PAY], envs: ALL, keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }] } }]);
     expect(state(folder, IDS.chen, 'definitions-edit', DEV, DB_PASSWORD)).toBe('yes');
     expect(state(folder, IDS.chen, 'definitions-edit', DEV, LOG_LEVEL)).toBe('no');
     const excepted = only([{ perms: ['definitions-edit'], projects: [PAY], envs: { mode: 'all', items: [{ project: PAY, environment: PROD }] }, keys: ALL }]);
-    expect(resolve(excepted, IDS.chen, 'definitions-edit', PAY, DEV, LOG_LEVEL)).toMatchObject({ state: 'excepted', why: 'except prod' });
+    expect(resolve(excepted, IDS.chen, 'definitions-edit', PAY, DEV, LOG_LEVEL)).toMatchObject({ state: 'yes' });
+    expect(resolve(excepted, IDS.chen, 'definitions-edit', PAY, PROD, LOG_LEVEL)).toMatchObject({ state: 'excepted', why: 'except prod' });
   });
 
   it('showing a secret needs See in the same environment, from a rule or a grant', () => {

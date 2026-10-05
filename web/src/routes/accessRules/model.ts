@@ -218,7 +218,7 @@ export const allowed = (id: PermId, rule: Shaped) => availability(id, rule).ok;
 export function requirement(id: PermId): string | undefined {
   if (id === 'read') return 'Always covers the whole environment: key limits narrow the other permissions only.';
   if (id === 'manage-members') return "Delegate only inside this rule's Where, and only permissions you hold there.";
-  if (id === 'definitions-edit') return 'Takes effect in a project only where the rule covers all of its environments.';
+  if (id === 'definitions-edit') return 'Key definitions are shared. Changing an existing key or creating a key in a linked group needs Define keys and Publish in every project environment. Creating an empty key outside a linked group needs Define keys in a selected environment; first values also need Publish in their selected environments.';
   const { shape } = perm(id);
   return shape === 'key' ? undefined : `Only on rules that cover ${SHAPE_NEEDS[shape]}.`;
 }
@@ -238,8 +238,8 @@ export function presetOf(rule: Pick<Rule, 'perms' | 'envs' | 'keys'>): string | 
 /** Permissions whose key selector applies to single-key operations. See is environment-wide (D5). */
 const KEY_AWARE: ReadonlySet<PermId> = new Set(['edit', 'publish', 'reveal', 'reveal-history', 'definitions-edit', 'manage-members']);
 
-/** The level the server evaluates a permission at: key operations need the whole project for Define keys. */
-const atProject = (id: PermId) => id === 'definitions-edit' || perm(id).shape === 'project';
+/** The resolver asks about one environment; only project permissions need every environment. */
+const atProject = (id: PermId) => perm(id).shape === 'project';
 
 export type Reach = { hit: false } | { hit: true; ok: true } | { hit: true; ok: false; why: string };
 

@@ -142,6 +142,8 @@ export class ApiError extends Error {
     retryAfterMs?: number,
     findings: readonly RefusalFinding[] = [],
     widening?: WideningRefusal,
+    /** The operation that returned this HTTP refusal, distinct from session reconciliation. */
+    readonly operation?: object,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -196,7 +198,7 @@ function requireResponse(result: { response?: Response | undefined }): Response 
  * `ok` route their non-2xx here so a bodyless call surfaces the same safe detail
  * a body-bearing one does.
  */
-function refusal(response: Response, error: unknown): ApiError {
+function refusal(response: Response, error: unknown, operation: object): ApiError {
   const parsed = zError.safeParse(error);
   return new ApiError(
     response.status,
@@ -205,6 +207,7 @@ function refusal(response: Response, error: unknown): ApiError {
     retryAfterMilliseconds(response),
     parsed.success ? parsed.data.error.findings ?? [] : [],
     parsed.success && response.status === 409 ? parsed.data.error.widening : undefined,
+    operation,
   );
 }
 
@@ -233,7 +236,7 @@ export async function parsed<TData extends TDataShape, TSchema extends ZodType>(
     if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
       checkSessionRefusal();
     }
-    throw refusal(response, result.error);
+    throw refusal(response, result.error, operation);
   }
   if (!operation.successStatuses.includes(response.status)) {
     throw new Error(
@@ -271,7 +274,7 @@ export async function parsedPick<
     if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
       checkSessionRefusal();
     }
-    throw refusal(response, result.error);
+    throw refusal(response, result.error, operation);
   }
   if (!operation.successStatuses.includes(response.status)) {
     throw new Error(
@@ -303,7 +306,7 @@ export async function ok<TData extends TDataShape>(
     if (response.status === 401 && !isIdentityCheck(operation) && options.client === undefined) {
       checkSessionRefusal();
     }
-    throw refusal(response, result.error);
+    throw refusal(response, result.error, operation);
   }
   if (!operation.successStatuses.includes(response.status)) {
     throw new Error(

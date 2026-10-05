@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -506,7 +507,7 @@ func (r *Resolver) ResolveRulePendingKey(ctx context.Context, scope domain.Scope
 }
 
 func rulePendingNotFound(err error) error {
-	if err == sql.ErrNoRows || err == pgx.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return domain.ErrNotFound
 	}
 	return err
@@ -520,7 +521,7 @@ func (r *Resolver) ResolveRuleApprovalKey(ctx context.Context, scope domain.Scop
 	if r.sq != nil {
 		value, err := r.sq.ResolveRuleApprovalKeys(ctx, sqlitegen.ResolveRuleApprovalKeysParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), ID: id})
 		if err != nil {
-			if rulePendingNotFound(err) == domain.ErrNotFound {
+			if errors.Is(rulePendingNotFound(err), domain.ErrNotFound) {
 				return r.refuseRuleApprovalKey(ctx, scope)
 			}
 			return domain.RuleKey{}, rulePendingNotFound(err)
@@ -529,7 +530,7 @@ func (r *Resolver) ResolveRuleApprovalKey(ctx context.Context, scope domain.Scop
 	} else {
 		value, err := r.pg.ResolveRuleApprovalKeys(ctx, pggen.ResolveRuleApprovalKeysParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), ID: id})
 		if err != nil {
-			if rulePendingNotFound(err) == domain.ErrNotFound {
+			if errors.Is(rulePendingNotFound(err), domain.ErrNotFound) {
 				return r.refuseRuleApprovalKey(ctx, scope)
 			}
 			return domain.RuleKey{}, rulePendingNotFound(err)
@@ -553,8 +554,30 @@ func (r *Resolver) refuseRuleApprovalKey(ctx context.Context, scope domain.Scope
 	// The decoy result never becomes authority, even if an imported database
 	// happens to contain that identifier.
 	_, err := r.ResolveRuleKey(ctx, string(scope.Org), string(scope.Project), "approval-no-key", "")
-	if err != nil && rulePendingNotFound(err) != domain.ErrNotFound {
+	if err != nil && !errors.Is(rulePendingNotFound(err), domain.ErrNotFound) {
 		return domain.RuleKey{}, err
 	}
 	return domain.RuleKey{}, domain.ErrNotFound
+}
+
+// RuleKeyHasValue answers only whether the addressed key has a published
+// value. Internal metadata-only schema authorization cannot use it as value
+// material or as a fallback for a failed populated-environment permission.
+func (r *Resolver) RuleKeyHasValue(ctx context.Context, scope domain.Scope, keyID string) (bool, error) {
+	if r.sq != nil {
+		count, err := r.sq.RuleKeyValueCount(ctx, sqlitegen.RuleKeyValueCountParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), KeyID: keyID})
+		return count > 0, err
+	}
+	count, err := r.pg.RuleKeyValueCount(ctx, pggen.RuleKeyValueCountParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), KeyID: keyID})
+	return count > 0, err
+}
+
+// RuleKeyHasConflictingDraft checks initial-cell ownership without opening drafts.
+func (r *Resolver) RuleKeyHasConflictingDraft(ctx context.Context, scope domain.Scope, keyID string, principal domain.PrincipalID) (bool, error) {
+	if r.sq != nil {
+		count, err := r.sq.RuleKeyConflictingDraftCount(ctx, sqlitegen.RuleKeyConflictingDraftCountParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), KeyID: keyID, OwnerID: string(principal)})
+		return count > 0, err
+	}
+	count, err := r.pg.RuleKeyConflictingDraftCount(ctx, pggen.RuleKeyConflictingDraftCountParams{OrgID: string(scope.Org), ProjectID: string(scope.Project), EnvID: string(scope.Env), KeyID: keyID, OwnerID: string(principal)})
+	return count > 0, err
 }

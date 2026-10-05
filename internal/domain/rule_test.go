@@ -142,3 +142,26 @@ func TestSeeIgnoresKeysButPublishDoesNot(t *testing.T) {
 		t.Fatal("key-independent See escaped its environment selector")
 	}
 }
+
+func TestSelectedEnvironmentDefinitionsOnlyProjectForNamedKey(t *testing.T) {
+	scope := Scope{Org: "org", Project: "project"}
+	rule := Rule{Org: scope.Org, Capability: CapDefinitionsEdit, Where: Where{
+		Projects: []ProjectID{scope.Project}, EnvMode: AxisOnly, Envs: map[ProjectID][]EnvID{scope.Project: {"staging"}},
+		KeyMode: AxisOnly, Keys: map[ProjectID][]RuleKeyItem{scope.Project: {{Folder: "db", IsFolder: true}}},
+	}}
+	key := &RuleKey{ID: "key", Folder: "db"}
+	if !rule.Reaches(CapDefinitionsEdit, LevelProject, scope, key) {
+		t.Fatal("named-key shared catalogue admission")
+	}
+	if rule.Reaches(CapDefinitionsEdit, LevelProject, scope, nil) {
+		t.Fatal("no broad schema admission")
+	}
+	scope.Env = "staging"
+	if !rule.Reaches(CapDefinitionsEdit, LevelEnv, scope, key) {
+		t.Fatal("selected destination")
+	}
+	scope.Env = "prod"
+	if rule.Reaches(CapDefinitionsEdit, LevelEnv, scope, key) {
+		t.Fatal("excluded destination")
+	}
+}

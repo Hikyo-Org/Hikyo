@@ -161,6 +161,9 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 	if level != spec.level {
 		return nil, fmt.Errorf("authz: operation %q requires a depth-%d scope, got depth %d", op, spec.level, level)
 	}
+	if (op == OpKeySchemaPublishEmpty || op == OpValueInitialize) && key == nil {
+		return nil, errors.New("authz: empty-cell operation requires a key target")
+	}
 
 	chain, err := a.r.ResolveChain(ctx, scope)
 	if err != nil {
@@ -172,7 +175,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		// claims). Any other resolver error is a loud bug, not a probe
 		// outcome, and mints no event.
 		if errors.Is(err, domain.ErrNotFound) {
-			if workErr := a.missingScopeRefusalWork(ctx, caller, op, spec, key); workErr != nil {
+			if workErr := a.missingScopeRefusalWork(ctx, caller, op, spec, key, targetRule); workErr != nil {
 				return nil, workErr
 			}
 			a.captureDenial(ctx, principal, op, spec, resolutionUnresolvable, domain.Scope{}, scope)
@@ -212,6 +215,10 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		}
 		if targetRule != nil {
 			held, err = a.ruleDelegationHeld(ctx, spec.formula, chain, grants, rules, *targetRule)
+			if errors.Is(err, domain.ErrNotFound) {
+				a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
+				return nil, domain.ErrNotFound
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -228,6 +235,36 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		// trail.
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrNotFound
+	}
+	if op == OpKeySchemaPublishEmpty && key.kind != keyToCreate {
+		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
+		return nil, domain.ErrNotFound
+	}
+	if op == OpKeySchemaPublishEmpty || op == OpValueInitialize {
+		if bound == nil {
+			resolved, err := a.resolveKeyTarget(ctx, chain, *key, caller.Principal)
+			if err != nil {
+				if errors.Is(err, domain.ErrNotFound) {
+					a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
+				}
+				return nil, err
+			}
+			bound = &resolved
+		}
+		present, err := a.r.RuleKeyHasValue(ctx, chain, bound.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !present && op == OpValueInitialize {
+			present, err = a.r.RuleKeyHasConflictingDraft(ctx, chain, bound.ID, caller.Principal)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if present {
+			a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
+			return nil, domain.ErrNotFound
+		}
 	}
 	// Automation owns topology only within its granted project. Protected
 	// environments cannot be deleted by a machine, including through a
@@ -283,11 +320,11 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 // read; key metadata uses an empty decoy chain, never caller-asserted ancestry.
 // All results are discarded. The caller retains the original missing result
 // and cannot enter formula evaluation or proof construction from this helper.
-func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, key *KeyTarget) error {
+func (a *TxAuthorizer) missingScopeRefusalWork(ctx context.Context, caller Identity, op Operation, spec authorizationSpec, key *KeyTarget, targetRule *domain.Rule) error {
 	if _, err := a.r.Grants(ctx, caller.Principal); err != nil {
 		return err
 	}
-	if !rulesApply(caller) || (!ruleSatisfiable(spec.formula) && !ruleNavigationOperation(op)) {
+	if !rulesApply(caller) || (!ruleSatisfiable(spec.formula) && targetRule == nil && !ruleNavigationOperation(op)) {
 		return nil
 	}
 	if _, err := a.r.Rules(ctx, caller.Principal); err != nil {

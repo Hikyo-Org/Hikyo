@@ -350,20 +350,28 @@ func (s *Rules) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Ru
 		if err != nil {
 			return err
 		}
+		var manageable []bool
+		if level == domain.LevelProject {
+			targets := make([]domain.Rule, len(lines))
+			for i, line := range lines {
+				where := whereFromItems(line.Items)
+				where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
+				targets[i] = domain.Rule{Org: scope.Org, Capability: line.Capability, Where: where}
+			}
+			manageable, err = az.RulesManageable(ctx, caller, targets, scope.Project)
+			if err != nil {
+				return err
+			}
+		}
 		names := newPrincipalNames()
 		out = make([]RuleView, 0, len(lines))
-		for _, line := range lines {
+		for i, line := range lines {
 			where := whereFromItems(line.Items)
 			where.EnvMode, where.KeyMode = line.EnvMode, line.KeyMode
-			if level == domain.LevelProject {
-				manageable, err := az.RuleManageable(ctx, caller, domain.Rule{Org: scope.Org, Capability: line.Capability, Where: where}, scope.Project)
-				if err != nil {
-					return err
-				}
-				if !manageable {
-					continue
-				}
+			if level == domain.LevelProject && !manageable[i] {
+				continue
 			}
+
 			name, err := names.get(ctx, az, line.Principal)
 			if err != nil {
 				return err

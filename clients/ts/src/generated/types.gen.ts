@@ -3847,7 +3847,11 @@ export type CreateRuleRequest = {
     where: RuleWhere;
 };
 
-export type ReplaceRulesRequest = {
+export type ReplaceRulesRequest = ({
+    revoke: Array<Id>;
+} | {
+    create: Array<CreateRuleRequest>;
+}) & {
     principal: Id;
     revoke: Array<Id>;
     create: Array<CreateRuleRequest>;
@@ -13762,6 +13766,90 @@ export type DeclareValuesResponses = {
 };
 
 export type DeclareValuesResponse = DeclareValuesResponses[keyof DeclareValuesResponses];
+
+export type InitializeValueData = {
+    body: SetValueRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize';
+};
+
+export type InitializeValueErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type InitializeValueError = InitializeValueErrors[keyof InitializeValueErrors];
+
+export type InitializeValueResponses = {
+    /**
+     * The staged pending change. It never echoes the value back.
+     */
+    200: PendingChange;
+};
+
+export type InitializeValueResponse = InitializeValueResponses[keyof InitializeValueResponses];
 
 export type CopyValuesData = {
     body: CopyValuesRequest;

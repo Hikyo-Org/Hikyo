@@ -63,9 +63,8 @@ export class RuleSaveFailure extends Error {
   override readonly cause: unknown;
 
   constructor(
-    readonly stage: 'atomic' | 'create' | 'rollback' | 'revoke' | 'remove' | 'refresh',
+    readonly stage: 'atomic' | 'refresh',
     cause: unknown,
-    readonly confirmedRevoked: readonly string[] = [],
   ) {
     super(`rule save failed at ${stage}`, { cause });
     this.name = 'RuleSaveFailure';
@@ -84,6 +83,9 @@ export async function saveRule(org: string, before: Rule | null, draft: Rule): P
       create: plan.create.map((capability) => createBody(draft, capability)),
     } });
   } catch (error) {
+    // A 4xx from this transaction proves atomic refusal. A session check can
+    // itself return ApiError after a successful write, so preserve provenance.
+    if (error instanceof ApiError && error.operation === replaceRulesOp && error.status >= 400 && error.status < 500) throw error;
     throw new RuleSaveFailure('atomic', error);
   }
 }
@@ -96,6 +98,9 @@ export async function removeRule(org: string, rule: Rule): Promise<void> {
       principal: rule.member, revoke: rule.source.parts.map((part) => part.id), create: [],
     } });
   } catch (error) {
+    // A 4xx from this transaction proves atomic refusal. A session check can
+    // itself return ApiError after a successful write, so preserve provenance.
+    if (error instanceof ApiError && error.operation === replaceRulesOp && error.status >= 400 && error.status < 500) throw error;
     throw new RuleSaveFailure('atomic', error);
   }
 }
@@ -118,7 +123,7 @@ export function useRuleMutations(org: string) {
         await queries.invalidateQueries({ queryKey: ['rules', org] }, { throwOnError: true });
       }
     } catch (error) {
-      // The mutation already failed and its caller must abandon the draft.
+      // The mutation already failed; its original error controls draft retention.
       // Do not rethrow inside TanStack's error-settlement callback, which
       // reports callback failures as unhandled rejections instead of replacing
       // the original mutation error. The query/session owners retain refusal.
@@ -150,22 +155,12 @@ function refusalText(error: unknown): string {
   );
 }
 
-/** A save or remove failure in words, saying which half of an edit stands. */
+/** A save or remove failure retains uncertainty until the listing is refreshed. */
 export function ruleFailureText(error: unknown): string {
   if (error instanceof RuleSaveFailure) {
-    const progress = error.confirmedRevoked.length === 1
-      ? '1 rule part was confirmed removed.'
-      : `${error.confirmedRevoked.length} rule parts were confirmed removed.`;
     switch (error.stage) {
       case 'atomic':
         return `The atomic change could not be confirmed. Check the refreshed rules before retrying; a lost response may follow a committed change. ${refusalText(error.cause)}`;
-      case 'create':
-        return `The save could not be confirmed. A new rule may still apply even if confirmed additions were undone. Check the refreshed rules and reopen the editor before retrying. ${refusalText(error.cause)}`;
-      case 'rollback':
-        return `Some new rules may still apply because rollback could not finish. ${progress} Check the refreshed rules and reopen the editor before retrying. ${refusalText(error.cause)}`;
-      case 'revoke':
-      case 'remove':
-        return `Removal stopped. ${progress} Other removals could not be confirmed. Check the refreshed rules and reopen the editor before retrying. ${refusalText(error.cause)}`;
       case 'refresh':
         return `The requests completed, but the current rules or session could not be confirmed. Reload and check the rules before making another change. ${refusalText(error.cause)}`;
     }
