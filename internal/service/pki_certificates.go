@@ -420,8 +420,8 @@ func (s *PKI) settleLeaf(ctx context.Context, actor Actor, op authz.Operation, s
 		if err != nil {
 			return err
 		}
-		// Decode before commit: corrupt metadata must not turn a live
-		// display-once issuance into an error that discards its private key.
+		// Decode before commit: corrupt metadata aborts settlement, so no
+		// certificate goes live after its display-once key is discarded.
 		settled, err = pkiCertificateView(cert, plan.issuer)
 		return err
 	})

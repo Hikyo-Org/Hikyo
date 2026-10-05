@@ -34,9 +34,11 @@ Independent review rejected the first decoder implementation because it could fa
 
 ## Reproducible validation
 
-Run from the repository root, using Node 26.7.0 and pinned pnpm:
+Run from the repository root, using Node 26.7.0 and pinned pnpm. The full Go attempt below exited 1: every non-isolation package passed, but isolation reached its cumulative 10-minute deadline under concurrent host load. It did not pass as a monolithic command.
 
 ```sh
+
+# Recorded attempt: isolation timed out; all other packages passed.
 rtk proxy go test -p 2 -count=1 ./...
 rtk proxy go run ./internal/authz/gen -check
 rtk proxy pnpm --dir clients/ts run verify
@@ -47,10 +49,25 @@ rtk proxy pnpm --dir web run e2e
 rtk proxy git diff --check
 ```
 
+The completed replacement run covered all 544 top-level isolation tests in eight disjoint canonical shards, all passing with the default timeout unchanged. These commands reproduce the planner and test invocations used (the temporary Python wrapper only joined each manifest into a regex):
+
+```sh
+validation_dir="$(rtk proxy mktemp -d)"
+for shard in 0 1 2 3 4 5 6 7; do
+  rtk proxy scripts/ci/analysis-shards isolation --root . --shard "$shard" --shards 8 > "$validation_dir/isolation-$shard.txt"
+done
+for shard in 0 1 2 3 4 5 6 7; do
+  shard_tests="$(rtk proxy paste -sd '|' "$validation_dir/isolation-$shard.txt")"
+  rtk proxy go test -p 1 -count=1 -run "^(${shard_tests})$" ./internal/isolation
+done
+```
+
+The shards started before the later revocation review correction. That correction was separately verified with the final PKI custody/lifecycle/retention/renewal suite and package vet; exact-head CI supplies the final combined coverage.
+
 Local PostgreSQL-specific cases require `HIKYO_TEST_POSTGRES_DSN`; absent it, those cases skip. Windows child-process execution is covered by the portable test source and the Windows CI lane. Source tests for remote settings verify exact destination ownership; a real two-origin browser flow is separate evidence. CI, review, merge and post-merge status belong to the live PR and must be checked against its exact head.
 
 ## Delivery state
 
-Implementation and independent runtime/standards review are complete. Local web validation passed 1,500 unit tests, typecheck and lint; client verification passed 33 tests and regeneration/typecheck. Go vet, generator checks and import formatting passed. Broad Go and browser coverage continues. Qodo review corrections preserve definitive 4xx bundle details and recover corrupt SAN display metadata from an issuer-signed leaf whose serial/public key match the stored record. If both SAN and DER are unreadable, authorized revocation and its audit still commit while the service reports a display error; the HTTP boundary redacts it to 500. Authorization, storage and audit failures still roll back. List remains an explicit failure if a record cannot be trusted; it does not omit records or fabricate empty names. Under concurrent host load, the monolithic isolation package hit its cumulative 10-minute deadline; complete coverage is being rerun as eight disjoint canonical shards without increasing test timeouts. PostgreSQL and Windows execution require their CI lanes. Exact-head CI, reviews and merge status are recorded on [PR #857](https://github.com/Hikyo-Org/Hikyo/pull/857); this document is an implementation snapshot, not a merged claim.
+Implementation and independent runtime/standards review are complete. Local web validation passed 1,500 unit tests, typecheck and lint; client verification passed 35 tests and regeneration/typecheck. Go vet, generator checks and import formatting passed. All non-isolation Go packages and all eight isolation shards passed separately as documented above. Browser coverage continues. Qodo review corrections preserve definitive 4xx bundle details and recover corrupt SAN display metadata from an issuer-signed leaf whose serial/public key match the stored record. If both SAN and DER are unreadable, authorized revocation and its audit still commit while the service reports a display error; the HTTP boundary redacts it to 500. Authorization, storage and audit failures still roll back. List remains an explicit failure if a record cannot be trusted; it does not omit records or fabricate empty names. Under concurrent host load, the monolithic isolation package hit its cumulative 10-minute deadline; complete coverage passed as eight disjoint canonical shards without increasing test timeouts. PostgreSQL and Windows execution require their CI lanes. Exact-head CI, reviews and merge status are recorded on [PR #857](https://github.com/Hikyo-Org/Hikyo/pull/857); this document is an implementation snapshot, not a merged claim.
 
 The HTML report remains the pre-fix investigation snapshot. It is served only from the isolated report export when requested; no repository files or credentials are served by that export.
