@@ -3167,8 +3167,8 @@ export const zReplaceRulesRequest = z.intersection(z.union([
     })
 ]), z.object({
     principal: zId,
-    revoke: z.array(zId).max(32),
-    create: z.array(zCreateRuleRequest).max(32)
+    revoke: z.array(zId).max(32).optional(),
+    create: z.array(zCreateRuleRequest).max(32).optional()
 }));
 
 export const zRule = z.object({

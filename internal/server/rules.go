@@ -168,8 +168,15 @@ func wireWidening(count int, gains []service.WideningGain) *apigen.WideningRefus
 }
 
 func (a *API) ReplaceRules(ctx context.Context, req apigen.ReplaceRulesRequestObject) (apigen.ReplaceRulesResponseObject, error) {
-	spec := service.ReplaceRulesSpec{Org: domain.OrgID(req.Org), Target: domain.PrincipalID(req.Body.Principal), Revoke: req.Body.Revoke}
-	for _, add := range req.Body.Create {
+	spec := service.ReplaceRulesSpec{Org: domain.OrgID(req.Org), Target: domain.PrincipalID(req.Body.Principal)}
+	if req.Body.Revoke != nil {
+		spec.Revoke = *req.Body.Revoke
+	}
+	var creates []apigen.CreateRuleRequest
+	if req.Body.Create != nil {
+		creates = *req.Body.Create
+	}
+	for _, add := range creates {
 		where, err := ruleWhere(add.Where)
 		if err != nil {
 			return nil, err

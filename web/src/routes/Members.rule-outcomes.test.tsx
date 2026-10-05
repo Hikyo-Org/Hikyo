@@ -75,21 +75,23 @@ beforeEach(() => {
     if (request.method === 'GET' && path.endsWith('/keys')) return json({ items: [], count: 0, schema_revision: 0 });
     if (request.method === 'POST' && path.endsWith('/rules/replace')) {
       const body = zReplaceRulesRequest.parse(await request.json());
-      if (body.principal !== member || body.revoke.some((id) => !rows.some((item) => item.id === id))) {
+      const revoke = body.revoke ?? [];
+      const create = body.create ?? [];
+      if (body.principal !== member || revoke.some((id) => !rows.some((item) => item.id === id))) {
         return json({ error: 'not_found' }, 404);
       }
-      if (deleteFailure && body.revoke.length > 0) {
+      if (deleteFailure && revoke.length > 0) {
         deleteFailure = false;
         return json({ error: 'unavailable' }, 503);
       }
       if (createFailure === 'refused') return json({ error: { code: 'invalid', message: 'Rule refused', detail: 'Adjust the selection.' } }, 400);
-      const created = body.create.map((add) => {
+      const created = create.map((add) => {
         const id = ruleIDs[createCount++];
         if (id === undefined) throw new Error('Unexpected duplicate create.');
         return { ...row(id, add.capability), where: add.where };
       });
-      deleted.push(...body.revoke);
-      rows = [...rows.filter((item) => !body.revoke.includes(item.id)), ...created];
+      deleted.push(...revoke);
+      rows = [...rows.filter((item) => !revoke.includes(item.id)), ...created];
       // The complete transaction commits before its response is lost or invalid.
       if (createFailure === 'lost') throw new TypeError('Response lost after commit.');
       if (createFailure === 'malformed') return json({ items: [{ capability: 'read' }], count: 1 });

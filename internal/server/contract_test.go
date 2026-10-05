@@ -1967,6 +1967,8 @@ func hierarchyRoutes() []struct {
 		// Member access rules: the same uniform refusal as the grant routes.
 		{http.MethodGet, base + "/rules", nil},
 		{http.MethodPost, base + "/rules", ruleBody},
+		{http.MethodPost, base + "/rules/replace", apigen.ReplaceRulesRequest{Principal: testPrincipalID, Create: &[]apigen.CreateRuleRequest{ruleBody}}},
+		{http.MethodPost, base + "/rules/replace", apigen.ReplaceRulesRequest{Principal: testPrincipalID, Revoke: &[]apigen.ID{testRuleID}}},
 		{http.MethodDelete, base + "/rules/" + testRuleID, nil},
 		{http.MethodGet, project + "/rules", nil},
 		// Member invitation (#568): a refused invitation is the uniform 404,

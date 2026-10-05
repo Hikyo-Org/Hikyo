@@ -9114,11 +9114,11 @@ type RenewLeaseRequest struct {
 
 // ReplaceRulesRequest defines model for ReplaceRulesRequest.
 type ReplaceRulesRequest struct {
-	Create []CreateRuleRequest `json:"create"`
+	Create *[]CreateRuleRequest `json:"create,omitempty"`
 
 	// Principal A prefixed UUIDv7, e.g. `org_0198…`.
-	Principal ID   `json:"principal"`
-	Revoke    []ID `json:"revoke"`
+	Principal ID    `json:"principal"`
+	Revoke    *[]ID `json:"revoke,omitempty"`
 	union     json.RawMessage
 }
 

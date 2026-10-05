@@ -91,6 +91,11 @@ test('rule replacement requires a removal or addition and preserves either valid
     environments: { mode: 'all', items: [] }, keys: { mode: 'all', items: [] },
   } }];
   assert.throws(() => zReplaceRulesRequest.parse({ principal, revoke: [], create: [] }));
+  assert.throws(() => zReplaceRulesRequest.parse({ principal }));
+  assert.throws(() => zReplaceRulesRequest.parse({ principal, revoke: [] }));
+  assert.throws(() => zReplaceRulesRequest.parse({ principal, create: [] }));
+  assert.deepEqual(zReplaceRulesRequest.parse({ principal, revoke }), { principal, revoke });
+  assert.deepEqual(zReplaceRulesRequest.parse({ principal, create }), { principal, create });
   assert.deepEqual(zReplaceRulesRequest.parse({ principal, revoke, create: [] }), { principal, revoke, create: [] });
   assert.deepEqual(zReplaceRulesRequest.parse({ principal, revoke: [], create }), { principal, revoke: [], create });
 });

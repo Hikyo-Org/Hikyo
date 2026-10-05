@@ -230,7 +230,6 @@
   "RuleKeyExists": "func(ctx context.Context, s domain.Scope, keyID string) error",
   "RuleLinesInOrg": "func(ctx context.Context, org domain.OrgID) ([]RuleLine, error)",
   "RuleLinesInProject": "func(ctx context.Context, s domain.Scope) ([]RuleLine, error)",
-  "RuleManageable": "func(ctx context.Context, caller Identity, target domain.Rule, project domain.ProjectID) (bool, error)",
   "RulesForProject": "func(ctx context.Context, org domain.OrgID, project domain.ProjectID) ([]domain.Rule, error)",
   "RulesManageable": "func(ctx context.Context, caller Identity, targets []domain.Rule, project domain.ProjectID) ([]bool, error)",
   "SAMLProviderBySlug": "func(ctx context.Context, slug string) (SAMLProvider, error)",

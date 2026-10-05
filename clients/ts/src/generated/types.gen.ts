@@ -3853,8 +3853,8 @@ export type ReplaceRulesRequest = ({
     create: Array<CreateRuleRequest>;
 }) & {
     principal: Id;
-    revoke: Array<Id>;
-    create: Array<CreateRuleRequest>;
+    revoke?: Array<Id>;
+    create?: Array<CreateRuleRequest>;
 };
 
 /**

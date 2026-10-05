@@ -29,8 +29,8 @@ func (a *TxAuthorizer) AuthorizeRule(ctx context.Context, caller Identity, op Op
 }
 
 // AuthorizeRuleList admits a project membership read through any live Manage
-// access selector. The service must filter every row with RuleManageable
-// before resolving principal names or rendering selector metadata.
+// access selector. The service must filter the listing with RulesManageable
+// once, before resolving principal names or rendering selector metadata.
 func (a *TxAuthorizer) AuthorizeRuleList(ctx context.Context, caller Identity, scope domain.Scope) (Proof, error) {
 	grants, err := a.r.Grants(ctx, caller.Principal)
 	if err != nil {
@@ -51,14 +51,6 @@ func (a *TxAuthorizer) AuthorizeRuleList(ctx context.Context, caller Identity, s
 		}
 	}
 	return a.Authorize(ctx, caller, OpRuleListProject, scope)
-}
-
-func (a *TxAuthorizer) RuleManageable(ctx context.Context, caller Identity, target domain.Rule, project domain.ProjectID) (bool, error) {
-	held, err := a.RulesManageable(ctx, caller, []domain.Rule{target}, project)
-	if err != nil {
-		return false, err
-	}
-	return held[0], nil
 }
 
 // RulesManageable evaluates a listing against one live authorization snapshot.

@@ -20140,7 +20140,7 @@ components:
     ReplaceRulesRequest:
       type: object
       additionalProperties: false
-      required: [principal, revoke, create]
+      required: [principal]
       anyOf:
         - type: object
           required: [revoke]
