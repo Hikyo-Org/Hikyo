@@ -48,6 +48,8 @@ var matrixScopes = map[domain.Level]domain.Scope{
 	domain.LevelEnv:     {Org: orgA, Project: prjA1, Env: envA1},
 }
 
+const matrixInitialKeyID = "key_matrix_initial"
+
 // matrixCase is one generated row: which principal, addressing what, and
 // whether the chokepoint must mint a proof.
 type matrixCase struct {
@@ -112,7 +114,19 @@ func planMatrix(
 				bad = true
 				continue
 			}
-			atomScope, ok := matrixScopes[atom.At]
+			if _, ok := matrixScopes[atom.At]; !ok {
+				problems = append(problems, fmt.Sprintf("%s: atom %q sits at depth %d, which the matrix addressing table cannot reach", op, atom.Cap, atom.At))
+				bad = true
+				continue
+			}
+			// Rule-aware atoms may address deeper than legacy grants can be
+			// issued. Seed the nearest legal ancestor grant, which inherits
+			// into the addressed scope, rather than an impossible grant row.
+			grantLevel := atom.At
+			if deepest, _ := domain.DeepestLevel(atom.Cap); grantLevel > deepest {
+				grantLevel = deepest
+			}
+			atomScope, ok := matrixScopes[grantLevel]
 			if !ok {
 				problems = append(problems, fmt.Sprintf("%s: atom %q sits at depth %d, which the matrix addressing table cannot reach", op, atom.Cap, atom.At))
 				bad = true
@@ -168,6 +182,15 @@ func runFormulaMatrix(t *testing.T, db *store.DB) {
 
 	for _, plan := range plans {
 		t.Run(string(plan.op), func(t *testing.T) {
+			if plan.op == authz.OpValueInitialize {
+				// The ordinary harness key has a draft owned by custodian.
+				// Initialization needs a separate, genuinely empty cell.
+				execRaw(t, db, `INSERT INTO keys
+    (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, group_id, created_at)
+    SELECT '`+matrixInitialKeyID+`', org_id, project_id, 'MATRIX_INITIAL', folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, group_id, created_at
+    FROM keys WHERE id = '`+keyA1+`'`)
+				defer execRaw(t, db, "DELETE FROM keys WHERE id = '"+matrixInitialKeyID+"'")
+			}
 			if plan.op == authz.OpSelfConfigApply || plan.op == authz.OpSelfConfigTest {
 				// These operations address the bound system environment only.
 				// Mark this plan's existing chain without protecting the chains
@@ -244,7 +267,20 @@ func sqlText(v string) string {
 func authorizeAs(t *testing.T, db *store.DB, p domain.PrincipalID, op authz.Operation, scope domain.Scope) error {
 	t.Helper()
 	return tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
-		_, err := az.Authorize(ctx, authz.Identity{Principal: p}, op, scope)
+		caller := authz.Identity{Principal: p}
+		var err error
+		switch op {
+		case authz.OpKeySchemaPublishEmpty:
+			// Schema-only creation proves an absent future key, not a
+			// whole-environment grant or an existing catalogue key.
+			_, err = az.AuthorizeKey(ctx, caller, op, scope, authz.KeyToCreate(""))
+		case authz.OpValueInitialize:
+			// The dedicated fixture key exists with no published value or
+			// pending draft; initialization must prove this exact cell.
+			_, err = az.AuthorizeKey(ctx, caller, op, scope, authz.KeyByID(matrixInitialKeyID))
+		default:
+			_, err = az.Authorize(ctx, caller, op, scope)
+		}
 		return err
 	})
 }
@@ -252,38 +288,42 @@ func authorizeAs(t *testing.T, db *store.DB, p domain.PrincipalID, op authz.Oper
 // TestMatrixPlannerRejectsUnfixtured is the NEGATIVE test A2 demands: it proves
 // the completeness machinery actually fires, rather than proving that today's
 // fixtures happen to pass. It drives the planner with a synthetic registry
-// carrying three formulas the planner cannot fixture, and asserts each is
+// carrying four formulas the planner cannot fixture, and asserts each is
 // reported. Without this, the generator could silently skip an operation and
 // the suite would still be green.
 func TestMatrixPlannerRejectsUnfixtured(t *testing.T) {
 	const (
-		emptyFormula = authz.Operation("synthetic.empty-formula")
-		unknownAtom  = authz.Operation("synthetic.unknown-atom")
-		unknownDepth = authz.Operation("synthetic.unknown-depth")
-		fine         = authz.Operation("synthetic.plannable")
+		emptyFormula     = authz.Operation("synthetic.empty-formula")
+		unknownAtom      = authz.Operation("synthetic.unknown-atom")
+		unknownDepth     = authz.Operation("synthetic.unknown-depth")
+		unknownAtomDepth = authz.Operation("synthetic.unknown-atom-depth")
+		fine             = authz.Operation("synthetic.plannable")
 	)
 	classes := map[authz.Operation]authz.Class{
-		emptyFormula: authz.ClassTenant,
-		unknownAtom:  authz.ClassTenant,
-		unknownDepth: authz.ClassTenant,
-		fine:         authz.ClassTenant,
+		emptyFormula:     authz.ClassTenant,
+		unknownAtom:      authz.ClassTenant,
+		unknownDepth:     authz.ClassTenant,
+		unknownAtomDepth: authz.ClassTenant,
+		fine:             authz.ClassTenant,
 	}
 	levels := map[authz.Operation]domain.Level{
-		emptyFormula: domain.LevelOrg,
-		unknownAtom:  domain.LevelOrg,
-		unknownDepth: domain.Level(99),
-		fine:         domain.LevelOrg,
+		emptyFormula:     domain.LevelOrg,
+		unknownAtom:      domain.LevelOrg,
+		unknownDepth:     domain.Level(99),
+		unknownAtomDepth: domain.LevelOrg,
+		fine:             domain.LevelOrg,
 	}
 	formulas := map[authz.Operation]authz.Formula{
-		emptyFormula: {},
-		unknownAtom:  {{Cap: domain.Capability("invented-by-a-later-ticket"), At: domain.LevelOrg}},
-		unknownDepth: {{Cap: domain.CapRead, At: domain.LevelOrg}},
-		fine:         {{Cap: domain.CapRead, At: domain.LevelOrg}},
+		emptyFormula:     {},
+		unknownAtom:      {{Cap: domain.Capability("invented-by-a-later-ticket"), At: domain.LevelOrg}},
+		unknownDepth:     {{Cap: domain.CapRead, At: domain.LevelOrg}},
+		unknownAtomDepth: {{Cap: domain.CapRead, At: domain.Level(99)}},
+		fine:             {{Cap: domain.CapRead, At: domain.LevelOrg}},
 	}
 
 	plans, problems := planMatrix(classes, levels, formulas)
 	joined := strings.Join(problems, "\n")
-	for _, want := range []string{string(emptyFormula), string(unknownAtom), string(unknownDepth)} {
+	for _, want := range []string{string(emptyFormula), string(unknownAtom), string(unknownDepth), string(unknownAtomDepth)} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("planner did not refuse %q — an unfixtured formula would ride into CI green.\ngot:\n%s", want, joined)
 		}
