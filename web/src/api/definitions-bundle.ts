@@ -166,22 +166,23 @@ export async function applyBundle(
   });
 }
 export function bundleRefusalText(error: unknown, phase: 'check' | 'apply' = 'check'): string {
-  if (error instanceof ApiError && error.status === 429) {
-    return error.detail || 'The instance refused this operation because its request or open-plan limit was reached. Try again later.';
+  // A 4xx response is a definite refusal, including documented 400 details.
+  // Keep its recovery guidance separate from uncertain transport/contract results.
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    if (error.detail) return error.detail;
+    if (error.status === 403 || error.status === 404)
+      return 'This operation was refused. You need definitions-edit on this project and publish on every affected environment to apply. The project or plan may also be unavailable to you.';
+    if (error.status === 409)
+      return 'This bundle or plan is stale, expired, or conflicts with current state. Download the current bundle, reconcile your changes, and check again.';
+    if (error.status === 429)
+      return 'The instance refused this operation because its request or open-plan limit was reached. Try again later.';
+    return `The instance refused the bundle operation (HTTP ${error.status}). Check the bundle and try again.`;
   }
   const generic = transportRefusalText(error);
   if (generic !== null) {
     return phase === 'apply'
       ? `${generic} The apply result is uncertain. Refresh the project status before retrying.`
       : generic;
-  }
-  if (error instanceof ApiError) {
-    if (error.detail) return error.detail;
-    if (error.status === 403 || error.status === 404)
-      return 'This operation was refused. You need definitions-edit on this project and publish on every affected environment to apply. The project or plan may also be unavailable to you.';
-    if (error.status === 409)
-      return 'This bundle or plan is stale, expired, or conflicts with current state. Download the current bundle, reconcile your changes, and check again.';
-    return `The instance refused the bundle operation (HTTP ${error.status}). Check the bundle and try again.`;
   }
   return 'The instance refused the bundle operation.';
 }

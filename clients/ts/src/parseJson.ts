@@ -18,7 +18,7 @@ export function parseJson(text: string): unknown {
     }
     // Reject underflow using the original mantissa, even when its exponent is
     // beyond the decimal library's own range. Literal signed zero is allowed.
-    if (value === 0 && /[1-9]/.test(context.source.split(/[eE]/, 1)[0])) {
+    if (value === 0 && /[1-9]/.test(context.source.replace(/[eE].*$/, ''))) {
       throw new SyntaxError('JSON number underflows to zero');
     }
     const exact = new ExactNumber(context.source);
