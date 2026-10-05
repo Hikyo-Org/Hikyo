@@ -444,7 +444,8 @@ test.describe('reveal ceremonies', () => {
     // Keep the disclosure state present while the full accessibility and
     // contrast set runs. The separate remask test advances this same clock
     // to prove that disclosure still expires after ten seconds.
-    await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+    // Date stays fixed, while axe's timers and animation frames keep running.
+    await page.clock.setFixedTime(await page.evaluate(() => Date.now()));
 
     await expectPinnedAssertionSet(page, {
       flow: 'reveal',
