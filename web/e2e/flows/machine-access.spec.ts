@@ -1645,7 +1645,7 @@ test.describe('browser-only lifecycle', () => {
       };
       page.on('response', onResponse);
       await page.goto(`/orgs/${org.id}/members`);
-      await page.getByRole('button', { name: 'New grant' }).click();
+      await page.getByRole('button', { name: 'Add access', exact: true }).click();
       const reveal = page.getByRole('dialog');
       await reveal.getByLabel('Principal').selectOption({ label: accountName });
       await expect(reveal.getByLabel('Principal')).toHaveValue(account.principal_id);
