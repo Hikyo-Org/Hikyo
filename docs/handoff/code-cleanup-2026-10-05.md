@@ -52,6 +52,8 @@ rtk proxy git diff --check
 The completed replacement run covered all 544 top-level isolation tests in eight disjoint canonical shards, all passing with the default timeout unchanged. These commands reproduce the planner and test invocations used (the temporary Python wrapper only joined each manifest into a regex):
 
 ```sh
+(
+set -e
 validation_dir="$(rtk proxy mktemp -d)"
 for shard in 0 1 2 3 4 5 6 7; do
   rtk proxy scripts/ci/analysis-shards isolation --root . --shard "$shard" --shards 8 > "$validation_dir/isolation-$shard.txt"
@@ -60,6 +62,7 @@ for shard in 0 1 2 3 4 5 6 7; do
   shard_tests="$(rtk proxy paste -sd '|' "$validation_dir/isolation-$shard.txt")"
   rtk proxy go test -p 1 -count=1 -run "^(${shard_tests})$" ./internal/isolation
 done
+)
 ```
 
 The shards started before the later revocation review correction. That correction was separately verified with the final PKI custody/lifecycle/retention/renewal suite and package vet; exact-head CI supplies the final combined coverage.
@@ -68,6 +71,6 @@ Local PostgreSQL-specific cases require `HIKYO_TEST_POSTGRES_DSN`; absent it, th
 
 ## Delivery state
 
-Implementation and independent runtime/standards review are complete. Local web validation passed 1,500 unit tests, typecheck and lint; client verification passed 35 tests and regeneration/typecheck. Go vet, generator checks and import formatting passed. All non-isolation Go packages and all eight isolation shards passed separately as documented above. Browser coverage continues. Qodo review corrections preserve definitive 4xx bundle details and recover corrupt SAN display metadata from an issuer-signed leaf whose serial/public key match the stored record. If both SAN and DER are unreadable, authorized revocation and its audit still commit while the service reports a display error; the HTTP boundary redacts it to 500. Authorization, storage and audit failures still roll back. List remains an explicit failure if a record cannot be trusted; it does not omit records or fabricate empty names. Under concurrent host load, the monolithic isolation package hit its cumulative 10-minute deadline; complete coverage passed as eight disjoint canonical shards without increasing test timeouts. PostgreSQL and Windows execution require their CI lanes. Exact-head CI, reviews and merge status are recorded on [PR #857](https://github.com/Hikyo-Org/Hikyo/pull/857); this document is an implementation snapshot, not a merged claim.
+Implementation and independent runtime/standards review are complete. Local web validation passed 1,500 unit tests, typecheck and lint; client verification passed 35 tests and regeneration/typecheck. Go vet, generator checks and import formatting passed. All non-isolation Go packages and all eight isolation shards passed separately as documented above. The full local browser command passed 256 desktop and 258 mobile tests, with 4 desktop and 2 mobile skips. Its fixture binary was built before the later review corrections; those corrections have separate focused regressions, and exact-head CI supplies final combined runtime evidence. Qodo review corrections preserve definitive 4xx bundle details and recover corrupt SAN display metadata from an issuer-signed leaf whose serial/public key match the stored record. If both SAN and DER are unreadable, authorized revocation and its audit still commit while the service reports a display error; the HTTP boundary redacts it to 500. Authorization, storage and audit failures still roll back. List remains an explicit failure if a record cannot be trusted; it does not omit records or fabricate empty names. Under concurrent host load, the monolithic isolation package hit its cumulative 10-minute deadline; complete coverage passed as eight disjoint canonical shards without increasing test timeouts. PostgreSQL and Windows execution require their CI lanes. Exact-head CI, reviews and merge status are recorded on [PR #857](https://github.com/Hikyo-Org/Hikyo/pull/857); this document is an implementation snapshot, not a merged claim.
 
 The HTML report remains the pre-fix investigation snapshot. It is served only from the isolated report export when requested; no repository files or credentials are served by that export.
