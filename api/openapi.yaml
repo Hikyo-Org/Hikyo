@@ -2352,11 +2352,11 @@ paths:
       summary: Create one member access rule.
       description: |
         One capability for one person, with a `where` of projects,
-        environments and keys. The caller needs `manage-members` held as a
-        grant on every project the rule names; a project-scope member manager
-        may only grant a capability it holds as a grant on each of those whole
-        projects. Rules are for people: a machine principal is refused. An
-        edit is a revoke plus a create.
+        environments and keys. The caller needs `manage-members` covering the
+        complete selector on every project and may delegate only capabilities
+        held there, unless org or instance authority permits unheld grants.
+        Rules are for people: a machine principal is refused. Use replaceRules
+        to edit a grouped rule card atomically.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.create
       x-hikyo-formula: [manage-members@project]
@@ -2392,6 +2392,55 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/rules/replace:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    post:
+      operationId: replaceRules
+      tags: [access]
+      summary: Atomically change a person's access rule card.
+      description: |
+        Authorizes every removal and addition against the original access,
+        then commits the complete change in one transaction. All rows must
+        belong to the named person. Each create[].principal must equal the
+        top-level principal. At least one revoke or create item is required.
+        A missing removal refuses the whole batch.
+        Sessions are invalidated only after all authorization checks succeed.
+      x-hikyo-class: tenant
+      x-hikyo-operation: rule.create
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 9
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceRulesRequest"
+      responses:
+        "200":
+          description: Newly created rules. An empty list means removal only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/orgs/{org}/rules/{rule}:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -2402,8 +2451,8 @@ paths:
       summary: Revoke one member access rule.
       description: |
         Removes the rule whole and ends its holder's sessions. The caller needs
-        `manage-members` held as a grant on every project the rule names; a
-        rule it cannot reach answers exactly like one that does not exist.
+        `manage-members` covering the complete rule selector on every project;
+        a rule it cannot reach answers exactly like one that does not exist.
       x-hikyo-class: tenant
       x-hikyo-operation: rule.revoke
       x-hikyo-formula: [manage-members@project]
@@ -4057,6 +4106,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValueList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/ValueKeyName"
+    post:
+      operationId: initializeValue
+      tags: [values]
+      summary: Stage an initial value for an empty cell.
+      description: |
+        Stages the first value under Define keys and Publish for this key and
+        environment. Delivery changes only when its pending version is published.
+        Refuses a published cell or another principal's draft. The owner may
+        revise their initial draft while the published cell remains absent.
+      x-hikyo-class: tenant
+      x-hikyo-operation: value.initialize
+      x-hikyo-formula: [definitions-edit@environment, publish@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetValueRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The staged pending change. It never echoes the value back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingChange"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -18813,20 +18910,26 @@ components:
         can_declare_keys:
           type: boolean
           description: |
-            Whether THE CALLER would pass a key declaration in this project
-            right now: `definitions-edit` on the project AND `publish` on every
-            one of its environments, because a declaration fans a schema
-            publish out to each. A UI affordance, never an authorization
-            decision: a refused declaration is still 404.
-            Independent of `definitions_source`.
+            Whether THE CALLER has authority to create an empty, ungrouped key
+            in at least one permitted folder in this project. Includes legacy
+            project-wide `definitions-edit` grants and matching folder or
+            all-key access rules, including rules for selected environments.
+            A single-key rule alone does not permit creation. Initial values
+            additionally require Define and Publish in the destination.
+            A UI affordance, never authority for an arbitrary declaration,
+            folder, linked group, or bulk write. Actual writes authorize their
+            complete scope and may return 404. Independent of `definitions_source`.
         can_edit_definitions:
           type: boolean
           description: |
-            Whether THE CALLER holds `definitions-edit` on this project: enough
-            for the edits that republish nothing (folders, linked-key set
-            create and rename, key metadata). Every edit that republishes
-            needs `can_declare_keys` instead. A UI affordance, never an
-            authorization decision. Independent of `definitions_source`.
+            Whether THE CALLER has any matching Define authority in this
+            project, from a legacy `definitions-edit` grant or an access rule,
+            including single-key and selected-environment rules. A UI
+            affordance, never authority to edit every definition or folder.
+            Shared semantic edits require Define and Publish in every project
+            environment; linked-group changes require whole-environment
+            authority. Actual writes authorize their complete scope and may
+            return 404. Independent of `definitions_source`.
 
     SetDefinitionsSettingsRequest:
       type: object
@@ -20040,14 +20143,51 @@ components:
         where:
           $ref: "#/components/schemas/RuleWhere"
 
+    ReplaceRulesRequest:
+      type: object
+      additionalProperties: false
+      required: [principal]
+      anyOf:
+        - type: object
+          required: [revoke]
+          properties:
+            revoke:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/ID"
+        - type: object
+          required: [create]
+          properties:
+            create:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/CreateRuleRequest"
+      properties:
+        principal:
+          $ref: "#/components/schemas/ID"
+        revoke:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ID"
+        create:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CreateRuleRequest"
+
     RuleCapability:
       type: string
       description: |
         The capabilities a member access rule may carry (member-access-rules
-        ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+        ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+        `publish` and `manage-members` accept key selectors. Member management
+        delegates only within its selector and the caller's held capabilities.
         `manage-identities`, `manage-adapters` and `project-settings` need a
-        whole project. `manage-members` is stored but grants nothing until
-        delegation containment exists.
+        whole project.
       enum: [read, edit, publish, pin, reveal, reveal-history, definitions-edit, manage-members, manage-identities, manage-adapters, project-settings]
 
     RuleAxisMode:

@@ -54,6 +54,9 @@ type proof struct {
 	// authorization: the proof then vouches for that one key (resolved from
 	// the database) and nothing wider. Nil on every other proof.
 	key *domain.RuleKey
+	// publishKeys binds a collection proof to the complete authorized change set.
+	navigation  []domain.Rule
+	publishKeys map[string]bool
 }
 
 // BoundKey reports the key a proof was minted for when member access rules
@@ -87,3 +90,56 @@ func NewTxToken() *TxToken { return &TxToken{} }
 func (t *TxToken) Invalidate() { t.dead.Store(true) }
 
 func (t *TxToken) alive() bool { return !t.dead.Load() }
+
+// PublishKeyAllowed checks the changed-key binding of a collection publish proof.
+// Existing whole-environment proofs have no collection binding.
+func PublishKeyAllowed(p Proof, id string) bool {
+	v, ok := p.(*proof)
+	if !ok || v == nil {
+		return false
+	}
+	if v.publishKeys != nil {
+		return v.publishKeys[id]
+	}
+	return v.key == nil || v.key.ID == id
+}
+
+// NavigationProjectAllowed narrows a rule-based project directory proof to
+// the projects named by the caller's own rules. Ordinary proofs are unchanged.
+func NavigationProjectAllowed(p Proof, id domain.ProjectID) bool {
+	if p == nil {
+		return false
+	}
+	v := p.proof()
+	if v.navigation == nil {
+		return true
+	}
+	for _, rule := range v.navigation {
+		for _, project := range rule.Where.Projects {
+			if project == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// NavigationEnvironmentAllowed preserves the environment selector on a
+// directory read authorized through See, including rule-local exceptions.
+func NavigationEnvironmentAllowed(p Proof, id domain.EnvID) bool {
+	if p == nil {
+		return false
+	}
+	v := p.proof()
+	if v.navigation == nil {
+		return true
+	}
+	scope := v.chain
+	scope.Env = id
+	for _, rule := range v.navigation {
+		if rule.Reaches(domain.CapRead, domain.LevelEnv, scope, nil) {
+			return true
+		}
+	}
+	return false
+}

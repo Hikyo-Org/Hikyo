@@ -94,9 +94,8 @@ export const RulesOnAProject: Story = {
 };
 
 // The editor on Alice's folder rule (payments › staging, prod › only db/).
-// Where comes first. See and Pin need all keys of an environment, so on a
-// folder rule they stay visible but disabled with the reason; widening Keys
-// to "All, except..." enables them without changing the list's height.
+// Where comes first. See remains environment-wide alongside key permissions.
+// Pin needs all keys; widening Keys enables it without changing row heights.
 export const EditorFolderRule: Story = {
   render: () => {
     const world = makeWorld();
@@ -115,21 +114,26 @@ export const EditorFolderRule: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Admin' }));
     await expect(dialog.getByRole('checkbox', { name: 'Reveal' })).not.toBeChecked();
     await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toBeChecked();
-    // Admin only removes Reveal here. Adding its historical counterpart turns
-    // this into a mixed replacement, which cannot be sent as separate writes.
+    await expect(dialog.getByRole('checkbox', { name: 'Define keys' })).toHaveAccessibleDescription(/Key definitions are shared.*every project environment/);
+    // Mixed permission changes save as one atomic replacement.
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Reveal history' }));
-    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
-    await expect(dialog.getByRole('alert')).toHaveTextContent('atomic rule replacement');
+    await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
     const see = dialog.getByRole('checkbox', { name: 'See' });
-    await expect(see).toBeDisabled();
-    await expect(see).toHaveAccessibleDescription(/Not available here: needs all keys of an environment\..*Only on rules that cover all keys of an environment\./);
+    await expect(see).toBeEnabled();
+    await expect(see).toBeChecked();
+    await expect(see).toHaveAccessibleDescription(/Always covers the whole environment/);
+    await expect(dialog.getByRole('checkbox', { name: 'Publish' })).toBeEnabled();
+    await expect(dialog.getByRole('checkbox', { name: 'Publish' })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Pin' })).toBeDisabled();
+    await expect(dialog.getByText(/See always covers the whole environment: key names/)).toBeVisible();
+    await expect(dialog.getByText('Assigning See requires Manage access across every key of the selected environments.')).toBeVisible();
     await expect(dialog.getByRole('checkbox', { name: 'Manage machines' })).toBeDisabled();
     // What no rule can carry is not listed, and named once.
     await expect(dialog.queryByRole('checkbox', { name: 'Manage projects' })).toBeNull();
     await expect(dialog.getAllByText(/Manage projects needs all projects/).length).toBeGreaterThan(0);
-    // Manage access is kept, and says it gives nothing yet.
-    await expect(dialog.getByRole('checkbox', { name: 'Manage access' })).toHaveAccessibleDescription(/gives nothing yet/);
-    await expect(dialog.getByText(/Left out until Where is wider: See, Publish, Pin, Manage machines/)).toBeVisible();
+    // Manage access is available with its delegation boundary explained.
+    await expect(dialog.getByRole('checkbox', { name: 'Manage access' })).toHaveAccessibleDescription(/Delegate only inside this rule/);
+    await expect(dialog.getByText(/Left out until Where is wider: Pin, Manage machines/)).toBeVisible();
     const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
     await expect(saves.getByText('Define keys')).toBeVisible();
     await expect(saves.getByText(/only db\//)).toBeVisible();
@@ -142,7 +146,7 @@ export const EditorFolderRule: Story = {
 
     const height = permissions.getBoundingClientRect().height;
     await userEvent.click(within(dialog.getByRole('group', { name: 'Keys' })).getByRole('radio', { name: 'All, except…' }));
-    await expect(see).toBeEnabled();
+    await expect(dialog.getByRole('checkbox', { name: 'Pin' })).toBeEnabled();
     await expect(permissions.getBoundingClientRect().height).toBe(height);
   },
 };
@@ -171,6 +175,32 @@ export const EditorNewRule: Story = {
     await userEvent.click(dialog.getByRole('button', { name: /^payments/ }));
     await expect(dialog.getByRole('group', { name: 'Environments' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
+  },
+};
+
+const saveSingleKey = fn<(rule: Rule) => void>();
+
+// A Publisher on one key keeps See environment-wide and leaves Pin out.
+export const EditorSingleKeyRule: Story = {
+  render: () => <RuleEditorDialog world={makeWorld()} rule={newRule(IDS.chen)} projects={PROJECTS} onSave={saveSingleKey} onCancel={fn()} />,
+  play: async ({ canvas }) => {
+    saveSingleKey.mockClear();
+    const dialog = within(await canvas.findByRole('dialog', { name: 'New rule · Chen Li' }));
+    await userEvent.click(dialog.getByRole('button', { name: /^payments/ }));
+    await userEvent.click(within(dialog.getByRole('group', { name: 'Keys' })).getByRole('radio', { name: 'Only…' }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Pick single keys (8)' }));
+    await userEvent.click(dialog.getByRole('button', { name: /^db\/DB_PASSWORD/ }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Publisher' }));
+    await expect(dialog.getByRole('checkbox', { name: 'See' })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Edit' })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Publish' })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Pin' })).toBeDisabled();
+    await expect(dialog.getByText(/See always covers the whole environment: key names/)).toBeVisible();
+    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    await expect(saveSingleKey).toHaveBeenCalledWith(expect.objectContaining({
+      projects: [IDS.payments],
+      keys: { mode: 'only', items: [{ project: IDS.payments, key: IDS.dbPassword }] },
+    }));
   },
 };
 
@@ -203,13 +233,20 @@ export const WhoCan: Story = {
     const yes = within(canvas.getByRole('table', { name: 'Yes: 3' }));
     await expect(yes.getByRole('rowheader', { name: 'Sam Ortiz' })).toBeVisible();
     await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('Machine');
-    await expect(yes.getAllByText('A grant: change it in the grant list.')).toHaveLength(2);
+    await expect(yes.getAllByText('Scope-wide access: edit its card in Members.')).toHaveLength(2);
     const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));
     await expect(alice.getByText(/only db\//)).toBeVisible();
     const excepted = within(canvas.getByRole('table', { name: 'No, left out by an except: 2' }));
     await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText('Left out: this rule has except prod.')).toBeVisible();
     await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
-    await expect(canvas.queryByText('Chen Li')).toBeNull();
+    const noRule = canvas.getByRole('button', { name: 'No, no rule reaches: 2' });
+    await expect(noRule).toHaveAttribute('aria-expanded', 'false');
+    await expect(canvas.getByText('Chen Li')).not.toBeVisible();
+    await userEvent.click(noRule);
+    await expect(noRule).toHaveAttribute('aria-expanded', 'true');
+    await expect(canvas.getByText('Chen Li')).toBeVisible();
+    await expect(canvas.getAllByText('None of their rules or scope-wide access gives Reveal here.')).toHaveLength(2);
+    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
 
     // See is never narrowed by keys: an except narrows only its own rule.
     await userEvent.selectOptions(permission, 'read');

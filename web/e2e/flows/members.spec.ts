@@ -124,13 +124,16 @@ test.describe('members and grants', () => {
 
   test('lists one line per capability with its origin chips', async ({ page }) => {
     // The membership table, not the Who can...? answer tables beside it.
-    const table = page.locator('#members-list').getByRole('table');
+    const table = page.locator('#members-list');
+    await expect(table.getByRole('table')).toHaveCount(0);
+    await table.getByRole('button', { name: 'Permission origins', exact: true }).first().click();
     // The fixture's workload holds `read` on development, granted through the
     // API, so its origin is `manual`, not the break-glass kind the seeding
     // CLI writes at instance scope.
     await expect(table).toContainText('read');
-    await expect(table).toContainText('payments · development');
-    await expect(table.getByText('manual').first()).toBeVisible();
+    await expect(table).toContainText('payments');
+    await expect(table).toContainText('development');
+    await expect(table.getByText(/^manual:/).first()).toBeVisible();
     // Instance-scope grants reach this org by inheritance and are absent by
     // design; the surface says so rather than leaving a hole.
     await expect(page.getByText('Instance-scope grants reach this organisation')).toBeVisible();
@@ -172,7 +175,7 @@ test.describe('members and grants', () => {
       'audit-read',
     ]);
 
-    await page.getByRole('button', { name: '+ new grant' }).click();
+    await page.getByRole('button', { name: 'Add access' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText('Apply a role template', { exact: true })).toHaveCount(0);
     await expect(dialog.getByLabel('Scope').locator(`option[value="org:${seed.org}"]`)).toHaveCount(1);
@@ -220,9 +223,9 @@ test.describe('members and grants', () => {
   });
 
   test('opens the grant modal with the safest scope preselected', async ({ page }) => {
-    await page.getByRole('button', { name: 'New grant' }).click();
+    await page.getByRole('button', { name: 'Add access' }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByRole('heading', { name: 'New grant' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Add scope-wide access' })).toBeVisible();
 
     const scope = dialog.getByLabel('Scope');
     // The safest default: the seed's one confirmed-unprotected environment
@@ -257,7 +260,7 @@ test.describe('members and grants', () => {
     // (development · staging); position order alone would pick
     // payments/development. The rule prefers the confirmed-unprotected
     // environment named staging, wherever it sits.
-    await page.getByRole('button', { name: 'New grant' }).click();
+    await page.getByRole('button', { name: 'Add access' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel('Scope')).toHaveValue(DEFAULT_SCOPE);
     await expect(dialog.getByLabel('Scope').locator('option:checked')).toHaveText('staging');
@@ -266,7 +269,7 @@ test.describe('members and grants', () => {
 
   test('selects a disclosed member by name and resets a cancelled composition', async ({ page }) => {
     const principal = seed.principal;
-    const newGrant = page.getByRole('button', { name: 'New grant' });
+    const newGrant = page.getByRole('button', { name: 'Add access' });
     await newGrant.click();
     let dialog = page.getByRole('dialog');
     await dialog.getByLabel('Principal').selectOption({ label: ADMIN.displayName });
@@ -296,7 +299,7 @@ test.describe('members and grants', () => {
       },
     );
     await page.reload({ waitUntil: 'domcontentloaded' });
-    const newGrant = page.getByRole('button', { name: 'New grant' });
+    const newGrant = page.getByRole('button', { name: 'Add access' });
     await expect(newGrant).toBeDisabled();
     await expect(page.getByText(/Loading the complete organisation topology/)).toBeVisible();
     if (release === undefined) {
@@ -313,7 +316,7 @@ test.describe('members and grants', () => {
     page,
   }) => {
     const principal = await automationPrincipal(page);
-    await page.getByRole('button', { name: 'New grant' }).click();
+    await page.getByRole('button', { name: 'Add access' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
     await dialog.getByLabel('Principal').fill(principal);
@@ -361,7 +364,7 @@ test.describe('members and grants', () => {
       }),
     );
     await page.reload();
-    await page.getByRole('button', { name: 'New grant' }).click();
+    await page.getByRole('button', { name: 'Add access' }).click();
     const scope = page.getByRole('dialog').getByLabel('Scope');
     await expect(
       scope.locator(`option[value="env:${seed.project}:${seed.dev}"]`),
@@ -380,7 +383,7 @@ test.describe('members and grants', () => {
       }
     });
     try {
-      await page.getByRole('button', { name: 'New grant' }).click();
+      await page.getByRole('button', { name: 'Add access' }).click();
       const dialog = page.getByRole('dialog');
       await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
       await dialog.getByLabel('Principal').fill(principal);
@@ -396,7 +399,7 @@ test.describe('members and grants', () => {
       await expect(partial).toContainText('2 of 3');
       await expect(partial).toContainText('pin was refused');
       await expect(partial).toContainText('live and listed below');
-      const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+      const row = page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
       await expect(row.locator('.member-name')).toHaveText(seed.machine.automation);
       await expect(row).toContainText('read');
       await expect(row).toContainText('edit');
@@ -409,7 +412,7 @@ test.describe('members and grants', () => {
   test('grants each capability as its own line and revokes one back', async ({ page }) => {
     const principal = await automationPrincipal(page);
     try {
-      await page.getByRole('button', { name: 'New grant' }).click();
+      await page.getByRole('button', { name: 'Add access' }).click();
       const dialog = page.getByRole('dialog');
       await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
       await dialog.getByLabel('Principal').fill(principal);
@@ -426,18 +429,19 @@ test.describe('members and grants', () => {
       await expect(feedback).toContainText('independently revocable');
 
       // Two independent rows, not a bundle.
-      const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+      const row = page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
       await expect(row.locator('.member-name')).toHaveText(seed.machine.automation);
       await expect(row).toContainText('read');
       await expect(row).toContainText('edit');
 
-      await page
+      await row.getByRole('button', { name: 'Edit access on payments · development', exact: true }).click();
+      await page.getByRole('dialog')
         .getByRole('button', { name: `Revoke edit on payments · development for ${seed.machine.automation}` })
         .click();
       const revoked = page.locator('.notice').filter({ hasText: 'Revoked edit' });
       await expectStatusIsTextAndAria(page, revoked);
-      await expect(page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) })).not.toContainText('edit');
-      await expect(page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) })).toContainText('read');
+      await expect(page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${principal}"]`) })).not.toContainText('edit');
+      await expect(page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${principal}"]`) })).toContainText('read');
     } finally {
       await revokeAll(page, principal, ['read', 'edit']);
     }
@@ -448,7 +452,10 @@ test.describe('members and grants', () => {
   // it takes the answer away again. The person is invited with the viewer
   // template so they appear on the page (people with neither a grant nor a
   // rule are not listed); a rule for anyone else would end a shared session.
-  test('adds a rule that Who can reach one key answers through, then removes it', async ({ page }) => {
+  test('adds and atomically edits a single-key rule, then removes it', async ({ page }) => {
+    const key = seed.secrets[0];
+    const sibling = seed.secrets[1];
+    if (key === undefined || sibling === undefined) throw new Error('per-key rules need two seeded secret keys');
     const username = `rule-${Date.now().toString(36)}`;
     await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/invitations`, zInvitationResult, {
       username,
@@ -462,19 +469,39 @@ test.describe('members and grants', () => {
     const envs = dialog.getByRole('group', { name: 'Environments' });
     await envs.getByRole('radio', { name: 'Only…' }).check();
     await envs.getByRole('button', { name: /^development/ }).click();
-    await dialog.getByRole('button', { name: 'Editor' }).click();
+    const keys = dialog.getByRole('group', { name: 'Keys' });
+    await keys.getByRole('radio', { name: 'Only…' }).check();
+    await keys.getByRole('button', { name: /^Pick single keys/ }).click();
+    await keys.getByRole('button', { name: new RegExp(key) }).click();
+    await dialog.getByRole('button', { name: 'Publisher' }).click();
     await dialog.getByRole('button', { name: 'Save' }).click();
     await expect(page.locator('.notice').filter({ hasText: `Added a rule for ${username}` })).toBeVisible();
     await expect(rules.getByRole('button', { name: `Edit rule 1 of ${username}` })).toBeVisible();
 
     const ask = page.locator('#members-whocan');
-    await ask.getByLabel('Permission').selectOption('edit');
+    await ask.getByLabel('Permission').selectOption('publish');
     await ask.getByLabel('Project').selectOption(seed.project);
     await ask.getByLabel('Environment').selectOption(seed.dev);
+    await ask.getByLabel('Key', { exact: true }).selectOption({ label: `${key} (secret)` });
     await expect(ask.getByRole('rowheader', { name: username })).toBeVisible();
+    await ask.getByLabel('Key', { exact: true }).selectOption({ label: `${sibling} (secret)` });
+    await expect(ask.getByRole('rowheader', { name: username })).toHaveCount(0);
+    await ask.getByLabel('Key', { exact: true }).selectOption({ label: `${key} (secret)` });
     await ask.getByLabel('Environment').selectOption(seed.prod);
     await expect(ask.getByRole('rowheader', { name: username })).toHaveCount(0);
 
+    await rules.getByRole('button', { name: `Edit rule 1 of ${username}` }).click();
+    const edit = page.getByRole('dialog', { name: `Edit rule · ${username}` });
+    const editKeys = edit.getByRole('group', { name: 'Keys' });
+    await editKeys.getByRole('button', { name: /^Pick single keys/ }).click();
+    await editKeys.getByRole('button', { name: new RegExp(key) }).click();
+    await editKeys.getByRole('button', { name: new RegExp(sibling) }).click();
+    await edit.getByRole('button', { name: 'Save' }).click();
+    await expect(page.locator('.notice').filter({ hasText: `Saved the rule of ${username}` })).toBeVisible();
+    await ask.getByLabel('Environment').selectOption(seed.dev);
+    await expect(ask.getByRole('rowheader', { name: username })).toHaveCount(0);
+    await ask.getByLabel('Key', { exact: true }).selectOption({ label: `${sibling} (secret)` });
+    await expect(ask.getByRole('rowheader', { name: username })).toBeVisible();
     await rules.getByRole('button', { name: `Edit rule 1 of ${username}` }).click();
     await page.getByRole('dialog', { name: `Edit rule · ${username}` }).getByRole('button', { name: 'Remove rule' }).click();
     await expect(page.locator('.notice').filter({ hasText: `Removed the rule from ${username}` })).toBeVisible();
@@ -519,7 +546,7 @@ test.describe('members and grants', () => {
     await expectStatusIsTextAndAria(page, invited);
     // The refetched listing carries the invitee's ONE viewer line, granted by
     // the inviter, at organisation scope.
-    const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+    const row = page.locator('.access-person').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
     await expect(row.locator('.member-name')).toHaveText(username);
     await expect(row).toContainText('read');
     await expect(row).toContainText(`manual: ${seed.principal}`);
@@ -681,8 +708,9 @@ test.describe('members and grants', () => {
         const heading = page.getByRole('heading', { name: 'Members', level: 1 });
         const well = page.locator('.panel').first();
         const jump = page.getByRole('link', { name: 'Who can…?' });
-        const chip = page.locator('.member-scope').first();
-        const newGrant = page.getByRole('button', { name: 'New grant' });
+        const chip = page.locator('#members-list .access-rule__perms .badge').first();
+        await page.locator('#members-list').getByRole('button', { name: 'Permission origins', exact: true }).first().click();
+        const newGrant = page.getByRole('button', { name: 'Add access' });
 
         await expectPinnedAssertionSet(page, {
           flow: 'members',
@@ -761,7 +789,7 @@ test.describe('members and grants', () => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
         const principal = await automationPrincipal(page);
-        const opener = page.getByRole('button', { name: 'New grant' });
+        const opener = page.getByRole('button', { name: 'Add access' });
         await opener.click();
         const composition = page.getByRole('dialog');
         await expect(composition).toBeVisible();

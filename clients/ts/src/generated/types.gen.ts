@@ -2921,21 +2921,27 @@ export type DefinitionsSettings = {
     definitions_source: 'db' | 'git';
     last_apply?: DefinitionsLastApply;
     /**
-     * Whether THE CALLER would pass a key declaration in this project
-     * right now: `definitions-edit` on the project AND `publish` on every
-     * one of its environments, because a declaration fans a schema
-     * publish out to each. A UI affordance, never an authorization
-     * decision: a refused declaration is still 404.
-     * Independent of `definitions_source`.
+     * Whether THE CALLER has authority to create an empty, ungrouped key
+     * in at least one permitted folder in this project. Includes legacy
+     * project-wide `definitions-edit` grants and matching folder or
+     * all-key access rules, including rules for selected environments.
+     * A single-key rule alone does not permit creation. Initial values
+     * additionally require Define and Publish in the destination.
+     * A UI affordance, never authority for an arbitrary declaration,
+     * folder, linked group, or bulk write. Actual writes authorize their
+     * complete scope and may return 404. Independent of `definitions_source`.
      *
      */
     can_declare_keys?: boolean;
     /**
-     * Whether THE CALLER holds `definitions-edit` on this project: enough
-     * for the edits that republish nothing (folders, linked-key set
-     * create and rename, key metadata). Every edit that republishes
-     * needs `can_declare_keys` instead. A UI affordance, never an
-     * authorization decision. Independent of `definitions_source`.
+     * Whether THE CALLER has any matching Define authority in this
+     * project, from a legacy `definitions-edit` grant or an access rule,
+     * including single-key and selected-environment rules. A UI
+     * affordance, never authority to edit every definition or folder.
+     * Shared semantic edits require Define and Publish in every project
+     * environment; linked-group changes require whole-environment
+     * authority. Actual writes authorize their complete scope and may
+     * return 404. Independent of `definitions_source`.
      *
      */
     can_edit_definitions?: boolean;
@@ -3847,12 +3853,23 @@ export type CreateRuleRequest = {
     where: RuleWhere;
 };
 
+export type ReplaceRulesRequest = ({
+    revoke: Array<Id>;
+} | {
+    create: Array<CreateRuleRequest>;
+}) & {
+    principal: Id;
+    revoke?: Array<Id>;
+    create?: Array<CreateRuleRequest>;
+};
+
 /**
  * The capabilities a member access rule may carry (member-access-rules
- * ADR D2). `read`, `pin` and `publish` cannot be narrowed by keys;
+ * ADR D2). `read` ignores key limits; `pin` cannot be narrowed by keys.
+ * `publish` and `manage-members` accept key selectors. Member management
+ * delegates only within its selector and the caller's held capabilities.
  * `manage-identities`, `manage-adapters` and `project-settings` need a
- * whole project. `manage-members` is stored but grants nothing until
- * delegation containment exists.
+ * whole project.
  *
  */
 export type RuleCapability = 'read' | 'edit' | 'publish' | 'pin' | 'reveal' | 'reveal-history' | 'definitions-edit' | 'manage-members' | 'manage-identities' | 'manage-adapters' | 'project-settings';
@@ -10423,6 +10440,92 @@ export type CreateRuleResponses = {
 
 export type CreateRuleResponse = CreateRuleResponses[keyof CreateRuleResponses];
 
+export type ReplaceRulesData = {
+    body: ReplaceRulesRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/rules/replace';
+};
+
+export type ReplaceRulesErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReplaceRulesError = ReplaceRulesErrors[keyof ReplaceRulesErrors];
+
+export type ReplaceRulesResponses = {
+    /**
+     * Newly created rules. An empty list means removal only.
+     */
+    200: RuleList;
+};
+
+export type ReplaceRulesResponse = ReplaceRulesResponses[keyof ReplaceRulesResponses];
+
 export type RevokeRuleData = {
     body?: never;
     path: {
@@ -13669,6 +13772,90 @@ export type DeclareValuesResponses = {
 };
 
 export type DeclareValuesResponse = DeclareValuesResponses[keyof DeclareValuesResponses];
+
+export type InitializeValueData = {
+    body: SetValueRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The key's NAME, not its id. Values are addressed the way an operator
+         * holds them - `values set DATABASE_URL` - and the id is server
+         * vocabulary that appears only in responses and audit records.
+         *
+         */
+        key: KeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize';
+};
+
+export type InitializeValueErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type InitializeValueError = InitializeValueErrors[keyof InitializeValueErrors];
+
+export type InitializeValueResponses = {
+    /**
+     * The staged pending change. It never echoes the value back.
+     */
+    200: PendingChange;
+};
+
+export type InitializeValueResponse = InitializeValueResponses[keyof InitializeValueResponses];
 
 export type CopyValuesData = {
     body: CopyValuesRequest;

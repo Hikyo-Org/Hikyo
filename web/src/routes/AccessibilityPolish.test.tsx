@@ -207,37 +207,31 @@ describe("Members accessibility polish", () => {
     const loaded = await renderMembers();
 
     expect(
-      loaded.container.querySelector('#members-list [role="status"]'),
-    ).toBeNull();
+      loaded.container.querySelector('#members-list')?.textContent,
+    ).not.toContain("Loading members…");
     expect(
-      loaded.container.querySelector("#members-list table"),
+      loaded.container.querySelector("#members-list .access-rule"),
     ).not.toBeNull();
     await loaded.unmount();
   });
 
-  it("attributes an in-flight revoke to only the acting row", async () => {
+  it("announces an in-flight revoke on its access card", async () => {
     mocks.grants = loadedGrants(grants);
     const view = await renderMembers();
-    const buttons = [
-      ...view.container.querySelectorAll<HTMLButtonElement>(
-        "#members-list button",
-      ),
-    ].filter((button) => button.textContent === "Revoke");
-    const acting = buttons[0];
-    const sibling = buttons[1];
-    if (acting === undefined || sibling === undefined) {
-      throw new Error("expected two revoke buttons");
-    }
-
-    await act(async () => acting.click());
-
-    expect(acting.textContent).toBe("Revoking…");
-    expect(acting.disabled).toBe(true);
-    expect(acting.getAttribute("aria-busy")).toBe("true");
-    expect(sibling.textContent).toBe("Revoke");
-    expect(sibling.disabled).toBe(false);
-    expect(sibling.hasAttribute("aria-busy")).toBe(false);
-    await view.unmount();
+    try {
+      const edit = [...view.container.querySelectorAll<HTMLButtonElement>("#members-list button")]
+        .find((button) => button.textContent?.startsWith("Edit access"));
+      if (edit === undefined) throw new Error("No access card editor");
+      await act(async () => edit.click());
+      const revoke = view.container.querySelector<HTMLButtonElement>('dialog button[aria-label^="Revoke edit"]');
+      if (revoke === null) throw new Error("No edit permission revoke");
+      await act(async () => revoke.click());
+      expect(view.container.querySelector("dialog")).toBeNull();
+      const status = view.container.querySelector('#members-list .access-rule [role="status"]');
+      expect(status?.textContent).toBe("Revoking edit…");
+      expect(status?.getAttribute("aria-busy")).toBe("true");
+      expect(view.container.querySelectorAll('#members-list .access-rule [aria-busy="true"]')).toHaveLength(1);
+    } finally { await view.unmount(); }
   });
 });
 

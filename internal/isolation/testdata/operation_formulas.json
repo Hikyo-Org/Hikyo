@@ -1008,6 +1008,23 @@
     ]
   },
   {
+    "operation": "key.schema-publish-empty",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "definitions-edit@project"
+    ]
+  },
+  {
+    "operation": "key.schema-publish-values",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "definitions-edit@environment",
+      "publish@environment"
+    ]
+  },
+  {
     "operation": "key.secret-rule-change",
     "class": "tenant",
     "level": "project",
@@ -2272,6 +2289,15 @@
     "formula": [
       "read@project",
       "edit@environment",
+      "publish@environment"
+    ]
+  },
+  {
+    "operation": "value.initialize",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "definitions-edit@environment",
       "publish@environment"
     ]
   },

@@ -18,8 +18,6 @@ import {
   resolve,
   rulesFromGrants,
   savePlan,
-  selfRemoveRefusal,
-  selfSaveRefusal,
   type Key,
   type PermId,
   type Rule,
@@ -59,11 +57,11 @@ describe('the vocabulary', () => {
     expect(admin?.perms.some((id) => perm(id).group === 'Secrets')).toBe(false);
   });
 
-  it('Publish needs all keys: publishing is environment-wide in this slice, so a key-narrowed Publish could never take effect', () => {
-    expect(perm('publish').shape).toBe('env');
+  it('Publish supports a folder or single key', () => {
+    expect(perm('publish').shape).toBe('key');
   });
 
-  it('holds the shapes the server refuses, plus Publish: See, Pin and Publish need all keys, three need a whole project', () => {
+  it('permits See alongside key limits, while Pin needs all keys and project permissions need the whole project', () => {
     const keyNarrowed = { envs: ALL, keys: { mode: 'only' as const, items: [{ project: PAY, folder: 'db' }] } };
     const envNarrowed = { envs: { mode: 'only' as const, items: [{ project: PAY, environment: PROD }] }, keys: ALL };
     for (const p of PERMS) {
@@ -72,33 +70,11 @@ describe('the vocabulary', () => {
       expect(allowed(p.id, { envs: ALL, keys: ALL })).toBe(true);
     }
     // An except narrows too: "all keys except db/" is key-narrowed.
-    expect(availability('read', { envs: ALL, keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } })).toEqual({
-      ok: false,
-      why: 'Not available here: needs all keys of an environment',
-    });
+    expect(availability('read', { envs: ALL, keys: { mode: 'all', items: [{ project: PAY, folder: 'db' }] } })).toEqual({ ok: true });
   });
 });
 
-describe('self-edit transaction safety', () => {
-  it('refuses multi-request changes to the acting principal but permits one request', () => {
-    const current = rulesOf(makeWorld(), IDS.alice)[0];
-    expect(current).toBeDefined();
-    if (current === undefined) return;
-
-    expect(selfSaveRefusal(current, { ...current, perms: ['read'] }, IDS.alice)).toContain('multiple requests');
-    expect(selfSaveRefusal(current, { ...current, perms: [...current.perms, 'reveal'] }, IDS.alice)).toBeNull();
-    expect(selfSaveRefusal(current, { ...current, perms: ['read'] }, IDS.bob)).toBeNull();
-  });
-
-  it('refuses removal of a multi-part rule owned by the acting principal', () => {
-    const current = rulesOf(makeWorld(), IDS.alice)[0];
-    expect(current).toBeDefined();
-    if (current === undefined) return;
-
-    expect(selfRemoveRefusal(current, IDS.alice)).toContain('multiple requests');
-    expect(selfRemoveRefusal(current, IDS.bob)).toBeNull();
-  });
-
+describe('rule replacement planning', () => {
   it('does not confuse delimiter-bearing folder names with multiple folders', () => {
     const current = rulesOf(makeWorld(), IDS.alice)[0];
     expect(current).toBeDefined();
@@ -197,30 +173,56 @@ describe('evaluation, as the server decides it', () => {
 
   it('a key-narrowed rule counts only for a permission checked against one key', () => {
     const world = makeWorld();
-    // Dana's Reveal history excepts db/; no operation checks history per key, so it never counts.
-    expect(resolve(world, IDS.dana, 'reveal-history', PAY, PROD, LOG_LEVEL)).toMatchObject({ state: 'excepted' });
+    // Dana's Reveal history excludes db/, but reaches the config key outside that folder.
+    expect(resolve(world, IDS.dana, 'reveal-history', PAY, PROD, LOG_LEVEL)).toMatchObject({ state: 'yes' });
+    expect(state(world, IDS.dana, 'reveal-history', PROD, DB_PASSWORD)).toBe('excepted');
     // Asked for the whole environment, Chen's single-key Reveal does not count.
     expect(state(world, IDS.chen, 'reveal', STAGING, undefined)).toBe('excepted');
     expect(state(world, IDS.chen, 'reveal', STAGING, STRIPE_SECRET)).toBe('yes');
   });
 
-  it('Manage access on a rule is inert; on a grant it counts', () => {
+  it('Manage access follows its rule selector; a broader grant adds to it', () => {
     const world = makeWorld();
     const aliceFolder = rulesOf(world, IDS.alice)[1];
     expect(aliceFolder?.perms).toContain('manage-members');
-    expect(state(world, IDS.alice, 'manage-members', PROD, DB_PASSWORD)).toBe('no');
+    expect(state(world, IDS.alice, 'manage-members', PROD, DB_PASSWORD)).toBe('yes');
+    expect(state(world, IDS.alice, 'manage-members', PROD, LOG_LEVEL)).toBe('no');
+    expect(state(world, IDS.alice, 'manage-members', DEV, DB_PASSWORD)).toBe('no');
     expect(state(world, IDS.sam, 'manage-members', PROD, DB_PASSWORD)).toBe('yes');
   });
 
-  it('Define keys needs every environment of the project', () => {
+  it('See ignores key limits while Publish keeps them and environment limits apply to both', () => {
+    const world = only([{ perms: ['read', 'publish'], projects: [PAY], envs: { mode: 'only', items: [{ project: PAY, environment: STAGING }] }, keys: { mode: 'only', items: [{ project: PAY, key: IDS.dbPassword }] } }]);
+    expect(state(world, IDS.chen, 'read', STAGING, LOG_LEVEL)).toBe('yes');
+    expect(state(world, IDS.chen, 'read', STAGING)).toBe('yes');
+    expect(state(world, IDS.chen, 'publish', STAGING, DB_PASSWORD)).toBe('yes');
+    expect(state(world, IDS.chen, 'publish', STAGING, LOG_LEVEL)).toBe('no');
+    expect(state(world, IDS.chen, 'publish', STAGING)).toBe('excepted');
+    expect(state(world, IDS.chen, 'read', PROD, DB_PASSWORD)).toBe('no');
+    expect(state(world, IDS.chen, 'publish', PROD, DB_PASSWORD)).toBe('no');
+  });
+
+  it('a key except never removes See, but removes Publish and Manage access on that key', () => {
+    const world = only([{ perms: ['read', 'publish', 'manage-members'], projects: [PAY], envs: ALL, keys: { mode: 'all', items: [{ project: PAY, key: IDS.dbPassword }] } }]);
+    expect(state(world, IDS.chen, 'read', PROD, DB_PASSWORD)).toBe('yes');
+    for (const id of ['publish', 'manage-members'] satisfies PermId[]) {
+      expect(state(world, IDS.chen, id, PROD, DB_PASSWORD)).toBe('excepted');
+      expect(state(world, IDS.chen, id, PROD, LOG_LEVEL)).toBe('yes');
+    }
+  });
+
+  it('Define keys follows its key and environment selectors', () => {
     const world = makeWorld();
-    // Alice's folder rule names only staging and prod, so it never defines keys.
-    expect(state(world, IDS.alice, 'definitions-edit', PROD, DB_PASSWORD)).toBe('no');
+    // Alice's folder rule admits db keys in staging and prod, while dev stays outside.
+    expect(state(world, IDS.alice, 'definitions-edit', PROD, DB_PASSWORD)).toBe('yes');
+    expect(state(world, IDS.alice, 'definitions-edit', DEV, DB_PASSWORD)).toBe('no');
+    expect(state(world, IDS.alice, 'definitions-edit', PROD, LOG_LEVEL)).toBe('no');
     const folder = only([{ perms: ['definitions-edit'], projects: [PAY], envs: ALL, keys: { mode: 'only', items: [{ project: PAY, folder: 'db' }] } }]);
     expect(state(folder, IDS.chen, 'definitions-edit', DEV, DB_PASSWORD)).toBe('yes');
     expect(state(folder, IDS.chen, 'definitions-edit', DEV, LOG_LEVEL)).toBe('no');
     const excepted = only([{ perms: ['definitions-edit'], projects: [PAY], envs: { mode: 'all', items: [{ project: PAY, environment: PROD }] }, keys: ALL }]);
-    expect(resolve(excepted, IDS.chen, 'definitions-edit', PAY, DEV, LOG_LEVEL)).toMatchObject({ state: 'excepted', why: 'except prod' });
+    expect(resolve(excepted, IDS.chen, 'definitions-edit', PAY, DEV, LOG_LEVEL)).toMatchObject({ state: 'yes' });
+    expect(resolve(excepted, IDS.chen, 'definitions-edit', PAY, PROD, LOG_LEVEL)).toMatchObject({ state: 'excepted', why: 'except prod' });
   });
 
   it('showing a secret needs See in the same environment, from a rule or a grant', () => {
@@ -236,7 +238,7 @@ describe('evaluation, as the server decides it', () => {
 
   it('a rule drops what its shape cannot carry', () => {
     const narrowed = { perms: ['read', 'pin', 'edit'] satisfies PermId[], envs: ALL, keys: { mode: 'only' as const, items: [{ project: PAY, folder: 'db' }] } };
-    expect(effective(narrowed)).toEqual(['edit']);
+    expect(effective(narrowed)).toEqual(['read', 'edit']);
   });
 });
 

@@ -34,8 +34,8 @@ lands such changes from a branch in this repository.
 
 Contributions touching cryptography, authentication, deployment adapters, or
 delivery paths require maintainer security review. Maintainer-authored changes
-use adversarial cross-model review until a second maintainer exists; this is a
-compensating check, not independent human review.
+also require adversarial security review. Automated review is a compensating
+check and does not constitute independent human review.
 
 Do not report vulnerabilities in public issues. Use the private channels in the
 [security policy](./SECURITY.md).

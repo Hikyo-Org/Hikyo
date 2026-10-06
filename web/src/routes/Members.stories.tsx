@@ -105,16 +105,16 @@ type Story = StoryObj<typeof meta>;
 export const Populated: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: /members/i, level: 1 })).toBeVisible();
-    // The table mounts only once the grants query resolves, so await the first
-    // header; its siblings and rows are in the DOM together by then.
-    await expect(await canvas.findByRole('columnheader', { name: 'Member' })).toBeVisible();
-    await expect(canvas.getByRole('columnheader', { name: 'Scope' })).toBeVisible();
-    await expect(canvas.getByRole('columnheader', { name: 'Capabilities' })).toBeVisible();
+    const edits = await canvas.findAllByRole('button', { name: /Edit access on/ });
+    const edit = edits[0];
+    if (edit === undefined) throw new Error('No access card editor.');
+    await expect(edit).toBeVisible();
     await expect(await canvas.findByText('Dana')).toBeVisible();
     await expect(canvas.getByText('Ravi')).toBeVisible();
-    await expect(
-      canvas.getByRole('button', { name: /revoke manage-members on .* for Dana/i }),
-    ).toBeVisible();
+    await userEvent.click(edit);
+    const dialog = within(document.body).getByRole('dialog');
+    await expect(within(dialog).getByRole('button', { name: /revoke manage-members on .* for Dana/i })).toBeVisible();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
   },
 };
 
@@ -209,12 +209,12 @@ export const WithAccessRules: Story = {
     },
   },
   play: async ({ canvas }) => {
-    const section = (await canvas.findByRole('heading', { level: 2, name: 'Access rules' })).closest('section');
+    const section = (await canvas.findByRole('button', { name: 'Edit rule 2 of Alice Novak' })).closest('section');
     if (section === null) throw new Error('no Access rules panel');
     const rulesPanel = within(section);
     await expect(await rulesPanel.findByRole('button', { name: 'Edit rule 2 of Alice Novak' })).toBeVisible();
     // Machines keep their grants: they are not offered rules.
-    await expect(rulesPanel.queryByText('ci-deploy')).toBeNull();
+    await expect(rulesPanel.getByText('ci-deploy')).toBeVisible();
 
     // Who can reach one key? answers over grants and rules.
     const key = await canvas.findByRole('combobox', { name: 'Key' });

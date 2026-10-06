@@ -18,6 +18,7 @@ import {
   zMeta,
   zProtocolCapability,
   zTotpReauthRequest,
+  zReplaceRulesRequest,
 } from './generated/zod.gen.ts';
 
 // The TypeScript half of the bound 3.1 profile (system-architecture ADR,
@@ -80,6 +81,23 @@ test('grant mutations expose exactly one closed outcome', () => {
 
 test('a request missing a required member is refused before it is sent', () => {
   assert.throws(() => zCreateOrgRequest.parse({}));
+});
+
+test('rule replacement requires a removal or addition and preserves either valid batch', () => {
+  const principal = 'prn_0198b727-19e3-7c31-a2df-904b89224e4c';
+  const revoke = ['rul_0198b727-19e3-7c31-a2df-904b89224e4c'];
+  const create = [{ principal, capability: 'read', where: {
+    projects: ['prj_0198b727-19e3-7c31-a2df-904b89224e4c'],
+    environments: { mode: 'all', items: [] }, keys: { mode: 'all', items: [] },
+  } }];
+  assert.throws(() => zReplaceRulesRequest.parse({ principal, revoke: [], create: [] }));
+  assert.throws(() => zReplaceRulesRequest.parse({ principal }));
+  assert.throws(() => zReplaceRulesRequest.parse({ principal, revoke: [] }));
+  assert.throws(() => zReplaceRulesRequest.parse({ principal, create: [] }));
+  assert.deepEqual(zReplaceRulesRequest.parse({ principal, revoke }), { principal, revoke });
+  assert.deepEqual(zReplaceRulesRequest.parse({ principal, create }), { principal, create });
+  assert.deepEqual(zReplaceRulesRequest.parse({ principal, revoke, create: [] }), { principal, revoke, create: [] });
+  assert.deepEqual(zReplaceRulesRequest.parse({ principal, revoke: [], create }), { principal, revoke: [], create });
 });
 
 test('TOTP reauthentication accepts only one canonical intent variant', () => {

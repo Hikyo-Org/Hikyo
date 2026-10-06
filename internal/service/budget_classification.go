@@ -84,6 +84,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpKeySetGroup, authz.OpKeyDelete, authz.OpKeyReclassify,
 		authz.OpKeyGroupCreate, authz.OpKeyGroupRename, authz.OpKeyGroupDelete,
 		authz.OpEnvParameterSet, authz.OpEnvCreate, authz.OpEnvRename, authz.OpEnvDelete, authz.OpDefinitionsApply)
+	add(budgetClassNamed, "schema-revision §151: internal per-environment proofs share the owning schema mutation's single charge before BumpSchemaRevision (60/h·project)",
+		authz.OpKeySchemaPublishEmpty, authz.OpKeySchemaPublishValues)
 
 	// ---- DEFAULT-EXPENSIVE (charged budgetDefault at the owning service method) ----
 	add(budgetClassDefaultExpensive, "crypto rewrap proportional to every stored/historical row",
@@ -154,7 +156,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDefinitionsSettingsGet, authz.OpDefinitionsSettingsSet,
 		// values (non-export, non-copy, non-import, non-publish): single-cell reads/writes
 		authz.OpValueRead, authz.OpValueList, authz.OpValueSet, authz.OpValueClear,
-		authz.OpValueStage, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
+		authz.OpValueStage, authz.OpValueInitialize, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
 		// revisions / pins: paged reads and single-revision restores
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,

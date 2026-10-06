@@ -23,6 +23,7 @@ import {
   usePublishMatrix,
   useReclassifyKey,
   useStageMatrixValue,
+  useInitializeMatrixValue,
   type MatrixKeyList,
   type MatrixEnvironmentRow,
   type MatrixPendingDraft,
@@ -130,6 +131,7 @@ export function Matrix({
   const keyDetailId = keyDetailOpen ? params['key'] ?? '' : undefined;
   const matrix = useMatrixProject(ref);
   const stage = useStageMatrixValue(ref);
+  const initialize = useInitializeMatrixValue(ref);
   const clear = useClearMatrixValue(ref);
   const publish = usePublishMatrix(ref);
   const copy = useCopyMatrixConfig(ref);
@@ -211,6 +213,7 @@ export function Matrix({
     readonly onOverride: ((tokens: readonly string[]) => Promise<void>) | null;
   } | null>(null);
   const [warn, setWarn] = useState<{
+    readonly kind: 'initial' | 'edit';
     readonly keyId: string;
     readonly keyName: string;
     readonly items: readonly ScanWarnItem[];
@@ -795,7 +798,7 @@ export function Matrix({
         const environmentName =
           environments.find((candidate) => candidate.id === environmentId)?.name ?? environmentId;
         try {
-          const result = await stage.mutateAsync({
+          const result = await initialize.mutateAsync({
             environment: environmentId,
             key: payload.name,
             value: normalizedValue,
@@ -851,7 +854,7 @@ export function Matrix({
               const stillFailed: string[] = [];
               for (const entry of blocked) {
                 try {
-                  await stage.mutateAsync({
+                  await initialize.mutateAsync({
                     environment: entry.environmentId,
                     key: payload.name,
                     value: normalizedValue,
@@ -872,7 +875,7 @@ export function Matrix({
           : null,
       });
     } else if (warnItems.length > 0) {
-      setWarn({ keyId: created.id, keyName: payload.name, items: warnItems });
+      setWarn({ kind: 'initial', keyId: created.id, keyName: payload.name, items: warnItems });
     }
   };
 
@@ -1440,7 +1443,7 @@ export function Matrix({
             );
             setSelection(null);
             if (warnItems.length > 0) {
-              setWarn({ keyId: selectedKey.id, keyName: selectedKey.name, items: warnItems });
+              setWarn({ kind: 'edit', keyId: selectedKey.id, keyName: selectedKey.name, items: warnItems });
             }
           }}
           onCopy={(destinations, confirmProtected) => {
@@ -1478,7 +1481,7 @@ export function Matrix({
           initialFolder={create.folder}
           existingKeyNames={keys.map((key) => key.name)}
           gitManaged={gitManaged}
-          busy={createKey.isPending || stage.isPending}
+          busy={createKey.isPending || initialize.isPending}
           mutationError={createError}
           onClose={() => {
             setCreateError(null);
@@ -1553,7 +1556,8 @@ export function Matrix({
                 }
           }
           onDismiss={async (item) => {
-            const staged = await stage.mutateAsync({
+            const write = warn.kind === 'initial' ? initialize : stage;
+            const staged = await write.mutateAsync({
               environment: item.environmentId,
               key: warn.keyName,
               value: item.value,

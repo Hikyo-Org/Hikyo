@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 
 import { Badge } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { Disclosure } from '../../ui/Disclosure.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { Select } from '../../ui/Select.tsx';
 import { label, perm, PERM_GROUPS, PERMS, projectById, resolve, type Person, type PermId, type Rule, type World } from './model.ts';
@@ -20,7 +21,7 @@ type Row = { person: Person; rule: Rule; note?: string };
  * Answered as tables in the Members page's anatomy, one per outcome: the
  * member, the deciding rule or grant, and for a rule an action that opens it
  * in the editor. People and machines both answer, machines marked. Members
- * nothing reaches are not listed: the question is who CAN.
+ * nothing reaches appear in a collapsed outcome, alongside the other reasons.
  *
  * Key names come from the project's key catalogue, which needs See; without
  * it the question falls back to the whole environment and says so.
@@ -51,12 +52,14 @@ export function WhoCan({
   const yes: Row[] = [];
   const excepted: Row[] = [];
   const needsSee: Row[] = [];
+  const notReached: Person[] = [];
   if (envNode !== undefined) {
     for (const person of world.people) {
       const res = resolve(world, person.id, permId, project, env, key);
       if (res.state === 'yes') yes.push({ person, rule: res.rule, note: res.also === undefined ? undefined : `Another of their rules has ${res.also.why}, but an except only narrows its own rule.` });
       else if (res.state === 'excepted') excepted.push({ person, rule: res.rule, note: `Left out: this rule ${res.why.startsWith('except') ? 'has' : 'is'} ${res.why}.` });
       else if (res.state === 'needsSee') needsSee.push({ person, rule: res.rule, note: `Gives ${permLabel}, but showing a secret needs See here too.` });
+      else notReached.push(person);
     }
   }
 
@@ -142,6 +145,18 @@ export function WhoCan({
           {needsSee.length > 0 ? (
             <AnswerTable glyph="warn" tone="warn" caption={`No, has ${permLabel} but not See: ${needsSee.length}`} rows={needsSee} world={world} onEditRule={onEditRule} />
           ) : null}
+          <Disclosure label={`No, no rule reaches: ${notReached.length}`}>
+            {notReached.length === 0 ? <p className="access-hint">· no one</p> : (
+              <ul>
+                {notReached.map((person) => (
+                  <li key={person.id}>
+                    <strong>{person.name}</strong>{person.kind === 'machine' ? <> <Badge tone="changed">Machine</Badge></> : null}
+                    <p className="access-hint">None of their rules or scope-wide access gives {permLabel} here.</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Disclosure>
         </>
       )}
     </>
@@ -210,7 +225,7 @@ function AnswerTable({
               <td>
                 <RuleWhere world={world} rule={rule} />
                 {note === undefined ? null : <p className="access-table__note">{note}</p>}
-                {rule.source.kind === 'grant' ? <p className="access-table__note">A grant: change it in the grant list.</p> : null}
+                {rule.source.kind === 'grant' ? <p className="access-table__note">Scope-wide access: edit its card in Members.</p> : null}
               </td>
               <td>
                 {onEditRule !== undefined && rule.source.kind === 'rule' && !rule.source.otherProjects ? (

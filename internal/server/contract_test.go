@@ -1492,6 +1492,10 @@ func (s stubValues) Set(context.Context, service.Actor, domain.Scope, string, st
 	return service.StagedChange{}, s.outcome()
 }
 
+func (s stubValues) Initialize(context.Context, service.Actor, domain.Scope, string, string, []string) (service.StagedChange, error) {
+	return service.StagedChange{}, s.outcome()
+}
+
 func (s stubValues) Unset(context.Context, service.Actor, domain.Scope, string) (service.StagedChange, error) {
 	return service.StagedChange{}, s.outcome()
 }
@@ -1684,6 +1688,10 @@ func (s stubSCIM) DirectoryGroups(context.Context, service.Actor, domain.OrgID, 
 // (#55). Like the hierarchy stubs they answer one outcome for everything, so
 // the uniformity tests differ ONLY in which sentinel the service returned.
 type stubRules struct{ stubHierarchy }
+
+func (s stubRules) Replace(context.Context, service.Actor, service.ReplaceRulesSpec) ([]service.RuleView, error) {
+	return nil, s.outcome()
+}
 
 func (s stubRules) Create(context.Context, service.Actor, service.RuleSpec) (service.RuleView, error) {
 	return service.RuleView{}, s.outcome()
@@ -1959,6 +1967,8 @@ func hierarchyRoutes() []struct {
 		// Member access rules: the same uniform refusal as the grant routes.
 		{http.MethodGet, base + "/rules", nil},
 		{http.MethodPost, base + "/rules", ruleBody},
+		{http.MethodPost, base + "/rules/replace", apigen.ReplaceRulesRequest{Principal: testPrincipalID, Create: &[]apigen.CreateRuleRequest{ruleBody}}},
+		{http.MethodPost, base + "/rules/replace", apigen.ReplaceRulesRequest{Principal: testPrincipalID, Revoke: &[]apigen.ID{testRuleID}}},
 		{http.MethodDelete, base + "/rules/" + testRuleID, nil},
 		{http.MethodGet, project + "/rules", nil},
 		// Member invitation (#568): a refused invitation is the uniform 404,
@@ -2436,6 +2446,12 @@ func TestInvalidSecretValueDetailReachesBothWriteRoutesWithoutInstanceData(t *te
 			path:   api.PathPrefix + declareRoutePath,
 			body:   map[string]any{"key": "API_SECRET", "environment_ids": []string{testEnvID}, "value": plaintext},
 		},
+
+		{
+			name: "initial value", method: http.MethodPost,
+			path: api.PathPrefix + setRoutePath + "/initialize",
+			body: map[string]any{"value": plaintext},
+		},
 		{
 			name:   "value write",
 			method: http.MethodPut,
@@ -2525,3 +2541,20 @@ func (s stubEnvs) SetParameter(context.Context, service.Actor, domain.Scope, str
 
 func (stubAuth) Signup(context.Context, string, domain.OrgID) error             { return nil }
 func (stubAuth) VerifySignup(context.Context, service.SignupVerification) error { return nil }
+
+func TestInitializeValueRefusalIsUniform(t *testing.T) {
+	var bodies [][]byte
+	for _, kind := range []string{"missing", "foreign", "unprivileged"} {
+		srv := newValueServer(t, stubEnvs{}, stubValues{stubHierarchy{err: fmt.Errorf("%w: %s", domain.ErrNotFound, kind)}})
+		resp, body := call(t, srv, http.MethodPost, api.PathPrefix+setRoutePath+"/initialize", "hik_1_cli_x", map[string]any{"value": "initial"})
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s status %d: %s", kind, resp.StatusCode, body)
+		}
+		bodies = append(bodies, body)
+	}
+	for _, body := range bodies[1:] {
+		if !bytes.Equal(bodies[0], body) {
+			t.Fatalf("initial-cell denial shape differs: %s / %s", bodies[0], body)
+		}
+	}
+}

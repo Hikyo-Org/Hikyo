@@ -160,3 +160,38 @@ FROM rules AS r
 JOIN rule_items AS i ON i.rule_id = r.id
 WHERE r.org_id = sqlc.arg(org_id) AND i.org_id = sqlc.arg(org_id) AND i.project_id = sqlc.arg(project_id)
 ORDER BY r.id, i.id;
+
+-- Resolve only the addressed draft's key metadata for key-scoped Publish.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() resolves only the caller-owned draft key metadata within the resolved environment before minting a key-scoped Publish proof; ciphertext remains proof-gated.
+-- name: ResolveRulePendingKey :one
+SELECT k.id, k.folder_path
+FROM pending_changes AS p
+JOIN keys AS k ON k.org_id = p.org_id AND k.project_id = p.project_id AND k.id = p.key_id
+WHERE p.org_id = sqlc.arg(org_id) AND p.project_id = sqlc.arg(project_id)
+ AND p.environment_id = sqlc.arg(env_id) AND p.owner_id = sqlc.arg(owner_id) AND p.id = sqlc.arg(id);
+
+-- Resolve only the pinned approval key ids before key-scoped Publish auth.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() resolves pinned approval key metadata within the resolved environment before minting a key-scoped proof; request details and ciphertext remain proof-gated.
+-- name: ResolveRuleApprovalKeys :one
+SELECT key_ids FROM approval_requests
+WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
+ AND environment_id = sqlc.arg(env_id) AND id = sqlc.arg(id);
+
+-- Metadata-only schema proofs cannot alter a key's existing value delivery.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() checks target-key value absence before minting an internal metadata-only schema snapshot proof; ciphertext is never selected.
+-- name: RuleKeyValueCount :one
+SELECT COUNT(*) FROM value_entries
+WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
+ AND environment_id = sqlc.arg(env_id) AND key_id = sqlc.arg(key_id);
+
+-- Initial drafts cannot replace another owner's work or an existing-value draft.
+-- hikyo:authn-resolution
+-- hikyo:reason authorize() checks only draft ownership and absent-baseline metadata before minting an initial-cell draft proof; ciphertext is never selected.
+-- name: RuleKeyConflictingDraftCount :one
+SELECT COUNT(*) FROM pending_changes
+WHERE org_id = sqlc.arg(org_id) AND project_id = sqlc.arg(project_id)
+ AND environment_id = sqlc.arg(env_id) AND key_id = sqlc.arg(key_id)
+ AND (owner_id <> sqlc.arg(owner_id) OR staged_from_entry <> '');

@@ -20,9 +20,6 @@ import {
   PRESETS,
   projectById,
   projectName,
-  selfRemoveRefusal,
-  selfSaveRefusal,
-  replacementSaveRefusal,
   setMode,
   tapped,
   toggleItems,
@@ -53,8 +50,8 @@ export function RuleEditorDialog({
   rule,
   projects,
   busy = false,
+  showReach = true,
   failure = null,
-  actingPrincipal = '',
   onSave,
   onRemove,
   onCancel,
@@ -63,8 +60,8 @@ export function RuleEditorDialog({
   rule: Rule;
   projects: readonly string[];
   busy?: boolean;
+  showReach?: boolean;
   failure?: string | null;
-  actingPrincipal?: string;
   onSave: (rule: Rule) => void;
   onRemove?: (rule: Rule) => void;
   onCancel: () => void;
@@ -78,9 +75,6 @@ export function RuleEditorDialog({
   const editing = rule.source.kind === 'rule';
   const unreadable = chosen.filter((p) => projectById(world, p)?.keys === null);
   const singleKeys = keyChoices(world, chosen, draft);
-  const saveRefusal = replacementSaveRefusal(editing ? rule : null, draft)
-    ?? selfSaveRefusal(editing ? rule : null, draft, actingPrincipal);
-  const removeRefusal = selfRemoveRefusal(rule, actingPrincipal);
   const cancel = () => {
     if (!busy) onCancel();
   };
@@ -99,21 +93,20 @@ export function RuleEditorDialog({
       actions={
         <>
           {editing && onRemove !== undefined ? (
-            <Button type="button" variant="danger" className="access-editor__remove" disabled={busy || removeRefusal !== null} onClick={() => onRemove(rule)}>
+            <Button type="button" variant="danger" className="access-editor__remove" disabled={busy} onClick={() => onRemove(rule)}>
               Remove rule
             </Button>
           ) : null}
           <Button type="button" disabled={busy} onClick={cancel}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" disabled={!valid || busy || saveRefusal !== null} aria-busy={busy ? true : undefined} onClick={() => onSave(draft)}>
+          <Button type="button" variant="primary" disabled={!valid || busy} aria-busy={busy ? true : undefined} onClick={() => onSave(draft)}>
             {busy ? 'Saving…' : 'Save'}
           </Button>
         </>
       }
     >
       {failure === null ? null : <Alert>{failure}</Alert>}
-      {saveRefusal === null && removeRefusal === null ? null : <Alert>{saveRefusal ?? removeRefusal}</Alert>}
       <fieldset className="access-editor__section">
         <legend className="eyebrow">Where</legend>
         <AxisBox title="Projects" hint="Tap one or more projects. A rule names its projects: access to all projects stays an organisation grant.">
@@ -191,7 +184,7 @@ export function RuleEditorDialog({
       <section className="access-summary" aria-label="Saves as">
         <h3 className="eyebrow">Saves as</h3>
         {valid ? (
-          <RuleSummary world={world} rule={draft} reach />
+          <RuleSummary world={world} rule={draft} reach={showReach} />
         ) : (
           <p className="access-summary__empty">{eff.length === 0 ? 'Tick at least one permission.' : 'Pick where this rule applies.'}</p>
         )}
@@ -199,7 +192,8 @@ export function RuleEditorDialog({
         {valid && !eff.includes('read') && (eff.includes('reveal') || eff.includes('reveal-history')) ? (
           <p className="access-hint">No See here: Reveal only works where another rule or grant gives See.</p>
         ) : null}
-        {valid && narrowKeys(draft) ? <p className="access-hint">See and Pin always cover a whole environment: give them on a rule without key limits.</p> : null}
+        {valid && narrowKeys(draft) && eff.includes('read') ? <p className="access-hint">See always covers the whole environment: key names and config values are shared by all keys. Key limits narrow the other permissions only.</p> : null}
+        {valid && narrowKeys(draft) && eff.includes('read') && eff.includes('manage-members') ? <p className="access-hint">Assigning See requires Manage access across every key of the selected environments.</p> : null}
       </section>
     </Dialog>
   );

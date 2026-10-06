@@ -140,8 +140,9 @@ operations:
   createOrgGrant:              {webui: members}
   revokeOrgGrant:              {webui: members}
   listOrgRules:                {webui: members}
-  createRule:                  {webui: members}
-  revokeRule:                  {webui: members}
+  replaceRules:                {webui: members}
+  createRule:                  {webui: members, via: [replaceRules]}
+  revokeRule:                  {webui: members, via: [replaceRules]}
   listProjectRules:            {webui: members}
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
@@ -220,6 +221,7 @@ operations:
   # One value into several environments: the matrix row editor sets the
   # cells and copy-values fans an environment out; no relationship between the
   # copies either way.
+  initializeValue:            {webui: matrix}
   declareValues:               {webui: matrix, via: [setValue, copyValues]}
   copyValues:                  {webui: matrix}
   # The matrix IS the side-by-side comparison of environments.

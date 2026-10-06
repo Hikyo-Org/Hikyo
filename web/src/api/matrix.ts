@@ -5,6 +5,7 @@ import {
   getEnvironmentSignalsOp,
   getKeyOp,
   importValuesOp,
+  initializeValueOp,
   listKeyGroupsOp,
   listKeysOp,
   listPendingDraftsOp,
@@ -678,6 +679,15 @@ export function useMatrixProject(ref: MatrixRef) {
 }
 
 export function useStageMatrixValue(ref: MatrixRef) {
+  return useWriteMatrixDraft(ref, false);
+}
+
+/** A new key's opening draft uses Define keys plus Publish, rather than Edit. */
+export function useInitializeMatrixValue(ref: MatrixRef) {
+  return useWriteMatrixDraft(ref, true);
+}
+
+function useWriteMatrixDraft(ref: MatrixRef, initialValue: boolean) {
   const queries = useQueryClient();
   const transport = useTransport();
   return useSensitiveMutation({
@@ -691,16 +701,16 @@ export function useStageMatrixValue(ref: MatrixRef) {
       readonly value: string;
       readonly acknowledgements?: readonly string[];
     }) =>
-      parsed(setValueOp, {
-          path: { ...ref, environment: input.environment, key: input.key },
-          body: {
-            value: input.value,
-            ...(input.acknowledgements === undefined
-              ? {}
-              : { acknowledgements: [...input.acknowledgements] }),
-          },
-          ...transport,
-        }),
+      parsed(initialValue ? initializeValueOp : setValueOp, {
+        path: { ...ref, environment: input.environment, key: input.key },
+        body: {
+          value: input.value,
+          ...(input.acknowledgements === undefined
+            ? {}
+            : { acknowledgements: [...input.acknowledgements] }),
+        },
+        ...transport,
+      }),
     onSuccess: async (_result, input) => {
       await Promise.all([
         queries.invalidateQueries({ queryKey: valuesKey({ ...ref, environment: input.environment }) }),

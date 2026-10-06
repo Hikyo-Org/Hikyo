@@ -17,7 +17,7 @@ type GrantsQuery = {
   refetch: ReturnType<typeof vi.fn>;
 };
 
-type Mocks = { instanceGrants: GrantsQuery; orgGrants: GrantsQuery; orgGrantsCalls: string[] };
+type Mocks = { instanceGrants: GrantsQuery; orgGrants: GrantsQuery; orgGrantsCalls: string[]; revoke: ReturnType<typeof vi.fn> };
 
 const idle = (): GrantsQuery => ({
   data: undefined,
@@ -47,6 +47,7 @@ const mocks = vi.hoisted(
       refetch: vi.fn(),
     },
     orgGrantsCalls: [],
+    revoke: vi.fn(),
   }),
 );
 
@@ -59,7 +60,7 @@ vi.mock('../api/access.ts', async (importActual) => {
       mocks.orgGrantsCalls.push(org);
       return mocks.orgGrants;
     },
-    useRevokeGrant: () => ({ isPending: false, variables: undefined, mutate: vi.fn() }),
+    useRevokeGrant: () => ({ isPending: false, variables: undefined, mutate: mocks.revoke }),
     useCreateGrants: () => ({ isPending: false, mutate: vi.fn() }),
     useApplyTemplate: () => ({ isPending: false, mutate: vi.fn() }),
   };
@@ -115,6 +116,7 @@ function text(container: HTMLElement, selector: string): string {
 describe('Members at instance scope', () => {
   beforeEach(() => {
     mocks.orgGrantsCalls.length = 0;
+    mocks.revoke.mockClear();
     mocks.orgGrants = idle();
     mocks.instanceGrants = {
       data: { items: [instanceGrant], count: 1 },
@@ -129,14 +131,14 @@ describe('Members at instance scope', () => {
   it('lists instance grants under an instance heading and offers only the instance scope', async () => {
     const view = await renderInstanceMembers();
     expect(text(view.container, 'h1')).toBe('Members · Instance');
-    expect(view.container.querySelector('table')?.textContent).toContain('instance-config');
-    expect(view.container.querySelector('table')?.textContent).toContain('break-glass: host');
+    expect(view.container.querySelector('#members-list')?.textContent).toContain('instance-config');
+    expect(view.container.querySelector('#members-list')?.textContent).toContain('break-glass: host');
     expect(text(view.container, '#members-list')).toContain('inherit downward into every organisation');
     // The org read is disabled: no organisation is addressed.
     expect(mocks.orgGrantsCalls).toEqual(['']);
 
-    const open = [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'New grant');
-    if (open === undefined) throw new Error('no New grant button');
+    const open = [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'Add access');
+    if (open === undefined) throw new Error('no Add access button');
     expect(open.disabled).toBe(false);
     await act(async () => open.click());
     const scope = [...view.container.querySelectorAll('select')].find(
@@ -155,9 +157,9 @@ describe('Members at instance scope', () => {
     mocks.instanceGrants.data = { items: [{ ...instanceGrant, principal_name: 'Dana Jacobs' }], count: 1 };
     const view = await renderInstanceMembers();
     try {
-      expect(view.container.querySelector('.member-name')?.textContent).toBe('Dana Jacobs');
-      const open = [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'New grant');
-      if (open === undefined) throw new Error('no New grant button');
+      expect(view.container.querySelector('.member-name')?.textContent?.trim()).toBe('Dana Jacobs');
+      const open = [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'Add access');
+      if (open === undefined) throw new Error('no Add access button');
       await act(async () => open.click());
       const option = [...view.container.querySelectorAll('option')].find((o) => o.textContent === 'Dana Jacobs');
       expect(option?.value).toBe('prn_1');
@@ -214,7 +216,7 @@ describe('Members at organisation scope without manage-members', () => {
     // A refused refetch must not keep showing the last page or its controls.
     expect(view.container.textContent).not.toContain('usr_stale');
     const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent);
-    expect(buttons).not.toContain('New grant');
+    expect(buttons).not.toContain('Add access');
     expect(buttons).not.toContain('Invite');
     expect(buttons.some((b) => b?.startsWith('Reset credential'))).toBe(false);
     expect(buttons.some((b) => b?.startsWith('Revoke'))).toBe(false);
@@ -231,9 +233,34 @@ describe('Members at organisation scope without manage-members', () => {
     );
     expect(view.container.textContent).not.toContain('usr_stale');
     const buttons = [...view.container.querySelectorAll('button')].map((b) => b.textContent);
-    expect(buttons).not.toContain('New grant');
+    expect(buttons).not.toContain('Add access');
     expect(buttons).not.toContain('Invite');
     expect(buttons.some((b) => b?.startsWith('Reset credential'))).toBe(false);
     await view.unmount();
   });
+});
+
+// This permission is outside the narrowed-rule vocabulary. The card must
+// still offer its original revoke operation, with its original stored ID.
+it('edits and revokes an instance permission from its access card without migrating it', async () => {
+  mocks.instanceGrants = {
+    ...idle(), isSuccess: true,
+    data: { items: [instanceGrant], count: 1 },
+  };
+  const view = await renderInstanceMembers();
+  try {
+    expect(view.container.querySelector('#members-list table')).toBeNull();
+    expect(view.container.querySelectorAll('#members-list .access-rule')).toHaveLength(1);
+    const edit = [...view.container.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Edit access'));
+    if (edit === undefined) throw new Error('No access card editor.');
+    await act(async () => edit.click());
+    const dialog = view.container.querySelector('dialog');
+    expect(dialog?.textContent).toContain('instance-config');
+    expect(dialog?.textContent).toContain('break-glass: host');
+    const revoke = dialog?.querySelector<HTMLButtonElement>('button[aria-label^="Revoke instance-config"]');
+    if (revoke === null || revoke === undefined) throw new Error('No instance-config revoke.');
+    await act(async () => revoke.click());
+    expect(mocks.revoke).toHaveBeenCalledWith({ grant: instanceGrant }, expect.objectContaining({ onSuccess: expect.any(Function) }));
+    expect(view.container.querySelector('dialog')).toBeNull();
+  } finally { await view.unmount(); }
 });

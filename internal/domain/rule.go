@@ -82,13 +82,12 @@ const (
 // absent (manage-projects, every instance atom, and atoms other amendments
 // add until they get a row in the ADR's table) is refused.
 //
-// `read` is ShapeEnv, the conservative reading of D5: See is never narrowed
-// by keys, so a key-narrowed rule may not carry it at all rather than
-// silently reaching the whole environment.
+// See may share a key selector with other permissions, but ignores that axis
+// when evaluated (ADR D5). Pin requires every key of its environment.
 var ruleShapes = map[Capability]RuleShape{
 	CapRead:             ShapeEnv,
 	CapEdit:             ShapeKey,
-	CapPublish:          ShapeEnv, // publishing is environment-wide; a key-narrowed publish could never take effect
+	CapPublish:          ShapeKey,
 	CapPin:              ShapeEnv,
 	CapReveal:           ShapeKey,
 	CapRevealHistory:    ShapeKey,
@@ -194,7 +193,7 @@ func (r Rule) Validate() error {
 	}
 	switch shape {
 	case ShapeEnv:
-		if w.KeyNarrowed() {
+		if w.KeyNarrowed() && r.Capability != CapRead {
 			return fmt.Errorf("%w: %s cannot be narrowed by keys; it needs all keys of an environment", ErrInvalid, r.Capability)
 		}
 	case ShapeProject:
@@ -216,9 +215,11 @@ func (r Rule) Validate() error {
 //   - An environment atom needs the environment on the axis.
 //   - A key-narrowed rule satisfies an atom ONLY when the operation passed a
 //     key and that key matches; every operation that passes no key (bulk
-//     reveal, export, publish, delivery, ...) is out of its reach.
-//   - manage-members is inert on rules until delegation containment exists:
-//     it never satisfies anything, so it can neither create grants nor rules.
+//     reveal, export, delivery, ...) is out of its reach. Publish proves its
+//     complete changed-key selection before materializing a snapshot.
+//   - manage-members never satisfies an ordinary atom: rule creation and
+//     revocation use selector containment at the chokepoint, so narrowed
+//     management cannot escape through a legacy scope-wide grant operation.
 func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 	if c != r.Capability || c == CapManageMembers || s.Org != r.Org {
 		return false
@@ -230,7 +231,16 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 	envs := w.Envs[s.Project]
 	switch at {
 	case LevelProject:
-		if w.EnvMode != AxisAll || len(envs) > 0 {
+		if c == CapDefinitionsEdit && key != nil {
+			// The catalogue is shared by every environment. A key-aware
+			// catalogue mutation may use an environment-scoped Define rule;
+			// existing shared semantic changes independently require authority
+			// in every environment. New empty keys need no value writes.
+			// Bulk definitions stay project-wide.
+			if w.EnvMode == AxisOnly && len(envs) == 0 {
+				return false
+			}
+		} else if w.EnvMode != AxisAll || len(envs) > 0 {
 			return false
 		}
 	case LevelEnv:
@@ -243,6 +253,10 @@ func (r Rule) Reaches(c Capability, at Level, s Scope, key *RuleKey) bool {
 		}
 	default:
 		return false
+	}
+	// See always covers the environment catalogue, even in a mixed key-scoped card.
+	if c == CapRead {
+		return true
 	}
 	items := w.Keys[s.Project]
 	if w.KeyMode == AxisAll && len(items) == 0 {

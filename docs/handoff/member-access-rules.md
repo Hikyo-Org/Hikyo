@@ -6,6 +6,34 @@ fail-closed first slice. Normative contract:
 [member-access-rules.md](../adr/member-access-rules.md), especially
 *First implementation slice*.
 
+## Current implementation (2026-10-05)
+
+This update supersedes the historical first-slice limits and edit sequence below.
+
+- Members presents legacy grants and human rules as access cards. Legacy grants
+  keep their existing authority; machines and all-future-project access remain
+  on that path. Human Edit, Publish, Reveal/history, Define keys and Manage
+  access honor key selectors. See remains environment-wide.
+- Rule edits and removals use one atomic replacement operation. A delegated
+  manager sees only manageable rules; without See, existing stable ids remain
+  editable without disclosing project, environment or key names. A partial rule
+  listing does not produce a global Who can...? census.
+- Definitions are shared across the project. Selected-environment Define keys
+  can create an empty key outside a linked key group. Changing an existing
+  definition requires Define keys and Publish in every project environment,
+  irrespective of value presence. Creating a key in a linked key group requires
+  the same all-environment authority before inspecting the group. These checks
+  avoid revealing which
+  environments contain values or which keys belong to a group.
+- Supplied first values need Define keys and Publish at each destination.
+  `POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values/{key}/initialize`
+  stages a draft while the published cell is absent. The owner may revise their
+  initial draft; another owner's draft blocks initialization. The new-key form
+  and scanner acknowledgement retries use this path. Publishing stays explicit.
+- Who can...? retains Yes, rule-local Except, and missing-See reasons. Its
+  no-rule-reaches outcome is visible and collapsed by default, matching
+  iteration 6.
+
 ## What shipped in this PR (#838)
 
 - **Prototypes, iterations 1 to 6**, at `docs/site/public/prototypes/member-access/`
@@ -156,4 +184,3 @@ running product.
   not listed on Members, so the first access for an invitee comes from the
   invite template or a grant; a server-side resolver operation (ADR
   *First implementation slice*); Machine access rules (refused server-side).
-

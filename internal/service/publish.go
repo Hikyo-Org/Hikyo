@@ -270,7 +270,18 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		return PublishResult{}, err
 	}
 	defer release()
-	sealer, err := sealerFor(ctx, s.DB, s.Keyring, actor, authz.OpValuePublish, scope)
+	// Resolve only the first selected key's metadata before the sealer preflight.
+	// The complete change set, including approval-pinned selections, is proved
+	// inside the transaction before any detail or material is returned.
+	var publishKey *authz.KeyTarget
+	if request.ApprovalRequestID != "" {
+		key := authz.KeyApprovalRequest(request.ApprovalRequestID)
+		publishKey = &key
+	} else if len(versionIDs) > 0 {
+		key := authz.KeyPendingVersion(versionIDs[0])
+		publishKey = &key
+	}
+	sealer, err := sealerForKey(ctx, s.DB, s.Keyring, actor, authz.OpValuePublish, scope, publishKey)
 	if err != nil {
 		return PublishResult{}, err
 	}
@@ -288,7 +299,14 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		// The addressed environment is authorized FIRST: a caller who may not
 		// publish here learns nothing from the selection read, and the uniform
 		// nonexistent answer is the only thing they see.
-		caller, p, err := authorize(ctx, az, actor, authz.OpValuePublish, scope, now)
+		var caller authz.Identity
+		var p authz.Proof
+		var err error
+		if publishKey != nil {
+			caller, p, err = authorizeKey(ctx, az, actor, authz.OpValuePublish, scope, *publishKey, now)
+		} else {
+			caller, p, err = authorize(ctx, az, actor, authz.OpValuePublish, scope, now)
+		}
 		if err != nil {
 			return err
 		}
@@ -349,22 +367,25 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 		}
 		slices.Sort(envs)
 		proofs := make(map[string]authz.Proof, len(envs))
-		for _, envID := range envs {
-			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
-			ep := p
-			if envID != string(scope.Env) {
-				if ep, err = az.Authorize(ctx, caller, authz.OpValuePublish, envScope); err != nil {
-					return err
-				}
+		// Every selected cell needs Publish on its key and its actual environment.
+		// A first-key proof alone never authorizes a multi-key selection.
+		for _, change := range selected {
+			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(change.EnvironmentID)}
+			ep, err := az.AuthorizeKey(ctx, caller, authz.OpValuePublish, envScope, authz.KeyByID(change.KeyID))
+			if err != nil {
+				return err
 			}
-			proofs[envID] = ep
+			proofs[change.EnvironmentID] = ep
 		}
 
 		groupIndex, err := loadGroupIndex(ctx, r.Catalogue(), p)
 		if err != nil {
 			return err
 		}
-		selection, closed, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex)
+		selection, closed, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex, func(envID, keyID string) error {
+			_, err := az.AuthorizeKey(ctx, caller, authz.OpValuePublish, domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}, authz.KeyByID(keyID))
+			return err
+		})
 		if err != nil {
 			if loadedApproval != nil && isActiveRequest(loadedApproval.State) && errors.Is(err, ErrStalePending) {
 				if cErr := commitInvalidation(ctx, r, p, caller.Principal, *loadedApproval, "draft_edited", now); cErr != nil {
@@ -375,10 +396,22 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 			}
 			return err
 		}
-		for envID := range selection {
+		for envID, applies := range selection {
 			if _, authorized := proofs[envID]; !authorized {
 				return fmt.Errorf("service: key-group closure added environment %s", envID)
 			}
+			// Group closure may add keys. Check the complete change set before any
+			// approval, decryption, snapshot, value write or draft discard.
+			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
+			keyIDs := make([]string, 0, len(applies))
+			for _, apply := range applies {
+				keyIDs = append(keyIDs, apply.keyID)
+			}
+			ep, err := az.AuthorizePublishKeys(ctx, caller, envScope, keyIDs)
+			if err != nil {
+				return err
+			}
+			proofs[envID] = ep
 		}
 
 		// A stable environment order, so a multi-environment publish writes its
@@ -638,7 +671,13 @@ func buildImpactPreview(ctx context.Context, r store.Repos, p authz.Proof, seale
 	if err != nil {
 		return ImpactPreview{}, err
 	}
-	selection, _, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex)
+	// Restore previews share publish's group closure. Check every member before
+	// observing sibling drafts, even when only one key was restored.
+	selection, _, err := selectVersions(ctx, r, p, caller.Principal, selected, byID, groupIndex, func(envID, keyID string) error {
+		_, err := az.AuthorizeKey(ctx, caller, authz.OpRevisionRestore,
+			domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}, authz.KeyByID(keyID))
+		return err
+	})
 	if err != nil {
 		return ImpactPreview{}, err
 	}
@@ -804,6 +843,15 @@ func republishWithStorage(ctx context.Context, r store.Repos, az *authz.TxAuthor
 	if err != nil {
 		return PublishedEnvironment{}, err
 	}
+	return republishAuthorized(ctx, r, az, caller, sealer, kr, scope, now, trigger, groups, storage, p)
+}
+
+// republishAuthorized materializes after the changed-key authority has been
+// checked in this transaction. Schema deletion uses a proof minted before the
+// key and its selector rows disappear; no broader authority is substituted.
+func republishAuthorized(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
+	sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
+	now time.Time, trigger string, groups *groupIndexPhase, storage *schemaPublishStorage, p authz.Proof) (PublishedEnvironment, error) {
 	// Secret-change approvals (#151): the out-of-band value-change paths (copy,
 	// bulk-apply, clone-onto-an-existing-env, import) write cells and publish
 	// directly, sidestepping the draft→publish gate. Where a policy covers the
@@ -871,6 +919,15 @@ func republishWithStorage(ctx context.Context, r store.Repos, az *authz.TxAuthor
 func fanOutSchemaPublish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
 	p authz.Proof, sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
 	now time.Time, trigger string) ([]PublishedEnvironment, error) {
+	return fanOutSchemaPublishProofs(ctx, r, az, caller, p, sealer, kr, scope, now, trigger, nil)
+}
+
+// fanOutSchemaPublishProofs uses pre-mutation key-aware proofs only when a
+// single-key schema operation supplied them. Bulk schema operations retain
+// their whole-environment authorization. Missing supplied proofs fail closed.
+func fanOutSchemaPublishProofs(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
+	p authz.Proof, sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
+	now time.Time, trigger string, supplied map[string]authz.Proof) ([]PublishedEnvironment, error) {
 	environments, err := r.Environments().List(ctx, p)
 	if err != nil {
 		return nil, err
@@ -882,7 +939,17 @@ func fanOutSchemaPublish(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	storage := &schemaPublishStorage{limit: MaxProjectStorageBytes}
 	for _, env := range environments {
 		envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(env.ID)}
-		published, err := republishWithStorage(ctx, r, az, caller, sealer, kr, envScope, now, trigger, groupPhase, storage)
+		var published PublishedEnvironment
+		var err error
+		if supplied != nil {
+			ep, ok := supplied[env.ID]
+			if !ok {
+				return nil, domain.ErrNotFound
+			}
+			published, err = republishAuthorized(ctx, r, az, caller, sealer, kr, envScope, now, trigger, groupPhase, storage, ep)
+		} else {
+			published, err = republishWithStorage(ctx, r, az, caller, sealer, kr, envScope, now, trigger, groupPhase, storage)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -923,7 +990,7 @@ func resolveVersions(ctx context.Context, r store.Repos, p authz.Proof,
 }
 
 func selectVersions(ctx context.Context, r store.Repos, p authz.Proof,
-	principal domain.PrincipalID, selected, byID map[string]store.PendingChange, groups *groupIndex) (map[string][]pendingApply, []string, error) {
+	principal domain.PrincipalID, selected, byID map[string]store.PendingChange, groups *groupIndex, guards ...func(string, string) error) (map[string][]pendingApply, []string, error) {
 	markers, err := r.Pending().ListMarkers(ctx, p)
 	if err != nil {
 		return nil, nil, err
@@ -952,6 +1019,15 @@ func selectVersions(ctx context.Context, r store.Repos, p authz.Proof,
 				continue
 			}
 			for _, member := range groups.members(key.GroupID) {
+				// A linked group is the atomic publish unit. Check every member before
+				// inspecting another owner's presence or returning a named conflict.
+				// Requiring the complete group's authority also avoids revealing draft
+				// existence by comparing success to refusal outside the selector.
+				for _, guard := range guards {
+					if err := guard(change.EnvironmentID, member.ID); err != nil {
+						return nil, nil, err
+					}
+				}
 				for _, marker := range markers {
 					if marker.KeyID != member.ID || marker.EnvironmentID != change.EnvironmentID {
 						continue
@@ -1084,6 +1160,11 @@ func currentRevision(ctx context.Context, r store.Repos, p authz.Proof) (int64, 
 func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	kr *crypto.Keyring, scope domain.Scope, publisher domain.PrincipalID, now time.Time,
 	applies []pendingApply, storageLimit int64, groups *groupIndex, storage *schemaPublishStorage) (PublishedEnvironment, error) {
+	for _, apply := range applies {
+		if !authz.PublishKeyAllowed(p, apply.keyID) {
+			return PublishedEnvironment{}, domain.ErrNotFound
+		}
+	}
 	if storage != nil && len(applies) != 0 {
 		return PublishedEnvironment{}, errors.New("service: schema storage accounting cannot apply value changes")
 	}

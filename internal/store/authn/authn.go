@@ -385,6 +385,18 @@ func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID, i
 		seen[g.Scope.Org] = true
 		ids = append(ids, g.Scope.Org)
 	}
+	// Valid live human rules name their own organisations just as grants do.
+	rules, err := r.Rules(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	for _, rule := range rules {
+		if seen[rule.Org] || (!instanceConfig && rule.Org == r.selfConfigOrgID) {
+			continue
+		}
+		seen[rule.Org] = true
+		ids = append(ids, rule.Org)
+	}
 	// ponytail: one read per org. A human belongs to a handful; if machine
 	// principals ever need this, batch it with an IN-list query.
 	out := make([]OrgIdentity, 0, len(ids))

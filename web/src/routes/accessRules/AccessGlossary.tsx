@@ -26,7 +26,7 @@ function Terms({ terms }: { terms: readonly (readonly [term: ReactNode, id: stri
 export function AccessGlossary() {
   return (
     <div className="access-gloss-parts">
-      <p className="access-hint">The grant list, the rules, the rule editor and Who can…? all use exactly these names.</p>
+      <p className="access-hint">The access cards, the rule editor and Who can…? all use exactly these names.</p>
       <Disclosure label="People and rules">
         <Terms
           terms={[
@@ -47,6 +47,7 @@ export function AccessGlossary() {
               p.id,
               <>
                 {p.desc}
+                {p.id === 'read' ? <span className="access-hint"> See always covers the whole environment. Key limits narrow the other permissions only.</span> : null}
                 {p.shape === 'key' ? null : <span className="access-hint"> Only on rules that cover {SHAPE_NEEDS[p.shape]}.</span>}
               </>,
             ])}
