@@ -385,12 +385,17 @@ func (r *Resolver) CredentialAuthorityByID(ctx context.Context, id string) (Cred
 	}
 	return CredentialAuthority{ID: row.ID, AccountID: row.AccountID, Purpose: row.Purpose, IssuedBy: row.IssuedBy, CredentialEpoch: row.CredentialEpoch, ExpiresAt: row.ExpiresAt.Time, Consumed: row.ConsumedAt.Valid}, nil
 }
-func (r *Resolver) ClaimOAuth2Authority(ctx context.Context, id string, at time.Time) (bool, error) {
+
+// ClaimFederatedAuthority consumes a credential-establishment authority for a
+// federated claim (#610), recording which kind of credential it established
+// (oidc or oauth2). The NULL guard is the atomic claim and a recovery-issued
+// authority never matches; false means the caller lost and must fail closed.
+func (r *Resolver) ClaimFederatedAuthority(ctx context.Context, id, kind string, at time.Time) (bool, error) {
 	if r.sq != nil {
-		n, err := r.sq.ClaimOAuth2Authority(ctx, sqlitegen.ClaimOAuth2AuthorityParams{ID: id, ConsumedAt: sql.NullString{String: encodeTime(at), Valid: true}})
+		n, err := r.sq.ClaimFederatedAuthority(ctx, sqlitegen.ClaimFederatedAuthorityParams{ID: id, EstablishedCredentialKind: kind, ConsumedAt: sql.NullString{String: encodeTime(at), Valid: true}})
 		return n == 1, err
 	}
-	n, err := r.pg.ClaimOAuth2Authority(ctx, pggen.ClaimOAuth2AuthorityParams{ID: id, ConsumedAt: pgTimestamp(at)})
+	n, err := r.pg.ClaimFederatedAuthority(ctx, pggen.ClaimFederatedAuthorityParams{ID: id, EstablishedCredentialKind: kind, ConsumedAt: pgTimestamp(at)})
 	return n == 1, err
 }
 func (r *Resolver) StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error {

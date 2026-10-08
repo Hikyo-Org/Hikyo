@@ -75,3 +75,16 @@ export const ReauthRefused: Story = {
     await expect(canvas.getByRole('link', { name: 'Back' })).toHaveAttribute('href', RETURN_TO);
   },
 };
+
+// The provider refused an invitation claim (#610): the establish page's one
+// sentence, and the way back to it (the authority may still be spendable).
+export const ClaimRefused: Story = {
+  beforeEach: withReturn({ purpose: 'claim', state: STATE, error: 'unauthenticated' }),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('alert')).toHaveTextContent(/that authority can't be used/i);
+    await expect(canvas.getByRole('link', { name: /back to your setup authority/i })).toHaveAttribute(
+      'href',
+      '/establish',
+    );
+  },
+};

@@ -71,10 +71,10 @@ DELETE FROM sessions WHERE oauth2_provider_id = ?;
 -- name: GetCredentialAuthorityByID :one
 SELECT * FROM credential_authorities WHERE id = ?;
 
--- hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.
+-- hikyo:reason A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation.
 -- hikyo:authn-resolution
--- name: ClaimOAuth2Authority :execrows
-UPDATE credential_authorities SET consumed_at = ?, established_credential_kind = 'oauth2'
+-- name: ClaimFederatedAuthority :execrows
+UPDATE credential_authorities SET consumed_at = ?, established_credential_kind = ?
 WHERE id = ? AND consumed_at IS NULL AND issued_by <> 'recovery';
 
 -- hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.

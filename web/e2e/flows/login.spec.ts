@@ -181,12 +181,16 @@ async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
   await page.goto('/establish');
 
   const card = page.locator('.login__card');
-  const submit = page.getByRole('button', { name: 'Establish credential' });
+  const submit = page.getByRole('button', { name: 'Establish password' });
   const authority = page.getByLabel('Setup authority');
   const password = page.getByLabel('New password');
   const repeat = page.getByLabel('Repeat the password');
   const heading = page.getByRole('heading', { name: 'Establish your credential' });
   const lede = page.getByText('Paste the setup authority you were handed');
+  // The fixture's enabled OIDC provider (#610): token first, so it is barred
+  // until an authority is pasted, but it is measured like any other row.
+  const provider = page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+  await expect(provider).toBeDisabled();
 
   await expectBoundaryContrast(page, authority);
   await expectBoundaryContrast(page, password);
@@ -202,6 +206,7 @@ async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
       [authority, 'control'],
       [password, 'control'],
       [repeat, 'control'],
+      [provider, 'control'],
     ],
     fonts: [
       [heading, 'ui'],
@@ -215,8 +220,8 @@ async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'backgroundColor', '--accent'],
       [submit, 'color', '--on-accent'],
     ],
-    hairlines: [card, authority],
-    density: [[submit, '--control']],
+    hairlines: [card, authority, provider],
+    density: [[submit, '--control'], [provider, '--touch']],
   });
 }
 
@@ -522,7 +527,7 @@ test.describe('login', () => {
       await page.getByLabel('Setup authority').fill('hik_cea_not_a_real_authority_value');
       await page.getByLabel('New password').fill('a first password long enough');
       await page.getByLabel('Repeat the password').fill('a first password long enough, but not this');
-      await page.getByRole('button', { name: 'Establish credential' }).click();
+      await page.getByRole('button', { name: 'Establish password' }).click();
       const alert = page.locator('.login__card').getByRole('alert');
       await expectStatusIsTextAndAria(page, alert);
       await expect(alert).toContainText('differ');
@@ -537,12 +542,12 @@ test.describe('login', () => {
     await page.getByLabel('Setup authority').fill('hik_cea_not_a_real_authority_value');
     await page.getByLabel('New password').fill('a first password long enough');
     await page.getByLabel('Repeat the password').fill('a first password long enough');
-    await page.getByRole('button', { name: 'Establish credential' }).click();
+    await page.getByRole('button', { name: 'Establish password' }).click();
     const alert = page.locator('.login__card').getByRole('alert');
     await expectStatusIsTextAndAria(page, alert);
     // Unknown, expired and spent are one sentence: the server closes that
     // oracle and the page must not reopen it.
-    await expect(alert).toContainText('was not accepted');
+    await expect(alert).toContainText("That authority can't be used.");
     await expect(alert).not.toContainText(/unknown|no such|does not exist|spent/i);
     expect(await page.context().cookies()).toEqual([]);
   });
@@ -638,7 +643,7 @@ test.describe('login', () => {
       expect((await page.content()).includes(code ?? ''), 'the recovery code reached the page').toBe(false);
       await page.getByLabel('New password').fill(newPassword);
       await page.getByLabel('Repeat the password').fill(newPassword);
-      await page.getByRole('button', { name: 'Establish credential' }).click();
+      await page.getByRole('button', { name: 'Establish password' }).click();
       await expect(page.getByRole('heading', { name: 'Credential established' })).toBeVisible();
 
       // The old password is gone and the new one signs in. Nothing about the
@@ -777,6 +782,76 @@ test.describe('login', () => {
       await expectContrast(page, page.getByRole('heading', { name: 'Sign in with a password' }));
       await expectContrast(page, page.getByText('Use the credential you established'));
       await expectContrast(page, page.getByText('Username'));
+    }
+  });
+});
+
+/**
+ * Flow: login, registry surfaces `establish-credential` and `oidc-done`
+ * (#610): an invitation claimed by an external identity. An invitee is minted
+ * over the API; the login page offers no claim; the establish page holds its
+ * provider row until the authority is pasted, and the real round-trip on the
+ * fixture provider (purpose `claim`, the authority as the proof) spends the
+ * authority, binds a subject no account holds and lands signed in on Account
+ * & security. The spent authority then reads the one refusal sentence from a
+ * cookie-less browser. The only interception is the fake IdP's authorize
+ * request, given that fresh subject; the Hikyo server is never substituted.
+ */
+test.describe('invitation claim', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('claims an invitation with a provider and lands signed in; the login page never offers a claim', async ({ page, browser }, testInfo) => {
+    const seed = readSeed();
+    const stamp = `${testInfo.project.name}-${Date.now().toString(36)}`;
+    const adminContext = await browser.newContext({ storageState: STORAGE_STATE });
+    const invitation = await browserApi(
+      await adminContext.newPage(),
+      'POST',
+      `/api/v1/orgs/${seed.org}/invitations`,
+      z.object({ authority: z.string(), principal_id: z.string() }),
+      { username: `claim-${stamp}` },
+    ).finally(() => adminContext.close());
+
+    const claimStarts: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && /\/start$/.test(new URL(request.url()).pathname)
+        && (request.postData() ?? '').includes('"claim"')) claimStarts.push(request.url());
+    });
+
+    // The login page has no claim affordance: no authority field, no claim start.
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByLabel('Setup authority')).toHaveCount(0);
+
+    // Token first, then the provider beside the password form.
+    await page.goto('/establish');
+    const provider = page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+    await expect(provider).toBeDisabled();
+    await page.getByLabel('Setup authority').fill(invitation.authority);
+    await expect(provider).toBeEnabled();
+    await page.route(/\/authorize\?/, async (route) => {
+      await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(`claim-${stamp}`)}` });
+    });
+    await provider.click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.getByRole('heading', { name: 'Account & security' })).toBeVisible();
+    expect((await page.context().cookies()).find((c) => c.name === '__Host-hikyo')).toBeDefined();
+    expect(claimStarts).toHaveLength(1);
+
+    // Spent: the same authority reads the one sentence, from a fresh browser.
+    const fresh = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      const again = await fresh.newPage();
+      await again.goto('/establish');
+      await again.getByLabel('Setup authority').fill(invitation.authority);
+      await again.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+      const alert = again.locator('.login__card').getByRole('alert');
+      await expectStatusIsTextAndAria(again, alert);
+      await expect(alert).toContainText("That authority can't be used. Ask whoever invited you for a new one.");
+      await expect(again).toHaveURL(/\/establish$/);
+      await expectNoSeriousAxeViolations(again);
+    } finally {
+      await fresh.close();
     }
   });
 });

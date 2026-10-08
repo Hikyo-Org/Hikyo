@@ -40,7 +40,7 @@
   "CallerHolds": "func(ctx context.Context, caller Identity,\n\top Operation, scope domain.Scope) (bool, error)",
   "CallerHoldsApprovalKeys": "func(ctx context.Context, caller Identity, scope domain.Scope, ids []string) (bool, error)",
   "CaptureAudit": "func(trail audit.Trail, scope domain.Scope, e audit.Event)",
-  "ClaimOAuth2Authority": "func(ctx context.Context, id string, at time.Time) (bool, error)",
+  "ClaimFederatedAuthority": "func(ctx context.Context, id, kind string, at time.Time) (bool, error)",
   "ClaimSAMLReplay": "func(ctx context.Context, replay NewSAMLReplay) (bool, error)",
   "ClampCredentialExpiry": "func(ctx context.Context, ceiling time.Time) (int64, error)",
   "ClampDeveloperCredentialExpiry": "func(ctx context.Context, id string, at time.Time) error",

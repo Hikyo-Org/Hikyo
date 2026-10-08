@@ -867,7 +867,7 @@ func (s *Auth) EstablishCredential(ctx context.Context, authority, password stri
 			audit.Object{Type: "account", ID: live.AccountID}, audit.OutcomeSuccess, "",
 			audit.Payload{
 				"authority_id": live.ID, "account_id": live.AccountID,
-				"credential": MethodLocalPassword,
+				"credential": MethodLocalPassword, "established_credential_kind": "password",
 			})
 		if err != nil {
 			return err

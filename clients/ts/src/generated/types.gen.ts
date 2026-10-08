@@ -4706,7 +4706,9 @@ export type OidcStartRequest = {
      */
     environment_id?: string;
     /**
-     * Required for link; the pre-existing password.
+     * Required for link (the pre-existing password) and for claim (the
+     * credential-establishment authority being spent, #610).
+     *
      */
     proof?: string;
     /**
@@ -4742,7 +4744,9 @@ export type Oauth2StartRequest = {
      */
     environment_id?: string;
     /**
-     * Required for link; the pre-existing password.
+     * Required for link (the pre-existing password) and for claim (the
+     * credential-establishment authority being spent, #610).
+     *
      */
     proof?: string;
     /**
