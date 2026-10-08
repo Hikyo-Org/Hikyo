@@ -4,19 +4,137 @@ Open an issue and get maintainer agreement before starting a large change.
 Security vulnerabilities are the exception: never open them as public issues.
 Report them privately through the [security policy](./SECURITY.md).
 
+## Setup with a coding agent
+
+The repository includes a
+[contributor bootstrap skill](./.agents/skills/hikyo-contributor-bootstrap/SKILL.md)
+for signing, pinned dependencies, local builds/tests, and PR readiness. From a
+checkout of this repository, invoke it with:
+
+- Codex: `$hikyo-contributor-bootstrap`
+- Claude Code: `/hikyo-contributor-bootstrap`
+
+No separate skill installation is needed. The shared instructions live under
+`.agents/skills/`; `.claude/skills/` links to the same copy. The skill asks
+whether you also want a local Docker or source-built instance to explore, and
+continues independent contributor setup while you decide. It preserves existing
+signing configuration and does not push, merge, or deploy without authorization.
+
 ## Developer Certificate of Origin
 
 Every commit in a pull request must carry a Developer Certificate of Origin
-(DCO) sign-off. Add it with:
+(DCO) sign-off. It must also carry a cryptographic signature that GitHub reports
+as **Verified**.
+After completing the [signing setup](#commit-signing-setup), commit with:
 
 ```sh
-git commit -s
+git commit -S -s
 ```
 
 The sign-off certifies the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
 CI checks the pull request's commit history; a sign-off added only to a squash
 message does not satisfy the gate. Hikyo uses the DCO, never a Contributor
 License Agreement (CLA), so contributors retain their copyright.
+
+Lowercase `-s` (`--signoff`) adds the DCO trailer. Uppercase `-S` (`--gpg-sign`)
+creates a cryptographic signature using your configured signing key. With
+`commit.gpgsign=true`, `git commit -s` also signs cryptographically, but the
+explicit `-S -s` example makes both requirements visible. Neither flag configures
+a signing key for you.
+
+## Commit signing setup
+
+Run the commands below from the repository root in a POSIX-compatible shell
+(including Bash or Zsh). Git configuration commands use `--local` so they apply
+to this clone. If your signatures already pass local and GitHub verification,
+keep your existing key and configuration and proceed to
+[verification](#verify-before-pushing).
+
+### Identity and signing key
+
+Set your actual name and an email verified on your GitHub account, including a
+GitHub-provided private noreply address if preferred:
+
+```sh
+git config --local user.name "Your Name"
+git config --local user.email "your-verified-email@example.com"
+```
+
+For SSH signing, use Git 2.34 or newer and an existing SSH key, or follow
+GitHub's [key generation and ssh-agent setup guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
+Adjust the key path below to your key. `ssh-add` needs a running SSH agent and
+may prompt for your key's passphrase:
+
+```sh
+hikyo_signing_key="$HOME/.ssh/id_ed25519"
+ssh-add "$hikyo_signing_key"
+git config --local gpg.format ssh
+git config --local user.signingkey "$hikyo_signing_key.pub"
+git config --local commit.gpgsign true
+```
+
+Add the public key to GitHub as a **Signing Key**, following
+[GitHub's key registration guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
+An existing Authentication Key must also be registered as a Signing Key.
+
+### Local SSH verification
+
+GitHub key registration does not configure local Git verification. The pre-push
+checker requires a locally trusted signature (`G`), so configure an
+[allowed-signers file](https://git-scm.com/docs/git-config#Documentation/git-config.txt-gpgsshallowedSignersFile).
+Continuing in the same shell, add your public key to a file inside Git's metadata
+directory, outside tracked source files:
+
+```sh
+hikyo_allowed_signers="$(git rev-parse --absolute-git-dir)/hikyo-allowed-signers"
+hikyo_signer="$(git config --local user.email) $(cat "$hikyo_signing_key.pub")"
+if ! grep -Fqx -- "$hikyo_signer" "$hikyo_allowed_signers" 2>/dev/null; then
+  printf '%s\n' "$hikyo_signer" >> "$hikyo_allowed_signers"
+fi
+git config --local gpg.ssh.allowedSignersFile "$hikyo_allowed_signers"
+```
+
+If you already maintain an allowed-signers file, retain it and add your public
+key there instead. For commits from other contributors in your branch, verify
+their key identities before adding their public keys to your local trust file.
+
+### Other signing formats
+
+You can keep an existing GPG or S/MIME signing setup. GitHub documents
+[generating a GPG key](https://docs.github.com/en/authentication/managing-commit-signature-verification/generating-a-new-gpg-key),
+[adding a GPG key to GitHub](https://docs.github.com/en/authentication/managing-commit-signature-verification/adding-a-gpg-key-to-your-github-account),
+and [configuring Git for GPG, SSH, or X.509 signing](https://docs.github.com/en/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key).
+Keep `commit.gpgsign=true`. The local checker requires status `G`; a valid GPG
+signature with unknown local trust (`U`) does not pass. Establish local trust
+only after verifying the signing key's identity.
+
+### Verify before pushing
+
+Install the hook once per clone and fetch the canonical repository's main branch
+as the checker base. The dedicated `hikyo-upstream/main` reference keeps canonical
+history separate from your fork's `origin/main`, so ordinary fork fetches cannot
+replace the comparison base:
+
+```sh
+scripts/git/install-hooks.sh
+git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/hikyo-upstream/main
+```
+
+After creating your contribution with `git commit -S -s`, run:
+
+```sh
+git log -1 --format='%h %G? %s'
+scripts/ci/check-dco.sh hikyo-upstream/main HEAD
+scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
+```
+
+Expect `G` in the log and both checks to report success for the complete PR
+range. Re-run the checks after amending or rebasing. If signing or verification
+fails, keep signing enabled and resolve the reported key, agent, or trust error;
+do not bypass the hook. After pushing, confirm **Verified** for every PR commit
+on GitHub. Local verification and
+[GitHub verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
+are separate checks, and both must pass.
 
 ## Pull requests from forks
 

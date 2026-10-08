@@ -140,7 +140,7 @@ done
 
 # Across supported layouts, every normal package and every split-suite target
 # must run exactly once, including external tests, fuzz seeds and examples.
-for shard_count in 1 3 6; do
+for shard_count in 1 3 6 8; do
 	: >"$race_actual"
 	shard=0
 	while [ "$shard" -lt "$shard_count" ]; do

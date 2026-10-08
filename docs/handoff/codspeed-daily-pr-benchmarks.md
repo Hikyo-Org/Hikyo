@@ -94,7 +94,7 @@ exact datasets, reset semantics, browser ceilings and local verification.
 - Passing browser tests write their timing reports to disk and attach those paths. Local verification found reports for both viewports in the strict upload directory. The automated preview binds to loopback.
 - PR smoke is a separate cancelling workflow; the paid main lane retains serialized queued admission.
 - The ledger avoids jobs queries for initial PR attempts. It retains paginated old-run discovery because an old run can be rerun within the billable window.
-- Formatting was corrected. Core CI runs repository analysis after the runtime and app suites, preventing its cross-platform compiler loads from competing with those suites. Inventory tests enforce each package once, ordering, and failure propagation.
+- Formatting was corrected. Core CI prepares cross-platform compiler exports before tests, then runs repository analysis after the runtime and app suites. This combines main’s PR #860 cache preparation with this PR’s separate analysis scheduling. Inventory tests enforce each package once, ordering, and failure propagation.
 - The reported PR merge-SHA issue was rejected using the live REST response: run `37799478288` has `head_sha=94f34741cdb27fe1cc2509386b7dfc4c19767f1d`, matching the PR branch head, not a synthetic merge SHA.
 - The suggested `-benchtime` flag was rejected because CodSpeed supports only `-bench`. The complete native default-duration suite passed in 60 seconds locally; this is not hosted Macro runtime proof. The paid 15-minute job timeout remains unchanged.
 

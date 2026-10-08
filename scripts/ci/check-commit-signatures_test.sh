@@ -37,6 +37,7 @@ printf 'signed\n' >>"$repo/file"
 git -C "$repo" commit -q -am signed
 signed=$(git -C "$repo" rev-parse HEAD)
 "$(dirname "$0")/check-commit-signatures.sh" "$base" "$signed" "$repo"
+git -C "$repo" update-ref refs/remotes/hikyo-upstream/main "$base"
 git -C "$repo" update-ref refs/remotes/origin/main "$base"
 printf 'refs/heads/signed %s refs/heads/signed %s\n' "$signed" "$zero" >"$repo/push-input"
 git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
@@ -65,6 +66,25 @@ fi
 printf 'refs/heads/unsigned-case %s refs/heads/unsigned-case %s\n' "$unsigned" "$zero" >"$repo/push-input"
 if git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused >/dev/null 2>&1; then
 	printf 'signature fixture failed: pre-push hook accepted an unsigned commit\n' >&2
+	exit 1
+fi
+
+# A normal fork fetch must not hide unsigned ancestors behind fork main.
+git -C "$repo" update-ref refs/remotes/origin/main "$unsigned"
+printf 'fork contribution\n' >>"$repo/file"
+git -C "$repo" commit -q -am 'signed fork contribution'
+fork_head=$(git -C "$repo" rev-parse HEAD)
+"$(dirname "$0")/check-commit-signatures.sh" refs/remotes/origin/main "$fork_head" "$repo"
+printf 'refs/heads/unsigned-case %s refs/heads/unsigned-case %s\n' "$fork_head" "$zero" >"$repo/push-input"
+if git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused >/dev/null 2>&1; then
+	printf 'signature fixture failed: fork main hid an unsigned ancestor from the canonical check\n' >&2
+	exit 1
+fi
+
+# The hook must not fall back to fork main when the canonical ref is absent.
+git -C "$repo" update-ref -d refs/remotes/hikyo-upstream/main
+if git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused >/dev/null 2>&1; then
+	printf 'signature fixture failed: missing canonical base fell back to fork main\n' >&2
 	exit 1
 fi
 

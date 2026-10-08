@@ -4,6 +4,9 @@
 # Run repository analysis separately: its cross-platform compiler loads must
 # not compete with all runtime suites for CPU and memory. Every package runs once.
 set -euo pipefail
+# Compile the lint matrix before Go's package-test alarm starts. Do not let
+# cold cross-platform export builds contend with the concurrent test pool.
+go run ./scripts/ci/prepare-lint-cache
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-test-core.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 isolation_package=$(go list ./internal/isolation)

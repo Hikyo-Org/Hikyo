@@ -11,7 +11,7 @@ Every commit on a pull request **must** carry a Developer Certificate of Origin
 `validation / preflight` CI job's DCO step (`scripts/ci/check-dco.sh`) fails the build when any
 commit in the range is missing one.
 
-- Add the sign-off when you commit: `git commit -s` (or `git commit --signoff`).
+- Add both the signature and sign-off when you commit: `git commit -S -s`.
 - The trailer must match the commit's author identity exactly:
 
   ```
@@ -35,7 +35,10 @@ Every commit on a pull request must also carry a valid Git cryptographic
 signature that GitHub reports as Verified. The DCO trailer above is required,
 but it is not a substitute for this signature.
 
-- Keep `commit.gpgsign=true` and commit normally with `git commit -s`. Never
+- For a new contributor or a signing/verification failure, read
+  [the signing setup in CONTRIBUTING.md](./CONTRIBUTING.md#commit-signing-setup)
+  for key configuration, local trust, and GitHub registration.
+- Keep `commit.gpgsign=true` and commit normally with `git commit -S -s`. Never
   override or disable the configured signing behavior.
 - Install the repository's fail-closed pre-push hook once in each clone:
 
@@ -43,17 +46,25 @@ but it is not a substitute for this signature.
   scripts/git/install-hooks.sh
   ```
 
-  The hook checks every commit between `origin/main` and each branch being
+  The hook checks every commit between `hikyo-upstream/main` and each branch being
   pushed. Keep the hook installed; do not bypass it with `--no-verify`.
-- Commit normally with signing enabled. If `git commit -s` itself fails to
+- Commit normally with signing enabled. If `git commit -S -s` itself fails to
   sign, stop and report the exact error. Never disable or bypass signing.
 - Before every push, verify the complete pull-request range:
 
   ```sh
-  scripts/ci/check-commit-signatures.sh origin/main HEAD
+  scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
   ```
 
   After pushing, confirm GitHub reports `verified: true` for the pushed commits.
+
+## Contributor bootstrap
+
+For first-time contributor setup or incomplete local tooling, use the repository
+[hikyo-contributor-bootstrap skill](./.agents/skills/hikyo-contributor-bootstrap/SKILL.md).
+Codex invokes it as `$hikyo-contributor-bootstrap`; Claude Code invokes it as
+`/hikyo-contributor-bootstrap` through the linked `.claude/skills/` entry.
+The skill covers signing, local validation, and an optional playground.
 
 ## Before pushing
 
