@@ -1,6 +1,6 @@
 # Service performance benchmarks
 
-`internal/service/workflows_benchmark_test.go` adds nine benchmark cases to the
+`internal/service/workflows_benchmark_test.go` adds nine read benchmark cases to the
 existing CodSpeed service package selection. Each operation runs at 10, 100 and
 1,000 keys. These are synthetic scale points, not measured production workloads.
 
@@ -44,20 +44,25 @@ certification or a portable performance threshold.
 The CodSpeed command remains `go test -bench=.` over the workflow's existing
 package paths. Do not copy native `-run`, `-count` or `-benchtime` flags there:
 the integration supports only `-bench`. The workflow separates
-native one-iteration smoke checks (PRs and manual dispatch) from CodSpeed
-walltime reporting (pushes to main only). The latter uses
-`codspeed-macro-arm64-graviton-ubuntu-22-04`; no PR uses Macro minutes or uploads
-shared-runner timings. Performance regressions are detected after merge, not
-as a reliable premerge comparison. The first Macro main run establishes a new
-hardware baseline; previous hosted x64 timings are not comparable.
-The runner/cache policy permits only this exact Macro label in CodSpeed's
-main-push job. PR smoke jobs remain GitHub-hosted and the Macro job cannot use
-shared Go caches. Validation includes refusals for PR Macro execution, a different
-Macro label, a Macro smoke runner and a shared Go cache on the Macro job.
+native one-iteration smoke checks from CodSpeed walltime reporting. Walltime now
+runs daily on main and on explicit, budget-admitted PR requests from a bot
+comment, using `codspeed-macro-arm64-graviton-ubuntu-22-04`. The request controller
+executes trusted main tooling; PR code runs in its original unprivileged
+`pull_request` context. Both measurement lanes use the same hardware and disable
+shared Go caches. The first daily main run establishes the new baseline;
+previous hosted x64 timings are not comparable. PR smoke remains GitHub-hosted.
+The closed runner policy allows only the daily/manual main and requested PR
+measurement jobs to use this exact Macro label.
 
 CodSpeed lists 600 included ARM64 Macro minutes per month, then $0.032/minute.
 Account runner access must be enabled before the first main run. This change
 does not enroll the organisation or alter billing settings. Manual dispatch
-deliberately runs smoke only, so it cannot spend Macro minutes on a PR branch.
+includes an admitted walltime run on main; branch dispatch remains smoke only.
+See [Daily and requested PR wallclock benchmarks](codspeed-daily-pr-benchmarks.md)
+for the allowance, credit option, trust boundaries and activation steps.
 
 Reference: <https://codspeed.io/docs/benchmarks/go>.
+
+Four fixed publish/import/history/diff cases and a separate large-matrix browser
+check extend this coverage. See [UX performance benchmark additions](ux-performance-benchmarks.md)
+for fixture reset semantics, CI wiring, provisional browser ceilings and local evidence.

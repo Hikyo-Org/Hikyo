@@ -83,16 +83,26 @@ for file in "$@"; do
 			;;
 	esac
 	runner_source=$file
-	if [ "$(basename "$file")" = codspeed.yml ]; then
-		# Only the main performance job may use this approved Macro runner.
-		# PR smoke checks and any future jobs stay in the GitHub-hosted pool.
+	if [ "$(basename "$file")" = codspeed.yml ] || [ "$(basename "$file")" = pr-benchmark.yml ]; then
+		# Only the daily/manual main job and the explicitly requested, read-only
+		# PR job may use Macro. Other jobs stay in the GitHub-hosted pool.
 		macro=$(workflow_job_block "$file" benchmarks)
 		printf '%s\n' "$macro" | grep -Fx '    runs-on: codspeed-macro-arm64-graviton-ubuntu-22-04' >/dev/null ||
 			fail 'CodSpeed main benchmarks must use the approved Graviton Macro runner'
 		[ "$(printf '%s\n' "$macro" | grep -c 'runs-on:')" = 1 ] ||
 			fail 'CodSpeed main benchmarks must declare exactly one runner'
-		printf '%s\n' "$macro" | grep -Fx "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'" >/dev/null ||
-			fail 'CodSpeed Macro runner must be restricted to pushes to main'
+		if [ "$(basename "$file")" = codspeed.yml ]; then
+			printf '%s\n' "$macro" | grep -Fx "    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.budget.outputs.allowed == 'true'" >/dev/null ||
+				fail 'CodSpeed main Macro runner must require daily/manual main budget admission'
+		else
+			printf '%s\n' "$macro" | grep -Fx "    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'" >/dev/null ||
+				fail 'PR Macro runner must require an explicit unprivileged PR request'
+			if grep -E '^[[:space:]]+(id-token|pull-requests|contents|actions):[[:space:]]+write|secrets\.' "$file" >/dev/null; then
+				fail 'PR Macro runner must not receive secrets or write authority'
+			fi
+		fi
+		printf '%s\n' "$macro" | grep -Fx '    timeout-minutes: 15' >/dev/null ||
+			fail 'CodSpeed Macro timeout must fit the reserved job allowance'
 		printf '%s\n' "$macro" | grep -Fx '          cache: false' >/dev/null ||
 			fail 'CodSpeed Macro runner must disable shared Go caches'
 		if printf '%s\n' "$macro" | grep -E 'actions/cache(@|/)|^[[:space:]]+cache:[[:space:]]+true' >/dev/null; then

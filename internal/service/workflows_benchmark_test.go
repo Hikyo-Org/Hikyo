@@ -8,6 +8,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
 // These benchmarks exercise authorized service operations against disk-backed
@@ -15,19 +16,30 @@ import (
 // writes and external adapters. Reads keep dataset size fixed across iterations.
 // Nil budgets deliberately exclude rate limiting from service throughput.
 type workflowBenchmark struct {
+	path      string
+	admission upgrade.Admission
 	actor     Actor
 	scope     domain.Scope
 	values    *Values
 	revisions *Revisions
 	count     int
 	pending   map[string]string
+	keyIDs    map[string]string
 }
 
 func newWorkflowBenchmark(b *testing.B, count int) workflowBenchmark {
 	b.Helper()
-	self, actor := selfConfigFixtureConfig(b,
-		store.Config{Engine: store.EngineSQLite, Path: filepath.Join(b.TempDir(), "benchmark.db")},
-		map[string]string{"HIKYO_UPDATE_CHANNEL": "nightly"})
+	return newWorkflowBenchmarkDrafts(b, count, true)
+}
+
+func newWorkflowBenchmarkDrafts(b *testing.B, count int, drafts bool) workflowBenchmark {
+	b.Helper()
+	path := filepath.Join(b.TempDir(), "benchmark.db")
+	db, admission, err := openServiceFixtureAdmission(b, store.Config{Engine: store.EngineSQLite, Path: path})
+	if err != nil {
+		b.Fatal(err)
+	}
+	self, actor := selfConfigFixtureDB(b, db, map[string]string{"HIKYO_UPDATE_CHANNEL": "nightly"})
 	ctx := b.Context()
 	org, err := (&Orgs{DB: self.DB}).Create(ctx, actor, "benchmark", true, []byte(`{}`))
 	if err != nil {
@@ -40,6 +52,7 @@ func newWorkflowBenchmark(b *testing.B, count int) workflowBenchmark {
 	scope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(project.ID)}
 	keys := &Keys{DB: self.DB, Keyring: self.Keyring}
 	entries := make([]ImportEntry, count)
+	keyIDs := make(map[string]string, count)
 	// Declare before creating the environment to avoid measuring fixture fan-out.
 	for i := range count {
 		classification := "config"
@@ -47,7 +60,7 @@ func newWorkflowBenchmark(b *testing.B, count int) workflowBenchmark {
 			classification = "secret"
 		}
 		name := fmt.Sprintf("SETTING_%04d", i)
-		_, err := keys.Create(ctx, actor, scope, KeySpec{
+		key, err := keys.Create(ctx, actor, scope, KeySpec{
 			Name: name, Classification: classification,
 			Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}},
 			Presence:    schema.DefaultPresenceRules(),
@@ -55,6 +68,7 @@ func newWorkflowBenchmark(b *testing.B, count int) workflowBenchmark {
 		if err != nil {
 			b.Fatal(err)
 		}
+		keyIDs[name] = key.ID
 		entries[i] = ImportEntry{Key: name, Value: "https://service.example.test/path?setting=" + name}
 	}
 	env, err := (&Environments{DB: self.DB, Keyring: self.Keyring}).Create(ctx, actor, scope, "development", nil)
@@ -70,14 +84,14 @@ func newWorkflowBenchmark(b *testing.B, count int) workflowBenchmark {
 	revisions := &Revisions{DB: self.DB, Keyring: self.Keyring, Auth: self.Auth}
 	// Live drafts on 10% of keys distinguish signals from an empty-draft query.
 	pending := make(map[string]string, count/10)
-	for i := 0; i < count; i += 10 {
+	for i := 0; drafts && i < count; i += 10 {
 		change, err := values.Set(ctx, actor, scope, entries[i].Key, "pending-value", nil)
 		if err != nil || change.VersionID == "" {
 			b.Fatalf("fixture draft: %v", err)
 		}
 		pending[entries[i].Key] = change.VersionID
 	}
-	return workflowBenchmark{actor: actor, scope: scope, values: values, revisions: revisions, count: count, pending: pending}
+	return workflowBenchmark{path: path, admission: admission, actor: actor, scope: scope, values: values, revisions: revisions, count: count, pending: pending, keyIDs: keyIDs}
 }
 
 func benchmarkWorkflowSizes(b *testing.B, run func(*testing.B, workflowBenchmark)) {

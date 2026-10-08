@@ -1,0 +1,49 @@
+name: matrix-performance
+
+# Browser rendering is measured on hosted Chromium, separately from the paid
+# CodSpeed pool. The caller chooses the same immutable head as its Go suite.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact commit to exercise
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: Large matrix browser performance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
+      - name: Install generated client dependencies
+        working-directory: clients/ts
+        run: pnpm install --frozen-lockfile
+      - name: Install browser harness dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Measure desktop and mobile interactions
+        working-directory: web
+        run: pnpm exec playwright test --config e2e/performance.config.ts
+      - name: Retain timing samples and failure traces
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: matrix-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: web/test-results/matrix-performance/results/
+          retention-days: 14
+          if-no-files-found: error
