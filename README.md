@@ -240,3 +240,11 @@ Hikyo is licensed under the [Mozilla Public License 2.0](./LICENSE).
     <img alt="CodSpeed logo" src="https://codspeed.io/codspeed-logo-light.svg" width="400">
   </picture>
 </a>
+
+<a href="https://www.coderabbit.ai/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/content/assets/orange-typemark.svg">
+    <img alt="CodeRabbit logo" src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" width="400">
+  </picture>
+</a>
