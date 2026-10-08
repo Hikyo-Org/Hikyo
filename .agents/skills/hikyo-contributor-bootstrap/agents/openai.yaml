@@ -1,0 +1,3 @@
+interface:
+  display_name: "Hikyo Contributor Bootstrap"
+  short_description: "Set up signing, local development, tests, and PRs"

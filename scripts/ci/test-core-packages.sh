@@ -3,6 +3,9 @@
 # DROP DATABASE waits for the shared PostgreSQL checkpoint/fsync queue.
 # Isolation has its existing dedicated shards; every other package runs once.
 set -euo pipefail
+# Compile the lint matrix before Go's package-test alarm starts. Do not let
+# cold cross-platform export builds contend with the concurrent test pool.
+go run ./scripts/ci/prepare-lint-cache
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-test-core.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 isolation_package=$(go list ./internal/isolation)

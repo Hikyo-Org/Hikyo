@@ -55,6 +55,7 @@ const siteLinks = new Map([
   ['../adr/stable-workflow-signing.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/stable-workflow-signing.md'],
   ['../research/release-signing-ceremonies.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/research/release-signing-ceremonies.md'],
   ['./CONTRIBUTING.md', '/contributing/'],
+  ['./.agents/skills/hikyo-contributor-bootstrap/SKILL.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/.agents/skills/hikyo-contributor-bootstrap/SKILL.md'],
   ['./GOVERNANCE.md', '/governance/'],
   ['./GOVERNANCE.md#amendment-procedure', '/governance/#amendment-procedure'],
   ['./docs/status/README.md', '/implementation-status/'],

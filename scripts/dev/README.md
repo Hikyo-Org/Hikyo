@@ -12,6 +12,10 @@ fail-fast in cost order, so you hit a `tsc`/`vet`/DCO error in ~2 min locally
 instead of ~8 min into a container job. Pins Node from `.nvmrc` via `fnm` and
 gets `pnpm` through Corepack, matching CI's toolchain.
 
+Before running it, fetch canonical main into `hikyo-upstream/main` using the
+signing setup in `CONTRIBUTING.md`. Preflight refuses a missing canonical base
+instead of comparing against a fork's `origin/main` or skipping DCO.
+
 ```
 scripts/dev/preflight.sh          # DCO, gofmt, imports, build, vet, api-freeze, TS typechecks
 scripts/dev/preflight.sh --full   # + generated-freshness + supply-chain fixtures

@@ -2,14 +2,14 @@ package main
 
 import "testing"
 
-// TestRacePlanBalancesRepository plans this repository's six race shards and
+// TestRacePlanBalancesRepository plans this repository's eight race shards and
 // logs each predicted duration; run with -v after regenerating the weights.
 func TestRacePlanBalancesRepository(t *testing.T) {
 	packages, err := listPackages("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	shards, err := planRace(packages, 6)
+	shards, err := planRace(packages, 8)
 	if err != nil {
 		t.Fatal(err)
 	}

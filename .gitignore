@@ -27,6 +27,11 @@ go.work.sum
 # env file
 .env
 
+# Repository skills must remain trackable even with a global .agents ignore.
+!/.agents/
+/.agents/*
+!/.agents/skills/
+
 # Editor/IDE
 # .idea/
 # .vscode/
