@@ -1228,7 +1228,9 @@ jobs:
           fuzz_plan='[]'
           isolation_plan='[]'
           shard_count=3
-          race_shard_count=6
+          # Six shards exceeded the 30-minute job cap on a cold runner.
+          # Spread every existing target further without extending timeouts.
+          race_shard_count=8
           shard=0
           while [ "$shard" -lt "$race_shard_count" ]; do
             race_shard=$(go run "$trusted_planner" race --root . \

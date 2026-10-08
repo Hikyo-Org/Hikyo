@@ -7,7 +7,10 @@ mkdir "$work/bin"
 cat >"$work/bin/go" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$1" == list ]]; then
+if [[ "$1" == run && "$2" == ./scripts/ci/prepare-lint-cache ]]; then
+  printf 'prepared\n' >"$CORE_TEST_PREPARED"
+  [[ "$CORE_TEST_FAIL" != prepare ]] || exit 95
+elif [[ "$1" == list ]]; then
   case "$2" in
     ./internal/app) printf 'example/internal/app\n' ;;
     ./internal/isolation) printf 'example/internal/isolation\n' ;;
@@ -15,6 +18,7 @@ if [[ "$1" == list ]]; then
     *) exit 90 ;;
   esac
 elif [[ "$1" == test && "$2" == -count=1 ]]; then
+  [[ -f "$CORE_TEST_PREPARED" ]] || exit 96
   shift 2
   printf '%s\n' "$@" >>"$CORE_TEST_EXECUTED"
   printf 'call\n' >>"$CORE_TEST_CALLS"
@@ -34,10 +38,12 @@ export RUNNER_TEMP="$work"
 export CORE_TEST_INVENTORY="$work/inventory"
 export CORE_TEST_EXECUTED="$work/executed"
 export CORE_TEST_CALLS="$work/calls"
+export CORE_TEST_PREPARED="$work/prepared"
 export CORE_TEST_FAIL=''
 printf '%s\n' example/internal/service example/internal/app example/internal/isolation example/cmd/hikyo >"$CORE_TEST_INVENTORY"
 printf '%s\n' example/internal/service example/cmd/hikyo example/internal/app >"$work/expected"
 for failure in '' concurrent app; do
+  rm -f "$CORE_TEST_PREPARED"
   : >"$CORE_TEST_EXECUTED"
   : >"$CORE_TEST_CALLS"
   export CORE_TEST_FAIL="$failure"
@@ -46,6 +52,14 @@ for failure in '' concurrent app; do
   if [[ "$failure" == '' ]]; then [[ "$result" == 0 ]]; else [[ "$result" != 0 ]]; fi
   cmp "$work/expected" "$CORE_TEST_EXECUTED"
 done
+export CORE_TEST_FAIL=prepare
+: >"$CORE_TEST_EXECUTED"
+if "$root/scripts/ci/test-core-packages.sh" >"$work/log" 2>&1; then
+  echo 'test core fixture: failed lint preparation accepted' >&2
+  exit 1
+fi
+[[ ! -s "$CORE_TEST_EXECUTED" ]]
+export CORE_TEST_FAIL=''
 for inventory in missing-app missing-isolation duplicate empty-concurrent; do
   printf '%s\n' example/internal/service example/internal/app example/internal/isolation >"$CORE_TEST_INVENTORY"
   case "$inventory" in
@@ -65,4 +79,4 @@ for inventory in missing-app missing-isolation duplicate empty-concurrent; do
     grep -Fx 'test core: concurrent package inventory is empty' "$work/log" >/dev/null
   fi
 done
-echo 'test core fixture: exact coverage, app ordering, failure propagation and inventory refusals passed'
+echo 'test core fixture: cache preparation, exact coverage, app ordering, failure propagation and inventory refusals passed'

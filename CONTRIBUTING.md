@@ -22,8 +22,9 @@ signing configuration and does not push, merge, or deploy without authorization.
 
 ## Developer Certificate of Origin
 
-Every commit in a pull request must carry both a Developer Certificate of Origin
-(DCO) sign-off and a cryptographic signature that GitHub reports as **Verified**.
+Every commit in a pull request must carry a Developer Certificate of Origin
+(DCO) sign-off. It must also carry a cryptographic signature that GitHub reports
+as **Verified**.
 After completing the [signing setup](#commit-signing-setup), commit with:
 
 ```sh
