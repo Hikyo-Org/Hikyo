@@ -1748,8 +1748,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hono@4.13.12:
-    resolution: {integrity: sha512-6E2QDAc9Ick9Sq77ZrGS/dk2WUYni91aufTw6LJKpV7w8kW5/GxVUc650FOADOmlwg3K+f7Pun6XlV+pYmW6gw==}
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@2.0.2:
@@ -2214,8 +2214,8 @@ packages:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
     engines: {node: '>=18'}
 
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
   source-map@0.6.1:
@@ -2791,9 +2791,9 @@ snapshots:
 
   '@fontsource/ibm-plex-mono@5.3.0': {}
 
-  '@hono/node-server@1.19.17(hono@4.13.12)':
+  '@hono/node-server@1.19.17(hono@4.13.13)':
     dependencies:
-      hono: 4.13.12
+      hono: 4.13.13
 
   '@iconify/types@2.0.0': {}
 
@@ -2952,11 +2952,11 @@ snapshots:
 
   '@open-pencil/mcp@0.15.0(typescript@7.0.2)':
     dependencies:
-      '@hono/node-server': 1.19.17(hono@4.13.12)
+      '@hono/node-server': 1.19.17(hono@4.13.13)
       '@modelcontextprotocol/server': 2.0.0
       '@open-pencil/core': 0.15.0(typescript@7.0.2)
       '@valibot/to-json-schema': 1.8.0(valibot@1.5.0(typescript@7.0.2))
-      hono: 4.13.12
+      hono: 4.13.13
       package-manager-detector: 1.8.0
       valibot: 1.5.0(typescript@7.0.2)
       ws: 8.21.3
@@ -3775,7 +3775,7 @@ snapshots:
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   css.escape@1.5.1: {}
 
@@ -3942,7 +3942,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.13.12: {}
+  hono@4.13.13: {}
 
   html-escaper@2.0.2: {}
 
@@ -4104,7 +4104,7 @@ snapshots:
     dependencies:
       '@babel/parser': 7.29.8
       '@babel/types': 7.29.8
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   make-dir@4.0.0:
     dependencies:
@@ -4276,7 +4276,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.18
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   pptxgenjs@4.0.1:
     dependencies:
@@ -4420,7 +4420,7 @@ snapshots:
       mrmime: 2.0.1
       totalist: 3.0.1
 
-  source-map-js@1.2.1: {}
+  source-map-js@1.2.2: {}
 
   source-map@0.6.1: {}
 
