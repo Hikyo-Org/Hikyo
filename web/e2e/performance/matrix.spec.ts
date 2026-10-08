@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { z } from 'zod';
 import type { RenderCondition } from './timing.ts';
@@ -73,7 +74,9 @@ test('large matrix remains usable while filtering, editing and receiving updates
     if (medianMs === undefined || maxMs === undefined) throw new Error(`No samples for ${label}`);
     return { label, samples: times.length, medianMs, maxMs };
   });
-  await testInfo.attach('matrix-performance.json', { body: JSON.stringify({ viewport: testInfo.project.name, keys: 1000, environments: 20, metrics, ...report }, null, 2), contentType: 'application/json' });
+  const reportPath = testInfo.outputPath('matrix-performance.json');
+  await writeFile(reportPath, JSON.stringify({ viewport: testInfo.project.name, keys: 1000, environments: 20, metrics, ...report }, null, 2));
+  await testInfo.attach('matrix-performance.json', { path: reportPath, contentType: 'application/json' });
   console.log(JSON.stringify({ viewport: testInfo.project.name, metrics }));
   expect(errors).toEqual([]);
   expect(report.failures).toEqual([]);

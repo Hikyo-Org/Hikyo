@@ -21,17 +21,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      allowed: ${{ steps.request.outputs.allowed }}
+      allowed: ${{ steps.request.outputs.allowed || steps.initial.outputs.allowed }}
     steps:
+      # Initial runs are discovery-only, including the bootstrap PR before
+      # trusted main contains the verifier. Only admitted reruns execute it.
+      - name: Initial run has no benchmark request
+        if: github.run_attempt == 1
+        id: initial
+        run: echo 'allowed=false' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.run_attempt > 1
         with:
           ref: refs/heads/main
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: github.run_attempt > 1
         with:
           go-version-file: go.mod
           cache: false
       - name: Verify the bot request for this exact head and attempt
+        if: github.run_attempt > 1
         id: request
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,5 +97,3 @@ jobs:
     needs: request
     if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'
     uses: ./.github/workflows/matrix-performance.yml
-    with:
-      ref: ${{ github.event.pull_request.head.sha }}

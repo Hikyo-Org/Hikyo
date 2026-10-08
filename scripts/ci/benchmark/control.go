@@ -331,18 +331,20 @@ func findRun(repository string, pr pull) (benchmarkRun, error) {
 func checkWorkflow(repository string, pr pull) error {
 	// A PR cannot redefine the job that receives runner admission. The workflow
 	// must be byte-identical to main, even if the rest of the PR changes CI.
-	var trusted, candidate struct {
-		SHA string `json:"sha"`
-	}
-	path := "repos/" + repository + "/contents/.github/workflows/pr-benchmark.yml?ref="
-	if err := readAPI(path+"main", &trusted); err != nil {
-		return err
-	}
-	if err := readAPI(path+pr.Head.SHA, &candidate); err != nil {
-		return err
-	}
-	if trusted.SHA == "" || trusted.SHA != candidate.SHA {
-		return fmt.Errorf("PR benchmark workflow must match main; merge workflow changes before using paid PR benchmarks")
+	for _, workflow := range []string{"pr-benchmark.yml", "matrix-performance.yml"} {
+		var trusted, candidate struct {
+			SHA string `json:"sha"`
+		}
+		path := "repos/" + repository + "/contents/.github/workflows/" + workflow + "?ref="
+		if err := readAPI(path+"main", &trusted); err != nil {
+			return err
+		}
+		if err := readAPI(path+pr.Head.SHA, &candidate); err != nil {
+			return err
+		}
+		if trusted.SHA == "" || trusted.SHA != candidate.SHA {
+			return fmt.Errorf("PR benchmark workflow %s must match main; merge workflow changes before using paid PR benchmarks", workflow)
+		}
 	}
 	return nil
 }

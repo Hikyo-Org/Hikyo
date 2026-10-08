@@ -1,9 +1,8 @@
 name: codspeed
 
-# PRs smoke-test on hosted runners. Daily and manual main runs use the same
-# budget-checked walltime lane. CodSpeed uses OIDC.
+# Daily and manual main runs use the same budget-checked walltime lane.
+# PR smoke checks have separate cancellation in benchmark-smoke.yml.
 on:
-  pull_request:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
@@ -17,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.ref == 'refs/heads/main' && 'codspeed-walltime' || format('codspeed-{0}', github.ref) }}
+  group: codspeed-walltime
   # Serialize the budget decision and measurement together. A new manual run
   # must not cancel a paid job or race its usage accounting.
   cancel-in-progress: false
@@ -28,30 +27,6 @@ jobs:
     name: Main browser performance
     if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/matrix-performance.yml
-    with:
-      ref: ${{ github.sha }}
-
-  smoke:
-    name: Benchmark smoke
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Exercise every benchmark once
-        run: >-
-          go test -run '^$' -bench . -benchtime=1x
-          ./internal/crypto/
-          ./internal/dotenv/
-          ./internal/scanning/
-          ./internal/server/
-          ./internal/service/
 
   budget:
     name: Check walltime allowance

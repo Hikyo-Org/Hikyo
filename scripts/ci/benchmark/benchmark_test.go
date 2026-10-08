@@ -121,9 +121,9 @@ func TestUsageIncludesBothWorkflowsAndAllAttempts(t *testing.T) {
 	j2.ID = 12
 	j2.Conclusion = "success"
 	log := fakeGH(t, map[string]string{
-		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100": `[{"workflow_runs":[{"id":1,"event":"schedule","status":"completed","updated_at":"2026-10-08T12:00:00Z"}]}]`,
+		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100": `[{"workflow_runs":[{"id":1,"run_attempt":2,"event":"schedule","status":"completed","updated_at":"2026-10-08T12:00:00Z"}]}]`,
 		// An old run rerun recently remains included through updated_at.
-		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100": `[{"workflow_runs":[]},{"workflow_runs":[{"id":2,"event":"pull_request","status":"completed","updated_at":"2026-10-08T12:00:00Z"}]}]`,
+		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100": `[{"workflow_runs":[]},{"workflow_runs":[{"id":2,"run_attempt":2,"event":"pull_request","status":"completed","updated_at":"2026-10-08T12:00:00Z"}]}]`,
 		"repos/o/r/actions/runs/1/jobs?filter=all&per_page=100":          `[{"jobs":[]}]`,
 		"repos/o/r/actions/runs/2/jobs?filter=all&per_page=100":          encode(t, []map[string][]job{{"jobs": {j}}, {"jobs": {j, j2}}}),
 	})
@@ -164,7 +164,7 @@ func testMainRetryReservation(t *testing.T, status string) {
 	active.Conclusion = ""
 	active.CompletedAt = nil
 	fakeGH(t, map[string]string{
-		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":     fmt.Sprintf(`[{"workflow_runs":[{"id":1,"event":"schedule","status":"in_progress","updated_at":%q}]}]`, now.Format(time.RFC3339)),
+		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":     fmt.Sprintf(`[{"workflow_runs":[{"id":1,"run_attempt":2,"event":"schedule","status":"in_progress","updated_at":%q}]}]`, now.Format(time.RFC3339)),
 		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100": `[{"workflow_runs":[]}]`,
 		"repos/o/r/actions/runs/1/jobs?filter=all&per_page=100":          encode(t, []map[string][]job{{"jobs": {prior, active}}}),
 	})
@@ -290,15 +290,36 @@ func TestUnauthorizedCheckboxIsNotARequest(t *testing.T) {
 }
 
 func TestChangedWorkflowCannotGetPaidAdmission(t *testing.T) {
-	head := strings.Repeat("a", 40)
-	pr := pull{Number: 7}
-	pr.Head.SHA = head
+	for _, changed := range []string{"pr-benchmark.yml", "matrix-performance.yml"} {
+		t.Run(changed, func(t *testing.T) {
+			head := strings.Repeat("a", 40)
+			pr := pull{Number: 7}
+			pr.Head.SHA = head
+			responses := map[string]string{}
+			for _, workflow := range []string{"pr-benchmark.yml", "matrix-performance.yml"} {
+				path := "repos/o/r/contents/.github/workflows/" + workflow + "?ref="
+				responses[path+"main"] = `{"sha":"trusted"}`
+				responses[path+head] = `{"sha":"trusted"}`
+				if workflow == changed {
+					responses[path+head] = `{"sha":"changed"}`
+				}
+			}
+			fakeGH(t, responses)
+			if err := checkWorkflow("o/r", pr); err == nil || !strings.Contains(err.Error(), changed) {
+				t.Fatalf("changed workflow must not receive admission: %v", err)
+			}
+		})
+	}
+}
+
+func TestUsageSkipsInitialPRSmokeWithoutSkippingReruns(t *testing.T) {
+	now := time.Now().UTC()
 	fakeGH(t, map[string]string{
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":    `{"sha":"trusted"}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head: `{"sha":"changed"}`,
+		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":     fmt.Sprintf(`[{"workflow_runs":[{"id":1,"run_attempt":1,"event":"pull_request","status":"completed","updated_at":%q}]}]`, now.Format(time.RFC3339)),
+		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100": fmt.Sprintf(`[{"workflow_runs":[{"id":2,"run_attempt":1,"event":"pull_request","status":"in_progress","updated_at":%q}]}]`, now.Format(time.RFC3339)),
 	})
-	if err := checkWorkflow("o/r", pr); err == nil {
-		t.Fatal("changed workflow must not receive Macro admission")
+	if got, err := collect("o/r", now, 0); err != nil || got != (usage{}) {
+		t.Fatalf("initial PR runs must need no jobs calls: %+v %v", got, err)
 	}
 }
 
@@ -335,15 +356,17 @@ func TestCheckboxRunsAndReportsOnlyTheAuthorizedPullRequest(t *testing.T) {
 	measured.Conclusion = "success"
 	measured.RunnerName = "macro"
 	log := fakeGH(t, map[string]string{
-		"repos/o/r/collaborators/maintainer/permission":                     `{"permission":"write"}`,
-		"repos/o/r/pulls/7":                                                 `{"number":7,"state":"open","head":{"sha":"` + head + `"}}`,
-		"repos/o/r/issues/7/comments?per_page=100":                          encode(t, [][]comment{{c}}),
-		"repos/o/r/issues/comments/20":                                      `{}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":    `{"sha":"trusted"}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head: `{"sha":"trusted"}`,
+		"repos/o/r/collaborators/maintainer/permission":                                                           `{"permission":"write"}`,
+		"repos/o/r/pulls/7":                                                                                       `{"number":7,"state":"open","head":{"sha":"` + head + `"}}`,
+		"repos/o/r/issues/7/comments?per_page=100":                                                                encode(t, [][]comment{{c}}),
+		"repos/o/r/issues/comments/20":                                                                            `{}`,
+		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":                                          `{"sha":"trusted"}`,
+		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head:                                       `{"sha":"trusted"}`,
 		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?event=pull_request&head_sha=" + head + "&per_page=100": encode(t, []map[string][]benchmarkRun{{"workflow_runs": {wrongPR, r}}}),
 		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":                                              `[{"workflow_runs":[]}]`,
-		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100":                                          fmt.Sprintf(`[{"workflow_runs":[{"id":10,"event":"pull_request","status":"completed","updated_at":%q}]}]`, time.Now().UTC().Format(time.RFC3339)),
+		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100":                                          fmt.Sprintf(`[{"workflow_runs":[{"id":10,"run_attempt":2,"event":"pull_request","status":"completed","updated_at":%q}]}]`, time.Now().UTC().Format(time.RFC3339)),
+		"repos/o/r/contents/.github/workflows/matrix-performance.yml?ref=main":                                    `{"sha":"trusted"}`,
+		"repos/o/r/contents/.github/workflows/matrix-performance.yml?ref=" + head:                                 `{"sha":"trusted"}`,
 		"repos/o/r/actions/runs/10/jobs?filter=all&per_page=100":                                                  encode(t, []map[string][]job{{"jobs": {skip}}}),
 		"repos/o/r/actions/runs/10/rerun":                                                                         `{}`,
 		"repos/o/r/actions/runs/10":                                                                               encode(t, completed),

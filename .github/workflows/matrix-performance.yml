@@ -1,14 +1,9 @@
 name: matrix-performance
 
 # Browser rendering is measured on hosted Chromium, separately from the paid
-# CodSpeed pool. The caller chooses the same immutable head as its Go suite.
+# CodSpeed pool. Checkout follows the original event, never caller input.
 on:
   workflow_call:
-    inputs:
-      ref:
-        description: Exact commit to exercise
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -21,9 +16,16 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out trusted main event
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Check out the exact unprivileged PR head
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:

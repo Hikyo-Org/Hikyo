@@ -24,6 +24,7 @@ const (
 
 type run struct {
 	ID        int64     `json:"id"`
+	Attempt   int       `json:"run_attempt"`
 	Event     string    `json:"event"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -144,10 +145,16 @@ func collect(repository string, now time.Time, currentMacroRun int64) (usage, er
 			return usage{}, fmt.Errorf("GitHub returned incomplete run history")
 		}
 		for _, r := range page.Runs {
-			if r.ID <= 0 || r.UpdatedAt.IsZero() || r.Status == "" || r.Event == "" {
+			if r.ID <= 0 || r.Attempt < 1 || r.UpdatedAt.IsZero() || r.Status == "" || r.Event == "" {
 				return usage{}, fmt.Errorf("run has incomplete identity or timestamp")
 			}
 			if r.Status == "completed" && r.UpdatedAt.Before(cutoff) {
+				continue
+			}
+			// PR attempt one is discovery/smoke only. Paid PR measurements require
+			// an admitted rerun, so ordinary PR pushes need no per-run jobs call.
+			// Keep all history pages: a newly rerun old run can still be billable.
+			if r.Event == "pull_request" && r.Attempt == 1 {
 				continue
 			}
 			var jobPages []struct {

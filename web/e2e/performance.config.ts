@@ -13,7 +13,7 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 5'] } },
   ],
   webServer: {
-    command: 'pnpm exec vite build --config e2e/performance/vite.config.ts && pnpm exec vite preview --config e2e/performance/vite.config.ts --host 0.0.0.0 --port 4320 --strictPort',
+    command: 'pnpm exec vite build --config e2e/performance/vite.config.ts && pnpm exec vite preview --config e2e/performance/vite.config.ts --host 127.0.0.1 --port 4320 --strictPort',
     cwd: fileURLToPath(new URL('..', import.meta.url)),
     url: 'http://127.0.0.1:4320/e2e/performance/index.html', reuseExistingServer: false,
     timeout: 120_000,
