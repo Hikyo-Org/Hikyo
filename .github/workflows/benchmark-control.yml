@@ -1,0 +1,90 @@
+name: benchmark-control
+
+# Comment writes and spending decisions execute main tooling only. PR code
+# runs in pr-benchmark.yml's original read-only pull_request context.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [edited]
+  workflow_run:
+    workflows: [pr-benchmark]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Report the authorized measurement independently of its requester
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: go run ./scripts/ci/pr-benchmark-control report
+
+  comment:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: benchmark-comment-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Post or refresh the exact-head benchmark control
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: go run ./scripts/ci/pr-benchmark-control prepare
+
+  request:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '- [x] Run benchmark')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: codspeed-walltime
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Authorize, reserve and run the exact-head PR benchmark
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODSPEED_CREDIT_CONFIRMED: ${{ vars.CODSPEED_CREDIT_CONFIRMED || 'false' }}
+        run: go run ./scripts/ci/pr-benchmark-control request

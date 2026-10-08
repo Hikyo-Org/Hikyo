@@ -1,0 +1,84 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Daily and requested PR wallclock benchmarks</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:900px;margin:36px auto;padding:0 20px;color:#17212f;background:#fff}h1{font-size:1.8rem;line-height:1.25}h2{font-size:1.25rem;margin-top:30px}a{color:#2159bf}li{margin:8px 0}pre{background:#f2f5f9;padding:16px;border-radius:10px;overflow:auto}code{font-size:.88em;overflow-wrap:anywhere}p{overflow-wrap:anywhere}table{border-collapse:collapse;display:block;overflow:auto;width:100%}th,td{padding:8px 12px;border:1px solid #b6c2d2;text-align:left}@media(prefers-color-scheme:dark){body{background:#14181e;color:#e6eaf0}a{color:#93b8ff}pre{background:#222b38}th,td{border-color:#526174}}</style></head><body><h1>PR #863: Daily and requested PR wallclock benchmarks</h1>
+<p>Hikyo runs CodSpeed walltime once daily on main, and on demand for a specific PR head from a bot comment. There is no paid run on every merge. The implementation runs the Go benchmark suite, including fixed publish, import, history and diff cases, plus a separate large-matrix browser check. It does not add an end-to-end load-test harness.</p>
+<h2>Behavior</h2>
+<ul>
+<li><code>benchmark-smoke.yml</code> runs PR smoke checks on hosted runners and cancels superseded heads.</li>
+<li><code>codspeed.yml</code> schedules main at <strong>03:17 UTC daily</strong>. Main-only manual dispatch remains available and includes walltime rather than only smoke checks.</li>
+<li>Every opened, reopened or updated PR receives one <strong>Performance</strong> comment with <strong>Run benchmark</strong> and <strong>Use confirmed credit</strong> checkboxes. A new head resets the previous head's request.</li>
+<li>A collaborator with write, maintain or admin permission can tick <strong>Run benchmark</strong>. The controller checks live permission, comment identity, current head and both unchanged benchmark workflows (<code>pr-benchmark.yml</code> and its reusable <code>matrix-performance.yml</code>) before admitting spending.</li>
+<li>The request reruns <code>pr-benchmark.yml</code> for that exact head. Its first attempt is discovery-only; the trusted verifier executes on later attempts. Its original event stays <code>pull_request</code>, including for forks. The PR executes with a read-only token, no secrets, no OIDC and no shared main-cache writes.</li>
+<li>The controller and reporter execute tooling from main. They hold comment write authority; the PR benchmark does not. No PR artifact is executed or used to establish PR identity.</li>
+<li>Results link to the exact run attempt. CodSpeed supplies performance analysis against the available main baseline on the same Graviton label. This is not an exact merge-base versus head paired comparison or a release acceptance proof. A daily main result must exist before a useful comparison can be expected.</li>
+<li>Stale heads and different rerun attempts cannot reuse a request. The Macro job checks again before executing PR code. A separate trusted completion reporter updates the result even if the requester's monitoring job ends.</li>
+<li>Daily and requested runs share <code>codspeed-walltime</code> serialization. <code>queue: max</code> preserves up to 100 pending requests instead of replacing the previous pending request. The PR execution workflow has its own per-PR group, so the controller can retain the global lease while the requested measurement runs.</li>
+</ul>
+<p>The controller waits up to 25 minutes for runner assignment and measurement, then requests cancellation. GitHub can require maintainer approval before a fork's initial workflow runs. Wait for that initial exact-head check before ticking the box. Benchmark workflow changes must land on main before their PR can use this paid lane.</p>
+<h2>Allowance and credit</h2>
+<p>The admission module reads both benchmark workflows' paginated run and job history, including all attempts. Initial PR smoke/discovery runs skip per-run job queries; admitted reruns still include every attempt, even when the original run predates the window. A creation-date filter would lose that usage, so all history pages remain included. It counts the complete assigned Macro job, rounds up to a minute and adds another minute of margin. Failed and cancelled assigned jobs count. Cancelled or skipped jobs that never received a runner do not turn queue time into cost. Incomplete usage or an active Macro job prevents a new admission.</p>
+<p>Each new measurement reserves <strong>16 minutes</strong> against a <strong>15-minute job timeout</strong>. A <strong>32-day lookback</strong> avoids relying on an unverified billing reset date. <strong>528 minutes</strong> are reserved for daily coverage, including boundary overlap and the next full reservation; ordinary requested runs have <strong>72 minutes</strong>. Together these allowances are <strong>600 minutes</strong>. Accounting uses conservative full-job time, not only the timed benchmark section.</p>
+<p>An explicit <strong>Use confirmed credit</strong> request adds at most <strong>156 minutes</strong> to the requested-run allowance over that same window. At the published <strong>$0.032/minute</strong> rate, that is <strong>$4.992</strong>, under $5. Earlier credit-funded requests do not consume the daily allowance. Main manual dispatch exposes the equivalent <code>use_credit</code> input. Credit is off by default.</p>
+<p>At a five-minute full job, daily running is about <strong>155 actual runner minutes in a 31-day month</strong>, before provider rounding. At the full timeout it is <strong>465 actual runner minutes</strong>, with conservative CI accounting and extra boundary reserves on top. The offered $100 corresponds to <strong>3,125 overage minutes</strong> if it is eligible for this runner.</p>
+<p>This repository ledger covers the two Hikyo workflows, not other repositories, deleted history, or CodSpeed's invoice. It does not establish the provider's exact billing interval, rounding rules or budget-stop semantics. Use CodSpeed's account-side monthly Macro budget as the billing backstop. The $100 credit's availability, expiry, application to Macro usage and remaining balance must be confirmed before enabling credit. This code does not replenish credits, create a subscription or change billing settings. Its $5 limit is per rolling window, not a lifetime $100 balance tracker.</p>
+<h2>Activation after merge</h2>
+<ol>
+<li>
+<p>Verify CodSpeed's app installation and that its runner group permits this public repository and the benchmark workflows. Recent main jobs were cancelled without a runner assignment, so runner availability remains unproven.</p>
+</li>
+<li>
+<p>Let the daily run establish a main baseline, or trigger it once:</p>
+<pre><code class="language-sh">gh workflow run codspeed.yml --repo Hikyo-Org/Hikyo --ref main
+</code></pre>
+<p>Expected: hosted smoke and admission checks run; an admitted Macro job measures and uploads the full suite. Inspect the actual runtime and upload before considering the integration verified. A timeout is a failed measurement, not proof that the suite fits.</p>
+</li>
+<li>
+<p>Open or update a PR after the workflows are on main. Expected: one Performance comment and a hosted request check. Tick <strong>Run benchmark</strong> as a maintainer. Expected: the same exact-head PR workflow starts another attempt, an assigned Macro job runs, and the comment links to its result. CodSpeed's asynchronous analysis may appear separately.</p>
+</li>
+<li>
+<p>If the credit grant is active and eligible, confirm its balance/expiry and set the account's monthly Macro budget in CodSpeed Billing. Only then enable the local credit option:</p>
+<pre><code class="language-sh">gh variable set CODSPEED_CREDIT_CONFIRMED --repo Hikyo-Org/Hikyo --body true
+</code></pre>
+<p>Expected: checked credit requests are accepted within their additional allowance. Leave the variable unset while grant details are uncertain, and disable it when the credit expires or is exhausted. The code does not spend overage automatically.</p>
+</li>
+</ol>
+<h2>Validation and tooling</h2>
+<p>Local validation covers budget boundaries, failed jobs, queue-only cancellations, billing-window overlap, prior attempts, both workflow histories, API failures, exact head/run/attempt identity, unauthorized edits, forged bot markers, modified benchmark YAML, and skipped measurements. A process-level fake GitHub CLI exercises the successful checkbox request through rerun and result reporting, without live comments or spending.</p>
+<p>Commands from the repository root:</p>
+<pre><code class="language-sh">go test -race ./scripts/ci/benchmark ./scripts/ci/workflow-lint ./scripts/ci/codspeed-budget ./scripts/ci/pr-benchmark-control ./scripts/ci -count=1
+go vet ./scripts/ci/benchmark ./scripts/ci/workflow-lint ./scripts/ci/codspeed-budget ./scripts/ci/pr-benchmark-control
+./scripts/ci/run-go-tool.sh actionlint
+./scripts/ci/check-cache-policy_test.sh
+./scripts/ci/check-trusted-ci-scripts_test.sh
+shellcheck scripts/ci/run-go-tool.sh scripts/ci/check-cache-policy_test.sh
+</code></pre>
+<p>The repository-pinned Actionlint 1.7.12 predates GitHub's supported <code>concurrency.queue</code> field. <code>workflow-lint</code> validates its enum, cancellation compatibility, duplicate keys and standalone syntax, preserves diagnostic line numbers, then sends the remaining unchanged workflow to pinned Actionlint. No Actionlint error pattern is ignored. Existing action-pin, runner/cache and trusted-CI policy checks remain active; only the two admitted benchmark lanes may use the approved Macro label. Ordinary CI's package inventory includes the new Go packages and their regression tests.</p>
+<p>Local checks have passed. Remote CI, live bot posting, Macro execution and CodSpeed upload have not been verified for this change. Repository variables and account settings remain unchanged. Activation steps require the workflows to be merged first.</p>
+<h2>References</h2>
+<ul>
+<li><a href="https://git.dbugit.io/DBugIT_V3/Rewrite/pulls/698#issuecomment-28409">Requested Rewrite checkbox example</a></li>
+<li><a href="https://codspeed.io/docs/features/macro-runners">CodSpeed Macro runner pricing</a></li>
+<li><a href="https://codspeed.io/docs/features/seats-and-billing#macro-runner-budget">CodSpeed monthly budget setting</a></li>
+<li><a href="https://codspeed.io/docs/benchmarks/go#compatibility">CodSpeed Go compatibility</a></li>
+<li><a href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency">GitHub queued concurrency</a></li>
+<li><a href="https://docs.github.com/en/rest/actions/workflow-runs#re-run-a-workflow">GitHub workflow rerun API</a></li>
+<li><a href="https://github.com/rhysd/actionlint/issues/657">Actionlint queue support issue</a></li>
+</ul>
+<h2>UX coverage extension</h2>
+<p>Daily main and admitted PR requests also run the large-matrix browser check on
+GitHub-hosted Chromium. This adds no CodSpeed Macro usage. The Go selection now
+includes publish, mixed import, long-lived history and sparse diff measurements.
+See <a href="ux-performance-benchmarks.html">UX performance benchmark additions</a> for the
+exact datasets, reset semantics, browser ceilings and local verification.</p>
+<h2>Review and CI repair</h2>
+<p><a href="https://github.com/Hikyo-Org/Hikyo/pull/863">PR #863</a> includes fixes for its first review and CI run:</p>
+<ul>
+<li>Initial PR discovery returns <code>allowed=false</code> without invoking a verifier that has not landed on main. Reruns still use only trusted main tooling and exact head/run/attempt admission.</li>
+<li>Integrity checks cover the reusable browser workflow as well as the Macro workflow. Browser checkout comes from the original event; scheduled/main calls accept no caller-selected ref.</li>
+<li>Passing browser tests write their timing reports to disk and attach those paths. Local verification found reports for both viewports in the strict upload directory. The automated preview binds to loopback.</li>
+<li>PR smoke is a separate cancelling workflow; the paid main lane retains serialized queued admission.</li>
+<li>The ledger avoids jobs queries for initial PR attempts. It retains paginated old-run discovery because an old run can be rerun within the billable window.</li>
+<li>Formatting was corrected. Core CI prepares cross-platform compiler exports before tests, then runs repository analysis after the runtime and app suites. This combines main’s PR #860 cache preparation with this PR’s separate analysis scheduling. Inventory tests enforce each package once, ordering, and failure propagation.</li>
+<li>The reported PR merge-SHA issue was rejected using the live REST response: run <code>37799478288</code> has <code>head_sha=94f34741cdb27fe1cc2509386b7dfc4c19767f1d</code>, matching the PR branch head, not a synthetic merge SHA.</li>
+<li>The suggested <code>-benchtime</code> flag was rejected because CodSpeed supports only <code>-bench</code>. The complete native default-duration suite passed in 60 seconds locally; this is not hosted Macro runtime proof. The paid 15-minute job timeout remains unchanged.</li>
+</ul>
+<p>After repair, local browser checks, typecheck, Oxlint, native benchmark timing and controller/workflow regression checks passed. Remote checks for the follow-up commit remain the final CI verification boundary.</p>
+</body></html>

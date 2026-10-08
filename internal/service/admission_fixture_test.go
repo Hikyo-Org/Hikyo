@@ -19,12 +19,21 @@ var serviceFixtureRoots sync.Map
 // exact root. The map stores test custody only, never admission authority.
 func openServiceFixture(t testing.TB, cfg store.Config) (*store.DB, error) {
 	t.Helper()
+	db, _, err := openServiceFixtureAdmission(t, cfg)
+	return db, err
+}
+
+// Benchmarks that restore a closed fixture must reuse its original signed
+// admission, including the installation trust domain and release root.
+func openServiceFixtureAdmission(t testing.TB, cfg store.Config) (*store.DB, upgrade.Admission, error) {
+	t.Helper()
 	root, err := crypto.GenerateRootKey()
 	if err != nil {
-		return nil, err
+		return nil, upgrade.Admission{}, err
 	}
 	admission := gatefixture.Prepare(t, upgrade.Config{Engine: releaseidentity.Engine(cfg.Engine), Path: cfg.Path, DSN: cfg.DSN}, store.MigrationsFS, "migrations/"+string(cfg.Engine), bytes.Clone(root))
-	return openAdmittedServiceFixture(t, cfg, root, admission)
+	db, err := openAdmittedServiceFixture(t, cfg, root, admission)
+	return db, admission, err
 }
 
 func openAdmittedServiceFixture(t testing.TB, cfg store.Config, root []byte, admission upgrade.Admission) (*store.DB, error) {

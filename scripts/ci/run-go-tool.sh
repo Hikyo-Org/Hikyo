@@ -33,4 +33,10 @@ if [ -z "$version" ] || [ "$(printf '%s\n' "$version" | wc -l | tr -d ' ')" -ne 
 	exit 1
 fi
 
+if [ "$tool" = actionlint ]; then
+	# Validate the supported concurrency.queue key before invoking the pinned
+	# actionlint parser, which has not implemented it yet. No checks are ignored.
+	exec go run "$script_dir/workflow-lint" "$version" "$@"
+fi
+
 exec go run "$package@$version" "$@"

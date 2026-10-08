@@ -1,26 +1,43 @@
 name: codspeed
 
-# PRs smoke-test benchmarks on hosted runners. Only pushes to main use paid
-# Macro minutes and upload comparable walltime data. CodSpeed uses OIDC.
+# Daily and manual main runs use the same budget-checked walltime lane.
+# PR smoke checks have separate cancellation in benchmark-smoke.yml.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
+    inputs:
+      use_credit:
+        description: 'Allow up to $5 of monthly overage from the confirmed CodSpeed credit'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: codspeed-${{ github.ref }}
-  cancel-in-progress: true
+  group: codspeed-walltime
+  # Serialize the budget decision and measurement together. A new manual run
+  # must not cancel a paid job or race its usage accounting.
+  cancel-in-progress: false
+  queue: max
 
 jobs:
-  smoke:
-    name: Benchmark smoke
-    if: github.event_name != 'push'
+  matrix:
+    name: Main browser performance
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/matrix-performance.yml
+
+  budget:
+    name: Check walltime allowance
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      allowed: ${{ steps.allowance.outputs.allowed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,22 +46,23 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Exercise every benchmark once
-        run: >-
-          go test -run '^$' -bench . -benchtime=1x
-          ./internal/crypto/
-          ./internal/dotenv/
-          ./internal/scanning/
-          ./internal/server/
-          ./internal/service/
+      - name: Reserve a complete walltime job
+        id: allowance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODSPEED_USE_CREDIT: ${{ inputs.use_credit || false }}
+          CODSPEED_CREDIT_CONFIRMED: ${{ vars.CODSPEED_CREDIT_CONFIRMED || 'false' }}
+        run: go run ./scripts/ci/codspeed-budget
 
   benchmarks:
     name: Track main performance
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: budget
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.budget.outputs.allowed == 'true'
     runs-on: codspeed-macro-arm64-graviton-ubuntu-22-04
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,6 +72,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Recheck allowance for this attempt before measuring
+        id: allowance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODSPEED_USE_CREDIT: ${{ inputs.use_credit || false }}
+          CODSPEED_CREDIT_CONFIRMED: ${{ vars.CODSPEED_CREDIT_CONFIRMED || 'false' }}
+        run: go run ./scripts/ci/codspeed-budget
+      - name: Refuse an exhausted allowance
+        env:
+          ALLOWED: ${{ steps.allowance.outputs.allowed }}
+        run: test "$ALLOWED" = true
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:

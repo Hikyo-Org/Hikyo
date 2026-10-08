@@ -1,0 +1,73 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service performance benchmarks</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:900px;margin:36px auto;padding:0 20px;color:#17212f;background:#fff}h1{font-size:1.8rem;line-height:1.25}h2{font-size:1.25rem;margin-top:30px}a{color:#2159bf}li{margin:8px 0}pre{background:#f2f5f9;padding:16px;border-radius:10px;overflow:auto}code{font-size:.88em;overflow-wrap:anywhere}p{overflow-wrap:anywhere}table{border-collapse:collapse;display:block;overflow:auto;width:100%}th,td{padding:8px 12px;border:1px solid #b6c2d2;text-align:left}@media(prefers-color-scheme:dark){body{background:#14181e;color:#e6eaf0}a{color:#93b8ff}pre{background:#222b38}th,td{border-color:#526174}}</style></head><body><h1>Service performance benchmarks</h1>
+<p><code>internal/service/workflows_benchmark_test.go</code> adds nine read benchmark cases to the
+existing CodSpeed service package selection. Each operation runs at 10, 100 and
+1,000 keys. These are synthetic scale points, not measured production workloads.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Measured work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BenchmarkValuesList</code></td>
+<td>Real authorization, SQLite catalogue/value reads, config decryption and secret masking</td>
+</tr>
+<tr>
+<td><code>BenchmarkRevisionExport</code></td>
+<td>Real authorization, published snapshot reads, config decryption and schema resolution</td>
+</tr>
+<tr>
+<td><code>BenchmarkEnvironmentSignals</code></td>
+<td>Real authorization, catalogue, latest revision and pending-draft queries</td>
+</tr>
+</tbody>
+</table>
+<p>Fixtures use a private disk-backed SQLite datastore admitted through the signed
+development gate, a real keyring and a bootstrapped local operator. Organisation,
+project, catalogue, environment and populated snapshot are created through the
+production service methods. Twenty percent of keys are secrets; ten percent
+have pending drafts. Benchmarks read the published state, not those drafts.</p>
+<p><code>b.Loop()</code> excludes fixture construction and initial full result checks from
+timing. The loops check errors, cardinality and revision identity where relevant.
+Initial checks verify sorted key names, exact config plaintext, secret masking
+and pending version identities. <code>b.ReportAllocs()</code> reports native Go allocation
+costs. Reads do not accumulate revisions, drafts or secret disclosure audit rows.</p>
+<p>These are warm service measurements. They do not measure HTTP middleware,
+session admission, cold startup, PostgreSQL, adapter calls or concurrent load.
+Rate/concurrency budgets and advisory notification callbacks are intentionally
+unwired; a throughput benchmark must not turn into a rate-limit refusal test.
+Secret disclosure and its ceremony/audit writes are excluded: secret cells stay
+masked. Existing router, crypto, dotenv and scanning benchmarks remain separate.</p>
+<p>Native smoke check:</p>
+<pre><code class="language-sh">go test ./internal/service -run '^$' \
+  -bench 'Benchmark(ValuesList|RevisionExport|EnvironmentSignals)' \
+  -benchtime=1x -count=1
+</code></pre>
+<p>For repeated local measurements, stop other test processes and use
+<code>-benchtime=200ms -count=3</code>. Laptop timings are diagnostic, not deployment-floor
+certification or a portable performance threshold.</p>
+<p>The CodSpeed command remains <code>go test -bench=.</code> over the workflow's existing
+package paths. Do not copy native <code>-run</code>, <code>-count</code> or <code>-benchtime</code> flags there:
+the integration supports only <code>-bench</code>. The workflow separates
+native one-iteration smoke checks from CodSpeed walltime reporting. Walltime now
+runs daily on main and on explicit, budget-admitted PR requests from a bot
+comment, using <code>codspeed-macro-arm64-graviton-ubuntu-22-04</code>. The request controller
+executes trusted main tooling; PR code runs in its original unprivileged
+<code>pull_request</code> context. Both measurement lanes use the same hardware and disable
+shared Go caches. The first daily main run establishes the new baseline;
+previous hosted x64 timings are not comparable. PR smoke remains GitHub-hosted.
+The closed runner policy allows only the daily/manual main and requested PR
+measurement jobs to use this exact Macro label.</p>
+<p>CodSpeed lists 600 included ARM64 Macro minutes per month, then $0.032/minute.
+Account runner access must be enabled before the first main run. This change
+does not enroll the organisation or alter billing settings. Manual dispatch
+includes an admitted walltime run on main; branch dispatch remains smoke only.
+See <a href="codspeed-daily-pr-benchmarks.html">Daily and requested PR wallclock benchmarks</a>
+for the allowance, credit option, trust boundaries and activation steps.</p>
+<p>Reference: <a href="https://codspeed.io/docs/benchmarks/go">https://codspeed.io/docs/benchmarks/go</a>.</p>
+<p>Four fixed publish/import/history/diff cases and a separate large-matrix browser
+check extend this coverage. See <a href="ux-performance-benchmarks.html">UX performance benchmark additions</a>
+for fixture reset semantics, CI wiring, provisional browser ceilings and local evidence.</p>
+</body></html>

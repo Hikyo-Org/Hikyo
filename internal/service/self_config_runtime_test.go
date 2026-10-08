@@ -32,6 +32,11 @@ func selfConfigFixtureConfig(t testing.TB, cfg store.Config, seed map[string]str
 	if err != nil {
 		t.Fatal(err)
 	}
+	return selfConfigFixtureDB(t, db, seed)
+}
+
+func selfConfigFixtureDB(t testing.TB, db *store.DB, seed map[string]string) (*SelfConfig, Actor) {
+	t.Helper()
 	t.Cleanup(func() { _ = db.Close() })
 	root := serviceFixtureRoot(t, db)
 	defer crypto.Zero(root)

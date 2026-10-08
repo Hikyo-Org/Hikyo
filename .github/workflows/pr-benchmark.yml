@@ -1,0 +1,99 @@
+name: pr-benchmark
+run-name: 'pr-benchmark #${{ github.event.pull_request.number }}'
+
+on:
+  pull_request:
+
+# This remains an unprivileged PR event when the trusted checkbox controller
+# reruns it. No comment writes, secrets, OIDC, or shared main-cache writes.
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-benchmark-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  request:
+    name: Check benchmark request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      allowed: ${{ steps.request.outputs.allowed || steps.initial.outputs.allowed }}
+    steps:
+      # Initial runs are discovery-only, including the bootstrap PR before
+      # trusted main contains the verifier. Only admitted reruns execute it.
+      - name: Initial run has no benchmark request
+        if: github.run_attempt == 1
+        id: initial
+        run: echo 'allowed=false' >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.run_attempt > 1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: github.run_attempt > 1
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify the bot request for this exact head and attempt
+        if: github.run_attempt > 1
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: go run ./scripts/ci/pr-benchmark-control verify
+
+  benchmarks:
+    name: Requested PR walltime
+    needs: request
+    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'
+    runs-on: codspeed-macro-arm64-graviton-ubuntu-22-04
+    timeout-minutes: 15
+    steps:
+      # Verify again so rerun-failed-jobs cannot reuse the previous attempt's
+      # gate output to execute another full benchmark without admission.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Recheck the authorized attempt before executing PR code
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: go run ./scripts/ci/pr-benchmark-control verify
+      - name: Refuse a reused or stale request
+        env:
+          ALLOWED: ${{ steps.request.outputs.allowed }}
+        run: test "$ALLOWED" = true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Benchmark the exact PR head and upload public CodSpeed results
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        with:
+          mode: walltime
+          run: >-
+            go test -bench=.
+            ./internal/crypto/
+            ./internal/dotenv/
+            ./internal/scanning/
+            ./internal/server/
+            ./internal/service/
+
+  matrix:
+    name: Requested PR browser performance
+    needs: request
+    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'
+    uses: ./.github/workflows/matrix-performance.yml
