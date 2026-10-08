@@ -46,14 +46,14 @@ but it is not a substitute for this signature.
   scripts/git/install-hooks.sh
   ```
 
-  The hook checks every commit between `origin/main` and each branch being
+  The hook checks every commit between `hikyo-upstream/main` and each branch being
   pushed. Keep the hook installed; do not bypass it with `--no-verify`.
 - Commit normally with signing enabled. If `git commit -S -s` itself fails to
   sign, stop and report the exact error. Never disable or bypass signing.
 - Before every push, verify the complete pull-request range:
 
   ```sh
-  scripts/ci/check-commit-signatures.sh origin/main HEAD
+  scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
   ```
 
   After pushing, confirm GitHub reports `verified: true` for the pushed commits.

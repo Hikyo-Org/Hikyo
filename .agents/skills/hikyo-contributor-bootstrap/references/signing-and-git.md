@@ -50,7 +50,10 @@ configured. Otherwise, continuing in the same shell:
 
 ```sh
 hikyo_allowed_signers="$(git rev-parse --absolute-git-dir)/hikyo-allowed-signers"
-printf '%s %s\n' "$(git config user.email)" "$(cat "$hikyo_signing_key.pub")" >> "$hikyo_allowed_signers"
+hikyo_signer="$(git config --local user.email) $(cat "$hikyo_signing_key.pub")"
+if ! grep -Fqx -- "$hikyo_signer" "$hikyo_allowed_signers" 2>/dev/null; then
+  printf '%s\n' "$hikyo_signer" >> "$hikyo_allowed_signers"
+fi
 git config --local gpg.ssh.allowedSignersFile "$hikyo_allowed_signers"
 ```
 
@@ -63,29 +66,29 @@ error if it fails. Do not bypass signing/hooks or perform GPG unlock probes.
 
 ## Clone topology and hooks
 
-Inspect `git remote -v` and `git branch -vv`. The pre-push hook currently
-hardcodes `refs/remotes/origin/main` regardless of push destination. Use canonical
-Hikyo main as the comparison base even for forks. One explicit way to populate
-it without changing remote URLs is:
+Inspect `git remote -v` and `git branch -vv`. The hook compares against the
+separate canonical `refs/remotes/hikyo-upstream/main` reference, regardless of
+push destination. Fetch it directly without changing remote URLs or your fork's
+`origin/main`:
 
 ```sh
-git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/origin/main
+git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/hikyo-upstream/main
 scripts/git/install-hooks.sh
 ```
 
-Explain that this refreshes local `origin/main` from canonical Hikyo even if
-`origin` is a fork. Do not force a rejected divergent update; investigate
-topology. Recheck source if a future hook supports another base. Preserve other
-hooks: the installer sets `core.hooksPath=.githooks`, so inspect an existing
-arrangement first. For linked worktrees, recheck effective identity, trust file
-paths, hooks, and ignored dependencies instead of assuming all state carries.
+Ordinary fork fetches update `origin/main`, not this canonical comparison ref.
+Refresh canonical main before validation/push. Do not force a rejected divergent
+update; investigate topology. Preserve other hooks: the installer sets
+`core.hooksPath=.githooks`, so inspect an existing arrangement first. For linked
+worktrees, recheck effective identity, trust file paths, hooks, and ignored
+dependencies instead of assuming all state carries.
 
 After real contribution commits exist:
 
 ```sh
-git log --format='%h %G? %s' origin/main..HEAD
-scripts/ci/check-dco.sh origin/main HEAD
-scripts/ci/check-commit-signatures.sh origin/main HEAD
+git log --format='%h %G? %s' hikyo-upstream/main..HEAD
+scripts/ci/check-dco.sh hikyo-upstream/main HEAD
+scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
 ```
 
 Both checkers reject an empty range. On freshly cloned main, report verification

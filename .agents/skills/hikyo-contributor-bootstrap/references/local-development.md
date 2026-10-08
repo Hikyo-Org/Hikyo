@@ -100,7 +100,8 @@ the same runtime directory as the server:
 "$hikyo_repo_root/bin/hikyo" admin --dev create \
   --username admin --output-file "$hikyo_runtime_dir/admin-authority"
 "$hikyo_repo_root/bin/hikyo" account establish-credential \
-  --instance http://127.0.0.1:8080 --as admin
+  --instance http://127.0.0.1:8080 --as admin \
+  --socket "$hikyo_runtime_dir/cli.sock"
 ```
 
 Credential establishment requires the contributor's controlling terminal,
@@ -125,17 +126,19 @@ authenticated behavior. Use the embedded Go app for real flows. For mocks or
 components deliberately choose and label prototype or Storybook:
 
 ```sh
-pnpm --dir web run prototype --host 0.0.0.0
-pnpm --dir web run storybook --host 0.0.0.0
+pnpm --dir web run prototype --host 127.0.0.1
+pnpm --dir web run storybook --host 127.0.0.1
 ```
 
 Check supported forwarded host/port flags. Documentation-site work uses:
 
 ```sh
 pnpm --dir docs/site install --frozen-lockfile
-pnpm --dir docs/site run dev --host 0.0.0.0
+pnpm --dir docs/site run dev --host 127.0.0.1
 ```
 
+For an explicitly requested LAN preview, replace `--host 127.0.0.1` with
+`--host 0.0.0.0`. Keep loopback binding for ordinary local iteration.
 Use the actual port/current LAN address for a permitted LAN preview, verify
 that exact URL, and keep its process live through the requested review window.
 Stop only servers created by the bootstrap when cleanup is requested.

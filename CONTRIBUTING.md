@@ -86,7 +86,10 @@ directory, outside tracked source files:
 
 ```sh
 hikyo_allowed_signers="$(git rev-parse --absolute-git-dir)/hikyo-allowed-signers"
-printf '%s %s\n' "$(git config user.email)" "$(cat "$hikyo_signing_key.pub")" >> "$hikyo_allowed_signers"
+hikyo_signer="$(git config --local user.email) $(cat "$hikyo_signing_key.pub")"
+if ! grep -Fqx -- "$hikyo_signer" "$hikyo_allowed_signers" 2>/dev/null; then
+  printf '%s\n' "$hikyo_signer" >> "$hikyo_allowed_signers"
+fi
 git config --local gpg.ssh.allowedSignersFile "$hikyo_allowed_signers"
 ```
 
@@ -107,20 +110,21 @@ only after verifying the signing key's identity.
 ### Verify before pushing
 
 Install the hook once per clone and fetch the canonical repository's main branch
-as the checker base. The hook uses `origin/main` even when `origin` points to
-your fork; this explicit fetch updates that local reference from Hikyo:
+as the checker base. The dedicated `hikyo-upstream/main` reference keeps canonical
+history separate from your fork's `origin/main`, so ordinary fork fetches cannot
+replace the comparison base:
 
 ```sh
 scripts/git/install-hooks.sh
-git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/origin/main
+git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/hikyo-upstream/main
 ```
 
 After creating your contribution with `git commit -S -s`, run:
 
 ```sh
 git log -1 --format='%h %G? %s'
-scripts/ci/check-dco.sh origin/main HEAD
-scripts/ci/check-commit-signatures.sh origin/main HEAD
+scripts/ci/check-dco.sh hikyo-upstream/main HEAD
+scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
 ```
 
 Expect `G` in the log and both checks to report success for the complete PR

@@ -44,12 +44,12 @@ start=$(date +%s)
 
 # 1. DCO sign-off on this branch's commits (CI job: dco). One of the most
 #    common reds and a one-line fix (`git commit -s --amend` / rebase).
-stage 'DCO sign-off (vs origin/main)'
-if git rev-parse --verify --quiet origin/main >/dev/null; then
-	./scripts/ci/check-dco.sh origin/main HEAD || fail 'dco'
+stage 'DCO sign-off (vs hikyo-upstream/main)'
+if git rev-parse --verify --quiet hikyo-upstream/main >/dev/null; then
+	./scripts/ci/check-dco.sh hikyo-upstream/main HEAD || fail 'dco'
 else
-	# shellcheck disable=SC2016  # backticked command is literal advice text
-	printf 'preflight: origin/main missing; run `git fetch origin main`. Skipping DCO.\n' >&2
+	printf 'preflight: canonical hikyo-upstream/main missing; fetch it using CONTRIBUTING.md.\n' >&2
+	fail 'missing canonical comparison base'
 fi
 
 # 2. Go formatting + imports (CI job: generated / lint).

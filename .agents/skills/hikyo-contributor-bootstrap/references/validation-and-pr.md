@@ -98,7 +98,7 @@ resources, never all volumes.
 Existing core wrapper:
 
 ```sh
-HIKYO_TEST_POSTGRES_DSN="$hikyo_test_postgres_dsn" scripts/ci/test-core-packages.sh
+HIKYO_TEST_POSTGRES_DSN="${HIKYO_TEST_POSTGRES_DSN:?set a disposable test database DSN first}" scripts/ci/test-core-packages.sh
 ```
 
 It excludes `internal/isolation` and serializes `internal/app` to prevent
