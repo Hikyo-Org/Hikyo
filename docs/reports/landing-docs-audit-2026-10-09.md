@@ -32,7 +32,7 @@ README and PRODUCT now agree on explicit values and validated publication. The i
 
 - Full SQLite and PostgreSQL conformance corpus: PASS, 175 passing subtests, 77.304 seconds. Dedicated disposable database; no PostgreSQL skip in this run.
 - Product isolation: PASS on both engines, including onboarding/recovery, rules, reveal ceremonies, SCIM/SAML fixtures, transit, PKI, SSH and material-free dynamic lifecycle audit. Additional per-key publication/group closure/replacement suite passed both engines.
-- Real OpenSSH authentication, expiry, KRL and CA rotation: PASS without skips. Compiled scanner workflows exercised paths, index, worktree, history/range, redaction and refusal exit codes.
+- Real OpenSSH authentication, expiry, KRL and CA rotation: PASS without skips. Compiled scanner workflows exercised paths, index, worktree, redaction and refusal exit codes. History/range behavior was reviewed against source but not executed in the compiled scanner workflow checks.
 - CLI, HTTP API, MCP transports, Compose, filesync and delivery checks: PASS. Built executable help and actual scratch-server metadata/probe responses checked.
 - Operations: PASS for chart assertions, real PostgreSQL HA election/failover, backup/restore/runtime, configuration, parameters, privacy/retention/adapters, upgrade gate, rollout and runtime configuration.
 - Web build and exact Go UI-tagged source build: PASS. Mounted dynamic-secret and rule dialogs: 64 tests PASS.
