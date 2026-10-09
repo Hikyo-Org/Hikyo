@@ -10,12 +10,12 @@ updates:
     commit-message:
       prefix: fix(deps)
     groups:
-      go-patches:
-        update-types:
-          - patch
       go-networking:
         patterns:
           - golang.org/x/*
+      go-patches:
+        update-types:
+          - patch
     ignore:
       # Moving this generator requires an architecture ADR amendment.
       - dependency-name: github.com/oapi-codegen/oapi-codegen/v2
