@@ -63,7 +63,7 @@ start() {
 	echo "$name dev server ready on 127.0.0.1:$port"
 }
 
-start VAULT hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2 vault
-start OPENBAO openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315 bao
+start VAULT mirror.gcr.io/hashicorp/vault:2.1.1@sha256:47f14a6acb98f48d798a07df7c83f23a6e636e1cf724c5f8ff165cb32667a1e2 vault
+start OPENBAO mirror.gcr.io/openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315 bao
 echo "HIKYO_TEST_KV_REQUIRED=1" >>"$GITHUB_ENV"
 ready=1
