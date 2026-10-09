@@ -11,13 +11,14 @@
 # deleting something this script did not create is the one move that is never
 # safe.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 cd "$(git rev-parse --show-toplevel)"
 
 CLUSTER=hikyo-e2e
 # kindest/node for kind v0.32.0 (kubernetes-sigs/kind v0.32.0 release notes).
 # Digest-pinned: the tag alone is not a stable identity for a given kind build.
-NODE_IMAGE="mirror.gcr.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+NODE_IMAGE="kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 
 if ! command -v kind >/dev/null 2>&1; then
 	echo "k8s-e2e: kind not found on PATH" >&2

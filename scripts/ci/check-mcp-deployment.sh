@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 compose="$root/deploy/mcp/compose.yaml"
@@ -185,10 +186,6 @@ PY
 
 stage_image=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1], encoding="utf-8"))["services"]["root-key-stage"]["image"])' "$tmp/rendered.yaml")
 proxy_image=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1], encoding="utf-8"))["services"]["proxy"]["image"])' "$tmp/rendered.yaml")
-# Pull the same digest-pinned official images from the public mirror to avoid
-# Docker Hub's anonymous pull quota on shared CI runners.
-stage_image="mirror.gcr.io/library/$stage_image"
-proxy_image="mirror.gcr.io/library/$proxy_image"
 docker volume create "$stage_volume" >/dev/null
 docker run --rm \
 	-v "$tmp/root-key:/run/secrets/hikyo-root-key:ro" \

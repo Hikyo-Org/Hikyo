@@ -222,6 +222,10 @@ jobs:
         run: ./scripts/ci/check-go-patch_test.sh
       - name: Fork gate reconciliation fixture
         run: ./scripts/ci/reconcile-fork-gate_test.sh
+      - name: Docker daemon mirror and PostgreSQL startup fixtures
+        run: |
+          ./scripts/ci/configure-docker-mirror_test.sh
+          ./scripts/ci/start-ci-postgres_test.sh
       - name: Verify floor measurement preflight refusals
         run: ./scripts/bench/floor_test.sh
       - name: Fuzz finding classifier fixture
@@ -554,23 +558,15 @@ jobs:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).client }}
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: hikyo
-          POSTGRES_DB: hikyo_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U hikyo"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
@@ -601,6 +597,10 @@ jobs:
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
         run: ./scripts/ci/check-client-skew.sh
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
 
   docs:
     needs: changes
@@ -989,25 +989,14 @@ jobs:
     needs: [changes, scan-xplat]
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: hikyo
-          POSTGRES_DB: hikyo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
@@ -1122,6 +1111,10 @@ jobs:
         with:
           path: ~/go/pkg/mod
           key: ${{ steps.go-module-cache.outputs.cache-primary-key }}
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
 
   # The operator's kind end-to-end suite (#64, mvp-boundary M3): the Hikyo
   # server runs in-process over TLS, the operator reconciler in-process against a
@@ -1282,25 +1275,14 @@ jobs:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: hikyo
-          POSTGRES_DB: hikyo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -1348,6 +1330,10 @@ jobs:
           # 10 minutes gave a 5-minute shard only 2x headroom and a loaded runner
           # hit it mid-test without any hang (#694). Race shards already run 20m.
           go test -count=1 -timeout=18m ./internal/isolation/ -run "^(${tests})$"
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
 
   # Race detector as its own context: a concurrent server with transaction
   # retry and a single-writer SQLite pool gets its data races found here, not
@@ -1366,26 +1352,15 @@ jobs:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: hikyo
-          POSTGRES_DB: hikyo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -1450,6 +1425,10 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.race-go-cache.outputs.cache-primary-key }}
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
 
   # Seed corpora already run in `test_core`; this bounded exploration pass discovers
   # targets dynamically so a new fuzz target cannot be forgotten.
@@ -1607,25 +1586,14 @@ jobs:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan)['headline-guarantee'] }}
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: hikyo
-          POSTGRES_DB: hikyo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -1656,6 +1624,10 @@ jobs:
           -run 'TestBackupRestoreDrill|TestNoBulkAcceptInTheAPISurface'
       - name: Automatic pre-migration export, with recipients and without
         run: go test -count=1 ./internal/app/ -run '^(TestMigrationRefusesUnverifiedExistingSchemaBeforeWrites|TestVerifiedMigrateSkipsBackupOnHealthyRestart|TestRestoreRequiredRestartExposesOnlyOperationalHealth)$'
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
 
   floor-bench:
     needs: changes

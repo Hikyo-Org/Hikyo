@@ -16,24 +16,13 @@ jobs:
   gitlab-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: hikyo
-          POSTGRES_DB: hikyo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -56,3 +45,6 @@ jobs:
       - name: Remove GitLab
         if: ${{ always() && env.HIKYO_TEST_GITLAB_CONTAINER != '' }}
         run: docker rm -f "$HIKYO_TEST_GITLAB_CONTAINER"
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres

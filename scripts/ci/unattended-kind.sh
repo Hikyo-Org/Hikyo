@@ -3,6 +3,7 @@
 # Acquisition fixture: signed test releases and offline descriptors are supplied
 # by scripts/ci/unattendedfixture, never production release credentials.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"
 fixture=${HIKYO_UNATTENDED_FIXTURE_OUTPUT:?set the signed A/B/C fixture directory}
 for tool in kind kubectl helm docker jq openssl python3 grep; do
@@ -17,8 +18,8 @@ test -f "$fixture/root.key"
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-unattended-kind.XXXXXX")
 CLUSTER="hikyo-unattended-$(date +%s)-$$"
 NAMESPACE=hikyo-unattended
-NODE_IMAGE='mirror.gcr.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5'
-POSTGRES_IMAGE='mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941'
+NODE_IMAGE='kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5'
+POSTGRES_IMAGE='postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941'
 kubeconfig="$work/kubeconfig"
 export KUBECONFIG="$kubeconfig"
 created=false

@@ -2,6 +2,7 @@
 # Actual distroless server replacements with persisted SQLite and custody.
 # Artifact acquisition alone is a preseeded, authenticated offline cache fixture.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"
 : "${HIKYO_UNATTENDED_FIXTURE_OUTPUT:?generate signed fixtures first}"
 fixture=$HIKYO_UNATTENDED_FIXTURE_OUTPUT
@@ -11,7 +12,7 @@ suffix=$(basename "$work" | tr '[:upper:]' '[:lower:]')
 data_volume=$suffix-data
 state_volume=$suffix-state
 container=$suffix-server
-helper_image=mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+helper_image=postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
 created_data=false
 created_state=false
 cleanup() {

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Root permission/credential/fencing acceptance in an isolated Linux container.
 set -eu
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 cd "$script_dir/../.."
 case "$(docker info --format '{{.Architecture}} {{.OSType}}')" in
@@ -16,5 +17,5 @@ CGO_ENABLED=0 GOOS=linux GOARCH="$architecture" go test -c -o "$work/hostupgrade
 docker run --rm --network=none --read-only --pids-limit=64 --memory=256m \
 	--tmpfs /root:mode=0700 --tmpfs /tmp:mode=1777 \
 	--mount "type=bind,source=$work/hostupgrade.test,target=/hostupgrade.test,readonly" \
-	mirror.gcr.io/library/alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 \
+	alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 \
 	/hostupgrade.test -test.v -test.timeout=2m
