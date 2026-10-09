@@ -103,3 +103,23 @@ that exact scope after mint. Development environments must contain only
 development values: an agent controlling the child can read every delivered
 value. Fixed expiry and next-fetch revocation cannot erase values already held
 by a child process.
+
+## PR #868 CI security follow-up
+
+The first hosted run passed the isolation, race and browser matrices, but
+`validation / test_core` and `validation / web-go` failed their release-shaped
+binary vulnerability scans. The pinned Go 1.27.0 compiler retained affected
+standard-library code; `golang.org/x/net` v0.58.0 also retained vulnerable HTTP/2
+symbols. Both gate failures were inspected independently.
+
+The repair raises the compiler minimum to Go 1.27.2 and `x/net` to v0.60.0, with
+only related module versions required by Go's minimum version selection.
+`go mod tidy` updates the checksums. Scanner policies and CI gates are preserved.
+Both rebuilt binary shapes pass the existing pinned binary-mode `govulncheck`
+with zero reachable vulnerabilities. Fresh crypto, authorization, service, API,
+transport and UI-tagged serving tests pass; `go vet ./...` passes. Ordinary
+Standards and Spec repair reviews are CLEAN. Fresh hosted CI must validate the
+repair commit before readiness is claimed.
+
+Upstream evidence: [Go 1.27.2 release](https://go.dev/doc/devel/release#go1.27.2),
+[HTTP/2 security advisory](https://pkg.go.dev/vuln/GO-2026-6612).
