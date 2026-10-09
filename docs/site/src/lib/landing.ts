@@ -154,7 +154,7 @@ export const matrix: KeyGroup[] = [
       {
         name: 'SMTP_HOST',
         classification: 'config',
-        rule: '{"rule":{"type":"string","min_length":1}}',
+        rule: '{"rule":{"type":"string","min_length":1,"max_length":253,"pattern":"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:[.][A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*[.]?$"}}',
         presence: 'group: all or none',
         cells: {
           development: { kind: 'absent' },

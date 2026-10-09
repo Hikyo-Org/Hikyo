@@ -106,8 +106,7 @@ Scope: public docs CLI reference, installation, build from source, local develop
 - Root independently checked GitHub release publication and found only prereleases/no latest stable release, so existing 0.x/no stable release installation guidance retained.
 - Installation/release verification and external cloud/client historical evidence remains explicitly bounded; no production install, package install, external model/provider request or native Codex client test was performed here.
 - Current scope validates Hikyo's loader controls and delivery, not third-party varlock/dotenvx/other vendors' full behavior.
-- Parent running full conformance with PostgreSQL for combined validation.
-- Ignored web build output retained for parent's optional UI runtime smoke.
+- Ignored web build output was retained as a local build artifact.
 
 ### Added tutorial runtime coverage
 
@@ -159,7 +158,7 @@ Scope: public product guides under docs/site/src/content/docs/docs. No commits. 
 | Account security | Profile, TOTP, step-up, recovery-code generation/spend, reset, passkeys | Recovery lifecycle and reveal gate isolation; no real hardware passkey or external IdP acceptance claimed |
 | SAML | Metadata/trust confirmation, create/inspect/refresh/disable/remove, SP-key lifecycle | SAML login/replay isolation using local provider fixtures; external workforce IdP not tested |
 | SCIM | Binding, credential disclosure/rotation, lists, mappings, deletion | Binding/user/mapping lifecycle and email never-links isolation; external IdP SCIM integration not tested |
-| Browser operations | Core journey, low-frequency surfaces, exemptions/parity, managed-config links | Real mounted MachineAccess dialog/reset tests exercise Providers/Leases; full browser desktop/mobile lifecycle remains root-owned validation |
+| Browser operations | Core journey, low-frequency surfaces, exemptions/parity, managed-config links | Real mounted MachineAccess dialog/reset tests exercise Providers/Leases; full live-provider browser lifecycle was not exercised by these mounted tests |
 | Dynamic secrets | Custody/config, TLS/private egress, mint/renew/revoke/settle, expiry/session limits, audit | AuditCore runs real service/runtime/storage with provider double; no real TLS PostgreSQL admin-role lifecycle certification |
 | Transit | Algorithms/policy, crypto/data keys/MAC, versions/lifecycle/custody/erasure/audit/limits/refusals | Real encryption and transit service/storage lifecycle; external custody explicitly unimplemented |
 | Private PKI | Root/offline intermediate/import, profiles/bindings, issue/renew/revoke/history/CRL/rotation/restore/monitoring | Real X.509 issuance lifecycle isolation; no external offline-root ceremony or CRL hosting attempted |
@@ -258,8 +257,6 @@ No cloud account deployment, real provider billing/networking, private productio
 inventory, regulatory assessment, or real Kubernetes live admission was performed.
 Chart rendering validates declared wiring; it is not a live cluster test. Dedicated
 real PostgreSQL strengthens the HA evidence beyond rendering/config checks.
-
-Remaining suite results are appended when complete.
 
 Additional spot checks: the self-hosting `install -m 0600 /dev/stdin` root-key
 pipeline was exercised with harmless test bytes inside the disposable Linux
