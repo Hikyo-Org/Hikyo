@@ -79,6 +79,9 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
+	if crypto.ParseArtifact(stack.token, crypto.ArtifactDeveloperCredential) == nil {
+		return runDeveloperOnline(ctx, ios, stack, childArgs, allowOverride)
+	}
 	snapshotBinding, err := stack.newSnapshotBinding([]string{runGenerationKey})
 	if err != nil {
 		return failf(ExitRefused, "hikyo run: snapshot binding: %v", err)
@@ -131,26 +134,9 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 		live = true
 	}
 
-	// Loader-control refusal for the LIVE path (the offline path already checked
-	// pre-append inside serveRunOffline).
-	if refused, _ := delivery.Unacknowledged(slices.Sorted(maps.Keys(fetched)), ack); len(refused) > 0 {
-		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
-			strings.Join(refused, ", "))
-	}
-
-	// Merge: fetched wins; a differing collision is a hard error unless named in
-	// --allow-override (compose ADR § "Merge, collisions"). The base is the
-	// SANITIZED parent environment — HIKYO_TOKEN (the workload credential) never
-	// reaches the child (finding 1).
-	merged, _, err := compose.MergeEnv(sanitizedEnviron(), fetched, allowOverride)
+	merged, err := prepareRunEnvironment(fetched, ack, allowOverride, childArgs)
 	if err != nil {
-		return &Error{Code: ExitRefused, Err: err}
-	}
-
-	// ARG_MAX preflight (ops-spec § 6): the execve composite bound, refused loud
-	// pre-exec rather than as E2BIG at the wrong layer.
-	if ok, detail := compose.ExecPreflight(merged, childArgs, compose.DefaultArgMax()); !ok {
-		return failf(ExitRefused, "hikyo run: %s; reduce the delivered set or shorten the command", detail)
+		return err
 	}
 
 	// Snapshot: after a LIVE delivering fetch and only when a config file exists.
@@ -162,21 +148,7 @@ func runRun(ctx context.Context, ios IO, args []string) error {
 		}
 	}
 
-	// Exec. 127 = not found, 126 = found-but-not-executable — the child-side
-	// convention (exit.go), the only exits outside the closed set. On success
-	// there is no hikyo process (unix syscall.Exec): the child's status is the
-	// invocation's.
-	command := childArgs[0]
-	resolvedPath, cerr := resolveChildCommand(command)
-	if cerr != nil {
-		return cerr
-	}
-	if err := ios.exec(resolvedPath, childArgs, merged); err != nil {
-		return failf(ExitCommandNotExecutable, "hikyo run: %s: %v", command, err)
-	}
-	// Unreachable on a real unix exec (the process image is replaced); reached
-	// only through the injected test seam, which returns nil to signal capture.
-	return nil
+	return executeRunChild(ios, childArgs, merged)
 }
 
 // runHumanSession implements the locked #18 exception for `hikyo run`. All four
@@ -293,26 +265,11 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 		return failf(ExitRefused, "hikyo run --use-human-session: declined at the confirmation")
 	}
 
-	if refused, _ := delivery.Unacknowledged(slices.Sorted(maps.Keys(fetched)), runLoaderControlAck(cfg)); len(refused) > 0 {
-		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
-			strings.Join(refused, ", "))
-	}
-	merged, _, err := compose.MergeEnv(sanitizedEnviron(), fetched, allowOverride)
+	merged, err := prepareRunEnvironment(fetched, runLoaderControlAck(cfg), allowOverride, childArgs)
 	if err != nil {
-		return &Error{Code: ExitRefused, Err: err}
+		return err
 	}
-	if ok, detail := compose.ExecPreflight(merged, childArgs, compose.DefaultArgMax()); !ok {
-		return failf(ExitRefused, "hikyo run: %s; reduce the delivered set or shorten the command", detail)
-	}
-	command := childArgs[0]
-	resolvedPath, cerr := resolveChildCommand(command)
-	if cerr != nil {
-		return cerr
-	}
-	if err := ios.exec(resolvedPath, childArgs, merged); err != nil {
-		return failf(ExitCommandNotExecutable, "hikyo run: %s: %v", command, err)
-	}
-	return nil
+	return executeRunChild(ios, childArgs, merged)
 }
 
 // runLoaderControlAck is the loader-control acknowledgement in force for a run,
@@ -537,4 +494,65 @@ func pathHasNonExecutable(command string) bool {
 		}
 	}
 	return false
+}
+
+// Developer delivery cannot read or write snapshots, cursors, or offline audit queues.
+func runDeveloperOnline(ctx context.Context, ios IO, stack *composeStack, childArgs, allowOverride []string) error {
+	ack := runLoaderControlAck(stack.cfg)
+	response, err := stack.fetchDelivery(ctx, ack, "")
+	if err != nil {
+		return err
+	}
+	if !stack.configOnly && len(unrevealedSecrets(response.Keys)) > 0 {
+		return failf(ExitRefused, "developer credential cannot reveal the entire delivered secret set")
+	}
+	fetched := deliveredValues(response.Keys)
+	merged, err := prepareRunEnvironment(fetched, ack, allowOverride, childArgs)
+	if err != nil {
+		return err
+	}
+	return executeRunChild(ios, childArgs, merged)
+}
+
+// prepareRunEnvironment validates and merges values before any snapshot or child execution.
+func prepareRunEnvironment(fetched map[string]string, ack, allowOverride, childArgs []string) ([]string, error) {
+	if refused, _ := delivery.Unacknowledged(slices.Sorted(maps.Keys(fetched)), ack); len(refused) > 0 {
+		return nil, failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
+			strings.Join(refused, ", "))
+	}
+
+	// Merge: fetched wins; a differing collision is a hard error unless named in
+	// --allow-override (compose ADR § "Merge, collisions"). The base is the
+	// SANITIZED parent environment — HIKYO_TOKEN (the workload credential) never
+	// reaches the child (finding 1).
+	merged, _, err := compose.MergeEnv(sanitizedEnviron(), fetched, allowOverride)
+	if err != nil {
+		return nil, &Error{Code: ExitRefused, Err: err}
+	}
+
+	// ARG_MAX preflight (ops-spec § 6): the execve composite bound, refused loud
+	// pre-exec rather than as E2BIG at the wrong layer.
+	if ok, detail := compose.ExecPreflight(merged, childArgs, compose.DefaultArgMax()); !ok {
+		return nil, failf(ExitRefused, "hikyo run: %s; reduce the delivered set or shorten the command", detail)
+	}
+
+	return merged, nil
+}
+
+func executeRunChild(ios IO, childArgs, merged []string) error {
+	// Exec. 127 = not found, 126 = found-but-not-executable — the child-side
+	// convention (exit.go), the only exits outside the closed set. On success
+	// there is no hikyo process (unix syscall.Exec): the child's status is the
+	// invocation's.
+	command := childArgs[0]
+	resolvedPath, cerr := resolveChildCommand(command)
+	if cerr != nil {
+		return cerr
+	}
+	if err := ios.exec(resolvedPath, childArgs, merged); err != nil {
+		return failf(ExitCommandNotExecutable, "hikyo run: %s: %v", command, err)
+	}
+	// Unreachable on a real unix exec (the process image is replaced); reached
+	// only through the injected test seam, which returns nil to signal capture.
+	return nil
 }

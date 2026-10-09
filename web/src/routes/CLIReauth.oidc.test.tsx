@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
   methods: { isError: false, refetch: vi.fn() },
   selfConfigPlan: '',
+  developerCredential: false,
   totpAvailable: false,
 }));
 
@@ -37,6 +38,8 @@ vi.mock('../app/AuthProvider.tsx', () => ({
 }));
 
 vi.mock('../api/values.ts', () => ({
+  runDeveloperCredentialPasskeyCeremony: vi.fn(),
+  runDeveloperCredentialTOTPCeremony: vi.fn(),
   runAdapterPasskeyCeremony: vi.fn(),
   runAdapterTOTPCeremony: vi.fn(),
   runPasskeyCeremony: vi.fn(),
@@ -51,7 +54,8 @@ async function renderTransaction(environments: Array<{
 }>): Promise<{ container: HTMLElement; unmount: () => Promise<void> }> {
   mocks.load.mockResolvedValue({
     state: 'txn-195',
-    purpose: mocks.selfConfigPlan === '' ? 'reveal' : 'self-config',
+    purpose: mocks.developerCredential ? 'developer-credential' : mocks.selfConfigPlan === '' ? 'reveal' : 'self-config',
+    developer_credential: mocks.developerCredential ? { lifetime_seconds: 28800n, consent_current_and_future: true } : undefined,
     self_config: mocks.selfConfigPlan === '' ? undefined : { action: 'apply', owner_instance_id: 'instance_local', revision: 3, expected_generation: 7, schema_version: 1, to: '', preview_token: '', confirm_restored_credentials: false, plan_digest: mocks.selfConfigPlan },
     operation: 'value.reveal',
     environments,
@@ -78,10 +82,26 @@ beforeEach(() => {
   mocks.providerAvailable = true;
   mocks.methods.isError = false;
   mocks.selfConfigPlan = '';
+  mocks.developerCredential = false;
   mocks.totpAvailable = false;
 });
 
 describe('CLI OIDC disclosure handoff', () => {
+  it('shows the bounded future-key consent and offers fresh factors without OIDC window reuse', async () => {
+    mocks.developerCredential = true;
+    mocks.totpAvailable = true;
+    const view = await renderTransaction([
+      { environment_id: 'development', effective_window_seconds: 300, requires_webauthn: false },
+    ]);
+    try {
+      expect(view.container.textContent).toContain('8 hours (28800 seconds)');
+      expect(view.container.textContent).toContain('all current and future published keys until expiry');
+      expect(view.container.textContent).toContain('survives ordinary logout');
+      expect(view.container.textContent).not.toContain('Re-authenticate with Corporate IdP');
+      expect(view.container.querySelector('input#cli-reauth-totp')).not.toBeNull();
+    } finally { await view.unmount(); }
+  });
+
   it('announces the authenticator code as optional when passkey approval is available', async () => {
     mocks.totpAvailable = true;
     const view = await renderTransaction([

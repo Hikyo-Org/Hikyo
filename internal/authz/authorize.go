@@ -25,7 +25,8 @@ type TxAuthorizer struct {
 	// object attributes captured denials to the object they addressed; see
 	// AttributeDenials. Empty means the envelope carries no object, which is
 	// every path that has not asked for one.
-	object audit.Object
+	object                  audit.Object
+	developerDenialIdentity Identity
 }
 
 // NewTxAuthorizer binds authorize() to one transaction attempt. Called by
@@ -63,6 +64,14 @@ func (a *TxAuthorizer) Authorize(ctx context.Context, caller Identity, op Operat
 	spec, ok := registry.authorizationSpec(op)
 	if !ok {
 		return nil, fmt.Errorf("authz: operation %q is not in the operation registry", op)
+	}
+	a.developerDenialIdentity = Identity{}
+	if caller.Class == domain.ClassDeveloper {
+		a.developerDenialIdentity = caller
+	}
+	if caller.Class == domain.ClassDeveloper && (op != OpDeliveryFetch || scope != caller.DeveloperScope) {
+		a.captureDenial(ctx, caller.Principal, op, spec, resolutionUnresolvable, domain.Scope{}, scope)
+		return nil, domain.ErrNotFound
 	}
 	if caller.Principal == "" {
 		return nil, errors.New("authz: empty principal")
@@ -132,6 +141,8 @@ func ContractArtifactClass(caller Identity) string {
 		return operation.ArtifactLocal
 	case caller.Class == domain.ClassHuman:
 		return operation.ArtifactHumanSession
+	case caller.Class == domain.ClassDeveloper:
+		return operation.ArtifactDeveloperCredential
 	case caller.Class == domain.ClassInstanceConn:
 		return operation.ArtifactInstanceCredential
 	case caller.Class == domain.ClassProvisioning:
@@ -183,14 +194,36 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		return nil, err
 	}
 
-	grants, err := a.r.Grants(ctx, principal)
+	grantPrincipal := principal
+	if caller.Class == domain.ClassDeveloper {
+		if op != OpDeliveryFetch || chain != caller.DeveloperScope {
+			return nil, domain.ErrNotFound
+		}
+		settings, err := a.r.EnvironmentReauthSettings(ctx, string(chain.Env))
+		if err != nil {
+			return nil, err
+		}
+		if settings.Protected {
+			a.captureDenial(ctx, caller.Principal, op, spec, resolutionResolvable, chain, scope)
+			return nil, domain.ErrNotFound
+		}
+		grantPrincipal = caller.AuthorityPrincipal
+	}
+	grants, err := a.r.Grants(ctx, grantPrincipal)
 	if err != nil {
 		return nil, err
 	}
 	held := evaluate(spec.formula, chain, grants)
+	if caller.Class == domain.ClassDeveloper || op == OpDeveloperCredentialMint {
+		rules, err := a.r.Rules(ctx, grantPrincipal)
+		if err != nil {
+			return nil, err
+		}
+		held = developerEnvironmentAuthority(chain, grants, rules)
+	}
 	var bound *domain.RuleKey
 	var navigation []domain.Rule
-	if rulesApply(caller) && (ruleSatisfiable(spec.formula) || targetRule != nil || ruleNavigationOperation(op)) && (!held || targetRule != nil) {
+	if op != OpDeveloperCredentialMint && rulesApply(caller) && (ruleSatisfiable(spec.formula) || targetRule != nil || ruleNavigationOperation(op)) && (!held || targetRule != nil) {
 		// Rules join ordinary atom evaluation, complete delegation selectors,
 		// and explicitly filtered metadata navigation inside this chokepoint.
 		// A key-aware call resolves its key from the database on this path

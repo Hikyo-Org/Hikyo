@@ -34,7 +34,9 @@ type Assurance struct {
 
 // Identity is a live, resolved caller — human or machine.
 type Identity struct {
-	Principal domain.PrincipalID
+	Principal          domain.PrincipalID
+	AuthorityPrincipal domain.PrincipalID
+	DeveloperScope     domain.Scope
 	// Class is what this identity authenticated AS. It is set on every
 	// resolution path, never inferred from an empty field: the ADR requires
 	// machine principals to be visibly distinct from humans everywhere they
@@ -50,6 +52,7 @@ type Identity struct {
 	// It remains empty for local, SAML, machine, and workspace identities.
 	ProviderID       string
 	OAuth2ProviderID string
+	SAMLProviderID   string
 	// CredentialID names the machine credential presented, and is empty for
 	// a human. It is the forensic answer to "which token", which is the
 	// question after a leak — one service account holds several.
@@ -239,7 +242,9 @@ func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string,
 		identity Identity
 		err      error
 	)
-	if crypto.ParseArtifact(presented, crypto.ArtifactWorkload) == nil ||
+	if crypto.ParseArtifact(presented, crypto.ArtifactDeveloper) == nil {
+		identity, err = a.authenticateDeveloper(ctx, presented, now)
+	} else if crypto.ParseArtifact(presented, crypto.ArtifactWorkload) == nil ||
 		crypto.ParseArtifact(presented, crypto.ArtifactAutomation) == nil {
 		identity, err = a.authenticateMachine(ctx, presented, now)
 	} else if operation.IsNetwork(ctx) && crypto.ParseArtifact(presented, crypto.ArtifactSCIM) == nil {
@@ -422,7 +427,7 @@ func (a *TxAuthorizer) authenticateResolvedSession(ctx context.Context, row auth
 		Principal:  row.PrincipalID,
 		Class:      domain.ClassHuman,
 		SessionID:  row.ID,
-		ProviderID: row.ProviderID, OAuth2ProviderID: row.OAuth2ProviderID,
+		ProviderID: row.ProviderID, OAuth2ProviderID: row.OAuth2ProviderID, SAMLProviderID: row.SAMLProviderID,
 		Artifact: row.Artifact,
 		Assurance: Assurance{
 			Method:          row.AuthMethod,

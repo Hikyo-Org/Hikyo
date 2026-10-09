@@ -220,6 +220,26 @@ func resolveMachineConfigTarget(st *State, ios IO, flags commonFlags, cfg *machi
 	if err != nil {
 		return nil, TrustEntry{}, Resolved{}, "", err
 	}
+	if crypto.ParseArtifact(token, crypto.ArtifactDeveloperCredential) == nil {
+		return nil, TrustEntry{}, Resolved{}, "", failf(ExitRefused, "developer credentials must be selected from private origin-bound custody; HIKYO_TOKEN and --token-file accept machine credentials")
+	}
+	if token == "" && flags.operation == "run" && flags.Auth == "" {
+		if err := st.developerStateOutsideRepository(); err != nil {
+			return nil, TrustEntry{}, Resolved{}, "", err
+		}
+		credential, err := st.developerCredentialFor(entry.Origin, resolved.Get(DimOrg), resolved.Get(DimProject), resolved.Get(DimEnv), ios.now())
+		if err != nil {
+			return nil, TrustEntry{}, Resolved{}, "", err
+		}
+		token = credential.Token
+		if token != "" {
+			fmt.Fprintf(ios.Stderr, "developer credential %s expires at %s\n", credential.ID, credential.ExpiresAt.Format(time.RFC3339))
+		}
+	}
+	developer := crypto.ParseArtifact(token, crypto.ArtifactDeveloperCredential) == nil
+	if developer && flags.operation != "run" {
+		return nil, TrustEntry{}, Resolved{}, "", failf(ExitRefused, "developer credentials only support online hikyo run")
+	}
 	if token == "" {
 		// `run` has the single locked human-session exception; `render`/`sync` have
 		// no human path at all (api-cli-surface ADR line 96).
@@ -235,7 +255,11 @@ func resolveMachineConfigTarget(st *State, ios IO, flags commonFlags, cfg *machi
 		return nil, TrustEntry{}, Resolved{}, "", err
 	}
 	if echo := resolved.Echo(); echo != "" {
-		fmt.Fprintf(ios.Stderr, "target: %s [origin %s, artifact machine-credential]\n", echo, entry.Origin)
+		kind := "machine-credential"
+		if developer {
+			kind = "developer-credential"
+		}
+		fmt.Fprintf(ios.Stderr, "target: %s [origin %s, artifact %s]\n", echo, entry.Origin, kind)
 	}
 	return client, entry, resolved, token, nil
 }

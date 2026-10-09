@@ -178,6 +178,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ClampDeveloperCredentialExpiry",
+    "annotation": "authn-resolution",
+    "hash": "63e724cd5b78375cd82b0166758addc23a535102e6a96570a54c20fcc4029aa7",
+    "reason": "Authorized instance policy lowering persists monotonic expiry reductions before commit."
+  },
+  {
+    "engine": "postgres",
     "name": "ClampIndefiniteCredentials",
     "annotation": "authn-resolution",
     "hash": "0de0ff3948912fc279afa27bd4b2b4410972e529aae85795e13518ae2317567c"
@@ -930,6 +937,20 @@
   },
   {
     "engine": "postgres",
+    "name": "DeveloperCredentialByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "13064116243d31fd5d4fdecce9fdc7696e0b93a65511dc22360abe29354723d2",
+    "reason": "Authentication resolves the presented verifier before any authorization proof can exist."
+  },
+  {
+    "engine": "postgres",
+    "name": "DeveloperMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "3a099380c8b4b0ca5be7c5babc1ab975a227da5c80d47f3de4d50872d7a33922",
+    "reason": "restore must outrun every attacker-controlled developer credential epoch stamp"
+  },
+  {
+    "engine": "postgres",
     "name": "DisableWebAuthnCredential",
     "annotation": "authn-resolution",
     "hash": "848f0fe3ce8a4f1ca5d8f819696cb66997d72de72efbac64e3090050460a8df0"
@@ -1067,6 +1088,13 @@
     "name": "GetCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "f659262a1cea753762f8a7f29ff45a3e6729d191db815d491a42f40b07d6b270"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetDeveloperCredentialPolicy",
+    "annotation": "authn-resolution",
+    "hash": "6c9480b90e1fb715fd7f1ef3505061ff71d5304efa16abf195531c7f685666eb",
+    "reason": "Mint and policy tightening serialize on this shared instance policy before changing delegation authority."
   },
   {
     "engine": "postgres",
@@ -1353,13 +1381,13 @@
     "engine": "postgres",
     "name": "GetSessionByID",
     "annotation": "authn-resolution",
-    "hash": "cdfec9224092d74cb765c04146f47d6fb86937b36b9f6308a2b11765138b50cb"
+    "hash": "4872e6ddf96138d802c36bf51c18435f715b1dbdbbc408ab41bd9800fd9fcab6"
   },
   {
     "engine": "postgres",
     "name": "GetSessionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "b7f48f50750dada0341cae1c68044be0477c5580a3682f1c054b64806ecad0b9"
+    "hash": "13fb6148549fdc2965db4fac2d5611621f726922acb01b382adbbe9db1d7a516"
   },
   {
     "engine": "postgres",
@@ -1452,6 +1480,13 @@
     "name": "InsertCredentialAuthority",
     "annotation": "authn-resolution",
     "hash": "4190d037ef55279755904cbc0bc84a7a9317f19a778f7d89303e20d8d05ccd31"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertDeveloperCredential",
+    "annotation": "authn-resolution",
+    "hash": "605f62cca774bfc7e45e4a8a22e259b7e2c9f715bdc8c1b31eec134ab41203ad",
+    "reason": "Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction."
   },
   {
     "engine": "postgres",
@@ -1713,6 +1748,13 @@
     "name": "ListCredentialsBeyondCeiling",
     "annotation": "authn-resolution",
     "hash": "52da1127bfbe351b34a7cc8bd8c80f99ee9603e4d0592e5344d19a549c1f9d8f"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListDeveloperCredentials",
+    "annotation": "authn-resolution",
+    "hash": "5540825ba5ba33f32fdaf7ff60606953829a95de8fbf37a1c1377961e9f0d694",
+    "reason": "Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered."
   },
   {
     "engine": "postgres",
@@ -2715,6 +2757,13 @@
   },
   {
     "engine": "postgres",
+    "name": "RestoreDeveloperPolicySeedOccupied",
+    "annotation": "authn-resolution",
+    "hash": "125c7a37452445b187082d8501823320c708701dd6e79aedb5894f3774f9d936",
+    "reason": "restore target admission checks developer policy without exposing authentication verifiers"
+  },
+  {
+    "engine": "postgres",
     "name": "RestoreDiagnosticsSeedOccupied",
     "annotation": "instance-scoped",
     "hash": "f78f0144731f528697caf0db8aaf22f3e438890855725571354b8d3bfc701810",
@@ -2739,6 +2788,13 @@
     "name": "RevokeAllMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "caa27a4da41e88e24ebcb130419569168a4173c8f5155ed772bbd85a4d9d3801"
+  },
+  {
+    "engine": "postgres",
+    "name": "RevokeDeveloperCredential",
+    "annotation": "authn-resolution",
+    "hash": "729ca52154eb7be4499f743c055aed27270d16996f76af26eec1a0ebcfd22707",
+    "reason": "Terminal security invalidation writes authentication state atomically with its authorizing mutation."
   },
   {
     "engine": "postgres",
@@ -2954,6 +3010,13 @@
     "name": "SetCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "7420406adc49be509d4a3d12cd085944ab81442710c09f59f34da0dbfe841bf4"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetDeveloperCredentialPolicy",
+    "annotation": "authn-resolution",
+    "hash": "988a811270377e9744311fc424d5e7e280d32cee7788cbe1ff0d0fdb18f66cf6",
+    "reason": "Instance-config authorization precedes the shared lifetime policy mutation in the same transaction."
   },
   {
     "engine": "postgres",
@@ -3334,6 +3397,13 @@
     "name": "ClampCredentialExpiry",
     "annotation": "authn-resolution",
     "hash": "ed703941013bc663185b53f60243d9fd6e1d77d7678d113d089098975e80b74e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClampDeveloperCredentialExpiry",
+    "annotation": "authn-resolution",
+    "hash": "63e724cd5b78375cd82b0166758addc23a535102e6a96570a54c20fcc4029aa7",
+    "reason": "Authorized instance policy lowering persists monotonic expiry reductions before commit."
   },
   {
     "engine": "sqlite",
@@ -4061,6 +4131,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "DeveloperCredentialByVerifier",
+    "annotation": "authn-resolution",
+    "hash": "914282a5fb1b3f6b3c74264f51cbf84dd029213b4439842bf8f7b1d9c24d98e2",
+    "reason": "Authentication resolves the presented verifier before any authorization proof can exist."
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeveloperMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "3a099380c8b4b0ca5be7c5babc1ab975a227da5c80d47f3de4d50872d7a33922",
+    "reason": "restore must outrun every attacker-controlled developer credential epoch stamp"
+  },
+  {
+    "engine": "sqlite",
     "name": "DisableWebAuthnCredential",
     "annotation": "authn-resolution",
     "hash": "8b28aa8f530e6ef3ef812866a0daa85c83c7f6092d35ed2357dd959ab3603435"
@@ -4198,6 +4282,13 @@
     "name": "GetCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "f659262a1cea753762f8a7f29ff45a3e6729d191db815d491a42f40b07d6b270"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetDeveloperCredentialPolicy",
+    "annotation": "authn-resolution",
+    "hash": "215b8fffffdcf42ed3e18f9ebc336316dc35b02401b1c53cb1e4c4657f449929",
+    "reason": "Mint and policy tightening serialize on this shared instance policy before changing delegation authority."
   },
   {
     "engine": "sqlite",
@@ -4484,13 +4575,13 @@
     "engine": "sqlite",
     "name": "GetSessionByID",
     "annotation": "authn-resolution",
-    "hash": "052db5aba519012346dc80f8b0fc66ddce11c46b78c135bfdc4bfcfcb49c9f90"
+    "hash": "11d5a7ec27171b18794ed5728f00a07a104a3a6c6cfb4dfe3a5d7f19568c051a"
   },
   {
     "engine": "sqlite",
     "name": "GetSessionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "029ceb32a7cfe33a220a1de465c3d5ba13ed50310c1ee518000067f23c60d720"
+    "hash": "563f992a79bcf5f7cee67579e5150da237ec4dc753c5038bb046bb4445defca3"
   },
   {
     "engine": "sqlite",
@@ -4583,6 +4674,13 @@
     "name": "InsertCredentialAuthority",
     "annotation": "authn-resolution",
     "hash": "dd31f5fca392f36d4af0e819ab351217f576aeeead3703df0eb4fea5362a7667"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertDeveloperCredential",
+    "annotation": "authn-resolution",
+    "hash": "6e4808916e9797910f8a98379345b675f4018f50f1db23abae5054d5d0c5ec01",
+    "reason": "Mint authenticated human delegation only after exact scope-bound reauthentication and tenant authorization in this transaction."
   },
   {
     "engine": "sqlite",
@@ -4844,6 +4942,13 @@
     "name": "ListCredentialsBeyondCeiling",
     "annotation": "authn-resolution",
     "hash": "4546478da7f2e71be0984a320fbfad0decc814c39f1e1c2e002538e24924b31d"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListDeveloperCredentials",
+    "annotation": "authn-resolution",
+    "hash": "5540825ba5ba33f32fdaf7ff60606953829a95de8fbf37a1c1377961e9f0d694",
+    "reason": "Transaction-local lifecycle administration filters this metadata after self or project authorization; no bearer can be recovered."
   },
   {
     "engine": "sqlite",
@@ -5846,6 +5951,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "RestoreDeveloperPolicySeedOccupied",
+    "annotation": "authn-resolution",
+    "hash": "125c7a37452445b187082d8501823320c708701dd6e79aedb5894f3774f9d936",
+    "reason": "restore target admission checks developer policy without exposing authentication verifiers"
+  },
+  {
+    "engine": "sqlite",
     "name": "RetireRestoredApprovedWorkspaceHandoffs",
     "annotation": "authn-resolution",
     "hash": "19d047f0fe8b0613568512cd17a5ae4256927099f84403ff095e43b43508c4c4",
@@ -5863,6 +5975,13 @@
     "name": "RevokeAllMachineCredentials",
     "annotation": "authn-resolution",
     "hash": "f71e62ec84df2609184945817b0af3783d41cb4fb9dd327f18542dc618901157"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RevokeDeveloperCredential",
+    "annotation": "authn-resolution",
+    "hash": "4e3f65ec1849c0f26ffff08c9e6546ff1e62aad12664de8bde05f39f946e4fda",
+    "reason": "Terminal security invalidation writes authentication state atomically with its authorizing mutation."
   },
   {
     "engine": "sqlite",
@@ -6078,6 +6197,13 @@
     "name": "SetCredentialPolicy",
     "annotation": "authn-resolution",
     "hash": "21f5004f1fa0e51bebf23dfb17181e81660f31c3133257796b7e8b1e7218ce57"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetDeveloperCredentialPolicy",
+    "annotation": "authn-resolution",
+    "hash": "d94b4f5b92709bdb92e5d47db7c02aed252079fb855219e7f46aaef07f140843",
+    "reason": "Instance-config authorization precedes the shared lifetime policy mutation in the same transaction."
   },
   {
     "engine": "sqlite",

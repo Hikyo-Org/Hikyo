@@ -948,6 +948,16 @@
         "internal/authz/forwarders_gen.go:TxAuthorizer.InvalidateRestoredAdapterCredentials": "c7ae9e221ce73d170614af8f433d19bf11bca6583f4a507b37b4b38c287850df"
       }
     },
+    "internal/store/authn/restore.go:Resolver.restoreDeveloperNextEpoch": {
+      "hash": "740bce1e76b9bd0ff3bd0c94b69b51e5b82ec86bb34ff16ac81a2e099850f7a3",
+      "reason": "Historical authenticated-archive catalog probe checks only the fixed developer_credentials table introduced in migration 00074 before selecting the generated credential-epoch maximum. Older archive absence must not abort PostgreSQL restore transactions. Reads schema metadata only, never tenant rows, request-selected identifiers, or verifiers; nextEpoch retains the sane-range and overflow guard.",
+      "callers": {
+        "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "e42f1f0336abd0454755e02234745bcfcf887b0880a299e3dd6d78b8f36643d9"
+      },
+      "dependencies": [
+        "internal/store/authn/restore.go:nextEpoch"
+      ]
+    },
     "internal/store/authn/restore.go:Resolver.restoredExternalCredentialTables": {
       "hash": "06d000444fc76f0638b42159474359c247c2af7b517c08b720519a0519724f47",
       "reason": "Historical authenticated-archive catalog probe checks three fixed optional credential tables before generated invalidation writes; prevents undefined-table errors from aborting PostgreSQL restore transactions. Reads only schema metadata, never tenant rows or request-derived table names.",
@@ -967,8 +977,8 @@
       "reason": "Historical restored-schema catalog counts the two optional post-legacy credential tables before selecting the appropriate existing generated epoch query; no tenant rows are read by this probe."
     },
     "internal/store/backup.go:assertOnlyMigrationSeeds": {
-      "hash": "74b3e5c01408a18eaee290c571703acbfb0e8e8b11240730a0017922b4ccf325",
-      "reason": "Archive restoration checks dynamically discovered historical target tables for non-seed rows under held table locks. The current static ops_diagnostics seed check was migrated separately to RestoreDiagnosticsSeedOccupied.",
+      "hash": "2023c313a355a66a850644bb718ed574118aa0ea87091c8bb44ca37ffd02fa2f",
+      "reason": "Archive restoration checks dynamically discovered historical target tables for non-seed rows under held table locks. Static ops_diagnostics and developer_credential_policy seed checks use generated RestoreDiagnosticsSeedOccupied and RestoreDeveloperPolicySeedOccupied; only the untouched developer policy default may be replaced.",
       "callers": {
         "internal/store/backup.go:restorePostgresChecked": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de"
       },
@@ -2728,7 +2738,7 @@
     "internal/store/authn/human.go:encodeTime": "06cc0fc636e36926e2ce7c1c715a58f0adfaa117dba698b20b68dfa8638893db",
     "internal/store/authn/human.go:pgTimestamp": "40fe3a7f81fcd765d5877f3e446391b70d49bcd90a0832990c6e33a910fa7b19",
     "internal/store/authn/restore.go:Resolver.AdvanceRestoreEpoch": "cde49bf263934b802b2b9163bf53d405fb97cc2778eba0ff4d7d4cec673d5ac5",
-    "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "bfe63f0a1c371f3210d8c2152ac7ff93578286df56c69fabd070ff36c5e55c1e",
+    "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "e42f1f0336abd0454755e02234745bcfcf887b0880a299e3dd6d78b8f36643d9",
     "internal/store/authn/restore.go:Resolver.retireRestoredPendingHumanProofs": "e800fdaa927c583afcb18837dce8295bf047b1924245fd89fbb8107ae826ce47",
     "internal/store/authn/restore.go:nextEpoch": "79b068b0a5ca75782267913fe318b89d2eae303c07bd8a26205760ce848e28aa",
     "internal/store/backup.go:isMissingGooseTable": "1281c742cb5d6fe8f7b608f0ff0ff450b5188394bd4e1e7043f991d55d74fd04",

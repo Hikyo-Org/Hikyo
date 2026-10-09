@@ -322,9 +322,13 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// The instance lifetime controls and the clamp they apply. Both are
 	// authorized at the chokepoint under `instance-config` before they run;
 	// the write rides this surface because credential_policy is class=authn.
-	"SetCredentialPolicy":        true,
-	"ClampCredentialExpiry":      true,
-	"ClampIndefiniteCredentials": true,
+	"SetDeveloperCredentialPolicy":   true,
+	"InsertDeveloperCredential":      true,
+	"RevokeDeveloperCredential":      true,
+	"ClampDeveloperCredentialExpiry": true,
+	"SetCredentialPolicy":            true,
+	"ClampCredentialExpiry":          true,
+	"ClampIndefiniteCredentials":     true,
 	// Registration policy (#606). The policy tables are class=authn: the
 	// sign-up legs (#607, #608) resolve them before any principal exists.
 	// Administration is authorized at the chokepoint (registration-policy.*)

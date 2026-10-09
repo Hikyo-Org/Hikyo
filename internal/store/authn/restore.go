@@ -370,7 +370,7 @@ func (r *Resolver) restoreNextEpoch(ctx context.Context) (int64, error) {
 	}
 	switch present {
 	case 0:
-		return next, nil
+		return r.restoreDeveloperNextEpoch(ctx, next)
 	case postLegacyEpochTables:
 	default:
 		return 0, fmt.Errorf("authn: restored schema carries %d of the %d post-legacy credential tables: refusing an unknown schema", present, postLegacyEpochTables)
@@ -388,7 +388,39 @@ func (r *Resolver) restoreNextEpoch(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return max(next, postNext), nil
+	return r.restoreDeveloperNextEpoch(ctx, max(next, postNext))
+}
+
+// restoreDeveloperNextEpoch scans 00074 credential stamps only when its table
+// exists in the restored archive. Older archives remain valid without it.
+func (r *Resolver) restoreDeveloperNextEpoch(ctx context.Context, next int64) (int64, error) {
+	var present int64
+	var err error
+	if r.sq != nil {
+		err = r.sqdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'developer_credentials'`).Scan(&present)
+	} else {
+		err = r.pgdb.QueryRow(ctx, `SELECT COUNT(*) FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('developer_credentials')`).Scan(&present)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("authn: probe restored developer credentials: %w", err)
+	}
+	if present == 0 {
+		return next, nil
+	}
+	var raw any
+	if r.sq != nil {
+		raw, err = r.sq.DeveloperMaxCredentialEpoch(ctx)
+	} else {
+		raw, err = r.pg.DeveloperMaxCredentialEpoch(ctx)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("authn: read restored developer credential epochs: %w", err)
+	}
+	developerNext, err := nextEpoch(raw)
+	if err != nil {
+		return 0, err
+	}
+	return max(next, developerNext), nil
 }
 
 // postLegacyEpochTables is how many tables PostLegacyMaxCredentialEpoch scans.

@@ -2,6 +2,10 @@
 
 import * as z from 'zod';
 
+export const zDeveloperCredentialPolicy = z.object({
+    max_lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
+});
+
 /**
  * An issuer or profile name.
  */
@@ -178,6 +182,35 @@ export const zUpdateAccountProfileRequest = z.object({
  * A prefixed UUIDv7, e.g. `org_0198…`.
  */
 export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}$/);
+
+export const zMintDeveloperCredentialRequest = z.object({
+    key_ids: z.array(zId).max(1000),
+    consent_current_and_future: z.literal(true),
+    lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)).optional()
+});
+
+export const zDeveloperCredential = z.object({
+    id: zId,
+    principal_id: zId,
+    authority_principal_id: zId,
+    org_id: zId,
+    project_id: zId,
+    environment_id: zId,
+    created_at: z.iso.datetime(),
+    expires_at: z.iso.datetime(),
+    revoked_at: z.iso.datetime().optional(),
+    prefix_hint: z.string()
+});
+
+export const zDeveloperCredentialList = z.object({
+    items: z.array(zDeveloperCredential),
+    count: z.int().gte(0)
+});
+
+export const zMintDeveloperCredentialResult = z.object({
+    credential: zDeveloperCredential,
+    value: z.string()
+});
 
 /**
  * One CA key version's public surface. There is no private-key field:
@@ -1054,6 +1087,19 @@ export const zTotpCodeRequest = z.object({
     code: z.string().min(6).max(10)
 });
 
+export const zDeveloperCredentialReauthIntent = z.object({
+    lifetime_seconds: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(28800)),
+    consent_current_and_future: z.literal(true)
+});
+
+export const zTotpDeveloperCredentialReauthRequest = z.object({
+    purpose: z.literal('developer-credential'),
+    environment_id: zId,
+    key_ids: z.array(zId).max(1000),
+    developer_credential: zDeveloperCredentialReauthIntent,
+    code: z.string().min(6).max(10)
+});
+
 export const zSelfConfigReauthIntent = z.object({
     plan_digest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     action: z.enum([
@@ -1088,14 +1134,16 @@ export const zTotpEnvironmentReauthRequest = z.object({
     code: z.string().min(6).max(10)
 }).strict();
 
-/**
- * `adapter` carries an adapter-routing decision over an environment set.
- * Every non-adapter purpose carries an exact environment and key set. The
- * browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
- * names exactly the unit the decision covers.
- *
- */
-export const zCliReauthStartRequest = z.object({
+export const zCliReauthStartRequest = z.intersection(z.union([
+    z.object({
+        purpose: z.enum(['developer-credential']).optional()
+    }),
+    z.object({
+        purpose: z.unknown().optional(),
+        key_ids: z.unknown().optional()
+    })
+]), z.object({
+    developer_credential: zDeveloperCredentialReauthIntent.optional(),
     self_config: zSelfConfigReauthIntent.optional(),
     purpose: z.enum([
         'adapter',
@@ -1105,7 +1153,8 @@ export const zCliReauthStartRequest = z.object({
         'approve',
         'reject',
         'bypass',
-        'self-config'
+        'self-config',
+        'developer-credential'
     ]),
     operation: z.enum([
         'adapter.configure',
@@ -1119,13 +1168,14 @@ export const zCliReauthStartRequest = z.object({
         'approval.bypass',
         'self-config.adopt',
         'self-config.apply',
-        'self-config.test'
+        'self-config.test',
+        'developer-credential.mint'
     ]),
     environment_ids: z.array(zId),
-    key_ids: z.array(zId).max(500).optional(),
+    key_ids: z.array(zId).max(1000).optional(),
     pkce_challenge: z.string().length(43).regex(/^[A-Za-z0-9_-]{43}$/),
     redirect_uri: z.url().max(256)
-});
+}));
 
 export const zCliReauthStart = z.object({
     state: z.string().min(1),
@@ -1149,6 +1199,7 @@ export const zCliReauthEnvironmentPolicy = z.object({
 });
 
 export const zCliReauthTransaction = z.object({
+    developer_credential: zDeveloperCredentialReauthIntent.optional(),
     self_config: zSelfConfigReauthIntent.optional(),
     state: z.string().min(1),
     purpose: z.enum([
@@ -1159,7 +1210,8 @@ export const zCliReauthTransaction = z.object({
         'approve',
         'reject',
         'bypass',
-        'self-config'
+        'self-config',
+        'developer-credential'
     ]),
     operation: z.enum([
         'adapter.configure',
@@ -1173,7 +1225,8 @@ export const zCliReauthTransaction = z.object({
         'approval.bypass',
         'self-config.adopt',
         'self-config.apply',
-        'self-config.test'
+        'self-config.test',
+        'developer-credential.mint'
     ]),
     environments: z.array(zCliReauthEnvironmentPolicy),
     key_ids: z.array(zId),
@@ -3782,6 +3835,7 @@ export const zReauthPurpose = z.enum([
     'mint',
     'adapter',
     'self-config',
+    'developer-credential',
     'approve',
     'reject',
     'bypass',
@@ -3809,10 +3863,20 @@ export const zTotpAdapterReauthRequest = z.object({
 export const zTotpReauthRequest = z.union([
     zTotpEnvironmentReauthRequest,
     zTotpAdapterReauthRequest,
-    zTotpSelfConfigReauthRequest
+    zTotpSelfConfigReauthRequest,
+    zTotpDeveloperCredentialReauthRequest
 ]);
 
-export const zWebauthnReauthStartRequest = z.object({
+export const zWebauthnReauthStartRequest = z.intersection(z.union([
+    z.object({
+        operation: z.enum(['developer-credential']).optional(),
+        key_ids: z.unknown().optional()
+    }),
+    z.object({
+        operation: z.unknown().optional()
+    })
+]), z.object({
+    developer_credential: zDeveloperCredentialReauthIntent.optional(),
     self_config: zSelfConfigReauthIntent.optional(),
     operation: zReauthPurpose,
     environment_id: z.string().max(64),
@@ -3824,7 +3888,7 @@ export const zWebauthnReauthStartRequest = z.object({
         'adapter.sync'
     ]).optional(),
     environment_ids: z.array(zId).min(1).optional()
-});
+}));
 
 /**
  * The account-security proof for removing a credential, selected
@@ -9198,3 +9262,68 @@ export const zTransitVerifyHmacPath = z.object({
  * The verification result.
  */
 export const zTransitVerifyHmacResponse = zTransitVerifyResult;
+
+export const zMintDeveloperCredentialBody = zMintDeveloperCredentialRequest;
+
+export const zMintDeveloperCredentialPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Authorized result. Credential values appear only at mint.
+ */
+export const zMintDeveloperCredentialResponse = zMintDeveloperCredentialResult;
+
+/**
+ * Revoked idempotently.
+ */
+export const zRevokeAllMyDeveloperCredentialsResponse = z.void();
+
+/**
+ * Authorized result. Credential values appear only at mint.
+ */
+export const zListMyDeveloperCredentialsResponse = zDeveloperCredentialList;
+
+export const zRevokeMyDeveloperCredentialPath = z.object({
+    credential: zId
+});
+
+/**
+ * Revoked idempotently.
+ */
+export const zRevokeMyDeveloperCredentialResponse = z.void();
+
+export const zListProjectDeveloperCredentialsPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Authorized result. Credential values appear only at mint.
+ */
+export const zListProjectDeveloperCredentialsResponse = zDeveloperCredentialList;
+
+export const zRevokeProjectDeveloperCredentialPath = z.object({
+    org: zId,
+    project: zId,
+    credential: zId
+});
+
+/**
+ * Revoked idempotently.
+ */
+export const zRevokeProjectDeveloperCredentialResponse = z.void();
+
+/**
+ * Authorized result. Credential values appear only at mint.
+ */
+export const zGetDeveloperCredentialPolicyResponse = zDeveloperCredentialPolicy;
+
+export const zSetDeveloperCredentialPolicyBody = zDeveloperCredentialPolicy;
+
+/**
+ * Authorized result. Credential values appear only at mint.
+ */
+export const zSetDeveloperCredentialPolicyResponse = zDeveloperCredentialPolicy;

@@ -28,6 +28,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
+	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
 
 // hookWriter triggers a side effect on its first write — the mid-export
@@ -479,6 +480,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// The machine-identity surface (#61): every identity.* type gets a
 		// real emitter before the trails are read.
 		runIdentityLifecycle(t, db)
+		runDeveloperAuditLifecycle(t, db)
 		// OIDC federation and the delivery surface (#62): the same obligation, one
 		// ticket later.
 		runFederationLifecycle(t, db)
@@ -1419,4 +1421,89 @@ func openSelfConfigAuditDB(t *testing.T, engine store.Engine) *store.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+// runDeveloperAuditLifecycle proves every registered developer event has a real
+// service emitter, using a fresh invited human and its own materialized scope.
+func runDeveloperAuditLifecycle(t *testing.T, db *store.DB) {
+	t.Helper()
+	ctx := t.Context()
+	actor := service.LocalPrincipal(root)
+	org, err := (&service.Orgs{DB: db}).Create(ctx, actor, "developer-audit-org", true, []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := (&service.Projects{DB: db}).Create(ctx, actor, domain.OrgID(org.ID), "developer-audit-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(project.ID)}
+	env, err := (&service.Environments{DB: db, Keyring: probeKeyring(t, db)}).Create(ctx, actor, scope, "developer-audit-environment", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.Env = domain.EnvID(env.ID)
+	auth := authService(t, db)
+	auth.ExternalOrigin = ceremonyOrigin
+	if err := auth.ConfigureWebAuthnRP(); err != nil {
+		t.Fatal(err)
+	}
+	invite, err := (&service.Grants{DB: db, Auth: auth}).InviteMember(ctx, actor, service.InviteSpec{Scope: domain.Scope{Org: scope.Org}, Username: "developer-audit-human", Template: domain.TemplateAdmin, Delivery: "response"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.EstablishCredential(ctx, invite.Authority, ceremonyPassword); err != nil {
+		t.Fatal(err)
+	}
+	login, err := auth.LocalLogin(ctx, "developer-audit-human", ceremonyPassword, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := webauthntest.New(ceremonyRPID, ceremonyOrigin)
+	token := enrolPasskeyAndStepUp(t, auth, ctx, login.SessionToken, ceremonyPassword, device)
+	// Fixture declaration is separate from the encrypted, publicly published value.
+	execRaw(t, db, fmt.Sprintf(`INSERT INTO keys (id, org_id, project_id, name, folder_path, classification, description, deprecated, deprecation_note, declaration, required_mode, forbidden_mode, created_at) VALUES ('key_developer_audit', '%s', '%s', 'DEVELOPER_AUDIT', '', 'secret', '', FALSE, '', '{"rule":{"type":"string"}}', 'none', 'none', %s)`, scope.Org, scope.Project, ts))
+	values := &service.Values{DB: db, Keyring: probeKeyring(t, db), Auth: auth}
+	publishValue(t, values, actor, scope, "DEVELOPER_AUDIT", "audit-development-value")
+	credentials := &service.DeveloperCredentials{DB: db, Auth: auth}
+	request := service.MintDeveloperCredentialRequest{Lifetime: time.Hour, ConsentCurrentAndFuture: true, KeyIDs: []string{"key_developer_audit"}}
+	if _, err := credentials.Mint(ctx, service.Bearer(token), scope, request); !errors.Is(err, service.ErrNoReauthWindow) {
+		t.Fatalf("mint without fresh intent = %v", err)
+	}
+	intent, err := service.NewDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, err := auth.ReauthPasskeyStart(ctx, token, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := device.Assert(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := auth.ReauthPasskeyFinish(ctx, token, response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := service.Bearer(fresh.SessionToken)
+	minted, err := credentials.Mint(ctx, owner, scope, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := credentials.List(ctx, owner, domain.Scope{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := credentials.Policy(ctx, actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := credentials.SetPolicy(ctx, actor, 2*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := credentials.Revoke(ctx, owner, domain.Scope{}, minted.Credential.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := credentials.SetPolicy(ctx, actor, 8*time.Hour); err != nil {
+		t.Fatal(err)
+	}
 }

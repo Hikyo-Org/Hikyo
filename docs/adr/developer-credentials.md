@@ -1,17 +1,12 @@
-# Bounded developer credentials (#807, draft)
+# Bounded developer credentials (#807, locked 2026-10-09)
 
-Status: **draft, not locked or operative**. The owner selected the bounded
-developer-credential decision lane on 2026-10-09 and accepted future-key
-consent and self-delegation. The lifecycle recommendation implements the
-owner's instruction to preserve security without breaking development UX.
-The precise lifetime policy below remains a proposal for final confirmation.
-Credential implementation must wait for explicit owner lock of the proposed
-lifecycle and limits, and the declared owning-ADR amendments. On 2026-10-09
-the owner explicitly instructed "skip cross provider review" for this #807
-decision. That is a task-specific review waiver under the amendment procedure
-in [OSS mechanics](./oss-mechanics.md), not a global policy change or an ADR
-lock. No further provider-selection or quota approval is required for this
-decision.
+Status: **owner-locked on 2026-10-09; operative when this implementation PR merges**.
+After the grilled decision and ordinary Standards and Spec reviews, the owner
+accepted the concrete lifecycle and limits by instructing "implement, commit,
+push, pr". The owning amendments below are recorded in this changeset.
+The owner explicitly instructed "skip cross provider review" for this #807
+decision. This task-specific waiver changes that review gate only; it is not a
+global policy change. No further provider-selection or quota approval is required.
 
 Review availability: the owner confirmed on 2026-10-09 that there is no Claude
 subscription. The cached model choices remain OpenAI `gpt-6.1-sol/high` and
@@ -46,7 +41,7 @@ composition remains sufficient until a concrete plugin need is demonstrated.
 ## Grilling outcomes
 
 1. **Login coupling.** Owner direction: prioritize security without breaking
-   development UX. Proposed resolution: ordinary logout or login-session expiry
+   development UX. Accepted resolution: ordinary logout or login-session expiry
    does not end the delegation. Account disable/removal, access loss, credential
    epoch invalidation, explicit revocation, expiry, and environment protection
    prevent the next fetch. Alternative: end the delegation when the issuing
@@ -60,7 +55,7 @@ composition remains sufficient until a concrete plugin need is demonstrated.
    additionally require `manage-identities(project)`, accepting administrator
    involvement for ordinary developers.
 
-## Proposed identity and authorization model
+## identity and authorization model
 
 Introduce a distinct developer principal, not another service-account kind or
 a bearer that resolves directly to the human. It has exactly the fixed
@@ -95,6 +90,10 @@ disclosure/delegation unit using the existing authentication mechanisms. A
 generic existing reauthentication window must not authorize a different
 environment or changed consent unit. Non-TTY minting fails before any token is
 created. No new password, cookie, MFA, or session implementation is introduced.
+
+Mint retains the existing effective-window factor policy: a zero window requires
+WebAuthn. Check that policy both when opening a TOTP ceremony and when consuming
+the bound decision, including a policy change between ceremony and mint.
 
 Per-fetch delegation checks do not require a continuing human reauthentication
 window: unattended delivery is the explicit bounded exception decided here.
@@ -134,7 +133,7 @@ credentials as a security action. Any global account/session revocation path
 must include developer credentials atomically; this ADR does not claim that
 the current UI already has a global sign-out action.
 
-## Proposed lifetime and revocation policy
+## lifetime and revocation policy
 
 The instance policy defaults to an eight-hour maximum, with a hard maximum of
 eight hours; operators may lower it. An omitted requested TTL uses the lesser
@@ -143,7 +142,7 @@ and indefinite TTLs are refused. The server sets the absolute expiry from its
 clock at mint. There is no sliding expiry, refresh token, rotation, or renewal.
 Another credential requires another interactive mint ceremony.
 
-Proposed resource bound: at most four live developer credentials per human
+Fixed resource bound: at most four live developer credentials per human
 per instance, across environments. Count and mint atomically on both engines;
 concurrent replicas cannot exceed the cap. Refuse at the cap with instructions
 to list and revoke an existing credential, rather than silently replacing it.
@@ -165,7 +164,7 @@ for incident response, but cannot retrieve a bearer or reassign its delegator.
 Revocation is idempotent and one server call. Local deletion alone is not
 server revocation, and a failed server revocation must be reported explicitly.
 
-## Proposed credential custody and CLI behavior
+## credential custody and CLI behavior
 
 Use Hikyo's existing opaque high-entropy token and hashed-verifier primitives,
 with a distinct artifact class admitted only to developer delivery. Server
@@ -173,10 +172,10 @@ metadata records the developer principal, human delegator, immutable scope,
 mint time, recorded expiry, epoch, and revocation. No stored server field can
 recover the bearer. Prefixes are hints; database metadata is authoritative.
 
-Proposed commands are `hikyo dev session --env <id> --ttl 8h`,
+The commands are `hikyo dev session --env <id> --ttl 8h`,
 `hikyo dev session list`, `hikyo dev session revoke --id <id>`, and
 `hikyo dev session revoke --all`.
-Final grammar must be reconciled with the API/CLI ADR before lock.
+The API/CLI ADR and generated contract define the operative grammar below.
 
 Store the bearer in the CLI's private state outside the repository, with a
 0700 directory and 0600 file using the existing private-state custody helpers.
@@ -218,7 +217,7 @@ An unprotected environment is not proof that its contents are safe. Future-key
 consent, if selected, explicitly accepts that additional development values
 become available during the bounded delegation.
 
-## Required declared amendments before lock
+## Declared owning amendments
 
 - [Permission model](./permission-model.md): add the developer principal's
   closed authority, recorded-human current authorization, and selected
@@ -235,12 +234,11 @@ become available during the bounded delegation.
 - [MVP boundary](./mvp-boundary.md): explicitly admit bounded developer
   credentials on demand from #807; retain the exclusion of JIT deploy tokens.
 
-Do not mark those amendments operative while this ADR is pending. Record
-the declared amendments and the task-specific review waiver at the owning
-decisions; the waiver covers this developer-credential decision only. Keep
-unrelated locked policy unchanged.
+The owner-approved amendments are recorded in each owning ADR in this changeset
+and become operative together when the implementation PR merges. The waiver
+covers this developer-credential decision only. Unrelated locked policy is unchanged.
 
-## Implementation acceptance after lock
+## Implementation acceptance
 
 Both SQLite and PostgreSQL must prove successful interactive mint and non-TTY
 run, exact-scope refusal, protected-at-mint and protected-after-mint refusal,

@@ -1,70 +1,105 @@
-# Issue #807: developer credential decision handoff
+# Issue #807: bounded developer credential implementation
 
-## Entry point and phase
+Read the owner-locked [developer credential ADR](../adr/developer-credentials.md)
+for the normative lifecycle and security contract. This branch implements the
+credential lane of [#807](https://github.com/Hikyo-Org/Hikyo/issues/807).
+Documentation ask A previously merged through #811.
 
-Read the complete [developer credential ADR draft](../adr/developer-credentials.md).
-This is the design phase of [#807](https://github.com/Hikyo-Org/Hikyo/issues/807),
-not a completed credential implementation. The ADR is **unlocked and
-inoperative**. Keep #807 open. Documentation ask A already merged through #811.
+The authorized endpoint is implementation, signed commits, push and PR creation.
+Merge, release and deployment are outside this authorization. The task baseline
+is `36c323c417d1c29b20431a8c4bdb539882b9136c` on `dunky13/fix-issue-807`.
 
-The local baseline for this task is
-`36c323c417d1c29b20431a8c4bdb539882b9136c` on
-`dunky13/fix-issue-807`. The authorized endpoint is implementation, relevant
-checks, review, and a signed commit on this branch, after the required design
-gate. Push, PR creation, merge, release, and deployment are not requested.
+## Accepted decision and lock
 
-## Accepted direction
+The owner selected a separate developer principal for one unprotected
+environment, current human read and reveal authority on every fetch, recorded
+human audit authority, current and future key consent, and fresh scope-bound
+self-delegation. Ordinary logout and login expiry preserve the fixed lifetime;
+security invalidation and access or protection changes prevent the next fetch.
+The concrete eight-hour maximum, lowerable instance ceiling and four-live cap
+were approved with "implement, commit, push, pr" on 2026-10-09. Owning ADR
+amendments are recorded in this changeset and become operative together on merge.
 
-- Separate bounded developer credential for one unprotected environment.
-- Eight-hour default, instance lifetime ceiling, current human read/reveal
-  checked on every fetch, and recorded human audit authority.
-- No renewal or offline delivery; ordinary human-session ceremony unchanged.
-- Explicit consent to current and future published keys in that environment.
-- Self-delegation from current read/reveal and fresh scope-bound human
-  reauthentication, without project manage-identities.
-- For login coupling, the owner's instruction is security without breaking
-  development UX. The draft proposes surviving ordinary logout/idle expiry
-  while security invalidation is terminal, including issuing-session security
-  revocation, factor changes, provider/identity invalidation, and scoped
-  offboarding. Global sign-out must cover developer credentials if provided.
+Two ordinary OpenAI Standards and Spec draft reviews found a ceiling-change
+expiry-revival flaw. Both follow-ups confirmed the durable monotonic expiry
+clamp correction. Cross-provider review is **SKIPPED by explicit owner
+instruction**, not CLEAN. The owner no longer has a Claude subscription;
+Anthropic availability is recorded as unavailable in the shared reviewer cache
+and working-style guidance. No Claude call or replacement paid review was made.
 
-The eight-hour hard maximum, four-live-credential cap, and exact lifecycle
-resolution are proposals for the final owner lock. The draft names all owning
-ADR amendments and both-engine implementation acceptance requirements.
+## Implementation
 
-## Review evidence
+- Migration 00074 introduces durable delegation metadata and the shared ceiling
+  for SQLite and PostgreSQL. Verifiers are hashed, never recoverable bearers.
+- The developer artifact is admitted only to latest online delivery. It has
+  immutable scope and no separately grantable authority, renewal, history,
+  dynamic leases, file delivery or offline reconciliation.
+- Fresh developer reauthentication binds scope, current published key set,
+  lifetime and future-key consent. It consumes one decision. Generic reveal
+  windows do not satisfy mint. CLI TOTP and browser passkey/TOTP use this intent.
+- CLI private custody uses the owner-only state file primitives outside the
+  repository, exact trusted origin and immutable IDs. Mint outputs metadata
+  only and attempts server revocation if local custody fails.
+- Non-TTY `run` discovers the matching credential when no explicit machine
+  credential is supplied, strips Hikyo credential environment variables and
+  retains loader-control, collision and execution checks. It never reads or
+  writes offline snapshots, cursors or pending audit material.
+- Session security revocation, account restrictions, provider/identity security
+  mutation, environment protection and scoped SCIM access loss terminally revoke
+  affected credentials in the mutation transaction with human audit attribution.
+- Instance policy lowering durably clamps existing expiry; raising cannot revive
+  it. Own lifecycle, project incident administration and instance policy APIs are
+  generated into the Go and TypeScript contract.
 
-Two independent OpenAI subagents ran the code-review skill's Standards and
-Spec axes against the entire new ADR draft. Both found an expiry-revival flaw
-in a recomputed policy ceiling. The revision durably clamps existing expiry
-inside the serialized ceiling-change transaction and explicitly tests lowering
-past expiry followed by raising. Both review follow-ups confirmed the fix and
-reported no new critical findings. They do not establish cross-provider review.
+## Validation and delivery evidence
 
-On 2026-10-09 the owner confirmed keeping the cached review choices
-`gpt-6.1-sol/high` and `claude-opus-5-5/high`, and stated that there is no longer
-a Claude subscription. The shared review cache marks Anthropic unavailable;
-the owner's working-style guidance records that no Claude quota prompts or
-review launches should occur until access is explicitly restored. No vendor
-skill was edited and no Claude model call was launched.
+Local validation covers the complete Go package set, the repository-planned
+four isolation shards, and targeted developer race tests. New lifecycle,
+security invalidation, concurrent mint/disclosure, forged archive epoch and
+canonical audit-emission regressions also run against SQLite and PostgreSQL.
+The full PostgreSQL isolation suite remains a hosted CI responsibility.
 
-Cross-provider review: **SKIPPED by explicit owner instruction**. On
-2026-10-09 the owner answered the review-path question with "skip cross provider
-review". This waives the provider-review gate for this #807 design, not all
-future work. Do not request a replacement provider or quota for this decision.
-The ordinary reviews remain ordinary reviews; no skipped pass is CLEAN.
-The final owner lock of the concrete lifecycle and limits remains pending.
+Web validation passed typecheck, lint, design checks, 167 unit-test files with
+1,512 tests, and eight CLI reauthentication story tests. The generated TypeScript
+client passed typecheck and its 36 tests. API generation, authorization registry,
+SQL policy, Go lint, import formatting, vet, documentation status ledger and the
+76-page documentation build were checked. Structural graph relationships were
+refreshed.
 
-## Validation and remaining work
+Review repaired refused-mint audit coverage, restore epoch scanning, exact
+pristine policy seed admission, shared launch safety, credential custody outside
+all enclosing repositories, preauthentication rate admission before durable
+refusal audits, consent bounds matching the supported 1,000-key catalogue, and zero-window
+passkey enforcement at both ceremony opening and decision consumption.
+Final ordinary OpenAI Standards and Spec closure reviews are **CLEAN**.
+Cross-provider review remains **SKIPPED by explicit owner instruction**.
 
-Relative ADR links, repository punctuation rules, whitespace, the complete
-offline HTML companion, and desktop/mobile document rendering are checked.
-No application code changed, so no Go, web TypeScript, or runtime suite is
-claimed. Remote CI, publication, deployment, and runtime proof are absent.
+The browser consent story was inspected at 1280 x 800 and 390 x 844. It shows
+scope, fixed lifetime, current/future consent and fresh factor controls. The
+local Storybook URL is temporary and is not a published environment.
 
-Next steps: obtain explicit owner lock including pending limits; record required owning
-ADR amendments through the governance procedure; implement with regression
-coverage at the credential, delivery, custody, and revocation seams; run
-focused checks during implementation and the relevant full suite at its end;
-review and commit. Do not weaken existing human authentication or snapshot
-rules to make the new delivery path work.
+The own lifecycle and mint operations have a declared CLI-only parity exception.
+Project incident and instance policy WebUI parity remain tracked by #807; this
+PR references the issue rather than closing it prematurely. No remote CI,
+merge, artifact publication, deployment or production runtime proof is claimed
+by local tests.
+
+## Operator entry points
+
+After selecting a trusted instance, organization and project using immutable IDs:
+
+```sh
+hikyo dev session --env <env-id> --ttl 8h
+hikyo run --env <env-id> -- pnpm dev
+hikyo dev session list
+hikyo dev session revoke --id <credential-id>
+hikyo dev session revoke --all
+hikyo instance-config developer-credential-policy get
+hikyo instance-config developer-credential-policy set --max-lifetime 4h
+```
+
+Mint runs in a controlling terminal. `run` may be launched by a coding agent for
+that exact scope after mint. Development environments must contain only
+development values: an agent controlling the child can read every delivered
+value. Fixed expiry and next-fetch revocation cannot erase values already held
+by a child process.

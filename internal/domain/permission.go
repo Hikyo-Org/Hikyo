@@ -129,7 +129,8 @@ func ExpandTemplate(t Template, at Level) ([]Capability, error) {
 type PrincipalClass string
 
 const (
-	ClassHuman PrincipalClass = "human"
+	ClassHuman     PrincipalClass = "human"
+	ClassDeveloper PrincipalClass = "developer"
 	// ClassWorkload — delivery credentials: read, plus the value-free
 	// delivery-target status report.
 	ClassWorkload PrincipalClass = "workload"

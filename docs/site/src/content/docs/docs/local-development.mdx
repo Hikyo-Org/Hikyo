@@ -14,42 +14,68 @@ terminal. Pick the delivery path with that in mind.
 | Path | Command | Works without a TTY | Plaintext on disk | Audit |
 | --- | --- | --- | --- | --- |
 | Export a file | `hikyo values export --reveal --format dotenv --output-file .env` | yes, after the export | yes, until you delete it | one human disclosure per export |
-| Run with a developer credential | `hikyo run --token-file <path> -- <command>` | yes | no values; the credential file only | one machine fetch per launch |
+| Run with a developer credential | `hikyo run -- <command>` after `hikyo dev session` | yes | private credential only | developer actor and human authority per launch |
+| Run with a service account | `hikyo run --token-file <path> -- <command>` | yes | private credential; optional offline snapshot | machine fetch per launch |
 | Run with your human session | `hikyo run --use-human-session -- <command>` | no | none | one confirmed disclosure per launch |
 
 **Export a file** is the simplest path and the one every tool understands.
 Refresh it when values change; it is a projection of the environment, never a
 second source. Keep it out of version control.
 
-**Run with a developer credential** keeps plaintext values out of files. Create
-a service account for the developer, grant it `read` on the `development`
-environment only, and mint a credential with the shortest lifetime your routine
-tolerates:
+**Run with a developer credential** delegates your current read and reveal
+access to one unprotected environment for a fixed working session. Log in and
+select the trusted instance, organization and project, then mint interactively:
 
 ```bash
-hikyo sa create --name dev-alice --kind workload
-hikyo access grant add --principal <mch_...> --capability read --env <development-env-id>
-# Secrets only: the project's machine-reveal opt-in plus a reveal grant.
-hikyo project-settings machine-reveal set --enabled true
-hikyo access grant add --principal <mch_...> --capability reveal --env <development-env-id>
-hikyo sa credential mint --sa <sa_...> --lifetime 24h --output-file ~/.config/hikyo/dev-token
-hikyo run --token-file ~/.config/hikyo/dev-token -- pnpm dev
+hikyo dev session --env <development-env-id> --ttl 8h
+hikyo run --env <development-env-id> -- pnpm dev
+hikyo dev session list
+hikyo dev session revoke --id <credential-id>
+# End all your delegations on the selected instance:
+hikyo dev session revoke --all
 ```
 
-Store the credential outside the repository with owner-only permissions. It is
-a bearer credential: anything running as your user, an agent included, can read
-it. If the environment holds no secrets the process needs, add `--config-only`
-and skip the machine-reveal opt-in and the `reveal` grant. With a
-`hikyo-compose.yaml` present, a live fetch that passes the loader-control,
-merge, and `ARG_MAX` checks also saves the delivered values to an encrypted
-local snapshot just before the command starts (see below).
+The selected organization, project and environment must use immutable
+`org_`, `prj_` and `env_` UUID IDs. Log in with the account assurance required by
+your instance; `hikyo account factor step-up` raises a password-only session when
+required. Fresh delegation reauthentication is a separate ceremony.
+
+Mint requires a controlling terminal, explicit consent to every current and
+future published key in this environment, and fresh scope-bound TOTP or passkey
+reauthentication. A generic live reveal window is insufficient. The default and
+hard maximum are eight hours; the instance can impose a shorter ceiling. You can
+hold at most four live credentials per instance. There is no renewal.
+
+The CLI stores the bearer in private 0600 state outside the repository, under
+`HIKYO_STATE_DIR` or the normal user state directory. Mint prints metadata only.
+`run` discovers it only for the exact trusted origin and immutable environment.
+An explicit service-account credential takes precedence. Developer credentials
+are not accepted through `HIKYO_TOKEN` or `--token-file`.
+
+Ordinary logout or login expiry does not interrupt the fixed delegation. Account
+security invalidation, explicit revocation, loss of environment access or making
+the environment protected prevents the next fetch. Ordinary logout reports this
+and names the revoke command. Already delivered child-process values cannot be
+erased. Every fetch checks your current read and reveal authorization and records
+both the developer actor and your human audit authority.
+
+Developer delivery is online-only: no snapshot, cursor, offline audit queue or
+fallback is read or written. An unreachable server refuses the launch, even if
+an older service-account snapshot exists. Loader-control acknowledgements,
+collision checks and execution limits still apply.
+
+**Run with a service account** remains available for project-owned workloads.
+Create a service account, grant read on the selected environment, and mint a
+short finite credential using [machine identities](/docs/machine-identities/).
+Secret delivery additionally requires the project's machine-reveal opt-in and
+a reveal grant. Pass the private token file through `--token-file`; this path can
+use the existing Compose offline snapshot policy.
 
 **Run with your human session** is the locked exception for interactive use. It
 needs a controlling terminal, an enumerated y/N confirmation on every launch,
 and a live disclosure window. A coding agent or a scripted test run cannot
 satisfy it, by design: a process that is not you must not act with your full
-authority. A short-lived developer credential delegated from your session is
-tracked in [#807](https://github.com/Hikyo-Org/Hikyo/issues/807).
+authority. Use the separate bounded developer credential above for unattended launches.
 
 ## What each path protects
 
@@ -57,9 +83,9 @@ State the threat model honestly. No delivery mechanism keeps plaintext from a
 process that you, or an agent acting for you, can launch: the child can print
 its environment, and anyone running as your user can read `/proc/<pid>/environ`.
 
-- `hikyo run` writes no plaintext values and prints none. It replaces itself
-  with the child (`exec`), so it cannot filter what the child prints.
-- An offline snapshot changes availability, never disclosure: it is sealed with
+- Developer `hikyo run` writes no plaintext values and prints none. It replaces
+  itself with the child (`exec`), so it cannot filter what the child prints.
+- A service-account offline snapshot changes availability, never disclosure: it is sealed with
   a local key that the same user can read, and it is served only when the
   server is unavailable and the project file opts in
   ([Docker Compose delivery](/docs/compose/#plaintext-and-offline-operation)).
@@ -81,7 +107,7 @@ exactly that and read the process environment, so the two compose without a
 plugin:
 
 ```bash
-hikyo run --token-file ~/.config/hikyo/dev-token -- varlock run -- pnpm dev
+hikyo run -- varlock run -- pnpm dev
 ```
 
 Hikyo fetches and injects the `development` values; varlock validates them

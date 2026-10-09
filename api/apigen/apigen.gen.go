@@ -841,18 +841,19 @@ func (e AuthMethodsSignupLanding) Valid() bool {
 
 // Defines values for CLIReauthStartRequestOperation.
 const (
-	CLIReauthStartRequestOperationAdapterAdopt         CLIReauthStartRequestOperation = "adapter.adopt"
-	CLIReauthStartRequestOperationAdapterConfigure     CLIReauthStartRequestOperation = "adapter.configure"
-	CLIReauthStartRequestOperationAdapterCredentialSet CLIReauthStartRequestOperation = "adapter.credential-set"
-	CLIReauthStartRequestOperationAdapterSync          CLIReauthStartRequestOperation = "adapter.sync"
-	CLIReauthStartRequestOperationApprovalBypass       CLIReauthStartRequestOperation = "approval.bypass"
-	CLIReauthStartRequestOperationApprovalVote         CLIReauthStartRequestOperation = "approval.vote"
-	CLIReauthStartRequestOperationSelfConfigAdopt      CLIReauthStartRequestOperation = "self-config.adopt"
-	CLIReauthStartRequestOperationSelfConfigApply      CLIReauthStartRequestOperation = "self-config.apply"
-	CLIReauthStartRequestOperationSelfConfigTest       CLIReauthStartRequestOperation = "self-config.test"
-	CLIReauthStartRequestOperationValueCopyDestination CLIReauthStartRequestOperation = "value.copy-destination"
-	CLIReauthStartRequestOperationValueCopySource      CLIReauthStartRequestOperation = "value.copy-source"
-	CLIReauthStartRequestOperationValueReveal          CLIReauthStartRequestOperation = "value.reveal"
+	CLIReauthStartRequestOperationAdapterAdopt            CLIReauthStartRequestOperation = "adapter.adopt"
+	CLIReauthStartRequestOperationAdapterConfigure        CLIReauthStartRequestOperation = "adapter.configure"
+	CLIReauthStartRequestOperationAdapterCredentialSet    CLIReauthStartRequestOperation = "adapter.credential-set"
+	CLIReauthStartRequestOperationAdapterSync             CLIReauthStartRequestOperation = "adapter.sync"
+	CLIReauthStartRequestOperationApprovalBypass          CLIReauthStartRequestOperation = "approval.bypass"
+	CLIReauthStartRequestOperationApprovalVote            CLIReauthStartRequestOperation = "approval.vote"
+	CLIReauthStartRequestOperationDeveloperCredentialMint CLIReauthStartRequestOperation = "developer-credential.mint"
+	CLIReauthStartRequestOperationSelfConfigAdopt         CLIReauthStartRequestOperation = "self-config.adopt"
+	CLIReauthStartRequestOperationSelfConfigApply         CLIReauthStartRequestOperation = "self-config.apply"
+	CLIReauthStartRequestOperationSelfConfigTest          CLIReauthStartRequestOperation = "self-config.test"
+	CLIReauthStartRequestOperationValueCopyDestination    CLIReauthStartRequestOperation = "value.copy-destination"
+	CLIReauthStartRequestOperationValueCopySource         CLIReauthStartRequestOperation = "value.copy-source"
+	CLIReauthStartRequestOperationValueReveal             CLIReauthStartRequestOperation = "value.reveal"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestOperation enum.
@@ -869,6 +870,8 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 	case CLIReauthStartRequestOperationApprovalBypass:
 		return true
 	case CLIReauthStartRequestOperationApprovalVote:
+		return true
+	case CLIReauthStartRequestOperationDeveloperCredentialMint:
 		return true
 	case CLIReauthStartRequestOperationSelfConfigAdopt:
 		return true
@@ -889,14 +892,15 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
-	CLIReauthStartRequestPurposeAdapter    CLIReauthStartRequestPurpose = "adapter"
-	CLIReauthStartRequestPurposeApprove    CLIReauthStartRequestPurpose = "approve"
-	CLIReauthStartRequestPurposeBypass     CLIReauthStartRequestPurpose = "bypass"
-	CLIReauthStartRequestPurposeCopy       CLIReauthStartRequestPurpose = "copy"
-	CLIReauthStartRequestPurposePublish    CLIReauthStartRequestPurpose = "publish"
-	CLIReauthStartRequestPurposeReject     CLIReauthStartRequestPurpose = "reject"
-	CLIReauthStartRequestPurposeReveal     CLIReauthStartRequestPurpose = "reveal"
-	CLIReauthStartRequestPurposeSelfConfig CLIReauthStartRequestPurpose = "self-config"
+	CLIReauthStartRequestPurposeAdapter             CLIReauthStartRequestPurpose = "adapter"
+	CLIReauthStartRequestPurposeApprove             CLIReauthStartRequestPurpose = "approve"
+	CLIReauthStartRequestPurposeBypass              CLIReauthStartRequestPurpose = "bypass"
+	CLIReauthStartRequestPurposeCopy                CLIReauthStartRequestPurpose = "copy"
+	CLIReauthStartRequestPurposeDeveloperCredential CLIReauthStartRequestPurpose = "developer-credential"
+	CLIReauthStartRequestPurposePublish             CLIReauthStartRequestPurpose = "publish"
+	CLIReauthStartRequestPurposeReject              CLIReauthStartRequestPurpose = "reject"
+	CLIReauthStartRequestPurposeReveal              CLIReauthStartRequestPurpose = "reveal"
+	CLIReauthStartRequestPurposeSelfConfig          CLIReauthStartRequestPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
@@ -909,6 +913,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 	case CLIReauthStartRequestPurposeBypass:
 		return true
 	case CLIReauthStartRequestPurposeCopy:
+		return true
+	case CLIReauthStartRequestPurposeDeveloperCredential:
 		return true
 	case CLIReauthStartRequestPurposePublish:
 		return true
@@ -925,18 +931,19 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 
 // Defines values for CLIReauthTransactionOperation.
 const (
-	CLIReauthTransactionOperationAdapterAdopt         CLIReauthTransactionOperation = "adapter.adopt"
-	CLIReauthTransactionOperationAdapterConfigure     CLIReauthTransactionOperation = "adapter.configure"
-	CLIReauthTransactionOperationAdapterCredentialSet CLIReauthTransactionOperation = "adapter.credential-set"
-	CLIReauthTransactionOperationAdapterSync          CLIReauthTransactionOperation = "adapter.sync"
-	CLIReauthTransactionOperationApprovalBypass       CLIReauthTransactionOperation = "approval.bypass"
-	CLIReauthTransactionOperationApprovalVote         CLIReauthTransactionOperation = "approval.vote"
-	CLIReauthTransactionOperationSelfConfigAdopt      CLIReauthTransactionOperation = "self-config.adopt"
-	CLIReauthTransactionOperationSelfConfigApply      CLIReauthTransactionOperation = "self-config.apply"
-	CLIReauthTransactionOperationSelfConfigTest       CLIReauthTransactionOperation = "self-config.test"
-	CLIReauthTransactionOperationValueCopyDestination CLIReauthTransactionOperation = "value.copy-destination"
-	CLIReauthTransactionOperationValueCopySource      CLIReauthTransactionOperation = "value.copy-source"
-	CLIReauthTransactionOperationValueReveal          CLIReauthTransactionOperation = "value.reveal"
+	CLIReauthTransactionOperationAdapterAdopt            CLIReauthTransactionOperation = "adapter.adopt"
+	CLIReauthTransactionOperationAdapterConfigure        CLIReauthTransactionOperation = "adapter.configure"
+	CLIReauthTransactionOperationAdapterCredentialSet    CLIReauthTransactionOperation = "adapter.credential-set"
+	CLIReauthTransactionOperationAdapterSync             CLIReauthTransactionOperation = "adapter.sync"
+	CLIReauthTransactionOperationApprovalBypass          CLIReauthTransactionOperation = "approval.bypass"
+	CLIReauthTransactionOperationApprovalVote            CLIReauthTransactionOperation = "approval.vote"
+	CLIReauthTransactionOperationDeveloperCredentialMint CLIReauthTransactionOperation = "developer-credential.mint"
+	CLIReauthTransactionOperationSelfConfigAdopt         CLIReauthTransactionOperation = "self-config.adopt"
+	CLIReauthTransactionOperationSelfConfigApply         CLIReauthTransactionOperation = "self-config.apply"
+	CLIReauthTransactionOperationSelfConfigTest          CLIReauthTransactionOperation = "self-config.test"
+	CLIReauthTransactionOperationValueCopyDestination    CLIReauthTransactionOperation = "value.copy-destination"
+	CLIReauthTransactionOperationValueCopySource         CLIReauthTransactionOperation = "value.copy-source"
+	CLIReauthTransactionOperationValueReveal             CLIReauthTransactionOperation = "value.reveal"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthTransactionOperation enum.
@@ -953,6 +960,8 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 	case CLIReauthTransactionOperationApprovalBypass:
 		return true
 	case CLIReauthTransactionOperationApprovalVote:
+		return true
+	case CLIReauthTransactionOperationDeveloperCredentialMint:
 		return true
 	case CLIReauthTransactionOperationSelfConfigAdopt:
 		return true
@@ -973,14 +982,15 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
-	CLIReauthTransactionPurposeAdapter    CLIReauthTransactionPurpose = "adapter"
-	CLIReauthTransactionPurposeApprove    CLIReauthTransactionPurpose = "approve"
-	CLIReauthTransactionPurposeBypass     CLIReauthTransactionPurpose = "bypass"
-	CLIReauthTransactionPurposeCopy       CLIReauthTransactionPurpose = "copy"
-	CLIReauthTransactionPurposePublish    CLIReauthTransactionPurpose = "publish"
-	CLIReauthTransactionPurposeReject     CLIReauthTransactionPurpose = "reject"
-	CLIReauthTransactionPurposeReveal     CLIReauthTransactionPurpose = "reveal"
-	CLIReauthTransactionPurposeSelfConfig CLIReauthTransactionPurpose = "self-config"
+	CLIReauthTransactionPurposeAdapter             CLIReauthTransactionPurpose = "adapter"
+	CLIReauthTransactionPurposeApprove             CLIReauthTransactionPurpose = "approve"
+	CLIReauthTransactionPurposeBypass              CLIReauthTransactionPurpose = "bypass"
+	CLIReauthTransactionPurposeCopy                CLIReauthTransactionPurpose = "copy"
+	CLIReauthTransactionPurposeDeveloperCredential CLIReauthTransactionPurpose = "developer-credential"
+	CLIReauthTransactionPurposePublish             CLIReauthTransactionPurpose = "publish"
+	CLIReauthTransactionPurposeReject              CLIReauthTransactionPurpose = "reject"
+	CLIReauthTransactionPurposeReveal              CLIReauthTransactionPurpose = "reveal"
+	CLIReauthTransactionPurposeSelfConfig          CLIReauthTransactionPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
@@ -993,6 +1003,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeBypass:
 		return true
 	case CLIReauthTransactionPurposeCopy:
+		return true
+	case CLIReauthTransactionPurposeDeveloperCredential:
 		return true
 	case CLIReauthTransactionPurposePublish:
 		return true
@@ -1427,6 +1439,21 @@ func (e DeliveryTargetState) Valid() bool {
 	case DeliveryTargetStateReporterRevoked:
 		return true
 	case DeliveryTargetStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeveloperCredentialReauthIntentConsentCurrentAndFuture.
+const (
+	DeveloperCredentialReauthIntentConsentCurrentAndFutureTrue DeveloperCredentialReauthIntentConsentCurrentAndFuture = true
+)
+
+// Valid indicates whether the value is a known member of the DeveloperCredentialReauthIntentConsentCurrentAndFuture enum.
+func (e DeveloperCredentialReauthIntentConsentCurrentAndFuture) Valid() bool {
+	switch e {
+	case DeveloperCredentialReauthIntentConsentCurrentAndFutureTrue:
 		return true
 	default:
 		return false
@@ -1991,6 +2018,21 @@ func (e LocalSignupMethod) Valid() bool {
 	}
 }
 
+// Defines values for MintDeveloperCredentialRequestConsentCurrentAndFuture.
+const (
+	MintDeveloperCredentialRequestConsentCurrentAndFutureTrue MintDeveloperCredentialRequestConsentCurrentAndFuture = true
+)
+
+// Valid indicates whether the value is a known member of the MintDeveloperCredentialRequestConsentCurrentAndFuture enum.
+func (e MintDeveloperCredentialRequestConsentCurrentAndFuture) Valid() bool {
+	switch e {
+	case MintDeveloperCredentialRequestConsentCurrentAndFutureTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Oauth2ProviderProfile.
 const (
 	Oauth2ProviderProfileGithub Oauth2ProviderProfile = "github"
@@ -2374,16 +2416,17 @@ func (e ProjectRetentionPolicyMode) Valid() bool {
 
 // Defines values for ReauthPurpose.
 const (
-	ReauthPurposeAccess     ReauthPurpose = "access"
-	ReauthPurposeAdapter    ReauthPurpose = "adapter"
-	ReauthPurposeApprove    ReauthPurpose = "approve"
-	ReauthPurposeBypass     ReauthPurpose = "bypass"
-	ReauthPurposeCopy       ReauthPurpose = "copy"
-	ReauthPurposeMint       ReauthPurpose = "mint"
-	ReauthPurposePublish    ReauthPurpose = "publish"
-	ReauthPurposeReject     ReauthPurpose = "reject"
-	ReauthPurposeReveal     ReauthPurpose = "reveal"
-	ReauthPurposeSelfConfig ReauthPurpose = "self-config"
+	ReauthPurposeAccess              ReauthPurpose = "access"
+	ReauthPurposeAdapter             ReauthPurpose = "adapter"
+	ReauthPurposeApprove             ReauthPurpose = "approve"
+	ReauthPurposeBypass              ReauthPurpose = "bypass"
+	ReauthPurposeCopy                ReauthPurpose = "copy"
+	ReauthPurposeDeveloperCredential ReauthPurpose = "developer-credential"
+	ReauthPurposeMint                ReauthPurpose = "mint"
+	ReauthPurposePublish             ReauthPurpose = "publish"
+	ReauthPurposeReject              ReauthPurpose = "reject"
+	ReauthPurposeReveal              ReauthPurpose = "reveal"
+	ReauthPurposeSelfConfig          ReauthPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the ReauthPurpose enum.
@@ -2398,6 +2441,8 @@ func (e ReauthPurpose) Valid() bool {
 	case ReauthPurposeBypass:
 		return true
 	case ReauthPurposeCopy:
+		return true
+	case ReauthPurposeDeveloperCredential:
 		return true
 	case ReauthPurposeMint:
 		return true
@@ -3349,16 +3394,17 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
-	TotpAdapterReauthRequestPurposeAccess     TotpAdapterReauthRequestPurpose = "access"
-	TotpAdapterReauthRequestPurposeAdapter    TotpAdapterReauthRequestPurpose = "adapter"
-	TotpAdapterReauthRequestPurposeApprove    TotpAdapterReauthRequestPurpose = "approve"
-	TotpAdapterReauthRequestPurposeBypass     TotpAdapterReauthRequestPurpose = "bypass"
-	TotpAdapterReauthRequestPurposeCopy       TotpAdapterReauthRequestPurpose = "copy"
-	TotpAdapterReauthRequestPurposeMint       TotpAdapterReauthRequestPurpose = "mint"
-	TotpAdapterReauthRequestPurposePublish    TotpAdapterReauthRequestPurpose = "publish"
-	TotpAdapterReauthRequestPurposeReject     TotpAdapterReauthRequestPurpose = "reject"
-	TotpAdapterReauthRequestPurposeReveal     TotpAdapterReauthRequestPurpose = "reveal"
-	TotpAdapterReauthRequestPurposeSelfConfig TotpAdapterReauthRequestPurpose = "self-config"
+	TotpAdapterReauthRequestPurposeAccess              TotpAdapterReauthRequestPurpose = "access"
+	TotpAdapterReauthRequestPurposeAdapter             TotpAdapterReauthRequestPurpose = "adapter"
+	TotpAdapterReauthRequestPurposeApprove             TotpAdapterReauthRequestPurpose = "approve"
+	TotpAdapterReauthRequestPurposeBypass              TotpAdapterReauthRequestPurpose = "bypass"
+	TotpAdapterReauthRequestPurposeCopy                TotpAdapterReauthRequestPurpose = "copy"
+	TotpAdapterReauthRequestPurposeDeveloperCredential TotpAdapterReauthRequestPurpose = "developer-credential"
+	TotpAdapterReauthRequestPurposeMint                TotpAdapterReauthRequestPurpose = "mint"
+	TotpAdapterReauthRequestPurposePublish             TotpAdapterReauthRequestPurpose = "publish"
+	TotpAdapterReauthRequestPurposeReject              TotpAdapterReauthRequestPurpose = "reject"
+	TotpAdapterReauthRequestPurposeReveal              TotpAdapterReauthRequestPurpose = "reveal"
+	TotpAdapterReauthRequestPurposeSelfConfig          TotpAdapterReauthRequestPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
@@ -3374,6 +3420,8 @@ func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 		return true
 	case TotpAdapterReauthRequestPurposeCopy:
 		return true
+	case TotpAdapterReauthRequestPurposeDeveloperCredential:
+		return true
 	case TotpAdapterReauthRequestPurposeMint:
 		return true
 	case TotpAdapterReauthRequestPurposePublish:
@@ -3383,6 +3431,21 @@ func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	case TotpAdapterReauthRequestPurposeReveal:
 		return true
 	case TotpAdapterReauthRequestPurposeSelfConfig:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TotpDeveloperCredentialReauthRequestPurpose.
+const (
+	TotpDeveloperCredentialReauthRequestPurposeDeveloperCredential TotpDeveloperCredentialReauthRequestPurpose = "developer-credential"
+)
+
+// Valid indicates whether the value is a known member of the TotpDeveloperCredentialReauthRequestPurpose enum.
+func (e TotpDeveloperCredentialReauthRequestPurpose) Valid() bool {
+	switch e {
+	case TotpDeveloperCredentialReauthRequestPurposeDeveloperCredential:
 		return true
 	default:
 		return false
@@ -5304,7 +5367,8 @@ type CLIReauthStart struct {
 // browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
 // names exactly the unit the decision covers.
 type CLIReauthStartRequest struct {
-	EnvironmentIds []ID `json:"environment_ids"`
+	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitempty"`
+	EnvironmentIds      []ID                             `json:"environment_ids"`
 
 	// KeyIds The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
 	KeyIds        *[]ID                          `json:"key_ids,omitempty"`
@@ -5315,6 +5379,7 @@ type CLIReauthStartRequest struct {
 	// RedirectUri Exact ephemeral loopback callback, http://127.0.0.1:PORT/callback or the bracketed ::1 equivalent.
 	RedirectUri string                  `json:"redirect_uri"`
 	SelfConfig  *SelfConfigReauthIntent `json:"self_config,omitempty"`
+	union       json.RawMessage
 }
 
 // CLIReauthStartRequestOperation defines model for CLIReauthStartRequest.Operation.
@@ -5323,9 +5388,21 @@ type CLIReauthStartRequestOperation string
 // CLIReauthStartRequestPurpose defines model for CLIReauthStartRequest.Purpose.
 type CLIReauthStartRequestPurpose string
 
+// CLIReauthStartRequest0 defines model for CLIReauthStartRequest.0.
+type CLIReauthStartRequest0 struct {
+	Purpose interface{} `json:"purpose,omitempty"`
+}
+
+// CLIReauthStartRequest1 defines model for CLIReauthStartRequest.1.
+type CLIReauthStartRequest1 struct {
+	KeyIds  interface{} `json:"key_ids,omitempty"`
+	Purpose interface{} `json:"purpose,omitempty"`
+}
+
 // CLIReauthTransaction defines model for CLIReauthTransaction.
 type CLIReauthTransaction struct {
-	Environments []CLIReauthEnvironmentPolicy `json:"environments"`
+	DeveloperCredential *DeveloperCredentialReauthIntent `json:"developer_credential,omitempty"`
+	Environments        []CLIReauthEnvironmentPolicy     `json:"environments"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
 	ExpiresAt Timestamp `json:"expires_at"`
@@ -6264,6 +6341,8 @@ type DeliveredKey struct {
 	// SnapshotReceipt Authenticated server receipt for this delivered value, present only
 	// with value. Store inside the encrypted offline snapshot. Required
 	// for later offline disclosure reconciliation; never log it.
+	// Absent for developer-credential delivery, which never authorizes
+	// offline snapshots or reconciliation.
 	SnapshotReceipt *string `json:"snapshot_receipt,omitempty"`
 
 	// Value The delivered plaintext. Present ONLY when the caller was
@@ -6502,6 +6581,51 @@ type DeliveryTargetTombstoneRequest struct {
 	// target object's UID. A recreated object is a new target.
 	Target DeliveryTargetIdentity `json:"target"`
 }
+
+// DeveloperCredential defines model for DeveloperCredential.
+type DeveloperCredential struct {
+	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	AuthorityPrincipalId ID        `json:"authority_principal_id"`
+	CreatedAt            time.Time `json:"created_at"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID        `json:"environment_id"`
+	ExpiresAt     time.Time `json:"expires_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
+	OrgId      ID     `json:"org_id"`
+	PrefixHint string `json:"prefix_hint"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProjectId ID         `json:"project_id"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+}
+
+// DeveloperCredentialList defines model for DeveloperCredentialList.
+type DeveloperCredentialList struct {
+	Count int                   `json:"count"`
+	Items []DeveloperCredential `json:"items"`
+}
+
+// DeveloperCredentialPolicy defines model for DeveloperCredentialPolicy.
+type DeveloperCredentialPolicy struct {
+	MaxLifetimeSeconds int64 `json:"max_lifetime_seconds"`
+}
+
+// DeveloperCredentialReauthIntent defines model for DeveloperCredentialReauthIntent.
+type DeveloperCredentialReauthIntent struct {
+	ConsentCurrentAndFuture DeveloperCredentialReauthIntentConsentCurrentAndFuture `json:"consent_current_and_future"`
+	LifetimeSeconds         int64                                                  `json:"lifetime_seconds"`
+}
+
+// DeveloperCredentialReauthIntentConsentCurrentAndFuture defines model for DeveloperCredentialReauthIntent.ConsentCurrentAndFuture.
+type DeveloperCredentialReauthIntentConsentCurrentAndFuture bool
 
 // DirectoryListing What a connection credential authorizes, exhaustively. There is no field
 // here that could carry a value, a key, an environment, a membership, a
@@ -7986,6 +8110,25 @@ type MintCredentialResult struct {
 
 	// Value The credential value, returned EXACTLY ONCE to exactly one caller.
 	// No other route in this contract returns it.
+	Value string `json:"value"`
+}
+
+// MintDeveloperCredentialRequest defines model for MintDeveloperCredentialRequest.
+type MintDeveloperCredentialRequest struct {
+	// ConsentCurrentAndFuture Explicit consent to every current and future published key in this environment until expiry.
+	ConsentCurrentAndFuture MintDeveloperCredentialRequestConsentCurrentAndFuture `json:"consent_current_and_future"`
+	KeyIds                  []ID                                                  `json:"key_ids"`
+	LifetimeSeconds         *int64                                                `json:"lifetime_seconds,omitempty"`
+}
+
+// MintDeveloperCredentialRequestConsentCurrentAndFuture Explicit consent to every current and future published key in this environment until expiry.
+type MintDeveloperCredentialRequestConsentCurrentAndFuture bool
+
+// MintDeveloperCredentialResult defines model for MintDeveloperCredentialResult.
+type MintDeveloperCredentialResult struct {
+	Credential DeveloperCredential `json:"credential"`
+
+	// Value Display-once opaque credential. Never returned by list.
 	Value string `json:"value"`
 }
 
@@ -10590,6 +10733,20 @@ type TotpCodeRequest struct {
 	Code string `json:"code"`
 }
 
+// TotpDeveloperCredentialReauthRequest defines model for TotpDeveloperCredentialReauthRequest.
+type TotpDeveloperCredentialReauthRequest struct {
+	Code                string                          `json:"code"`
+	DeveloperCredential DeveloperCredentialReauthIntent `json:"developer_credential"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID                                          `json:"environment_id"`
+	KeyIds        []ID                                        `json:"key_ids"`
+	Purpose       TotpDeveloperCredentialReauthRequestPurpose `json:"purpose"`
+}
+
+// TotpDeveloperCredentialReauthRequestPurpose defines model for TotpDeveloperCredentialReauthRequest.Purpose.
+type TotpDeveloperCredentialReauthRequestPurpose string
+
 // TotpEnrolStartRequest defines model for TotpEnrolStartRequest.
 type TotpEnrolStartRequest struct {
 	// Password The account-security proof: the pre-existing password. Verified
@@ -11256,9 +11413,10 @@ type WebauthnOptions map[string]interface{}
 
 // WebauthnReauthStartRequest defines model for WebauthnReauthStartRequest.
 type WebauthnReauthStartRequest struct {
-	AdapterOperation *WebauthnReauthStartRequestAdapterOperation `json:"adapter_operation,omitempty"`
-	EnvironmentId    string                                      `json:"environment_id"`
-	EnvironmentIds   *[]ID                                       `json:"environment_ids,omitempty"`
+	AdapterOperation    *WebauthnReauthStartRequestAdapterOperation `json:"adapter_operation,omitempty"`
+	DeveloperCredential *DeveloperCredentialReauthIntent            `json:"developer_credential,omitempty"`
+	EnvironmentId       string                                      `json:"environment_id"`
+	EnvironmentIds      *[]ID                                       `json:"environment_ids,omitempty"`
 
 	// KeyIds The credential ids the reauthentication is bound to.
 	KeyIds []string `json:"key_ids"`
@@ -11269,10 +11427,22 @@ type WebauthnReauthStartRequest struct {
 	// unit, a different decision, and the human agreed to only one of them.
 	Operation  ReauthPurpose           `json:"operation"`
 	SelfConfig *SelfConfigReauthIntent `json:"self_config,omitempty"`
+	union      json.RawMessage
 }
 
 // WebauthnReauthStartRequestAdapterOperation defines model for WebauthnReauthStartRequest.AdapterOperation.
 type WebauthnReauthStartRequestAdapterOperation string
+
+// WebauthnReauthStartRequest0 defines model for WebauthnReauthStartRequest.0.
+type WebauthnReauthStartRequest0 struct {
+	KeyIds    interface{} `json:"key_ids,omitempty"`
+	Operation interface{} `json:"operation,omitempty"`
+}
+
+// WebauthnReauthStartRequest1 defines model for WebauthnReauthStartRequest.1.
+type WebauthnReauthStartRequest1 struct {
+	Operation interface{} `json:"operation,omitempty"`
+}
 
 // WebauthnResponse Opaque WebAuthn authenticator response (attestation or assertion) as
 // produced by the browser, passed to the relying party as raw bytes.
@@ -12440,6 +12610,9 @@ type MintInstanceConnectionJSONRequestBody = MintInstanceConnectionRequest
 // SetCredentialPolicyJSONRequestBody defines body for SetCredentialPolicy for application/json ContentType.
 type SetCredentialPolicyJSONRequestBody = SetCredentialPolicyRequest
 
+// SetDeveloperCredentialPolicyJSONRequestBody defines body for SetDeveloperCredentialPolicy for application/json ContentType.
+type SetDeveloperCredentialPolicyJSONRequestBody = DeveloperCredentialPolicy
+
 // CreateFederationIssuerJSONRequestBody defines body for CreateFederationIssuer for application/json ContentType.
 type CreateFederationIssuerJSONRequestBody = CreateFederationIssuerRequest
 
@@ -12631,6 +12804,9 @@ type TombstoneDeliveryTargetJSONRequestBody = DeliveryTargetTombstoneRequest
 
 // ReconcileOfflineRecordsJSONRequestBody defines body for ReconcileOfflineRecords for application/json ContentType.
 type ReconcileOfflineRecordsJSONRequestBody = ReconcileOfflineRecordsRequest
+
+// MintDeveloperCredentialJSONRequestBody defines body for MintDeveloperCredential for application/json ContentType.
+type MintDeveloperCredentialJSONRequestBody = MintDeveloperCredentialRequest
 
 // ReportFileTargetJSONRequestBody defines body for ReportFileTarget for application/json ContentType.
 type ReportFileTargetJSONRequestBody = FileTargetReportRequest
@@ -12859,6 +13035,192 @@ type ScimReplaceUserJSONRequestBody = ScimResource
 
 // ScimReplaceUserApplicationScimPlusJSONRequestBody defines body for ScimReplaceUser for application/scim+json ContentType.
 type ScimReplaceUserApplicationScimPlusJSONRequestBody = ScimResource
+
+// AsCLIReauthStartRequest0 returns the union data inside the CLIReauthStartRequest as a CLIReauthStartRequest0
+func (t CLIReauthStartRequest) AsCLIReauthStartRequest0() (CLIReauthStartRequest0, error) {
+	var body CLIReauthStartRequest0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCLIReauthStartRequest0 overwrites any union data inside the CLIReauthStartRequest as the provided CLIReauthStartRequest0
+func (t *CLIReauthStartRequest) FromCLIReauthStartRequest0(v CLIReauthStartRequest0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCLIReauthStartRequest0 performs a merge with any union data inside the CLIReauthStartRequest, using the provided CLIReauthStartRequest0
+func (t *CLIReauthStartRequest) MergeCLIReauthStartRequest0(v CLIReauthStartRequest0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCLIReauthStartRequest1 returns the union data inside the CLIReauthStartRequest as a CLIReauthStartRequest1
+func (t CLIReauthStartRequest) AsCLIReauthStartRequest1() (CLIReauthStartRequest1, error) {
+	var body CLIReauthStartRequest1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCLIReauthStartRequest1 overwrites any union data inside the CLIReauthStartRequest as the provided CLIReauthStartRequest1
+func (t *CLIReauthStartRequest) FromCLIReauthStartRequest1(v CLIReauthStartRequest1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCLIReauthStartRequest1 performs a merge with any union data inside the CLIReauthStartRequest, using the provided CLIReauthStartRequest1
+func (t *CLIReauthStartRequest) MergeCLIReauthStartRequest1(v CLIReauthStartRequest1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CLIReauthStartRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.DeveloperCredential != nil {
+		object["developer_credential"], err = json.Marshal(t.DeveloperCredential)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'developer_credential': %w", err)
+		}
+	}
+
+	if t.EnvironmentIds != nil {
+		object["environment_ids"], err = json.Marshal(t.EnvironmentIds)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'environment_ids': %w", err)
+		}
+	}
+
+	if t.KeyIds != nil {
+		object["key_ids"], err = json.Marshal(t.KeyIds)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'key_ids': %w", err)
+		}
+	}
+
+	object["operation"], err = json.Marshal(t.Operation)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'operation': %w", err)
+	}
+
+	object["pkce_challenge"], err = json.Marshal(t.PkceChallenge)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'pkce_challenge': %w", err)
+	}
+
+	object["purpose"], err = json.Marshal(t.Purpose)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'purpose': %w", err)
+	}
+
+	object["redirect_uri"], err = json.Marshal(t.RedirectUri)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'redirect_uri': %w", err)
+	}
+
+	if t.SelfConfig != nil {
+		object["self_config"], err = json.Marshal(t.SelfConfig)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'self_config': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *CLIReauthStartRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["developer_credential"]; found {
+		err = json.Unmarshal(raw, &t.DeveloperCredential)
+		if err != nil {
+			return fmt.Errorf("error reading 'developer_credential': %w", err)
+		}
+	}
+
+	if raw, found := object["environment_ids"]; found {
+		err = json.Unmarshal(raw, &t.EnvironmentIds)
+		if err != nil {
+			return fmt.Errorf("error reading 'environment_ids': %w", err)
+		}
+	}
+
+	if raw, found := object["key_ids"]; found {
+		err = json.Unmarshal(raw, &t.KeyIds)
+		if err != nil {
+			return fmt.Errorf("error reading 'key_ids': %w", err)
+		}
+	}
+
+	if raw, found := object["operation"]; found {
+		err = json.Unmarshal(raw, &t.Operation)
+		if err != nil {
+			return fmt.Errorf("error reading 'operation': %w", err)
+		}
+	}
+
+	if raw, found := object["pkce_challenge"]; found {
+		err = json.Unmarshal(raw, &t.PkceChallenge)
+		if err != nil {
+			return fmt.Errorf("error reading 'pkce_challenge': %w", err)
+		}
+	}
+
+	if raw, found := object["purpose"]; found {
+		err = json.Unmarshal(raw, &t.Purpose)
+		if err != nil {
+			return fmt.Errorf("error reading 'purpose': %w", err)
+		}
+	}
+
+	if raw, found := object["redirect_uri"]; found {
+		err = json.Unmarshal(raw, &t.RedirectUri)
+		if err != nil {
+			return fmt.Errorf("error reading 'redirect_uri': %w", err)
+		}
+	}
+
+	if raw, found := object["self_config"]; found {
+		err = json.Unmarshal(raw, &t.SelfConfig)
+		if err != nil {
+			return fmt.Errorf("error reading 'self_config': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsRegistrationExternalEntry0 returns the union data inside the RegistrationExternalEntry as a RegistrationExternalEntry0
 func (t RegistrationExternalEntry) AsRegistrationExternalEntry0() (RegistrationExternalEntry0, error) {
@@ -13320,6 +13682,32 @@ func (t *TotpReauthRequest) MergeTotpSelfConfigReauthRequest(v TotpSelfConfigRea
 	return err
 }
 
+// AsTotpDeveloperCredentialReauthRequest returns the union data inside the TotpReauthRequest as a TotpDeveloperCredentialReauthRequest
+func (t TotpReauthRequest) AsTotpDeveloperCredentialReauthRequest() (TotpDeveloperCredentialReauthRequest, error) {
+	var body TotpDeveloperCredentialReauthRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTotpDeveloperCredentialReauthRequest overwrites any union data inside the TotpReauthRequest as the provided TotpDeveloperCredentialReauthRequest
+func (t *TotpReauthRequest) FromTotpDeveloperCredentialReauthRequest(v TotpDeveloperCredentialReauthRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTotpDeveloperCredentialReauthRequest performs a merge with any union data inside the TotpReauthRequest, using the provided TotpDeveloperCredentialReauthRequest
+func (t *TotpReauthRequest) MergeTotpDeveloperCredentialReauthRequest(v TotpDeveloperCredentialReauthRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t TotpReauthRequest) MarshalJSON() ([]byte, error) {
 	b, err := t.union.MarshalJSON()
 	return b, err
@@ -13327,6 +13715,182 @@ func (t TotpReauthRequest) MarshalJSON() ([]byte, error) {
 
 func (t *TotpReauthRequest) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsWebauthnReauthStartRequest0 returns the union data inside the WebauthnReauthStartRequest as a WebauthnReauthStartRequest0
+func (t WebauthnReauthStartRequest) AsWebauthnReauthStartRequest0() (WebauthnReauthStartRequest0, error) {
+	var body WebauthnReauthStartRequest0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWebauthnReauthStartRequest0 overwrites any union data inside the WebauthnReauthStartRequest as the provided WebauthnReauthStartRequest0
+func (t *WebauthnReauthStartRequest) FromWebauthnReauthStartRequest0(v WebauthnReauthStartRequest0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWebauthnReauthStartRequest0 performs a merge with any union data inside the WebauthnReauthStartRequest, using the provided WebauthnReauthStartRequest0
+func (t *WebauthnReauthStartRequest) MergeWebauthnReauthStartRequest0(v WebauthnReauthStartRequest0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWebauthnReauthStartRequest1 returns the union data inside the WebauthnReauthStartRequest as a WebauthnReauthStartRequest1
+func (t WebauthnReauthStartRequest) AsWebauthnReauthStartRequest1() (WebauthnReauthStartRequest1, error) {
+	var body WebauthnReauthStartRequest1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWebauthnReauthStartRequest1 overwrites any union data inside the WebauthnReauthStartRequest as the provided WebauthnReauthStartRequest1
+func (t *WebauthnReauthStartRequest) FromWebauthnReauthStartRequest1(v WebauthnReauthStartRequest1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWebauthnReauthStartRequest1 performs a merge with any union data inside the WebauthnReauthStartRequest, using the provided WebauthnReauthStartRequest1
+func (t *WebauthnReauthStartRequest) MergeWebauthnReauthStartRequest1(v WebauthnReauthStartRequest1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WebauthnReauthStartRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.AdapterOperation != nil {
+		object["adapter_operation"], err = json.Marshal(t.AdapterOperation)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'adapter_operation': %w", err)
+		}
+	}
+
+	if t.DeveloperCredential != nil {
+		object["developer_credential"], err = json.Marshal(t.DeveloperCredential)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'developer_credential': %w", err)
+		}
+	}
+
+	object["environment_id"], err = json.Marshal(t.EnvironmentId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'environment_id': %w", err)
+	}
+
+	if t.EnvironmentIds != nil {
+		object["environment_ids"], err = json.Marshal(t.EnvironmentIds)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'environment_ids': %w", err)
+		}
+	}
+
+	if t.KeyIds != nil {
+		object["key_ids"], err = json.Marshal(t.KeyIds)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'key_ids': %w", err)
+		}
+	}
+
+	object["operation"], err = json.Marshal(t.Operation)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'operation': %w", err)
+	}
+
+	if t.SelfConfig != nil {
+		object["self_config"], err = json.Marshal(t.SelfConfig)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'self_config': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *WebauthnReauthStartRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["adapter_operation"]; found {
+		err = json.Unmarshal(raw, &t.AdapterOperation)
+		if err != nil {
+			return fmt.Errorf("error reading 'adapter_operation': %w", err)
+		}
+	}
+
+	if raw, found := object["developer_credential"]; found {
+		err = json.Unmarshal(raw, &t.DeveloperCredential)
+		if err != nil {
+			return fmt.Errorf("error reading 'developer_credential': %w", err)
+		}
+	}
+
+	if raw, found := object["environment_id"]; found {
+		err = json.Unmarshal(raw, &t.EnvironmentId)
+		if err != nil {
+			return fmt.Errorf("error reading 'environment_id': %w", err)
+		}
+	}
+
+	if raw, found := object["environment_ids"]; found {
+		err = json.Unmarshal(raw, &t.EnvironmentIds)
+		if err != nil {
+			return fmt.Errorf("error reading 'environment_ids': %w", err)
+		}
+	}
+
+	if raw, found := object["key_ids"]; found {
+		err = json.Unmarshal(raw, &t.KeyIds)
+		if err != nil {
+			return fmt.Errorf("error reading 'key_ids': %w", err)
+		}
+	}
+
+	if raw, found := object["operation"]; found {
+		err = json.Unmarshal(raw, &t.Operation)
+		if err != nil {
+			return fmt.Errorf("error reading 'operation': %w", err)
+		}
+	}
+
+	if raw, found := object["self_config"]; found {
+		err = json.Unmarshal(raw, &t.SelfConfig)
+		if err != nil {
+			return fmt.Errorf("error reading 'self_config': %w", err)
+		}
+	}
+
 	return err
 }
 
@@ -13412,6 +13976,15 @@ type ServerInterface interface {
 	// EstablishCredential Consume a credential-establishment authority and set an initial credential.
 	// (POST /api/v1/auth/credential/establish)
 	EstablishCredential(w http.ResponseWriter, r *http.Request)
+	// RevokeAllMyDeveloperCredentials Revoke every developer credential owned by the current human.
+	// (DELETE /api/v1/auth/developer-credentials)
+	RevokeAllMyDeveloperCredentials(w http.ResponseWriter, r *http.Request)
+	// ListMyDeveloperCredentials List the current human's developer credentials, metadata only.
+	// (GET /api/v1/auth/developer-credentials)
+	ListMyDeveloperCredentials(w http.ResponseWriter, r *http.Request)
+	// RevokeMyDeveloperCredential Revoke one developer credential owned by the current human.
+	// (DELETE /api/v1/auth/developer-credentials/{credential})
+	RevokeMyDeveloperCredential(w http.ResponseWriter, r *http.Request, credential CredentialID)
 	// ListIdentities List the caller's linked external identities.
 	// (GET /api/v1/auth/identities)
 	ListIdentities(w http.ResponseWriter, r *http.Request)
@@ -13568,6 +14141,12 @@ type ServerInterface interface {
 	// SetCredentialPolicy Move the instance credential lifetime controls.
 	// (PUT /api/v1/instance/credential-policy)
 	SetCredentialPolicy(w http.ResponseWriter, r *http.Request)
+	// GetDeveloperCredentialPolicy Read the instance developer credential lifetime ceiling.
+	// (GET /api/v1/instance/developer-credential-policy)
+	GetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request)
+	// SetDeveloperCredentialPolicy Set the lifetime ceiling and durably clamp outstanding expiry.
+	// (PUT /api/v1/instance/developer-credential-policy)
+	SetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request)
 	// ServeDirectory This instance's directory listing, as served to a connected instance.
 	// (GET /api/v1/instance/directory)
 	ServeDirectory(w http.ResponseWriter, r *http.Request)
@@ -13955,6 +14534,12 @@ type ServerInterface interface {
 	// SetDefinitionsSettings Select database- or Git-governed definitions.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/definitions/settings)
 	SetDefinitionsSettings(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ListProjectDeveloperCredentials List project developer credentials for incident response, metadata only.
+	// (GET /api/v1/orgs/{org}/projects/{project}/developer-credentials)
+	ListProjectDeveloperCredentials(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// RevokeProjectDeveloperCredential Revoke a project developer credential for incident response.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential})
+	RevokeProjectDeveloperCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, credential CredentialID)
 	// ListDynamicProviders List dynamic-secret providers with redacted credential metadata.
 	// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
 	ListDynamicProviders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -14063,6 +14648,9 @@ type ServerInterface interface {
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// MintDeveloperCredential Delegate current published delivery for one unprotected environment.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials)
+	MintDeveloperCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
 	// ReportFileTarget Report what the bound file-sync client applied.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report)
 	ReportFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, fileTarget FileTargetID)
@@ -14576,6 +15164,24 @@ func (_ Unimplemented) EstablishCredential(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// RevokeAllMyDeveloperCredentials Revoke every developer credential owned by the current human.
+// (DELETE /api/v1/auth/developer-credentials)
+func (_ Unimplemented) RevokeAllMyDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListMyDeveloperCredentials List the current human's developer credentials, metadata only.
+// (GET /api/v1/auth/developer-credentials)
+func (_ Unimplemented) ListMyDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeMyDeveloperCredential Revoke one developer credential owned by the current human.
+// (DELETE /api/v1/auth/developer-credentials/{credential})
+func (_ Unimplemented) RevokeMyDeveloperCredential(w http.ResponseWriter, r *http.Request, credential CredentialID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListIdentities List the caller's linked external identities.
 // (GET /api/v1/auth/identities)
 func (_ Unimplemented) ListIdentities(w http.ResponseWriter, r *http.Request) {
@@ -14885,6 +15491,18 @@ func (_ Unimplemented) GetCredentialPolicy(w http.ResponseWriter, r *http.Reques
 // SetCredentialPolicy Move the instance credential lifetime controls.
 // (PUT /api/v1/instance/credential-policy)
 func (_ Unimplemented) SetCredentialPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDeveloperCredentialPolicy Read the instance developer credential lifetime ceiling.
+// (GET /api/v1/instance/developer-credential-policy)
+func (_ Unimplemented) GetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetDeveloperCredentialPolicy Set the lifetime ceiling and durably clamp outstanding expiry.
+// (PUT /api/v1/instance/developer-credential-policy)
+func (_ Unimplemented) SetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -15662,6 +16280,18 @@ func (_ Unimplemented) SetDefinitionsSettings(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListProjectDeveloperCredentials List project developer credentials for incident response, metadata only.
+// (GET /api/v1/orgs/{org}/projects/{project}/developer-credentials)
+func (_ Unimplemented) ListProjectDeveloperCredentials(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeProjectDeveloperCredential Revoke a project developer credential for incident response.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential})
+func (_ Unimplemented) RevokeProjectDeveloperCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, credential CredentialID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListDynamicProviders List dynamic-secret providers with redacted credential metadata.
 // (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
 func (_ Unimplemented) ListDynamicProviders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
@@ -15875,6 +16505,12 @@ func (_ Unimplemented) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Re
 // ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 func (_ Unimplemented) ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MintDeveloperCredential Delegate current published delivery for one unprotected environment.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials)
+func (_ Unimplemented) MintDeveloperCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -16937,6 +17573,60 @@ func (siw *ServerInterfaceWrapper) EstablishCredential(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// RevokeAllMyDeveloperCredentials operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAllMyDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAllMyDeveloperCredentials(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyDeveloperCredentials operation middleware
+func (siw *ServerInterfaceWrapper) ListMyDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyDeveloperCredentials(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeMyDeveloperCredential operation middleware
+func (siw *ServerInterfaceWrapper) RevokeMyDeveloperCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "credential" -------------
+	var credential CredentialID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential", chi.URLParam(r, "credential"), &credential, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeMyDeveloperCredential(w, r, credential)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListIdentities operation middleware
 func (siw *ServerInterfaceWrapper) ListIdentities(w http.ResponseWriter, r *http.Request) {
 
@@ -17965,6 +18655,34 @@ func (siw *ServerInterfaceWrapper) SetCredentialPolicy(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetCredentialPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDeveloperCredentialPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDeveloperCredentialPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetDeveloperCredentialPolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetDeveloperCredentialPolicy(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22221,6 +22939,85 @@ func (siw *ServerInterfaceWrapper) SetDefinitionsSettings(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// ListProjectDeveloperCredentials operation middleware
+func (siw *ServerInterfaceWrapper) ListProjectDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjectDeveloperCredentials(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeProjectDeveloperCredential operation middleware
+func (siw *ServerInterfaceWrapper) RevokeProjectDeveloperCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "credential" -------------
+	var credential CredentialID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential", chi.URLParam(r, "credential"), &credential, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeProjectDeveloperCredential(w, r, org, project, credential)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDynamicProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListDynamicProviders(w http.ResponseWriter, r *http.Request) {
 
@@ -24212,6 +25009,50 @@ func (siw *ServerInterfaceWrapper) ReconcileOfflineRecords(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReconcileOfflineRecords(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MintDeveloperCredential operation middleware
+func (siw *ServerInterfaceWrapper) MintDeveloperCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MintDeveloperCredential(w, r, org, project, environment)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -32410,6 +33251,30 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify", wrapper.TransitVerifyHMAC)
 	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials", wrapper.MintDeveloperCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/auth/developer-credentials", wrapper.RevokeAllMyDeveloperCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/developer-credentials", wrapper.ListMyDeveloperCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/auth/developer-credentials/{credential}", wrapper.RevokeMyDeveloperCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/developer-credentials", wrapper.ListProjectDeveloperCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential}", wrapper.RevokeProjectDeveloperCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/developer-credential-policy", wrapper.GetDeveloperCredentialPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/developer-credential-policy", wrapper.SetDeveloperCredentialPolicy)
+	})
 
 	return r
 }
@@ -33028,6 +33893,358 @@ func (response EstablishCredential500JSONResponse) VisitEstablishCredentialRespo
 type EstablishCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response EstablishCredential503JSONResponse) VisitEstablishCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentialsRequestObject struct {
+}
+
+type RevokeAllMyDeveloperCredentialsResponseObject interface {
+	VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error
+}
+
+type RevokeAllMyDeveloperCredentials204Response struct {
+}
+
+func (response RevokeAllMyDeveloperCredentials204Response) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeAllMyDeveloperCredentials400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials400JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentials401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials401JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentials404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials404JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentials409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials409JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentials429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials429JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentials500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials500JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAllMyDeveloperCredentials503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeAllMyDeveloperCredentials503JSONResponse) VisitRevokeAllMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentialsRequestObject struct {
+}
+
+type ListMyDeveloperCredentialsResponseObject interface {
+	VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error
+}
+
+type ListMyDeveloperCredentials200JSONResponse DeveloperCredentialList
+
+func (response ListMyDeveloperCredentials200JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListMyDeveloperCredentials400JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListMyDeveloperCredentials401JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListMyDeveloperCredentials404JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ListMyDeveloperCredentials409JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListMyDeveloperCredentials429JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListMyDeveloperCredentials500JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyDeveloperCredentials503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListMyDeveloperCredentials503JSONResponse) VisitListMyDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredentialRequestObject struct {
+	Credential CredentialID `json:"credential"`
+}
+
+type RevokeMyDeveloperCredentialResponseObject interface {
+	VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error
+}
+
+type RevokeMyDeveloperCredential204Response struct {
+}
+
+func (response RevokeMyDeveloperCredential204Response) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeMyDeveloperCredential400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeMyDeveloperCredential400JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredential401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeMyDeveloperCredential401JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredential404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeMyDeveloperCredential404JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredential409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeMyDeveloperCredential409JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredential429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeMyDeveloperCredential429JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredential500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeMyDeveloperCredential500JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMyDeveloperCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeMyDeveloperCredential503JSONResponse) VisitRevokeMyDeveloperCredentialResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -38772,6 +39989,249 @@ func (response SetCredentialPolicy500JSONResponse) VisitSetCredentialPolicyRespo
 type SetCredentialPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response SetCredentialPolicy503JSONResponse) VisitSetCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicyRequestObject struct {
+}
+
+type GetDeveloperCredentialPolicyResponseObject interface {
+	VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetDeveloperCredentialPolicy200JSONResponse DeveloperCredentialPolicy
+
+func (response GetDeveloperCredentialPolicy200JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetDeveloperCredentialPolicy400JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetDeveloperCredentialPolicy401JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetDeveloperCredentialPolicy404JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response GetDeveloperCredentialPolicy409JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetDeveloperCredentialPolicy429JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetDeveloperCredentialPolicy500JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDeveloperCredentialPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetDeveloperCredentialPolicy503JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicyRequestObject struct {
+	Body *SetDeveloperCredentialPolicyJSONRequestBody
+}
+
+type SetDeveloperCredentialPolicyResponseObject interface {
+	VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error
+}
+
+type SetDeveloperCredentialPolicy200JSONResponse DeveloperCredentialPolicy
+
+func (response SetDeveloperCredentialPolicy200JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetDeveloperCredentialPolicy400JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetDeveloperCredentialPolicy401JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetDeveloperCredentialPolicy404JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SetDeveloperCredentialPolicy409JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetDeveloperCredentialPolicy429JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetDeveloperCredentialPolicy500JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetDeveloperCredentialPolicy503JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -53639,6 +55099,247 @@ func (response SetDefinitionsSettings503JSONResponse) VisitSetDefinitionsSetting
 	return err
 }
 
+type ListProjectDeveloperCredentialsRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListProjectDeveloperCredentialsResponseObject interface {
+	VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error
+}
+
+type ListProjectDeveloperCredentials200JSONResponse DeveloperCredentialList
+
+func (response ListProjectDeveloperCredentials200JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListProjectDeveloperCredentials400JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListProjectDeveloperCredentials401JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListProjectDeveloperCredentials404JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ListProjectDeveloperCredentials409JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListProjectDeveloperCredentials429JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListProjectDeveloperCredentials500JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectDeveloperCredentials503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListProjectDeveloperCredentials503JSONResponse) VisitListProjectDeveloperCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredentialRequestObject struct {
+	Org        OrgID        `json:"org"`
+	Project    ProjectID    `json:"project"`
+	Credential CredentialID `json:"credential"`
+}
+
+type RevokeProjectDeveloperCredentialResponseObject interface {
+	VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error
+}
+
+type RevokeProjectDeveloperCredential204Response struct {
+}
+
+func (response RevokeProjectDeveloperCredential204Response) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeProjectDeveloperCredential400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeProjectDeveloperCredential400JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredential401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeProjectDeveloperCredential401JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredential404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeProjectDeveloperCredential404JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredential409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeProjectDeveloperCredential409JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredential429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeProjectDeveloperCredential429JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredential500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeProjectDeveloperCredential500JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProjectDeveloperCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeProjectDeveloperCredential503JSONResponse) VisitRevokeProjectDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDynamicProvidersRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -57655,6 +59356,145 @@ func (response ReconcileOfflineRecords500JSONResponse) VisitReconcileOfflineReco
 type ReconcileOfflineRecords503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ReconcileOfflineRecords503JSONResponse) VisitReconcileOfflineRecordsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredentialRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *MintDeveloperCredentialJSONRequestBody
+}
+
+type MintDeveloperCredentialResponseObject interface {
+	VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error
+}
+
+type MintDeveloperCredential200JSONResponse MintDeveloperCredentialResult
+
+func (response MintDeveloperCredential200JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response MintDeveloperCredential400JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response MintDeveloperCredential401JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response MintDeveloperCredential403JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response MintDeveloperCredential404JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential409JSONResponse struct{ ConflictJSONResponse }
+
+func (response MintDeveloperCredential409JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response MintDeveloperCredential429JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential500JSONResponse struct{ InternalJSONResponse }
+
+func (response MintDeveloperCredential500JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MintDeveloperCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response MintDeveloperCredential503JSONResponse) VisitMintDeveloperCredentialResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -75138,6 +76978,15 @@ type StrictServerInterface interface {
 	// EstablishCredential Consume a credential-establishment authority and set an initial credential.
 	// (POST /api/v1/auth/credential/establish)
 	EstablishCredential(ctx context.Context, request EstablishCredentialRequestObject) (EstablishCredentialResponseObject, error)
+	// RevokeAllMyDeveloperCredentials Revoke every developer credential owned by the current human.
+	// (DELETE /api/v1/auth/developer-credentials)
+	RevokeAllMyDeveloperCredentials(ctx context.Context, request RevokeAllMyDeveloperCredentialsRequestObject) (RevokeAllMyDeveloperCredentialsResponseObject, error)
+	// ListMyDeveloperCredentials List the current human's developer credentials, metadata only.
+	// (GET /api/v1/auth/developer-credentials)
+	ListMyDeveloperCredentials(ctx context.Context, request ListMyDeveloperCredentialsRequestObject) (ListMyDeveloperCredentialsResponseObject, error)
+	// RevokeMyDeveloperCredential Revoke one developer credential owned by the current human.
+	// (DELETE /api/v1/auth/developer-credentials/{credential})
+	RevokeMyDeveloperCredential(ctx context.Context, request RevokeMyDeveloperCredentialRequestObject) (RevokeMyDeveloperCredentialResponseObject, error)
 	// ListIdentities List the caller's linked external identities.
 	// (GET /api/v1/auth/identities)
 	ListIdentities(ctx context.Context, request ListIdentitiesRequestObject) (ListIdentitiesResponseObject, error)
@@ -75294,6 +77143,12 @@ type StrictServerInterface interface {
 	// SetCredentialPolicy Move the instance credential lifetime controls.
 	// (PUT /api/v1/instance/credential-policy)
 	SetCredentialPolicy(ctx context.Context, request SetCredentialPolicyRequestObject) (SetCredentialPolicyResponseObject, error)
+	// GetDeveloperCredentialPolicy Read the instance developer credential lifetime ceiling.
+	// (GET /api/v1/instance/developer-credential-policy)
+	GetDeveloperCredentialPolicy(ctx context.Context, request GetDeveloperCredentialPolicyRequestObject) (GetDeveloperCredentialPolicyResponseObject, error)
+	// SetDeveloperCredentialPolicy Set the lifetime ceiling and durably clamp outstanding expiry.
+	// (PUT /api/v1/instance/developer-credential-policy)
+	SetDeveloperCredentialPolicy(ctx context.Context, request SetDeveloperCredentialPolicyRequestObject) (SetDeveloperCredentialPolicyResponseObject, error)
 	// ServeDirectory This instance's directory listing, as served to a connected instance.
 	// (GET /api/v1/instance/directory)
 	ServeDirectory(ctx context.Context, request ServeDirectoryRequestObject) (ServeDirectoryResponseObject, error)
@@ -75681,6 +77536,12 @@ type StrictServerInterface interface {
 	// SetDefinitionsSettings Select database- or Git-governed definitions.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/definitions/settings)
 	SetDefinitionsSettings(ctx context.Context, request SetDefinitionsSettingsRequestObject) (SetDefinitionsSettingsResponseObject, error)
+	// ListProjectDeveloperCredentials List project developer credentials for incident response, metadata only.
+	// (GET /api/v1/orgs/{org}/projects/{project}/developer-credentials)
+	ListProjectDeveloperCredentials(ctx context.Context, request ListProjectDeveloperCredentialsRequestObject) (ListProjectDeveloperCredentialsResponseObject, error)
+	// RevokeProjectDeveloperCredential Revoke a project developer credential for incident response.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential})
+	RevokeProjectDeveloperCredential(ctx context.Context, request RevokeProjectDeveloperCredentialRequestObject) (RevokeProjectDeveloperCredentialResponseObject, error)
 	// ListDynamicProviders List dynamic-secret providers with redacted credential metadata.
 	// (GET /api/v1/orgs/{org}/projects/{project}/dynamic-providers)
 	ListDynamicProviders(ctx context.Context, request ListDynamicProvidersRequestObject) (ListDynamicProvidersResponseObject, error)
@@ -75789,6 +77650,9 @@ type StrictServerInterface interface {
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(ctx context.Context, request ReconcileOfflineRecordsRequestObject) (ReconcileOfflineRecordsResponseObject, error)
+	// MintDeveloperCredential Delegate current published delivery for one unprotected environment.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials)
+	MintDeveloperCredential(ctx context.Context, request MintDeveloperCredentialRequestObject) (MintDeveloperCredentialResponseObject, error)
 	// ReportFileTarget Report what the bound file-sync client applied.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report)
 	ReportFileTarget(ctx context.Context, request ReportFileTargetRequestObject) (ReportFileTargetResponseObject, error)
@@ -76470,6 +78334,80 @@ func (sh *strictHandler) EstablishCredential(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EstablishCredentialResponseObject); ok {
 		if err := validResponse.VisitEstablishCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeAllMyDeveloperCredentials operation middleware
+func (sh *strictHandler) RevokeAllMyDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+	var request RevokeAllMyDeveloperCredentialsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeAllMyDeveloperCredentials(ctx, request.(RevokeAllMyDeveloperCredentialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeAllMyDeveloperCredentials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeAllMyDeveloperCredentialsResponseObject); ok {
+		if err := validResponse.VisitRevokeAllMyDeveloperCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyDeveloperCredentials operation middleware
+func (sh *strictHandler) ListMyDeveloperCredentials(w http.ResponseWriter, r *http.Request) {
+	var request ListMyDeveloperCredentialsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyDeveloperCredentials(ctx, request.(ListMyDeveloperCredentialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyDeveloperCredentials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyDeveloperCredentialsResponseObject); ok {
+		if err := validResponse.VisitListMyDeveloperCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeMyDeveloperCredential operation middleware
+func (sh *strictHandler) RevokeMyDeveloperCredential(w http.ResponseWriter, r *http.Request, credential CredentialID) {
+	var request RevokeMyDeveloperCredentialRequestObject
+
+	request.Credential = credential
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeMyDeveloperCredential(ctx, request.(RevokeMyDeveloperCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeMyDeveloperCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeMyDeveloperCredentialResponseObject); ok {
+		if err := validResponse.VisitRevokeMyDeveloperCredentialResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -77987,6 +79925,61 @@ func (sh *strictHandler) SetCredentialPolicy(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetCredentialPolicyResponseObject); ok {
 		if err := validResponse.VisitSetCredentialPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDeveloperCredentialPolicy operation middleware
+func (sh *strictHandler) GetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request) {
+	var request GetDeveloperCredentialPolicyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDeveloperCredentialPolicy(ctx, request.(GetDeveloperCredentialPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDeveloperCredentialPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDeveloperCredentialPolicyResponseObject); ok {
+		if err := validResponse.VisitGetDeveloperCredentialPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetDeveloperCredentialPolicy operation middleware
+func (sh *strictHandler) SetDeveloperCredentialPolicy(w http.ResponseWriter, r *http.Request) {
+	var request SetDeveloperCredentialPolicyRequestObject
+
+	var body SetDeveloperCredentialPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetDeveloperCredentialPolicy(ctx, request.(SetDeveloperCredentialPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetDeveloperCredentialPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetDeveloperCredentialPolicyResponseObject); ok {
+		if err := validResponse.VisitSetDeveloperCredentialPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -81690,6 +83683,61 @@ func (sh *strictHandler) SetDefinitionsSettings(w http.ResponseWriter, r *http.R
 	}
 }
 
+// ListProjectDeveloperCredentials operation middleware
+func (sh *strictHandler) ListProjectDeveloperCredentials(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListProjectDeveloperCredentialsRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProjectDeveloperCredentials(ctx, request.(ListProjectDeveloperCredentialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProjectDeveloperCredentials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProjectDeveloperCredentialsResponseObject); ok {
+		if err := validResponse.VisitListProjectDeveloperCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeProjectDeveloperCredential operation middleware
+func (sh *strictHandler) RevokeProjectDeveloperCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, credential CredentialID) {
+	var request RevokeProjectDeveloperCredentialRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Credential = credential
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeProjectDeveloperCredential(ctx, request.(RevokeProjectDeveloperCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeProjectDeveloperCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeProjectDeveloperCredentialResponseObject); ok {
+		if err := validResponse.VisitRevokeProjectDeveloperCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListDynamicProviders operation middleware
 func (sh *strictHandler) ListDynamicProviders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	var request ListDynamicProvidersRequestObject
@@ -82803,6 +84851,41 @@ func (sh *strictHandler) ReconcileOfflineRecords(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReconcileOfflineRecordsResponseObject); ok {
 		if err := validResponse.VisitReconcileOfflineRecordsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MintDeveloperCredential operation middleware
+func (sh *strictHandler) MintDeveloperCredential(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request MintDeveloperCredentialRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body MintDeveloperCredentialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MintDeveloperCredential(ctx, request.(MintDeveloperCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MintDeveloperCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MintDeveloperCredentialResponseObject); ok {
+		if err := validResponse.VisitMintDeveloperCredentialResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -537,6 +537,21 @@ func (q *Queries) DeleteTOTPForAccount(ctx context.Context, accountID string) er
 	return err
 }
 
+const developerMaxCredentialEpoch = `-- name: DeveloperMaxCredentialEpoch :one
+SELECT COALESCE(MAX(credential_epoch), 0) AS max_epoch FROM developer_credentials
+`
+
+// Developer credentials arrive in 00074. Restore reads this only when the
+// archive catalog contains the table, before migration roll-forward.
+// hikyo:reason restore must outrun every attacker-controlled developer credential epoch stamp
+// hikyo:authn-resolution
+func (q *Queries) DeveloperMaxCredentialEpoch(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRow(ctx, developerMaxCredentialEpoch)
+	var max_epoch interface{}
+	err := row.Scan(&max_epoch)
+	return max_epoch, err
+}
+
 const dropRestoredSCIMOrigins = `-- name: DropRestoredSCIMOrigins :execrows
 DELETE FROM grant_origins
 WHERE grant_origins.kind = 'scim'
@@ -1208,7 +1223,7 @@ const getSessionByID = `-- name: GetSessionByID :one
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id, oauth2_provider_id, enrolment_required
+       requesting_origin, provider_id, oauth2_provider_id, saml_provider_id, enrolment_required
 FROM sessions WHERE id = $1
 `
 
@@ -1230,6 +1245,7 @@ type GetSessionByIDRow struct {
 	RequestingOrigin  pgtype.Text
 	ProviderID        pgtype.Text
 	Oauth2ProviderID  pgtype.Text
+	SamlProviderID    pgtype.Text
 	EnrolmentRequired bool
 }
 
@@ -1255,6 +1271,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, id string) (GetSessionByID
 		&i.RequestingOrigin,
 		&i.ProviderID,
 		&i.Oauth2ProviderID,
+		&i.SamlProviderID,
 		&i.EnrolmentRequired,
 	)
 	return i, err
@@ -1264,7 +1281,7 @@ const getSessionByVerifier = `-- name: GetSessionByVerifier :one
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id, oauth2_provider_id, enrolment_required
+       requesting_origin, provider_id, oauth2_provider_id, saml_provider_id, enrolment_required
 FROM sessions WHERE verifier = $1
 `
 
@@ -1287,6 +1304,7 @@ type GetSessionByVerifierRow struct {
 	RequestingOrigin  pgtype.Text
 	ProviderID        pgtype.Text
 	Oauth2ProviderID  pgtype.Text
+	SamlProviderID    pgtype.Text
 	EnrolmentRequired bool
 }
 
@@ -1313,6 +1331,7 @@ func (q *Queries) GetSessionByVerifier(ctx context.Context, verifier []byte) (Ge
 		&i.RequestingOrigin,
 		&i.ProviderID,
 		&i.Oauth2ProviderID,
+		&i.SamlProviderID,
 		&i.EnrolmentRequired,
 	)
 	return i, err

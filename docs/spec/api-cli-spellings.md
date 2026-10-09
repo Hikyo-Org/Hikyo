@@ -603,3 +603,26 @@ expires = 2026-12-31            # optional TOML date; inclusive
 
 Exit codes: `0` clean, `1` unsuppressed findings, `2` usage or configuration,
 `4` refused or failed, `6` `git` unavailable.
+
+
+## Bounded developer delegation (#807)
+
+The owner-locked [developer credential ADR](../adr/developer-credentials.md)
+amends the machine-only run statement above with a separate online-only path.
+`compose render`, `compose sync`, file-sync and snapshot operations retain their
+machine-only admission. The interactive human-session exception remains gated.
+
+- `hikyo dev session --env E [--ttl 8h] [-o table|json]`: human session only;
+  controlling-terminal consent to all current and future published keys plus
+  fresh exact-intent reauthentication. Bearer output is never printed.
+- `hikyo dev session list [-o table|json]`: your credential metadata only.
+- `hikyo dev session revoke --id ID | --all`: terminal revocation on the selected
+  trusted instance and removal of corresponding private local custody.
+- `hikyo instance-config developer-credential-policy get [-o table|json]`
+- `hikyo instance-config developer-credential-policy set --max-lifetime 8h`
+
+`run` discovers origin-and-environment-bound private developer custody only when
+no explicit machine credential is supplied. The developer bearer is not accepted
+through machine-token channels. Missing, expired or rejected developer authority
+never falls back to a human session. No developer fetch serves or saves offline
+material; loader-control, inherited collision and ARG_MAX checks still apply.

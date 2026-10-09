@@ -164,6 +164,11 @@ func (s *Auth) ApplyPrivacySubject(ctx context.Context, principal, action, expec
 		if err := az.RestrictPrivacyPrincipal(ctx, principal, state); err != nil {
 			return err
 		}
+		if action != "release" {
+			if err := revokeDeveloperScope(ctx, az, "", domain.PrincipalID(principal), domain.Scope{}, "account-"+action, s.now()); err != nil {
+				return err
+			}
+		}
 		if err := az.RevokeAllSessionsFor(ctx, domain.PrincipalID(principal)); err != nil {
 			return err
 		}

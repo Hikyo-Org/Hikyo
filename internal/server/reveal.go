@@ -73,12 +73,28 @@ func (a *API) ReauthTotp(ctx context.Context, req apigen.ReauthTotpRequestObject
 	isSelf := selfErr == nil && selfRequest.Purpose == "self-config"
 	environmentRequest, environmentErr := req.Body.AsTotpEnvironmentReauthRequest()
 	adapterRequest, adapterErr := req.Body.AsTotpAdapterReauthRequest()
-	isEnvironment := environmentErr == nil && environmentRequest.EnvironmentId != ""
+	developerRequest, developerErr := req.Body.AsTotpDeveloperCredentialReauthRequest()
+	isDeveloper := developerErr == nil && developerRequest.Purpose == apigen.TotpDeveloperCredentialReauthRequestPurposeDeveloperCredential
+	isEnvironment := environmentErr == nil && environmentRequest.EnvironmentId != "" && !isDeveloper
 	isAdapter := adapterErr == nil && adapterRequest.Purpose == apigen.TotpAdapterReauthRequestPurposeAdapter
-	if (!isSelf && isEnvironment == isAdapter) || (isSelf && (isEnvironment || isAdapter)) {
+	if (!isDeveloper && !isSelf && isEnvironment == isAdapter) || (isSelf && (isEnvironment || isAdapter || isDeveloper)) || (isDeveloper && isAdapter) {
 		return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 	}
-	if isSelf {
+	if isDeveloper {
+		keys := make([]string, 0, len(developerRequest.KeyIds))
+		for _, key := range developerRequest.KeyIds {
+			keys = append(keys, string(key))
+		}
+		intent, intentErr := developerCredentialReauthIntent(string(developerRequest.EnvironmentId), keys, developerRequest.DeveloperCredential)
+		if intentErr != nil {
+			return nil, intentErr
+		}
+		var result service.ReauthResult
+		result, err = a.Auth.ReauthTOTP(ctx, bearer(ctx), intent, developerRequest.Code)
+		if err == nil {
+			results = []service.ReauthResult{result}
+		}
+	} else if isSelf {
 		intent, intentErr := selfConfigReauthIntent(selfRequest.SelfConfig)
 		if intentErr != nil {
 			return apigen.ReauthTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil

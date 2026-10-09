@@ -178,18 +178,19 @@ type API struct {
 	Rules RuleService
 	// Registration is the registration policy surface (#606) and the public
 	// sign-up door `/auth/methods` renders.
-	Registration    RegistrationService
-	Identities      IdentityService
-	Federation      FederationService
-	Delivery        DeliveryService
-	Settings        SettingsService
-	Retention       RetentionSettingsService
-	RetentionHealth OperationalRetentionHealthService
-	Updates         UpdateService
-	Providers       ProviderService
-	OAuth2Providers OAuth2ProviderService
-	SAMLProviders   SAMLProviderService
-	Adapters        *service.Adapters
+	Registration         RegistrationService
+	Identities           IdentityService
+	DeveloperCredentials DeveloperCredentialService
+	Federation           FederationService
+	Delivery             DeliveryService
+	Settings             SettingsService
+	Retention            RetentionSettingsService
+	RetentionHealth      OperationalRetentionHealthService
+	Updates              UpdateService
+	Providers            ProviderService
+	OAuth2Providers      OAuth2ProviderService
+	SAMLProviders        SAMLProviderService
+	Adapters             *service.Adapters
 	// FileTargets is the generic file-destination administration (#164).
 	FileTargets *service.FileTargets
 	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete
@@ -626,6 +627,10 @@ func (a *API) Middleware() []func(http.Handler) http.Handler {
 func (a *API) admitAuthenticatedRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := operation.WithRequestAdmission(r.Context(), a.RequestBudget.AdmitAuthenticatedAPI)
+		if a.Admission != nil {
+			sourceIP := audit.FromContext(r.Context()).SourceIP
+			ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

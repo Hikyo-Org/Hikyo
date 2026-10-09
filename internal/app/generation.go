@@ -292,10 +292,11 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// identity surface: the reauthentication conjunct a machine widening
 		// carries is the SAME window machinery human disclosure consumes, so
 		// they cannot come from two configurations.
-		Grants:       &service.Grants{DB: db, Auth: authSvc},
-		Rules:        &service.Rules{DB: db},
-		Registration: registrationSvc,
-		Identities:   &service.Identities{DB: db, Auth: authSvc},
+		Grants:               &service.Grants{DB: db, Auth: authSvc},
+		Rules:                &service.Rules{DB: db},
+		Registration:         registrationSvc,
+		Identities:           &service.Identities{DB: db, Auth: authSvc},
+		DeveloperCredentials: &service.DeveloperCredentials{DB: db, Auth: authSvc},
 		// One Federation across the issuer surface and the delivery surface, and
 		// one JWKS cache inside it: the cache's staleness bound is an instance
 		// property, so two caches would mean two answers to "are this issuer's

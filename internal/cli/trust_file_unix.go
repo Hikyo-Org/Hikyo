@@ -50,7 +50,7 @@ func readTrustFile(dir string) ([]byte, error) {
 }
 
 func readPrivateStateFile(dir, name string) ([]byte, error) {
-	if name != "trust.json" && name != "sessions.json" {
+	if name != "trust.json" && name != "sessions.json" && name != "developer-credentials.json" {
 		return nil, fmt.Errorf("unsupported private state file")
 	}
 	path := filepath.Join(dir, name)

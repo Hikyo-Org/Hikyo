@@ -326,7 +326,7 @@ const (
 // rather than defaulted: a binding nobody can name is a binding nobody checks.
 func (p ReauthPurpose) Valid() bool {
 	switch p {
-	case PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
+	case PurposeDeveloperCredential, PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
 		PurposeApprove, PurposeReject, PurposeBypass, PurposeAccess:
 		return true
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -223,8 +224,13 @@ func (a *API) ReauthPasskeyStart(ctx context.Context, req apigen.ReauthPasskeySt
 	}
 	var intent service.ReauthIntent
 	var err error
-	if req.Body.Operation == apigen.ReauthPurposeSelfConfig {
-		if req.Body.SelfConfig == nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil || len(req.Body.KeyIds) != 0 {
+	if req.Body.Operation == apigen.ReauthPurposeDeveloperCredential {
+		if req.Body.DeveloperCredential == nil || req.Body.SelfConfig != nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil {
+			return nil, domain.ErrInvalid
+		}
+		intent, err = developerCredentialReauthIntent(req.Body.EnvironmentId, req.Body.KeyIds, *req.Body.DeveloperCredential)
+	} else if req.Body.Operation == apigen.ReauthPurposeSelfConfig {
+		if req.Body.DeveloperCredential != nil || req.Body.SelfConfig == nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil || len(req.Body.KeyIds) != 0 {
 			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		intent, err = selfConfigReauthIntent(*req.Body.SelfConfig)
@@ -232,7 +238,7 @@ func (a *API) ReauthPasskeyStart(ctx context.Context, req apigen.ReauthPasskeySt
 			intent, err = intent.ForEnvironment(req.Body.EnvironmentId)
 		}
 	} else if req.Body.Operation == apigen.ReauthPurposeAdapter {
-		if req.Body.SelfConfig != nil || req.Body.AdapterOperation == nil || req.Body.EnvironmentIds == nil || len(req.Body.KeyIds) != 0 {
+		if req.Body.DeveloperCredential != nil || req.Body.SelfConfig != nil || req.Body.AdapterOperation == nil || req.Body.EnvironmentIds == nil || len(req.Body.KeyIds) != 0 {
 			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		environments := make([]string, 0, len(*req.Body.EnvironmentIds))
@@ -244,7 +250,7 @@ func (a *API) ReauthPasskeyStart(ctx context.Context, req apigen.ReauthPasskeySt
 			intent, err = intent.ForEnvironment(req.Body.EnvironmentId)
 		}
 	} else {
-		if req.Body.SelfConfig != nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil {
+		if req.Body.DeveloperCredential != nil || req.Body.SelfConfig != nil || req.Body.AdapterOperation != nil || req.Body.EnvironmentIds != nil {
 			return apigen.ReauthPasskeyStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 		}
 		intent, err = service.NewDisclosureReauthIntent(service.ReauthPurpose(req.Body.Operation), []string{req.Body.EnvironmentId}, req.Body.KeyIds)

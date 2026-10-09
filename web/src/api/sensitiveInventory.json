@@ -1,5 +1,5 @@
 {
-  "review": "See docs/handoff/security-2026-09/client-lifetime.html for sensitive input/result custody. Source hashes pin the reviewed uncached operations, session boundaries and plaintext lifetime; changes require source review before refreshing pins. OAuth2 #609 merge custody review: GitHub starts and writes remain one-shot; same-origin state-bound continuation and the optional local-factor CLI remedy from security remediation are retained; write-only editor secrets clear on submission, settlement, unmount and retirement. Issue #861 focus lifetime review: Values and MatrixRowEditor clear disclosed plaintext and announcements on blur/visibilitychange; focus generations reject late reveal results. Uncached mutations, ceremony task checks and session retirement boundaries remain intact. Issue #861 popup follow-up: pin the shared focus lifetime owner; authorized reveals wait for task-owned focus restoration, capture generation at dispatch, and report metadata-only audit feedback for discarded results.",
+  "review": "See docs/handoff/security-2026-09/client-lifetime.html for sensitive input/result custody. Source hashes pin the reviewed uncached operations, session boundaries and plaintext lifetime; changes require source review before refreshing pins. OAuth2 #609 merge custody review: GitHub starts and writes remain one-shot; same-origin state-bound continuation and the optional local-factor CLI remedy from security remediation are retained; write-only editor secrets clear on submission, settlement, unmount and retirement. Issue #861 focus lifetime review: Values and MatrixRowEditor clear disclosed plaintext and announcements on blur/visibilitychange; focus generations reject late reveal results. Uncached mutations, ceremony task checks and session retirement boundaries remain intact. Issue #861 popup follow-up: pin the shared focus lifetime owner; authorized reveals wait for task-owned focus restoration, capture generation at dispatch, and report metadata-only audit feedback for discarded results. #807 developer delegation review: only scope/lifetime/key consent metadata enters the transaction query; TOTP uses sensitive state cleared before the one-shot mutation, passkey finish preserves the session epoch guard, and authorization codes remain in the ephemeral sensitive mutation. The browser neither mints nor caches a developer bearer, and generic OIDC/reveal windows cannot authorize this delegation.",
   "sources": {
     "api/access.ts": "7d472e5b60d55819ff405fec2614eceaf819064cf7280865754f6beac34a7519",
     "api/account.ts": "2626eeb7084d74738cdcf924e0ab5bd2602d2b1bc36831cd5fe0b273c547509f",
@@ -28,11 +28,11 @@
     "api/stepup.ts": "bc1eac6117a8aaa3a9b64b3c3e358a843bd2ca8b82af1dbeb5fc7d4a26c7976a",
     "api/temporaryAccess.ts": "ee2fe95ed30c6430fc15b730448d48d9543b1b41daecae11a1cbdabdfa7e2379",
     "api/updates.ts": "170c5f62a46a23aef03dc088f478f4126b2950b950fda7854ea351221b56d0e5",
-    "api/values.ts": "ed92537249f42626c39008c93b16bea2d29d46c90823a2755e890fb0c49be96d",
+    "api/values.ts": "cf05ffa24c27cf11f33660ca408e70e2446a57bcac69b605878b3ef1cdeb79b1",
     "routes/AccountProfile.tsx": "719302386eed3430e3da78e56fc7f0e860879b3de5a2ede3c51172d59886f6c6",
     "routes/AccountSecurity.tsx": "539aee3c951d561fa01094713515e18ef815bca0de3a97e748f1558b09cee622",
     "routes/Adapters.tsx": "fdcfeb24afb5eef1b7f96f42a36fd073e2c4de2dc0e9ba059c6f29d8d461171a",
-    "routes/CLIReauth.tsx": "bd7154ca76d1b30be512def24a75ecc29b332d3fb332699ecac3c3611288e093",
+    "routes/CLIReauth.tsx": "7e39b929fcc61d376e140e355f65797ef03cc60a8408955a40b4e1131c0b5010",
     "routes/Ceremony.tsx": "86dabd0170b3b9fb4434f1e0db055787ab9b1869bfccc45f22619b7d6d935bca",
     "routes/CertificatesTab.tsx": "d5de085b63040a7d5ea59bb56b67bfca7f6f523d7146e70a172f744eff35b481",
     "routes/EnrolmentGate.tsx": "0bd0f3e04a15aad534fe0bcf25e979bb3dba64d31b4470fa2ba6487e9cb18033",

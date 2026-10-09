@@ -8,9 +8,10 @@ import "strings"
 type AuthKind string
 
 const (
-	AuthKindUnauthenticated   AuthKind = "unauthenticated"
-	AuthKindHumanSession      AuthKind = "human-session"
-	AuthKindMachineCredential AuthKind = "machine-credential"
+	AuthKindUnauthenticated     AuthKind = "unauthenticated"
+	AuthKindHumanSession        AuthKind = "human-session"
+	AuthKindMachineCredential   AuthKind = "machine-credential"
+	AuthKindDeveloperCredential AuthKind = "developer-credential"
 )
 
 type AuthKinds uint8
@@ -19,6 +20,7 @@ const (
 	authAllowsUnauthenticated AuthKinds = 1 << iota
 	authAllowsHumanSession
 	authAllowsMachineCredential
+	authAllowsDeveloperCredential
 )
 
 func (kinds AuthKinds) Allows(kind AuthKind) bool {
@@ -27,6 +29,8 @@ func (kinds AuthKinds) Allows(kind AuthKind) bool {
 		return kinds&authAllowsUnauthenticated != 0
 	case AuthKindHumanSession:
 		return kinds&authAllowsHumanSession != 0
+	case AuthKindDeveloperCredential:
+		return kinds&authAllowsDeveloperCredential != 0
 	case AuthKindMachineCredential:
 		return kinds&authAllowsMachineCredential != 0
 	default:
@@ -53,6 +57,7 @@ type authRuleRow struct {
 // listed, including local/pre-auth commands, so a new command defaults denied
 // until its eligibility is chosen here.
 var authRuleRows = []authRuleRow{
+	{Kinds: humanOrMachine | authAllowsDeveloperCredential, Operations: authOperations("run")},
 	{Kinds: authAllowsUnauthenticated, Operations: authOperations(
 		"login",
 		"context create", "context list", "context show", "context delete",
@@ -63,7 +68,8 @@ var authRuleRows = []authRuleRow{
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations("env param list", "env param add", "env param delete")},
 	{Kinds: humanOnly, Operations: authOperations(
-		"logout", "whoami",
+		"logout", "whoami", "dev session", "dev session list", "dev session revoke",
+		"instance-config developer-credential-policy get", "instance-config developer-credential-policy set",
 		"account reset-credential", "account factor enrol-totp", "account factor confirm-totp",
 		"account factor step-up", "account recovery-codes regenerate",
 		"org list", "org show", "org create", "org rename", "org delete",
@@ -137,7 +143,7 @@ var authRuleRows = []authRuleRow{
 		"definitions check", "definitions plan", "definitions apply",
 		"key create", "key rename", "key declare", "key reclassify", "key update", "key set-group", "key delete",
 		"key group create", "key group rename", "key group delete",
-		"values export", "run",
+		"values export",
 		"lease mint", "lease list", "lease show", "lease renew", "lease revoke",
 		"ssh-ca list", "ssh-ca show", "ssh-ca trusted-keys", "ssh-ca krl",
 		"ssh-profile list", "ssh-profile show",

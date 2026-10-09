@@ -45,6 +45,10 @@ func runCLIReauthHandoff(ctx context.Context, client *Client, state *State, arti
 }
 
 func runCLIReauthHandoffTarget(ctx context.Context, client *Client, state *State, artifact SessionArtifact, purpose, operation string, environmentIDs, keyIDs []string, selfConfig *apigen.SelfConfigReauthIntent, openURL func(string) error) error {
+	return runCLIReauthHandoffIntents(ctx, client, state, artifact, purpose, operation, environmentIDs, keyIDs, selfConfig, nil, openURL)
+}
+
+func runCLIReauthHandoffIntents(ctx context.Context, client *Client, state *State, artifact SessionArtifact, purpose, operation string, environmentIDs, keyIDs []string, selfConfig *apigen.SelfConfigReauthIntent, developer *apigen.DeveloperCredentialReauthIntent, openURL func(string) error) error {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return failf(ExitUnavailable, "binding the CLI reauthentication callback: %v", err)
@@ -64,12 +68,13 @@ func runCLIReauthHandoffTarget(ctx context.Context, client *Client, state *State
 		environments[i] = apigen.ID(environmentID)
 	}
 	request := apigen.CLIReauthStartRequest{
-		SelfConfig:     selfConfig,
-		Purpose:        apigen.CLIReauthStartRequestPurpose(purpose),
-		Operation:      apigen.CLIReauthStartRequestOperation(operation),
-		EnvironmentIds: environments,
-		PkceChallenge:  challenge,
-		RedirectUri:    redirectURI,
+		SelfConfig:          selfConfig,
+		DeveloperCredential: developer,
+		Purpose:             apigen.CLIReauthStartRequestPurpose(purpose),
+		Operation:           apigen.CLIReauthStartRequestOperation(operation),
+		EnvironmentIds:      environments,
+		PkceChallenge:       challenge,
+		RedirectUri:         redirectURI,
 	}
 	if len(keyIDs) > 0 {
 		keys := make([]apigen.ID, len(keyIDs))

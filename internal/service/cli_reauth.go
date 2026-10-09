@@ -35,6 +35,7 @@ type CLIReauthEnvironmentPolicy struct {
 }
 
 type CLIReauthTransaction struct {
+	DeveloperCredential                    *DeveloperCredentialReauthTarget
 	State, Purpose, Operation, RedirectURI string
 	Environments                           []CLIReauthEnvironmentPolicy
 	// KeyIDs is the enumerated unit of a disclosure purpose (reveal, copy):
@@ -76,6 +77,8 @@ type cliApprovedWindow struct {
 // passkey-only emergency with a pointer to the browser instead.
 func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation) bool {
 	switch purpose {
+	case PurposeDeveloperCredential:
+		return operation == authz.OpDeveloperCredentialMint
 	case PurposeSelfConfig:
 		return operation == authz.OpSelfConfigAdopt || operation == authz.OpSelfConfigApply || operation == authz.OpSelfConfigTest
 	case PurposeAdapter:
@@ -116,6 +119,13 @@ func cliReauthAuditFromHandoff(h authz.CLIReauthHandoff) cliReauthAuditContext {
 }
 
 func reauthIntentFromCLIHandoff(h authz.CLIReauthHandoff) (ReauthIntent, error) {
+	if h.Purpose == string(PurposeDeveloperCredential) {
+		intent, err := parseDeveloperCredentialBinding(h.KeySet)
+		if err != nil || intent.environmentSet != h.EnvironmentSet || h.Operation != string(authz.OpDeveloperCredentialMint) {
+			return ReauthIntent{}, ErrReauthUnitMismatch
+		}
+		return intent, nil
+	}
 	if h.Purpose == string(PurposeSelfConfig) {
 		intent, ok, err := parseSelfConfigBinding(h.KeySet)
 		if err != nil || !ok || intent.environmentSet != h.EnvironmentSet {
@@ -197,6 +207,9 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 	// the CLI's disclosure consumes exactly this set, so a handoff without one
 	// would be a window any later disclosure could spend.
 	keySet := binding.keySet
+	if intent.isDeveloperCredential() {
+		keySet = intent.developerBinding
+	}
 	if intent.isSelfConfig() {
 		keySet = intent.selfConfigBinding
 	}
@@ -267,7 +280,7 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 // authorize their own publish-based operation because they disclose no value.
 func cliReauthAuthorizeStart(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, purpose, operation string, chain authz.EnvironmentChain, environmentID string) error {
 	env := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project), Env: domain.EnvID(environmentID)}
-	if purpose == string(PurposeReveal) || purpose == string(PurposeCopy) || purpose == string(PurposePublish) {
+	if purpose == string(PurposeDeveloperCredential) || purpose == string(PurposeReveal) || purpose == string(PurposeCopy) || purpose == string(PurposePublish) {
 		if _, err := az.Authorize(ctx, caller, authz.OpValueList, env); err != nil {
 			return fmt.Errorf("authorize read for %s: %w", environmentID, err)
 		}
@@ -335,6 +348,13 @@ func (s *Auth) CLIReauthTransaction(ctx context.Context, actor Actor, state stri
 			return captureCLIReauthFailure(ctx, az, "inspect", detail, "invalid_binding", ErrReauthUnitMismatch)
 		}
 		out = CLIReauthTransaction{State: state, Purpose: string(binding.purpose), Operation: string(binding.operation), RedirectURI: h.RedirectURI, ExpiresAt: h.ExpiresAt, Environments: []CLIReauthEnvironmentPolicy{}, KeyIDs: intent.KeyIDs()}
+		if intent.isDeveloperCredential() {
+			var b developerCredentialBinding
+			if err := json.Unmarshal([]byte(intent.developerBinding), &b); err != nil {
+				return err
+			}
+			out.DeveloperCredential = &b.Target
+		}
 		if intent.isSelfConfig() {
 			if err := authorizeSelfConfigCeremony(ctx, az, caller, intent.environmentID); err != nil {
 				return captureCLIReauthFailure(ctx, az, "inspect", detail, "unauthorized", err)
@@ -417,7 +437,7 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 			if err != nil {
 				return err
 			}
-			if !intent.isSelfConfig() && effective <= 0 && (w.FactorClass != "webauthn" || !w.SingleDecision) {
+			if !intent.isSelfConfig() && !intent.isDeveloperCredential() && effective <= 0 && (w.FactorClass != "webauthn" || !w.SingleDecision) {
 				return captureCLIReauthFailure(ctx, az, "approve", detail, "reauth_required", ErrReauthRequired)
 			}
 			kind, windowBinding, bindingErr := windowBindingKind(w)
@@ -431,8 +451,15 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 				if err := authorizeSelfConfigCeremony(ctx, az, caller, environmentID); err != nil {
 					return err
 				}
-				if kind != reauthWindowSelfConfigBound || binding.keySet != windowBinding.keySet || binding.operation != windowBinding.operation || binding.purpose != windowBinding.purpose {
+				if kind != reauthWindowIntentBound || binding.keySet != windowBinding.keySet || binding.operation != windowBinding.operation || binding.purpose != windowBinding.purpose {
 					return ErrReauthUnitMismatch
+				}
+			} else if intent.isDeveloperCredential() {
+				if kind != reauthWindowIntentBound || binding.keySet != windowBinding.keySet || binding.operation != windowBinding.operation || binding.purpose != windowBinding.purpose {
+					return ErrReauthUnitMismatch
+				}
+				if err := validateExactIntentFactor(w, now); err != nil {
+					return err
 				}
 			} else if !adapter {
 				// The browser ran the disclosure ceremony: a single-decision

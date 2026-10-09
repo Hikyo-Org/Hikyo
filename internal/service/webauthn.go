@@ -700,13 +700,7 @@ func (s *Auth) ReauthPasskeyFinish(ctx context.Context, presented string, respon
 			AuthenticatedAt: now, WindowExpiresAt: windowExpires, HardExpiresAt: hardExpires,
 			CredentialEpoch: epoch, CreatedAt: now,
 		}
-		if intent, ok, err := parseSelfConfigBinding(ceremony.OperationBinding); err != nil {
-			return err
-		} else if ok {
-			binding, err := intent.bindingFor("")
-			if err != nil {
-				return err
-			}
+		bindExactIntent := func(binding reauthIntentBinding) {
 			window.BoundPurpose = string(binding.purpose)
 			window.BoundOperation = string(binding.operation)
 			window.BoundKeySet = binding.keySet
@@ -715,6 +709,24 @@ func (s *Auth) ReauthPasskeyFinish(ctx context.Context, presented string, respon
 			window.WindowExpiresAt = now.Add(5 * time.Minute)
 			window.HardExpiresAt = window.WindowExpiresAt
 			windowExpires = window.WindowExpiresAt
+		}
+		if intent, ok, err := parseSelfConfigBinding(ceremony.OperationBinding); err != nil {
+			return err
+		} else if ok {
+			binding, err := intent.bindingFor("")
+			if err != nil {
+				return err
+			}
+			bindExactIntent(binding)
+		}
+		if intent, ok, err := tryDeveloperCredentialBinding(ceremony.OperationBinding); err != nil {
+			return err
+		} else if ok {
+			binding, err := intent.bindingFor("")
+			if err != nil {
+				return err
+			}
+			bindExactIntent(binding)
 		}
 		if binding, ok, err := parseAdapterOperationBinding(ceremony.OperationBinding); err != nil {
 			return err
@@ -1423,7 +1435,7 @@ func parseAdapterOperationBinding(raw string) (adapterReauthBinding, bool, error
 	if err := json.Unmarshal([]byte(raw), &binding); err != nil {
 		return adapterReauthBinding{}, false, err
 	}
-	if binding.Purpose == "" || binding.Purpose == "self-config" {
+	if binding.Purpose == "" || binding.Purpose == "self-config" || binding.Purpose == string(PurposeDeveloperCredential) {
 		return adapterReauthBinding{}, false, nil
 	}
 	if binding.Purpose != string(PurposeAdapter) || !adapterReauthOperation(authz.Operation(binding.Operation)) ||
