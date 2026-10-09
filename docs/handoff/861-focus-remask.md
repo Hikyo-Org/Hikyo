@@ -2,7 +2,7 @@
 
 Source: https://github.com/Hikyo-Org/Hikyo/issues/861
 
-Implemented on `dunky13/issue-861`; delivery endpoint is a local signed commit.
+Implemented on `dunky13/issue-861`. Initially delivered as a local signed commit; the later CI repair request authorizes updating PR #866 and verifying its checks.
 
 ## Behavior
 
@@ -26,4 +26,21 @@ Initial full-suite failures were the required source-hash inventory check while 
 
 ## Delivery
 
-No push, pull request, remote CI, merge, release or deployment was requested.
+PR: https://github.com/Hikyo-Org/Hikyo/pull/866
+
+## CI repair, 9 October 2026
+
+Run 37908112958 failed `validation / web-go` in the release-shaped binary vulnerability scan. The embedded app was built with Go 1.27.0 and x/net v0.58.0. The scan reported twelve affected vulnerabilities with fixes in Go 1.27.2 and x/net v0.60.0. All eight desktop/mobile web shards passed on the original head.
+
+`go.mod` now requires Go 1.27.2 and x/net v0.60.0. Go selected their required compatible crypto, sys, term, text, mod and sync versions; `go mod tidy` updated the checksums. CI and release workflows already derive their Go version from `go.mod`, so the repaired binary uses the patched standard library. No scan or CI gate was weakened.
+
+Local repair evidence:
+
+- `go mod verify`: all modules verified.
+- SPA rebuild: passed.
+- `go build -tags ui` with Go 1.27.2: passed.
+- Pinned `govulncheck -mode=binary` on the freshly built UI binary: zero affected vulnerabilities. One advisory remains in required modules whose affected code is not called; this is the scanner's informational output and does not fail the gate.
+- `go test -count=1 -tags ui ./api/... ./internal/server/... ./internal/webui/...`: passed on macOS.
+- Standards and spec reviews of the repair: no findings.
+
+New-head Linux CI remains the authoritative remote check. Merge, release and deployment are outside the repair authorization.
