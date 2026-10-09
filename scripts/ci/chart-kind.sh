@@ -9,9 +9,9 @@ cd "$(git rev-parse --show-toplevel)"
 CLUSTER=hikyo-chart-e2e
 NAMESPACE=hikyo-chart-e2e
 RELEASE=hikyo
-NODE_IMAGE="kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
-POSTGRES_IMAGE="postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941"
-REGISTRY_IMAGE="registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+NODE_IMAGE="mirror.gcr.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
+POSTGRES_IMAGE="public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941"
+REGISTRY_IMAGE="public.ecr.aws/docker/library/registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
 REGISTRY_NAME=hikyo-chart-registry
 REGISTRY_PORT=5001
 IMAGE_REPOSITORY="localhost:$REGISTRY_PORT/hikyo-chart-e2e"

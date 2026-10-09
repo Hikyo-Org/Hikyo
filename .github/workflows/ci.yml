@@ -556,7 +556,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        image: public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
         env:
           POSTGRES_USER: hikyo
           POSTGRES_PASSWORD: hikyo
@@ -991,7 +991,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        image: public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
         env:
           POSTGRES_USER: hikyo
           POSTGRES_PASSWORD: hikyo
@@ -1284,7 +1284,7 @@ jobs:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     services:
       postgres:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        image: public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
         env:
           POSTGRES_USER: hikyo
           POSTGRES_PASSWORD: hikyo
@@ -1368,7 +1368,7 @@ jobs:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}
     services:
       postgres:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        image: public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
         env:
           POSTGRES_USER: hikyo
           POSTGRES_PASSWORD: hikyo
@@ -1609,7 +1609,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        image: public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
         env:
           POSTGRES_USER: hikyo
           POSTGRES_PASSWORD: hikyo

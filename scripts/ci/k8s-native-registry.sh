@@ -27,7 +27,7 @@ native_registry_setup() {
 		-v "$HIKYO_NATIVE_REGISTRY_ROOT/htpasswd:/auth/htpasswd:ro" \
 		-e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=hikyo-native-test \
 		-e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
-		registry:3@sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33 >/dev/null
+		public.ecr.aws/docker/library/registry:3@sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33 >/dev/null
 	HIKYO_NATIVE_REGISTRY_CREATED=true
 	local address docker_host node
 	address=$(docker port "$HIKYO_NATIVE_REGISTRY_NAME" 5000/tcp)

@@ -11,7 +11,7 @@ suffix=$(basename "$work" | tr '[:upper:]' '[:lower:]')
 data_volume=$suffix-data
 state_volume=$suffix-state
 container=$suffix-server
-helper_image=postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+helper_image=public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
 created_data=false
 created_state=false
 cleanup() {

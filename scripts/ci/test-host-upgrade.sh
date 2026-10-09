@@ -16,5 +16,5 @@ CGO_ENABLED=0 GOOS=linux GOARCH="$architecture" go test -c -o "$work/hostupgrade
 docker run --rm --network=none --read-only --pids-limit=64 --memory=256m \
 	--tmpfs /root:mode=0700 --tmpfs /tmp:mode=1777 \
 	--mount "type=bind,source=$work/hostupgrade.test,target=/hostupgrade.test,readonly" \
-	alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 \
+	public.ecr.aws/docker/library/alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 \
 	/hostupgrade.test -test.v -test.timeout=2m
