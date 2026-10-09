@@ -97,7 +97,8 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
 - **Explicit state.** Empty never means “inherited,” “unknown,” or “use a
   default.” Each environment records `set` or `absent`.
 - **Declarations before values.** Define config vs. secret, validation, and
-  presence rules first. Invalid writes are refused before state changes.
+  presence rules first. Stage edits as drafts, then validate and publish them
+  before they change the delivered snapshot.
 - **Deliberate secret disclosure.** Normal reads return metadata and presence.
   Reveal and copy require reauthentication and create dedicated audit events.
 - **One authorization chokepoint.** Humans, machine identities, and local
@@ -107,7 +108,7 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
 
 ## Quick start
 
-Requires Go 1.27+, Node.js 26.7.0 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
+Requires Go 1.27.2+, Node.js 26.7.0 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
 and pnpm 11.24.0.
 
 ```bash

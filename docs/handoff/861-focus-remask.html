@@ -65,4 +65,19 @@ Validation:
 - Graphify AST refresh completed without clustering; generated graph remains untracked.
 
 Remote CI for the new head remains pending.
+
+
+## Main conflict repair, 9 October 2026
+
+The `ci-required` job in run 37925170720 failed because the branch conflicted with main; PR validation could not start. Main independently updated the same Go security dependencies and advanced x/tools to v0.50.0. Merging main preserves both changes, with `go.mod` and `go.sum` identical to main&#x27;s current dependency files. The only conflict was in `go.sum`.
+
+Validation after integration:
+
+- Web typechecking and lint: passed.
+- Full web suite: 1,533 tests passed across 168 files.
+- UI-tagged API, server, web UI and SSH CA Go checks: passed on macOS.
+- Go import formatting: passed for 1,832 handwritten files.
+- No unresolved conflicts or whitespace errors.
+
+The optional benchmark remains unrequested. Remote CI must run again on the merged branch head; local checks do not establish remote readiness.
 </pre></body></html>

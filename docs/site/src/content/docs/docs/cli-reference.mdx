@@ -101,7 +101,7 @@ stored locally and are never printed as a login receipt.
 | `folder`, `key` | Manage the catalogue and declarations. |
 | `values` | List, get, set, clear, diff, copy, and bulk declare. |
 | `access`, `project-settings` | Manage grants, members, temporary-access policies and requests, and protected environments. |
-| `adapter` | Configure Forgejo and GitHub Actions deployment adapters, targets, plans, adoption, and converge jobs. |
+| `adapter` | Configure Forgejo, GitHub Actions, GitLab, Vault KV, AWS Secrets Manager, Cloudflare, and sealed-webhook deployment adapters, targets, plans, adoption, and converge jobs. |
 | `dynamic-provider`, `lease` | Register dynamic-secret providers and mint, renew, revoke, and settle short-lived leases. |
 | `ssh-ca`, `ssh-profile`, `ssh-cert` | Run SSH user CAs, define signing profiles, and issue and revoke short-lived SSH certificates. See [SSH certificates](/docs/ssh-certificates/). |
 | `transit` | Create, rotate, retire and delete managed keys, and encrypt, decrypt, rewrap, sign, verify and MAC with them. See [Transit](/docs/transit/). |
@@ -123,7 +123,8 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 `--value-file`; it is never accepted as an argument value.
 
 ```text
-hikyo adapter create --provider forgejo|github-actions|sealed-webhook --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider forgejo|github-actions --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider sealed-webhook --origin URL --env ENV --kind organization --owner RECEIVER_NAMESPACE --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider gitlab --origin URL --env ENV --kind project|group --owner NAMESPACE [--repo PROJECT] [--scope SCOPE] [--protected] [--hidden] [--expand-variables] [--spki-pin PIN] [--ca-bundle-file FILE] [--allow-personal-token] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.REGION.amazonaws.com --env ENV --kind json-object|per-key --owner ACCOUNT_ID [--secret NAME|PATH/] [--kms-key KEY] --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn ARN] [--aws-external-id ID] [--aws-session-seconds N] [--aws-access-key-id ID] [--aws-region REGION] [--aws-sts-origin URL] [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE] [--aws-auth MODE ...]

@@ -399,7 +399,9 @@ argument, result, or tenant name:
 | `hikyo_mcp_request_duration_seconds` | `method`, `tool` |
 
 The method labels are `server/discover`, `tools/list`, `tools/call`, and
-`other`. Tool labels are the five registered names, `none`, and `other`.
+`other`. Tool labels are the five read names, `hikyo_stage_change`,
+`hikyo_validate_change`, `none`, and `other`. The two write labels remain in
+the closed label set even when write tools are disabled.
 Debug access logs use the same closed method/tool values plus status and
 duration. Trace and log exporters must not capture request headers or bodies.
 

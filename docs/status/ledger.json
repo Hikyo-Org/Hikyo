@@ -391,10 +391,10 @@
       "kind": "obligation",
       "title": "Publish the documentation and governance site",
       "status": "implemented",
-      "summary": "Canonical Starlight documentation and O4-O6 governance artifacts are built and verified.",
+      "summary": "Canonical Astro/Fumadocs documentation and O4-O6 governance artifacts are built and verified.",
       "source": "docs/spec/open-items.md",
       "blocks": "CAP-SUPPLY-CHAIN-SITE",
-      "evidence": [{ "label": "#78 handoff", "path": "docs/handoff/78-docs-governance.md" }]
+      "evidence": [{ "label": "#78 handoff", "path": "docs/handoff/78-docs-governance.md" }, { "label": "current site toolchain", "path": "docs/site/package.json" }, { "label": "current audit", "path": "docs/reports/landing-docs-audit-2026-10-09.md" }]
     },
     {
       "id": "OBL-OPS-ROW-NUMBERING",

@@ -18,8 +18,9 @@ dedicated-project recipe with cloning, explicit publication, export and cleanup.
 ```bash
 hikyo sa create --name payments-deploy --kind workload
 hikyo access grant add \
-  --principal <service-account-id> \
-  --capability <read-capability>
+  --principal <mch_...> \
+  --capability read \
+  --env <environment-id>
 ```
 
 Record the returned stable ID. List its grants before minting a credential.
@@ -107,7 +108,11 @@ its immutable identifiers:
 
 - GitHub Actions: `repository_id`, `repository_owner_id`, and `event_name`.
 - Kubernetes: `/kubernetes.io/serviceaccount/uid`.
-- Forgejo: `repository` and `event_name`.
+
+Forgejo Actions bindings are refused because its tokens do not expose an
+immutable repository identifier. Pinning `repository` and `event_name` cannot
+prevent a renamed or reused repository path from inheriting authority. Use a
+scoped bearer credential for Forgejo jobs instead.
 
 Create a replacement binding for a change; do not edit the old binding in
 place:

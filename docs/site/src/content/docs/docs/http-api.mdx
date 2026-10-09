@@ -14,8 +14,9 @@ is the source of truth for routes, schemas, security, and operation semantics.
 curl --fail https://hikyo.example.com/api/v1/meta
 ```
 
-The unauthenticated response reports the server version, API revision, and
-available authentication protocol flows. It contains no tenant configuration.
+The unauthenticated response reports the server version, API revision, instance
+identity, and protocol capabilities, including available authentication flows
+and delivery-status report support. It contains no tenant configuration.
 
 ## Authentication channels
 
@@ -48,8 +49,11 @@ with bounded backoff and after respecting operation idempotency.
 
 ## Health is outside the API
 
-`GET /healthz` and `GET /readyz` are unauthenticated operational probes. They
-are not tenant APIs and do not accept session credentials.
+`GET /healthz` and `GET /readyz` are unauthenticated probes on the separate
+operational listener (`127.0.0.1:8081` by default, configured with
+`HIKYO_OPERATIONAL_LISTEN` or `--operational-listen`). They are not served by
+the application listener on port `8080` and do not accept session credentials.
+Keep the operational listener private.
 
 ## Compatibility
 
