@@ -17,6 +17,23 @@ hikyo values get DATABASE_PASSWORD --context production
 An ordinary secret read returns metadata and presence, not plaintext. Use this
 path for inventory and health checks.
 
+## Stage and publish
+
+`values set` stages a pending change and reports its version ID; delivery
+continues to use the previous publication. Publish
+the intended versions explicitly, after reviewing them:
+
+```bash
+hikyo values publish --context production --versions <version-id,version-id>
+```
+
+Publication needs `publish` separately from `edit`, validates the complete
+resulting state and applies protection and change-approval policies.
+
+`values import` and `values copy` are immediate bulk publications with their
+own authorization and validation gates; they do not use this separate draft
+publication step.
+
 ## Set from a protected file
 
 ```bash
@@ -43,8 +60,9 @@ Command arguments are visible through shell history and process inspection.
 hikyo values set OPTIONAL_ENDPOINT --context production --clear
 ```
 
-Clear records `absent`. Hikyo refuses the change when the declaration requires
-the key in that environment.
+Clear stages an `absent` draft. Saving it is allowed even for a required key;
+publication refuses to leave that key absent. The published value remains
+available until a valid publication changes it.
 
 ## Compare environments
 
@@ -68,8 +86,11 @@ hikyo values copy \
   --keys API_BASE_URL,FEATURE_MODE
 ```
 
-Copy is explicit about source, destinations, and keys. Protected destinations
-require the extra confirmation flag and the corresponding authorization.
+Copy is explicit about source, destinations, and keys. It publishes immediately
+after authorization and validation. Human copies into protected destinations
+require the purpose-bound reauthentication ceremony; `--confirm-protected` does
+not replace that ceremony. Machine copies require the explicit protected-target
+confirmation in addition to their authorization.
 
 ## Reveal one secret
 

@@ -56,8 +56,9 @@ go build -trimpath -tags ui -o ./bin/hikyo ./cmd/hikyo
 ./bin/hikyo version
 ```
 
-The `ui` tag embeds `web/dist` into the binary. Omitting it creates an API-only
-development binary that cannot serve the browser application.
+The web build writes `internal/webui/dist`; the `ui` tag embeds that directory
+into the binary. Omitting it creates an API-only development binary that cannot
+serve the browser application.
 
 ## 4. Install for your user
 

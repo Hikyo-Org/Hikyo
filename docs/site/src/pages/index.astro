@@ -1,6 +1,7 @@
 ---
 import PostHog from '../components/posthog.astro';
 import PwaHead from '../components/PwaHead.astro';
+import sunMoonSvg from '../assets/polymorphing-dark-light.svg?raw';
 import {
   environments,
   masked,
@@ -16,6 +17,7 @@ import '../styles/landing.css';
 
 const base = siteUrl();
 const repository = repositoryUrl;
+const themeIcon = sunMoonSvg.replace(/^<\?xml[^>]*\?>\s*/, '');
 const links = {
   contributing: `${base}contributing/`,
   docs: `${base}docs/`,
@@ -36,7 +38,7 @@ const faq = [
   {
     question: 'Is Hikyo ready for a stable production rollout?',
     answer:
-      'Hikyo is under active 0.x development and has not published its stable 1.0 release. Review the implementation-status ledger and deploy from a reviewed commit if you evaluate it today.',
+      'Hikyo is under active 0.x development and has not published its stable 1.0 release. Use the development server for local evaluation. Production serving requires a verified signed release and its authenticated public bundle; signed nightlies remain prereleases.',
   },
   {
     question: 'Does self-hosting require a Hikyo cloud account?',
@@ -169,7 +171,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       <nav class="wrap nav" aria-label="Primary navigation">
         <a class="brand" href={base} aria-label="Hikyo home">
           <img class="brand-logo" src={`${base}favicon.svg`} alt="" aria-hidden="true" />
-          <span>hikyo</span>
+          <span>Hikyo</span>
         </a>
         <div class="nav-links">
           <a href="#matrix">Product</a>
@@ -179,7 +181,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
         </div>
         <div class="nav-actions">
           <button class="theme-toggle" type="button" aria-label="Switch to light theme">
-            <span class="theme-icon" aria-hidden="true">◐</span>
+            <span class="theme-icon" aria-hidden="true" set:html={themeIcon}></span>
             <span class="theme-label">Light</span>
           </button>
           <a
@@ -318,8 +320,8 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             </li>
             <li>
               <span>02</span>
-              <div><h3>Set and review state</h3><p>Work in an explicit matrix where absence, invalid input, and pending changes stay visible.</p></div>
-              <code>values set</code>
+              <div><h3>Stage, validate, and publish</h3><p>Review draft values in the matrix, then publish a validated snapshot for delivery.</p></div>
+              <code>values publish</code>
             </li>
             <li>
               <span>03</span>
@@ -362,7 +364,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             <div class="feature-copy">
               <h3>Revealing a secret is a ceremony.</h3>
               <p>
-                Secrets <strong>stay masked</strong> until you deliberately re-authenticate. Reveal windows remask automatically,
+                Secrets <strong>stay masked</strong> until you deliberately reveal them within an authorized re-authentication window. Revealed values remask automatically,
                 and clipboard copies become individual <strong>audited disclosures</strong>.
               </p>
               <p class="feature-note"><span>▸</span> Write-only replacement never needs the current plaintext.</p>
@@ -379,20 +381,20 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
 
           <article class="feature-row">
             <div class="feature-copy">
-              <h3>Invalid changes stop at write time.</h3>
+              <h3>Invalid drafts stop at publication.</h3>
               <p>
-                Key declarations distinguish config from secrets and attach <strong>validation rules</strong>. Invalid values are
-                refused, and a value required in an environment <strong>cannot be cleared</strong> there.
+                Key declarations distinguish config from secrets and attach <strong>validation rules</strong>. Edits and clears
+                remain drafts until publication; invalid values or a missing required value <strong>block the new snapshot</strong>.
               </p>
-              <p class="feature-note"><span>▸</span> The server validates the value and presence rule together.</p>
+              <p class="feature-note"><span>▸</span> A refused publication leaves the delivered snapshot unchanged.</p>
             </div>
             <div class="artifact frame" data-demo="checks">
-              <div class="frame-head"><i></i><i></i><i></i><span>SENTRY_DSN · production · clear</span></div>
+              <div class="frame-head"><i></i><i></i><i></i><span>STRIPE_WEBHOOK_SECRET · production · publish</span></div>
               <div class="frame-body checks">
                 <div><b class="ok">✓</b><span>current value is set</span><code>secret</code></div>
-                <div><b class="bad">!</b><span>clear requested in <strong>production</strong></span><code>change</code></div>
+                <div><b class="bad">!</b><span>clear staged in <strong>production</strong></span><code>draft</code></div>
                 <div><b class="ok">✓</b><span>presence rule is required</span><code>required_in</code></div>
-                <div><b class="bad">×</b><span>clear refused; value unchanged</span><code>fail-closed</code></div>
+                <div><b class="bad">×</b><span>publish refused; snapshot unchanged</span><code>fail-closed</code></div>
               </div>
             </div>
           </article>
@@ -404,10 +406,10 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
                 A workload gets configuration through its <strong>scoped identity</strong>. Secret plaintext also requires the
                 project <strong>machine-reveal opt-in</strong> and a <strong>reveal grant</strong>; otherwise delivery stops before the child starts.
               </p>
-              <p class="feature-note"><span>▸</span> The happy path writes no plaintext file to the host disk.</p>
+              <p class="feature-note"><span>▸</span> <code>hikyo run</code> injects values into the child environment without writing a plaintext file.</p>
             </div>
             <div class="artifact frame terminal" data-demo="terminal">
-              <div class="frame-head"><i></i><i></i><i></i><span>hikyo run · production</span></div>
+              <div class="frame-head"><i></i><i></i><i></i><span>hikyo run · illustrative delivery checks</span></div>
               <pre><i class="ln" style="--n:0"><span># start a process with an authorized environment</span></i><i class="ln" style="--n:1"><b>hikyo run</b> -- ./payments-api</i><i class="ln" style="--n:2">  <em>✓</em> identity verified</i><i class="ln" style="--n:3">  <em>✓</em> grant constrained to project + environment</i><i class="ln" style="--n:4">  <em>✓</em> config ready for the child process</i><i class="ln" style="--n:5">  <span>→ secret plaintext needs explicit machine reveal</span></i><i class="ln" style="--n:6">  <strong>!</strong> inaccessible secret stops launch</i></pre>
             </div>
           </article>
@@ -476,29 +478,29 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
                   <th scope="row">Fully open production path</th>
                   <td class="hikyo-column"><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status partial" aria-label="Partial support">—</span></td>
-                  <td><span class="comparison-status partial" aria-label="Partial support">—</span></td>
+                  <td><span class="comparison-status partial" aria-label="Partial support">–</span></td>
+                  <td><span class="comparison-status partial" aria-label="Partial support">–</span></td>
                 </tr>
                 <tr>
                   <th scope="row">Config and secrets</th>
                   <td class="hikyo-column"><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status partial" aria-label="Partial support">—</span></td>
+                  <td><span class="comparison-status partial" aria-label="Partial support">–</span></td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
                 </tr>
                 <tr>
                   <th scope="row">Explicit environment matrix</th>
                   <td class="hikyo-column"><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status no" aria-label="Not available">×</span></td>
-                  <td><span class="comparison-status partial" aria-label="Partial support">—</span></td>
-                  <td><span class="comparison-status partial" aria-label="Partial support">—</span></td>
+                  <td><span class="comparison-status partial" aria-label="Not established by the linked documentation">?</span></td>
+                  <td><span class="comparison-status partial" aria-label="Partial support">–</span></td>
+                  <td><span class="comparison-status partial" aria-label="Partial support">–</span></td>
                 </tr>
                 <tr>
-                  <th scope="row">Value and presence validation</th>
+                  <th scope="row">Declared value and environment presence validation</th>
                   <td class="hikyo-column"><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status no" aria-label="Not available">×</span></td>
-                  <td><span class="comparison-status no" aria-label="Not available">×</span></td>
-                  <td><span class="comparison-status no" aria-label="Not available">×</span></td>
+                  <td><span class="comparison-status partial" aria-label="Not established by the linked documentation">?</span></td>
+                  <td><span class="comparison-status partial" aria-label="Not established by the linked documentation">?</span></td>
+                  <td><span class="comparison-status partial" aria-label="Not established by the linked documentation">?</span></td>
                 </tr>
                 <tr>
                   <th scope="row">Workload plaintext delivery</th>
@@ -528,23 +530,23 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
                 <tr>
                   <th scope="row">SCIM provisioning</th>
                   <td class="hikyo-column"><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status no" aria-label="Not available">×</span></td>
+                  <td><span class="comparison-status partial" aria-label="Not established by the linked documentation">?</span></td>
                   <td><span class="comparison-status tier" aria-label="Enterprise tier">EE</span></td>
                   <td><span class="comparison-status tier" aria-label="Enterprise tier">EE</span></td>
                 </tr>
                 <tr>
                   <th scope="row">Native multi-node HA</th>
                   <td class="hikyo-column">
-                    <a class="comparison-status yes" href="/docs/high-availability/" aria-label="Included on main: multi-node high availability">✓</a>
+                    <a class="comparison-status yes" href="/docs/high-availability/" aria-label="Included on main: multi-node high availability with PostgreSQL">✓</a>
                   </td>
                   <td><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status partial" aria-label="Deployment dependent">—</span></td>
-                  <td><span class="comparison-status partial" aria-label="Deployment dependent">—</span></td>
+                  <td><a class="comparison-status yes" href="https://infisical.com/docs/self-hosting/overview" aria-label="Documented high availability deployment">✓</a></td>
+                  <td><span class="comparison-status partial" aria-label="Deployment dependent">–</span></td>
                 </tr>
                 <tr>
                   <th scope="row">Application-level recovery</th>
                   <td class="hikyo-column"><span class="comparison-status yes" aria-label="Included">✓</span></td>
-                  <td><span class="comparison-status partial" aria-label="Partial support">—</span></td>
+                  <td><a class="comparison-status yes" href="https://openbao.org/docs/secrets/kv/kv-v2/" aria-label="Included: versioned key value recovery">✓</a></td>
                   <td><span class="comparison-status tier" aria-label="Paid Pro tier">Pro</span></td>
                   <td><span class="comparison-status tier" aria-label="Paid Pro tier">Pro</span></td>
                 </tr>
@@ -553,12 +555,13 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
           </div>
 
           <div class="comparison-notes">
-            <p><span class="yes">✓ included</span><span>— partial or indirect</span><span>× unavailable</span><span>Adv/Pro paid tier</span><span>EE enterprise tier</span></p>
+            <p><span class="yes">✓ included</span><span>– partial or indirect</span><span>? not established</span><span>Adv/Pro paid tier</span><span>EE enterprise tier</span></p>
             <p>
               Hikyo entries describe main-branch capabilities; the <a href="/docs/roadmap/">1.0 roadmap</a> records remaining release gates.
-              Clocks mark post-1.0 work without a promised minor version. Other products were compared against public self-hosted documentation and plan
-              availability on 25 August 2026: <a href="https://openbao.org/docs/use-cases/">OpenBao</a>,
+              Hikyo multi-node HA requires PostgreSQL. Clocks mark post-1.0 work without a promised minor version. Other products were checked against public documentation and plan
+              availability on 9 October 2026: <a href="https://openbao.org/docs/use-cases/">OpenBao</a>,
               <a href="https://infisical.com/pricing">Infisical</a>, and <a href="https://phase.dev/pricing/">Phase</a>.
+              Question marks mean the linked sources do not establish an equivalent capability, rather than a verified absence. Paid-tier labels describe advertised plans; self-hosted licensing can differ.
             </p>
           </div>
         </div>
@@ -566,7 +569,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
 
       <section class="block" id="why" aria-labelledby="why-heading" data-section>
         <div class="wrap why">
-          <p class="kicker">// why hikyo exists</p>
+          <p class="kicker">// why Hikyo exists</p>
           <h2 id="why-heading">Operational capability should not be an enterprise upsell.</h2>
           <div class="why-body">
             <p>
@@ -635,7 +638,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
     <footer class="site-footer">
       <div class="wrap footer-grid">
         <div class="footer-brand">
-          <a class="brand" href={base}><img class="brand-logo" src={`${base}favicon.svg`} alt="" aria-hidden="true" /><span>hikyo</span></a>
+          <a class="brand" href={base}><img class="brand-logo" src={`${base}favicon.svg`} alt="" aria-hidden="true" /><span>Hikyo</span></a>
           <p>Fully open-source secrets and configuration across environments.</p>
         </div>
         <div>
@@ -667,10 +670,12 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       // ---------------------------------------------------------- theme
       const button = document.querySelector<HTMLButtonElement>('.theme-toggle');
       const label = button?.querySelector<HTMLElement>('.theme-label');
+      const icon = button?.querySelector<SVGElement>('.theme-icon svg');
 
       const renderTheme = (theme: 'dark' | 'light') => {
         root.dataset.theme = theme;
         if (label) label.textContent = theme === 'dark' ? 'Light' : 'Dark';
+        icon?.classList.toggle('dark', theme === 'light');
         button?.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
       };
 
@@ -1323,10 +1328,10 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
         position: relative;
         z-index: 1;
       }
-      .flip {
+      .coverage .flip {
         display: inline-grid;
       }
-      .flip > * {
+      .coverage .flip > * {
         grid-area: 1 / 1;
       }
       .flip-q {

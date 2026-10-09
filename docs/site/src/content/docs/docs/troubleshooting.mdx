@@ -13,6 +13,7 @@ log entry, and binary version before changing configuration.
 | --- | --- | --- |
 | `HIKYO_DB` | Production has no valid datastore. | Set an explicit SQLite path or PostgreSQL DSN. |
 | root key | Source is missing, ambiguous, malformed, or too widely readable. | Configure one 64-hex key source; set file mode `0600`. |
+| release claims, upgrade bundle or installation custody | Production release evidence or persistent operator custody is missing or incompatible. | Install the verified signed executable and provision the public bundle, operator pin and independent installation state through the [upgrade runbook](/docs/upgrades/#manual-upgrade-inputs). |
 | trusted proxy CIDRs | Plaintext listener is non-loopback without a proxy boundary. | Bind loopback or name the actual proxy CIDRs. |
 | pending migrations | Auto-migrate is off. | Review, back up, then run `hikyo migrate`. |
 | schema newer than binary | The binary is older than the database. | Deploy a compatible binary or restore a compatible archive. |

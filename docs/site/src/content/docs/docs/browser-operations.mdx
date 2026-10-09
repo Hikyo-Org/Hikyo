@@ -4,8 +4,8 @@ description: Take a fresh organisation to Kubernetes-ready delivery from the emb
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/browser-operations.mdx
 ---
 
-Hikyo's server-mediated capabilities are reachable from both the CLI and the
-embedded web UI. Neither surface is the "advanced" one. This page follows the browser path end to end, from a fresh
+The embedded web UI covers the core administration and delivery lifecycle.
+This page follows the browser path end to end, from a fresh
 organisation on an installation whose only human is the bootstrap
 administrator to a workload receiving secrets in Kubernetes, and then lists
 exactly what stays outside the browser and why.
@@ -76,6 +76,8 @@ rarely:
 | Identity providers | Instance administration | OIDC providers, SAML providers and SP keys, federation issuers |
 | Provisioning | Organisation → SCIM | Bindings, mappings, provisioning credentials, directory views |
 | Remotes | Organisation → Remotes | Directory-tier remotes, connection credentials, workspace sessions |
+| Dynamic secrets | Machine access → Providers and Leases | Providers, write-only credentials, mint/renew/revoke/settle leases |
+| Certificates | Instance administration, Machine access → SSH and Certificates | SSH CAs/profiles, private-PKI issuers/profiles, issuance and revocation |
 | Adapters | Project → Deployment adapters | Create, targets, pause/resume/resync, plan, test, credential custody, origin moves, deletion |
 | Audit | Organisation → Audit, Project → Project audit | Query, inspect and export the organisation trail, or a project's trail narrowed to one environment |
 | Remote crypto | Instance administration, Project settings | DEK/master/root/token/scanning-key rotation and resumable re-encryption |
@@ -85,7 +87,10 @@ rarely:
 The exemption list is closed and machine-checked: `api/parity.yaml` in the
 repository maps every public operation to a browser surface, one of the
 classes below, or an open issue, and CI fails when an operation is added
-without a disposition or an issue is closed without its surface.
+without a disposition or an issue is closed without its surface. Transit key
+management and cryptographic operations are currently CLI/API-only
+([#820](https://github.com/Hikyo-Org/Hikyo/issues/820)). These are implementation
+gaps, not host-local or protocol exemptions.
 
 | Class | Examples | Why |
 | --- | --- | --- |

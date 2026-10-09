@@ -5,7 +5,8 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 ---
 
 Production startup is fail-closed. Hikyo refuses to serve without an explicit
-datastore and root-key source. A non-loopback public listener requires native
+datastore, root-key source, authenticated release bundle and independent
+installation custody. A non-loopback public listener requires native
 TLS or an explicit trusted-proxy boundary.
 
 This page is the production checklist. Use the linked pages for the full
@@ -27,13 +28,21 @@ and [operator procedures](/docs/compliance-operations/).
 | --- | --- | --- |
 | Datastore | `HIKYO_DB` | Use `sqlite:PATH` or an explicit PostgreSQL DSN. |
 | Root key | `--root-key-file` or a systemd credential | Use exactly one source; keep it outside the database backup. |
+| Release admission | `HIKYO_UPGRADE_BUNDLE`, `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY`, `HIKYO_UPGRADE_STATE_DIR` | Provision the verified public bundle, independently pinned operator key and persistent installation state before the first production boot. |
 | Public origin | `HIKYO_EXTERNAL_ORIGIN` | Set the canonical HTTPS origin seen by browsers. |
 | Network | native TLS pair, or reverse proxy plus `HIKYO_TRUSTED_PROXY_CIDRS` | Terminate TLS natively by default; keep operational listener private. |
 | Backups | `HIKYO_BACKUP_RECIPIENTS` and `HIKYO_BACKUP_DIR` | Configure recipients and destination together. |
 
-## Build the production binary
+## Install a verified production release
 
-Until Hikyo publishes a stable release, build from a reviewed commit:
+Use [installation](/docs/installation/) to verify a published artifact, then
+complete the [fresh native installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#fresh-native-installation).
+Signed nightlies remain prereleases. Every production boot authenticates its
+exact release and public bundle; a direct source build lacks those release
+claims and is refused for production serving.
+
+For development and inspection, a reviewed source checkout can build the UI
+and binary with:
 
 ```bash
 npm install --global --ignore-scripts corepack@0.35.0
@@ -46,10 +55,14 @@ go build -trimpath -tags ui -o ./hikyo ./cmd/hikyo
 ./hikyo version
 ```
 
-Record the commit beside the deployed binary. Do not describe an unversioned
-development build as a supported release.
+Record the commit beside a source build and use it only for development.
+Do not substitute it for the signed executable in the production example below.
 
 ## SQLite baseline
+
+First provision the signed binary, public bundle and operator pin at the paths
+below, and prepare persistent installation custody using the native installation
+runbook. The following settings are a runtime example, not a release installer.
 
 ```bash
 install -d -m 0700 /var/lib/hikyo /etc/hikyo
@@ -57,6 +70,9 @@ openssl rand -hex 32 | install -m 0600 /dev/stdin /etc/hikyo/root.key
 
 HIKYO_DB=sqlite:/var/lib/hikyo/hikyo.db \
 HIKYO_EXTERNAL_ORIGIN=https://hikyo.example.com \
+HIKYO_UPGRADE_BUNDLE=/srv/hikyo-public/bundle \
+HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY=/srv/hikyo-public/operator.pub \
+HIKYO_UPGRADE_STATE_DIR=/var/lib/hikyo-installation \
 ./hikyo server \
   --listen 0.0.0.0:8443 \
   --operational-listen 127.0.0.1:8081 \
@@ -101,8 +117,11 @@ so a database outage removes traffic without triggering a process restart.
 The same private listener serves `/metrics` in Prometheus text format (RED-style
 request counters and latency per surface class, in-flight and
 admission-pressure gauges, plus the retention and TLS gauges) with no external
-service dependency. It is unauthenticated; scrape it only from the host or a
-trusted network and never expose the operational bind. See
+service dependency. It is unauthenticated but accepts only actual loopback
+peers; non-loopback scrapes return HTTP 403 even with a forwarded loopback
+address. Scrape from the host, or from a collector sharing the pod's network
+namespace. Forward metrics through that collector's separately authenticated
+transport if needed, and keep the operational bind private. See
 [metrics](/docs/configuration/#operational-metrics) for the full list.
 
 Then check the public HTTPS origin from outside the host. A local probe does
@@ -117,8 +136,8 @@ not prove DNS, TLS, or reverse-proxy routing.
 ## PostgreSQL boundary
 
 Remote PostgreSQL DSNs must name the host explicitly and use `sslmode=verify-full`
-or `sslmode=verify-ca`. Plaintext connections to a non-loopback database host
-are refused.
+for certificate and hostname verification. CA-only `sslmode=verify-ca` and
+plaintext connections to a non-loopback database host are refused.
 
 Use a dedicated database and role. Back up the Hikyo archive through
 `hikyo backup export`; a generic PostgreSQL dump does not replace Hikyo's

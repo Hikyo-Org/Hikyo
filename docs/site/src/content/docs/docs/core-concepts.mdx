@@ -24,16 +24,18 @@ default to production, and an empty cell is never ambiguous.
 ## Secrets are a separate disclosure path
 
 Ordinary reads return classification and presence, not secret plaintext.
-Revealing or copying a secret is a deliberate, reauthenticated ceremony with a
-short remask window and its own audit event. Replacing a secret does not require
+Revealing or copying a secret is a deliberate disclosure under current
+authorization and the applicable reauthentication policy, with a short browser
+remask window and its own audit event. Replacing a secret does not require
 reading its current value.
 
-## Validation happens at write time
+## Validation gates publication
 
 Declarations distinguish configuration from secrets and attach validation and
-presence rules. A write is accepted only when the new value and the resulting
-environment state are both valid. Required values cannot be cleared where their
-presence rule applies.
+presence rules. Editing saves a private draft, including incomplete or invalid
+work. Delivery keeps the published state until an explicit publication succeeds.
+Publication validates the selected changes and resulting environment state; it
+refuses required values left absent and incomplete all-or-none groups.
 
 ## Authorization has one chokepoint
 

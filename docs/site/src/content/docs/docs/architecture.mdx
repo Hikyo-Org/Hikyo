@@ -44,12 +44,15 @@ for bootstrap and recovery, so these commands must run on the server host.
 
 ## HTTP surfaces
 
-- `/healthz` proves the process can answer.
-- `/readyz` checks whether the datastore is usable.
+- The separate operational listener serves `/healthz`, `/readyz` and `/metrics`;
+  these are not routes on the browser/API listener.
+- `/healthz` proves the operational listener can answer.
+- `/readyz` checks datastore and applicable HA readiness with a bounded probe.
 - `/api/v1/*` is validated against the OpenAPI contract.
 - All other browser routes belong to the embedded single-page app.
 
-Health probes are unauthenticated and reveal no tenant data. API handlers use
+Health probes are unauthenticated and reveal no tenant data; metrics additionally
+require a loopback caller. API handlers use
 one error shape and keep unauthorized resources indistinguishable from missing
 resources.
 
