@@ -65,6 +65,9 @@ type IO struct {
 	// OpenURL launches a browser without printing the opaque handoff state.
 	// Nil uses the platform browser opener.
 	OpenURL func(string) error
+	// PrepareClipboard prepares a native protected clipboard destination before
+	// disclosure. Nil uses the platform implementation; injected by tests.
+	PrepareClipboard func() (func(context.Context, string) error, error)
 	// Exec replaces the current process image with argv0 (unix syscall.Exec) or
 	// spawns-waits-and-exits-with-the-child-code (windows). `hikyo run --` is the
 	// only caller. Nil uses the real platform Exec (execRun, build-tagged). Tests
@@ -307,7 +310,7 @@ hierarchy:
 
 values:                                            --env selects the environment
   hikyo values list [--reveal] [--output-file PATH | --dangerously-print]
-  hikyo values get <KEY> [--reveal] [--output-file PATH | --dangerously-print]
+  hikyo values get <KEY> [--reveal] [--output-file PATH | --dangerously-print | --clipboard]
   hikyo values set <KEY> (--stdin | --value-file PATH)   stages; publish commits
   hikyo values set <KEY> --clear                    stages a clear to absent
   hikyo values set <KEY> ... --acknowledge <token,token>   keep-as-config tokens from a prior scanning warning

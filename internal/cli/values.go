@@ -63,7 +63,7 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 	var format, exportFormat, valueFile, left, right, source, destinations, keyNames, environments string
 	var versions, previewToken, confirmedProtectedEnvironments, acknowledge string
 	var revision int64
-	var clear, reveal, stdin, dangerous, confirmProtected bool
+	var clear, reveal, stdin, dangerous, confirmProtected, clipboard bool
 	var outputFile string
 	parameters := map[string]string{}
 	st, flags, err := parseCommon("values "+sub, ios, rest, func(fs *flag.FlagSet) {
@@ -80,6 +80,9 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		if sub == "list" || sub == "get" || sub == "diff" || sub == "export" {
 			fs.BoolVar(&reveal, "reveal", false,
 				"disclose `secret` plaintext; audited per key, and refused without the reveal capability")
+		}
+		if sub == "get" {
+			fs.BoolVar(&clipboard, "clipboard", false, "copy a revealed value to the native clipboard with history-exclusion markers (macOS or Windows)")
 		}
 		if sub == "publish" {
 			fs.StringVar(&versions, "versions", "",
@@ -176,6 +179,21 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		return failf(ExitUsage, "usage: hikyo values publish --versions <id,id> [--env <env>]")
 	}
 
+	var clipboardWrite func(context.Context, string) error
+	if clipboard {
+		if !reveal || outputFile != "" || dangerous || format != "table" {
+			return failf(ExitUsage, "--clipboard requires --reveal and cannot be combined with --output-file, --dangerously-print, or -o json")
+		}
+		prepare := ios.PrepareClipboard
+		if prepare == nil {
+			prepare = prepareSecureClipboard
+		}
+		clipboardWrite, err = prepare()
+		if err != nil || clipboardWrite == nil {
+			return failf(ExitRefused, "native protected clipboard is unavailable")
+		}
+	}
+
 	// The value is read BEFORE the request is built and before the session is
 	// touched, so a caller who mistypes the source of their value is told so
 	// without a round trip carrying it.
@@ -268,6 +286,9 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 		}
 		if err != nil {
 			return err
+		}
+		if clipboard {
+			return copyCellToClipboard(ctx, ios, cell, clipboardWrite)
 		}
 		return renderCell(ios, f, cell, outputFile, dangerous)
 
@@ -796,4 +817,18 @@ func exportSecretKeyIDs(ctx context.Context, client *Client, envBase string, rev
 		out = append(out, string(item.KeyId))
 	}
 	return out, nil
+}
+
+// copyCellToClipboard accepts only plaintext explicitly disclosed by the server.
+// Neither a platform failure nor a malformed response may fall back to printing.
+func copyCellToClipboard(ctx context.Context, ios IO, cell apigen.ValueCell, write func(context.Context, string) error) error {
+	if !cell.Set || !cell.Revealed || cell.Value == nil {
+		return failf(ExitRefused, "the value was not revealed; nothing copied")
+	}
+	if err := write(ctx, *cell.Value); err != nil {
+		// Platform subprocess errors are untrusted and could include plaintext.
+		return failf(ExitRefused, "native protected clipboard write failed; nothing printed")
+	}
+	_, err := fmt.Fprintln(ios.Stderr, "Copied to the native clipboard with history-exclusion markers. Clipboard managers must honor these markers; the value remains available to paste until replaced.")
+	return err
 }

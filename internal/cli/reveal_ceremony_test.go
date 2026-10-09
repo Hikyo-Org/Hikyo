@@ -1,7 +1,9 @@
 package cli_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -280,5 +282,73 @@ func TestRevealCeremonyHandsOffWhenNoAuthenticatorIsEnrolled(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "no authenticator is enrolled") {
 		t.Errorf("the reason was not named: %s", stderr.String())
+	}
+}
+
+func TestRevealClipboardPreservesCeremonyAndNeverPrintsPlaintext(t *testing.T) {
+	handler, seen := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true})
+	ios, stdout, stderr := definitionsTestIO(t, handler)
+	ios.ReadPassword = func(string) (string, error) { return "123456", nil }
+	var copied string
+	ios.PrepareClipboard = func() (func(context.Context, string) error, error) {
+		if len(*seen) != 0 {
+			t.Fatal("clipboard destination prepared after server request")
+		}
+		return func(_ context.Context, value string) error { copied = value; return nil }, nil
+	}
+	args := revealArgs()
+	args[4] = "--clipboard"
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitOK {
+		t.Fatalf("exit %d; stderr=%s", code, stderr.String())
+	}
+	if copied != "s3cret" || stdout.Len() != 0 || strings.Contains(stderr.String(), "s3cret") {
+		t.Fatalf("copy=%q stdout=%q stderr=%q", copied, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "history-exclusion markers") {
+		t.Fatal("missing protected-copy notice")
+	}
+}
+
+func TestRevealClipboardDestinationUnavailableBeforeDisclosure(t *testing.T) {
+	handler, seen := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, Live: true})
+	ios, stdout, stderr := definitionsTestIO(t, handler)
+	ios.PrepareClipboard = func() (func(context.Context, string) error, error) { return nil, errors.New("unavailable") }
+	args := revealArgs()
+	args[4] = "--clipboard"
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitRefused {
+		t.Fatalf("exit %d; %s", code, stderr.String())
+	}
+	if len(*seen) != 0 || stdout.Len() != 0 {
+		t.Fatal("unavailable destination contacted server or printed")
+	}
+}
+
+func TestRevealClipboardRejectsConflictingDestinations(t *testing.T) {
+	for _, extra := range [][]string{{"--dangerously-print"}, {"--output-file", "unused"}, {"-o", "json"}} {
+		t.Run(strings.Join(extra, " "), func(t *testing.T) {
+			handler, seen := ceremonyServer(t, apigen.RevealWindow{CanReveal: true, Live: true})
+			ios, _, stderr := definitionsTestIO(t, handler)
+			args := revealArgs()
+			args[4] = "--clipboard"
+			args = append(args, extra...)
+			if code := cli.Run(t.Context(), ios, args); code != cli.ExitUsage {
+				t.Fatalf("exit %d; %s", code, stderr.String())
+			}
+			if len(*seen) != 0 {
+				t.Fatal("conflicting destinations contacted server")
+			}
+		})
+	}
+}
+
+func TestClipboardRequiresExplicitReveal(t *testing.T) {
+	handler, seen := ceremonyServer(t, apigen.RevealWindow{})
+	ios, _, stderr := definitionsTestIO(t, handler)
+	args := []string{"values", "get", "DATABASE_PASSWORD", "--clipboard"}
+	if code := cli.Run(t.Context(), ios, args); code != cli.ExitUsage {
+		t.Fatalf("exit %d; %s", code, stderr.String())
+	}
+	if len(*seen) != 0 {
+		t.Fatal("implicit reveal contacted server")
 	}
 }

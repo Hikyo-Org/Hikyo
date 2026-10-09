@@ -99,7 +99,7 @@ export async function writeExpiringClipboard(
     }, CLIPBOARD_CLEAR_MS);
   }
   return audited
-    ? "Copied, and recorded as a disclosure. Cleared in 45s if this tab stays focused. The OS may keep clipboard history."
+    ? "Copied, and recorded as a disclosure. Cleared in 45s if this tab stays focused. Clipboard managers may keep this browser copy. On macOS or Windows, use hikyo values get KEY --reveal --clipboard to request exclusion from clipboard history."
     : "Copied. This value is not a secret, so no disclosure was recorded.";
 }
 import { notifyFailure } from './notifications.tsx';

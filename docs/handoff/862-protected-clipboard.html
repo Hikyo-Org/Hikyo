@@ -1,0 +1,57 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Issue 862: protected clipboard copy</title><style>body{margin:40px auto;padding:0 24px;max-width:960px;font:16px/1.6 system-ui;color:#20242a;background:#fafafa}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}</style><main><pre># Issue 862: protected clipboard copy
+
+Issue: https://github.com/Hikyo-Org/Hikyo/issues/862
+
+Run `hikyo values get KEY --reveal --clipboard --env ENVIRONMENT`, adding
+`--instance`, `--org`, and `--project` unless selected in the CLI context.
+The command uses the existing reveal authorization, audit, and reauthentication
+ceremony. It copies the exact value without printing plaintext. It refuses
+conflicting output destinations and unsupported platforms before disclosure;
+write errors do not fall back to printing.
+
+macOS uses system AppKit through a fixed JXA script with the value on stdin.
+A single pasteboard item contains Unicode text, `org.nspasteboard.ConcealedType`,
+and `org.nspasteboard.TransientType`. Windows uses native Win32 clipboard APIs,
+a real owner window, and exclusion formats installed before Unicode text:
+`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory`,
+and `CanUploadToCloudClipboard`. Builds remain compatible with `CGO_ENABLED=0`.
+
+The web secret-copy confirmation points to the native command and warns that
+clipboard managers may retain browser copies. Secret entry fields are unchanged.
+These markers require manager cooperation. They do not remove earlier browser
+copies from history, and the native command leaves the live value available to
+paste until replaced. Linux and other unsupported platforms fail closed.
+
+Validation:
+
+- Web typecheck, lint, full unit suite (167 files, 1,511 tests), and build passed.
+- Full CLI package tests passed. Regression coverage exercises the public CLI
+  reveal/reauthentication flow, destination conflicts, unavailable destinations,
+  unrevealed/absent values, exact multiline/empty values, and error redaction.
+- The real macOS AppKit test verified text and both markers on a unique private
+  pasteboard without reading or overwriting the user&#x27;s general clipboard.
+- macOS CGO-free focused tests, native Go vet, Windows Go vet, Windows CGO-free
+  package cross-build, and import/Go formatting passed. Windows native runtime
+  execution was unavailable.
+- The browser helper returned the expected confirmation with a synthetic
+  clipboard. The prototype lacks reveal endpoints, so a complete browser
+  secret-copy flow was not verified. The T3 preview connection became unavailable;
+  the fallback used the Playwright CLI.
+- Full `go test ./...` did not pass: app and isolation packages reached the
+  unchanged ten-minute package timeout during SQLite migration fixtures. The
+  initial CLI compile also failed with `could not import context (open : no such
+  file or directory)` while files were changing; the final full CLI rerun passed.
+  The app test active at timeout passed independently in 5.613 seconds.
+  The isolation test active at timeout passed independently in 2.288 seconds.
+  Other repository packages passed, including
+  lint, service, store, and upgradegate. No timeout or assertion was weakened.
+- Independent standards and spec reviews reported zero findings. A final
+  Windows memory-copy adjustment was reviewed again with zero findings.
+- Advisory Jev probe during validation: description match 0.87; untested logic
+  0.52; risk secret handling; readiness 1.42 of 0-3 (51% nearly ready, 38% not
+  ready, confidence 0.41). No candidate finding met its verification threshold.
+  This is a local implementation, with no PR or remote CI state to assess.
+
+Delivery is a signed, DCO-signed-off local commit on the current branch. Push,
+PR, merge, release, and deployment were not requested.
+</pre></main></html>

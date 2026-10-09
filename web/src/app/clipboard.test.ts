@@ -74,9 +74,11 @@ describe('writeExpiringClipboard', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
     vi.stubGlobal('document', { hasFocus: () => true });
 
-    await expect(writeExpiringClipboard('secret', true)).resolves.toContain(
-      'recorded as a disclosure',
-    );
+    const confirmation = await writeExpiringClipboard('secret', true);
+    expect(confirmation).toContain('recorded as a disclosure');
+    expect(confirmation).toContain('Clipboard managers may keep this browser copy.');
+    expect(confirmation).toContain('hikyo values get KEY --reveal --clipboard');
+    expect(confirmation).not.toContain('secret');
     await vi.advanceTimersByTimeAsync(45_000);
 
     expect(writeText).toHaveBeenNthCalledWith(1, 'secret');
