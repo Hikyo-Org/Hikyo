@@ -1,0 +1,29 @@
+# Issue 861: remask secrets on focus loss
+
+Source: https://github.com/Hikyo-Org/Hikyo/issues/861
+
+Implemented on `dunky13/issue-861`; delivery endpoint is a local signed commit.
+
+## Behavior
+
+The matrix cell editor and Values page clear revealed plaintext and reveal announcements on window blur and document visibilitychange. A shared focus-generation hook rejects single and bulk reveal responses begun before focus loss, including responses arriving after focus returns. Returning to the page requires a fresh reveal.
+
+Listeners are removed on unmount. Existing component-owned sensitive state, uncached disclosure operations, ceremony checks, clipboard operations, publishing and session retirement remain intact. No screenshot detection was added. Sensitivity inventory pins were refreshed only for the reviewed MatrixRowEditor and Values sources.
+
+Browser verification also found a stale visible countdown after an idle editor. Both surfaces now synchronize their countdown clock with a successful reveal, preserving the ten-second deadline.
+
+## Validation
+
+- Web typechecking and lint: passed.
+- Focus and sensitivity-inventory regression tests: 13 passed, including both events, both surfaces, listener cleanup, pending single/bulk responses, return-to-focus and the visible ten-second countdown after 45 seconds of idle time.
+- Full web unit suite: 1,522 tests passed across 168 files.
+- Standards review: no remaining findings after extracting shared event handling and strengthening the visible-countdown assertion.
+- Spec review: no remaining findings.
+- Isolated Chromium component check with synthetic API responses: Values reveal then blur cleared plaintext; matrix reveal then blur and visibilitychange cleared plaintext. This is component/browser proof, not backend end-to-end verification. Temporary fixture files and server were removed after verification.
+- Graphify structural refresh: run after code changes; generated output stays untracked.
+
+Initial full-suite failures were the required source-hash inventory check while the implementation and pins were still changing. No checks were weakened.
+
+## Delivery
+
+No push, pull request, remote CI, merge, release or deployment was requested.

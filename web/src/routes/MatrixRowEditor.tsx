@@ -39,6 +39,7 @@ import {
   useProtectedPublishCeremony,
   type ProtectedPublishTarget,
 } from './useProtectedPublishCeremony.ts';
+import { useRemaskOnFocusLoss } from './useRemaskOnFocusLoss.ts';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 type MatrixKey = MatrixKeyList['items'][number];
@@ -625,6 +626,11 @@ function useCellDisclosure(
   // that ticked with the countdown would read the value aloud every 250ms.
   const [announcement, setAnnouncement] = useState<{ id: number; message: string } | null>(null);
 
+  const focusGeneration = useRemaskOnFocusLoss(useCallback(() => {
+    setPlaintext(null);
+    setAnnouncement(null);
+  }, [setPlaintext]));
+
   useEffect(() => {
     if (plaintext === null) return;
     const timer = globalThis.setInterval(() => setNow(Date.now()), 250);
@@ -695,9 +701,13 @@ function useCellDisclosure(
   }, [ceremony, keyRecord.name, revealOne, setPlaintext]);
 
   const reveal = useCallback(() => {
+    const generation = focusGeneration.current;
     void withDisclosure('reveal', (task) => discloseValue(task, (value) => {
+      if (generation !== focusGeneration.current || document.hidden) return;
       ceremony.commit(task, () => {
-        setPlaintext({ value, until: Date.now() + REMASK_MS });
+        const revealedAt = Date.now();
+        setNow(revealedAt);
+        setPlaintext({ value, until: revealedAt + REMASK_MS });
         setNotice('Disclosure recorded.');
         setAnnouncement((current) => ({
           id: (current?.id ?? 0) + 1,
@@ -705,7 +715,7 @@ function useCellDisclosure(
         }));
       });
     }));
-  }, [ceremony, discloseValue, keyRecord.name, setPlaintext, withDisclosure]);
+  }, [ceremony, discloseValue, focusGeneration, keyRecord.name, setPlaintext, withDisclosure]);
 
   const copy = useCallback(() => {
     if (keyRecord.classification === 'config') {

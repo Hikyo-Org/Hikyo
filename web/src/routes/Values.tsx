@@ -25,6 +25,7 @@ import { Alert } from "../ui/Alert.tsx";
 import { Badge } from "../ui/Badge.tsx";
 import { Button } from "../ui/Button.tsx";
 import { Ceremony, type CeremonyPurpose } from "./Ceremony.tsx";
+import { useRemaskOnFocusLoss } from "./useRemaskOnFocusLoss.ts";
 import { useCeremonyTask, type CeremonyTask } from "./useCeremonyTask.ts";
 
 /**
@@ -145,6 +146,11 @@ function ValuesSurface({
     env.environment,
     destination,
   ]);
+
+  const focusGeneration = useRemaskOnFocusLoss(useCallback(() => {
+    setDisclosed({});
+    setRevealAnnouncement(null);
+  }, [setDisclosed]));
 
   // One ticker drives every countdown on the surface: the remask timers and
   // the window chip are the same question asked of different deadlines, and a
@@ -321,7 +327,9 @@ function ValuesSurface({
 
   const recordDisclosures = useCallback(
     (entries: Array<{ id: string; name: string; value: string }>) => {
-      const until = Date.now() + REMASK_MS;
+      const revealedAt = Date.now();
+      setNow(revealedAt);
+      const until = revealedAt + REMASK_MS;
       setDisclosed((current) => {
         const next = { ...current };
         for (const entry of entries) {
@@ -349,7 +357,8 @@ function ValuesSurface({
     [env.environment, noteDisclosure, setDisclosed],
   );
 
-  const doRevealOne = (cell: ValueCell) =>
+  const doRevealOne = (cell: ValueCell) => {
+    const generation = focusGeneration.current;
     void withCeremony(
       [
         {
@@ -361,6 +370,7 @@ function ValuesSurface({
       async (task) => {
         try {
           const fresh = await revealOne.mutateAsync(cell.name);
+          if (generation !== focusGeneration.current || document.hidden) return;
           ceremony.commit(task, () => {
             if (fresh.value === undefined) {
               setRefusal("The server disclosed no value for that key.");
@@ -379,8 +389,10 @@ function ValuesSurface({
       },
       [{ id: env.environment, name: environmentName, purpose: "reveal" }],
     );
+  };
 
-  const doRevealAll = () =>
+  const doRevealAll = () => {
+    const generation = focusGeneration.current;
     void withCeremony(
       secretsSet.map((c) => ({
         id: c.key_id,
@@ -390,6 +402,7 @@ function ValuesSurface({
       async (task) => {
         try {
           const fresh = await revealAll.mutateAsync();
+          if (generation !== focusGeneration.current || document.hidden) return;
           ceremony.commit(task, () => {
             recordDisclosures(
               fresh.items
@@ -412,6 +425,7 @@ function ValuesSurface({
       },
       [{ id: env.environment, name: environmentName, purpose: "reveal" }],
     );
+  };
 
   /**
    * doCopy is clipboard-as-disclosure, and it works from the MASKED state.
