@@ -54,9 +54,9 @@ fi
 # Use the public cache for the kind node too, so cluster creation does not
 # hit the same Docker Hub limit after the operator image has built.
 node_image='mirror.gcr.io/kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5'
-# The public Docker Official Images mirror avoids Docker Hub's shared-runner
+# The Google public Docker Hub cache avoids Docker Hub's shared-runner
 # anonymous pull limit while retaining the exact same content digest.
-base_image='public.ecr.aws/docker/library/alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b'
+base_image='mirror.gcr.io/library/alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b'
 chart_flags=(--namespace operator-floor --set operator.enabled=true --set 'operator.namespaces={operator-floor}' --set image.digest="sha256:$(printf '%064d' 0)" --set rootKey.existingSecret=unused --set database.existingSecret=unused --set tls.existingSecret=unused --set externalOrigin=https://floor.invalid --set upgrade.existingClaim=unused-public --set upgrade.stateExistingClaim=unused-installation)
 # Validate chart inputs before provisioning any cluster. Helm validates the
 # complete chart even when only operator templates are selected.

@@ -32,7 +32,7 @@ printf '%s\n' 'local all all trust' 'hostssl all all all scram-sha-256' 'hostnos
 container_id=$(docker create --name "$container" \
 	-e POSTGRES_PASSWORD=adminpw -e POSTGRES_USER=leaseadmin -e POSTGRES_DB=app \
 	-p 127.0.0.1::5432 --entrypoint /bin/sh \
-	public.ecr.aws/docker/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941 \
+	mirror.gcr.io/library/postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941 \
 	-c 'set -eu; chown postgres:postgres /tmp/server.key; chmod 600 /tmp/server.key; exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key -c hba_file=/tmp/pg_hba.conf')
 created=1
 docker cp "$dir/server.crt" "$container_id:/tmp/server.crt"
