@@ -44,7 +44,7 @@ Browser follow-up:
 - Follow-up advisory Jev probe during final validation: description match 0.87,
   untested logic 0.29; risk secret handling (54%) or runtime behavior (46%);
   readiness 1.62 of 0-3 (51% nearly ready, 37% not ready, confidence 0.47).
-  No candidate finding met its verification threshold. No PR is in scope.
+  No candidate finding met its verification threshold. This probe preceded PR creation.
 
 Initial native implementation validation:
 
@@ -74,8 +74,30 @@ Initial native implementation validation:
 - Advisory Jev probe during validation: description match 0.87; untested logic
   0.52; risk secret handling; readiness 1.42 of 0-3 (51% nearly ready, 38% not
   ready, confidence 0.41). No candidate finding met its verification threshold.
-  This is a local implementation, with no PR or remote CI state to assess.
+  This probe assessed the initial local implementation before PR creation.
 
-Delivery is a signed, DCO-signed-off local commit on the current branch. Push,
-PR, merge, release, and deployment were not requested.
-</pre></main></html>
+CI repair for PR 867:
+
+- Run 37908131612 failed in both browser viewport shards because the reveal
+  flow still asserted the old clipboard-history notice. The flow now checks
+  the 45-second attempt, bounded focus retry, browser-history warning, and
+  native CLI guidance, retaining its clipboard and audit assertions.
+- Both Go jobs failed their binary vulnerability scan against Go 1.27.0 and
+  `golang.org/x/net` 0.58.0. The minimum Go version is now 1.27.2 and `x/net`
+  is 0.60.0, with its required transitive module updates. CI and release
+  toolchain selection read `go.mod`; no security check was suppressed.
+- Web typecheck, lint, and all 1,522 unit tests passed during the repair.
+  Contributor docs checked with zero errors or warnings. Go build, vet,
+  module verification, Linux CGO-free CLI/UI builds, and both pinned binary
+  vulnerability scans passed with zero reachable vulnerabilities.
+- The failing secret/config copy scenario passed on desktop and mobile
+  against the patched macOS UI binary. Full CLI package tests also passed
+  on the patched toolchain.
+- Final independent review reported zero remaining standards/spec findings
+  after aligning the README and both contributor guides with Go 1.27.2.
+
+Delivery: https://github.com/Hikyo-Org/Hikyo/pull/867.
+The requested endpoint is a signed, DCO-signed-off correction pushed to this
+PR and verification of its new CI run. Merge, release, and deployment remain
+outside this task.
+</pre></main>

@@ -107,7 +107,7 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
 
 ## Quick start
 
-Requires Go 1.27+, Node.js 26.7.0 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
+Requires Go 1.27.2+, Node.js 26.7.0 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
 and pnpm 11.24.0.
 
 ```bash
