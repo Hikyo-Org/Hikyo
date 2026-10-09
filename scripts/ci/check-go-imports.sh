@@ -14,7 +14,7 @@ while IFS= read -r -d '' path; do
 done < <(git ls-files -z --cached --others --exclude-standard -- '*.go')
 
 if ((${#files[@]} == 0)); then exit 0; fi
-unformatted=$(go run golang.org/x/tools/cmd/goimports@v0.49.0 -l "${files[@]}")
+unformatted=$(go run golang.org/x/tools/cmd/goimports@v0.50.0 -l "${files[@]}")
 if [[ -n "$unformatted" ]]; then
 	printf 'Go import formatting differs in:\n%s\n' "$unformatted" >&2
 	exit 1

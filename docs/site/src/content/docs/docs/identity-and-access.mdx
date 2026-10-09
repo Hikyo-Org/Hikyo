@@ -52,15 +52,34 @@ hikyo access rule list --project <project-id>
 hikyo access rule remove <rule-id>
 ```
 
-`read`, `pin` and `publish` cannot be narrowed by keys, and machine, deploy and settings
-administration need a whole project. An except of a folder also covers its
-subfolders; an only-pick of a folder is exact. Edit a rule by removing it and
-adding the new one.
+`read` and `pin` cannot be narrowed by keys. `edit`, `publish`, `reveal`,
+`reveal-history`, `definitions-edit` and `manage-members` may be narrowed by
+keys; publishing still checks group closure and the resulting environment
+state. Machine, deploy and settings administration need a whole project. An except of a folder also covers its
+subfolders; an only-pick of a folder is exact. The browser's **Edit rule** replaces the selected rule atomically. The CLI's
+current rule commands add, list and remove rules; removing and then adding is
+two operations.
 
 Moving a key to another folder can give people access through their rules.
 Such a move is refused until it is confirmed with `--confirm-widening`
 naming exactly those people; only a member manager of the project is told who
 they are.
+
+## Human onboarding
+
+Registration is closed by default. An administrator can create an organisation
+or instance registration policy that admits selected identity providers, verified
+local email sign-up, or both, and defines the landing authority. An instance
+policy that creates fresh organisations also requires an admission cap.
+Local email sign-up requires configured mail delivery and a stable public origin;
+federated sign-up requires an enabled OIDC or supported OAuth2 provider. SAML
+provisioning uses its separate identity and SCIM path.
+
+The browser exposes registration policy in instance or organisation
+administration. A permitted registration method appears on the sign-up page;
+without a policy the door stays closed. Email verification establishes a local
+sign-in address, never an account-linking or password-recovery key. An existing
+account links a provider through its authenticated account-security ceremony.
 
 ## Human sessions
 

@@ -96,6 +96,16 @@ CI repair for PR 867:
 - Final independent review reported zero remaining standards/spec findings
   after aligning the README and both contributor guides with Go 1.27.2.
 
+Main synchronization after PR 865 merged:
+
+- Merged main `d9f799964`. The only conflict was obsolete `go.sum` entries;
+  `go mod tidy` retains the patched module versions and main&#x27;s x/tools 0.50.0.
+- Module verification, docs check, CLI and SSH CA tests, web typecheck and all
+  1,522 unit tests, import formatting, and cache-policy fixtures passed.
+  Independent source review found no merge-introduced issues.
+- The benchmark-request comment is optional. No benchmark request or extra
+  credit spending was authorized, so both checkboxes remain unchecked.
+
 Delivery: https://github.com/Hikyo-Org/Hikyo/pull/867.
 The requested endpoint is a signed, DCO-signed-off correction pushed to this
 PR and verification of its new CI run. Merge, release, and deployment remain

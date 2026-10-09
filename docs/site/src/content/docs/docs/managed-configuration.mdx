@@ -65,15 +65,16 @@ server filesystem paths.
 
 ## Owner and node settings
 
-The catalogue has 27 top-level values: the nine above, 16 shared owner settings,
+The catalogue includes the nine values above, shared owner settings,
 `HIKYO_NODE_OVERRIDES` and `HIKYO_BOOTSTRAP_SOURCES`.
 
 | Owner settings | Applied behavior |
 | --- | --- |
 | Argon2 memory, time and parallelism; reauthentication window | Replace authentication policy after checking production floors and each node's available admission capacity. |
-| External origin, directory proxy, MCP enabled and allowed origins | Replace the dependent HTTP, authentication, federation and outbound clients. |
+| `HIKYO_SECOND_FACTOR` | `required` sends password sign-in without an enrolled factor through enrollment; `optional` preserves the local factor floor. |
+| External origin, directory proxy, MCP enabled, write enabled and allowed origins | Replace the dependent HTTP, authentication, federation and outbound clients. Enabling MCP write tools grants no edit or publish authority. |
 | Backup interval, recipients, retention count/days, RPO and RTO target | Replace backup policy and scheduled work. |
-| Audit access and security retention days | Apply the retention policy to subsequent work. Already deleted records cannot be restored by lowering a setting. |
+| Audit access and security retention days | Apply the retention policy to subsequent work. Increasing the retention period cannot restore already deleted records. |
 
 `HIKYO_NODE_OVERRIDES` is an encrypted secret JSON document. Its version-1
 `nodes` map keys are the stable IDs shown in status. Each admitted node needs its

@@ -17,6 +17,10 @@ warning, while malformed security settings stop startup.
 | `--tls-key-file PATH` | none | Matching PEM private key; mode `0400` or `0600`. |
 | `--root-key-file PATH` | `HIKYO_ROOT_KEY_FILE` | Mode-`0600`, 64-hex-character root key; flag takes precedence. The environment path also supplies host-local custody commands. |
 | `--auto-migrate=BOOL` | `true` | Apply pending migrations before serving. |
+| `--upgrade-unattended` | off | Run explicitly enrolled unattended container upgrade preparation before serving; see [container upgrades](/docs/container-upgrades/). |
+| `--cli-socket PATH` | `HIKYO_CLI_SOCKET` | Same-user Unix socket for local CLI traffic. |
+| `--config-rollout-enrollment PATH` | none | Operator-installed Kubernetes rollout enrollment JSON. |
+| `--config-rollout-signing-key PATH` | none | Separate private deployment-authorization signer; see [configuration rollouts](/docs/configuration-rollouts/). |
 | `--dev` | off | Evaluation datastore, root key, and text logs. |
 
 Do not use `--dev` for real secret material or any non-loopback deployment.
@@ -132,8 +136,11 @@ deliberately does not send because they commit hostnames it does not serve.
 `/metrics` on the operational listener serves Prometheus text exposition
 (`text/plain; version=0.0.4`) using the official Prometheus Go client. Scraping
 requires no sidecar, external service, or egress. It is plaintext and
-unauthenticated by design. Keep the operational bind private and scrape it from
-the host or a trusted network.
+unauthenticated by design and restricted to actual loopback peers. IPv4/IPv6
+non-loopback scrapes return HTTP 403; forwarded headers do not change that
+decision. Keep the operational bind private and scrape from the host or a
+collector in the same Kubernetes pod. The chart exposes no metrics Service;
+configure the collector's authenticated forwarding separately.
 
 Alongside the retention and TLS gauges it exposes RED-style request metrics
 keyed by a closed **surface class**: `auth`, `hierarchy`, `values`,
@@ -220,14 +227,22 @@ outside the backup identity's custody store.
 
 ## Datastore
 
+Production boot also requires a signed executable and authenticated offline
+release bundle. Configure `HIKYO_UPGRADE_BUNDLE`,
+`HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY` and `HIKYO_UPGRADE_STATE_DIR` for the default
+manual installation. See [self-hosting](/docs/self-hosting/) and
+[manual upgrade inputs](/docs/upgrades/#manual-upgrade-inputs) for provisioning
+and populated-datastore evidence. Datastore and root-key settings alone are not
+a complete production configuration.
+
 SQLite uses `HIKYO_DB=sqlite:/absolute/path/hikyo.db`. Ensure the service user
 owns the parent directory and no other user can read it. The write pool uses one
 connection and the WAL read pool is capped at four, so concurrent readers cannot
 open unlimited connections or retain unbounded WAL snapshots.
 
-Remote PostgreSQL must name one host explicitly and use
-`sslmode=verify-full` or `sslmode=verify-ca`. Multi-host DSNs and remote
-plaintext connections are refused. The connection-pool maximum defaults to 10.
+Remote PostgreSQL must name one host explicitly and use `sslmode=verify-full`
+for certificate and hostname verification. CA-only `sslmode=verify-ca`,
+multi-host DSNs and remote plaintext connections are refused. The connection-pool maximum defaults to 10.
 Set `HIKYO_PG_POOL_MAX` to a positive 32-bit integer for larger hardware, or put
 `pool_max_conns=N` in the PostgreSQL DSN. The environment variable takes
 precedence when both are present. Hikyo logs the effective pool maximum once at

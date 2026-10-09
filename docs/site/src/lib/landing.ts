@@ -84,7 +84,7 @@ export const matrix: KeyGroup[] = [
       {
         name: 'DATABASE_SSLMODE',
         classification: 'config',
-        rule: '{"rule":{"type":"enum","values":["disable","require","verify-full"]}}',
+        rule: '{"rule":{"type":"enum","members":["disable","require","verify-full"]}}',
         presence: 'required everywhere',
         cells: {
           development: { kind: 'set', value: 'disable' },
@@ -130,7 +130,7 @@ export const matrix: KeyGroup[] = [
       {
         name: 'LOG_LEVEL',
         classification: 'config',
-        rule: '{"rule":{"type":"enum","values":["debug","info","warn","error"]}}',
+        rule: '{"rule":{"type":"enum","members":["debug","info","warn","error"]}}',
         presence: 'required everywhere',
         cells: {
           development: { kind: 'set', value: 'debug' },
@@ -154,7 +154,7 @@ export const matrix: KeyGroup[] = [
       {
         name: 'SMTP_HOST',
         classification: 'config',
-        rule: '{"rule":{"type":"hostname"}}',
+        rule: '{"rule":{"type":"string","min_length":1,"max_length":253,"pattern":"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:[.][A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*[.]?$"}}',
         presence: 'group: all or none',
         cells: {
           development: { kind: 'absent' },
@@ -165,7 +165,7 @@ export const matrix: KeyGroup[] = [
       {
         name: 'SMTP_PASSWORD',
         classification: 'secret',
-        rule: '{"rule":{"type":"string","minLength":16}}',
+        rule: '{"rule":{"type":"string","min_length":16}}',
         presence: 'group: all or none',
         cells: { development: { kind: 'absent' }, staging: { kind: 'missing' }, production: { kind: 'secret' } },
       },

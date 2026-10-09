@@ -57,8 +57,8 @@ State the threat model honestly. No delivery mechanism keeps plaintext from a
 process that you, or an agent acting for you, can launch: the child can print
 its environment, and anyone running as your user can read `/proc/<pid>/environ`.
 
-- `hikyo run` writes no values and prints none. It replaces itself with the
-  child (`exec`), so it cannot filter what the child prints.
+- `hikyo run` writes no plaintext values and prints none. It replaces itself
+  with the child (`exec`), so it cannot filter what the child prints.
 - An offline snapshot changes availability, never disclosure: it is sealed with
   a local key that the same user can read, and it is served only when the
   server is unavailable and the project file opts in
