@@ -11,7 +11,8 @@ import reviewed from './sensitiveInventory.json';
 // useSensitiveState is in the set because holding the plaintext is the same
 // review as sending it: a presentational atom that owns a password field
 // (ui/auth/LoginForm) must not drift without one.
-const mutationCapability = /\b(?:useMutation|useSensitiveMutation|useSensitiveState|useMutationState|MutationObserver|MutationCache|getMutationCache)\b/;
+// Focus-remasking owns plaintext lifetime even without a mutation API.
+const mutationCapability = /\b(?:useMutation|useSensitiveMutation|useSensitiveState|useMutationState|MutationObserver|MutationCache|getMutationCache|useRemaskOnFocusLoss)\b/;
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
 function inventory(root: string, prefix = ''): Record<string, string> {
   const result: Record<string, string> = {};
@@ -37,5 +38,6 @@ it('detects imported aliases and direct cache construction as requiring review',
     'queries.getMutationCache().build(queries, options)',
     'new MutationObserver(queries, options)',
     'new MutationCache()',
+    'export function useRemaskOnFocusLoss(remask) {}',
   ]) expect(mutationCapability.test(source)).toBe(true);
 });

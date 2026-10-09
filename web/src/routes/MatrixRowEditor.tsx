@@ -39,7 +39,7 @@ import {
   useProtectedPublishCeremony,
   type ProtectedPublishTarget,
 } from './useProtectedPublishCeremony.ts';
-import { useRemaskOnFocusLoss } from './useRemaskOnFocusLoss.ts';
+import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } from './useRemaskOnFocusLoss.ts';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 type MatrixKey = MatrixKeyList['items'][number];
@@ -701,20 +701,30 @@ function useCellDisclosure(
   }, [ceremony, keyRecord.name, revealOne, setPlaintext]);
 
   const reveal = useCallback(() => {
-    const generation = focusGeneration.current;
-    void withDisclosure('reveal', (task) => discloseValue(task, (value) => {
-      if (generation !== focusGeneration.current || document.hidden) return;
-      ceremony.commit(task, () => {
-        const revealedAt = Date.now();
-        setNow(revealedAt);
-        setPlaintext({ value, until: revealedAt + REMASK_MS });
-        setNotice('Disclosure recorded.');
-        setAnnouncement((current) => ({
-          id: (current?.id ?? 0) + 1,
-          message: `${keyRecord.name} revealed, re-masks in ${String(REMASK_MS / 1000)}s`,
-        }));
+    void withDisclosure('reveal', async (task) => {
+      if (document.hidden || !document.hasFocus()) {
+        ceremony.commit(task, () => setNotice('Return to this window to complete the reveal.'));
+      }
+      if (!await waitForDisclosureFocus(task.signal) || !ceremony.isCurrent(task)) return;
+      ceremony.commit(task, () => setNotice(null));
+      const generation = focusGeneration.current;
+      await discloseValue(task, (value) => {
+        ceremony.commit(task, () => {
+          if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
+            setNotice(`Disclosure recorded. ${FOCUS_REMASK_NOTICE}`);
+            return;
+          }
+          const revealedAt = Date.now();
+          setNow(revealedAt);
+          setPlaintext({ value, until: revealedAt + REMASK_MS });
+          setNotice('Disclosure recorded.');
+          setAnnouncement((current) => ({
+            id: (current?.id ?? 0) + 1,
+            message: `${keyRecord.name} revealed, re-masks in ${String(REMASK_MS / 1000)}s`,
+          }));
+        });
       });
-    }));
+    });
   }, [ceremony, discloseValue, focusGeneration, keyRecord.name, setPlaintext, withDisclosure]);
 
   const copy = useCallback(() => {

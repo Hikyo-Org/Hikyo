@@ -25,7 +25,7 @@ import { Alert } from "../ui/Alert.tsx";
 import { Badge } from "../ui/Badge.tsx";
 import { Button } from "../ui/Button.tsx";
 import { Ceremony, type CeremonyPurpose } from "./Ceremony.tsx";
-import { useRemaskOnFocusLoss } from "./useRemaskOnFocusLoss.ts";
+import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } from "./useRemaskOnFocusLoss.ts";
 import { useCeremonyTask, type CeremonyTask } from "./useCeremonyTask.ts";
 
 /**
@@ -358,7 +358,6 @@ function ValuesSurface({
   );
 
   const doRevealOne = (cell: ValueCell) => {
-    const generation = focusGeneration.current;
     void withCeremony(
       [
         {
@@ -368,12 +367,22 @@ function ValuesSurface({
         },
       ],
       async (task) => {
+        if (document.hidden || !document.hasFocus()) {
+          ceremony.commit(task, () => setRefusal("Return to this window to complete the reveal."));
+        }
+        if (!await waitForDisclosureFocus(task.signal) || !ceremony.isCurrent(task)) return;
+        ceremony.commit(task, () => setRefusal(null));
+        const generation = focusGeneration.current;
         try {
           const fresh = await revealOne.mutateAsync(cell.name);
-          if (generation !== focusGeneration.current || document.hidden) return;
           ceremony.commit(task, () => {
             if (fresh.value === undefined) {
               setRefusal("The server disclosed no value for that key.");
+              return;
+            }
+            if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
+              noteDisclosure([fresh.name]);
+              setRefusal(FOCUS_REMASK_NOTICE);
               return;
             }
             recordDisclosures([
@@ -392,7 +401,6 @@ function ValuesSurface({
   };
 
   const doRevealAll = () => {
-    const generation = focusGeneration.current;
     void withCeremony(
       secretsSet.map((c) => ({
         id: c.key_id,
@@ -400,10 +408,22 @@ function ValuesSurface({
         classification: c.classification,
       })),
       async (task) => {
+        if (document.hidden || !document.hasFocus()) {
+          ceremony.commit(task, () => setRefusal("Return to this window to complete the reveal."));
+        }
+        if (!await waitForDisclosureFocus(task.signal) || !ceremony.isCurrent(task)) return;
+        ceremony.commit(task, () => setRefusal(null));
+        const generation = focusGeneration.current;
         try {
           const fresh = await revealAll.mutateAsync();
-          if (generation !== focusGeneration.current || document.hidden) return;
           ceremony.commit(task, () => {
+            if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
+              noteDisclosure(fresh.items
+                .filter((cell) => cell.classification === "secret" && cell.value !== undefined)
+                .map((cell) => cell.name));
+              setRefusal(FOCUS_REMASK_NOTICE);
+              return;
+            }
             recordDisclosures(
               fresh.items
                 .filter(
