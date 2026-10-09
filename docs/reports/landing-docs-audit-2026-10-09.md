@@ -48,11 +48,11 @@ Initial parallel PostgreSQL audit commands collided because multiple test proces
 
 Desktop publication and delivery sections after the selector correction:
 
-![Desktop corrected landing layout](/Users/developwent/.t3/userdata/browser-artifacts/browser-screenshot-192-168-0-30-mv0dy5gr-22d5d042.png)
+![Desktop corrected landing layout](assets/landing-docs-audit-2026-10-09/desktop.png)
 
 Mobile publication section after correction:
 
-![Mobile corrected landing layout](/Users/developwent/.t3/userdata/browser-artifacts/browser-screenshot-192-168-0-30-mv0dzup2-d0353fee.png)
+![Mobile corrected landing layout](assets/landing-docs-audit-2026-10-09/mobile.png)
 
 The HTML companion embeds screenshot bytes and all styles. It opens without network access.
 
