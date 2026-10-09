@@ -43,7 +43,8 @@ required. Fresh delegation reauthentication is a separate ceremony.
 Mint requires a controlling terminal, explicit consent to every current and
 future published key in this environment, and fresh scope-bound TOTP or passkey
 reauthentication. A generic live reveal window is insufficient. The default and
-hard maximum are eight hours; the instance can impose a shorter ceiling. You can
+hard maximum are eight hours; the instance can impose a shorter ceiling. The CLI
+resolves that ceiling before consent and binds the confirmed lifetime to mint. You can
 hold at most four live credentials per instance. There is no renewal.
 
 The CLI stores the bearer in private 0600 state outside the repository, under

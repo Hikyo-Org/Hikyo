@@ -35,7 +35,7 @@ func (s *DeveloperCredentials) now() time.Time { return nowOr(s.Now) }
 const MaxLiveDeveloperCredentials = 4
 
 func (s *DeveloperCredentials) Mint(ctx context.Context, actor Actor, scope domain.Scope, request MintDeveloperCredentialRequest) (MintedDeveloperCredential, error) {
-	if !request.ConsentCurrentAndFuture || request.Lifetime < 0 || request.Lifetime%time.Second != 0 {
+	if !request.ConsentCurrentAndFuture || request.Lifetime <= 0 || request.Lifetime%time.Second != 0 {
 		return MintedDeveloperCredential{}, domain.ErrInvalid
 	}
 	intent, err := NewDeveloperCredentialReauthIntent(string(scope.Env), request.KeyIDs, request.Lifetime, request.ConsentCurrentAndFuture)
@@ -75,9 +75,6 @@ func (s *DeveloperCredentials) Mint(ctx context.Context, actor Actor, scope doma
 			return err
 		}
 		ttl := request.Lifetime
-		if ttl == 0 {
-			ttl = ceiling
-		}
 		if ttl <= 0 || ttl > ceiling {
 			return refuse("lifetime-ceiling", invalidDetail("developer credential lifetime exceeds the instance ceiling"))
 		}
@@ -304,7 +301,24 @@ func (s *DeveloperCredentials) SetPolicy(ctx context.Context, actor Actor, ceili
 			if err != nil {
 				return err
 			}
+			epoch, err := az.CredentialEpoch(ctx)
+			if err != nil {
+				return err
+			}
 			for _, c := range rows {
+				if !c.Live(s.now(), epoch) {
+					continue
+				}
+				generation, err := az.PrincipalGeneration(ctx, c.AuthorityPrincipal)
+				if errors.Is(err, domain.ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				if generation != c.AuthorityGeneration {
+					continue
+				}
 				target := c.CreatedAt.Add(ceiling)
 				if target.Before(c.ExpiresAt) {
 					if err := az.ClampDeveloperCredentialExpiry(ctx, c.ID, target); err != nil {

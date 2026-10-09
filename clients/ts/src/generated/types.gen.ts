@@ -10,7 +10,7 @@ export type MintDeveloperCredentialRequest = {
      * Explicit consent to every current and future published key in this environment until expiry.
      */
     consent_current_and_future: true;
-    lifetime_seconds?: number;
+    lifetime_seconds: number;
 };
 
 export type DeveloperCredential = {
@@ -5154,6 +5154,14 @@ export type ReauthResult = {
  *
  */
 export type RevealWindow = {
+    /**
+     * Current instance ceiling for developer credentials, exposed through
+     * this environment read-authorized surface. Clients resolve an omitted
+     * lifetime before consent and bind the concrete positive lifetime to
+     * reauthentication and mint. Later policy changes cannot extend it.
+     *
+     */
+    developer_credential_max_lifetime_seconds?: number;
     /**
      * The environment's resolved reauthentication window. `0` means
      * every disclosure takes its own ceremony — the state a protected

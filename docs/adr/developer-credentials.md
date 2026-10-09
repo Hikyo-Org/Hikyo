@@ -137,8 +137,10 @@ the current UI already has a global sign-out action.
 
 The instance policy defaults to an eight-hour maximum, with a hard maximum of
 eight hours; operators may lower it. An omitted requested TTL uses the lesser
-of eight hours and the current instance ceiling. Zero, negative, over-ceiling,
-and indefinite TTLs are refused. The server sets the absolute expiry from its
+of eight hours and the current instance ceiling, resolved before human consent.
+The ceremony and mint request bind that same concrete positive TTL; an instance
+ceiling increase between consent and mint cannot extend it. Zero, negative,
+over-ceiling, and indefinite TTLs are refused. The server sets the absolute expiry from its
 clock at mint. There is no sliding expiry, refresh token, rotation, or renewal.
 Another credential requires another interactive mint ceremony.
 

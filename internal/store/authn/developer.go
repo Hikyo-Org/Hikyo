@@ -98,6 +98,22 @@ func (r *Resolver) DeveloperCredentialPolicy(ctx context.Context) (time.Duration
 	}
 	return time.Duration(seconds) * time.Second, nil
 }
+func (r *Resolver) PeekDeveloperCredentialPolicy(ctx context.Context) (time.Duration, error) {
+	var seconds int64
+	var err error
+	if r.sq != nil {
+		seconds, err = r.sq.PeekDeveloperCredentialPolicy(ctx)
+	} else {
+		seconds, err = r.pg.PeekDeveloperCredentialPolicy(ctx)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if seconds < 1 || seconds > 28800 {
+		return 0, fmt.Errorf("authn: corrupt developer credential ceiling")
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
 func (r *Resolver) SetDeveloperCredentialPolicy(ctx context.Context, d time.Duration) error {
 	if d < time.Second || d > 8*time.Hour || d%time.Second != 0 {
 		return domain.ErrInvalid

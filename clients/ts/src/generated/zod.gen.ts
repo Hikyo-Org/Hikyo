@@ -186,7 +186,7 @@ export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}
 export const zMintDeveloperCredentialRequest = z.object({
     key_ids: z.array(zId).max(1000),
     consent_current_and_future: z.literal(true),
-    lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)).optional()
+    lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
 });
 
 export const zDeveloperCredential = z.object({
@@ -1088,7 +1088,7 @@ export const zTotpCodeRequest = z.object({
 });
 
 export const zDeveloperCredentialReauthIntent = z.object({
-    lifetime_seconds: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(28800)),
+    lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)),
     consent_current_and_future: z.literal(true)
 });
 
@@ -3927,6 +3927,7 @@ export const zCliReauthRedeemed = z.object({
  *
  */
 export const zRevealWindow = z.object({
+    developer_credential_max_lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800)).optional(),
     effective_window_seconds: z.int().gte(0),
     protected: z.boolean(),
     totp_offered: z.boolean(),

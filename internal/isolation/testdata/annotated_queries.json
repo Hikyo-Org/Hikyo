@@ -2413,6 +2413,13 @@
   },
   {
     "engine": "postgres",
+    "name": "PeekDeveloperCredentialPolicy",
+    "annotation": "authn-resolution",
+    "hash": "215b8fffffdcf42ed3e18f9ebc336316dc35b02401b1c53cb1e4c4657f449929",
+    "reason": "Environment read authorization precedes the non-locking lifetime ceiling affordance."
+  },
+  {
+    "engine": "postgres",
     "name": "PostLegacyMaxCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc0e657b407efb67ecc1393a4c8f63563f391fe5cd5b7433acd3b2ddc0341c32"
@@ -5604,6 +5611,13 @@
     "annotation": "instance-scoped",
     "hash": "73ad4ea6d84e53282f544b8fc582447159fcbcd2adba8fefdfd1cb967a4bc5a3",
     "reason": "StorePKIProfilesUpdate verifies instance-config authority; global policy update retains its row-version CAS and service narrowing checks."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PeekDeveloperCredentialPolicy",
+    "annotation": "authn-resolution",
+    "hash": "215b8fffffdcf42ed3e18f9ebc336316dc35b02401b1c53cb1e4c4657f449929",
+    "reason": "Environment read authorization precedes the non-locking lifetime ceiling affordance."
   },
   {
     "engine": "sqlite",

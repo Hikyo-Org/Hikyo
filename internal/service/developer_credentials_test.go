@@ -192,3 +192,84 @@ func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
 		t.Fatalf("catalogue overflow admitted: %v", err)
 	}
 }
+
+func TestDeveloperPolicyClampOnlyCountsLiveCredentials(t *testing.T) {
+	for _, dead := range []string{"revoked", "expired", "epoch", "generation"} {
+		t.Run(dead, func(t *testing.T) {
+			s, actor, _, scope := developerLifecycleFixture(t)
+			var ids []string
+			for range 2 {
+				openDeveloperMintWindow(t, s, scope, 8*time.Hour)
+				minted, err := s.Mint(t.Context(), actor, scope, MintDeveloperCredentialRequest{Lifetime: 8 * time.Hour, ConsentCurrentAndFuture: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, minted.Credential.ID)
+			}
+			now := s.now()
+			var err error
+			switch dead {
+			case "revoked":
+				err = s.Revoke(t.Context(), actor, domain.Scope{}, ids[1], false)
+			case "expired":
+				_, err = s.DB.SQLiteWrite().ExecContext(t.Context(), `UPDATE developer_credentials SET created_at=?, expires_at=? WHERE id=?`, now.Add(-10*time.Hour).Format(time.RFC3339Nano), now.Add(-2*time.Hour).Format(time.RFC3339Nano), ids[1])
+			case "epoch":
+				_, err = s.DB.SQLiteWrite().ExecContext(t.Context(), `UPDATE developer_credentials SET credential_epoch=0 WHERE id=?`, ids[1])
+			case "generation":
+				_, err = s.DB.SQLiteWrite().ExecContext(t.Context(), `UPDATE developer_credentials SET authority_generation=0 WHERE id=?`, ids[1])
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var before string
+			if err := s.DB.SQLiteRead().QueryRowContext(t.Context(), `SELECT expires_at FROM developer_credentials WHERE id=?`, ids[1]).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.SetPolicy(t.Context(), LocalPrincipal("usr_adapter"), time.Hour); err != nil {
+				t.Fatal(err)
+			}
+			var after string
+			if err := s.DB.SQLiteRead().QueryRowContext(t.Context(), `SELECT expires_at FROM developer_credentials WHERE id=?`, ids[1]).Scan(&after); err != nil {
+				t.Fatal(err)
+			}
+			if before != after {
+				t.Fatal("policy rewrote a dead credential")
+			}
+			var count int
+			if err := s.DB.SQLiteRead().QueryRowContext(t.Context(), `SELECT json_extract(payload,'$.clamped_count') FROM audit_instance_events WHERE type='identity.developer_credential_policy_changed' ORDER BY rowid DESC LIMIT 1`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("clamped_count=%d, want only one live delegation", count)
+			}
+		})
+	}
+}
+
+func TestDeveloperMintBindsConcreteLifetimeAcrossPolicyChanges(t *testing.T) {
+	s, actor, _, scope := developerLifecycleFixture(t)
+	if _, err := s.SetPolicy(t.Context(), LocalPrincipal("usr_adapter"), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	openDeveloperMintWindow(t, s, scope, time.Hour)
+	if _, err := s.SetPolicy(t.Context(), LocalPrincipal("usr_adapter"), 8*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	minted, err := s.Mint(t.Context(), actor, scope, MintDeveloperCredentialRequest{Lifetime: time.Hour, ConsentCurrentAndFuture: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if minted.Credential.ExpiresAt.Sub(minted.Credential.CreatedAt) != time.Hour {
+		t.Fatal("policy raise enlarged approved lifetime")
+	}
+	if _, err := s.Mint(t.Context(), actor, scope, MintDeveloperCredentialRequest{ConsentCurrentAndFuture: true}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unbound default mint=%v", err)
+	}
+	openDeveloperMintWindow(t, s, scope, 8*time.Hour)
+	if _, err := s.SetPolicy(t.Context(), LocalPrincipal("usr_adapter"), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Mint(t.Context(), actor, scope, MintDeveloperCredentialRequest{Lifetime: 8 * time.Hour, ConsentCurrentAndFuture: true}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("lowered ceiling mint=%v", err)
+	}
+}

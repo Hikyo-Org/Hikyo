@@ -123,3 +123,64 @@ repair commit before readiness is claimed.
 
 Upstream evidence: [Go 1.27.2 release](https://go.dev/doc/devel/release#go1.27.2),
 [HTTP/2 security advisory](https://pkg.go.dev/vuln/GO-2026-6612).
+
+## PR #868 main integration follow-up
+
+The `ci-required` failure on cdf8da6 reported merge conflicts, rather than a
+new test failure. Main independently landed the Go security pins and refreshed
+the guides in #865. Integrating main preserves the developer credential recipe,
+its online-only boundary, and main's accurate plaintext wording. Checksums are
+regenerated with `go mod tidy`; main's updated Go tooling and SSH certificate
+checks are retained.
+
+The merged result passes documentation typechecking with zero diagnostics,
+the full documentation build/test suite (76 pages including offline delivery),
+the 35-entry status ledger and its rejection fixtures, module verification,
+SSH certificate tests, developer credential CLI tests, and Go import formatting.
+Fresh hosted checks must validate the integration commit before readiness is
+claimed. The PR remains unmerged.
+
+## PR #868 automated review repairs
+
+All three Qodo findings on 3ee3273d8 were reproduced against source and repaired:
+
+- Mint custody validates positive server-relative lifetime against the exact
+  confirmed duration. A slow laptop clock cannot reject an otherwise valid
+  eight-hour mint, and an oversized server response is revoked.
+- Before consent, CLI mint resolves the current ceiling through the existing
+  environment-read-authorized reveal-window surface. Both ceremony and mint
+  require that same concrete positive duration. A policy raise cannot enlarge
+  the decision; a policy reduction is rechecked under the mint transaction lock.
+  The affordance uses a nonlocking policy read so PostgreSQL read-only requests
+  remain valid. Generated API contracts, clients and review pins are updated.
+- Policy reductions only clamp and count live credentials, excluding revoked,
+  expired and epoch/generation-invalidated rows. Historical expiry stays intact.
+
+Validation passes: full CLI and service suites, API and server suites, the
+both-engine developer credential flows, new default/clock/race/audit regressions,
+query and authorizer pin checks, Go vet/import formatting and all four lint
+build contexts. Web typechecking/lint and all 1,512 unit tests pass; its refreshed
+sensitivity inventory follows an explicit source review. Client typechecking
+and all 37 tests pass. Documentation typechecking/build and the 35-entry ledger
+pass. Ordinary Standards and Spec repair reviews are CLEAN, including closure
+of the review-pin finding. Cross-provider review remains explicitly skipped.
+
+CodeRabbit skipped review because this PR exceeds its 100-file limit and lacks
+review capacity. That skip is not a CLEAN review. The benchmark notice is
+optional; no benchmark or paid capacity was requested. Fresh hosted CI must
+validate the repair head. The PR remains unmerged.
+
+## PR #868 requested rebase
+
+Rebased onto main ac417ef00, including #866's focus-loss secret remasking and
+late-response protection. Conflict resolution retains the development guide,
+security dependency pins, handoff history, and both #861 and #807 sensitivity
+review notes. Comparing the final tree with the previously green 03351b5 head
+shows only main's remasking files and the combined review notes; credential
+implementation and its consent repairs are unchanged.
+
+Post-rebase verification passes all 1,534 web unit tests, web typechecking/lint,
+documentation typechecking, module verification, and focused developer tests
+across CLI, service, server and API. Every rewritten commit is cryptographically
+signed and DCO signed off. Fresh hosted CI is required for the rewritten head;
+previous-head green CI does not establish this head. No merge is authorized.

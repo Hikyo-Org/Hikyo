@@ -8118,7 +8118,7 @@ type MintDeveloperCredentialRequest struct {
 	// ConsentCurrentAndFuture Explicit consent to every current and future published key in this environment until expiry.
 	ConsentCurrentAndFuture MintDeveloperCredentialRequestConsentCurrentAndFuture `json:"consent_current_and_future"`
 	KeyIds                  []ID                                                  `json:"key_ids"`
-	LifetimeSeconds         *int64                                                `json:"lifetime_seconds,omitempty"`
+	LifetimeSeconds         int64                                                 `json:"lifetime_seconds"`
 }
 
 // MintDeveloperCredentialRequestConsentCurrentAndFuture Explicit consent to every current and future published key in this environment until expiry.
@@ -9402,6 +9402,12 @@ type RevealWindow struct {
 	// the editor offers a blind-replacement field with honest microcopy
 	// rather than guessing from whether a cell happens to be on screen.
 	CanReveal bool `json:"can_reveal"`
+
+	// DeveloperCredentialMaxLifetimeSeconds Current instance ceiling for developer credentials, exposed through
+	// this environment read-authorized surface. Clients resolve an omitted
+	// lifetime before consent and bind the concrete positive lifetime to
+	// reauthentication and mint. Later policy changes cannot extend it.
+	DeveloperCredentialMaxLifetimeSeconds *int64 `json:"developer_credential_max_lifetime_seconds,omitempty"`
 
 	// EffectiveWindowSeconds The environment's resolved reauthentication window. `0` means
 	// every disclosure takes its own ceremony — the state a protected

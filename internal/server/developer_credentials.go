@@ -27,16 +27,11 @@ func (a *API) MintDeveloperCredential(ctx context.Context, req apigen.MintDevelo
 	for _, id := range req.Body.KeyIds {
 		want.KeyIDs = append(want.KeyIDs, string(id))
 	}
-	if req.Body.LifetimeSeconds != nil {
-		if *req.Body.LifetimeSeconds <= 0 {
-			return nil, domain.ErrInvalid
-		}
-		lifetime, err := credentialLifetime(*req.Body.LifetimeSeconds)
-		if err != nil {
-			return nil, err
-		}
-		want.Lifetime = lifetime
+	lifetime, err := credentialLifetime(req.Body.LifetimeSeconds)
+	if err != nil {
+		return nil, err
 	}
+	want.Lifetime = lifetime
 	result, err := a.DeveloperCredentials.Mint(ctx, service.Bearer(bearer(ctx)), domain.Scope{Org: domain.OrgID(req.Org), Project: domain.ProjectID(req.Project), Env: domain.EnvID(req.Environment)}, want)
 	if err != nil {
 		return nil, err
@@ -115,7 +110,7 @@ func developerCredentialReauthIntent(environment string, keys []string, value ap
 	if !value.ConsentCurrentAndFuture {
 		return service.ReauthIntent{}, domain.ErrInvalid
 	}
-	if value.LifetimeSeconds < 0 || value.LifetimeSeconds > 28800 {
+	if value.LifetimeSeconds <= 0 || value.LifetimeSeconds > 28800 {
 		return service.ReauthIntent{}, domain.ErrInvalid
 	}
 	ttl := time.Duration(value.LifetimeSeconds) * time.Second

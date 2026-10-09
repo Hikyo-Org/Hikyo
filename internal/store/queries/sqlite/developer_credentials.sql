@@ -18,6 +18,11 @@ SELECT id,principal_id,authority_principal_id,org_id,project_id,env_id,verifier,
 -- name: RevokeDeveloperCredential :exec
 UPDATE developer_credentials SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL;
 
+-- hikyo:reason Environment read authorization precedes the non-locking lifetime ceiling affordance.
+-- hikyo:authn-resolution
+-- name: PeekDeveloperCredentialPolicy :one
+SELECT max_lifetime_seconds FROM developer_credential_policy WHERE id=1;
+
 -- hikyo:reason Mint and policy tightening serialize on this shared instance policy before changing delegation authority.
 -- hikyo:authn-resolution
 -- name: GetDeveloperCredentialPolicy :one

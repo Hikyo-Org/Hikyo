@@ -15204,7 +15204,7 @@ components:
     MintDeveloperCredentialRequest:
       type: object
       additionalProperties: false
-      required: [consent_current_and_future, key_ids]
+      required: [consent_current_and_future, key_ids, lifetime_seconds]
       properties:
         key_ids: {type: array, uniqueItems: true, maxItems: 1000, items: {$ref: "#/components/schemas/ID"}}
         consent_current_and_future:
@@ -17015,7 +17015,7 @@ components:
       additionalProperties: false
       required: [lifetime_seconds, consent_current_and_future]
       properties:
-        lifetime_seconds: {type: integer, format: int64, minimum: 0, maximum: 28800}
+        lifetime_seconds: {type: integer, format: int64, minimum: 1, maximum: 28800}
         consent_current_and_future: {type: boolean, const: true}
     TotpDeveloperCredentialReauthRequest:
       type: object
@@ -22437,6 +22437,16 @@ components:
         Nothing here is material: it is project settings plus the caller's own
         window.
       properties:
+        developer_credential_max_lifetime_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 28800
+          description: |
+            Current instance ceiling for developer credentials, exposed through
+            this environment read-authorized surface. Clients resolve an omitted
+            lifetime before consent and bind the concrete positive lifetime to
+            reauthentication and mint. Later policy changes cannot extend it.
         effective_window_seconds:
           type: integer
           minimum: 0

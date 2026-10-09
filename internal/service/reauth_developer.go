@@ -26,7 +26,7 @@ type developerCredentialBinding struct {
 }
 
 func NewDeveloperCredentialReauthIntent(environmentID string, keyIDs []string, ttl time.Duration, consent bool) (ReauthIntent, error) {
-	if len(keyIDs) > schema.MaxKeysPerProject || ttl < 0 || ttl > 8*time.Hour || ttl%time.Second != 0 || !consent {
+	if len(keyIDs) > schema.MaxKeysPerProject || ttl <= 0 || ttl > 8*time.Hour || ttl%time.Second != 0 || !consent {
 		return ReauthIntent{}, domain.ErrInvalid
 	}
 	intent, err := newDisclosureReauthIntent(intentDeveloperCredential, []string{environmentID}, canonicalSet(keyIDs))

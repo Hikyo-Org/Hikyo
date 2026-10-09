@@ -185,6 +185,7 @@
   "OpenReauthWindow": "func(ctx context.Context, w NewReauthWindow) error",
   "OrgsForPrincipal": "func(ctx context.Context, caller Identity) ([]OrgIdentity, error)",
   "PasswordCredentialFor": "func(ctx context.Context, accountID string) (PasswordCredential, error)",
+  "PeekDeveloperCredentialPolicy": "func(ctx context.Context) (time.Duration, error)",
   "PendingDenials": "func() []Denial",
   "PendingTOTP": "func(ctx context.Context, accountID string) (TOTPCredential, error)",
   "PinGeneration": "func(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (int64, error)",

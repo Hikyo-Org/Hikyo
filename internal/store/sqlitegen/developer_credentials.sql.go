@@ -170,6 +170,19 @@ func (q *Queries) ListDeveloperCredentials(ctx context.Context) ([]DeveloperCred
 	return items, nil
 }
 
+const peekDeveloperCredentialPolicy = `-- name: PeekDeveloperCredentialPolicy :one
+SELECT max_lifetime_seconds FROM developer_credential_policy WHERE id=1
+`
+
+// hikyo:reason Environment read authorization precedes the non-locking lifetime ceiling affordance.
+// hikyo:authn-resolution
+func (q *Queries) PeekDeveloperCredentialPolicy(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, peekDeveloperCredentialPolicy)
+	var max_lifetime_seconds int64
+	err := row.Scan(&max_lifetime_seconds)
+	return max_lifetime_seconds, err
+}
+
 const restoreDeveloperPolicySeedOccupied = `-- name: RestoreDeveloperPolicySeedOccupied :one
 SELECT EXISTS (SELECT 1 FROM developer_credential_policy WHERE id <> 1 OR max_lifetime_seconds <> 28800)
 `

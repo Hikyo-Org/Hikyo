@@ -240,11 +240,34 @@ func TestDeveloperMintRefusalExplainsLoginAssuranceStepUp(t *testing.T) {
 
 func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bool) {
 	t.Helper()
+	testDeveloperMintLifetime(t, failPersistence, failCleanup, refuseMint, time.Hour, 0, false)
+}
+
+func TestDeveloperMintUsesServerRelativeLifetime(t *testing.T) {
+	t.Run("slow-client-default-eight-hours", func(t *testing.T) {
+		testDeveloperMintLifetime(t, false, false, false, 8*time.Hour, -2*time.Minute, false)
+	})
+	t.Run("default-uses-lower-instance-ceiling", func(t *testing.T) {
+		testDeveloperMintLifetime(t, false, false, false, 2*time.Hour, -2*time.Minute, false)
+	})
+	t.Run("invalid-server-lifetime-is-revoked", func(t *testing.T) {
+		testDeveloperMintLifetime(t, false, false, false, 9*time.Hour, -2*time.Minute, true)
+	})
+}
+
+func testDeveloperMintLifetime(t *testing.T, failPersistence, failCleanup, refuseMint bool, issuedTTL, clockSkew time.Duration, invalidLifetime bool) {
+	t.Helper()
+	serverNow := time.Now().UTC()
+	requestedTTL := issuedTTL
+	if invalidLifetime {
+		requestedTTL = 8 * time.Hour
+	}
 	token, _, err := crypto.NewArtifact(crypto.ArtifactDeveloperCredential)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rotated := "rotated-cli-session"
+	ceilingSeconds := int64(requestedTTL / time.Second)
 	var stateDir string
 	var order []string
 	var fresh bool
@@ -255,7 +278,7 @@ func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bo
 			_ = json.NewEncoder(w).Encode(apigen.RevisionDetail{Keys: []apigen.SnapshotKey{{KeyId: "key_01989abc-def0-7123-8123-000000000006", Name: "DEV_807_SECRET"}}})
 		case strings.HasSuffix(r.URL.Path, "/reveal-window"):
 			// A live generic window must not authorize mint without another ceremony.
-			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: true, CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true})
+			_ = json.NewEncoder(w).Encode(apigen.RevealWindow{Live: true, CanReveal: true, EffectiveWindowSeconds: 300, TotpOffered: true, DeveloperCredentialMaxLifetimeSeconds: &ceilingSeconds})
 		case r.URL.Path == "/api/v1/auth/totp":
 			_ = json.NewEncoder(w).Encode(apigen.TotpStatus{Confirmed: true})
 		case r.URL.Path == "/api/v1/auth/reauth/totp":
@@ -264,7 +287,7 @@ func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bo
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			if body.Purpose != "developer-credential" || body.EnvironmentId != developerEnv || body.DeveloperCredential.LifetimeSeconds != 3600 || !body.DeveloperCredential.ConsentCurrentAndFuture || body.Code != "123456" || len(body.KeyIds) != 1 {
+			if body.Purpose != "developer-credential" || body.EnvironmentId != developerEnv || body.DeveloperCredential.LifetimeSeconds != int64(requestedTTL/time.Second) || !body.DeveloperCredential.ConsentCurrentAndFuture || body.Code != "123456" || len(body.KeyIds) != 1 {
 				t.Errorf("proof not bound to exact confirmed delegation")
 			}
 			fresh = true
@@ -278,7 +301,7 @@ func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bo
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			if body.LifetimeSeconds == nil || *body.LifetimeSeconds != 3600 || !body.ConsentCurrentAndFuture || len(body.KeyIds) != 1 {
+			if body.LifetimeSeconds != int64(requestedTTL/time.Second) || !body.ConsentCurrentAndFuture || len(body.KeyIds) != 1 {
 				t.Error("mint changed consent unit")
 			}
 			if refuseMint {
@@ -295,7 +318,7 @@ func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bo
 					t.Fatal(err)
 				}
 			}
-			_ = json.NewEncoder(w).Encode(apigen.MintDeveloperCredentialResult{Value: token, Credential: apigen.DeveloperCredential{Id: developerID, OrgId: developerOrg, ProjectId: developerProject, EnvironmentId: developerEnv, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour), AuthorityPrincipalId: "usr_01989abc-def0-7123-8123-000000000008"}})
+			_ = json.NewEncoder(w).Encode(apigen.MintDeveloperCredentialResult{Value: token, Credential: apigen.DeveloperCredential{Id: developerID, OrgId: developerOrg, ProjectId: developerProject, EnvironmentId: developerEnv, CreatedAt: serverNow, ExpiresAt: serverNow.Add(issuedTTL), AuthorityPrincipalId: "usr_01989abc-def0-7123-8123-000000000008"}})
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/auth/developer-credentials/"+developerID:
 			order = append(order, "revoke")
 			if failCleanup {
@@ -312,13 +335,17 @@ func testDeveloperMint(t *testing.T, failPersistence, failCleanup, refuseMint bo
 	ios.TerminalSession, _ = terminalSession(t, "y\n")
 	prompts := 0
 	ios.ReadPassword = func(string) (string, error) { prompts++; return "123456", nil }
-	args := []string{"dev", "session", "--instance", "local", "--org", developerOrg, "--project", developerProject, "--env", developerEnv, "--ttl", "1h"}
+	ios.Now = func() time.Time { return serverNow.Add(clockSkew) }
+	args := []string{"dev", "session", "--instance", "local", "--org", developerOrg, "--project", developerProject, "--env", developerEnv, "--ttl", requestedTTL.String()}
+	if clockSkew != 0 && !invalidLifetime {
+		args = args[:len(args)-2] // Exercise omitted TTL resolved before consent.
+	}
 	code := cli.Run(t.Context(), ios, args)
 	if refuseMint {
 		if code != cli.ExitNotFound || !strings.Contains(stderr.String(), "hikyo account factor step-up") || !strings.Contains(stderr.String(), "does not upgrade login assurance") || strings.Join(order, ",") != "fresh-proof,mint" {
 			t.Fatalf("mint refusal lost assurance guidance or status: code=%d order=%v stderr=%s", code, order, stderr.String())
 		}
-	} else if failPersistence {
+	} else if failPersistence || invalidLifetime {
 		if code == cli.ExitOK || strings.Join(order, ",") != "fresh-proof,mint,revoke" {
 			t.Fatalf("cleanup code=%d order=%v stderr=%s", code, order, stderr.String())
 		}

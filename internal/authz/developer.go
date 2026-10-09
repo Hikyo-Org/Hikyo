@@ -43,6 +43,9 @@ func (a *TxAuthorizer) authenticateDeveloper(ctx context.Context, presented stri
 func (a *TxAuthorizer) DeveloperCredentialPolicy(ctx context.Context) (time.Duration, error) {
 	return a.r.DeveloperCredentialPolicy(ctx)
 }
+func (a *TxAuthorizer) PeekDeveloperCredentialPolicy(ctx context.Context) (time.Duration, error) {
+	return a.r.PeekDeveloperCredentialPolicy(ctx)
+}
 func (a *TxAuthorizer) SetDeveloperCredentialPolicy(ctx context.Context, d time.Duration) error {
 	return a.r.SetDeveloperCredentialPolicy(ctx, d)
 }

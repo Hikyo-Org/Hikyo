@@ -137,10 +137,24 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 		keys = append(keys, key.KeyId)
 		names = append(names, key.Name)
 	}
-	lifetime := "instance default, at most 8h"
-	if ttl > 0 {
-		lifetime = ttl.String()
+	var window apigen.RevealWindow
+	if err := client.Do(ctx, http.MethodGet, revealWindowPath(base, env), nil, &window); err != nil {
+		return err
 	}
+	if window.Protected || !window.CanReveal {
+		return failf(ExitRefused, "developer credentials require an unprotected environment with current read and reveal authority")
+	}
+	if window.DeveloperCredentialMaxLifetimeSeconds == nil || *window.DeveloperCredentialMaxLifetimeSeconds < 1 || *window.DeveloperCredentialMaxLifetimeSeconds > 28800 {
+		return failf(ExitRefused, "server did not provide a valid developer credential lifetime ceiling")
+	}
+	ceiling := time.Duration(*window.DeveloperCredentialMaxLifetimeSeconds) * time.Second
+	if ttl == 0 {
+		ttl = ceiling
+	}
+	if ttl > ceiling {
+		return failf(ExitRefused, "developer credential lifetime exceeds the current instance ceiling of %s", ceiling)
+	}
+	lifetime := ttl.String()
 	terminal, err := ios.terminalSession()
 	if err != nil {
 		return err
@@ -156,11 +170,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	if err := freshDeveloperReauth(ctx, client, st, ios, &session, base, env, keys, intent); err != nil {
 		return err
 	}
-	request := apigen.MintDeveloperCredentialRequest{KeyIds: keys, ConsentCurrentAndFuture: true}
-	if ttl > 0 {
-		seconds := int64(ttl / time.Second)
-		request.LifetimeSeconds = &seconds
-	}
+	request := apigen.MintDeveloperCredentialRequest{KeyIds: keys, ConsentCurrentAndFuture: true, LifetimeSeconds: int64(ttl / time.Second)}
 	var minted apigen.MintDeveloperCredentialResult
 	mintPath := base + "/environments/" + url.PathEscape(env) + "/developer-credentials"
 	if err := client.Do(ctx, http.MethodPost, mintPath, request, &minted); err != nil {
@@ -174,7 +184,7 @@ func runDeveloper(ctx context.Context, ios IO, args []string) error {
 	custody := DeveloperCredentialArtifact{ID: string(c.Id), Origin: client.Entry.Origin, Org: string(c.OrgId), Project: string(c.ProjectId), Environment: string(c.EnvironmentId), Token: minted.Value, ExpiresAt: c.ExpiresAt}
 	saveErr := crypto.ParseArtifact(minted.Value, crypto.ArtifactDeveloperCredential)
 	// Server metadata must bind the exact immutable target the human confirmed.
-	if custody.Org != org || custody.Project != project || custody.Environment != env || !ios.now().Before(c.ExpiresAt) || c.ExpiresAt.After(ios.now().Add(8*time.Hour)) {
+	if custody.Org != org || custody.Project != project || custody.Environment != env || !c.ExpiresAt.After(c.CreatedAt) || c.ExpiresAt.Sub(c.CreatedAt) > ttl {
 		saveErr = fmt.Errorf("server returned an unexpected developer credential scope or lifetime")
 	}
 	if saveErr == nil {

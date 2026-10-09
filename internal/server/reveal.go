@@ -41,6 +41,10 @@ func (a *API) GetRevealWindow(ctx context.Context, req apigen.GetRevealWindowReq
 		SingleDecision:         got.SingleDecision,
 		CanReveal:              got.CanReveal,
 	}
+	if got.DeveloperCredentialMaxLifetimeSeconds > 0 {
+		ceiling := got.DeveloperCredentialMaxLifetimeSeconds
+		out.DeveloperCredentialMaxLifetimeSeconds = &ceiling
+	}
 	// Absent rather than a zero timestamp when nothing is live: "no window"
 	// and "a window that expired at the zero instant" must not read the same,
 	// and a countdown chip rendering 1970 is how that mistake shows up.
