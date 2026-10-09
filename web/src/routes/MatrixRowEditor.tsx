@@ -39,6 +39,7 @@ import {
   useProtectedPublishCeremony,
   type ProtectedPublishTarget,
 } from './useProtectedPublishCeremony.ts';
+import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } from './useRemaskOnFocusLoss.ts';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 type MatrixKey = MatrixKeyList['items'][number];
@@ -625,6 +626,11 @@ function useCellDisclosure(
   // that ticked with the countdown would read the value aloud every 250ms.
   const [announcement, setAnnouncement] = useState<{ id: number; message: string } | null>(null);
 
+  const focusGeneration = useRemaskOnFocusLoss(useCallback(() => {
+    setPlaintext(null);
+    setAnnouncement(null);
+  }, [setPlaintext]));
+
   useEffect(() => {
     if (plaintext === null) return;
     const timer = globalThis.setInterval(() => setNow(Date.now()), 250);
@@ -695,17 +701,31 @@ function useCellDisclosure(
   }, [ceremony, keyRecord.name, revealOne, setPlaintext]);
 
   const reveal = useCallback(() => {
-    void withDisclosure('reveal', (task) => discloseValue(task, (value) => {
-      ceremony.commit(task, () => {
-        setPlaintext({ value, until: Date.now() + REMASK_MS });
-        setNotice('Disclosure recorded.');
-        setAnnouncement((current) => ({
-          id: (current?.id ?? 0) + 1,
-          message: `${keyRecord.name} revealed, re-masks in ${String(REMASK_MS / 1000)}s`,
-        }));
+    void withDisclosure('reveal', async (task) => {
+      if (document.hidden || !document.hasFocus()) {
+        ceremony.commit(task, () => setNotice('Return to this window to complete the reveal.'));
+      }
+      if (!await waitForDisclosureFocus(task.signal) || !ceremony.isCurrent(task)) return;
+      ceremony.commit(task, () => setNotice(null));
+      const generation = focusGeneration.current;
+      await discloseValue(task, (value) => {
+        ceremony.commit(task, () => {
+          if (generation !== focusGeneration.current || document.hidden || !document.hasFocus()) {
+            setNotice(`Disclosure recorded. ${FOCUS_REMASK_NOTICE}`);
+            return;
+          }
+          const revealedAt = Date.now();
+          setNow(revealedAt);
+          setPlaintext({ value, until: revealedAt + REMASK_MS });
+          setNotice('Disclosure recorded.');
+          setAnnouncement((current) => ({
+            id: (current?.id ?? 0) + 1,
+            message: `${keyRecord.name} revealed, re-masks in ${String(REMASK_MS / 1000)}s`,
+          }));
+        });
       });
-    }));
-  }, [ceremony, discloseValue, keyRecord.name, setPlaintext, withDisclosure]);
+    });
+  }, [ceremony, discloseValue, focusGeneration, keyRecord.name, setPlaintext, withDisclosure]);
 
   const copy = useCallback(() => {
     if (keyRecord.classification === 'config') {
