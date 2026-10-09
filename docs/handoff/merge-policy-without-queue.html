@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Merge policy without a required queue</title>
+<style>body{font:17px/1.6 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 24px;color:#18212b;background:#fafafa}h1{line-height:1.2}code{font-size:.9em;background:#eee;padding:2px 4px}</style>
+<main><h1>Merge policy without a required queue</h1>
+<p>The owner approved replacing the required merge queue with strict up-to-date <code>ci-required</code> checks on 2026-10-09, after PR #864's queue validation exceeded the 90-minute queue timeout despite green PR validation.</p>
+<p>The canonical policy is <code>release/repository/main-ci-gate.json</code>. It removes only <code>merge_queue</code> and sets <code>strict_required_status_checks_policy</code> to <code>true</code>. Required PRs, signatures, review-thread resolution, protection against deletion and force pushes, and the empty bypass list remain. The live ruleset update preserves all other live rule parameters, including GitHub-added parameters.</p>
+<p>A green PR that contains current <code>main</code> can merge directly. If <code>main</code> advances, update the PR branch and validate the new head. There is no mandatory second full suite for an unchanged, current candidate. Main-branch CI remains. The existing <code>merge_group</code> workflow path is retained for compatibility but is inactive while no queue is required.</p>
+<p>Local validation: JSON policy assertions, changed-path classifier fixtures, Git diff whitespace checks, and a comparison proving all other live rules were preserved. The live ruleset was read back to verify strict CI, signature protection, no queue requirement, and no bypass actors.</p>
+<p>The owner-approved operational change is recorded in the OSS mechanics ADR. Formal cross-model amendment review has not been performed.</p>
+<p>PR #864 must receive fresh validation against current <code>main</code> before merging. This handoff does not claim CI completion or merge.</p></main></html>
