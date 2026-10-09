@@ -218,6 +218,8 @@ jobs:
         run: ./scripts/ci/check-build-artifact-reuse_test.sh
       - name: Cache policy fixture
         run: ./scripts/ci/check-cache-policy_test.sh
+      - name: Go patch proposal fixture
+        run: ./scripts/ci/check-go-patch_test.sh
       - name: Verify floor measurement preflight refusals
         run: ./scripts/bench/floor_test.sh
       - name: Fuzz finding classifier fixture
@@ -1228,9 +1230,9 @@ jobs:
           fuzz_plan='[]'
           isolation_plan='[]'
           shard_count=3
-          # Six shards exceeded the 30-minute job cap on a cold runner.
-          # Spread every existing target further without extending timeouts.
-          race_shard_count=8
+          # Refresh against hosted timings: eight shards still reached 26m.
+          # Leave room for cold compiler caches without extending timeouts.
+          race_shard_count=12
           shard=0
           while [ "$shard" -lt "$race_shard_count" ]; do
             race_shard=$(go run "$trusted_planner" race --root . \
@@ -1430,6 +1432,14 @@ jobs:
             git show "$BASE_SHA:scripts/ci/test-race-packages.sh" >"$scheduler"
           fi
           bash "$scheduler" "$packages"
+      - name: Upload race target timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: race-timings-${{ matrix.shard }}
+          path: ${{ runner.temp }}/hikyo-race-timings/*.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Save race Go cache (main push only)
         if: >-
           success() && steps.race-go-cache.outputs.cache-hit != 'true' &&

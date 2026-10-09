@@ -11,8 +11,48 @@ permissions:
   contents: read
 
 jobs:
-  race-isolation:
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Plan every race isolation target exactly once
+        id: plan
+        shell: bash
+        run: |
+          matrix='[]'
+          for shard in $(seq 0 7); do
+            targets=$(./scripts/ci/analysis-shards isolation-race --root . --shard "$shard" --shards 8 |
+              jq -Rsc 'split("\n") | map(select(length > 0))')
+            if [ "$(printf '%s' "$targets" | jq length)" -gt 0 ]; then
+              matrix=$(jq -cn --argjson matrix "$matrix" --argjson shard "$shard" --argjson targets "$targets" \
+                '$matrix + [{shard: $shard, targets: $targets}]')
+            fi
+          done
+          # Verify completeness against the independent one-shard inventory,
+          # including fuzz seeds and runnable examples. Duplicate targets fail.
+          ./scripts/ci/analysis-shards isolation-race --root . --shard 0 --shards 1 | sort >expected
+          printf '%s' "$matrix" | jq -r '.[].targets[]' | sort >actual
+          test -s expected
+          test -z "$(uniq -d actual)"
+          cmp expected actual
+          echo "matrix={\"include\":$matrix}" >>"$GITHUB_OUTPUT"
+
+  race-isolation:
+    name: race isolation shard (${{ matrix.shard }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     services:
       postgres:
         image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
@@ -52,6 +92,28 @@ jobs:
           restore-keys: |
             go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Race detector (probe-based isolation E2E suite)
+        shell: bash
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
-        run: go test -race -count=1 -timeout 150m ./internal/isolation/
+          ISOLATION_TARGETS: ${{ toJSON(matrix.targets) }}
+        run: |
+          tests=$(printf '%s' "$ISOLATION_TARGETS" | jq -er \
+            'if type == "array" and length > 0 and all(.[]; type == "string" and test("^[A-Za-z0-9_]+$"))
+              then join("|") else error("invalid isolation target inventory") end')
+          started=$SECONDS
+          status=0
+          go test -json -race -count=1 -timeout 150m ./internal/isolation/ -run "^(${tests})$" |
+            tee "$RUNNER_TEMP/isolation-race.json" |
+            jq --unbuffered -rj 'select(.Action == "output") | .Output' || status=$?
+          jq -cn --argjson seconds "$((SECONDS - started))" --argjson status "$status" \
+            '{WallSeconds: $seconds, ExitCode: $status}' >"$RUNNER_TEMP/isolation-race.wall.json"
+          exit "$status"
+      - name: Upload race isolation timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: isolation-race-timings-${{ matrix.shard }}
+          overwrite: true
+          path: ${{ runner.temp }}/isolation-race*.json
+          if-no-files-found: ignore
+          retention-days: 14

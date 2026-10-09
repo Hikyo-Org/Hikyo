@@ -31,6 +31,19 @@ bump() {
 	count=$((count + 1))
 	printf '%s\n' "$count" >"$FIXTURES/$1-calls"
 }
+# Simulate transport and malformed-body failures before any jq processing.
+if [ "$url" = repos/o/r/pulls/7 ] && [ -n "${API_ERROR:-}" ]; then
+	bump api
+	if [ "$count" -le "${API_ERRORS_BEFORE_SUCCESS:-99}" ]; then
+		printf '%s\n' "$API_ERROR" >&2
+		exit 1
+	fi
+fi
+if [ "$url" = repos/o/r/pulls/7 ] && [ "${MALFORMED_API:-false}" = true ]; then
+	bump api
+	printf '<html>upstream unavailable</html>\n'
+	exit 0
+fi
 case $url in
 */pulls/7/files*) fixture=files ;;
 */pulls/7/reviews*)
@@ -89,7 +102,7 @@ fixture() {
 	printf '[[]]\n' >"$work/reviews-later.json"
 	printf '{"permission":"write"}\n' >"$work/permission.json"
 	printf '{"permission":"none"}\n' >"$work/permission-later.json"
-	rm -f "$work/pr-calls" "$work/reviews-calls" "$work/permission-calls"
+	rm -f "$work/pr-calls" "$work/reviews-calls" "$work/permission-calls" "$work/api-calls"
 }
 
 same_repo() {
@@ -109,8 +122,9 @@ approval() {
 }
 
 gate() {
+	: >"$work/summary"
 	PATH="$work/bin:$PATH" FIXTURES=$work GH_REPO=o/r PR_NUMBER=7 HEAD_SHA=${1:-$head} \
-		FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
+		GITHUB_STEP_SUMMARY="$work/summary" FORK_GATE_API_RETRY_SECONDS=0 FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
 }
 
 # expect_pending <description>: rejected only by the deadline, never as a result.
@@ -288,5 +302,57 @@ approval
 ( PERMISSION_REMOVED_AT=2 expect_reject 'collaborator removed while validation ran' )
 fixture 1 "$docs" "$done_run" success
 ( HEAD_MOVES_AT=3 expect_reject 'head moved after checking completed validation jobs' )
+
+# Transport retry boundaries and actionable summaries must fail closed.
+for error in 'HTTP 429: Too Many Requests' 'HTTP 503: Service Unavailable' 'dial tcp: i/o timeout'; do
+	fixture 1 "$docs" "$done_run" success
+	( API_ERROR="$error" API_ERRORS_BEFORE_SUCCESS=2 expect_accept "transient $error" )
+	[ "$(cat "$work/api-calls")" -eq 5 ]
+done
+fixture 1 "$docs" "$done_run" success
+( API_ERROR='HTTP 503: Service Unavailable' expect_reject 'exhausted transient retries' )
+[ "$(cat "$work/api-calls")" -eq 3 ]
+grep -F 'api-failure' "$work/summary" >/dev/null
+for error in 'HTTP 403: Forbidden' 'HTTP 404: Not Found' 'unknown API error'; do
+	fixture 1 "$docs" "$done_run" success
+	( API_ERROR="$error" expect_reject "permanent $error" )
+	[ "$(cat "$work/api-calls")" -eq 1 ]
+done
+fixture 1 "$docs" '{"workflow_runs":[{"id":null,"status":"completed","display_title":"fork-ci #7"}]}' success
+expect_reject 'invalid validation run identity'
+grep -F 'api-failure' "$work/summary" >/dev/null
+fixture 1 "$docs" "$done_run" success
+( MALFORMED_API=true expect_reject 'successful HTTP response with non-JSON body' )
+[ "$(cat "$work/api-calls")" -eq 1 ]
+grep -F 'malformed API response' "$work/stderr" >/dev/null
+fixture 1 '[{"filename":null}]' "$done_run" success
+expect_reject 'missing changed filename could conceal workflow edits'
+grep -F 'api-failure' "$work/summary" >/dev/null
+fixture 1 "$docs" "$done_run" success
+jq 'del(.user.id)' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'syntactically valid but malformed PR metadata'
+grep -F 'api-failure' "$work/summary" >/dev/null
+fixture 1 "$docs" "$done_run" failure
+jq '.jobs += [{id:123,name:"validation / web-go",conclusion:"failure"}]' "$work/jobs.json" >"$work/jobs-new.json"
+mv "$work/jobs-new.json" "$work/jobs.json"
+expect_reject 'underlying web-go failure'
+grep -F 'validation / web-go: failure (https://github.com/o/r/actions/runs/42/job/123)' "$work/summary" >/dev/null
+grep -F 'validation-failure' "$work/summary" >/dev/null
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":"cancelled","display_title":"fork-ci #7"}]}' cancelled
+expect_reject 'cancelled validation'
+grep -F 'cancelled' "$work/summary" >/dev/null
+fixture 1 "$docs" "$done_run" failure
+jq '.jobs += [{id:124,name:"validation / go-race",conclusion:"timed_out"}]' "$work/jobs.json" >"$work/jobs-new.json"
+mv "$work/jobs-new.json" "$work/jobs.json"
+expect_reject 'upstream timeout behind a failed aggregate'
+grep -F 'Fork validation gate: timeout' "$work/summary" >/dev/null
+fixture 1 "$docs" "$done_run" success
+expect_reject 'superseded head summary' fedcba9876543210fedcba9876543210fedcba98
+grep -F 'superseded' "$work/summary" >/dev/null
+fixture 1 "$workflow" "$done_run" success
+same_repo
+expect_reject 'policy refusal summary'
+grep -F 'policy-refusal' "$work/summary" >/dev/null
 
 printf 'fork gate fixture: exact-head validation, untouched fork YAML, and same-repo workflow authority from independent approval or the pinned current-maintainer BDFL\n'

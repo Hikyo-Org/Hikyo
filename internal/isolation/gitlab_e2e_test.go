@@ -94,7 +94,7 @@ func TestGitLabRealLifecycle(t *testing.T) {
 	t.Run("spki pin mismatch refuses before any request", func(t *testing.T) {
 		wrong := base64.StdEncoding.EncodeToString(make([]byte, sha256.Size))
 		_, err := cfg.client(t, wrong).Version(t.Context())
-		if err == nil || !strings.Contains(err.Error(), "SPKI pin") {
+		if !errors.Is(err, gitlab.ErrSPKIPinMismatch) {
 			t.Fatalf("Version() with a wrong pin = %v, want pin refusal", err)
 		}
 	})

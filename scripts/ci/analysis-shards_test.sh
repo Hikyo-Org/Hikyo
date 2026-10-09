@@ -81,6 +81,9 @@ func TestIndia(t *testing.T)      {}
 
 // Go does not discover a lowercase rune after the Test prefix.
 func Testlower(t *testing.T) {}
+func Example_isolation() {
+    // Output:
+}
 EOF
 
 cat >"$fixture_dir/internal/service/service_test.go" <<'EOF'
@@ -140,7 +143,7 @@ done
 
 # Across supported layouts, every normal package and every split-suite target
 # must run exactly once, including external tests, fuzz seeds and examples.
-for shard_count in 1 3 6 8; do
+for shard_count in 1 3 6 8 12; do
 	: >"$race_actual"
 	shard=0
 	while [ "$shard" -lt "$shard_count" ]; do
@@ -204,6 +207,19 @@ TestHotel
 TestIndia
 EOF
 cmp "$fixture_dir/isolation-expected" "$fixture_dir/isolation-tests"
+
+# Scheduled isolation race sharding also includes fuzz seed runs and runnable
+# examples from the whole-package command it replaces, exactly once.
+for shard_count in 1 3 8; do
+    : >"$fixture_dir/isolation-race-actual"
+    shard=0
+    while [ "$shard" -lt "$shard_count" ]; do
+        "$planner" isolation-race --root "$fixture_dir" --shard "$shard" --shards "$shard_count" >>"$fixture_dir/isolation-race-actual"
+        shard=$((shard + 1))
+    done
+    { cat "$fixture_dir/isolation-expected"; printf '%s\n' FuzzIsolation Example_isolation; } | sort >"$fixture_dir/isolation-race-expected"
+    sort "$fixture_dir/isolation-race-actual" | cmp "$fixture_dir/isolation-race-expected" -
+done
 
 crypto_shards=$(awk -F '\t' '$2 == "example.com/shards/internal/crypto" { print $1 }' \
 	"$fuzz_actual" | sort -u | wc -l | tr -d ' ')
