@@ -83,6 +83,25 @@ gh_read() (
 	done
 )
 
+# GitHub can report the workflow as queued while individual jobs are already
+# running. At the deadline show actual job progress and any root failures.
+report_run_progress() {
+	[ -n "$run_url" ] || return 0
+	progress_jobs=$(gh_read "repos/$GH_REPO/actions/runs/$run_id/jobs?filter=latest&per_page=100" --paginate) ||
+		fail 'cannot read validation progress at the deadline' api-failure
+	printf '%s\n' "$progress_jobs" | jq -e -s 'all(.[]; (.jobs | type) == "array")' >/dev/null ||
+		fail 'invalid validation progress response' api-failure
+	progress=$(printf '%s\n' "$progress_jobs" | jq -rs '
+		[.[] | .jobs[]] as $jobs |
+		"Validation jobs: \([$jobs[] | select(.status == "completed")] | length) completed, \([$jobs[] | select(.status == "in_progress")] | length) running, \([$jobs[] | select(.status == "queued" or .status == "waiting" or .status == "pending" or .status == "requested")] | length) queued (\($jobs | length) total)."')
+	printf '%s\n' "$progress" >&2
+	summary "$progress"
+	progress_roots=$(printf '%s\n' "$progress_jobs" | jq -r --arg gate "$gate_job" --arg url "$run_url" '
+		.jobs[] | select(.name != $gate and (.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")) |
+		"- \(.name): \(.conclusion) (\($url)/job/\(.id))"')
+	[ -z "$progress_roots" ] || { printf '%s\n' "$progress_roots" >&2; summary "Failing validation jobs:"; summary "$progress_roots"; }
+}
+
 check_current_pr() {
 	pr=$(gh_read "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.sha, (.changed_files | tostring),
 		(if .head.repo.id != null and .head.repo.id == .base.repo.id and .head.repo.full_name == .base.repo.full_name then .head.repo.full_name else "fork" end),
@@ -175,6 +194,8 @@ while :; do
 			fail 'invalid validation run metadata' api-failure
 	fi
 	run_id=${run%% *}
+	run_url=
+	[ -z "$run" ] || run_url="${GITHUB_SERVER_URL:-https://github.com}/$GH_REPO/actions/runs/$run_id"
 	state=${run#* }
 	wait_reason='no run has started'
 	[ -z "$run" ] || wait_reason="run $run_id is ${state% *}"
@@ -222,8 +243,10 @@ while :; do
 		[ "$(date +%s)" -lt "$deadline" ] ||
 			fail "PR mergeability is still pending after ${timeout_seconds}s; re-run once GitHub resolves it" timeout
 	fi
-	[ "$(date +%s)" -lt "$deadline" ] ||
+	if [ "$(date +%s)" -ge "$deadline" ]; then
+		report_run_progress
 		fail "no completed fork-ci run for $HEAD_SHA within ${timeout_seconds}s ($wait_reason); re-run this job once it finishes" timeout
+	fi
 	printf 'fork validation gate: waiting for fork-ci on %s (%s)\n' "$HEAD_SHA" "${run:-no run yet}"
 	sleep "$poll_seconds"
 done

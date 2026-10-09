@@ -220,6 +220,8 @@ jobs:
         run: ./scripts/ci/check-cache-policy_test.sh
       - name: Go patch proposal fixture
         run: ./scripts/ci/check-go-patch_test.sh
+      - name: Fork gate reconciliation fixture
+        run: ./scripts/ci/reconcile-fork-gate_test.sh
       - name: Verify floor measurement preflight refusals
         run: ./scripts/bench/floor_test.sh
       - name: Fuzz finding classifier fixture

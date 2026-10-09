@@ -203,6 +203,15 @@ fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","display_titl
 expect_reject 'a passing run that belongs to another PR on the same commit'
 fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"in_progress","display_title":"fork-ci #7"}]}' success
 expect_pending 'an unfinished fork-ci run'
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"queued","display_title":"fork-ci #7"}]}' success
+printf '{"jobs":[{"id":1,"name":"validation / done","status":"completed","conclusion":"success"},{"id":2,"name":"validation / running","status":"in_progress","conclusion":null},{"id":3,"name":"validation / queued","status":"queued","conclusion":null}]}\n' >"$work/jobs.json"
+expect_pending 'workflow queued while individual jobs are running'
+grep -F 'Validation jobs: 1 completed, 1 running, 1 queued (3 total).' "$work/summary" >/dev/null
+grep -F 'https://github.com/o/r/actions/runs/42' "$work/summary" >/dev/null
+jq '.jobs[0].conclusion="failure"' "$work/jobs.json" >"$work/jobs-new.json"
+mv "$work/jobs-new.json" "$work/jobs.json"
+expect_pending 'unfinished validation with an already failing job'
+grep -F 'validation / done: failure (https://github.com/o/r/actions/runs/42/job/1)' "$work/summary" >/dev/null
 fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":"action_required","display_title":"fork-ci #7"}]}' success
 expect_pending 'a fork-ci run awaiting maintainer approval'
 fixture 1 "$docs" '{"workflow_runs":[]}' success
