@@ -22,7 +22,31 @@ These markers require manager cooperation. They do not remove earlier browser
 copies from history, and the native command leaves the live value available to
 paste until replaced. Linux and other unsupported platforms fail closed.
 
-Validation:
+Browser follow-up:
+
+- Secret copies schedule one best-effort clear after 45 seconds. If unfocused
+  then, the page waits for focus or visibility restoration for up to two more
+  minutes. It attempts once and removes its listeners and retry timer.
+- An absolute deadline is checked before reading and again before writing;
+  delayed timers, queued writes, and slow reads cannot start a clear after it.
+- Existing content and app-generation checks protect other clipboard contents
+  and newer app copies, including identical text. The browser cannot identify a
+  newer external copy containing identical text. Refused reads/writes stop the
+  attempt without retrying permission prompts.
+- Confirmation now says "Attempts to clear after 45s" and explains the bounded
+  focus retry. This does not remove clipboard-manager history.
+- Follow-up: 24 clipboard regression tests, typecheck, lint, and build passed.
+  Final full web suite passed: 167 files, 1,522 tests. The T3 browser helper verified the real DOM
+  focus event with synthetic clipboard/clock data: the value was cleared and
+  the retry timer removed. Ordinary non-secret copy behavior was also checked.
+  Standards and spec review each report zero remaining findings after repairing
+  a test that had inadvertently relied on generation rather than deadline.
+- Follow-up advisory Jev probe during final validation: description match 0.87,
+  untested logic 0.29; risk secret handling (54%) or runtime behavior (46%);
+  readiness 1.62 of 0-3 (51% nearly ready, 37% not ready, confidence 0.47).
+  No candidate finding met its verification threshold. No PR is in scope.
+
+Initial native implementation validation:
 
 - Web typecheck, lint, full unit suite (167 files, 1,511 tests), and build passed.
 - Full CLI package tests passed. Regression coverage exercises the public CLI

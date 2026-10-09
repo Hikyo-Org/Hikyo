@@ -10,7 +10,174 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+function backgroundClipboard() {
+  let focused = false;
+  let visible = false;
+  const windowEvents = new EventTarget();
+  const documentEvents = new EventTarget();
+  const removeFocus = vi.fn(windowEvents.removeEventListener.bind(windowEvents));
+  const removeVisibility = vi.fn(documentEvents.removeEventListener.bind(documentEvents));
+  vi.stubGlobal('window', {
+    addEventListener: windowEvents.addEventListener.bind(windowEvents),
+    removeEventListener: removeFocus,
+  });
+  vi.stubGlobal('document', {
+    hasFocus: () => focused,
+    get visibilityState() { return visible ? 'visible' : 'hidden'; },
+    addEventListener: documentEvents.addEventListener.bind(documentEvents),
+    removeEventListener: removeVisibility,
+  });
+  return {
+    focus(event: 'focus' | 'visibilitychange' = 'focus') {
+      focused = true;
+      visible = true;
+      (event === 'focus' ? windowEvents : documentEvents).dispatchEvent(new Event(event));
+    },
+    blur() { focused = false; visible = false; },
+    removeFocus,
+    removeVisibility,
+  };
+}
+
 describe('writeExpiringClipboard', () => {
+  it.each<'focus' | 'visibilitychange'>(['focus', 'visibilitychange'])('clears after background expiry on %s and removes listeners', async (event) => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => Promise.resolve('secret'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(readText).not.toHaveBeenCalled();
+    tab.focus(event);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeText.mock.calls).toEqual([['secret'], ['']]);
+    expect(tab.removeFocus).toHaveBeenCalledOnce();
+    expect(tab.removeVisibility).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not clear external changed content after background expiry', async () => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText: vi.fn(() => Promise.resolve('external')) } });
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+    tab.focus();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('secret');
+  });
+
+  it('does not expire a newer identical app copy on returned focus', async () => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => Promise.resolve('same'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('same', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+    await writeClipboard('same');
+    tab.focus();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readText).not.toHaveBeenCalled();
+    expect(writeText.mock.calls).toEqual([['same'], ['same']]);
+  });
+
+  it('stops after denied read without repeated permission attempts', async () => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => Promise.reject(new Error('permission denied')));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+    tab.focus();
+    await vi.advanceTimersByTimeAsync(0);
+    tab.focus('visibilitychange');
+    tab.focus();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(readText).toHaveBeenCalledOnce();
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('secret');
+    expect(tab.removeFocus).toHaveBeenCalledOnce();
+    expect(tab.removeVisibility).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('expires retry listeners at the deadline and never clears on later focus', async () => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => Promise.resolve('secret'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(165_000);
+    tab.focus();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readText).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('secret');
+    expect(tab.removeFocus).toHaveBeenCalledOnce();
+    expect(tab.removeVisibility).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('never clears when a throttled expiry callback dispatches after the deadline', async () => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => Promise.resolve('secret'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('secret', true);
+    vi.setSystemTime(Date.now() + 165_000);
+    await vi.advanceTimersByTimeAsync(45_000);
+    tab.focus();
+    expect(readText).not.toHaveBeenCalled();
+    expect(tab.removeFocus).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['deadline', 'lost focus'])('never clears when a queued focus attempt dispatches after %s', async (reason) => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    let release: (() => void) | undefined;
+    const writeText = vi.fn((text: string) => text === 'blocking'
+      ? new Promise<void>((_resolve, reject) => { release = () => reject(new Error('blocking write refused')); }) : Promise.resolve());
+    const readText = vi.fn(() => Promise.resolve('secret'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+    const pending = writeClipboard('blocking');
+    tab.focus();
+    if (reason === 'deadline') await vi.advanceTimersByTimeAsync(120_000);
+    else tab.blur();
+    release?.();
+    await expect(pending).resolves.toBe('refused');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readText).not.toHaveBeenCalled();
+    expect(writeText.mock.calls).toEqual([['secret'], ['blocking']]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['deadline', 'lost focus'])('never clears when async read completes after %s', async (reason) => {
+    vi.useFakeTimers();
+    const tab = backgroundClipboard();
+    let release: ((text: string) => void) | undefined;
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => new Promise<string>((resolve) => { release = resolve; }));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    await writeExpiringClipboard('secret', true);
+    await vi.advanceTimersByTimeAsync(45_000);
+    tab.focus();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readText).toHaveBeenCalledOnce();
+    if (reason === 'deadline') await vi.advanceTimersByTimeAsync(120_000);
+    else tab.blur();
+    release?.('secret');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('secret');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('announces cleanup refusal globally after the disclosure owner retires', async () => {
     let release: (() => void) | undefined;
     let current = true;
@@ -76,6 +243,9 @@ describe('writeExpiringClipboard', () => {
 
     const confirmation = await writeExpiringClipboard('secret', true);
     expect(confirmation).toContain('recorded as a disclosure');
+    expect(confirmation).toContain('Attempts to clear after 45s');
+    expect(confirmation).toContain('If unfocused, retries once on return within 2 minutes.');
+    expect(confirmation).not.toContain('Cleared in 45s');
     expect(confirmation).toContain('Clipboard managers may keep this browser copy.');
     expect(confirmation).toContain('hikyo values get KEY --reveal --clipboard');
     expect(confirmation).not.toContain('secret');
