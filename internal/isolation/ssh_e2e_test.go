@@ -66,7 +66,8 @@ func parseIssued(t *testing.T, text string) *ssh.Certificate {
 
 // trustedBy is the host's decision: the certificate's signing key must be in
 // the trust bundle (CertChecker.CheckCert alone does not consult authority),
-// and the certificate must verify for the principal now.
+// and the certificate must verify for the principal now. This helper checks
+// certificate integrity; real OpenSSH tests enforce the source-address option.
 func trustedBy(t *testing.T, bundle string, cert *ssh.Certificate, principal string) error {
 	t.Helper()
 	trusted := false
@@ -79,7 +80,7 @@ func trustedBy(t *testing.T, bundle string, cert *ssh.Certificate, principal str
 	if !trusted {
 		return errors.New("signing key is not in the trust bundle")
 	}
-	return (&ssh.CertChecker{}).CheckCert(principal, cert)
+	return (&ssh.CertChecker{SupportedCriticalOptions: []string{"source-address"}}).CheckCert(principal, cert)
 }
 
 func TestSSHCertificatesLifecycle(t *testing.T) {

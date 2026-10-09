@@ -13,7 +13,7 @@ SQLite database, and one administrator account.
 
 ## Prerequisites
 
-- Go 1.27.0 or newer within the Go 1.27 line.
+- Go 1.27.2 or newer within the Go 1.27 line.
 - Node.js 26.7.0, matching the repository's `.nvmrc`.
 - Corepack 0.35.0 with pnpm 11.24.0.
 
@@ -38,12 +38,19 @@ tag remains useful for API-only development but does not serve the browser app.
 ## 2. Start an evaluation instance
 
 ```bash
-./bin/hikyo server --dev
+install -d -m 0700 "$PWD/.hikyo-runtime"
+./bin/hikyo server --dev --cli-socket "$PWD/.hikyo-runtime/hikyo.sock"
 ```
 
 Development mode binds to `127.0.0.1:8080`, creates `hikyo-dev.db`, and writes a
 mode-`0600` root key beside it. Keep the database and key together: losing the
 key makes the encrypted data unrecoverable.
+
+On Linux and macOS, the owner-only socket directory lets the CLI authenticate
+the local server by operating-system identity before sending credentials over
+loopback HTTP. The directory must have mode `0700`; the server refuses wider
+permissions. Keep it out of version control. Windows CLI connections require
+HTTPS rather than this Unix-socket evaluation path.
 
 Check the server from another terminal:
 
@@ -75,11 +82,13 @@ command:
 cat ./hikyo-admin-authority
 ./bin/hikyo account establish-credential \
   --instance http://127.0.0.1:8080 \
-  --as admin
+  --as admin \
+  --socket "$PWD/.hikyo-runtime/hikyo.sock"
 ```
 
-Confirm the instance identity, paste the authority at the controlling-terminal
-prompt, and choose a password of at least 12 characters that is not in the
+Confirm the instance origin and local socket, paste the authority at the
+controlling-terminal prompt, and choose a password of at least 12 characters
+that is not in the
 bundled common-password list. Neither value crosses argv, environment variables,
 or a pipe. Delete `hikyo-admin-authority` after the command succeeds, then open
 [the local sign-in page](http://127.0.0.1:8080/login).

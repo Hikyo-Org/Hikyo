@@ -10,7 +10,7 @@ Self-hosting developers first (homelab operators, 1-3 orgs, up to ~25 users), pl
 
 ## Product Purpose
 
-Hikyo is a fully open-source, self-hosted control plane for validated, inherited secrets and configuration across environments (Docker Compose and Kubernetes first-class). The environment matrix is the product's signature surface. Success: an operator trusts it enough to manage production secrets in it, and understands every resolved value's origin without reading docs.
+Hikyo is a fully open-source, self-hosted control plane for validated, explicit secrets and configuration across environments (Docker Compose and Kubernetes first-class). The environment matrix is the product's signature surface. Values are set or absent in each environment, with no inheritance or fallback. Success: an operator trusts it enough to manage production secrets in it, and understands each environment's published state and pending drafts without reading docs.
 
 ## Brand Personality
 
@@ -32,7 +32,7 @@ Precise, calm, trustworthy. The quiet confidence of good infrastructure tooling:
 
 - Mobile-first, always. Every prototype and every surface must work well on a phone; density features (env hide/show, group collapse) are how the matrix earns its room on small screens.
 - State is never color-only. Every matrix state carries a glyph or text alongside its color.
-- Provenance is one gesture away. Any resolved value can explain where it came from (defaults, base chain, or here) without leaving the screen.
+- State is one gesture away. Inspect a value's published revision and pending draft without leaving the screen; absence never borrows a default or another environment's value.
 - Disclosure is a ceremony. Revealing a secret is deliberate, permission-gated, and auto-remasks; editing without reveal (write-only) is a first-class path.
 - Dense but calm. 50+ keys by 4+ environments must stay scannable; rhythm and grouping over chrome.
 

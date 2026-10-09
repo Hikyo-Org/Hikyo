@@ -6,6 +6,8 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 
 This guide starts after the local server and first administrator exist. It
 creates a small project and writes one non-secret configuration value.
+Use the same working directory as the getting-started guide, where the local
+server's owner-only `.hikyo-runtime` socket directory was created.
 
 Prefer the browser? [Operate Hikyo from the browser](/docs/browser-operations/)
 covers the same journey, and the rest of the lifecycle, from the embedded web
@@ -17,7 +19,7 @@ but IDs keep every target explicit while learning the model.
 ## 1. Log in and enrol a second factor
 
 ```bash
-hikyo login http://127.0.0.1:8080 --local --as admin
+hikyo login http://127.0.0.1:8080 --local --as admin --socket "$PWD/.hikyo-runtime/hikyo.sock"
 hikyo account factor enrol-totp --output-file ./hikyo-otpauth-uri
 hikyo account factor confirm-totp
 hikyo account factor step-up
@@ -45,7 +47,7 @@ Changing your own grants revokes your current session. Organisation creation
 performs that change automatically. Log in and step up again before continuing:
 
 ```bash
-hikyo login http://127.0.0.1:8080 --local --as admin
+hikyo login http://127.0.0.1:8080 --local --as admin --socket "$PWD/.hikyo-runtime/hikyo.sock"
 hikyo account factor step-up
 ```
 
@@ -75,30 +77,33 @@ hikyo context show checkout-dev
 A context stores targets, not credentials. Hikyo has no global active context,
 so each command names it with `--context`.
 
-## 5. Declare and set a value
+## 5. Declare, stage and publish a value
 
 ```bash
 hikyo key create \
   --context checkout-dev \
   --name LOG_LEVEL \
   --classification config \
-  --declaration '{"rule":{"type":"string"}}' \
-  --required-in all
+  --declaration '{"rule":{"type":"string"}}'
 
 printf '%s' 'debug' > ./log-level.txt
 hikyo values set LOG_LEVEL \
   --context checkout-dev \
   --value-file ./log-level.txt
 rm ./log-level.txt
+hikyo values publish --context checkout-dev --versions <version-id-from-set>
 ```
 
-The declaration is saved before the value. Hikyo validates every later write
-against that declaration and tracks presence independently in each environment.
+The declaration is saved before the value. Keep the key ID printed by
+`key create` for the inspection step. `values set` reports the pending
+version ID to use for publication. Publication validates the value against its
+declaration and tracks presence independently in each environment. This example
+leaves the key optional so production may remain absent.
 
 ## 6. Inspect the result
 
 ```bash
-hikyo key show LOG_LEVEL --context checkout-dev
+hikyo key show <key-id-from-create> --context checkout-dev
 hikyo values get LOG_LEVEL --context checkout-dev
 hikyo values diff \
   --context checkout-dev \

@@ -6,7 +6,9 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 
 Multi-node HA lets one logical Hikyo instance run across several server nodes
 behind a single endpoint, so ordinary traffic survives the loss of a node and
-leader-only work still runs exactly once. It is application-tier HA, not
+singleton background work runs under one fenced leader. A newly elected leader
+performs startup catch-up again; leadership does not promise exactly-once job
+execution across failover. It is application-tier HA, not
 cross-region disaster recovery: backups and restore remain the job of
 [backup and restore](./backup-and-restore).
 

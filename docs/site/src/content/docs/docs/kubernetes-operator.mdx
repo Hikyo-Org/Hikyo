@@ -45,7 +45,16 @@ PostgreSQL only: its container root filesystem is read-only. A private database
 CA can be mounted with `database.tls.existingSecret`; name its mounted path in
 the DSN as `sslrootcert=/run/hikyo-database-ca/ca.crt`.
 
-Create a complete values file for the Hikyo server and operator:
+For the default manual installation, provision two persistent claims first:
+one holding the verified public bundle and independently pinned `operator.pub`,
+and one holding installation custody. Follow the
+[Kubernetes installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#compose-and-kubernetes)
+for their directory layout, ownership and permissions. An empty claim alone
+does not provide the release evidence needed to boot. Keep installation state
+independent of database restores.
+
+Create a values file for the Hikyo server and operator, replacing the claim
+names with those provisioned above:
 
 ```yaml
 database:
@@ -57,6 +66,10 @@ database:
 rootKey:
   existingSecret: hikyo-root-key
   key: root-key
+
+upgrade:
+  existingClaim: hikyo-upgrade-public
+  stateExistingClaim: hikyo-upgrade-state
 
 externalOrigin: https://hikyo.example.com
 
@@ -104,8 +117,11 @@ reach is the intersection of those watches and RBAC. Add every federated
 ServiceAccount to `operator.designatedServiceAccounts` under its namespace;
 the chart restricts TokenRequest creation to those names.
 
-Helm refuses a missing datastore Secret, root-key Secret, external origin, or
-network boundary. `externalOrigin` must be an origin only: no path, query,
+Helm refuses missing datastore/root-key Secret references, upgrade claims,
+external origin, or network boundary. For an empty first deployment, the
+explicit [unattended opt-in](/docs/container-upgrades/) replaces the manual public
+claim with verified local custody; it still requires persistent installation
+state and a separate PostgreSQL scratch database. `externalOrigin` must be an origin only: no path, query,
 fragment, credentials, or trailing slash. HTTP requires the explicit
 `network.allowPlaintextOrigin` development escape hatch.
 
