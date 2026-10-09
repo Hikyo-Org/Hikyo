@@ -123,7 +123,8 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 `--value-file`; it is never accepted as an argument value.
 
 ```text
-hikyo adapter create --provider forgejo|github-actions|sealed-webhook --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider forgejo|github-actions --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider sealed-webhook --origin URL --env ENV --kind organization --owner RECEIVER_NAMESPACE --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider gitlab --origin URL --env ENV --kind project|group --owner NAMESPACE [--repo PROJECT] [--scope SCOPE] [--protected] [--hidden] [--expand-variables] [--spki-pin PIN] [--ca-bundle-file FILE] [--allow-personal-token] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.REGION.amazonaws.com --env ENV --kind json-object|per-key --owner ACCOUNT_ID [--secret NAME|PATH/] [--kms-key KEY] --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn ARN] [--aws-external-id ID] [--aws-session-seconds N] [--aws-access-key-id ID] [--aws-region REGION] [--aws-sts-origin URL] [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE] [--aws-auth MODE ...]

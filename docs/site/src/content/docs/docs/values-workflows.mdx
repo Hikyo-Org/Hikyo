@@ -27,6 +27,10 @@ the intended versions explicitly, after reviewing them:
 hikyo values publish --context production --versions <version-id,version-id>
 ```
 
+Publishing selected versions can also publish related pending versions required
+by key-group closure. Review the complete set, including related drafts, before
+running the command.
+
 Publication needs `publish` separately from `edit`, validates the complete
 resulting state and applies protection and change-approval policies.
 
