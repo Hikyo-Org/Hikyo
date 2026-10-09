@@ -19,7 +19,7 @@ func prepareSecureClipboard() (func(context.Context, string) error, error) {
 	return writeWindowsClipboard, nil
 }
 
-func writeWindowsClipboard(ctx context.Context, value string) (returnErr error) {
+func writeWindowsClipboard(ctx context.Context, value string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -39,42 +39,51 @@ func writeWindowsClipboard(ctx context.Context, value string) (returnErr error) 
 		return errors.New("cannot create clipboard owner")
 	}
 	defer clipboardUser32.NewProc("DestroyWindow").Call(hwnd)
-	if ok, _, _ := clipboardUser32.NewProc("OpenClipboard").Call(hwnd); ok == 0 {
-		return errors.New("clipboard is unavailable or busy")
-	}
-	defer func() {
-		if ok, _, _ := clipboardUser32.NewProc("CloseClipboard").Call(); ok == 0 && returnErr == nil {
-			returnErr = errors.New("cannot close clipboard")
-		}
-	}()
-	if ok, _, _ := clipboardUser32.NewProc("EmptyClipboard").Call(); ok == 0 {
-		return errors.New("cannot empty clipboard")
-	}
-	defer func() {
-		if returnErr != nil {
-			clipboardUser32.NewProc("EmptyClipboard").Call()
-		}
-	}()
-	// Install every exclusion before text, while holding the clipboard lock.
-	// A failed marker write therefore never publishes plaintext.
-	for _, name := range []string{"ExcludeClipboardContentFromMonitorProcessing", "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard"} {
-		encoded, _ := windows.UTF16PtrFromString(name)
-		format, _, _ := clipboardUser32.NewProc("RegisterClipboardFormatW").Call(uintptr(unsafe.Pointer(encoded)))
-		if format == 0 {
-			return errors.New("cannot register clipboard exclusion")
-		}
-		if err := setWindowsClipboardData(format, []byte{0, 0, 0, 0}); err != nil {
-			return err
-		}
-	}
 	data := unsafe.Slice((*byte)(unsafe.Pointer(&text[0])), len(text)*2)
-	return setWindowsClipboardData(13, data) // CF_UNICODETEXT
+	return writeProtectedClipboardTransaction(ctx, data, clipboardTransactionOps{
+		register: registerWindowsClipboardFormat,
+		prepare:  prepareWindowsClipboardData,
+		free:     func(handle uintptr) { clipboardKernel32.NewProc("GlobalFree").Call(handle) },
+		open: func() error {
+			if ok, _, _ := clipboardUser32.NewProc("OpenClipboard").Call(hwnd); ok == 0 {
+				return errors.New("clipboard is unavailable or busy")
+			}
+			return nil
+		},
+		empty: func() error {
+			if ok, _, _ := clipboardUser32.NewProc("EmptyClipboard").Call(); ok == 0 {
+				return errors.New("cannot empty clipboard")
+			}
+			return nil
+		},
+		set: func(format, handle uintptr) error {
+			if result, _, _ := clipboardUser32.NewProc("SetClipboardData").Call(format, handle); result == 0 {
+				return errors.New("cannot set protected clipboard data")
+			}
+			return nil
+		},
+		close: func() error {
+			if ok, _, _ := clipboardUser32.NewProc("CloseClipboard").Call(); ok == 0 {
+				return errors.New("cannot close clipboard")
+			}
+			return nil
+		},
+	})
 }
 
-func setWindowsClipboardData(format uintptr, data []byte) error {
+func registerWindowsClipboardFormat(name string) (uintptr, error) {
+	encoded, _ := windows.UTF16PtrFromString(name)
+	format, _, _ := clipboardUser32.NewProc("RegisterClipboardFormatW").Call(uintptr(unsafe.Pointer(encoded)))
+	if format == 0 {
+		return 0, errors.New("cannot register clipboard exclusion")
+	}
+	return format, nil
+}
+
+func prepareWindowsClipboardData(data []byte) (uintptr, error) {
 	memory, _, _ := clipboardKernel32.NewProc("GlobalAlloc").Call(0x0002, uintptr(len(data))) // GMEM_MOVEABLE
 	if memory == 0 {
-		return errors.New("cannot allocate clipboard data")
+		return 0, errors.New("cannot allocate clipboard data")
 	}
 	owned := true
 	defer func() {
@@ -84,16 +93,15 @@ func setWindowsClipboardData(format uintptr, data []byte) error {
 	}()
 	address, _, _ := clipboardKernel32.NewProc("GlobalLock").Call(memory)
 	if address == 0 {
-		return errors.New("cannot lock clipboard data")
+		return 0, errors.New("cannot lock clipboard data")
 	}
 	// Copy through the native API rather than turning a Win32 address into
 	// a Go pointer; GlobalLock owns the destination allocation.
 	clipboardNtdll.NewProc("RtlMoveMemory").Call(address, uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
 	runtime.KeepAlive(data)
-	clipboardKernel32.NewProc("GlobalUnlock").Call(memory)
-	if result, _, _ := clipboardUser32.NewProc("SetClipboardData").Call(format, memory); result == 0 {
-		return errors.New("cannot set protected clipboard data")
+	if stillLocked, _, unlockErr := clipboardKernel32.NewProc("GlobalUnlock").Call(memory); stillLocked != 0 || unlockErr != windows.ERROR_SUCCESS {
+		return 0, errors.New("cannot unlock clipboard data")
 	}
-	owned = false // SetClipboardData transfers the allocation to Windows.
-	return nil
+	owned = false // The transaction owns this allocation until publication.
+	return memory, nil
 }

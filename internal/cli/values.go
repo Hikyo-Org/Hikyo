@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -827,6 +828,9 @@ func copyCellToClipboard(ctx context.Context, ios IO, cell apigen.ValueCell, wri
 	}
 	if err := write(ctx, *cell.Value); err != nil {
 		// Platform subprocess errors are untrusted and could include plaintext.
+		if errors.Is(err, errClipboardValueMayRemain) {
+			return failf(ExitRefused, "native protected clipboard cleanup failed; the value may remain available to paste; nothing printed")
+		}
 		return failf(ExitRefused, "native protected clipboard write failed; nothing printed")
 	}
 	_, err := fmt.Fprintln(ios.Stderr, "Copied to the native clipboard with history-exclusion markers. Clipboard managers must honor these markers; the value remains available to paste until replaced.")

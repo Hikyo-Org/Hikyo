@@ -213,6 +213,11 @@ failures are refused, with no plaintext printing fallback. On macOS, the command
 uses the system `/usr/bin/osascript` with a fixed AppKit script and supplies the
 value through stdin, keeping plaintext out of process arguments and files.
 
+On Windows, format registration and buffer preparation finish before the
+previous clipboard contents are replaced. If clipboard cleanup fails after
+publication and removal cannot be confirmed, the CLI warns that the value may
+remain available to paste.
+
 ## Target flags
 
 The shared dimensions are `--instance`, `--org`, `--project`, `--env`, and

@@ -1,112 +1,62 @@
 # Issue 862: protected clipboard copy
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/862
+PR: https://github.com/Hikyo-Org/Hikyo/pull/867
+
+## Behavior
 
 Run `hikyo values get KEY --reveal --clipboard --env ENVIRONMENT`, adding
 `--instance`, `--org`, and `--project` unless selected in the CLI context.
 The command uses the existing reveal authorization, audit, and reauthentication
-ceremony. It copies the exact value without printing plaintext. It refuses
-conflicting output destinations and unsupported platforms before disclosure;
-write errors do not fall back to printing.
+ceremony. It copies the exact value without printing plaintext. Conflicting
+output destinations and unsupported platforms are refused before disclosure.
+Write errors never fall back to printing plaintext.
 
-macOS uses system AppKit through a fixed JXA script with the value on stdin.
-A single pasteboard item contains Unicode text, `org.nspasteboard.ConcealedType`,
-and `org.nspasteboard.TransientType`. Windows uses native Win32 clipboard APIs,
-a real owner window, and exclusion formats installed before Unicode text:
+macOS uses AppKit through a fixed JXA script with the value on stdin. One
+pasteboard item contains Unicode text, `org.nspasteboard.ConcealedType`, and
+`org.nspasteboard.TransientType`. Windows uses native Win32 APIs, a real owner
+window, and these formats before Unicode text:
 `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory`,
-and `CanUploadToCloudClipboard`. Builds remain compatible with `CGO_ENABLED=0`.
+and `CanUploadToCloudClipboard`. Builds support `CGO_ENABLED=0`.
 
-The web secret-copy confirmation points to the native command and warns that
-clipboard managers may retain browser copies. Secret entry fields are unchanged.
-These markers require manager cooperation. They do not remove earlier browser
-copies from history, and the native command leaves the live value available to
-paste until replaced. Linux and other unsupported platforms fail closed.
+Browser secret copies schedule a best-effort clear after 45 seconds. If the
+page is unfocused, it waits for focus or visibility restoration for at most
+two additional minutes and attempts once if focus returns before the deadline. An absolute deadline is checked
+before reading and before writing. Content and app-generation checks protect
+other clipboard contents and newer app copies, including identical text.
+Denied reads or writes stop the attempt without repeating permission prompts.
+Non-secret configuration copies do not expire.
 
-Browser follow-up:
+## Limits
 
-- Secret copies schedule one best-effort clear after 45 seconds. If unfocused
-  then, the page waits for focus or visibility restoration for up to two more
-  minutes. It attempts once and removes its listeners and retry timer.
-- An absolute deadline is checked before reading and again before writing;
-  delayed timers, queued writes, and slow reads cannot start a clear after it.
-- Existing content and app-generation checks protect other clipboard contents
-  and newer app copies, including identical text. The browser cannot identify a
-  newer external copy containing identical text. Refused reads/writes stop the
-  attempt without retrying permission prompts.
-- Confirmation now says "Attempts to clear after 45s" and explains the bounded
-  focus retry. This does not remove clipboard-manager history.
-- Follow-up: 24 clipboard regression tests, typecheck, lint, and build passed.
-  Final full web suite passed: 167 files, 1,522 tests. The T3 browser helper verified the real DOM
-  focus event with synthetic clipboard/clock data: the value was cleared and
-  the retry timer removed. Ordinary non-secret copy behavior was also checked.
-  Standards and spec review each report zero remaining findings after repairing
-  a test that had inadvertently relied on generation rather than deadline.
-- Follow-up advisory Jev probe during final validation: description match 0.87,
-  untested logic 0.29; risk secret handling (54%) or runtime behavior (46%);
-  readiness 1.62 of 0-3 (51% nearly ready, 37% not ready, confidence 0.47).
-  No candidate finding met its verification threshold. This probe preceded PR creation.
+Clipboard-history exclusions depend on OS and clipboard-manager cooperation.
+They do not remove earlier copies from history. Native copies remain available
+to paste until replaced. Browser expiry is best effort and cannot distinguish
+a newer external copy of identical text. Linux and other unsupported native
+platforms fail closed.
 
-Initial native implementation validation:
+## Validation and review
 
-- Web typecheck, lint, full unit suite (167 files, 1,511 tests), and build passed.
-- Full CLI package tests passed. Regression coverage exercises the public CLI
-  reveal/reauthentication flow, destination conflicts, unavailable destinations,
-  unrevealed/absent values, exact multiline/empty values, and error redaction.
-- The real macOS AppKit test verified text and both markers on a unique private
-  pasteboard without reading or overwriting the user's general clipboard.
-- macOS CGO-free focused tests, native Go vet, Windows Go vet, Windows CGO-free
-  package cross-build, and import/Go formatting passed. Windows native runtime
-  execution was unavailable.
-- The browser helper returned the expected confirmation with a synthetic
-  clipboard. The prototype lacks reveal endpoints, so a complete browser
-  secret-copy flow was not verified. The T3 preview connection became unavailable;
-  the fallback used the Playwright CLI.
-- Full `go test ./...` did not pass: app and isolation packages reached the
-  unchanged ten-minute package timeout during SQLite migration fixtures. The
-  initial CLI compile also failed with `could not import context (open : no such
-  file or directory)` while files were changing; the final full CLI rerun passed.
-  The app test active at timeout passed independently in 5.613 seconds.
-  The isolation test active at timeout passed independently in 2.288 seconds.
-  Other repository packages passed, including
-  lint, service, store, and upgradegate. No timeout or assertion was weakened.
-- Independent standards and spec reviews reported zero findings. A final
-  Windows memory-copy adjustment was reviewed again with zero findings.
-- Advisory Jev probe during validation: description match 0.87; untested logic
-  0.52; risk secret handling; readiness 1.42 of 0-3 (51% nearly ready, 38% not
-  ready, confidence 0.41). No candidate finding met its verification threshold.
-  This probe assessed the initial local implementation before PR creation.
+- Web typecheck, lint, build, all 1,522 unit tests, and the real secret/config
+  copy scenario on desktop and mobile passed during implementation and repair.
+- Full CLI tests passed. The macOS native test verifies text and both markers
+  on a unique private pasteboard, preserving the user's general clipboard.
+- Go build, vet, module verification, Windows cross-build/vet, and Linux
+  CGO-free CLI/UI binary vulnerability scans passed during CI repair.
+- The initial unsharded Go suite reached its existing ten-minute app/isolation
+  package timeout in SQLite migration fixtures; the active tests passed
+  independently. No test assertion or timeout was weakened.
+- Main was synchronized after PR 865 merged. Go 1.27.2, x/net 0.60.0, and
+  x/tools 0.50.0 are retained; obsolete checksums were removed by module tidy.
+- Windows review follow-up prepares formats and transferable buffers before
+  replacing clipboard contents and distinguishes incomplete cleanup from a
+  definite refusal. Portable fault tests and a native Windows custody test
+  cover the publication and cleanup paths. The native test runs on the
+  existing disposable Windows CI runner; normal local tests leave the user's
+  clipboard untouched unless explicitly opted in. Portable failure tests,
+  full CLI tests, Windows build/vet, and test cross-compilation passed locally.
+  Actual native Windows execution is pending the new CI run.
 
-CI repair for PR 867:
-
-- Run 37908131612 failed in both browser viewport shards because the reveal
-  flow still asserted the old clipboard-history notice. The flow now checks
-  the 45-second attempt, bounded focus retry, browser-history warning, and
-  native CLI guidance, retaining its clipboard and audit assertions.
-- Both Go jobs failed their binary vulnerability scan against Go 1.27.0 and
-  `golang.org/x/net` 0.58.0. The minimum Go version is now 1.27.2 and `x/net`
-  is 0.60.0, with its required transitive module updates. CI and release
-  toolchain selection read `go.mod`; no security check was suppressed.
-- Web typecheck, lint, and all 1,522 unit tests passed during the repair.
-  Contributor docs checked with zero errors or warnings. Go build, vet,
-  module verification, Linux CGO-free CLI/UI builds, and both pinned binary
-  vulnerability scans passed with zero reachable vulnerabilities.
-- The failing secret/config copy scenario passed on desktop and mobile
-  against the patched macOS UI binary. Full CLI package tests also passed
-  on the patched toolchain.
-- Final independent review reported zero remaining standards/spec findings
-  after aligning the README and both contributor guides with Go 1.27.2.
-
-Main synchronization after PR 865 merged:
-
-- Merged main `d9f799964`. The only conflict was obsolete `go.sum` entries;
-  `go mod tidy` retains the patched module versions and main's x/tools 0.50.0.
-- Module verification, docs check, CLI and SSH CA tests, web typecheck and all
-  1,522 unit tests, import formatting, and cache-policy fixtures passed.
-  Independent source review found no merge-introduced issues.
-- The benchmark-request comment is optional. No benchmark request or extra
-  credit spending was authorized, so both checkboxes remain unchecked.
-
-Delivery: https://github.com/Hikyo-Org/Hikyo/pull/867.
-The requested endpoint is a signed, DCO-signed-off correction pushed to this
-PR and verification of its new CI run. Merge, release, and deployment remain
-outside this task.
+Current-head remote CI must pass before readiness is established. Optional
+benchmark requests and extra-credit spending remain unrequested. Merge,
+release, and deployment require separate authorization.
