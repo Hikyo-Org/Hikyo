@@ -157,6 +157,28 @@ fixture 1 "$docs" "$done_run" success
 expect_accept 'a docs-only fork PR whose fork-ci gate passed'
 expect_reject 'a PR head that moved since the event' fedcba9876543210fedcba9876543210fedcba98
 
+# GitHub App authors have a literal [bot] suffix, but this does not grant
+# workflow-edit authority or relax the reviewer/BDFL identity checks.
+fixture 1 "$docs" "$done_run" success
+jq '.user.login = "dependabot[bot]"' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_accept 'valid Dependabot author metadata on a docs-only passing PR'
+fixture 1 '[{"filename":".github/workflows/ci.yml"}]' "$done_run" success
+same_repo
+jq '.user.login = "dependabot[bot]"' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'bot workflow edits still require independent maintainer approval'
+grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
+approval
+expect_accept 'bot workflow edits with independent exact-head maintainer approval'
+for login in '[bot]' 'dependabot[other]' 'dependabot[bot][bot]' 'dependabot[bot]suffix' 'dependabot bot'; do
+	fixture 1 "$docs" "$done_run" success
+	jq --arg login "$login" '.user.login = $login' "$work/pr.json" >"$work/pr-new.json"
+	mv "$work/pr-new.json" "$work/pr.json"
+	expect_reject "malformed bot author login $login"
+	grep -F 'invalid PR metadata from API' "$work/stderr" >/dev/null
+done
+
 fixture 1 "$docs" "$done_run" success
 jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
 mv "$work/pr-new.json" "$work/pr.json"

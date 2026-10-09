@@ -60,6 +60,7 @@ elif [[ "$1" == test ]]; then
       fi
       ;;
   esac
+  printf '{"Action":"build-output","ImportPath":"%s","Output":"fixture compiler diagnostic\\n"}\n' "$package"
   printf '{"Action":"output","Package":"%s","Output":"fixture output\\n"}\n' "$package"
   printf '{"Action":"pass","Package":"%s","Test":"TestFixture","Elapsed":1.25}\n' "$package"
   [[ "$RACE_TEST_FAIL" != "$suite" ]] || exit 94
@@ -146,6 +147,7 @@ for scope in mixed app-only service-only filtered-only peers-only; do
     jq -se 'all(.[]; (.WallSeconds | type) == "number" and (.ExitCode | type) == "number")' \
       "$timing_dir"/*.wall.json >/dev/null
     grep -q 'fixture output' "$work/log"
+    grep -q 'fixture compiler diagnostic' "$work/log"
     # Pool entries run concurrently in any order; app and service follow.
     awk -v calls="$pool_calls" 'NR <= calls' "$RACE_TEST_EXECUTED" | sort | cmp "$work/expected-pool" -
     awk -v calls="$pool_calls" 'NR > calls' "$RACE_TEST_EXECUTED" | cmp "$work/expected-sequential" -

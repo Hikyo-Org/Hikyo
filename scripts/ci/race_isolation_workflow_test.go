@@ -72,7 +72,12 @@ func TestRaceIsolationWorkflowPreservesTestFailure(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			dir := t.TempDir()
 			stub := `#!/usr/bin/env bash
-printf '%s\n' '{"Action":"output","Output":"race fixture output\n"}'
+if [ "$FIXTURE_GO_STATUS" = 0 ]; then
+  printf '%s\n' '{"Action":"output","Output":"race fixture output\n"}'
+else
+  printf '%s\n' '{"Action":"build-output","ImportPath":"example/isolation","Output":"race fixture compiler error\n"}'
+  printf '%s\n' '{"Action":"build-fail","ImportPath":"example/isolation"}'
+fi
 exit "$FIXTURE_GO_STATUS"
 `
 			if err := os.WriteFile(filepath.Join(dir, "go"), []byte(stub), 0700); err != nil {
@@ -81,8 +86,12 @@ exit "$FIXTURE_GO_STATUS"
 			output, err := executeRaceIsolationStep(t, step, dir,
 				"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 				"RUNNER_TEMP="+dir, "ISOLATION_TARGETS=[\"TestAlpha\"]", "FIXTURE_GO_STATUS="+status)
-			if !strings.Contains(output, "race fixture output") {
-				t.Fatalf("readable output lost: %s", output)
+			message := "race fixture output"
+			if status != "0" {
+				message = "race fixture compiler error"
+			}
+			if !strings.Contains(output, message) {
+				t.Fatalf("readable %s lost: %s", message, output)
 			}
 			if status == "0" && err != nil {
 				t.Fatalf("successful Go execution failed: %v: %s", err, output)

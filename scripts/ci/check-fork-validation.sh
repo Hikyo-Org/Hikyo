@@ -88,7 +88,7 @@ check_current_pr() {
 		(if .head.repo.id != null and .head.repo.id == .base.repo.id and .head.repo.full_name == .base.repo.full_name then .head.repo.full_name else "fork" end),
 		.user.login, (.user.id | tostring), (.mergeable | tostring)] | join(" ")') || fail 'cannot read current PR metadata' api-failure
 	current_head=${pr%% *}
-	printf '%s\n' "$pr" | grep -Eq '^[0-9a-f]{40} [0-9]+ [^ ]+ [a-zA-Z0-9-]+ [0-9]+ (true|false|null)$' ||
+	printf '%s\n' "$pr" | grep -Eq '^[0-9a-f]{40} [0-9]+ [^ ]+ [a-zA-Z0-9-]+(\[bot\])? [0-9]+ (true|false|null)$' ||
 		fail 'invalid PR metadata from API' api-failure
 	[ "$current_head" = "$HEAD_SHA" ] ||
 		fail "PR head moved from $HEAD_SHA to $current_head; the newer run decides" superseded

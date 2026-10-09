@@ -73,7 +73,7 @@ run_race() {
   if [[ "${1:-}" == -run ]]; then filter=$2; fi
   go test -json -race -p 2 -timeout=20m -vet=off -count=1 "$@" |
     tee "$timing.json" |
-    jq --unbuffered -rj 'select(.Action == "output") | .Output' || result=$?
+    jq --unbuffered -rj 'select(.Action == "output" or .Action == "build-output") | .Output' || result=$?
   elapsed=$((SECONDS - started))
   jq -cn --arg package "${!#}" --arg filter "$filter" --argjson seconds "$elapsed" --argjson status "$result" \
     '{Package: $package, Filter: $filter, WallSeconds: $seconds, ExitCode: $status}' >"$timing.wall.json" || return
