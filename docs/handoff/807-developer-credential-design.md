@@ -48,10 +48,12 @@ the owner's working-style guidance records that no Claude quota prompts or
 review launches should occur until access is explicitly restored. No vendor
 skill was edited and no Claude model call was launched.
 
-Cross-provider review: **SKIPPED, Anthropic subscription unavailable**. The
-owner must authorize a qualifying alternative review path or explicitly change
-that gate before the draft can lock. Ordinary same-provider reviews must not
-be relabeled as cross-provider review.
+Cross-provider review: **SKIPPED by explicit owner instruction**. On
+2026-10-09 the owner answered the review-path question with "skip cross provider
+review". This waives the provider-review gate for this #807 design, not all
+future work. Do not request a replacement provider or quota for this decision.
+The ordinary reviews remain ordinary reviews; no skipped pass is CLEAN.
+The final owner lock of the concrete lifecycle and limits remains pending.
 
 ## Validation and remaining work
 
@@ -60,8 +62,7 @@ offline HTML companion, and desktop/mobile document rendering are checked.
 No application code changed, so no Go, web TypeScript, or runtime suite is
 claimed. Remote CI, publication, deployment, and runtime proof are absent.
 
-Next steps: resolve the lock-review path; complete adversarial design review;
-obtain explicit owner lock including pending limits; record required owning
+Next steps: obtain explicit owner lock including pending limits; record required owning
 ADR amendments through the governance procedure; implement with regression
 coverage at the credential, delivery, custody, and revocation seams; run
 focused checks during implementation and the relevant full suite at its end;

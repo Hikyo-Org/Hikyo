@@ -5,15 +5,20 @@ developer-credential decision lane on 2026-10-09 and accepted future-key
 consent and self-delegation. The lifecycle recommendation implements the
 owner's instruction to preserve security without breaking development UX.
 The precise lifetime policy below remains a proposal for final confirmation.
-Credential implementation must wait for the completed grilling, adversarial
-cross-provider review, explicit owner lock, and the amendment procedure in
-[OSS mechanics](./oss-mechanics.md).
+Credential implementation must wait for explicit owner lock of the proposed
+lifecycle and limits, and the declared owning-ADR amendments. On 2026-10-09
+the owner explicitly instructed "skip cross provider review" for this #807
+decision. That is a task-specific review waiver under the amendment procedure
+in [OSS mechanics](./oss-mechanics.md), not a global policy change or an ADR
+lock. No further provider-selection or quota approval is required for this
+decision.
 
 Review availability: the owner confirmed on 2026-10-09 that there is no Claude
 subscription. The cached model choices remain OpenAI `gpt-6.1-sol/high` and
 Anthropic `claude-opus-5-5/high`, but the Anthropic reviewer is unavailable.
-Ordinary OpenAI Standards and Spec reviews can improve this draft; they are
-not the cross-provider lock review. Do not request Claude quota, launch Claude,
+Ordinary OpenAI Standards and Spec reviews and their expiry-fix follow-ups
+completed. Cross-provider review is **SKIPPED by explicit owner instruction**;
+it is not CLEAN. Do not request Claude quota, launch Claude,
 or substitute a paid API/provider without explicit owner authorization.
 
 ## Problem and accepted bounds
@@ -230,9 +235,10 @@ become available during the bounded delegation.
 - [MVP boundary](./mvp-boundary.md): explicitly admit bounded developer
   credentials on demand from #807; retain the exclusion of JIT deploy tokens.
 
-Do not mark those amendments operative while this ADR is pending. Follow
-the locked-decision reopening and adversarial-review procedure for each owning
-decision instead of treating #807 alone as authority to change all ADRs.
+Do not mark those amendments operative while this ADR is pending. Record
+the declared amendments and the task-specific review waiver at the owning
+decisions; the waiver covers this developer-credential decision only. Keep
+unrelated locked policy unchanged.
 
 ## Implementation acceptance after lock
 
