@@ -72,7 +72,9 @@ func TestCAKeyRoundTripAndSignVerify(t *testing.T) {
 				t.Fatalf("RSA CA signed with %s, want rsa-sha2-512", cert.Signature.Format)
 			}
 			checker := ssh.CertChecker{
-				IsUserAuthority: func(auth ssh.PublicKey) bool { return bytes.Equal(auth.Marshal(), ca.PublicKey().Marshal()) },
+				// CheckCert verifies integrity here; the OpenSSH suite enforces addresses.
+				SupportedCriticalOptions: []string{"source-address"},
+				IsUserAuthority:          func(auth ssh.PublicKey) bool { return bytes.Equal(auth.Marshal(), ca.PublicKey().Marshal()) },
 			}
 			if err := checker.CheckCert("deploy", cert); err != nil {
 				t.Fatalf("CheckCert: %v", err)
