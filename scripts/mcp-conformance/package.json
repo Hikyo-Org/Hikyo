@@ -4,6 +4,6 @@
   "packageManager": "pnpm@11.24.0",
   "dependencies": {
     "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
-    "@modelcontextprotocol/inspector": "2.5.0"
+    "@modelcontextprotocol/inspector": "2.10.1"
   }
 }
