@@ -7,6 +7,7 @@
 # Usage: start-aws-emulator.sh <certificate-directory>
 # Prints the environment assignments the isolation test reads.
 set -eu
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 MOTO_IMAGE='motoserver/moto@sha256:91fd602a21f49cf9eb82fdf474015a3c131d40104c8297ea6a2ca920708ae32c'
 PORT=5443

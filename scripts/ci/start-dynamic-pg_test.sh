@@ -2,6 +2,8 @@
 # Port discovery must preserve exact container ownership and fail closed before
 # exporting an unusable or non-loopback target to subsequent CI steps.
 set -euo pipefail
+# This fixture replaces Docker with a stub, so it must not configure a daemon.
+export GITHUB_ACTIONS=false
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

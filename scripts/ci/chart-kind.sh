@@ -3,6 +3,7 @@
 # The test proves boot, semantic probes, and readiness loss/recovery while the
 # liveness endpoint remains healthy and the server container does not restart.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 cd "$(git rev-parse --show-toplevel)"
 

@@ -35,6 +35,7 @@ export function writeClipboard(text: string): Promise<"ok" | "refused"> {
 }
 
 const CLIPBOARD_CLEAR_MS = 45_000;
+const CLIPBOARD_FOCUS_RETRY_MS = 120_000;
 
 /**
  * Clear only what we put there: if the human has since copied something else,
@@ -42,9 +43,13 @@ const CLIPBOARD_CLEAR_MS = 45_000;
  * declined, API absent) is treated as "do not clear": guessing wrong costs the
  * human a clipboard, guessing cautious costs nothing.
  */
-export function clearClipboardIfStill(expected: string, generation?: number): Promise<void> {
+export function clearClipboardIfStill(
+  expected: string,
+  generation?: number,
+  eligible: () => boolean = () => true,
+): Promise<void> {
   return ownedWrite(async () => {
-    if (generation !== undefined && generation !== writeGeneration) return;
+    if (!eligible() || (generation !== undefined && generation !== writeGeneration)) return;
     let current: string;
     try {
       const readText = navigator.clipboard?.readText;
@@ -53,8 +58,49 @@ export function clearClipboardIfStill(expected: string, generation?: number): Pr
     } catch {
       return;
     }
-    if (current === expected && (generation === undefined || generation === writeGeneration)) await nativeWrite("");
+    if (eligible() && current === expected && (generation === undefined || generation === writeGeneration)) await nativeWrite("");
   });
+}
+
+// Background tabs often cannot read the clipboard. Give the operator one
+// focused attempt within a bounded window, then retire every listener/timer.
+function scheduleClipboardClear(text: string, generation: number): void {
+  const deadline = Date.now() + CLIPBOARD_CLEAR_MS + CLIPBOARD_FOCUS_RETRY_MS;
+  let deadlineTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+  let listening = false;
+  let attempted = false;
+  const eligible = () => Date.now() < deadline && document.hasFocus() && document.visibilityState !== 'hidden';
+  const cleanup = () => {
+    if (deadlineTimer !== undefined) globalThis.clearTimeout(deadlineTimer);
+    if (listening) {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      listening = false;
+    }
+  };
+  const onFocus = () => {
+    if (Date.now() >= deadline) {
+      cleanup();
+      return;
+    }
+    if (attempted || !eligible()) return;
+    attempted = true;
+    cleanup();
+    // Check eligibility again when the serialized operation dispatches and
+    // after its async read. A queued/slow read cannot clear past the deadline.
+    void clearClipboardIfStill(text, generation, eligible);
+  };
+  globalThis.setTimeout(() => {
+    if (Date.now() >= deadline) return;
+    if (eligible()) {
+      onFocus();
+      return;
+    }
+    listening = true;
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    deadlineTimer = globalThis.setTimeout(cleanup, deadline - Date.now());
+  }, CLIPBOARD_CLEAR_MS);
 }
 
 /**
@@ -94,12 +140,10 @@ export async function writeExpiringClipboard(
     return "This browser refused clipboard access, so nothing was copied.";
   }
   if (audited) {
-    globalThis.setTimeout(() => {
-      if (document.hasFocus()) void clearClipboardIfStill(text, generation);
-    }, CLIPBOARD_CLEAR_MS);
+    scheduleClipboardClear(text, generation);
   }
   return audited
-    ? "Copied, and recorded as a disclosure. Cleared in 45s if this tab stays focused. The OS may keep clipboard history."
+    ? "Copied, and recorded as a disclosure. Attempts to clear after 45s. If unfocused, retries once on return within 2 minutes. Clipboard managers may keep this browser copy. On macOS or Windows, use hikyo values get KEY --reveal --clipboard to request exclusion from clipboard history."
     : "Copied. This value is not a secret, so no disclosure was recorded.";
 }
 import { notifyFailure } from './notifications.tsx';

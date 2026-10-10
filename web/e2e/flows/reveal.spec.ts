@@ -263,8 +263,10 @@ test.describe('reveal ceremonies', () => {
 
     const notice = page.getByRole('status').filter({ hasText: 'recorded as a disclosure' });
     await expect(notice).toBeVisible();
-    // The honest caveat, verbatim: The OS may keep clipboard history.
-    await expect(notice).toContainText('The OS may keep clipboard history');
+    await expect(notice).toContainText('Attempts to clear after 45s');
+    await expect(notice).toContainText('retries once on return within 2 minutes');
+    await expect(notice).toContainText('Clipboard managers may keep this browser copy');
+    await expect(notice).toContainText('hikyo values get KEY --reveal --clipboard');
     await expect(auditLines(page)).toHaveCount(1);
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('hunter2-development');
 

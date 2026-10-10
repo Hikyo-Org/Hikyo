@@ -8,6 +8,7 @@
 # flag into $GITHUB_ENV so the test in this job runs (and fails loud if the
 # target did not come up), while other jobs that never set the flag skip it.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-dynpg.XXXXXX")
 container="hikyo-dyn-tls-$$"

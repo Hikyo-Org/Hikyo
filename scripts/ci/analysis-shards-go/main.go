@@ -67,8 +67,8 @@ func main() {
 }
 
 func run(args []string, output io.Writer) error {
-	if len(args) == 0 || (args[0] != "race" && args[0] != "fuzz" && args[0] != "isolation") {
-		return errors.New("usage: analysis-shards race|fuzz|isolation --root DIR --shard N --shards N")
+	if len(args) == 0 || (args[0] != "race" && args[0] != "fuzz" && args[0] != "isolation" && args[0] != "isolation-race") {
+		return errors.New("usage: analysis-shards race|fuzz|isolation|isolation-race --root DIR --shard N --shards N")
 	}
 	kind := args[0]
 	flags := flag.NewFlagSet(kind, flag.ContinueOnError)
@@ -100,7 +100,9 @@ func run(args []string, output io.Writer) error {
 	case "fuzz":
 		return writeFuzzShard(output, packages, opts)
 	case "isolation":
-		return writeIsolationShard(output, packages, opts)
+		return writeIsolationShard(output, packages, opts, false)
+	case "isolation-race":
+		return writeIsolationShard(output, packages, opts, true)
 	default:
 		panic("unreachable analysis kind")
 	}
@@ -264,11 +266,18 @@ func planRace(packages []packageInfo, shardCount int) ([]raceShard, error) {
 // with returns the shard's totals after adding unit. It leaves the shared maps
 // alone, so probing a shard never changes it; the caller records a placement.
 func (s raceShard) with(unit raceUnit) raceShard {
+	seconds := unit.seconds
+	// Split targets share one invocation within each package on a shard.
+	// Charge startup once per package, including a whole package with no tests.
+	if _, exists := s.seconds[unit.pkg.ImportPath]; !exists {
+		seconds += raceProcessSetupSeconds
+	}
 	if raceSequentialSuites[unit.pkg.relativePath] {
-		s.sequential += unit.seconds
+		s.sequential += seconds
 	} else {
-		s.pool += unit.seconds
-		s.longest = max(s.longest, s.seconds[unit.pkg.ImportPath]+unit.seconds)
+		s.pool += seconds
+		setup := raceProcessSetupSeconds
+		s.longest = max(s.longest, s.seconds[unit.pkg.ImportPath]+unit.seconds+setup)
 	}
 	return s
 }
@@ -306,13 +315,13 @@ func writeFuzzShard(output io.Writer, packages []packageInfo, opts options) erro
 	return nil
 }
 
-func writeIsolationShard(output io.Writer, packages []packageInfo, opts options) error {
-	tests, err := discoverIsolationTests(packages)
+func writeIsolationShard(output io.Writer, packages []packageInfo, opts options, includeRaceTargets bool) error {
+	tests, err := discoverIsolationTargets(packages, includeRaceTargets)
 	if err != nil {
 		return err
 	}
 	if len(tests) == 0 {
-		return errors.New("no Test* target discovered in internal/isolation")
+		return errors.New("no runnable target discovered in internal/isolation")
 	}
 	for _, test := range tests {
 		if shardFor("isolation", test.name, opts.shardCount) != opts.shard {
@@ -325,21 +334,17 @@ func writeIsolationShard(output io.Writer, packages []packageInfo, opts options)
 	return nil
 }
 
-func discoverIsolationTests(packages []packageInfo) ([]isolationTest, error) {
+func discoverIsolationTargets(packages []packageInfo, includeRaceTargets bool) ([]isolationTest, error) {
 	for index := range packages {
 		if packages[index].relativePath == "internal/isolation" {
-			return discoverPackageTests(packages[index])
+			return discoverPackageTargets(packages[index], includeRaceTargets)
 		}
 	}
 	return nil, errors.New("internal/isolation package was not found")
 }
 
-// discoverPackageTests lists one package's top-level Test functions from its
-// source, so a shard plan never depends on running the package first.
-func discoverPackageTests(pkg packageInfo) ([]isolationTest, error) {
-	return discoverPackageTargets(pkg, false)
-}
-
+// discoverPackageTargets lists runnable top-level targets from source, so
+// planning never depends on executing the suite it is intended to partition.
 func discoverPackageTargets(pkg packageInfo, includeRaceTargets bool) ([]isolationTest, error) {
 	tests := make([]isolationTest, 0)
 	seen := make(map[string]string)
@@ -466,36 +471,40 @@ var raceSequentialSuites = map[string]bool{
 	"internal/service": true,
 }
 
-// racePackageSeconds holds each package's race duration on a CI runner, split
-// suites summed across shards; unlisted packages weigh one second. Regenerate
-// from the race shard logs of a green main run:
-//
-//	gh api --paginate '/repos/Hikyo-Org/Hikyo/actions/runs/RUN/jobs?per_page=100' --jq '.jobs[] | select(.name | test("race shard")) | .id' |
-//	  xargs -n 1 gh run view --repo Hikyo-Org/Hikyo --log --job |
-//	  awk '($(NF-2) == "ok" || $(NF-2) == "FAIL") && $NF ~ /^[0-9.]+s$/ { sub(".*/hikyo/", "", $(NF-1)); total[$(NF-1)] += $NF }
-//	    END { for (p in total) if (total[p] >= 5) printf "\t\"%s\": %d,\n", p, total[p] + 0.5 }' | sort
+// raceProcessSetupSeconds is a planning allowance for go test process startup,
+// cached compilation and linking outside the package's reported test duration.
+// It is deliberately an estimate, not a measured per-target duration. Hosted
+// JSON/wall timing artifacts distinguish these costs for future recalibration.
+const raceProcessSetupSeconds = 20.0
+
+// racePackageSeconds holds reported package race durations, summed across the
+// eight shards of green main run 37836518512 (2026-10-08). These are hosted
+// package measurements, not per-target timings. Local target proportions below
+// remain estimates until hosted target JSON timing artifacts are available.
+// Unlisted packages weigh one second plus process startup allowance.
 var racePackageSeconds = map[string]float64{
-	"api":                                 16,
-	"internal/app":                        1428,
-	"internal/cli":                        8,
-	"internal/conformance":                163,
-	"internal/crypto/backup":              23,
-	"internal/importer":                   17,
-	"internal/mcpserver":                  6,
-	"internal/operator":                   7,
-	"internal/releasetrust":               6,
-	"internal/selfupdate":                 10,
-	"internal/server":                     69,
-	"internal/service":                    1034,
-	"internal/store":                      704,
-	"internal/store/migrate":              84,
-	"internal/store/tx":                   19,
-	"internal/store/upgrade":              371,
-	"internal/upgradecustody":             195,
-	"internal/upgradegate":                608,
-	"scripts/release/assemble-upgrade":    124,
-	"scripts/release/embed-compatibility": 7,
-	"scripts/release/stable":              8,
+	"api":                              21,
+	"internal/app":                     2785,
+	"internal/boundary":                6,
+	"internal/conformance":             236,
+	"internal/crypto/backup":           23,
+	"internal/importer":                20,
+	"internal/mcpserver":               5,
+	"internal/oidcrp":                  14,
+	"internal/operator":                12,
+	"internal/releasetrust":            5,
+	"internal/selfupdate":              12,
+	"internal/server":                  72,
+	"internal/service":                 1536,
+	"internal/sshca":                   6,
+	"internal/store":                   2213,
+	"internal/store/migrate":           156,
+	"internal/store/tx":                39,
+	"internal/store/upgrade":           661,
+	"internal/upgradecustody":          213,
+	"internal/upgradegate":             1229,
+	"scripts/release/assemble-upgrade": 12,
+	"scripts/release/stable":           6,
 }
 
 // raceTargetSeconds names the suites split across shards by top-level target
