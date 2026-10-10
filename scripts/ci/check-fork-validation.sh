@@ -199,8 +199,10 @@ fi
 deadline=$(($(date +%s) + timeout_seconds))
 while :; do
 	check_current_pr
+	# Runs created in the same second can arrive in either API order. Match the
+	# reconciler's newest-ID selection so an older cancellation cannot win.
 	run=$(gh_read "repos/$GH_REPO/actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100" \
-		--jq "[.workflow_runs[] | select(.display_title == \"fork-ci #$PR_NUMBER\")][0] // empty | \"\\(.id) \\(.status) \\(.conclusion)\"") || fail 'cannot read validation runs' api-failure
+		--jq "[.workflow_runs[] | select(.display_title == \"fork-ci #$PR_NUMBER\")] | max_by(.id) // empty | \"\\(.id) \\(.status) \\(.conclusion)\"") || fail 'cannot read validation runs' api-failure
 	if [ -n "$run" ]; then
 		printf '%s\n' "$run" | grep -Eq '^[0-9]+ (queued|in_progress|completed|waiting|pending|requested) [a-z_]+$' ||
 			fail 'invalid validation run metadata' api-failure

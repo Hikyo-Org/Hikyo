@@ -8,7 +8,8 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
-const testEd25519JWKX = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+// RFC 8032 section 7.1, test vector 1 public key.
+const testEd25519JWKX = "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
 
 func TestParseKeySourceRejectsImpossibleCombinations(t *testing.T) {
 	valid := `{"keys":[{"kty":"OKP","crv":"Ed25519","x":"` + testEd25519JWKX + `","kid":"test","use":"sig"}]}`
@@ -75,5 +76,12 @@ func TestStaticKeySourcePreservesJWKSAdmissionPolicy(t *testing.T) {
 	tooLarge := `{"keys":[]}` + strings.Repeat(" ", MaxJWKSBytes)
 	if _, err := ParseKeySource(domain.JWKSStatic, &tooLarge); !errors.Is(err, ErrKeySource) {
 		t.Fatalf("oversize JWKS error = %v, want ErrKeySource", err)
+	}
+}
+
+func TestStaticKeySourceRejectsLowOrderEd25519Key(t *testing.T) {
+	raw := `{"keys":[{"kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","kid":"test","use":"sig"}]}`
+	if _, err := ParseKeySource(domain.JWKSStatic, &raw); !errors.Is(err, ErrKeySource) {
+		t.Fatalf("low-order Ed25519 JWKS error = %v, want ErrKeySource", err)
 	}
 }
