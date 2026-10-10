@@ -73,7 +73,7 @@ func skipAutomatic(repository string, pr pull, c comment, reason string) error {
 	if err != nil {
 		return err
 	}
-	if current.ID != c.ID || current.Body != c.Body {
+	if current.ID != c.ID || current.Body != c.Body || checked(current.Body, checkbox) {
 		return nil // A newer head or a maintainer request owns the comment now.
 	}
 	return updateComment(repository, current, commentBody(pr, request{head: pr.Head.SHA}, "Automatic benchmark **not run**: "+reason+". Manual requests remain subject to the budget."))
@@ -104,7 +104,7 @@ func automaticRequest(repository string, e controlEvent) (pull, comment, bool, e
 		return pull{}, comment{}, false, fmt.Errorf("automatic benchmark run identity changed")
 	}
 	pr, err := currentPull(repository, number)
-	if err != nil || pr.State != "open" || pr.Draft || pr.Head.SHA != r.Head {
+	if err != nil || pr.State != "open" || pr.Draft || pr.Head.SHA != r.Head || !strings.EqualFold(pr.Head.Repo.FullName, repository) {
 		return pr, comment{}, false, err
 	}
 	if err := prepare(repository, controlEvent{Number: number}); err != nil {
@@ -118,7 +118,7 @@ func automaticRequest(repository string, e controlEvent) (pull, comment, bool, e
 	if err != nil {
 		return pr, c, false, err
 	}
-	if identity.head != pr.Head.SHA || identity.run != 0 {
+	if identity.head != pr.Head.SHA || identity.run != 0 || checked(c.Body, checkbox) {
 		return pr, c, false, nil // Another request already claimed this head.
 	}
 	relevant, err := performanceChanges(repository, pr)

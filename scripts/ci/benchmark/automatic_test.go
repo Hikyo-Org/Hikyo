@@ -83,6 +83,28 @@ func TestAutomaticSkipPreservesNewHeadsAndMaintainerEdits(t *testing.T) {
 	}
 }
 
+func TestAutomaticSkipPreservesAlreadyPendingManualClaim(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	pr := pull{Number: 7, State: "open"}
+	pr.Head.SHA = head
+	c := testComment(t, head, request{head: head})
+	c.Body = strings.Replace(c.Body, "- [ ] Run benchmark", checkbox, 1)
+	log := fakeGH(t, map[string]string{
+		"repos/o/r/pulls/7":                        encode(t, pr),
+		"repos/o/r/issues/7/comments?per_page=100": encode(t, [][]comment{{c}}),
+	})
+	if err := skipAutomatic("o/r", pr, c, "budget exhausted"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(calls), "--method PATCH") {
+		t.Fatal("a matching pending manual claim must survive automatic skip")
+	}
+}
+
 func TestPerformanceChangesChecksAllPagesAndBothRenamePaths(t *testing.T) {
 	fakeGH(t, map[string]string{
 		"repos/o/r/pulls/7/files?per_page=100": `[[{"filename":"README.md"}],[{"filename":"docs/removed.txt","previous_filename":"internal/service/values.go"}]]`,
@@ -139,22 +161,40 @@ func TestForecastCountsFailedAttemptsAndExcludesOldRequestedPace(t *testing.T) {
 
 func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 	for _, test := range []struct {
-		name, file                            string
-		draft, stale, claimed, budgetExceeded bool
-		wantRun                               bool
+		name, file                                         string
+		draft, stale, claimed, budgetExceeded              bool
+		pendingManual, lateManual, fork, missingRepository bool
+		absentComment, staleComment                        bool
+		superseded                                         string
+		wantRun                                            bool
 	}{
-		{"runtime change", "internal/service/values.go", false, false, false, false, true},
-		{"web change", "web/src/routes/Matrix.tsx", false, false, false, false, true},
-		{"docs only", "README.md", false, false, false, false, false},
-		{"draft", "go.mod", true, false, false, false, false},
-		{"superseded head", "go.mod", false, true, false, false, false},
-		{"already requested", "go.mod", false, false, true, false, false},
-		{"projected usage exceeded", "go.mod", false, false, false, true, false},
+		{name: "runtime change", file: "internal/service/values.go", wantRun: true},
+		{name: "web change", file: "web/src/routes/Matrix.tsx", wantRun: true},
+		{name: "docs only", file: "README.md"},
+		{name: "draft", file: "go.mod", draft: true},
+		{name: "superseded head", file: "go.mod", stale: true},
+		{name: "already requested", file: "go.mod", claimed: true},
+		{name: "projected usage exceeded", file: "go.mod", budgetExceeded: true},
+		{name: "pending manual claim", file: "go.mod", pendingManual: true},
+		{name: "manual claim during budget collection", file: "go.mod", lateManual: true},
+		{name: "fork requires manual maintainer admission", file: "go.mod", fork: true},
+		{name: "missing head repository", file: "go.mod", missingRepository: true},
+		{name: "newer completed discovery", file: "go.mod", superseded: "completed"},
+		{name: "newer running discovery", file: "go.mod", superseded: "in_progress"},
+		{name: "automatic creates absent comment", file: "go.mod", absentComment: true, wantRun: true},
+		{name: "automatic refreshes stale comment", file: "go.mod", staleComment: true, wantRun: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			head := strings.Repeat("a", 40)
 			pr := pull{Number: 7, State: "open", Draft: test.draft, ChangedFiles: 1}
 			pr.Head.SHA = head
+			pr.Head.Repo.FullName = "o/r"
+			if test.fork {
+				pr.Head.Repo.FullName = "outside/r"
+			}
+			if test.missingRepository {
+				pr.Head.Repo.FullName = ""
+			}
 			if test.stale {
 				pr.Head.SHA = strings.Repeat("b", 40)
 			}
@@ -163,6 +203,13 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				identity.run, identity.attempt = 10, 2
 			}
 			c := testComment(t, head, identity)
+			if test.pendingManual {
+				c.Body = strings.Replace(c.Body, "- [ ] Run benchmark", checkbox, 1)
+			}
+			if test.staleComment {
+				oldHead := strings.Repeat("b", 40)
+				c = testComment(t, oldHead, request{head: oldHead, run: 8, attempt: 2})
+			}
 			r := benchmarkRun{ID: 10, Head: head, Title: "pr-benchmark #7", Event: "pull_request", Status: "completed", Conclusion: "success", Attempt: 1}
 			now := time.Now().UTC()
 			start := now.Add(-time.Minute)
@@ -192,6 +239,15 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				paid.StartedAt = &measuredStart
 				responses["repos/o/r/actions/runs/2/jobs?filter=all&per_page=100"] = encode(t, []map[string][]job{{"jobs": {paid}}})
 			}
+			if test.superseded != "" {
+				newer := r
+				newer.ID, newer.Status = 11, test.superseded
+				responses["repos/o/r/actions/workflows/pr-benchmark.yml/runs?event=pull_request&head_sha="+head+"&per_page=100"] = encode(t, []map[string][]benchmarkRun{{"workflow_runs": {r, newer}}})
+			}
+			if test.absentComment {
+				responses["repos/o/r/issues/7/comments?per_page=100"] = `[[]]`
+				responses["repos/o/r/issues/7/comments"] = `{}`
+			}
 			log := fakeGH(t, responses)
 			// The fake provider advances the run only after the controller writes
 			// its authorized attempt. This exercises discovery -> paid rerun -> report.
@@ -201,6 +257,13 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				t.Fatal(err)
 			}
 			transition := fmt.Sprintf("respond() {\n if [ \"$method\" = GET ] && [ \"$endpoint\" = 'repos/o/r/actions/runs/10' ] && [ -f '%s' ] && grep -q 'run=10 attempt=2' '%s'; then jq '.run_attempt=2' \"$1\"; return; fi\n", filepath.Join(filepath.Dir(log), "latest-body"), filepath.Join(filepath.Dir(log), "latest-body"))
+			if test.lateManual {
+				transition += fmt.Sprintf(" if [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && grep -q 'workflows/codspeed.yml/runs' '%s'; then jq '.[0][0].body |= sub(\"- \\\\[ \\\\] Run benchmark\"; \"- [x] Run benchmark\")' \"$1\"; return; fi\n", log)
+			}
+			if test.absentComment {
+				bodyFile := filepath.Join(filepath.Dir(log), "latest-body")
+				transition += fmt.Sprintf(" if [ \"$method\" = POST ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments' ]; then printf '%%s' \"$body\" >'%s'; fi\n if [ \"$method\" = GET ] && [ \"$endpoint\" = 'repos/o/r/issues/7/comments?per_page=100' ] && [ -f '%s' ]; then jq -n --rawfile body '%s' '[[{id:20,user:{id:41898282},body:$body}]]'; return; fi\n", bodyFile, bodyFile, bodyFile)
+			}
 			if err := os.WriteFile(gh, []byte(strings.Replace(string(script), "respond() {\n", transition, 1)), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -220,6 +283,12 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			}
 			if !test.wantRun && strings.Contains(string(calls), "--method POST") {
 				t.Fatal("ineligible PR must not trigger a run")
+			}
+			if (test.pendingManual || test.lateManual || test.superseded != "") && strings.Contains(string(calls), "--method PATCH") {
+				t.Fatal("pending manual claims and superseded discovery must not change status")
+			}
+			if test.absentComment && strings.Count(string(calls), "--method POST repos/o/r/issues/7/comments ") != 1 {
+				t.Fatal("automatic preparation and its recheck must create exactly one comment")
 			}
 		})
 	}

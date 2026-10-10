@@ -16,12 +16,18 @@ rerun is added to the merge queue by this change.
   request any current PR head using the existing **Run benchmark** checkbox.
 - Draft PRs are not admitted automatically. Marking a draft ready creates a
   discovery run, as do opening, reopening and updating a PR.
+- Automatic admission is limited to branches in this repository. Fork PRs
+  remain eligible for explicit maintainer requests under the same budget.
 - The trusted controller reacts only to successful first-attempt discovery
   completion. It validates the live run, current PR head, paginated changed
   files, and the benchmark workflows against `main` before requesting a rerun.
   Renames consider both filenames; incomplete file lists fail closed.
 - Stale heads and already-claimed requests do not start another automatic
   measurement. Admission rechecks state after reading usage.
+- A checked manual request owns the control comment and is preserved by
+  automatic admission. Superseded discovery runs exit without changing status.
+- Control-comment creation uses the same shared lease as automatic admission,
+  preventing duplicate comments from concurrent preparation.
 - Automatic, requested and daily measurements share `codspeed-walltime`
   serialization. The controller holds that lease until the paid rerun finishes.
 - PR code still executes in its original read-only `pull_request` context with
@@ -62,7 +68,8 @@ cover cold starts, short observation periods, actual exhaustion, complete-job
 reservation boundaries, failed attempts and old usage. Relevant race tests, Go vet, workflow
 lint, cache-policy and trusted-CI checks passed locally.
 
-This is a local implementation. It must land on `main` before the trusted
-controller can use it. Benchmark workflow changes must match `main` before
-their own PR can use the paid lane. No remote CI run, live automatic benchmark,
-provider upload, merge or deployment has been performed for this change.
+Delivery is tracked in [PR #879](https://github.com/Hikyo-Org/Hikyo/pull/879).
+It must land on `main` before the trusted controller can use it. Benchmark
+workflow changes must match `main` before their own PR can use the paid lane.
+Remote CI and provider review are in progress. Live automatic benchmark,
+provider upload, merge and deployment have not yet been verified.

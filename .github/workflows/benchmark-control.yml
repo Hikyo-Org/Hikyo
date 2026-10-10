@@ -68,7 +68,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
-      group: benchmark-comment-${{ github.event.pull_request.number }}
+      # Automatic admission may create the same comment before this job.
+      # Share its lease so there is exactly one creator and claims survive.
+      group: codspeed-walltime
       cancel-in-progress: false
       queue: max
     permissions:

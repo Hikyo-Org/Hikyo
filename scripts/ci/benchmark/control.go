@@ -22,7 +22,10 @@ type pull struct {
 	Draft        bool   `json:"draft"`
 	ChangedFiles int    `json:"changed_files"`
 	Head         struct {
-		SHA string `json:"sha"`
+		SHA  string `json:"sha"`
+		Repo struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
 	} `json:"head"`
 	Base struct {
 		SHA string `json:"sha"`
@@ -380,6 +383,9 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 		if err != nil || current.ID != c.ID || identity.head != pr.Head.SHA {
 			return reason
 		}
+		if automatic && (current.Body != c.Body || checked(current.Body, checkbox)) {
+			return reason // A pending manual request owns this comment.
+		}
 		body := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: "+reason.Error())
 		if err := updateComment(repository, current, body); err != nil {
 			return err
@@ -390,11 +396,11 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 		return decline(err)
 	}
 	run, err := findRun(repository, pr)
+	if automatic && run.ID != 0 && run.ID != e.WorkflowRun.ID {
+		return nil // A newer discovery for the same head owns admission now.
+	}
 	if err != nil {
 		return decline(err)
-	}
-	if automatic && run.ID != e.WorkflowRun.ID {
-		return decline(fmt.Errorf("automatic event is not the current PR benchmark discovery run"))
 	}
 	credit := !automatic && checked(c.Body, creditCheckbox)
 	if credit && os.Getenv("CODSPEED_CREDIT_CONFIRMED") != "true" {
@@ -421,6 +427,9 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	if _, _, stillRequested, err := check(repository, e); err != nil || !stillRequested {
 		if err != nil {
 			return err
+		}
+		if automatic {
+			return nil // A newer head or pending manual claim superseded admission.
 		}
 		return fmt.Errorf("benchmark request was withdrawn")
 	}
