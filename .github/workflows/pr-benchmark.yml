@@ -3,6 +3,7 @@ run-name: 'pr-benchmark #${{ github.event.pull_request.number }}'
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # This remains an unprivileged PR event when the trusted checkbox controller
 # reruns it. No comment writes, secrets, OIDC, or shared main-cache writes.

@@ -1,5 +1,9 @@
 # PR #863: Daily and requested PR wallclock benchmarks
 
+The [automatic PR admission update](codspeed-automatic-pr.md) adds selective PR
+runs and supersedes the separate 528/72-minute allowance described below. This
+document retains the original PR #863 implementation and review history.
+
 Hikyo runs CodSpeed walltime once daily on main, and on demand for a specific PR head from a bot comment. There is no paid run on every merge. The implementation runs the Go benchmark suite, including fixed publish, import, history and diff cases, plus a separate large-matrix browser check. It does not add an end-to-end load-test harness.
 
 ## Behavior

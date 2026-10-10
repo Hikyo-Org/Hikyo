@@ -17,10 +17,15 @@ const checkbox = "- [x] Run benchmark"
 const creditCheckbox = "- [x] Use confirmed credit"
 
 type pull struct {
-	Number int    `json:"number"`
-	State  string `json:"state"`
-	Head   struct {
-		SHA string `json:"sha"`
+	Number       int    `json:"number"`
+	State        string `json:"state"`
+	Draft        bool   `json:"draft"`
+	ChangedFiles int    `json:"changed_files"`
+	Head         struct {
+		SHA  string `json:"sha"`
+		Repo struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
 	} `json:"head"`
 	Base struct {
 		SHA string `json:"sha"`
@@ -156,7 +161,7 @@ func botComment(repository string, number int) (comment, error) {
 }
 
 func commentBody(pr pull, r request, status string) string {
-	return fmt.Sprintf("<!-- hikyo-benchmark head=%s run=%d attempt=%d -->\n### Performance: PR #%d\n\nHead `%s`.\n\n%s\n\n- [ ] Run benchmark\n- [ ] Use confirmed credit\n\nA maintainer can tick **Run benchmark** to run the Go suite with CodSpeed walltime reporting and the large-matrix browser check for this head. Go comparisons use the available daily main baseline on the same Graviton hardware. Browser checks run separately on GitHub-hosted Chromium and retain timing samples as run artifacts. This is optional and does not replace required CI. One walltime request runs at a time.\n\nNormal requests share the 600-minute allowance with the daily main run. Tick **Use confirmed credit** first to permit up to 156 extra minutes (about $5) over the last 32 days; account credit must be confirmed by an administrator.\n", r.head, r.run, r.attempt, pr.Number, r.head[:12], status)
+	return fmt.Sprintf("<!-- hikyo-benchmark head=%s run=%d attempt=%d -->\n### Performance: PR #%d\n\nHead `%s`.\n\n%s\n\n- [ ] Run benchmark\n- [ ] Use confirmed credit\n\nPerformance-relevant PR changes run automatically when projected usage fits the shared 600-minute allowance. A maintainer can also tick **Run benchmark** to run the Go suite with CodSpeed walltime reporting and the large-matrix browser check for this head. Go comparisons use the available daily main baseline on the same Graviton hardware. Browser checks run separately on GitHub-hosted Chromium and retain timing samples as run artifacts. This is optional and does not replace required CI. One walltime request runs at a time.\n\nAutomatic, daily and normal requested runs share a 600-minute rolling 32-day allowance. Automatic PR admission also projects recent requested usage plus daily coverage over 32 days. Tick **Use confirmed credit** first to permit up to 156 extra minutes (about $5) over the last 32 days; account credit must be confirmed by an administrator.\n", r.head, r.run, r.attempt, pr.Number, r.head[:12], status)
 }
 
 func updateComment(repository string, c comment, body string) error {
@@ -350,7 +355,15 @@ func checkWorkflow(repository string, pr pull) error {
 }
 
 func requestBenchmark(repository string, e controlEvent) error {
-	pr, c, requested, err := authorizedRequest(repository, e)
+	return runBenchmark(repository, e, false)
+}
+
+func runBenchmark(repository string, e controlEvent, automatic bool) error {
+	check := authorizedRequest
+	if automatic {
+		check = automaticRequest
+	}
+	pr, c, requested, err := check(repository, e)
 	if err != nil || !requested {
 		return err
 	}
@@ -370,6 +383,9 @@ func requestBenchmark(repository string, e controlEvent) error {
 		if err != nil || current.ID != c.ID || identity.head != pr.Head.SHA {
 			return reason
 		}
+		if automatic && (current.Body != c.Body || checked(current.Body, checkbox)) {
+			return reason // A pending manual request owns this comment.
+		}
 		body := commentBody(pr, request{head: pr.Head.SHA}, "Benchmark declined: "+reason.Error())
 		if err := updateComment(repository, current, body); err != nil {
 			return err
@@ -380,32 +396,48 @@ func requestBenchmark(repository string, e controlEvent) error {
 		return decline(err)
 	}
 	run, err := findRun(repository, pr)
+	if automatic && run.ID != 0 && run.ID != e.WorkflowRun.ID {
+		return nil // A newer discovery for the same head owns admission now.
+	}
 	if err != nil {
 		return decline(err)
 	}
-	credit := checked(c.Body, creditCheckbox)
+	credit := !automatic && checked(c.Body, creditCheckbox)
 	if credit && os.Getenv("CODSPEED_CREDIT_CONFIRMED") != "true" {
 		return decline(fmt.Errorf("CodSpeed credit has not been confirmed for this account"))
 	}
-	u, err := collect(repository, time.Now().UTC(), 0)
+	u, f, err := collectForecast(repository, time.Now().UTC(), 0)
 	if err != nil {
 		return decline(err)
 	}
 	allowed, reason := admit(u, "workflow_dispatch", credit)
+	if automatic {
+		allowed, reason = admitAutomatic(u, f)
+	}
 	if !allowed {
+		if automatic {
+			return skipAutomatic(repository, pr, c, reason)
+		}
 		return decline(fmt.Errorf("%s (daily %d min; requested %d min)", reason, u.automatic, u.manual))
 	}
 	r := request{head: pr.Head.SHA, run: run.ID, attempt: run.Attempt + 1}
 	link := fmt.Sprintf("https://github.com/%s/actions/runs/%d", repository, run.ID)
 	// Budget collection may take several API pages. Recheck the live request
 	// immediately before changing the comment or triggering the old PR run.
-	if _, _, stillRequested, err := authorizedRequest(repository, e); err != nil || !stillRequested {
+	if _, _, stillRequested, err := check(repository, e); err != nil || !stillRequested {
 		if err != nil {
 			return err
 		}
+		if automatic {
+			return nil // A newer head or pending manual claim superseded admission.
+		}
 		return fmt.Errorf("benchmark request was withdrawn")
 	}
-	if err := updateComment(repository, c, commentBody(pr, r, "Benchmark queued. [Follow the run]("+link+").")); err != nil {
+	status := "Benchmark queued. [Follow the run](" + link + ")."
+	if automatic {
+		status += " Automatic admission: " + reason + "."
+	}
+	if err := updateComment(repository, c, commentBody(pr, r, status)); err != nil {
 		return err
 	}
 	if err := writeAPI("POST", fmt.Sprintf("repos/%s/actions/runs/%d/rerun", repository, run.ID), ""); err != nil {
@@ -517,6 +549,11 @@ func Control(mode string) error {
 			return fmt.Errorf("benchmark reporting requires trusted workflow_run context")
 		}
 		return report(repository, e.WorkflowRun)
+	case "automatic":
+		if os.Getenv("GITHUB_EVENT_NAME") != "workflow_run" {
+			return fmt.Errorf("automatic benchmark admission requires trusted workflow_run context")
+		}
+		return runBenchmark(repository, e, true)
 	default:
 		return fmt.Errorf("unknown benchmark control mode %q", mode)
 	}
