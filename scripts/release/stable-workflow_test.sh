@@ -29,10 +29,12 @@ case "$*" in
     [ "$FIXTURE_MODE" != unsigned ] || verified=false
     [ "$FIXTURE_MODE" != wrong-commit ] || commit=3333333333333333333333333333333333333333
     jq -nc --argjson verified "$verified" --arg commit "$commit" '{tag:"v1.0.0",object:{type:"commit",sha:$commit},verification:{verified:$verified,reason:"valid"}}' ;;
-  'api repos/owner/repo/actions/workflows/ci.yml/runs?'*)
+  'api repos/owner/repo/actions/workflows/ci-main.yml/runs?'*)
     conclusion=success
     [ "$FIXTURE_MODE" != red-ci ] || conclusion=failure
-    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{workflow_runs:[{head_sha:$commit,head_branch:"main",event:"workflow_dispatch",path:".github/workflows/ci.yml",status:"completed",conclusion:$conclusion}]}' ;;
+    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{total_count:1,workflow_runs:[{id:1,head_sha:$commit,head_branch:"main",event:"workflow_dispatch",path:".github/workflows/ci-main.yml",status:"completed",conclusion:$conclusion}]}' ;;
+  'api repos/owner/repo/actions/workflows/ci.yml/runs?'*)
+    printf '{"total_count":0,"workflow_runs":[]}\n' ;;
   'api repos/owner/repo/actions/workflows/release.yml/runs?'*)
     conclusion=success
     [ "$FIXTURE_MODE" != red-release ] || conclusion=failure

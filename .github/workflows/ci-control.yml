@@ -27,6 +27,8 @@ jobs:
   validation:
     if: github.event_name == 'merge_group'
     uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
     permissions:
       actions: read
       contents: read

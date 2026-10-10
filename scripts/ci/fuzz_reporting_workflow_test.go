@@ -32,7 +32,7 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 	if err := trigger.Decode(&completed); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(completed.Workflows, []string{"trusted-ci", "ci", "nightly-release"}) || !reflect.DeepEqual(completed.Types, []string{"completed"}) {
+	if !reflect.DeepEqual(completed.Workflows, []string{"trusted-ci", "ci", "ci-main", "nightly-release"}) || !reflect.DeepEqual(completed.Types, []string{"completed"}) {
 		t.Fatal("reporter must receive completed manual, nightly, and existing PR validation")
 	}
 	job := reporter.Jobs["report-main"]
@@ -64,6 +64,7 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 	for _, source := range []struct {
 		name, path, event string
 	}{
+		{"ci-main", ".github/workflows/ci-main.yml", "workflow_dispatch"},
 		{"ci", ".github/workflows/ci.yml", "workflow_dispatch"},
 		{"ci", ".github/workflows/ci.yml", "push"},
 		{"nightly-release", ".github/workflows/nightly.yml", "schedule"},
@@ -84,7 +85,7 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 				case "pull-request":
 					metadata["event"] = "pull_request"
 				case "wrong-event":
-					if source.name == "ci" {
+					if source.name == "ci" || source.name == "ci-main" {
 						metadata["event"] = "schedule"
 					} else {
 						metadata["event"] = "workflow_dispatch"

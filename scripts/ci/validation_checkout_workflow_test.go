@@ -11,7 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Cache-writable main contexts must never select a PR-controlled checkout.
+// Each job independently binds its source before checkout, including the
+// always-running aggregate when planning or another dependency has failed.
 func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
 	if err != nil {
@@ -21,83 +22,100 @@ func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &ci); err != nil {
 		t.Fatal(err)
 	}
+	guard := ci.Jobs["changes"].Steps[0]
+	expectedEnv := map[string]string{
+		"SOURCE_REVISION":       "${{ inputs.revision }}",
+		"EVENT_REPOSITORY":      "${{ github.event.repository.full_name }}",
+		"EVENT_REPOSITORY_ID":   "${{ github.event.repository.id }}",
+		"PR_NUMBER":             "${{ github.event.pull_request.number }}",
+		"PR_HEAD_SHA":           "${{ github.event.pull_request.head.sha }}",
+		"PR_HEAD_REPOSITORY":    "${{ github.event.pull_request.head.repo.full_name }}",
+		"PR_HEAD_REPOSITORY_ID": "${{ github.event.pull_request.head.repo.id }}",
+		"PR_BASE_REPOSITORY":    "${{ github.event.pull_request.base.repo.full_name }}",
+		"PR_BASE_REPOSITORY_ID": "${{ github.event.pull_request.base.repo.id }}",
+		"MERGE_GROUP_SHA":       "${{ github.event.merge_group.head_sha }}",
+	}
+	if guard.Name != "Validate the immutable caller revision" || guard.Run == "" || guard.If != "" || !reflect.DeepEqual(guard.Env, expectedEnv) {
+		t.Fatal("pre-checkout authority must come only from the required input and authenticated GitHub metadata")
+	}
 	fullHistory := map[string]bool{"changes": true, "preflight": true, "client": true, "analysis_shards": true, "race_shard": true, "ci-required": true}
 	for name, job := range ci.Jobs {
 		if job.Uses != "" {
 			continue
 		}
-		var checkouts []mainValidationStep
-		var refusal mainValidationStep
-		for _, step := range job.Steps {
-			if strings.HasPrefix(step.Uses, "actions/checkout@") {
-				checkouts = append(checkouts, step)
-			}
-			if step.Name == "Refuse unsupported validation context" {
-				refusal = step
-			}
+		if len(job.Steps) < 2 || !reflect.DeepEqual(job.Steps[0], guard) {
+			t.Fatalf("%s must independently validate source before all other steps", name)
 		}
-		if len(checkouts) != 2 {
-			t.Fatalf("%s must separate PR and trusted-source checkouts, got %d", name, len(checkouts))
+		checkout := job.Steps[1]
+		if checkout.Name != "Check out the validated immutable revision" || checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || checkout.If != "" || checkout.With["ref"] != "${{ inputs.revision }}" || checkout.With["persist-credentials"] != "false" {
+			t.Fatalf("%s must check out only its validated immutable input without credentials", name)
 		}
-		pr, trusted := checkouts[0], checkouts[1]
-		if pr.If != "github.event_name == 'pull_request'" || pr.With["ref"] != "${{ github.event.pull_request.head.sha }}" || trusted.With["ref"] != "${{ github.sha }}" {
-			t.Fatalf("%s must keep exact PR and non-PR revisions separate", name)
+		if fullHistory[name] && checkout.With["fetch-depth"] != "0" {
+			t.Fatalf("%s must preserve full history", name)
 		}
-		prOptions, trustedOptions := make(map[string]string), make(map[string]string)
-		for key, value := range pr.With {
-			if key != "ref" {
-				prOptions[key] = value
+		for _, later := range job.Steps[2:] {
+			if strings.HasPrefix(later.Uses, "actions/checkout@") {
+				t.Fatalf("%s changes source after its validated checkout", name)
 			}
 		}
-		for key, value := range trusted.With {
-			if key != "ref" {
-				trustedOptions[key] = value
-			}
-		}
-		if !reflect.DeepEqual(prOptions, trustedOptions) || prOptions["persist-credentials"] != "false" || pr.Uses != trusted.Uses {
-			t.Fatalf("%s checkouts must preserve the same pinned action and credential/history options", name)
-		}
-		if fullHistory[name] && prOptions["fetch-depth"] != "0" {
-			t.Fatalf("%s must retain complete history", name)
-		}
-		if name == "changes" || name == "ci-required" {
-			if refusal.Run == "" || len(job.Steps) == 0 || job.Steps[0].Name != refusal.Name {
-				t.Fatalf("%s must refuse unsupported contexts before any checkout or execution", name)
-			}
-		}
-		for _, event := range []string{"pull_request", "pull_request_target", "merge_group", "workflow_dispatch", "schedule", "repository_dispatch", "push", "workflow_run"} {
-			for _, ref := range []string{"refs/heads/main", "refs/heads/feature"} {
-				t.Run(name+"/"+event+"/"+ref, func(t *testing.T) {
-					// Evaluate the actual YAML conditions with metadata in the
-					// environment, never interpolating an executable event value.
-					matches := func(condition string) bool {
-						t.Helper()
-						condition = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(condition), "${{"), "}}"))
-						condition = strings.NewReplacer("github.event_name", `"${FIXTURE_EVENT}"`, "github.ref", `"${FIXTURE_REF}"`).Replace(condition)
-						cmd := exec.Command("bash", "-e", "-c", "if [[ "+condition+" ]]; then exit 0; else exit 1; fi")
-						cmd.Env = append(os.Environ(), "FIXTURE_EVENT="+event, "FIXTURE_REF="+ref)
-						out, err := cmd.CombinedOutput()
-						if err != nil && len(out) > 0 {
-							t.Fatalf("invalid checkout condition: %v %s", err, out)
-						}
-						return err == nil
+	}
+	for _, event := range []string{"pull_request", "merge_group", "workflow_dispatch", "schedule", "repository_dispatch", "pull_request_target", "push", "workflow_run"} {
+		for _, ref := range []string{"refs/heads/main", "refs/heads/feature"} {
+			for _, mutation := range []string{"valid", "wrong-revision", "missing-revision", "mutable-ref", "uppercase-sha", "wrong-repository", "missing-repository-id", "wrong-base-repository", "wrong-base-id", "missing-head-repository", "missing-head-id", "missing-pr", "wrong-merge-sha"} {
+				t.Run(event+"/"+ref+"/"+mutation, func(t *testing.T) {
+					head, merge := strings.Repeat("a", 40), strings.Repeat("b", 40)
+					source := merge
+					if event == "pull_request" {
+						source = head
 					}
-					prRuns, trustedRuns := matches(pr.If), matches(trusted.If)
-					wantPR := event == "pull_request"
-					wantTrusted := event == "merge_group" || (ref == "refs/heads/main" && (event == "workflow_dispatch" || event == "schedule" || event == "repository_dispatch"))
-					if prRuns != wantPR || trustedRuns != wantTrusted || (prRuns && trustedRuns) {
-						t.Fatalf("checkout selection PR=%v trusted=%v; want PR=%v trusted=%v", prRuns, trustedRuns, wantPR, wantTrusted)
+					env := map[string]string{"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref, "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": source, "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "882", "PR_HEAD_SHA": head, "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10", "MERGE_GROUP_SHA": merge}
+					want := event == "pull_request" || event == "merge_group" || (ref == "refs/heads/main" && (event == "workflow_dispatch" || event == "schedule" || event == "repository_dispatch"))
+					switch mutation {
+					case "wrong-revision":
+						env["SOURCE_REVISION"] = strings.Repeat("c", 40)
+						want = false
+					case "missing-revision":
+						env["SOURCE_REVISION"] = ""
+						want = false
+					case "mutable-ref":
+						env["SOURCE_REVISION"] = "main"
+						want = false
+					case "uppercase-sha":
+						env["SOURCE_REVISION"] = strings.Repeat("A", 40)
+						want = false
+					case "wrong-repository":
+						env["EVENT_REPOSITORY"] = "other/Hikyo"
+						want = false
+					case "missing-repository-id":
+						env["EVENT_REPOSITORY_ID"] = ""
+						want = false
+					case "wrong-base-repository":
+						env["PR_BASE_REPOSITORY"] = "other/Hikyo"
+						want = want && event != "pull_request"
+					case "wrong-base-id":
+						env["PR_BASE_REPOSITORY_ID"] = "99"
+						want = want && event != "pull_request"
+					case "missing-head-repository":
+						env["PR_HEAD_REPOSITORY"] = ""
+						want = want && event != "pull_request"
+					case "missing-head-id":
+						env["PR_HEAD_REPOSITORY_ID"] = ""
+						want = want && event != "pull_request"
+					case "missing-pr":
+						env["PR_NUMBER"] = ""
+						want = want && event != "pull_request"
+					case "wrong-merge-sha":
+						env["MERGE_GROUP_SHA"] = head
+						want = want && event != "merge_group"
 					}
-					if refusal.Run != "" {
-						if matches(refusal.If) != (!wantPR && !wantTrusted) {
-							t.Fatal("unsupported-context refusal disagrees with selected checkout")
-						}
-						if !wantPR && !wantTrusted {
-							cmd := exec.Command("bash", "-e", "-c", refusal.Run)
-							if cmd.Run() == nil {
-								t.Fatal("unsupported-context refusal did not fail before execution")
-							}
-						}
+					cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard.Run)
+					cmd.Env = os.Environ()
+					for key, value := range env {
+						cmd.Env = append(cmd.Env, key+"="+value)
+					}
+					output, err := cmd.CombinedOutput()
+					if (err == nil) != want {
+						t.Fatalf("source guard allowed=%v, want %v: %v %s", err == nil, want, err, output)
 					}
 				})
 			}

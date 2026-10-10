@@ -25,6 +25,7 @@ type mainValidationWorkflow struct {
 	On   map[string]yaml.Node `yaml:"on"`
 	Jobs map[string]struct {
 		Uses        string               `yaml:"uses"`
+		With        map[string]string    `yaml:"with"`
 		If          string               `yaml:"if"`
 		Needs       yaml.Node            `yaml:"needs"`
 		Permissions map[string]string    `yaml:"permissions"`
@@ -45,17 +46,47 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		}
 		return got
 	}
-	ci, nightly, floor := read("ci.yml"), read("nightly.yml"), read("floor-bench.yml")
-	if len(ci.On) != 2 {
-		t.Fatal("CI may only be called for validation or manually dispatched")
+	ci, nightly, floor, manual := read("ci.yml"), read("nightly.yml"), read("floor-bench.yml"), read("ci-main.yml")
+	if len(ci.On) != 1 {
+		t.Fatal("CI must expose only its reusable immutable source contract")
 	}
-	for _, event := range []string{"workflow_call", "workflow_dispatch"} {
+	for _, event := range []string{"workflow_call"} {
 		if _, ok := ci.On[event]; !ok {
 			t.Fatalf("missing %s entrypoint", event)
 		}
 	}
+	var contract struct {
+		Inputs map[string]struct {
+			Required bool   `yaml:"required"`
+			Type     string `yaml:"type"`
+		} `yaml:"inputs"`
+	}
+	call := ci.On["workflow_call"]
+	if err := call.Decode(&contract); err != nil {
+		t.Fatal(err)
+	}
+	if len(contract.Inputs) != 1 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
+		t.Fatal("CI must require one immutable revision input")
+	}
+	if len(manual.On) != 1 {
+		t.Fatal("manual main wrapper must have only dispatch entrypoint")
+	}
+	dispatch, ok := manual.On["workflow_dispatch"]
+	if !ok || dispatch.Kind != yaml.ScalarNode || dispatch.Tag != "!!null" {
+		t.Fatal("manual wrapper must accept no source inputs")
+	}
+	manualValidation := manual.Jobs["validation"]
+	if len(manual.Jobs) != 1 || manualValidation.Uses != "./.github/workflows/ci.yml" || manualValidation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(manualValidation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(manualValidation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
+		t.Fatal("manual main wrapper must select only the exact main event SHA")
+	}
+	for _, caller := range []struct{ name, revision string }{{"ci-fork.yml", "${{ github.event.pull_request.head.sha }}"}, {"ci-control.yml", "${{ github.sha }}"}} {
+		job := read(caller.name).Jobs["validation"]
+		if !reflect.DeepEqual(job.With, map[string]string{"revision": caller.revision}) {
+			t.Fatalf("%s must explicitly bind source authority", caller.name)
+		}
+	}
 	validation := nightly.Jobs["validation"]
-	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "github.ref == 'refs/heads/main'" ||
+	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) ||
 		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
 		t.Fatal("nightly validation must use the unchanged read-only CI graph on main")
 	}

@@ -56,6 +56,8 @@ jobs:
     needs: vouch
     if: ${{ !cancelled() && (github.event.action != 'edited' || github.event.changes.base.ref.from != null) && (needs.vouch.result == 'success' || (needs.vouch.result == 'skipped' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.event.pull_request.head.sha }}
     permissions:
       actions: read
       contents: read

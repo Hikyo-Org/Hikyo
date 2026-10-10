@@ -8,9 +8,16 @@
 # writes. Actions and toolchains remain pinned.
 name: ci
 
+# Callers select the source: PR validation passes its authenticated head;
+# nightly and the input-free manual main wrapper pass github.sha.
+# Every job verifies the immutable input against that event before checkout.
 on:
-  workflow_dispatch:
   workflow_call:
+    inputs:
+      revision:
+        description: Exact immutable commit bound to the caller's GitHub event
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -30,25 +37,48 @@ jobs:
     outputs:
       plan: ${{ steps.classify.outputs.plan }}
     steps:
-      - name: Refuse unsupported validation context
-        if: >-
-          ${{ !(github.event_name == 'pull_request' || github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main')) }}
+      - &validate-revision
+        name: Validate the immutable caller revision
+        env:
+          SOURCE_REVISION: ${{ inputs.revision }}
+          EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+          EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+          PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        shell: bash
         run: |
-          echo 'Validation requires pull_request, merge_group, or trusted main context.' >&2
-          exit 1
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+          set -euo pipefail
+          [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Validation requires a full immutable revision.' >&2; exit 1; }
+          test "$EVENT_REPOSITORY" = "$GITHUB_REPOSITORY"
+          [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+              test "$SOURCE_REVISION" = "$PR_HEAD_SHA"
+              test "$PR_BASE_REPOSITORY" = "$GITHUB_REPOSITORY"
+              test "$PR_BASE_REPOSITORY_ID" = "$EVENT_REPOSITORY_ID"
+              [[ "$PR_HEAD_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+              [[ "$PR_HEAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+              ;;
+            merge_group)
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"
+              ;;
+            workflow_dispatch|schedule|repository_dispatch)
+              test "$GITHUB_REF" = refs/heads/main
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              ;;
+            *) echo 'Validation refuses this source context.' >&2; exit 1 ;;
+          esac
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       - name: Classify changed paths
@@ -88,18 +118,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).lint }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -157,18 +180,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['supply-chain-checks'] }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -262,7 +278,7 @@ jobs:
       - name: Changed-path classifier fixture
         run: ./scripts/ci/classify-changed-paths_test.sh
       - name: CI job registry and workflow bijection fixture
-        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench|TestStableSigningAndPublication|TestCoreValidationRunsAlongsideCrossPlatformProof|TestSharedGoCacheWorkflow|TestMainValidationWorkflowPolicy|TestMainFuzzReportingWorkflowPolicy|TestValidationCheckoutWorkflowPolicy)'
+        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench|TestStableSigningAndPublication|TestCoreValidationRunsAlongsideCrossPlatformProof|TestWebFlowMatrixWorkflow|TestPnpmCacheWorkflow|TestSharedGoCacheWorkflow|TestMainValidationWorkflowPolicy|TestMainFuzzReportingWorkflowPolicy|TestValidationCheckoutWorkflowPolicy)'
       - name: Chart check fixture
         run: ./scripts/ci/check-chart_test.sh
       - name: Trusted CI scripts fixture
@@ -328,18 +344,11 @@ jobs:
     # hung Go build or artifact transfer cannot stall the gate at the default 360.
     timeout-minutes: 20
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -366,19 +375,21 @@ jobs:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
-      # pnpm's content-addressed store, shared by both lockfiles (web and
-      # clients/ts). app-build is the SINGLE WRITER: it runs before the browser
-      # legs (which `needs` it) and warms the store they restore. A warm store
-      # turns every later `pnpm install --frozen-lockfile` from a network fetch
-      # into a local hardlink.
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      # One trusted main host writer publishes the content-addressed store.
+      # PRs and all other consumers restore prior main data; changed locks
+      # fetch missing packages while preserving frozen-lockfile verification.
       - name: Restore pnpm store
         id: pnpm-store
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'clients/ts/pnpm-lock.yaml') }}
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
           restore-keys: |
-            pnpm-store-v1-${{ runner.os }}-
+            pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
+
       - name: Verify and build the SPA
         run: ./scripts/ci/build-spa.sh --verify
       - name: Build the release-shaped app
@@ -408,7 +419,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.local/share/pnpm/store
+          path: .ci-cache/pnpm/store
           key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
 
   release-snapshot:
@@ -416,18 +427,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['release-snapshot'] }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -455,6 +459,16 @@ jobs:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      - name: Restore pnpm store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
+          restore-keys: |
+            pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
       # Keep this small build parallel with app-build. Serial reuse saves one
       # sub-second Vite build but delays all six GoReleaser targets behind the
       # native browser binary and frontend validation.
@@ -533,19 +547,11 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -646,19 +652,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).client }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
@@ -724,18 +722,11 @@ jobs:
       # dependencies are part of this digest-pinned multi-architecture image.
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
@@ -752,23 +743,32 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['compose-demo'] }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore shared test Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: |
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Install terminal automation
         run: sudo apt-get update && sudo apt-get install --yes expect
       - name: Require Docker Compose 2.30.0 or newer
@@ -820,33 +820,24 @@ jobs:
       matrix:
         project: [desktop, mobile]
         group: [1, 2, 3, 4]
-        # Balanced by measured desktop test time per spec (run 35883620401:
-        # members 107s, login 61s, reveal 49s, scanning 31s, settings 73s,
-        # workspace 63s, history 56s, account 120s, machine-access 130s,
-        # instance-admin 114s, shell 39s, matrix 197s). Every flow in
-        # e2e/registry.ts appears in exactly one group; the aggregator proves it.
+        # Balanced by both viewport timings from run 38063556913. These four
+        # complete spec groups retain every flow on desktop and mobile; their
+        # execution logs are checked together by web-closure.
         include:
           - group: 1
-            specs: e2e/flows/reveal.spec.ts e2e/flows/members.spec.ts e2e/flows/login.spec.ts e2e/flows/scanning.spec.ts
+            specs: e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts e2e/flows/scanning.spec.ts
           - group: 2
-            specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts e2e/flows/account.spec.ts
+            specs: e2e/flows/members.spec.ts e2e/flows/account.spec.ts e2e/flows/history.spec.ts
           - group: 3
-            specs: e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts
+            specs: e2e/flows/instance-admin.spec.ts e2e/flows/settings.spec.ts e2e/flows/workspace.spec.ts
           - group: 4
-            specs: e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts
+            specs: e2e/flows/machine-access.spec.ts e2e/flows/login.spec.ts e2e/flows/reveal.spec.ts
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Download the exact app build
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -861,16 +852,19 @@ jobs:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
 
-      # Restore the store app-build warmed. Restore only: app-build is the
-      # writer, so both viewport legs hardlink from it and never race a save.
+      # Restore prior trusted main Storybook dependencies into the workspace
+      # store. PR jobs read only and fetch any missing locked packages.
       - name: Restore pnpm store
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'clients/ts/pnpm-lock.yaml') }}
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
           restore-keys: |
-            pnpm-store-v1-${{ runner.os }}-
+            pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
 
       # The SPA consumes clients/ts generated sources through aliases, so the
       # generated Zod schemas resolve `zod` from clients/ts's own node_modules;
@@ -934,18 +928,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
@@ -980,24 +967,28 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     timeout-minutes: 15
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      - name: Restore pnpm store
+        id: pnpm-store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
+          restore-keys: |
+            pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
       # The SPA consumes clients/ts generated sources through aliases, so stories
       # that mount those components resolve deps from clients/ts's node_modules.
       - name: Install client package (generated sources' own deps)
@@ -1044,6 +1035,16 @@ jobs:
             [ -e "$png" ] || continue
             [ -f "storybook-static/design/$(basename "$png")" ] || { echo "missing storybook-static/design/$(basename "$png")"; exit 1; }
           done
+      # Containers choose gzip while hosted jobs choose zstd. One trusted
+      # Storybook writer owns this image's archive; browser legs restore it.
+      - name: Save Playwright pnpm store
+        if: >-
+          success() && steps.pnpm-store.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
 
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui
@@ -1058,18 +1059,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Download the exact app build
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1140,18 +1134,11 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1174,18 +1161,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1320,18 +1300,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1400,19 +1373,11 @@ jobs:
       race_shards: ${{ steps.plan.outputs.race_shards }}
       shards: ${{ steps.plan.outputs.shards }}
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -1489,18 +1454,11 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1575,19 +1533,11 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
@@ -1677,18 +1627,11 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1829,18 +1772,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['headline-guarantee'] }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1915,25 +1851,11 @@ jobs:
       - web-go
     runs-on: ubuntu-latest
     steps:
-      - name: Refuse unsupported validation context
-        if: >-
-          ${{ !(github.event_name == 'pull_request' || github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main')) }}
-        run: |
-          echo 'Validation requires pull_request, merge_group, or trusted main context.' >&2
-          exit 1
-      - name: Check out the exact PR head
-        if: github.event_name == 'pull_request'
+      - *validate-revision
+      - name: Check out the validated immutable revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check out the exact main or merge-group source
-        if: >-
-          ${{ github.event_name == 'merge_group' || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       # Preserve the reporter's single canonical artifact contract while allowing

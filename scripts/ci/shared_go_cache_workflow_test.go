@@ -39,10 +39,16 @@ func sharedGoCacheErrors(raw []byte) []error {
 	writers := 0
 	for name, job := range workflow.Jobs {
 		restoreIDs := make(map[string]bool)
-		setup, abi, modules := -1, -1, -1
+		setup, abi, modules, compiled, composeProof := -1, -1, -1, -1, -1
 		for i, step := range job.Steps {
+			if name == "compose-demo" && step.Run == "./scripts/compose-demo.sh" {
+				if composeProof >= 0 || step.If != "" {
+					problems = append(problems, fmt.Errorf("compose-demo: the actual delivery proof must run once unconditionally"))
+				}
+				composeProof = i
+			}
 			for _, line := range strings.Split(step.Run, "\n") {
-				if (name == "app-build" || name == "web-go" || name == "client" || name == "supply-chain-checks") && strings.Contains(line, "go test ") && !strings.Contains(line, "-count=1") && !strings.Contains(line, "go test -c ") {
+				if (name == "app-build" || name == "web-go" || name == "client" || name == "supply-chain-checks" || name == "compose-demo") && strings.Contains(line, "go test ") && !strings.Contains(line, "-count=1") && !strings.Contains(line, "go test -c ") {
 					problems = append(problems, fmt.Errorf("%s: cached consumers must execute Go tests with -count=1", name))
 				}
 			}
@@ -61,6 +67,7 @@ func sharedGoCacheErrors(raw []byte) []error {
 			if !strings.HasPrefix(step.Uses, "actions/cache/restore@") || !strings.HasPrefix(step.With["key"], "go-test-") {
 				continue
 			}
+			compiled = i
 			readers[name]++
 			if step.ID != "" {
 				restoreIDs[step.ID] = true
@@ -71,6 +78,9 @@ func sharedGoCacheErrors(raw []byte) []error {
 			if setup < 0 || abi < 0 || modules < 0 || setup >= i || abi >= i || modules >= i {
 				problems = append(problems, fmt.Errorf("%s: pinned Go setup, module restore and runner ABI must precede compiled cache restore", name))
 			}
+		}
+		if name == "compose-demo" && (composeProof < 0 || compiled < 0 || composeProof <= compiled) {
+			problems = append(problems, fmt.Errorf("compose-demo: compatible compiled cache restore must precede the fresh actual delivery proof"))
 		}
 		for _, step := range job.Steps {
 			if !strings.HasPrefix(step.Uses, "actions/cache/save@") {
@@ -89,7 +99,7 @@ func sharedGoCacheErrors(raw []byte) []error {
 			}
 		}
 	}
-	for _, name := range []string{"test_core", "app-build", "web-go", "supply-chain-checks", "client"} {
+	for _, name := range []string{"test_core", "app-build", "web-go", "supply-chain-checks", "client", "compose-demo"} {
 		if readers[name] != 1 {
 			problems = append(problems, fmt.Errorf("%s: want one shared compiled Go cache reader, got %d", name, readers[name]))
 		}
@@ -116,6 +126,15 @@ func TestSharedGoCacheWorkflow(t *testing.T) {
 	if !strings.Contains(string(client), "go test -count=1 -json") {
 		t.Fatal("client skew proof must execute fresh tests after restoring GOCACHE")
 	}
+	compose, err := os.ReadFile("../compose-demo.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, proof := range []string{`go build -o "$binary" ./cmd/hikyo`, `docker compose --project-directory "$project_dir" up --abort-on-container-exit`} {
+		if !strings.Contains(string(compose), proof) {
+			t.Fatalf("Compose must retain its fresh source build and actual delivery proof: %s", proof)
+		}
+	}
 }
 
 func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
@@ -123,13 +142,16 @@ func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"missing writer", "missing consumer", "orphan family", "different path", "missing ABI", "missing tool lock", "PR writer", "OR bypass", "duplicate writer", "dangling writer", "restore before setup", "replayed test result"} {
+	for _, name := range []string{"missing writer", "missing consumer", "orphan family", "different path", "missing ABI", "missing tool lock", "PR writer", "OR bypass", "duplicate writer", "dangling writer", "restore before setup", "replayed test result", "missing compose cache", "compose before cache", "missing compose proof", "conditional compose proof"} {
 		t.Run(name, func(t *testing.T) {
 			var workflow sharedGoCacheWorkflow
 			if err := yaml.Unmarshal(raw, &workflow); err != nil {
 				t.Fatal(err)
 			}
 			jobName := "app-build"
+			if strings.Contains(name, "compose") {
+				jobName = "compose-demo"
+			}
 			if name == "missing writer" || name == "PR writer" || name == "OR bypass" || name == "duplicate writer" || name == "dangling writer" {
 				jobName = "test_core"
 			}
@@ -138,6 +160,19 @@ func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
 			}
 			job := workflow.Jobs[jobName]
 			for i, step := range job.Steps {
+				if strings.Contains(name, "compose") && step.Run == "./scripts/compose-demo.sh" {
+					switch name {
+					case "compose before cache":
+						job.Steps = append([]sharedGoCacheStep{step}, append(job.Steps[:i], job.Steps[i+1:]...)...)
+					case "missing compose proof":
+						job.Steps[i].Run = "true"
+					case "conditional compose proof":
+						job.Steps[i].If = "steps.compiled-cache.outputs.cache-hit != 'true'"
+					}
+					if name != "missing compose cache" {
+						break
+					}
+				}
 				if name == "replayed test result" && strings.Contains(step.Run, "go test -count=1 ./scripts/release") {
 					job.Steps[i].Run = strings.ReplaceAll(step.Run, "-count=1 ", "")
 					break
@@ -162,11 +197,11 @@ func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
 				if !reader {
 					continue
 				}
-				if jobName == "test_core" || name == "replayed test result" {
+				if jobName == "test_core" || name == "replayed test result" || (strings.Contains(name, "compose") && name != "missing compose cache") {
 					continue
 				}
 				switch name {
-				case "missing consumer":
+				case "missing consumer", "missing compose cache":
 					job.Steps = append(job.Steps[:i], job.Steps[i+1:]...)
 				case "orphan family":
 					job.Steps[i].With["key"] = strings.ReplaceAll(step.With["key"], "go-test-v2", "go-web-v2")
