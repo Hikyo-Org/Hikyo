@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.30
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.0
 	github.com/aws/smithy-go v1.27.4
-	github.com/beevik/etree v1.7.1
+	github.com/beevik/etree v1.8.1
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/descope/virtualwebauthn v1.0.5
