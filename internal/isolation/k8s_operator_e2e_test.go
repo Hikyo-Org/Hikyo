@@ -232,11 +232,15 @@ func testRotateTokenKey(t *testing.T, restCfg *rest.Config, sch *runtime.Scheme)
 	e.createBootstrapSecret("boot-rot", cred.Value, instanceName, true)
 	e.createPauseDeployment("rotapp", "rot-secret")
 
-	r := e.reconciler()
+	race := &workloadStatusRaceClient{Client: e.cl, t: t}
+	r := e.reconcilerWith(race)
 	e.createCR(crSpec{name: "cr-rot", target: "rot-secret", secretRef: "boot-rot", mapping: allFourMapping()})
 
 	// #1: full delivery, cursor recorded, workload patched.
 	must(t, e.reconcile(r, "cr-rot"))
+	if race.workloadPatches < 2 || !race.injected {
+		t.Fatalf("status-update race: injected=%v, workload patch attempts=%d, want a retry", race.injected, race.workloadPatches)
+	}
 	requireCondition(t, e.getCR("cr-rot"), hikyov1.ConditionSynced, metav1.ConditionTrue, hikyov1.ReasonDelivered)
 	e.waitDeploymentSettled("rotapp")
 
@@ -291,6 +295,44 @@ func testRotateTokenKey(t *testing.T, restCfg *rest.Config, sch *runtime.Scheme)
 	if after := e.getDeployment("rotapp").Spec.Template; !apiequality.Semantic.DeepEqual(*baselineTemplate, after) {
 		t.Fatalf("PodTemplateSpec changed after rotate:\n  before: %+v\n  after:  %+v", *baselineTemplate, after)
 	}
+}
+
+// workloadStatusRaceClient injects a real controller-style status write between
+// the authoritative workload read and the first patch. JSON Patch tests of
+// resourceVersion fail with Invalid here, so this locks down the API behavior
+// that the fake client cannot reproduce.
+type workloadStatusRaceClient struct {
+	client.Client
+	t               *testing.T
+	injected        bool
+	workloadPatches int
+}
+
+func (c *workloadStatusRaceClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	deployment, ok := obj.(*appsv1.Deployment)
+	if !ok {
+		return c.Client.Patch(ctx, obj, patch, opts...)
+	}
+	c.workloadPatches++
+	if !c.injected {
+		fresh := &appsv1.Deployment{}
+		if err := c.Client.Get(ctx, client.ObjectKeyFromObject(deployment), fresh); err != nil {
+			return err
+		}
+		base := fresh.DeepCopy()
+		fresh.Status.Conditions = append(fresh.Status.Conditions, appsv1.DeploymentCondition{
+			Type: "RaceProbe", Status: corev1.ConditionTrue, Reason: "ConcurrentStatusWrite",
+		})
+		if err := c.Client.Status().Patch(ctx, fresh, client.MergeFrom(base)); err != nil {
+			return err
+		}
+		c.injected = true
+	}
+	err := c.Client.Patch(ctx, obj, patch, opts...)
+	if err != nil {
+		c.t.Logf("workload patch after concurrent status write: %v", err)
+	}
+	return err
 }
 
 // countOp counts recordingClient op labels of a given kind.

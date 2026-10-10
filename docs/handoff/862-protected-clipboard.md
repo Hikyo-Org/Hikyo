@@ -1,0 +1,62 @@
+# Issue 862: protected clipboard copy
+
+Issue: https://github.com/Hikyo-Org/Hikyo/issues/862
+PR: https://github.com/Hikyo-Org/Hikyo/pull/867
+
+## Behavior
+
+Run `hikyo values get KEY --reveal --clipboard --env ENVIRONMENT`, adding
+`--instance`, `--org`, and `--project` unless selected in the CLI context.
+The command uses the existing reveal authorization, audit, and reauthentication
+ceremony. It copies the exact value without printing plaintext. Conflicting
+output destinations and unsupported platforms are refused before disclosure.
+Write errors never fall back to printing plaintext.
+
+macOS uses AppKit through a fixed JXA script with the value on stdin. One
+pasteboard item contains Unicode text, `org.nspasteboard.ConcealedType`, and
+`org.nspasteboard.TransientType`. Windows uses native Win32 APIs, a real owner
+window, and these formats before Unicode text:
+`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory`,
+and `CanUploadToCloudClipboard`. Builds support `CGO_ENABLED=0`.
+
+Browser secret copies schedule a best-effort clear after 45 seconds. If the
+page is unfocused, it waits for focus or visibility restoration for at most
+two additional minutes and attempts once if focus returns before the deadline. An absolute deadline is checked
+before reading and before writing. Content and app-generation checks protect
+other clipboard contents and newer app copies, including identical text.
+Denied reads or writes stop the attempt without repeating permission prompts.
+Non-secret configuration copies do not expire.
+
+## Limits
+
+Clipboard-history exclusions depend on OS and clipboard-manager cooperation.
+They do not remove earlier copies from history. Native copies remain available
+to paste until replaced. Browser expiry is best effort and cannot distinguish
+a newer external copy of identical text. Linux and other unsupported native
+platforms fail closed.
+
+## Validation and review
+
+- Web typecheck, lint, build, all 1,522 unit tests, and the real secret/config
+  copy scenario on desktop and mobile passed during implementation and repair.
+- Full CLI tests passed. The macOS native test verifies text and both markers
+  on a unique private pasteboard, preserving the user's general clipboard.
+- Go build, vet, module verification, Windows cross-build/vet, and Linux
+  CGO-free CLI/UI binary vulnerability scans passed during CI repair.
+- The initial unsharded Go suite reached its existing ten-minute app/isolation
+  package timeout in SQLite migration fixtures; the active tests passed
+  independently. No test assertion or timeout was weakened.
+- Main was synchronized after PR 865 merged. Go 1.27.2, x/net 0.60.0, and
+  x/tools 0.50.0 are retained; obsolete checksums were removed by module tidy.
+- Windows review follow-up prepares formats and transferable buffers before
+  replacing clipboard contents and distinguishes incomplete cleanup from a
+  definite refusal. Portable fault tests and a native Windows custody test
+  cover the publication and cleanup paths. The native test runs on the
+  existing disposable Windows CI runner; normal local tests leave the user's
+  clipboard untouched unless explicitly opted in. Portable failure tests,
+  full CLI tests, Windows build/vet, and test cross-compilation passed locally.
+  Actual native Windows execution is pending the new CI run.
+
+Current-head remote CI must pass before readiness is established. Optional
+benchmark requests and extra-credit spending remain unrequested. Merge,
+release, and deployment require separate authorization.
