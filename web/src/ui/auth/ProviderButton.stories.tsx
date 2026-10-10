@@ -1,3 +1,4 @@
+import { interactionOnce } from '../../../.storybook/interactionCoverage.ts';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
@@ -5,6 +6,8 @@ import { contoso, corp, github, google } from './fixtures.ts';
 import { ProviderButton } from './ProviderButton.tsx';
 
 const meta = {
+  title: 'Design system/Auth/ProviderButton',
+  id: 'ui-auth-providerbutton',
   component: ProviderButton,
   tags: ['ai-generated'],
   args: { provider: google, intent: 'sign-in', busy: false, disabled: false, lastUsed: false, onClick: fn() },
@@ -59,8 +62,11 @@ export const LastUsed: Story = { args: { provider: github, lastUsed: true } };
 export const Disabled: Story = { args: { disabled: true } };
 
 export const FiresOnClick: Story = {
-  play: async ({ canvas, args }) => {
+  tags: ['interaction-once'],
+  play: interactionOnce('ui-auth-providerbutton--fires-on-click', async ({ canvas, args }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Continue with Google' }));
     await expect(args.onClick).toHaveBeenCalledOnce();
-  },
+  }, async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+  }),
 };

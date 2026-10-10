@@ -7,6 +7,9 @@ import { PinReleaseOutcome } from './HistoryDrawer.tsx';
 // the server's retention consequence decides the second half. One story per
 // consequence, the locked taxonomy.
 const meta = {
+  parameters: { docs: { description: { component: "The history drawer confirmation after an environment revision pin is released. The server reports whether values remain retained, become eligible for collection, or had already been collected before the locked release completed." } } },
+  title: 'Features/Values/PinReleaseOutcome',
+  id: 'routes-pinreleaseoutcome',
   component: PinReleaseOutcome,
   tags: ['ai-generated'],
   args: { revision: 9n },

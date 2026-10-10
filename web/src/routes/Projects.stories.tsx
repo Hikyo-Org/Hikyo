@@ -33,6 +33,8 @@ const populated = {
 } satisfies z.input<typeof zProjectList>;
 
 const meta = {
+  title: 'Pages/Projects',
+  id: 'routes-projects',
   component: Projects,
   tags: ['ai-generated'],
   parameters: {

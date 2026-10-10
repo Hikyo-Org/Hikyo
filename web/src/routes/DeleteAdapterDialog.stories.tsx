@@ -18,6 +18,8 @@ const adapter: Adapter = {
 };
 
 const meta = {
+  title: 'Features/Adapters/DeleteAdapterDialog',
+  id: 'routes-deleteadapterdialog',
   component: DeleteAdapterDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

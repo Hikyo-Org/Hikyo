@@ -15,5 +15,5 @@ import type { Parameters } from '@storybook/react-vite';
 //   inline on Docs, so forgetting this spread fails loud rather than silently
 //   cross-wiring the examples.
 export const topLayerDocs = {
-  docs: { story: { inline: false, height: '720px' } },
+  docs: { story: { inline: false, height: '720px', autoplay: false } },
 } satisfies Parameters;

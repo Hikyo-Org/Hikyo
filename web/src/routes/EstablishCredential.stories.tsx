@@ -46,6 +46,8 @@ async function establishWith(canvas: StoryContext['canvas']) {
 }
 
 const meta = {
+  title: 'Pages/EstablishCredential',
+  id: 'routes-establishcredential',
   component: EstablishCredential,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: app() },

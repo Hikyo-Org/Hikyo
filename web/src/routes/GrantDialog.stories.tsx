@@ -69,6 +69,8 @@ const scope: readonly MachineEnvScope[] = [
 ];
 
 const meta = {
+  title: 'Features/Machine access/GrantDialog',
+  id: 'routes-grantdialog',
   component: GrantDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: { responses: [{ url: KEYS_URL, body: catalogue }] } },

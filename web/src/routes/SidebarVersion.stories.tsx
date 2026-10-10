@@ -6,6 +6,8 @@ import { SidebarVersion } from './Shell.tsx';
 type Props = Parameters<typeof SidebarVersion>[0];
 
 const meta = {
+  title: 'Shared/SidebarVersion',
+  id: 'routes-sidebarversion',
   component: SidebarVersion,
   tags: ['ai-generated'],
 } satisfies Meta<typeof SidebarVersion>;

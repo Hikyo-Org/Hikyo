@@ -1,3 +1,4 @@
+import { interactionOnce } from '../../../.storybook/interactionCoverage.ts';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
@@ -22,6 +23,8 @@ const links = (
 );
 
 const meta = {
+  title: 'Design system/Auth/LoginForm',
+  id: 'ui-auth-loginform',
   component: LoginForm,
   tags: ['ai-generated'],
   args: {
@@ -213,10 +216,14 @@ export const SignUpBackLinks: Story = {
 /** A provider row on the sign-in door starts at once, with intent sign-in. */
 export const ProviderStartsFromStepOne: Story = {
   args: { providers: [google, corp] },
-  play: async ({ canvas, args }) => {
+  tags: ['interaction-once'],
+  play: interactionOnce('ui-auth-loginform--provider-starts-from-step-one', async ({ canvas, args }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Continue with Google' }));
     await expect(args.onProvider).toHaveBeenCalledWith({ kind: google.kind, slug: google.slug }, 'sign-in');
-  },
+  }, async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+  }),
 };
 
 export const SubmitsAndClearsPassword: Story = {

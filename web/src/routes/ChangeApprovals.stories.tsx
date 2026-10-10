@@ -94,9 +94,11 @@ const path = '/orgs/acme/projects/app/approvals';
 const routePath = '/orgs/:org/projects/:project/approvals';
 
 const meta = {
+  title: 'Pages/ChangeApprovals',
+  id: 'routes-changeapprovals',
   component: ChangeApprovals,
   tags: ['ai-generated'],
-  parameters: { ...topLayerDocs, app: { auth: true, path, routePath, responses: [] } },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Environment change-approval policies and their approver sets. The real screen distinguishes pending, empty, populated and failed reads instead of treating an unread policy list as empty." } },  app: { auth: true, path, routePath, responses: [] } },
 } satisfies Meta<typeof ChangeApprovals>;
 
 export default meta;

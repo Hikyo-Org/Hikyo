@@ -1,0 +1,7 @@
+/* Keep generated prop controls scrollable without widening the Docs page.
+ * The wrapper is selected by its owned table, not Storybook's generated hashes.
+ * Table layout and control widths stay intact at narrow viewports. */
+.sbdocs-content div:has(> .docblock-argstable) {
+  max-width: 100%;
+  overflow-x: auto;
+}

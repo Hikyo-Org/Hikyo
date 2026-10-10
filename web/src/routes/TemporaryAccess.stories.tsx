@@ -67,6 +67,8 @@ const path = '/orgs/acme/projects/app/temporary-access';
 const routePath = '/orgs/:org/projects/:project/temporary-access';
 
 const meta = {
+  title: 'Pages/TemporaryAccess',
+  id: 'routes-temporaryaccess',
   component: TemporaryAccess,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: { auth: true, path, routePath, responses: [] } },

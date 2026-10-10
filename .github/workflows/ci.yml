@@ -871,6 +871,14 @@ jobs:
       - name: Storybook production build
         working-directory: web
         run: pnpm exec storybook build
+      - name: Every source story module has generated Docs
+        working-directory: web
+        run: pnpm run check:storybook-docs
+      # Central switching/lifetime contracts use the immutable build. Both
+      # complete palette/a11y suites above remain required.
+      - name: Storybook theme switching and Docs lifetimes
+        working-directory: web
+        run: pnpm run test-storybook:theme
       - name: Every linked design image ships in the static build
         working-directory: web
         run: |

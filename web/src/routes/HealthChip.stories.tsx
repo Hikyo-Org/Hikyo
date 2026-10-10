@@ -40,11 +40,13 @@ const baseTarget: AdapterTarget = {
 // into an args table ("Do not know how to serialize a BigInt"), so the status
 // is the arg and the fixture is built in render.
 const meta = {
+  title: 'Features/Adapters/HealthChip',
+  id: 'routes-healthchip',
   component: HealthChip,
   tags: ['ai-generated'],
   args: { target: baseTarget },
   argTypes: { target: { control: false, table: { disable: true } } },
-  parameters: { docs: { source: { type: 'code' } }, controls: { disable: true } },
+  parameters: { docs: { description: { component: 'Compact adapter-target synchronization status. A named health state and optional drift-attention text accompany the indicator so status is conveyed by text as well as colour.' }, source: { type: 'code' } }, controls: { disable: true } },
 } satisfies Meta<typeof HealthChip>;
 
 export default meta;

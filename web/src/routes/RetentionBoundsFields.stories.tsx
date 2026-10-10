@@ -4,6 +4,8 @@ import { expect, fn } from 'storybook/test';
 import { RetentionBoundsFields } from './RetentionBoundsFields.tsx';
 
 const meta = {
+  title: 'Shared/RetentionBoundsFields',
+  id: 'routes-retentionboundsfields',
   component: RetentionBoundsFields,
   tags: ['ai-generated'],
   args: {

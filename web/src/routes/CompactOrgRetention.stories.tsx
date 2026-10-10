@@ -9,6 +9,9 @@ import { CompactOrgRetention } from './OrgSettings.tsx';
 const policy: RetentionPolicy = { mode: 'keep-if-either', max_age_seconds: 7_776_000, last_revisions: 10 };
 
 const meta = {
+  parameters: { docs: { description: { component: "Organisation revision-retention defaults within the supported bounds. The compact editor preserves the exact configured value and reports when inherited or irregular values need explicit operator action." } } },
+  title: 'Shared/CompactOrgRetention',
+  id: 'routes-compactorgretention',
   component: CompactOrgRetention,
   tags: ['ai-generated'],
   args: { policy, busy: false, onSave: fn() },

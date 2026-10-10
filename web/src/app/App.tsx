@@ -170,7 +170,9 @@ const sessionChromelessSurfaces = SURFACES.filter(
  * transitions render no chrome, so an old session cannot keep painting while
  * its replacement is being bound to a fresh cache.
  */
-export function App() {
+// Router-independent policy tree: route stories use this exact registry and
+// gate under MemoryRouter; production owns BrowserRouter below.
+export function AppRoutes() {
   const auth = useAuth();
 
   if (auth.failure !== null) {
@@ -199,7 +201,6 @@ export function App() {
   }
 
   return <>
-    <BrowserRouter>
       {live === null ? (
         <Routes>
           {anonymousSurfaces.map((surface) => (
@@ -233,7 +234,10 @@ export function App() {
           </Route>
         </Routes>
       )}
-    </BrowserRouter>
     <ToastViewport />
   </>;
+}
+
+export function App() {
+  return <BrowserRouter><AppRoutes /></BrowserRouter>;
 }

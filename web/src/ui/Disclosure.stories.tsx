@@ -4,6 +4,8 @@ import { expect, userEvent } from 'storybook/test';
 import { Disclosure } from './Disclosure.tsx';
 
 const meta = {
+  title: 'Design system/Disclosure',
+  id: 'ui-disclosure',
   component: Disclosure,
   tags: ['ai-generated'],
   args: {

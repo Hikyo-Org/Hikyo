@@ -28,6 +28,8 @@ function OnceSignedIn({ children }: { children: ReactNode }) {
 }
 
 const meta = {
+  title: 'Pages/EnrolmentGate',
+  id: 'routes-enrolmentgate',
   component: EnrolmentGate,
   tags: ['ai-generated'],
   decorators: [(Story) => <OnceSignedIn><Story /></OnceSignedIn>],
