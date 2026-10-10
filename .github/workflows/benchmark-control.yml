@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   report:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.run_attempt > 1
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -36,6 +36,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: go run ./scripts/ci/pr-benchmark-control report
+
+  automatic:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: codspeed-walltime
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Admit performance-relevant PR changes within projected usage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: go run ./scripts/ci/pr-benchmark-control automatic
 
   comment:
     if: github.event_name == 'pull_request_target'
