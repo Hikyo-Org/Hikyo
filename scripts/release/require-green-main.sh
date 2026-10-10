@@ -20,12 +20,15 @@ if ! printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
 fi
 
 runs=$($GH_BIN api \
-	"repos/$repository/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=$commit&per_page=1")
+	"repos/$repository/actions/workflows/ci.yml/runs?branch=main&head_sha=$commit&per_page=1")
 if ! printf '%s\n' "$runs" | jq -e --arg commit "$commit" '
 	.workflow_runs | type == "array" and length == 1 and
-	.[0].head_sha == $commit and .[0].conclusion == "success"
+	.[0].head_sha == $commit and .[0].head_branch == "main" and
+	(.[0].event == "workflow_dispatch" or .[0].event == "push") and
+	.[0].path == ".github/workflows/ci.yml" and
+	.[0].status == "completed" and .[0].conclusion == "success"
 ' >/dev/null; then
-	printf 'green main: exact commit %s has no successful main CI run\n' "$commit" >&2
+	printf 'green main: exact commit %s needs successful full main CI; run gh workflow run ci.yml --ref main\n' "$commit" >&2
 	exit 1
 fi
 

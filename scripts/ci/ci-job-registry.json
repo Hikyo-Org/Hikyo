@@ -122,7 +122,7 @@
       "required_gate": "indirect",
       "plan_jobs": ["test", "race", "fuzz"]
     },
-    "scan-xplat": {"required_gate": "indirect", "plan_jobs": ["test"]},
+    "scan-xplat": {"required_gate": "planned", "plan_jobs": ["test"]},
     "test_core": {"required_gate": "planned", "plan_jobs": ["test"]},
     "isolation_shard": {
       "required_gate": "planned",

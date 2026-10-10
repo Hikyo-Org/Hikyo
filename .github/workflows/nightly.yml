@@ -21,7 +21,15 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  validation:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      actions: read
+      contents: read
+
   publish:
+    needs: validation
     if: github.ref == 'refs/heads/main'
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.
@@ -58,10 +66,10 @@ jobs:
           printf 'commit=%s\n' "$commit" >>"$GITHUB_OUTPUT"
       - name: Require exact-head green main CI
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          COMMIT: ${{ steps.source.outputs.commit }}
-        run: ./scripts/release/require-green-main.sh "$REPOSITORY" "$COMMIT"
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        # The reusable graph validates this run's exact github.sha before the
+        # protected publication job starts; no earlier main run can substitute.
+        run: test "$VALIDATION_RESULT" = success
       - name: Resolve stable-base nightly identity
         id: identity
         env:

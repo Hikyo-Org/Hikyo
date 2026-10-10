@@ -34,7 +34,11 @@ latest_tag_line=$(grep -nF './scripts/release/latest-nightly-tag.sh' "$workflow"
 if grep -F 'target_commitish' "$workflow" >/dev/null; then
 	fail 'nightly deduplication trusts mutable release metadata'
 fi
-grep -F './scripts/release/require-green-main.sh "$REPOSITORY" "$COMMIT"' "$workflow" >/dev/null || fail 'nightly does not require exact-head green main CI'
+grep -F 'uses: ./.github/workflows/ci.yml' "$workflow" >/dev/null || fail 'nightly does not run the full exact-source CI graph'
+grep -F 'needs: validation' "$workflow" >/dev/null || fail 'nightly publication does not wait for validation'
+# shellcheck disable=SC2016
+grep -F 'VALIDATION_RESULT: ${{ needs.validation.result }}' "$workflow" >/dev/null || fail 'nightly does not bind its validation result'
+grep -F 'run: test "$VALIDATION_RESULT" = success' "$workflow" >/dev/null || fail 'nightly does not require exact-head green main CI'
 grep -F 'INITIAL_NIGHTLY_VERSION: 0.0.1' "$workflow" >/dev/null || fail 'first nightly version is not explicit'
 grep -F 'set -o pipefail' "$workflow" >/dev/null || fail 'paginated release discovery can hide API failures'
 grep -F './scripts/release/latest-stable-version.sh' "$workflow" >/dev/null || fail 'stable release discovery is missing'

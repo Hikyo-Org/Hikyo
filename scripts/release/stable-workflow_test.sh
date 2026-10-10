@@ -32,7 +32,7 @@ case "$*" in
   'api repos/owner/repo/actions/workflows/ci.yml/runs?'*)
     conclusion=success
     [ "$FIXTURE_MODE" != red-ci ] || conclusion=failure
-    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{workflow_runs:[{head_sha:$commit,conclusion:$conclusion}]}' ;;
+    jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{workflow_runs:[{head_sha:$commit,head_branch:"main",event:"workflow_dispatch",path:".github/workflows/ci.yml",status:"completed",conclusion:$conclusion}]}' ;;
   'api repos/owner/repo/actions/workflows/release.yml/runs?'*)
     conclusion=success
     [ "$FIXTURE_MODE" != red-release ] || conclusion=failure

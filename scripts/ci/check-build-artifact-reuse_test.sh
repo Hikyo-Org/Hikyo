@@ -112,7 +112,7 @@ require_line "$workflow" 'name: Upload unsigned development snapshot'
 upload_block=$(sed -n \
 	'/name: Upload unsigned development snapshot/,/name: Save release-snapshot Go cache/p' \
 	"$workflow")
-printf '%s\n' "$upload_block" | grep -F "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" >/dev/null ||
+printf '%s\n' "$upload_block" | grep -F "if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" >/dev/null ||
 	fail 'development snapshot upload is not guarded on trusted main'
 for expected in \
 	'name: hikyo-development-${{ github.sha }}' \

@@ -4,35 +4,44 @@
 # safe place to execute code merely because the author can push a branch.
 #
 # This run's result is not a merge gate by itself: the YAML comes from the PR's
-# merge ref. trusted-ci's ci-required (base-controlled) accepts it only when the
+# merge ref. The default-branch PR gate accepts it only when the
 # PR leaves .github/ untouched, or a same-repo PR has an independent current
-# maintainer's latest approval on the exact head. Fork workflow edits are never
+# maintainer's latest approval on the exact head (or the current-maintainer BDFL
+# author exemption). Fork workflow edits are never
 # accepted. This workflow's aggregate gate must pass on that same head
 # (scripts/ci/check-fork-validation.sh). Never add a job named
 # ci-required here: a skipped job would satisfy the required check.
 #
 # Only vouched authors get a validation run (.github/VOUCHED.td, read from the
-# default branch through the API, so a PR cannot vouch for itself). trusted-ci
+# default branch through the API, so a PR cannot vouch for itself). pr-gate
 # repeats the check; this copy only saves runners for unvouched authors.
-name: fork-ci
+name: pr-validation
+# Keep the legacy run title for gates executing an older trusted base.
 # check-fork-validation.sh binds a run to its PR by this title. The YAML is
 # base-identical for accepted forks; same-repo YAML edits require the gate's
 # independently checked maintainer review, so a fork cannot forge acceptance.
-run-name: "fork-ci #${{ github.event.pull_request.number }}"
+# Body/title edits need no validation. A base retarget does, even when the head
+# SHA is unchanged. Give metadata-only runs a distinct, non-validation identity
+# so neither legacy gates nor the completion controller select their skips.
+run-name: "${{ github.event.action == 'edited' && github.event.changes.base.ref.from == null && 'pr-metadata' || 'fork-ci' }} #${{ github.event.pull_request.number }}"
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: fork-ci-${{ github.event.pull_request.number }}
+  group: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == null && 'pr-metadata' || 'fork-ci' }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   vouch:
+    # Same-repository authors need no vouch runner. Forks still require this
+    # job to succeed before any PR-controlled validation can execute.
+    if: github.event.pull_request.head.repo.full_name != github.repository && (github.event.action != 'edited' || github.event.changes.base.ref.from != null)
     runs-on: ubuntu-latest
     steps:
       - name: Require a vouched author
@@ -45,6 +54,7 @@ jobs:
 
   validation:
     needs: vouch
+    if: ${{ !cancelled() && (github.event.action != 'edited' || github.event.changes.base.ref.from != null) && (needs.vouch.result == 'success' || (needs.vouch.result == 'skipped' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read
