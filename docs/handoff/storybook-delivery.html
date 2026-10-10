@@ -1,6 +1,6 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hikyo Storybook delivery</title><style>body{margin:auto;max-width:1100px;padding:24px;font:16px/1.5 system-ui;background:#f5f7fa;color:#17242c}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}img{max-width:100%;height:auto}figure{margin:24px 0}figcaption{font-weight:600}</style><h1>Hikyo Storybook delivery</h1><pre># Hikyo Storybook delivery handoff
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hikyo Storybook delivery</title><style>body{margin:auto;max-width:1100px;padding:24px;font:16px/1.5 system-ui;background:#f5f7fa;color:#17242c}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}img{max-width:100%;height:auto}figure{margin:24px 0}figcaption{font-weight:600}</style><h1>Hikyo Storybook delivery</h1><pre># Hikyo Storybook PR #881 delivery handoff
 
-Delivery phase: user approved commit, push, PR and merge. Release, deployment and manual remote infrastructure changes remain excluded. PR registration is pending. Implementation commit: `d267e8b0b07588be323e1c565b14a158d44ce00d`; current-main base: `9a5d678a553ef469819530669044da062059e22e`.
+Delivery phase: user approved commit, push, PR and merge. Release, deployment and manual remote infrastructure changes remain excluded. PR #881: https://github.com/Hikyo-Org/Hikyo/pull/881 . Linked to the T3 thread. Implementation and build-output fix commits are cryptographically verified by GitHub; required exact-head CI is pending. Implementation commit: `d267e8b0b07588be323e1c565b14a158d44ce00d`; current-main base: `9a5d678a553ef469819530669044da062059e22e`.
 
 The authoritative catalogue is **643 stories / 131 Docs / 131 modules**. The approved local snapshot remains 642; main added one retained `routes-clireauth--developer-credential` case. The original improvement accounted for `584 - 16 + 74 = 642`. Current inventory covers 304 visual symbols and 30 surfaces. There are no unexplained removals or changed retained IDs. Original sidebar trees, removal mappings, controls/defaults, exceptions and matched desktop/phone evidence remain in [the full local handoff](storybook-improvement.md), its [self-contained offline copy](storybook-improvement.html), and [the refreshed machine inventory](storybook-improvement-inventory.json).
 
@@ -42,7 +42,7 @@ The build-output-only correction subsequently reran the affected guards and full
 | `node --run build-storybook -- -o.artifacts/storybook-improvement/after-output-fix/storybook-static` | 0 | 36.19s |
 | `node --run check:storybook-docs -- .artifacts/storybook-improvement/after-output-fix/storybook-static` | 0 | 0.34s |
 
-Logs and exact command JSON: `web/.artifacts/storybook-improvement/after-main-refresh/` and `after-output-fix/`. The attached-output build is a separate immutable directory. AST/source/Docs inventory verification and `git diff --check` passed. Graphify refresh is navigational evidence; pre-existing parser warnings are reported separately from runtime tests.
+Logs and exact command JSON: `web/.artifacts/storybook-improvement/after-main-refresh/` and `after-output-fix/`. The attached-output build is a separate immutable directory. AST/source/Docs inventory verification and `git diff --check` passed. Graphify AST refresh exited 0; pre-existing Astro parser warnings remain navigational limits, separate from runtime tests.
 
 ## Measurements and browser evidence
 
