@@ -83,6 +83,7 @@ case $url in
 	esac
 	fixture=runs
 	;;
+*/runs/41/jobs*) fixture=jobs-older ;;
 */runs/42/jobs*) fixture=jobs ;;
 *) printf 'stub gh: unexpected %s\n' "$url" >&2; exit 1 ;;
 esac
@@ -97,6 +98,7 @@ fixture() {
 	printf '{"head":{"sha":"%s","repo":{"id":2,"full_name":"fork/r"}},"base":{"repo":{"id":1,"full_name":"o/r"}},"user":{"id":10,"login":"author"},"changed_files":%s,"mergeable":true}\n' "$head" "$1" >"$work/pr.json"
 	printf '%s\n' "$2" >"$work/files.json"
 	printf '%s\n' "$3" >"$work/runs.json"
+	printf '{"jobs":[]}\n' >"$work/jobs-older.json"
 	printf '{"jobs":[{"name":"validation / changes","conclusion":"success"},{"name":"validation / ci-required","conclusion":"%s"}]}\n' "$4" >"$work/jobs.json"
 	printf '[[]]\n' >"$work/reviews.json"
 	printf '[[]]\n' >"$work/reviews-later.json"
@@ -198,6 +200,25 @@ fixture 1 "$docs" "$done_run" failure
 expect_reject 'a failed fork-ci gate'
 fixture 1 "$docs" "$done_run" skipped
 expect_reject 'a skipped fork-ci gate'
+
+# GitHub can list an older cancelled run first when two events create runs in
+# the same second. The newest run ID, not response order, owns the verdict.
+tied_runs='{"workflow_runs":[{"id":41,"status":"completed","conclusion":"cancelled","display_title":"fork-ci #7","created_at":"2026-10-10T19:05:24Z"},{"id":42,"status":"queued","conclusion":null,"display_title":"fork-ci #7","created_at":"2026-10-10T19:05:24Z"},{"id":99,"status":"completed","conclusion":"success","display_title":"fork-ci #8"}]}'
+fixture 1 "$docs" "$tied_runs" success
+expect_pending 'newer validation behind a cancelled run with the same timestamp'
+jq '.workflow_runs |= reverse' "$work/runs.json" >"$work/runs-new.json"
+mv "$work/runs-new.json" "$work/runs.json"
+expect_pending 'newer validation regardless of API response order'
+jq '(.workflow_runs[] | select(.id == 42)) |= (.status = "completed" | .conclusion = "success")' "$work/runs.json" >"$work/runs-new.json"
+mv "$work/runs-new.json" "$work/runs.json"
+expect_accept 'newest successful validation with older cancellation and unrelated newer PR'
+
+fixture 1 "$docs" "$tied_runs" failure
+printf '{"jobs":[{"name":"validation / ci-required","conclusion":"success"}]}\n' >"$work/jobs-older.json"
+jq '(.workflow_runs[] | select(.id == 41 or .id == 42)) |= (.status = "completed" | .conclusion = (if .id == 41 then "success" else "failure" end))' "$work/runs.json" >"$work/runs-new.json"
+mv "$work/runs-new.json" "$work/runs.json"
+expect_reject 'newer failed validation despite an older successful run'
+grep -F 'validation-failure' "$work/summary" >/dev/null
 
 fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","display_title":"fork-ci #8"}]}' success
 expect_reject 'a passing run that belongs to another PR on the same commit'

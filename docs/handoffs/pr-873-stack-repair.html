@@ -1,8 +1,10 @@
 <!doctype html><meta charset="utf-8"><title>Dependency stack repair</title><style>body{max-width:850px;margin:40px auto;padding:20px;font:16px/1.6 system-ui}pre{white-space:pre-wrap}</style><pre># Dependency stack repair: PRs 873 through 877
 
-Stack order: #873 (Go patch group), #874 (x/tools), #875 (etree), #876 (sigstore), #877 (goose). Preserve this order and leave merge decisions with the maintainer.
+Stack order: #873 (Go patch group), #874 (x/tools), #875 (etree), #876 (sigstore), #877 (goose). Preserve this order. The maintainer authorized making the entire stack ready and then merging all five PRs atomically without another approval request. Refresh against current main, verify each current head passes CI and GitHub stack readiness, then use gh stack merge 877 --yes --squash. Confirm all five PRs are merged before reporting delivery.
 
 The go-jose 4.1.5 update rejects low-order Ed25519 public keys. The canonicalization tests and browser setup used an all-zero key, so their fixture failed admission before testing canonicalization. Replace the fixture with RFC 8032 section 7.1 test vector 1&#x27;s public key. Keep production admission unchanged and explicitly test rejection of the original low-order key.
+
+CI run selection: simultaneous stack events can create two validation runs in the same second, with the older cancelled run first in GitHub API results. Select the greatest matching run ID, consistent with gate reconciliation, while retaining the exact head, PR identity, approval, and aggregate-success checks. Regression tests cover both API orders, unrelated PRs, pending validation, and newer failure despite an older pass. Trusted gates execute the base revision; confirm that revision contains this repair before treating a retried gate as fixed.
 
 Local verification: the JWKS parsing, admission, and federation route tests pass with the updated dependency. The full exact-head CI remains the delivery check for each layer.
 
