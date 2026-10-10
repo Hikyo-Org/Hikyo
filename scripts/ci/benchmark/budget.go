@@ -1,4 +1,4 @@
-// Package benchmark admits daily/manual walltime jobs before allocating
+// Package benchmark admits daily and automatic/requested PR walltime jobs before allocating
 // a Macro runner. GitHub run history is usage data, never executable input.
 package benchmark
 
@@ -15,11 +15,10 @@ import (
 )
 
 const (
-	macroLabel     = "codspeed-macro-arm64-graviton-ubuntu-22-04"
-	reservation    = 16  // 15-minute timeout plus a minute for setup/cleanup rounding.
-	automaticLimit = 528 // Includes 32 prior daily jobs plus the new reservation.
-	manualLimit    = 72
-	creditLimit    = 156 // $4.992 at $0.032/min, only on an explicit manual request.
+	macroLabel   = "codspeed-macro-arm64-graviton-ubuntu-22-04"
+	reservation  = 16 // 15-minute timeout plus a minute for setup/cleanup rounding.
+	monthlyLimit = 600
+	creditLimit  = 156 // $4.992 at $0.032/min, only on an explicit manual request.
 )
 
 type run struct {
@@ -88,19 +87,8 @@ func admit(u usage, event string, credit bool) (bool, string) {
 	if credit {
 		extra = creditLimit
 	}
-	// Earlier credit-funded requests must not consume capacity reserved for
-	// daily main. Their already-authorized overage remains in the total ledger.
-	if event == "schedule" && u.manual > manualLimit {
-		extra = min(creditLimit, u.manual-manualLimit)
-	}
-	if u.automatic+u.manual+reservation > automaticLimit+manualLimit+extra {
+	if u.automatic+u.manual+reservation > monthlyLimit+extra {
 		return false, "the rolling allowance cannot cover another complete job"
-	}
-	if event == "schedule" && u.automatic+reservation > automaticLimit {
-		return false, "the daily allowance is exhausted"
-	}
-	if event == "workflow_dispatch" && u.manual+reservation > manualLimit+extra {
-		return false, "the manual allowance is exhausted; daily capacity remains reserved"
 	}
 	return true, "a complete walltime job fits the allowance"
 }
@@ -119,6 +107,11 @@ func api(path string, target any) error {
 }
 
 func collect(repository string, now time.Time, currentMacroRun int64) (usage, error) {
+	u, _, err := collectForecast(repository, now, currentMacroRun)
+	return u, err
+}
+
+func collectForecast(repository string, now time.Time, currentMacroRun int64) (usage, forecast, error) {
 	// A 32-day lookback covers every monthly billing interval without relying
 	// on an unverified billing reset date, and includes boundary-crossing jobs.
 	cutoff := now.Add(-32 * 24 * time.Hour)
@@ -131,22 +124,23 @@ func collect(repository string, now time.Time, currentMacroRun int64) (usage, er
 			Runs []run `json:"workflow_runs"`
 		}
 		if err := api("repos/"+repository+"/actions/workflows/"+workflow+"/runs?per_page=100", &workflowPages); err != nil {
-			return usage{}, err
+			return usage{}, forecast{}, err
 		}
 		pages = append(pages, workflowPages...)
 	}
 	if len(pages) == 0 {
-		return usage{}, fmt.Errorf("GitHub returned no run-history pages")
+		return usage{}, forecast{}, fmt.Errorf("GitHub returned no run-history pages")
 	}
 	u := usage{}
+	f := forecast{now: now, observedSince: now}
 	seen := map[int64]bool{}
 	for _, page := range pages {
 		if page.Runs == nil {
-			return usage{}, fmt.Errorf("GitHub returned incomplete run history")
+			return usage{}, forecast{}, fmt.Errorf("GitHub returned incomplete run history")
 		}
 		for _, r := range page.Runs {
 			if r.ID <= 0 || r.Attempt < 1 || r.UpdatedAt.IsZero() || r.Status == "" || r.Event == "" {
-				return usage{}, fmt.Errorf("run has incomplete identity or timestamp")
+				return usage{}, forecast{}, fmt.Errorf("run has incomplete identity or timestamp")
 			}
 			if r.Status == "completed" && r.UpdatedAt.Before(cutoff) {
 				continue
@@ -163,18 +157,18 @@ func collect(repository string, now time.Time, currentMacroRun int64) (usage, er
 			// filter=all includes prior attempts, including prior attempts of this
 			// run when only the failed jobs or the whole workflow are rerun.
 			if err := api(fmt.Sprintf("repos/%s/actions/runs/%d/jobs?filter=all&per_page=100", repository, r.ID), &jobPages); err != nil {
-				return usage{}, err
+				return usage{}, forecast{}, err
 			}
 			if len(jobPages) == 0 {
-				return usage{}, fmt.Errorf("run %d has no job-history pages", r.ID)
+				return usage{}, forecast{}, fmt.Errorf("run %d has no job-history pages", r.ID)
 			}
 			for _, page := range jobPages {
 				if page.Jobs == nil {
-					return usage{}, fmt.Errorf("run %d has incomplete job history", r.ID)
+					return usage{}, forecast{}, fmt.Errorf("run %d has incomplete job history", r.ID)
 				}
 				for _, j := range page.Jobs {
 					if j.ID <= 0 {
-						return usage{}, fmt.Errorf("run %d contains a job without an ID", r.ID)
+						return usage{}, forecast{}, fmt.Errorf("run %d contains a job without an ID", r.ID)
 					}
 					if seen[j.ID] {
 						continue
@@ -188,8 +182,9 @@ func collect(repository string, now time.Time, currentMacroRun int64) (usage, er
 					}
 					minutes, err := jobMinutes(j, cutoff)
 					if err != nil {
-						return usage{}, err
+						return usage{}, forecast{}, err
 					}
+					f.add(j, minutes, r.Event == "schedule" || r.Event == "push")
 					if r.Event == "schedule" || r.Event == "push" {
 						u.automatic += minutes
 					} else {
@@ -199,7 +194,7 @@ func collect(repository string, now time.Time, currentMacroRun int64) (usage, er
 			}
 		}
 	}
-	return u, nil
+	return u, f, nil
 }
 
 func CheckAllowance() error {
@@ -227,7 +222,7 @@ func CheckAllowance() error {
 		return err
 	}
 	allowed, reason := admit(u, event, credit)
-	message := fmt.Sprintf("CodSpeed: daily %d/%d min, requested %d/%d min over the last 32 days; reserving %d min: %s.\n", u.automatic, automaticLimit, u.manual, manualLimit, reservation, reason)
+	message := fmt.Sprintf("CodSpeed: daily %d min, PR/manual %d min, shared %d/%d min over the last 32 days; reserving %d min: %s.\n", u.automatic, u.manual, u.automatic+u.manual, monthlyLimit, reservation, reason)
 	fmt.Print(message)
 	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
 		if err := appendFile(path, message); err != nil {

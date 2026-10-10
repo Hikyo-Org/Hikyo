@@ -18,12 +18,13 @@ func TestWalltimeBudget(t *testing.T) {
 		credit, allowed bool
 	}{
 		{"daily fits", usage{automatic: 512, manual: 72}, "schedule", false, true},
-		{"daily capacity exhausted", usage{automatic: 513}, "schedule", false, false},
-		{"manual preserves daily capacity", usage{automatic: 528, manual: 56}, "workflow_dispatch", false, true},
-		{"manual allowance exhausted", usage{manual: 57}, "workflow_dispatch", false, false},
+		{"daily capacity exhausted", usage{automatic: 585}, "schedule", false, false},
+		{"manual shares remaining capacity", usage{automatic: 528, manual: 56}, "workflow_dispatch", false, true},
+		{"manual can use more than former separate allowance", usage{automatic: 100, manual: 120}, "workflow_dispatch", false, true},
+		{"manual allowance exhausted", usage{manual: 585}, "workflow_dispatch", false, false},
 		{"credit investigation fits", usage{automatic: 528, manual: 212}, "workflow_dispatch", true, true},
-		{"credit investigation exceeds five dollars", usage{manual: 213}, "workflow_dispatch", true, false},
-		{"credit does not stop daily", usage{automatic: 512, manual: 228}, "schedule", false, true},
+		{"credit investigation exceeds five dollars", usage{manual: 741}, "workflow_dispatch", true, false},
+		{"credit spending blocks automatic daily", usage{automatic: 512, manual: 228}, "schedule", false, false},
 		{"unknown event", usage{}, "push", false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
