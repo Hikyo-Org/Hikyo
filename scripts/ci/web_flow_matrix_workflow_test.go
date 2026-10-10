@@ -28,7 +28,7 @@ type webFlowMatrixWorkflow struct {
 				Excludes []any `yaml:"exclude"`
 			} `yaml:"matrix"`
 		} `yaml:"strategy"`
-		Steps []sharedGoCacheStep `yaml:"steps"`
+		Steps []sharedGoReuseStep `yaml:"steps"`
 	} `yaml:"jobs"`
 }
 

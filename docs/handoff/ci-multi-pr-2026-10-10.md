@@ -59,6 +59,10 @@ The clarity patch from the earlier audit **never merged**. It was an uncommitted
 
 [#881](https://github.com/Hikyo-Org/Hikyo/pull/881), head `9448331e1c4818b55b6f57dfe8e3a35d158a1044`, adds Storybook docs/theme checks within existing CI. It was open during the initial investigation and merged at 18:06:31 while this local repair was being reviewed. Its validation completed successfully at 18:04:26. That delivery was separate from this gate repair.
 
+## Hosted isolation failure on the CI test declarations
+
+On head `4bc6078fd`, [isolation shard 0](https://github.com/Hikyo-Org/Hikyo/actions/runs/38080722780/job/114306891321) failed `TestInvariant12CacheDiscipline`. Its repository-wide declaration sweep found ten new CI test/helper names containing `Cache`; these describe workflow YAML assertions, not runtime stores. The focused invariant reproduced all ten failures locally. Renaming those declarations to describe reuse, including their workflow test selector and the browser matrix fixture's shared type, makes the unchanged invariant pass. No cache keys, writers, test assertions, runtime code or scanner exemptions changed. The complete `scripts/ci` Go suite, Go vet and workflow lint also passed. Hosted validation must run again for the repaired commit.
+
 ## Local repair
 
 The replacement uses a short trusted publisher. While validation is unfinished, its check remains queued in GitHub and releases its runner. A completion event reassesses the current PR and publishes a terminal result only after validation and trusted policy pass. Scheduled repair covers missing callbacks, reruns, retargets and later policy changes. The local workflow starts under the separate observation name `ci-required-next`, preserving the existing required gate until hosted behavior has been verified. The final switch removes waiting runner occupancy; no hosted latency benefit has yet been measured.

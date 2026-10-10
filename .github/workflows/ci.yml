@@ -278,7 +278,7 @@ jobs:
       - name: Changed-path classifier fixture
         run: ./scripts/ci/classify-changed-paths_test.sh
       - name: CI job registry and workflow bijection fixture
-        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench|TestStableSigningAndPublication|TestCoreValidationRunsAlongsideCrossPlatformProof|TestWebFlowMatrixWorkflow|TestPnpmCacheWorkflow|TestSharedGoCacheWorkflow|TestMainValidationWorkflowPolicy|TestMainFuzzReportingWorkflowPolicy|TestValidationCheckoutWorkflowPolicy)'
+        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench|TestStableSigningAndPublication|TestCoreValidationRunsAlongsideCrossPlatformProof|TestWebFlowMatrixWorkflow|TestPnpmReuseWorkflow|TestSharedGoReuseWorkflow|TestMainValidationWorkflowPolicy|TestMainFuzzReportingWorkflowPolicy|TestValidationCheckoutWorkflowPolicy)'
       - name: Chart check fixture
         run: ./scripts/ci/check-chart_test.sh
       - name: Trusted CI scripts fixture

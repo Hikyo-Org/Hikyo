@@ -9,7 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type sharedGoCacheStep struct {
+// These declarations model workflow YAML, not runtime caches. Use reuse names
+// so the invariant-12 declaration sweep still reserves cache names for stores
+// with registered key construction and authorization boundaries.
+type sharedGoReuseStep struct {
 	ID   string            `yaml:"id,omitempty"`
 	Uses string            `yaml:"uses,omitempty"`
 	If   string            `yaml:"if,omitempty"`
@@ -17,16 +20,16 @@ type sharedGoCacheStep struct {
 	With map[string]string `yaml:"with,omitempty"`
 }
 
-type sharedGoCacheWorkflow struct {
+type sharedGoReuseWorkflow struct {
 	Jobs map[string]struct {
-		Steps []sharedGoCacheStep `yaml:"steps"`
+		Steps []sharedGoReuseStep `yaml:"steps"`
 	} `yaml:"jobs"`
 }
 
 // Consumers share an existing archive instead of adding another immutable
 // family. Check the actual YAML and follow save keys back to their restore ID.
-func sharedGoCacheErrors(raw []byte) []error {
-	var workflow sharedGoCacheWorkflow
+func sharedGoReuseErrors(raw []byte) []error {
+	var workflow sharedGoReuseWorkflow
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return []error{err}
 	}
@@ -110,12 +113,12 @@ func sharedGoCacheErrors(raw []byte) []error {
 	return problems
 }
 
-func TestSharedGoCacheWorkflow(t *testing.T) {
+func TestSharedGoReuseWorkflow(t *testing.T) {
 	raw, err := os.ReadFile("../../.github/workflows/ci.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, problem := range sharedGoCacheErrors(raw) {
+	for _, problem := range sharedGoReuseErrors(raw) {
 		t.Error(problem)
 	}
 	// This consumer invokes Go tests through a shell helper rather than YAML.
@@ -137,14 +140,14 @@ func TestSharedGoCacheWorkflow(t *testing.T) {
 	}
 }
 
-func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
+func TestSharedGoReuseWorkflowRejectsRegressions(t *testing.T) {
 	raw, err := os.ReadFile("../../.github/workflows/ci.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"missing writer", "missing consumer", "orphan family", "different path", "missing ABI", "missing tool lock", "PR writer", "OR bypass", "duplicate writer", "dangling writer", "restore before setup", "replayed test result", "missing compose cache", "compose before cache", "missing compose proof", "conditional compose proof"} {
 		t.Run(name, func(t *testing.T) {
-			var workflow sharedGoCacheWorkflow
+			var workflow sharedGoReuseWorkflow
 			if err := yaml.Unmarshal(raw, &workflow); err != nil {
 				t.Fatal(err)
 			}
@@ -163,7 +166,7 @@ func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
 				if strings.Contains(name, "compose") && step.Run == "./scripts/compose-demo.sh" {
 					switch name {
 					case "compose before cache":
-						job.Steps = append([]sharedGoCacheStep{step}, append(job.Steps[:i], job.Steps[i+1:]...)...)
+						job.Steps = append([]sharedGoReuseStep{step}, append(job.Steps[:i], job.Steps[i+1:]...)...)
 					case "missing compose proof":
 						job.Steps[i].Run = "true"
 					case "conditional compose proof":
@@ -212,7 +215,7 @@ func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
 				case "missing tool lock":
 					job.Steps[i].With["key"] = strings.ReplaceAll(step.With["key"], ", 'scripts/ci/go-tool-modules.txt'", "")
 				case "restore before setup":
-					job.Steps = append([]sharedGoCacheStep{step}, append(job.Steps[:i], job.Steps[i+1:]...)...)
+					job.Steps = append([]sharedGoReuseStep{step}, append(job.Steps[:i], job.Steps[i+1:]...)...)
 				}
 				break
 			}
@@ -221,7 +224,7 @@ func TestSharedGoCacheWorkflowRejectsRegressions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if problems := sharedGoCacheErrors(modified); len(problems) == 0 {
+			if problems := sharedGoReuseErrors(modified); len(problems) == 0 {
 				t.Fatal("accepted cache policy regression")
 			}
 		})

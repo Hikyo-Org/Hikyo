@@ -10,17 +10,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type pnpmCacheWorkflow struct {
+type pnpmReuseWorkflow struct {
 	Jobs map[string]struct {
 		Container struct {
 			Image string `yaml:"image"`
 		} `yaml:"container"`
-		Steps []sharedGoCacheStep `yaml:"steps"`
+		Steps []sharedGoReuseStep `yaml:"steps"`
 	} `yaml:"jobs"`
 }
 
-func pnpmCacheErrors(raw []byte) []error {
-	var workflow pnpmCacheWorkflow
+func pnpmReuseErrors(raw []byte) []error {
+	var workflow pnpmReuseWorkflow
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return []error{err}
 	}
@@ -88,24 +88,24 @@ func pnpmCacheErrors(raw []byte) []error {
 	return problems
 }
 
-func TestPnpmCacheWorkflow(t *testing.T) {
+func TestPnpmReuseWorkflow(t *testing.T) {
 	raw, err := os.ReadFile("../../.github/workflows/ci.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, problem := range pnpmCacheErrors(raw) {
+	for _, problem := range pnpmReuseErrors(raw) {
 		t.Error(problem)
 	}
 }
 
-func TestPnpmCacheWorkflowRejectsRegressions(t *testing.T) {
+func TestPnpmReuseWorkflowRejectsRegressions(t *testing.T) {
 	raw, err := os.ReadFile("../../.github/workflows/ci.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"home path", "missing reader", "missing selector", "missing ABI", "missing policy hash", "restore after install", "PR writer", "duplicate writer", "different image", "wrong archive group", "host in container"} {
 		t.Run(name, func(t *testing.T) {
-			var workflow pnpmCacheWorkflow
+			var workflow pnpmReuseWorkflow
 			if err := yaml.Unmarshal(raw, &workflow); err != nil {
 				t.Fatal(err)
 			}
@@ -119,7 +119,7 @@ func TestPnpmCacheWorkflowRejectsRegressions(t *testing.T) {
 				job.Container.Image = workflow.Jobs["web"].Container.Image
 			}
 			if name == "restore after install" {
-				job.Steps = append([]sharedGoCacheStep{{Run: "pnpm install --frozen-lockfile"}}, job.Steps...)
+				job.Steps = append([]sharedGoReuseStep{{Run: "pnpm install --frozen-lockfile"}}, job.Steps...)
 			}
 			for i, step := range job.Steps {
 				if strings.HasPrefix(step.With["key"], "pnpm-store-") {
@@ -154,14 +154,14 @@ func TestPnpmCacheWorkflowRejectsRegressions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(pnpmCacheErrors(mutated)) == 0 {
+			if len(pnpmReuseErrors(mutated)) == 0 {
 				t.Fatal("unsafe pnpm cache regression accepted")
 			}
 		})
 	}
 }
 
-func TestPnpmCacheEnvironmentFixture(t *testing.T) {
+func TestPnpmReuseEnvironmentFixture(t *testing.T) {
 	output, err := exec.Command("sh", "./export-pnpm-cache_test.sh").CombinedOutput()
 	if err != nil {
 		t.Fatalf("pnpm cache environment fixture failed: %v\n%s", err, output)
