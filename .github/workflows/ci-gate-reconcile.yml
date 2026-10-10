@@ -5,7 +5,8 @@ name: ci-gate-reconcile
 
 on:
   workflow_run:
-    workflows: [fork-ci]
+    # Receive completions from existing runs during the display-name rollout.
+    workflows: [fork-ci, pr-validation]
     types: [completed]
 
 permissions:
@@ -17,6 +18,9 @@ concurrency:
 
 jobs:
   reconcile:
+    # Title/body-only edits deliberately create no validation result.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.display_title, 'fork-ci #')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -133,7 +133,7 @@ expect_pending() {
 		printf 'fork gate fixture failed: accepted %s\n' "$1" >&2
 		exit 1
 	fi
-	grep -F 'no completed fork-ci run' "$work/stderr" >/dev/null || {
+	grep -F 'no completed PR validation run' "$work/stderr" >/dev/null || {
 		printf 'fork gate fixture failed: treated %s as a result: %s\n' "$1" "$(cat "$work/stderr")" >&2
 		exit 1
 	}
@@ -377,7 +377,7 @@ fixture 1 "$docs" "$done_run" failure
 jq '.jobs += [{id:124,name:"validation / go-race",conclusion:"timed_out"}]' "$work/jobs.json" >"$work/jobs-new.json"
 mv "$work/jobs-new.json" "$work/jobs.json"
 expect_reject 'upstream timeout behind a failed aggregate'
-grep -F 'Fork validation gate: timeout' "$work/summary" >/dev/null
+grep -F 'PR validation gate: timeout' "$work/summary" >/dev/null
 fixture 1 "$docs" "$done_run" success
 expect_reject 'superseded head summary' fedcba9876543210fedcba9876543210fedcba98
 grep -F 'superseded' "$work/summary" >/dev/null
@@ -386,4 +386,49 @@ same_repo
 expect_reject 'policy refusal summary'
 grep -F 'policy-refusal' "$work/summary" >/dev/null
 
-printf 'fork gate fixture: exact-head validation, untouched fork YAML, and same-repo workflow authority from independent approval or the pinned current-maintainer BDFL\n'
+# The event-driven controller distinguishes unfinished validation from failure.
+# Trap every sleep: pending decisions must release their runner immediately,
+# even when the legacy timeout is zero or the queue takes hours.
+cat >"$work/bin/sleep" <<'EOF'
+#!/bin/sh
+printf 'unexpected sleep\n' >>"$FIXTURES/sleeps"
+exit 1
+EOF
+chmod +x "$work/bin/sleep"
+export PR_GATE_ONCE=1
+expect_once_pending() {
+	result=0
+	gate || result=$?
+	[ "$result" -eq 75 ] || {
+		printf 'one-shot gate returned %s for %s: %s\n' "$result" "$1" "$(cat "$work/stderr")" >&2
+		exit 1
+	}
+	grep -F 'PR validation gate [pending]' "$work/stderr" >/dev/null
+	[ ! -f "$work/sleeps" ] || { printf 'one-shot gate slept\n' >&2; exit 1; }
+}
+for state in queued in_progress waiting pending requested; do
+	fixture 1 "$docs" "{\"workflow_runs\":[{\"id\":42,\"status\":\"$state\",\"display_title\":\"fork-ci #7\"}]}" success
+	expect_once_pending "$state validation"
+done
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+expect_once_pending 'validation not yet created'
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":"action_required","display_title":"fork-ci #7"}]}' success
+expect_once_pending 'validation awaiting approval'
+fixture 1 "$docs" "$done_run" success
+jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_once_pending 'mergeability still being calculated'
+fixture 1 "$docs" "$done_run" success
+expect_accept 'completed validation in one-shot mode'
+fixture 1 "$docs" "$done_run" failure
+result=0
+gate || result=$?
+[ "$result" -eq 1 ] || { printf 'one-shot failure was not a refusal\n' >&2; exit 1; }
+fixture 1 "$workflow" "$done_run" success
+same_repo
+result=0
+gate || result=$?
+[ "$result" -eq 1 ] || { printf 'one-shot mode bypassed workflow approval\n' >&2; exit 1; }
+unset PR_GATE_ONCE
+
+printf 'PR gate fixture: exact-head validation, independent workflow authority, and runner-free pending decisions\n'

@@ -647,9 +647,7 @@ phase_tag() {
 	"$script_dir/test-fixtures.sh"
 	pending=$(git show "$commit:release/trust/metadata.json" | jq -r '.pending_release.version // empty')
 	[ "$pending" = "$version" ] || fail "tagged commit does not authorize pending release $version"
-	ci_conclusion=$(gh run list --repo "$repository" --workflow ci.yml --commit "$commit" --limit 1 \
-		--json conclusion --jq '.[0].conclusion // empty')
-	[ "$ci_conclusion" = success ] || fail "exact-main CI is not green for $commit"
+	"$script_dir/require-green-main.sh" "$repository" "$commit"
 	local_tag_sha=
 	if [ -n "$(git tag --list "$tag")" ]; then
 		local_tag_sha=$(git rev-list -n 1 "$tag")

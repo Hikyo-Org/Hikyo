@@ -229,7 +229,7 @@ fi
 # exact hit. This covers Go, module, and Playwright writers alike.
 for file in "$@"; do
 	awk \
-		-v main_guard="github.event_name == 'push' && github.ref == 'refs/heads/main'" \
+		-v main_guard="(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" \
 		-v hit_guard="outputs.cache-hit != 'true'" '
 		/^[[:space:]]+- name:/ { block = "" }
 		{ block = block $0 "\n" }
