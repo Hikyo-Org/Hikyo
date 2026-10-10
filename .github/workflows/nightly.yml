@@ -36,24 +36,19 @@ jobs:
       actions: read
       contents: read
       id-token: write
-    services:
-      release-schema:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: release-schema-fixture
-          POSTGRES_DB: hikyo_release_schema
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo -d hikyo_release_schema"
-          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        env:
+          POSTGRES_PASSWORD: release-schema-fixture
+          POSTGRES_DB: hikyo_release_schema
+          POSTGRES_HEALTH_RETRIES: 12
+        run: ./scripts/ci/start-ci-postgres.sh
       - name: Pin checked-out main commit
         id: source
         run: |
@@ -408,6 +403,10 @@ jobs:
             --title "$TAG" \
             --notes-file "$RUNNER_TEMP/nightly-notes.md" \
             --prerelease
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
 
   container:
     needs: publish

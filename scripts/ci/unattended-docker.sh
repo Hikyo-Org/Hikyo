@@ -2,6 +2,7 @@
 # Actual distroless server replacements with persisted SQLite and custody.
 # Artifact acquisition alone is a preseeded, authenticated offline cache fixture.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"
 : "${HIKYO_UNATTENDED_FIXTURE_OUTPUT:?generate signed fixtures first}"
 fixture=$HIKYO_UNATTENDED_FIXTURE_OUTPUT

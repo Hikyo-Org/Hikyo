@@ -61,14 +61,34 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     printf '%s\n' "$package" >>"$work/concurrent"
   fi
 done <"$work/shard"
+# Preserve readable Go output while retaining per-target/package JSON and
+# invocation wall time. Timing files survive the temporary shard inventory and
+# are uploaded even on a failed shard; no test flags or filters are relaxed.
+export RACE_TIMINGS_DIR="${RACE_TIMINGS_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/hikyo-race-timings}"
+mkdir -p "$RACE_TIMINGS_DIR"
+run_race() {
+  local timing started elapsed filter='' result=0
+  timing=$(mktemp "$RACE_TIMINGS_DIR/invocation.XXXXXX") || return
+  started=$SECONDS
+  if [[ "${1:-}" == -run ]]; then filter=$2; fi
+  go test -json -race -p 2 -timeout=20m -vet=off -count=1 "$@" |
+    tee "$timing.json" |
+    jq --unbuffered -rj 'select(.Action == "output" or .Action == "build-output") | .Output' || result=$?
+  elapsed=$((SECONDS - started))
+  jq -cn --arg package "${!#}" --arg filter "$filter" --argjson seconds "$elapsed" --argjson status "$result" \
+    '{Package: $package, Filter: $filter, WallSeconds: $seconds, ExitCode: $status}' >"$timing.wall.json" || return
+  rm "$timing" || return
+  return "$result"
+}
+export -f run_race
 status=0
 if [[ -s "$work/concurrent" ]]; then
   # A validated filter holds no blank, quote or backslash, so xargs passes it
-  # through intact as the second argument.
+  # through intact as the second argument. Each child preserves pipe failures.
   # shellcheck disable=SC2016
-  xargs -P 2 -L 1 sh -c 'if [ "$#" = 2 ]; then set -- -run "$2" "$1"; fi; exec go test -race -p 2 -timeout=20m -vet=off -count=1 "$@"' race <"$work/concurrent" || status=1
+  xargs -P 2 -L 1 bash -euo pipefail -c 'if [ "$#" = 2 ]; then set -- -run "$2" "$1"; fi; run_race "$@"' race <"$work/concurrent" || status=1
 fi
 while IFS=$'\t' read -r package filter; do
-  go test -race -p 2 -timeout=20m -vet=off -count=1 -run "$filter" "$package" || status=1
+  run_race -run "$filter" "$package" || status=1
 done <"$work/filtered"
 exit "$status"

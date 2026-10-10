@@ -1,6 +1,7 @@
 #!/bin/sh
 # Root permission/credential/fencing acceptance in an isolated Linux container.
 set -eu
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 cd "$script_dir/../.."
 case "$(docker info --format '{{.Architecture}} {{.OSType}}')" in

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root=$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+"$repo_root/scripts/ci/configure-docker-mirror.sh"
 demo_dir="$repo_root/install/compose/demo"
 docker_config_dir=${DOCKER_CONFIG:-${HOME:?}/.docker}
 tmp_dir=${TMPDIR:-/tmp}
