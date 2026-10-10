@@ -70,6 +70,9 @@ const baseTarget: AdapterTarget = {
 };
 
 const meta = {
+  parameters: { docs: { description: { component: "Deployment adapter target configuration. Environment, destination and selected-key mappings follow the provider’s supported fields and validation; the form reports busy and refusal states without pretending a target was saved." } } },
+  title: 'Features/Adapters/TargetForm',
+  id: 'routes-targetform',
   component: TargetForm,
   tags: ['ai-generated'],
   args: {

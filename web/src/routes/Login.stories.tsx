@@ -27,6 +27,8 @@ const withProviders = {
 const localOnly = { local_login_enabled: true, providers: [], ...closedDoor } satisfies z.input<typeof zAuthMethods>;
 
 const meta = {
+  title: 'Pages/Login',
+  id: 'routes-login',
   component: Login,
   tags: ['ai-generated'],
   parameters: {

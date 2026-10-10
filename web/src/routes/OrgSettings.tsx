@@ -20,6 +20,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -328,8 +329,7 @@ export function CompactOrgRetention({
           <span className="settings-row__detail">Unlimited: keep every revision payload.</span>
         </div>
         <span className="settings-row__spacer" />
-        <button
-          className="btn"
+        <Button
           type="button"
           disabled={busy}
           onClick={() =>
@@ -337,7 +337,7 @@ export function CompactOrgRetention({
           }
         >
           Use bounded retention
-        </button>
+        </Button>
       </div>
     );
   }

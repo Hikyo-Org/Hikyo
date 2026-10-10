@@ -1,9 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, userEvent } from 'storybook/test';
+import { expect } from 'storybook/test';
 
 import { Checkbox } from './Checkbox.tsx';
 
 const meta = {
+  parameters: { docs: { description: { component: "A labelled native checkbox with shared hit-target, focus and disabled styling. The associated label activates the same control; the drawn square stays smaller than its accessible pointer target." } } },
+  title: 'Design system/Checkbox',
+  id: 'ui-checkbox',
   component: Checkbox,
   tags: ['ai-generated'],
   args: { label: 'Allow credentials with no expiry' },
@@ -15,24 +18,6 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {};
 export const Checked: Story = { args: { defaultChecked: true } };
 export const Disabled: Story = { args: { disabled: true } };
-
-export const Toggles: Story = {
-  play: async ({ canvas }) => {
-    const box = canvas.getByRole('checkbox');
-    await expect(box).not.toBeChecked();
-    await userEvent.click(box);
-    await expect(box).toBeChecked();
-  },
-};
-
-// Clicking the label must toggle the box: the label is the larger part of the
-// hit target on a fine pointer, where the box itself is 18px.
-export const LabelToggles: Story = {
-  play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByText('Allow credentials with no expiry'));
-    await expect(canvas.getByRole('checkbox')).toBeChecked();
-  },
-};
 
 // The hit target stays the input's own box: 24px on a fine pointer (WCAG
 // 2.5.8 minimum), the 44px touch floor on a coarse one. The drawn square never

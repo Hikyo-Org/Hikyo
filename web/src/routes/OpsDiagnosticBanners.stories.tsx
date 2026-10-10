@@ -4,6 +4,8 @@ import { expect } from 'storybook/test';
 import { ChromeDiagnostic } from './OpsDiagnosticBanners.tsx';
 
 const meta = {
+  title: 'Shared/OpsDiagnosticBanners',
+  id: 'routes-opsdiagnosticbanners',
   component: ChromeDiagnostic,
   tags: ['ai-generated'],
   args: {

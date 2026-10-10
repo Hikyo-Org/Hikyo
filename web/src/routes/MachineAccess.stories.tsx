@@ -227,9 +227,11 @@ const app = (responses: readonly MockRoute[]) => ({
 });
 
 const meta = {
+  title: 'Pages/MachineAccess',
+  id: 'routes-machineaccess',
   component: MachineAccessPage,
   tags: ['ai-generated'],
-  parameters: { ...topLayerDocs, app: app(populatedResponses) },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "The project machine-access screen: service accounts, credentials, bindings, leases and delivery information. Its catalogues use the real page and API contracts; private-key disclosure and browser-owned passkey prompts are deliberately excluded." } },  app: app(populatedResponses) },
 } satisfies Meta<typeof MachineAccessPage>;
 
 export default meta;

@@ -44,7 +44,8 @@ function Specimen() {
 }
 
 const meta = {
-  title: 'ui/Typography',
+  title: 'Design system/Typography',
+  id: 'ui-typography',
   component: Specimen,
   tags: ['ai-generated'],
 } satisfies Meta<typeof Specimen>;

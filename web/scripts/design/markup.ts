@@ -18,8 +18,10 @@
 // failure. The wording is the reviewer's business, not this script's: any
 // `markup-check:` allowlists what it rules, so no allowlist hides in here.
 //
-// Two limits worth knowing. Only double-quoted `className="..."` literals are
-// scanned, so a computed `className={...}` is invisible. And a ruled element
+// The generic class rules scan double-quoted literals. The button rule also
+// follows multi-line openers and literal tokens in JSX expressions, preventing
+// formatting or cx('btn', ...) from bypassing shared button ownership.
+// A ruled element
 // is followed by tag depth, which a generic type argument or a `<` comparison
 // inflates, so the ruling is also bounded by indentation: once the opening tag
 // has closed, the ruling ends at the first non-blank line at or below the
@@ -42,8 +44,6 @@ const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: cls('chk'), atom: 'ui/Checkbox' },
   { pattern: /type="checkbox"/, atom: 'ui/Checkbox' },
   { pattern: /type="radio"/, atom: 'ui/Radio' },
-  // Single-line openers only; a `<button` split over lines is not seen.
-  { pattern: /<button[^>]*className="btn/, atom: 'ui/Button' },
   { pattern: cls('ceremony'), atom: 'ui/Dialog' },
   { pattern: cls('matrix-editor'), atom: 'ui/Dialog' },
   { pattern: cls('settings-tag'), atom: 'ui/Button variant="quiet"' },
@@ -57,6 +57,37 @@ const ALONE = /^(?:\{\s*)?(?:\/\/|\/\*)/;
 const indent = (line: string) => line.length - line.trimStart().length;
 /** The opening tag has closed on this line: an arrow function's `=>` is not that `>`. */
 const closesOpener = (line: string) => line.replace(/=>/g, '').includes('>');
+const buttonClass = /className\s*=\s*(?:(["'])([^"']*)\1|\{([\s\S]*?)\})/;
+const buttonToken = /(?:^|\s)btn(?:--[^\s]+)?(?:\s|$)/;
+/** Literal class tokens are meaningful even inside cx(), a template or a conditional. */
+function usesButtonClass(opener: string): boolean {
+  const match = buttonClass.exec(opener);
+  if (match === null) return false;
+  if (match[2] !== undefined) return buttonToken.test(match[2]);
+  return [...(match[3] ?? '').matchAll(/["'`]([^"'`]*)/g)]
+    .some((literal) => buttonToken.test(literal[1] ?? ''));
+}
+
+/** A JSX expression or quoted attribute can contain > without ending the tag. */
+function buttonOpenerEnd(text: string): number | undefined {
+  let braces = 0;
+  let quote = '';
+  let escaped = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (escaped) { escaped = false; continue; }
+    if (quote !== '') {
+      if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char;
+    else if (char === '{') braces++;
+    else if (char === '}') braces--;
+    else if (char === '>' && braces === 0) return index;
+  }
+  return undefined;
+}
 const count = (line: string, pattern: RegExp) => line.match(pattern)?.length ?? 0;
 
 /** Tags opened minus tags closed on one line, so an element can be followed to its end. */
@@ -72,11 +103,13 @@ type State =
 export function scanMarkup(lines: readonly string[]): MarkupHit[] {
   const hits: MarkupHit[] = [];
   let state: State = { kind: 'open' };
+  let button: { line: number; text: string } | undefined;
   for (const [i, raw] of lines.entries()) {
     const line = raw;
     const hit = (atom: string) => hits.push({ line: i + 1, atom, text: line.trim() });
 
     if (MARKER.test(line)) {
+      button = undefined;
       if (indent(line) === 0) {
         hits.push({
           line: i + 1,
@@ -141,6 +174,20 @@ export function scanMarkup(lines: readonly string[]): MarkupHit[] {
       state = { kind: 'open' };
     }
 
+    if (button !== undefined) button.text += `\n${line}`;
+    else {
+      const start = line.search(/<button\b/);
+      if (start !== -1) button = { line: i + 1, text: line.slice(start) };
+    }
+    while (button !== undefined) {
+      const end = buttonOpenerEnd(button.text);
+      if (end === undefined) break;
+      const text = button.text.slice(0, end + 1);
+      if (usesButtonClass(text)) hits.push({ line: button.line, atom: 'ui/Button', text: text.trim() });
+      const rest = button.text.slice(end + 1);
+      const next = rest.search(/<button\b/);
+      button = next === -1 ? undefined : { line: i + 1, text: rest.slice(next) };
+    }
     for (const { pattern, atom } of BANNED) if (pattern.test(line)) hit(atom);
   }
   return hits;

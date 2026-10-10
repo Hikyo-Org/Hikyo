@@ -20,6 +20,8 @@ const fill = async (canvas: StoryContext['canvas']) => {
 };
 
 const meta = {
+  title: 'Features/Machine access/CreateProviderDialog',
+  id: 'routes-createproviderdialog',
   component: CreateProviderDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

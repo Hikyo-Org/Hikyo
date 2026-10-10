@@ -1,3 +1,4 @@
+import { interactionOnce } from '../../.storybook/interactionCoverage.ts';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { SyntheticEvent } from 'react';
 import { expect, fn } from 'storybook/test';
@@ -11,9 +12,11 @@ import { Input } from './Input.tsx';
 import { Select } from './Select.tsx';
 
 const meta = {
+  title: 'Design system/Dialog',
+  id: 'ui-dialog',
   component: Dialog,
   tags: ['ai-generated'],
-  parameters: topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "The shared native modal dialog, opened with showModal. Narrow decisions and wide editors share labelled headings, cancel behavior and reachable actions; pinned actions keep long content scrolling inside the body." } } },
   args: {
     title: 'Revoke this connection?',
     lede: 'The workspace loses access now. Its next request is refused and audited; nothing else changes.',
@@ -122,20 +125,11 @@ export const PinnedActions: Story = {
   },
 };
 
-/** Both sizes on one page. Each is its own modal, so the second one inerts the first; use the docs frame. */
-export const AllStates: Story = {
-  render: (args) => (
-    <>
-      <Dialog {...args} />
-      <Dialog {...args} title="Wide" size="wide" />
-    </>
-  ),
-};
-
 /** The scrim is a way out; the dialog's own padding, and a drag, are not. */
 export const BackdropClick: Story = {
   args: { onBackdropClick: fn() },
-  play: async ({ canvas, args }) => {
+  tags: ['interaction-once'],
+  play: interactionOnce('ui-dialog--backdrop-click', async ({ canvas, args }) => {
     const dialog = canvas.getByRole('dialog', { name: 'Revoke this connection?' });
     const box = dialog.getBoundingClientRect();
     const at = (kind: 'mousedown' | 'click', clientX: number, clientY: number) => {
@@ -160,7 +154,9 @@ export const BackdropClick: Story = {
     at('mousedown', box.left - 20, box.top - 20);
     at('click', box.left + 2, box.top + 2);
     await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
-  },
+  }, async ({ canvas }) => {
+    await expect(canvas.getByRole('dialog', { name: 'Revoke this connection?' })).toBeVisible();
+  }),
 };
 
 export const IsModalAndLabelled: Story = {

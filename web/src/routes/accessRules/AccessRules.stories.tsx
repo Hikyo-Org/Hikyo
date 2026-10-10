@@ -18,9 +18,10 @@ import { WhoCan as WhoCanForm } from './WhoCan.tsx';
 // confirmation mount a native <dialog>, so every story renders framed on the
 // Docs page.
 const meta = {
-  title: 'Members/Access rules',
+  title: 'Features/Members/Access rules',
+  id: 'members-access-rules',
   tags: ['ai-generated'],
-  parameters: topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "The member-access rule composites: rule lists and editors, concrete permission explanations, the access glossary and key-move confirmation. Each composite retains its own meaningful branch within the shared module; native dialogs render in isolated Docs frames." } } },
 } satisfies Meta;
 
 export default meta;

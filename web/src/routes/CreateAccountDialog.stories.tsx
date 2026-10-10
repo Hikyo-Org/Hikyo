@@ -14,6 +14,8 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 const CREATE_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/service-accounts`;
 
 const meta = {
+  title: 'Features/Machine access/CreateAccountDialog',
+  id: 'routes-createaccountdialog',
   component: CreateAccountDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

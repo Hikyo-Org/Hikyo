@@ -9,8 +9,14 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
 
 import { prototypeMockApi } from './prototype/mock-api.ts';
+import { appearancePass } from './.storybook/interactionCoverage.ts';
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+const storybookTheme = process.env['STORYBOOK_THEME'] === 'light' ? 'light' : 'dark';
+const interactionPass = process.env['STORYBOOK_INTERACTION_PASS'] ?? (storybookTheme === 'light' ? 'appearance' : 'full');
+// The optional full light pass is a reproducible measurement/reference run.
+// Reject typos and attempts to remove the default dark interaction coverage.
+appearancePass({ theme: storybookTheme, hikyoInteractionPass: interactionPass });
 
 // The generated client (aliased below) imports `zod` from clients/ts, which has
 // its own lockfile and node_modules. Without that install the bundler treats
@@ -86,7 +92,19 @@ export default defineConfig(({ mode }) => ({
       },
       {
         extends: true,
-        plugins: [storybookTest({ configDir: here('.storybook') })],
+        plugins: [storybookTest({
+          configDir: here('.storybook'),
+          // Test-only globals leave ordinary Canvas/Docs interaction unchanged.
+          // Every story still renders and runs a11y in both palettes.
+          initialGlobals: {
+            theme: storybookTheme,
+            hikyoInteractionPass: interactionPass,
+          },
+        })],
+        // Preview uses the canonical globals event to synchronize framed Docs.
+        // Discovering this dependency during browser setup reloads active test
+        // modules. Prebundle it before the existing Storybook suite starts.
+        optimizeDeps: { include: ['storybook/internal/core-events'] },
         test: {
           name: 'storybook',
           browser: {

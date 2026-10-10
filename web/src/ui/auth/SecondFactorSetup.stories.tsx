@@ -5,6 +5,8 @@ import { codesStep, totpStep } from './fixtures.ts';
 import { SecondFactorSetup } from './SecondFactorSetup.tsx';
 
 const meta = {
+  title: 'Design system/Auth/SecondFactorSetup',
+  id: 'ui-auth-secondfactorsetup',
   component: SecondFactorSetup,
   tags: ['ai-generated'],
   args: {

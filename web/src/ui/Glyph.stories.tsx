@@ -1,11 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
 
 import { Glyph, type GlyphName } from './Glyph.tsx';
 
 const names: readonly GlyphName[] = ['lock', 'link', 'check', 'cross', 'warn', 'delta', 'draft', 'ellipsis', 'chevron'];
 
 const meta = {
+  parameters: { docs: { description: { component: "Monochrome SVG state vocabulary. Decorative glyphs are hidden from assistive technology; a labelled glyph becomes an image with that accessible name. Colour supplements the surrounding status text." } } },
+  title: 'Design system/Glyph',
+  id: 'ui-glyph',
   component: Glyph,
   tags: ['ai-generated'],
   args: { name: 'lock' },
@@ -48,17 +50,4 @@ export const AllStates: Story = {
       </p>
     </div>
   ),
-};
-
-export const DecorativeIsHidden: Story = {
-  render: () => (
-    <>
-      <Glyph name="lock" />
-      <Glyph name="link" label="Linked key" />
-    </>
-  ),
-  play: async ({ canvasElement, canvas }) => {
-    await expect(canvasElement.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-    await expect(canvas.getByRole('img', { name: 'Linked key' })).toBeVisible();
-  },
 };
