@@ -101,6 +101,7 @@ var reencryptExemptBlobs = map[string]string{
 	"sessions_rebuilt.verifier":           "session verifier on a table-rebuild copy",
 	"sessions_rebuilt.csrf_verifier":      "CSRF verifier on a table-rebuild copy",
 	"scim_credentials.verifier":           "SCIM bearer verifier (hashed)",
+	"developer_credentials.verifier":      "bounded developer credential SHA-256 verifier of existing >=256-bit opaque artifact, never DEK-encrypted ciphertext",
 	"machine_credentials.verifier":        "service-account credential verifier (hashed)",
 	"machine_credentials_new.verifier":    "machine credential verifier on a table-rebuild copy",
 	"instance_connections.verifier":       "remote workspace-session verifier (hashed)",

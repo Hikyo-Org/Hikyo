@@ -289,6 +289,16 @@ func (s *SCIM) releaseAndSettle(
 		return releaseOutcome{}, nil, err
 	}
 
+	// SCIM access loss is terminal within this org only. Surviving manual
+	// authority and delegations in other orgs remain independent.
+	revoked, err := az.RevokeInvalidDeveloperCredentials(ctx, principal, args.org, now)
+	if err != nil {
+		return releaseOutcome{}, nil, err
+	}
+	if err := recordDeveloperRevocations(ctx, az, c.actor, "scim-access-lost", revoked); err != nil {
+		return releaseOutcome{}, nil, err
+	}
+
 	for _, grantID := range outcome.Retained {
 		ev, err := s.enterAttention(ctx, r, c,
 			domain.AttentionLockoutRetention, grantID, args.cause, now)

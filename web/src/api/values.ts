@@ -202,6 +202,40 @@ export async function runAdapterPasskeyCeremony(input: {
   await finishPasskeyCeremony(request, epoch);
 }
 
+export type DeveloperCredentialCeremonyInput = {
+  environmentId: string;
+  keyIds: readonly string[];
+  lifetimeSeconds: bigint;
+  consentCurrentAndFuture: true;
+};
+
+function developerCredentialCeremonyBody(input: DeveloperCredentialCeremonyInput) {
+  if (input.lifetimeSeconds < 0n || input.lifetimeSeconds > 28800n) {
+    throw new Error('The developer credential lifetime is outside the eight-hour ceiling.');
+  }
+  return {
+    lifetime_seconds: Number(input.lifetimeSeconds),
+    consent_current_and_future: input.consentCurrentAndFuture,
+  };
+}
+
+/** Fresh, one-use proof over this exact delegation, never a generic reveal window. */
+export async function runDeveloperCredentialTOTPCeremony(input: DeveloperCredentialCeremonyInput, code: string): Promise<void> {
+  await parsed(reauthTotpOp, { body: {
+    purpose: 'developer-credential', environment_id: input.environmentId,
+    key_ids: [...input.keyIds], developer_credential: developerCredentialCeremonyBody(input), code,
+  } });
+}
+
+export async function runDeveloperCredentialPasskeyCeremony(input: DeveloperCredentialCeremonyInput): Promise<void> {
+  const epoch = captureSessionEpoch();
+  const options = await parsed(reauthPasskeyStartOp, { body: {
+    operation: 'developer-credential', environment_id: input.environmentId,
+    key_ids: [...input.keyIds], developer_credential: developerCredentialCeremonyBody(input),
+  } });
+  await finishPasskeyCeremony(requestOptions(options), epoch);
+}
+
 async function finishPasskeyCeremony(
   request: PublicKeyCredentialRequestOptions,
   epoch: ReturnType<typeof captureSessionEpoch>,

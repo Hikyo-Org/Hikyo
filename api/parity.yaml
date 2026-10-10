@@ -529,3 +529,12 @@ operations:
   transitVerify:          {issue: 820}
   transitHMAC:            {issue: 820}
   transitVerifyHMAC:      {issue: 820}
+
+  mintDeveloperCredential: {exception: bounded-developer-delegation}
+  listMyDeveloperCredentials: {exception: bounded-developer-delegation}
+  revokeAllMyDeveloperCredentials: {exception: bounded-developer-delegation}
+  revokeMyDeveloperCredential: {exception: bounded-developer-delegation}
+  listProjectDeveloperCredentials: {issue: 807}
+  revokeProjectDeveloperCredential: {issue: 807}
+  getDeveloperCredentialPolicy: {issue: 807}
+  setDeveloperCredentialPolicy: {issue: 807}

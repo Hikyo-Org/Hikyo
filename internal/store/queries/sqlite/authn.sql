@@ -115,7 +115,7 @@ SELECT session_generation FROM principals WHERE id = ? AND privacy_state = 'acti
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id, oauth2_provider_id, enrolment_required
+       requesting_origin, provider_id, oauth2_provider_id, saml_provider_id, enrolment_required
 FROM sessions WHERE verifier = ?;
 
 -- hikyo:authn-resolution
@@ -123,7 +123,7 @@ FROM sessions WHERE verifier = ?;
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id, oauth2_provider_id, enrolment_required
+       requesting_origin, provider_id, oauth2_provider_id, saml_provider_id, enrolment_required
 FROM sessions WHERE id = ?;
 
 -- hikyo:authn-resolution
@@ -646,6 +646,13 @@ SELECT MAX(e) AS max_epoch FROM (
     SELECT COALESCE(MAX(credential_epoch), 0) AS e FROM oauth2_transactions
     UNION ALL SELECT COALESCE(MAX(credential_epoch), 0) FROM registration_signups
 );
+
+-- Developer credentials arrive in 00074. Restore reads this only when the
+-- archive catalog contains the table, before migration roll-forward.
+-- hikyo:reason restore must outrun every attacker-controlled developer credential epoch stamp
+-- hikyo:authn-resolution
+-- name: DeveloperMaxCredentialEpoch :one
+SELECT COALESCE(MAX(credential_epoch), 0) AS max_epoch FROM developer_credentials;
 
 -- Sets the credential epoch and marks the epoch reached BY RESTORING. The
 -- caller supplies the value (MaxKnownCredentialEpoch + 1) so the new epoch is

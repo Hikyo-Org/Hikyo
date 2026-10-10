@@ -155,6 +155,14 @@ func (s *ProjectSettings) SetEnvironment(ctx context.Context, actor Actor, scope
 			return err
 		}
 
+		// Protection is terminal for existing developer credentials. Reopening
+		// the environment requires another human delegation ceremony.
+		if want.Protected && !before.Protected {
+			if err := revokeDeveloperScope(ctx, az, caller.Principal, "", scope, "environment-protected", s.now()); err != nil {
+				return err
+			}
+		}
+
 		// Lowering the effective window is the #54 library's job: it
 		// invalidates the environment's open windows, RETAINS grants, and
 		// enumerates and audits the principals the transition strands.

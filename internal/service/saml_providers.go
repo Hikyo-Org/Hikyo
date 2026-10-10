@@ -289,7 +289,7 @@ func (s *SAMLProviders) Put(ctx context.Context, actor Actor, slug string, input
 		next.MetadataSigningFingerprint = assessment.MetadataFingerprint
 		next.MetadataValidUntil = metadata.ValidUntil
 		next.Enabled = input.Enabled
-		updated, err := s.applyProviderUpdate(ctx, az, existing, next)
+		updated, err := s.applyProviderUpdate(ctx, az, caller.Principal, existing, next)
 		if err != nil {
 			return err
 		}
@@ -368,7 +368,7 @@ func (s *SAMLProviders) Patch(ctx context.Context, actor Actor, slug string, pat
 		next.AllowEmailNameID = allowEmail
 		next.ForceSignRequests = forceSign
 		next.Enabled = enabled
-		updated, err := s.applyProviderUpdate(ctx, az, provider, next)
+		updated, err := s.applyProviderUpdate(ctx, az, caller.Principal, provider, next)
 		if err != nil {
 			return err
 		}
@@ -468,6 +468,9 @@ func (s *SAMLProviders) Delete(ctx context.Context, actor Actor, slug string) er
 		if _, err := az.SweepSessionsForSAMLProvider(ctx, provider.ID); err != nil {
 			return err
 		}
+		if err := revokeDeveloperProvenance(ctx, az, caller.Principal, "saml-provider", provider.ID, s.now()); err != nil {
+			return err
+		}
 		if err := az.DeleteSAMLProvider(ctx, provider.ID); err != nil {
 			return err
 		}
@@ -543,7 +546,7 @@ func (s *SAMLProviders) RefreshMetadata(ctx context.Context, actor Actor, slug s
 		next.MetadataSigned = metadata.Signed
 		next.MetadataSigningFingerprint = assessment.MetadataFingerprint
 		next.MetadataValidUntil = metadata.ValidUntil
-		updated, err := s.applyProviderUpdate(ctx, az, fresh, next)
+		updated, err := s.applyProviderUpdate(ctx, az, caller.Principal, fresh, next)
 		if err != nil {
 			return err
 		}
@@ -810,7 +813,7 @@ func samlProviderWarnings(provider authz.SAMLProvider, now time.Time) ([]SAMLPro
 	return warnings, nil
 }
 
-func (s *SAMLProviders) applyProviderUpdate(ctx context.Context, az *authz.TxAuthorizer, before, next authz.SAMLProvider) (authz.SAMLProvider, error) {
+func (s *SAMLProviders) applyProviderUpdate(ctx context.Context, az *authz.TxAuthorizer, actor domain.PrincipalID, before, next authz.SAMLProvider) (authz.SAMLProvider, error) {
 	updated, err := az.UpdateSAMLProvider(ctx, authz.SAMLProviderUpdate{
 		ID: before.ID, DisplayName: next.DisplayName, ACSURL: next.ACSURL,
 		SSORedirectURL: next.SSORedirectURL, SigningCertificates: next.SigningCertificates,
@@ -833,6 +836,9 @@ func (s *SAMLProviders) applyProviderUpdate(ctx context.Context, az *authz.TxAut
 		return authz.SAMLProvider{}, err
 	}
 	if samlSessionsInvalidated(before, stored) {
+		if err := revokeDeveloperProvenance(ctx, az, actor, "saml-provider", before.ID, s.now()); err != nil {
+			return authz.SAMLProvider{}, err
+		}
 		if _, err := az.SweepSessionsForSAMLProvider(ctx, before.ID); err != nil {
 			return authz.SAMLProvider{}, err
 		}

@@ -557,7 +557,14 @@ const (
 	// AND the environments the authorizing formula ranged over, per authority
 	// class — the delivery mode itself is the CLI's to record, since the
 	// server never sees where the value went.
-	EventCredentialMinted EventType = "identity.credential_minted"
+	EventCredentialMinted                 EventType = "identity.credential_minted"
+	EventDeveloperCredentialMintRefused   EventType = "identity.developer_credential_mint_refused"
+	EventDeveloperCredentialMinted        EventType = "identity.developer_credential_minted"
+	EventDeveloperCredentialRevoked       EventType = "identity.developer_credential_revoked"
+	EventDeveloperCredentialsListed       EventType = "identity.developer_credentials_listed"
+	EventDeveloperCredentialPolicyRead    EventType = "identity.developer_credential_policy_read"
+	EventDeveloperCredentialPolicyChanged EventType = "identity.developer_credential_policy_changed"
+
 	// identity.credential_revoked is the incident-response half. It is
 	// reachable under the PLAIN capability, with no reveal gate, because
 	// gating revocation on disclosure rights is a self-inflicted delay.
@@ -1099,7 +1106,7 @@ var registry = map[EventType]TypeSpec{
 			"operation":      {Kind: KindString, Required: true},
 			"artifact_class": {Kind: KindString, Required: true},
 			"cause": {Kind: KindString, Required: true,
-				Enum: []string{"class-mismatch", "enrolment-required"}},
+				Enum: []string{"class-mismatch", "enrolment-required", "invalid-developer-credential"}},
 		},
 	},
 	EventAuthSessionCreated: {
@@ -2642,6 +2649,52 @@ var registry = map[EventType]TypeSpec{
 			"principal_class":    {Kind: KindString, Required: true},
 			// The blast radius the deletion took with it, in one transaction.
 			"credentials_revoked": {Kind: KindInt, Required: true},
+		},
+	},
+	EventDeveloperCredentialMintRefused: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeFailure: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"cause": {Kind: KindString, Required: true}, "scope": {Kind: KindString, Required: true}}},
+	EventDeveloperCredentialMinted: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"credential_id":              {Kind: KindString, Required: true},
+			"target_principal":           {Kind: KindString, Required: true},
+			"human_authority":            {Kind: KindString, Required: true},
+			"lifetime_seconds":           {Kind: KindInt, Required: true},
+			"consent_current_and_future": {Kind: KindBool, Required: true},
+			"expires_at":                 {Kind: KindString, Required: true},
+		},
+	},
+	EventDeveloperCredentialRevoked: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"credential_id":    {Kind: KindString, Required: true},
+			"target_principal": {Kind: KindString, Required: true},
+			"human_authority":  {Kind: KindString, Required: true},
+			"cause":            {Kind: KindString, Required: true},
+			"scope":            {Kind: KindString, Required: true},
+		},
+	},
+	EventDeveloperCredentialsListed: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema:   Schema{"row_count": {Kind: KindInt, Required: true}},
+	},
+	EventDeveloperCredentialPolicyRead: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true}, Schema: Schema{},
+	},
+	EventDeveloperCredentialPolicyChanged: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"max_lifetime_seconds": {Kind: KindInt, Required: true},
+			"clamped_count":        {Kind: KindInt, Required: true},
 		},
 	},
 	EventCredentialMinted: {

@@ -8,6 +8,11 @@ import "github.com/Hikyo-Org/hikyo/internal/multicall"
 var reviewedWireExtras = wireExtras{
 	Version: 1,
 	Extensions: map[string]wireRow{
+		// Self-owned developer lifecycle resolves a human session without a tenant
+		// formula and records these events through RecordAuthEvent.
+		"http:GET /api/v1/auth/developer-credentials":                 {Events: []string{"EventDeveloperCredentialsListed"}},
+		"http:DELETE /api/v1/auth/developer-credentials":              {Events: []string{"EventDeveloperCredentialRevoked"}},
+		"http:DELETE /api/v1/auth/developer-credentials/{credential}": {Events: []string{"EventDeveloperCredentialRevoked"}},
 		// Replacement prepares independent create and revoke proofs in one transaction.
 		"http:POST /api/v1/orgs/{org}/rules/replace":         {Ops: []string{"OpRuleRevoke"}},
 		"http:POST /api/v1/auth/signup":                      {Events: []string{"EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupExpired", "EventRegistrationMailIntent", "EventRegistrationMailOutcome"}},
@@ -250,6 +255,7 @@ var reviewedWireExtras = wireExtras{
 		"http:PUT /api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration": {Ops: []string{"OpKeySecretRuleChange"}},
 	},
 	Entries: map[string]wireRow{
+		"cli:dev":                                {Class: "ClassTenant", Events: []string{"EventDeveloperCredentialMinted", "EventDeveloperCredentialMintRefused", "EventDeveloperCredentialRevoked", "EventDeveloperCredentialsListed"}},
 		"cli:" + multicall.RootKeyStage:          {Class: "ClassSystem"},
 		"cli:" + multicall.TLSStage:              {Class: "ClassSystem"},
 		"cli:" + multicall.RolloutAuthorityStage: {Class: "ClassSystem"},

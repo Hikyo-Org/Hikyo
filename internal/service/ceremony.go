@@ -139,6 +139,9 @@ func ceremonyGate(ctx context.Context, auth *Auth, az *authz.TxAuthorizer, calle
 // a caller who cannot `read` the environment never gets this far, because the
 // formula is `read(E)` and the chokepoint answers the uniform nonexistent.
 type RevealWindow struct {
+	// DeveloperCredentialMaxLifetimeSeconds resolves the fixed lifetime before
+	// human consent without requiring instance configuration privileges.
+	DeveloperCredentialMaxLifetimeSeconds int64
 	// EffectiveWindowSeconds is the environment's resolved window: its own
 	// override, the protected cap, or the instance default. `0` means every
 	// disclosure takes its own ceremony.
@@ -260,7 +263,15 @@ func (s *Reveal) Window(ctx context.Context, actor Actor, scope domain.Scope) (R
 			return err
 		}
 		out, err = reauthWindowState(ctx, s.Auth, az, caller, scope)
-		return err
+		if err != nil {
+			return err
+		}
+		ceiling, err := az.PeekDeveloperCredentialPolicy(ctx)
+		if err != nil {
+			return err
+		}
+		out.DeveloperCredentialMaxLifetimeSeconds = int64(ceiling / time.Second)
+		return nil
 	})
 	if err != nil {
 		return RevealWindow{}, err
@@ -326,7 +337,7 @@ const (
 // rather than defaulted: a binding nobody can name is a binding nobody checks.
 func (p ReauthPurpose) Valid() bool {
 	switch p {
-	case PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
+	case PurposeDeveloperCredential, PurposeReveal, PurposeCopy, PurposePublish, PurposeMint, PurposeAdapter,
 		PurposeApprove, PurposeReject, PurposeBypass, PurposeAccess:
 		return true
 	}

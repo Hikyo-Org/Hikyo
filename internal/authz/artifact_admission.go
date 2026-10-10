@@ -29,6 +29,9 @@ func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) erro
 		if operation.IsNetwork(ctx) {
 			return domain.ErrNotFound
 		}
+		if caller.Class == domain.ClassDeveloper && !developerDeliveryContext(ctx) {
+			return a.refuseAdmission(ctx, caller, "in-process", operation.ArtifactDeveloperCredential, "class-mismatch")
+		}
 		return nil
 	}
 	class := ContractArtifactClass(caller)
@@ -77,6 +80,7 @@ func (a *TxAuthorizer) refuseAdmission(ctx context.Context, caller Identity, ope
 	}
 	a.CaptureAudit(audit.TrailInstance, domain.Scope{}, audit.Event{
 		ID:            id,
+		AuthorityID:   string(caller.AuthorityPrincipal),
 		Type:          audit.EventAuthArtifactClassRefused,
 		SchemaVersion: 1,
 		OccurredAt:    time.Now().UTC(),

@@ -1145,6 +1145,9 @@ func (s *Auth) UnlinkIdentity(ctx context.Context, presented, identityID, proof 
 		} else if e != nil && !errors.Is(e, domain.ErrNotFound) {
 			return e
 		}
+		if e := revokeDeveloperScope(ctx, az, account.PrincipalID, account.PrincipalID, domain.Scope{}, "identity-unlinked", now); e != nil {
+			return e
+		}
 		if e := az.RemoveExternalIdentity(ctx, identityID); e != nil {
 			return e
 		}

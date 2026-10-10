@@ -157,6 +157,7 @@ import {
   getCredentialPolicy,
   getDefinitionsPlan,
   getDefinitionsSettings,
+  getDeveloperCredentialPolicy,
   getEnvironment,
   getEnvironmentSettings,
   getEnvironmentSignals,
@@ -221,6 +222,7 @@ import {
   listKeys,
   listLeases,
   listMachineCredentials,
+  listMyDeveloperCredentials,
   listMyOrgs,
   listMySessions,
   listOauth2Providers,
@@ -232,6 +234,7 @@ import {
   listPendingDrafts,
   listPkiIssuers,
   listPkiProfiles,
+  listProjectDeveloperCredentials,
   listProjectGrants,
   listProjectRules,
   listProjects,
@@ -258,6 +261,7 @@ import {
   loginChallengeWebauthnFinish,
   loginChallengeWebauthnStart,
   logout,
+  mintDeveloperCredential,
   mintInstanceConnection,
   mintLease,
   mintMachineCredential,
@@ -326,6 +330,7 @@ import {
   revealValues,
   revokeAccessRequest,
   revokeAdapterCredential,
+  revokeAllMyDeveloperCredentials,
   revokeCertificate,
   revokeDynamicProviderCredential,
   revokeEnvGrant,
@@ -333,9 +338,11 @@ import {
   revokeInstanceGrant,
   revokeLease,
   revokeMachineCredential,
+  revokeMyDeveloperCredential,
   revokeMySession,
   revokeOrgGrant,
   revokePkiIssuer,
+  revokeProjectDeveloperCredential,
   revokeProjectGrant,
   revokeRule,
   revokeScimCredential,
@@ -372,6 +379,7 @@ import {
   setAdapterCredential,
   setCredentialPolicy,
   setDefinitionsSettings,
+  setDeveloperCredentialPolicy,
   setDynamicProviderCredential,
   setEnvironmentSettings,
   setKeyGroup,
@@ -535,6 +543,7 @@ import type {
   GetCredentialPolicyData,
   GetDefinitionsPlanData,
   GetDefinitionsSettingsData,
+  GetDeveloperCredentialPolicyData,
   GetEnvironmentData,
   GetEnvironmentSettingsData,
   GetEnvironmentSignalsData,
@@ -599,6 +608,7 @@ import type {
   ListKeysData,
   ListLeasesData,
   ListMachineCredentialsData,
+  ListMyDeveloperCredentialsData,
   ListMyOrgsData,
   ListMySessionsData,
   ListOauth2ProvidersData,
@@ -610,6 +620,7 @@ import type {
   ListPendingDraftsData,
   ListPkiIssuersData,
   ListPkiProfilesData,
+  ListProjectDeveloperCredentialsData,
   ListProjectGrantsData,
   ListProjectRulesData,
   ListProjectsData,
@@ -636,6 +647,7 @@ import type {
   LoginChallengeWebauthnFinishData,
   LoginChallengeWebauthnStartData,
   LogoutData,
+  MintDeveloperCredentialData,
   MintInstanceConnectionData,
   MintLeaseData,
   MintMachineCredentialData,
@@ -704,6 +716,7 @@ import type {
   RevealValuesData,
   RevokeAccessRequestData,
   RevokeAdapterCredentialData,
+  RevokeAllMyDeveloperCredentialsData,
   RevokeCertificateData,
   RevokeDynamicProviderCredentialData,
   RevokeEnvGrantData,
@@ -711,9 +724,11 @@ import type {
   RevokeInstanceGrantData,
   RevokeLeaseData,
   RevokeMachineCredentialData,
+  RevokeMyDeveloperCredentialData,
   RevokeMySessionData,
   RevokeOrgGrantData,
   RevokePkiIssuerData,
+  RevokeProjectDeveloperCredentialData,
   RevokeProjectGrantData,
   RevokeRuleData,
   RevokeScimCredentialData,
@@ -750,6 +765,7 @@ import type {
   SetAdapterCredentialData,
   SetCredentialPolicyData,
   SetDefinitionsSettingsData,
+  SetDeveloperCredentialPolicyData,
   SetDynamicProviderCredentialData,
   SetEnvironmentSettingsData,
   SetKeyGroupData,
@@ -892,6 +908,7 @@ import {
   zGetCredentialPolicyResponse,
   zGetDefinitionsPlanResponse,
   zGetDefinitionsSettingsResponse,
+  zGetDeveloperCredentialPolicyResponse,
   zGetEnvironmentResponse,
   zGetEnvironmentSettingsResponse,
   zGetEnvironmentSignalsResponse,
@@ -956,6 +973,7 @@ import {
   zListKeysResponse,
   zListLeasesResponse,
   zListMachineCredentialsResponse,
+  zListMyDeveloperCredentialsResponse,
   zListMyOrgsResponse,
   zListMySessionsResponse,
   zListOauth2ProvidersResponse,
@@ -967,6 +985,7 @@ import {
   zListPendingDraftsResponse,
   zListPkiIssuersResponse,
   zListPkiProfilesResponse,
+  zListProjectDeveloperCredentialsResponse,
   zListProjectGrantsResponse,
   zListProjectRulesResponse,
   zListProjectsResponse,
@@ -992,6 +1011,7 @@ import {
   zLoginChallengeTotpResponse,
   zLoginChallengeWebauthnFinishResponse,
   zLoginChallengeWebauthnStartResponse,
+  zMintDeveloperCredentialResponse,
   zMintInstanceConnectionResponse,
   zMintLeaseResponse,
   zMintMachineCredentialResponse,
@@ -1088,6 +1108,7 @@ import {
   zServeDirectoryResponse,
   zSetCredentialPolicyResponse,
   zSetDefinitionsSettingsResponse,
+  zSetDeveloperCredentialPolicyResponse,
   zSetEnvironmentSettingsResponse,
   zSetKeyGroupResponse,
   zSetMachineRevealResponse,
@@ -1225,6 +1246,7 @@ export const getCertificateCrlOp: BodyOperation<GetCertificateCrlData, typeof zG
 export const getCredentialPolicyOp: BodyOperation<GetCredentialPolicyData, typeof zGetCredentialPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getCredentialPolicy, [200], zGetCredentialPolicyResponse);
 export const getDefinitionsPlanOp: BodyOperation<GetDefinitionsPlanData, typeof zGetDefinitionsPlanResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getDefinitionsPlan, [200], zGetDefinitionsPlanResponse);
 export const getDefinitionsSettingsOp: BodyOperation<GetDefinitionsSettingsData, typeof zGetDefinitionsSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getDefinitionsSettings, [200], zGetDefinitionsSettingsResponse);
+export const getDeveloperCredentialPolicyOp: BodyOperation<GetDeveloperCredentialPolicyData, typeof zGetDeveloperCredentialPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getDeveloperCredentialPolicy, [200], zGetDeveloperCredentialPolicyResponse);
 export const getEnvironmentOp: BodyOperation<GetEnvironmentData, typeof zGetEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironment, [200], zGetEnvironmentResponse);
 export const getEnvironmentSettingsOp: BodyOperation<GetEnvironmentSettingsData, typeof zGetEnvironmentSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSettings, [200], zGetEnvironmentSettingsResponse);
 export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, typeof zGetEnvironmentSignalsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSignals, [200], zGetEnvironmentSignalsResponse);
@@ -1289,6 +1311,7 @@ export const listKeyGroupsOp: BodyOperation<ListKeyGroupsData, typeof zListKeyGr
 export const listKeysOp: BodyOperation<ListKeysData, typeof zListKeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listKeys, [200], zListKeysResponse);
 export const listLeasesOp: BodyOperation<ListLeasesData, typeof zListLeasesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listLeases, [200], zListLeasesResponse);
 export const listMachineCredentialsOp: BodyOperation<ListMachineCredentialsData, typeof zListMachineCredentialsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMachineCredentials, [200], zListMachineCredentialsResponse);
+export const listMyDeveloperCredentialsOp: BodyOperation<ListMyDeveloperCredentialsData, typeof zListMyDeveloperCredentialsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMyDeveloperCredentials, [200], zListMyDeveloperCredentialsResponse);
 export const listMyOrgsOp: BodyOperation<ListMyOrgsData, typeof zListMyOrgsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMyOrgs, [200], zListMyOrgsResponse);
 export const listMySessionsOp: BodyOperation<ListMySessionsData, typeof zListMySessionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listMySessions, [200], zListMySessionsResponse);
 export const listOauth2ProvidersOp: BodyOperation<ListOauth2ProvidersData, typeof zListOauth2ProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listOauth2Providers, [200], zListOauth2ProvidersResponse);
@@ -1300,6 +1323,7 @@ export const listPasskeysOp: BodyOperation<ListPasskeysData, typeof zListPasskey
 export const listPendingDraftsOp: BodyOperation<ListPendingDraftsData, typeof zListPendingDraftsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPendingDrafts, [200], zListPendingDraftsResponse);
 export const listPkiIssuersOp: BodyOperation<ListPkiIssuersData, typeof zListPkiIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPkiIssuers, [200], zListPkiIssuersResponse);
 export const listPkiProfilesOp: BodyOperation<ListPkiProfilesData, typeof zListPkiProfilesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listPkiProfiles, [200], zListPkiProfilesResponse);
+export const listProjectDeveloperCredentialsOp: BodyOperation<ListProjectDeveloperCredentialsData, typeof zListProjectDeveloperCredentialsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjectDeveloperCredentials, [200], zListProjectDeveloperCredentialsResponse);
 export const listProjectGrantsOp: BodyOperation<ListProjectGrantsData, typeof zListProjectGrantsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjectGrants, [200], zListProjectGrantsResponse);
 export const listProjectRulesOp: BodyOperation<ListProjectRulesData, typeof zListProjectRulesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjectRules, [200], zListProjectRulesResponse);
 export const listProjectsOp: BodyOperation<ListProjectsData, typeof zListProjectsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listProjects, [200], zListProjectsResponse);
@@ -1325,6 +1349,7 @@ export const localLoginOp: BodyOperation<LocalLoginData, typeof zLocalLoginRespo
 export const loginChallengeTotpOp: BodyOperation<LoginChallengeTotpData, typeof zLoginChallengeTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(loginChallengeTotp, [200], zLoginChallengeTotpResponse);
 export const loginChallengeWebauthnFinishOp: BodyOperation<LoginChallengeWebauthnFinishData, typeof zLoginChallengeWebauthnFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(loginChallengeWebauthnFinish, [200], zLoginChallengeWebauthnFinishResponse);
 export const loginChallengeWebauthnStartOp: BodyOperation<LoginChallengeWebauthnStartData, typeof zLoginChallengeWebauthnStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(loginChallengeWebauthnStart, [200], zLoginChallengeWebauthnStartResponse);
+export const mintDeveloperCredentialOp: BodyOperation<MintDeveloperCredentialData, typeof zMintDeveloperCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintDeveloperCredential, [200], zMintDeveloperCredentialResponse);
 export const mintInstanceConnectionOp: BodyOperation<MintInstanceConnectionData, typeof zMintInstanceConnectionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintInstanceConnection, [201], zMintInstanceConnectionResponse);
 export const mintLeaseOp: BodyOperation<MintLeaseData, typeof zMintLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintLease, [200], zMintLeaseResponse);
 export const mintMachineCredentialOp: BodyOperation<MintMachineCredentialData, typeof zMintMachineCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintMachineCredential, [200], zMintMachineCredentialResponse);
@@ -1421,6 +1446,7 @@ export const scimServiceProviderConfigOp: BodyOperation<ScimServiceProviderConfi
 export const serveDirectoryOp: BodyOperation<ServeDirectoryData, typeof zServeDirectoryResponse> = /* @__PURE__ */ new GeneratedBodyOperation(serveDirectory, [200], zServeDirectoryResponse);
 export const setCredentialPolicyOp: BodyOperation<SetCredentialPolicyData, typeof zSetCredentialPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setCredentialPolicy, [200], zSetCredentialPolicyResponse);
 export const setDefinitionsSettingsOp: BodyOperation<SetDefinitionsSettingsData, typeof zSetDefinitionsSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setDefinitionsSettings, [200], zSetDefinitionsSettingsResponse);
+export const setDeveloperCredentialPolicyOp: BodyOperation<SetDeveloperCredentialPolicyData, typeof zSetDeveloperCredentialPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setDeveloperCredentialPolicy, [200], zSetDeveloperCredentialPolicyResponse);
 export const setEnvironmentSettingsOp: BodyOperation<SetEnvironmentSettingsData, typeof zSetEnvironmentSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setEnvironmentSettings, [200], zSetEnvironmentSettingsResponse);
 export const setKeyGroupOp: BodyOperation<SetKeyGroupData, typeof zSetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setKeyGroup, [200], zSetKeyGroupResponse);
 export const setMachineRevealOp: BodyOperation<SetMachineRevealData, typeof zSetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setMachineReveal, [200], zSetMachineRevealResponse);
@@ -1505,13 +1531,16 @@ export const reportDeliveryTargetOp: BodylessOperation<ReportDeliveryTargetData>
 export const reportFileTargetOp: BodylessOperation<ReportFileTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportFileTarget, [204]);
 export const retireSamlSpKeyOp: BodylessOperation<RetireSamlSpKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(retireSamlSpKey, [204]);
 export const revokeAdapterCredentialOp: BodylessOperation<RevokeAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeAdapterCredential, [204]);
+export const revokeAllMyDeveloperCredentialsOp: BodylessOperation<RevokeAllMyDeveloperCredentialsData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeAllMyDeveloperCredentials, [204]);
 export const revokeDynamicProviderCredentialOp: BodylessOperation<RevokeDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeDynamicProviderCredential, [204]);
 export const revokeEnvGrantOp: BodylessOperation<RevokeEnvGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeEnvGrant, [204]);
 export const revokeInstanceConnectionOp: BodylessOperation<RevokeInstanceConnectionData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeInstanceConnection, [204]);
 export const revokeInstanceGrantOp: BodylessOperation<RevokeInstanceGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeInstanceGrant, [204]);
 export const revokeMachineCredentialOp: BodylessOperation<RevokeMachineCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMachineCredential, [204]);
+export const revokeMyDeveloperCredentialOp: BodylessOperation<RevokeMyDeveloperCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMyDeveloperCredential, [204]);
 export const revokeMySessionOp: BodylessOperation<RevokeMySessionData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeMySession, [204]);
 export const revokeOrgGrantOp: BodylessOperation<RevokeOrgGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeOrgGrant, [204]);
+export const revokeProjectDeveloperCredentialOp: BodylessOperation<RevokeProjectDeveloperCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeProjectDeveloperCredential, [204]);
 export const revokeProjectGrantOp: BodylessOperation<RevokeProjectGrantData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeProjectGrant, [204]);
 export const revokeRuleOp: BodylessOperation<RevokeRuleData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeRule, [204]);
 export const revokeScimCredentialOp: BodylessOperation<RevokeScimCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeScimCredential, [204]);

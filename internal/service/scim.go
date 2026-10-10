@@ -140,6 +140,7 @@ var (
 // SCIM method takes exactly this after its own authorization, so "the binding
 // in the path is this org's" is decided once.
 type scimContext struct {
+	actor   domain.PrincipalID
 	proof   authz.Proof
 	binding store.SCIMBinding
 	// allowEmailNameID carries the SAML provider's `emailAddress` carve so the
@@ -834,6 +835,7 @@ func (s *SCIM) adminTx(
 		if err != nil {
 			return err
 		}
+		c.actor = caller.Principal
 		a := &scimAdminContext{
 			repos: r, authorizer: az, caller: caller, scimContext: c,
 		}

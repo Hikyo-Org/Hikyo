@@ -495,6 +495,9 @@ func (s *Providers) update(ctx context.Context, r store.Repos, az *authz.TxAutho
 	// Any reconfigure changes security material (client, secret, assurance
 	// policy, or enabled state; the issuer cannot change), so every session
 	// authenticated through this provider is swept in the same tx (A4).
+	if err := revokeDeveloperProvenance(ctx, az, principal, "provider", existing.ID, s.now()); err != nil {
+		return err
+	}
 	swept, err := az.SweepSessionsForProvider(ctx, existing.ID)
 	if err != nil {
 		return err
@@ -583,6 +586,9 @@ func (s *Providers) Delete(ctx context.Context, actor Actor, slug string) error 
 		}
 		swept, err := az.SweepSessionsForProvider(ctx, prov.ID)
 		if err != nil {
+			return err
+		}
+		if err := revokeDeveloperProvenance(ctx, az, caller.Principal, "provider", prov.ID, s.now()); err != nil {
 			return err
 		}
 		if err := az.DeleteProvider(ctx, prov.ID); err != nil {

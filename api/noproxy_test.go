@@ -208,6 +208,16 @@ func TestRemoteContractSurfaceIsPinned(t *testing.T) {
 // THIS instance's own data — its configuration, its metadata, a snapshot it
 // stored — and never fetches, relays or forwards on behalf of the caller.
 var pinnedContractSurface = map[string]bool{
+	// Local developer delegation metadata, mint/revocation and durable policy; no forwarding.
+	"GET /api/v1/auth/developer-credentials":                                                      true,
+	"DELETE /api/v1/auth/developer-credentials":                                                   true,
+	"DELETE /api/v1/auth/developer-credentials/{credential}":                                      true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials": true,
+	"GET /api/v1/orgs/{org}/projects/{project}/developer-credentials":                             true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential}":             true,
+	"GET /api/v1/instance/developer-credential-policy":                                            true,
+	"PUT /api/v1/instance/developer-credential-policy":                                            true,
+
 	// Local-only registration and active SMTP status/test; no caller-selected remote.
 	"POST /api/v1/auth/signup":        true,
 	"POST /api/v1/auth/signup/verify": true,

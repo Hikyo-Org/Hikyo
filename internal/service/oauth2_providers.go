@@ -189,6 +189,9 @@ func (s *OAuth2Providers) update(ctx context.Context, r store.Repos, az *authz.T
 	// Any reconfigure changes security material (client, secret, assurance
 	// policy, or enabled state; the issuer cannot change), so every session
 	// authenticated through this provider is swept in the same tx (A4).
+	if err := revokeDeveloperProvenance(ctx, az, principal, "oauth2-provider", existing.ID, s.now()); err != nil {
+		return err
+	}
 	swept, err := az.DeleteSessionsForOAuth2Provider(ctx, existing.ID)
 	if err != nil {
 		return err
@@ -277,6 +280,9 @@ func (s *OAuth2Providers) Delete(ctx context.Context, actor Actor, slug string) 
 		}
 		swept, err := az.DeleteSessionsForOAuth2Provider(ctx, prov.ID)
 		if err != nil {
+			return err
+		}
+		if err := revokeDeveloperProvenance(ctx, az, caller.Principal, "oauth2-provider", prov.ID, s.now()); err != nil {
 			return err
 		}
 		if err := az.DeleteOAuth2Provider(ctx, prov.ID); err != nil {

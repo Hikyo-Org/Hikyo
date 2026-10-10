@@ -64,7 +64,8 @@ var SpecYAML []byte
 // apply. Revision 7 had already shipped in nightlies without them.
 // Revision 9 requires authenticated per-value snapshot receipts when offline
 // disclosures are reconciled. Legacy unsigned records must be regenerated.
-const Revision = 9
+// Revision 10 adds bounded online-only developer credentials.
+const Revision = 10
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.
@@ -218,12 +219,13 @@ type Operation struct {
 }
 
 const (
-	ArtifactNone               = operation.ArtifactNone
-	ArtifactHumanSession       = operation.ArtifactHumanSession
-	ArtifactMachineCredential  = operation.ArtifactMachineCredential
-	ArtifactSCIMCredential     = operation.ArtifactSCIMCredential
-	ArtifactInstanceCredential = operation.ArtifactInstanceCredential
-	ArtifactLocal              = operation.ArtifactLocal
+	ArtifactNone                = operation.ArtifactNone
+	ArtifactHumanSession        = operation.ArtifactHumanSession
+	ArtifactMachineCredential   = operation.ArtifactMachineCredential
+	ArtifactDeveloperCredential = operation.ArtifactDeveloperCredential
+	ArtifactSCIMCredential      = operation.ArtifactSCIMCredential
+	ArtifactInstanceCredential  = operation.ArtifactInstanceCredential
+	ArtifactLocal               = operation.ArtifactLocal
 )
 
 // AdmitsArtifact reports whether the operation's OpenAPI declaration admits

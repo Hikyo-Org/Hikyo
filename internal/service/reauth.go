@@ -48,7 +48,7 @@ const (
 	reauthWindowUnbound reauthWindowBindingKind = iota + 1
 	reauthWindowOperationBound
 	reauthWindowAdapterBound
-	reauthWindowSelfConfigBound
+	reauthWindowIntentBound
 )
 
 // windowBindingKind parses the four persisted binding columns as one closed
@@ -63,8 +63,8 @@ func windowBindingKind(w authz.ReauthWindow) (reauthWindowBindingKind, reauthInt
 		environmentSet: w.BoundEnvironmentSet,
 	}
 	switch {
-	case w.BoundPurpose == "self-config" && w.BoundOperation != "" && w.BoundKeySet != "" && w.BoundEnvironmentSet == "" && w.SingleDecision:
-		return reauthWindowSelfConfigBound, binding, nil
+	case (w.BoundPurpose == "self-config" || w.BoundPurpose == string(PurposeDeveloperCredential)) && w.BoundOperation != "" && w.BoundKeySet != "" && w.BoundEnvironmentSet == "" && w.SingleDecision:
+		return reauthWindowIntentBound, binding, nil
 	case w.BoundPurpose == "" && w.BoundOperation == "" && w.BoundKeySet == "" && w.BoundEnvironmentSet == "":
 		return reauthWindowUnbound, binding, nil
 	case w.BoundPurpose == "" && w.BoundOperation != "" && w.BoundEnvironmentSet == "":
@@ -154,16 +154,21 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 	if err != nil {
 		return err
 	}
-	if binding.purpose == PurposeSelfConfig && kind != reauthWindowSelfConfigBound {
+	if (binding.purpose == PurposeSelfConfig || binding.purpose == PurposeDeveloperCredential) && kind != reauthWindowIntentBound {
 		return ErrReauthUnitMismatch
 	}
 	switch kind {
-	case reauthWindowSelfConfigBound:
-		if binding.purpose != PurposeSelfConfig || binding.operation != windowBinding.operation || binding.keySet != windowBinding.keySet {
+	case reauthWindowIntentBound:
+		if (binding.purpose != PurposeSelfConfig && binding.purpose != PurposeDeveloperCredential) || binding.purpose != windowBinding.purpose || binding.operation != windowBinding.operation || binding.keySet != windowBinding.keySet {
 			return ErrReauthUnitMismatch
 		}
-		if err := validateSelfConfigFactor(w, now); err != nil {
+		if err := validateExactIntentFactor(w, now); err != nil {
 			return err
+		}
+		if binding.purpose == PurposeDeveloperCredential && w.FactorClass != "webauthn" {
+			if err := s.requireDeveloperTOTPWindow(ctx, az, binding.environmentID); err != nil {
+				return err
+			}
 		}
 		claimed, err := az.ConsumeSingleDecisionWindow(ctx, w.ID, now)
 		if err != nil {
@@ -413,7 +418,7 @@ func (s *Auth) ReauthTOTP(ctx context.Context, presented string, intent ReauthIn
 	if err != nil {
 		return ReauthResult{}, err
 	}
-	if !unbound && !intent.isSelfConfig() {
+	if !unbound && !intent.isSelfConfig() && !intent.isDeveloperCredential() {
 		return ReauthResult{}, ErrReauthUnitMismatch
 	}
 	results, err := s.reauthTOTP(ctx, presented, intent, code)
@@ -452,7 +457,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 	if err != nil {
 		return nil, err
 	}
-	if !unbound && !adapter && !intent.isSelfConfig() {
+	if !unbound && !adapter && !intent.isSelfConfig() && !intent.isDeveloperCredential() {
 		return nil, ErrReauthUnitMismatch
 	}
 	binding, err := intent.bindingFor(environmentIDs[0])
@@ -483,6 +488,16 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 		// requiring `read(E)` first collapses both into the same refusal, and
 		// the chokepoint's own uniform nonexistent outcome does the collapsing.
 		for _, environmentID := range environmentIDs {
+			if intent.isDeveloperCredential() {
+				if err := authorizeDeveloperCredentialCeremony(ctx, az, id, environmentID); err != nil {
+					return err
+				}
+				if err := s.requireDeveloperTOTPWindow(ctx, az, environmentID); err != nil {
+					return err
+				}
+				windowEnvironments = append(windowEnvironments, environmentID)
+				continue
+			}
 			if intent.isSelfConfig() {
 				if err := authorizeSelfConfigCeremony(ctx, az, id, environmentID); err != nil {
 					return err
@@ -560,6 +575,17 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 		windowEnvironments = windowEnvironments[:0]
 		effectiveWindows := make(map[string]time.Duration, len(environmentIDs))
 		for _, environmentID := range environmentIDs {
+			if intent.isDeveloperCredential() {
+				if err := authorizeDeveloperCredentialCeremony(ctx, az, live, environmentID); err != nil {
+					return err
+				}
+				if err := s.requireDeveloperTOTPWindow(ctx, az, environmentID); err != nil {
+					return err
+				}
+				windowEnvironments = append(windowEnvironments, environmentID)
+				effectiveWindows[environmentID] = 5 * time.Minute
+				continue
+			}
 			if intent.isSelfConfig() {
 				if err := authorizeSelfConfigCeremony(ctx, az, live, environmentID); err != nil {
 					return err
@@ -627,7 +653,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 				// challenge row of its own; totp_challenges is dormant, see B8): it is
 				// provenance only. Exact configuration decisions are single-use.
 				ID: windowID, SessionID: live.SessionID, EnvironmentID: environmentID,
-				CeremonyID: confirmed.ID, FactorClass: "totp", SingleDecision: intent.isSelfConfig(),
+				CeremonyID: confirmed.ID, FactorClass: "totp", SingleDecision: intent.isSelfConfig() || intent.isDeveloperCredential(),
 				AuthenticatedAt: now, WindowExpiresAt: windowExpires, HardExpiresAt: hardExpires,
 				CredentialEpoch: epoch, CreatedAt: now, BoundPurpose: string(binding.purpose),
 				BoundOperation: string(binding.operation), BoundEnvironmentSet: binding.environmentSet, BoundKeySet: binding.keySet,
@@ -636,7 +662,7 @@ func (s *Auth) reauthTOTP(ctx context.Context, presented string, intent ReauthIn
 			}
 			*out = append(*out, ReauthResult{
 				SessionToken: completion.SessionToken, CSRFToken: completion.CSRFToken, SessionID: live.SessionID, EnvironmentID: environmentID,
-				SingleDecision: intent.isSelfConfig(), WindowExpires: windowExpires,
+				SingleDecision: intent.isSelfConfig() || intent.isDeveloperCredential(), WindowExpires: windowExpires,
 			})
 		}
 		e, err := newAuditEvent(ctx, audit.EventAuthReauthenticated, account.PrincipalID,

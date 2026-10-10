@@ -132,13 +132,14 @@ func (a *TxAuthorizer) captureDenial(ctx context.Context, principal domain.Princ
 			OccurredAt:    time.Now().UTC(),
 			// Actor class is resolved at flush (principals.kind), inside the
 			// flush transaction.
-			Actor:     audit.Actor{ID: string(principal)},
-			Object:    a.object,
-			Outcome:   audit.OutcomeDenied,
-			SourceIP:  wire.SourceIP,
-			UserAgent: wire.UserAgent,
-			Origin:    wire.Origin,
-			Payload:   payload,
+			Actor:       a.deniedActor(principal),
+			AuthorityID: a.deniedAuthority(principal),
+			Object:      a.object,
+			Outcome:     audit.OutcomeDenied,
+			SourceIP:    wire.SourceIP,
+			UserAgent:   wire.UserAgent,
+			Origin:      wire.Origin,
+			Payload:     payload,
 		},
 	})
 }
@@ -152,4 +153,20 @@ func formulaName(f Formula) string {
 		parts = append(parts, string(atom.Cap)+"@"+levelNames[atom.At])
 	}
 	return strings.Join(parts, "+")
+}
+
+// Denial attribution uses the developer identity resolved in this attempt,
+// never a caller-supplied human authority id.
+func (a *TxAuthorizer) deniedActor(principal domain.PrincipalID) audit.Actor {
+	actor := audit.Actor{ID: string(principal)}
+	if a.developerDenialIdentity.Principal == principal && a.developerDenialIdentity.Class == domain.ClassDeveloper {
+		actor.CredentialID = a.developerDenialIdentity.CredentialID
+	}
+	return actor
+}
+func (a *TxAuthorizer) deniedAuthority(principal domain.PrincipalID) string {
+	if a.developerDenialIdentity.Principal == principal && a.developerDenialIdentity.Class == domain.ClassDeveloper {
+		return string(a.developerDenialIdentity.AuthorityPrincipal)
+	}
+	return ""
 }

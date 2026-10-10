@@ -1578,6 +1578,11 @@ func (s *Workspace) RevokeSession(ctx context.Context, actor Actor, id string) e
 		if !did {
 			return store.ErrNotFound
 		}
+		// Explicit session revocation is a security action; ordinary Auth.Logout
+		// deliberately does not end bounded developer delegations.
+		if err := revokeDeveloperProvenance(ctx, az, caller.Principal, "session", id, now); err != nil {
+			return err
+		}
 		if target.Artifact != workspaceArtifact {
 			// An ordinary session's revocation is a logout, already audited as
 			// one. Giving it a second event under a #71 type would double-count

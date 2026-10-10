@@ -460,14 +460,19 @@ const (
 	// are evaluated in service.Identities, in the same transaction, against
 	// the same grant rows, and refuse before any row is written. A formula
 	// atom here would have been a claim the registry could not keep.
-	OpServiceAccountCreate   Operation = "identity.service-account-create"
-	OpServiceAccountList     Operation = "identity.service-account-list"
-	OpServiceAccountDelete   Operation = "identity.service-account-delete"
-	OpCredentialMint         Operation = "identity.credential-mint"
-	OpCredentialList         Operation = "identity.credential-list"
-	OpCredentialRevoke       Operation = "identity.credential-revoke"
-	OpCredentialPolicyRead   Operation = "identity.credential-policy-read"
-	OpCredentialPolicyUpdate Operation = "identity.credential-policy-update"
+	OpServiceAccountCreate             Operation = "identity.service-account-create"
+	OpServiceAccountList               Operation = "identity.service-account-list"
+	OpServiceAccountDelete             Operation = "identity.service-account-delete"
+	OpCredentialMint                   Operation = "identity.credential-mint"
+	OpCredentialList                   Operation = "identity.credential-list"
+	OpCredentialRevoke                 Operation = "identity.credential-revoke"
+	OpCredentialPolicyRead             Operation = "identity.credential-policy-read"
+	OpCredentialPolicyUpdate           Operation = "identity.credential-policy-update"
+	OpDeveloperCredentialMint          Operation = "developer-credential.mint"
+	OpDeveloperCredentialListProject   Operation = "developer-credential.list-project"
+	OpDeveloperCredentialRevokeProject Operation = "developer-credential.revoke-project"
+	OpDeveloperCredentialPolicyRead    Operation = "developer-credential.policy-read"
+	OpDeveloperCredentialPolicyUpdate  Operation = "developer-credential.policy-update"
 
 	// OIDC federation (#62). Issuer configuration is INSTANCE-scoped under
 	// `instance-config`, never org- or project-scoped: #16 fixed this exact
@@ -4180,6 +4185,34 @@ var operationTable = map[Operation]opSpec{
 	// Not `audited: none`: the default-deny permit rule admits only
 	// tenant-class bare-`read` operations, and reading the instance's
 	// credential governance is neither. Same shape as the OIDC provider read.
+	OpDeveloperCredentialMint: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}, {Cap: domain.CapReveal, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreSnapshotsLatest: true, StoreSnapshotsEntries: true},
+		events:   []audit.EventType{audit.EventDeveloperCredentialMinted, audit.EventDeveloperCredentialMintRefused},
+	},
+	OpDeveloperCredentialListProject: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDeveloperCredentialsListed},
+	},
+	OpDeveloperCredentialRevokeProject: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventDeveloperCredentialRevoked},
+	},
+	OpDeveloperCredentialPolicyRead: {
+		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventDeveloperCredentialPolicyRead},
+	},
+	OpDeveloperCredentialPolicyUpdate: {
+		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventDeveloperCredentialPolicyChanged},
+	},
 	OpCredentialPolicyRead: {
 		class:    ClassInstance,
 		formula:  Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},

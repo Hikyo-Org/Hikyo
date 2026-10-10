@@ -4,6 +4,45 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type MintDeveloperCredentialRequest = {
+    key_ids: Array<Id>;
+    /**
+     * Explicit consent to every current and future published key in this environment until expiry.
+     */
+    consent_current_and_future: true;
+    lifetime_seconds: number;
+};
+
+export type DeveloperCredential = {
+    id: Id;
+    principal_id: Id;
+    authority_principal_id: Id;
+    org_id: Id;
+    project_id: Id;
+    environment_id: Id;
+    created_at: string;
+    expires_at: string;
+    revoked_at?: string;
+    prefix_hint: string;
+};
+
+export type DeveloperCredentialList = {
+    items: Array<DeveloperCredential>;
+    count: number;
+};
+
+export type MintDeveloperCredentialResult = {
+    credential: DeveloperCredential;
+    /**
+     * Display-once opaque credential. Never returned by list.
+     */
+    value: string;
+};
+
+export type DeveloperCredentialPolicy = {
+    max_lifetime_seconds: number;
+};
+
 /**
  * An issuer or profile name.
  */
@@ -1327,10 +1366,23 @@ export type TotpCodeRequest = {
     code: string;
 };
 
+export type DeveloperCredentialReauthIntent = {
+    lifetime_seconds: number;
+    consent_current_and_future: true;
+};
+
+export type TotpDeveloperCredentialReauthRequest = {
+    purpose: 'developer-credential';
+    environment_id: Id;
+    key_ids: Array<Id>;
+    developer_credential: DeveloperCredentialReauthIntent;
+    code: string;
+};
+
 /**
  * A disclosure reauthentication by TOTP in exactly one canonical intent shape.
  */
-export type TotpReauthRequest = TotpEnvironmentReauthRequest | TotpAdapterReauthRequest | TotpSelfConfigReauthRequest;
+export type TotpReauthRequest = TotpEnvironmentReauthRequest | TotpAdapterReauthRequest | TotpSelfConfigReauthRequest | TotpDeveloperCredentialReauthRequest;
 
 export type TotpSelfConfigReauthRequest = {
     purpose: 'self-config';
@@ -1383,17 +1435,16 @@ export type TotpAdapterReauthRequest = {
     code: string;
 };
 
-/**
- * `adapter` carries an adapter-routing decision over an environment set.
- * Every non-adapter purpose carries an exact environment and key set. The
- * browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
- * names exactly the unit the decision covers.
- *
- */
-export type CliReauthStartRequest = {
+export type CliReauthStartRequest = ({
+    purpose?: 'developer-credential';
+} | {
+    purpose?: unknown;
+    key_ids?: unknown;
+}) & {
+    developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environment_ids: Array<Id>;
     /**
      * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
@@ -1437,10 +1488,11 @@ export type CliReauthEnvironmentPolicy = {
 };
 
 export type CliReauthTransaction = {
+    developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
     state: string;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config' | 'developer-credential';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test' | 'developer-credential.mint';
     environments: Array<CliReauthEnvironmentPolicy>;
     /**
      * The enumerated unit the ceremony binds; empty for `adapter`.
@@ -3398,6 +3450,8 @@ export type DeliveredKey = {
      * Authenticated server receipt for this delivered value, present only
      * with value. Store inside the encrypted offline snapshot. Required
      * for later offline disclosure reconciliation; never log it.
+     * Absent for developer-credential delivery, which never authorizes
+     * offline snapshots or reconciliation.
      *
      */
     snapshot_receipt?: string;
@@ -5036,7 +5090,13 @@ export type WebauthnEnrolStartRequest = {
     code?: string;
 };
 
-export type WebauthnReauthStartRequest = {
+export type WebauthnReauthStartRequest = ({
+    operation?: 'developer-credential';
+    key_ids?: unknown;
+} | {
+    operation?: unknown;
+}) & {
+    developer_credential?: DeveloperCredentialReauthIntent;
     self_config?: SelfConfigReauthIntent;
     operation: ReauthPurpose;
     environment_id: string;
@@ -5055,7 +5115,7 @@ export type WebauthnReauthStartRequest = {
  * unit, a different decision, and the human agreed to only one of them.
  *
  */
-export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'self-config' | 'approve' | 'reject' | 'bypass' | 'access';
+export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'self-config' | 'developer-credential' | 'approve' | 'reject' | 'bypass' | 'access';
 
 /**
  * The account-security proof for removing a credential, selected
@@ -5094,6 +5154,14 @@ export type ReauthResult = {
  *
  */
 export type RevealWindow = {
+    /**
+     * Current instance ceiling for developer credentials, exposed through
+     * this environment read-authorized surface. Clients resolve an omitted
+     * lifetime before consent and bind the concrete positive lifetime to
+     * reauthentication and mint. Later policy changes cannot extend it.
+     *
+     */
+    developer_credential_max_lifetime_seconds?: number;
     /**
      * The environment's resolved reauthentication window. `0` means
      * every disclosure takes its own ceremony — the state a protected
@@ -33761,3 +33829,572 @@ export type TransitVerifyHmacResponses = {
 };
 
 export type TransitVerifyHmacResponse = TransitVerifyHmacResponses[keyof TransitVerifyHmacResponses];
+
+export type MintDeveloperCredentialData = {
+    body: MintDeveloperCredentialRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials';
+};
+
+export type MintDeveloperCredentialErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type MintDeveloperCredentialError = MintDeveloperCredentialErrors[keyof MintDeveloperCredentialErrors];
+
+export type MintDeveloperCredentialResponses = {
+    /**
+     * Authorized result. Credential values appear only at mint.
+     */
+    200: MintDeveloperCredentialResult;
+};
+
+export type MintDeveloperCredentialResponse = MintDeveloperCredentialResponses[keyof MintDeveloperCredentialResponses];
+
+export type RevokeAllMyDeveloperCredentialsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/developer-credentials';
+};
+
+export type RevokeAllMyDeveloperCredentialsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeAllMyDeveloperCredentialsError = RevokeAllMyDeveloperCredentialsErrors[keyof RevokeAllMyDeveloperCredentialsErrors];
+
+export type RevokeAllMyDeveloperCredentialsResponses = {
+    /**
+     * Revoked idempotently.
+     */
+    204: void;
+};
+
+export type RevokeAllMyDeveloperCredentialsResponse = RevokeAllMyDeveloperCredentialsResponses[keyof RevokeAllMyDeveloperCredentialsResponses];
+
+export type ListMyDeveloperCredentialsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/developer-credentials';
+};
+
+export type ListMyDeveloperCredentialsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListMyDeveloperCredentialsError = ListMyDeveloperCredentialsErrors[keyof ListMyDeveloperCredentialsErrors];
+
+export type ListMyDeveloperCredentialsResponses = {
+    /**
+     * Authorized result. Credential values appear only at mint.
+     */
+    200: DeveloperCredentialList;
+};
+
+export type ListMyDeveloperCredentialsResponse = ListMyDeveloperCredentialsResponses[keyof ListMyDeveloperCredentialsResponses];
+
+export type RevokeMyDeveloperCredentialData = {
+    body?: never;
+    path: {
+        /**
+         * Machine-credential identifier.
+         */
+        credential: Id;
+    };
+    query?: never;
+    url: '/api/v1/auth/developer-credentials/{credential}';
+};
+
+export type RevokeMyDeveloperCredentialErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeMyDeveloperCredentialError = RevokeMyDeveloperCredentialErrors[keyof RevokeMyDeveloperCredentialErrors];
+
+export type RevokeMyDeveloperCredentialResponses = {
+    /**
+     * Revoked idempotently.
+     */
+    204: void;
+};
+
+export type RevokeMyDeveloperCredentialResponse = RevokeMyDeveloperCredentialResponses[keyof RevokeMyDeveloperCredentialResponses];
+
+export type ListProjectDeveloperCredentialsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/developer-credentials';
+};
+
+export type ListProjectDeveloperCredentialsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListProjectDeveloperCredentialsError = ListProjectDeveloperCredentialsErrors[keyof ListProjectDeveloperCredentialsErrors];
+
+export type ListProjectDeveloperCredentialsResponses = {
+    /**
+     * Authorized result. Credential values appear only at mint.
+     */
+    200: DeveloperCredentialList;
+};
+
+export type ListProjectDeveloperCredentialsResponse = ListProjectDeveloperCredentialsResponses[keyof ListProjectDeveloperCredentialsResponses];
+
+export type RevokeProjectDeveloperCredentialData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Machine-credential identifier.
+         */
+        credential: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential}';
+};
+
+export type RevokeProjectDeveloperCredentialErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeProjectDeveloperCredentialError = RevokeProjectDeveloperCredentialErrors[keyof RevokeProjectDeveloperCredentialErrors];
+
+export type RevokeProjectDeveloperCredentialResponses = {
+    /**
+     * Revoked idempotently.
+     */
+    204: void;
+};
+
+export type RevokeProjectDeveloperCredentialResponse = RevokeProjectDeveloperCredentialResponses[keyof RevokeProjectDeveloperCredentialResponses];
+
+export type GetDeveloperCredentialPolicyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/developer-credential-policy';
+};
+
+export type GetDeveloperCredentialPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetDeveloperCredentialPolicyError = GetDeveloperCredentialPolicyErrors[keyof GetDeveloperCredentialPolicyErrors];
+
+export type GetDeveloperCredentialPolicyResponses = {
+    /**
+     * Authorized result. Credential values appear only at mint.
+     */
+    200: DeveloperCredentialPolicy;
+};
+
+export type GetDeveloperCredentialPolicyResponse = GetDeveloperCredentialPolicyResponses[keyof GetDeveloperCredentialPolicyResponses];
+
+export type SetDeveloperCredentialPolicyData = {
+    body: DeveloperCredentialPolicy;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/developer-credential-policy';
+};
+
+export type SetDeveloperCredentialPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetDeveloperCredentialPolicyError = SetDeveloperCredentialPolicyErrors[keyof SetDeveloperCredentialPolicyErrors];
+
+export type SetDeveloperCredentialPolicyResponses = {
+    /**
+     * Authorized result. Credential values appear only at mint.
+     */
+    200: DeveloperCredentialPolicy;
+};
+
+export type SetDeveloperCredentialPolicyResponse = SetDeveloperCredentialPolicyResponses[keyof SetDeveloperCredentialPolicyResponses];

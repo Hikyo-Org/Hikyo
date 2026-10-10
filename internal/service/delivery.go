@@ -229,6 +229,7 @@ func (s *Delivery) Fetch(ctx context.Context, presented string, scope domain.Sco
 // and, later, any local-authority verb — resolve their principal by other means
 // and must not have to forge an artifact to reach the same code.
 func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope, cursor string, opts FetchOptions) (FetchResult, error) {
+	ctx = authz.WithDeveloperDelivery(ctx)
 	if s.Keyring == nil {
 		return FetchResult{}, ErrDeliveryKeyring
 	}
@@ -328,6 +329,9 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		// so a `secret` value crosses only under `reveal-history`, not `reveal`.
 		pinnedNonCurrent := false
 		pin, pinErr := r.Pins().GetForWorkload(ctx, p, string(caller.Principal))
+		if caller.Class == domain.ClassDeveloper && pinErr == nil {
+			return domain.ErrNotFound
+		}
 		switch {
 		case errors.Is(pinErr, store.ErrNotFound):
 		case pinErr != nil:
@@ -373,7 +377,16 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		// revision) over exactly these rows. There is no second authorization
 		// path — the operation formula stays `read@environment`, and value
 		// disclosure is a projection of the grants that formula already required.
-		grants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
+		var grants []authz.GrantRow
+		if caller.Class == domain.ClassDeveloper {
+			var delegated []domain.Grant
+			delegated, err = az.DeveloperDeliveryGrants(ctx, caller)
+			for _, g := range delegated {
+				grants = append(grants, authz.GrantRow{Grant: g})
+			}
+		} else {
+			grants, err = az.GrantRowsForPrincipal(ctx, caller.Principal)
+		}
 		if err != nil {
 			return err
 		}
@@ -462,10 +475,13 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			IssuedAt:             issuedAt,
 			SnapshotExpiresAt:    issuedAt.Add(delivery.SnapshotMaxAge),
 		}
+		if caller.Class == domain.ClassDeveloper {
+			out.SnapshotExpiresAt = time.Time{}
+		}
 		if !current {
 			out.Keys = rows
 			for i := range out.Keys {
-				if out.Keys[i].Value == nil {
+				if out.Keys[i].Value == nil || caller.Class == domain.ClassDeveloper {
 					continue
 				}
 				receipt, err := s.issueOfflineReceipt(signer, caller.Principal, out, out.Keys[i])
@@ -519,6 +535,8 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		if err != nil {
 			return err
 		}
+		fetchEvent.AuthorityID = string(caller.AuthorityPrincipal)
+		fetchEvent.Actor.CredentialID = caller.CredentialID
 		if err := r.Audit().InsertTenant(ctx, p, fetchEvent); err != nil {
 			return err
 		}
@@ -546,6 +564,8 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			if err != nil {
 				return err
 			}
+			disclosure.AuthorityID = string(caller.AuthorityPrincipal)
+			disclosure.Actor.CredentialID = caller.CredentialID
 			if err := r.Audit().InsertTenant(ctx, p, disclosure); err != nil {
 				return err
 			}
