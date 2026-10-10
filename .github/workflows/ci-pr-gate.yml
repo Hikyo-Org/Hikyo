@@ -24,11 +24,12 @@ permissions:
   contents: read
 
 # Checks belong to commits, not PRs. One writer also serializes same-SHA PRs
-# and scheduled repair. GitHub may replace pending events; repair reassesses
-# live state instead of replaying their conclusions.
+# and scheduled repair. Preserve up to 100 pending events instead of replacing
+# them; scheduled repair covers overflow and reassesses current live state.
 concurrency:
   group: pr-gate-publisher
   cancel-in-progress: false
+  queue: max
 
 jobs:
   publish:

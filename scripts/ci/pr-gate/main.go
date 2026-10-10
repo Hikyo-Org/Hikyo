@@ -257,7 +257,8 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 }
 func (c *controller) openPRs(ctx context.Context) ([]pull, error) {
 	var pulls []pull
-	for page := 1; page <= 2; page++ {
+	seen := make(map[int]bool)
+	for page := 1; ; page++ {
 		var entries []pull
 		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("pulls?state=open&per_page=100&page=%d", page)), &entries); err != nil {
 			return nil, err
@@ -266,19 +267,16 @@ func (c *controller) openPRs(ctx context.Context) ([]pull, error) {
 			return nil, errors.New("invalid open PR list")
 		}
 		for _, p := range entries {
-			if p.Number <= 0 || p.State != "open" || !validReference(p.Head) || !validReference(p.Base) || p.Base.Repo.ID != c.repo.ID {
+			if p.Number <= 0 || seen[p.Number] || p.State != "open" || !validReference(p.Head) || !validReference(p.Base) || p.Base.Repo.ID != c.repo.ID || !strings.EqualFold(p.Base.Repo.FullName, c.repoName) {
 				return nil, errors.New("invalid open PR metadata")
 			}
+			seen[p.Number] = true
 		}
 		pulls = append(pulls, entries...)
-		if len(pulls) > 100 {
-			return nil, errors.New("more than 100 open PRs; refusing incomplete collision/repair scan")
-		}
 		if len(entries) < 100 {
 			return pulls, nil
 		}
 	}
-	return pulls, nil
 }
 func associated(r run, p pull, exactBase bool) bool {
 	if len(r.Pulls) == 0 {
@@ -309,7 +307,7 @@ func associated(r run, p pull, exactBase bool) bool {
 	return count == 1
 }
 func (c *controller) validRun(r run) bool {
-	if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != c.workflow.ID || r.Path != workflowPath || r.Event != "pull_request" || r.Repository.ID != c.repo.ID || !strings.EqualFold(r.Repository.FullName, c.repoName) || !shaPattern.MatchString(r.HeadSHA) || r.HeadRepository.ID <= 0 || r.Pulls == nil {
+	if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != c.workflow.ID || r.Path != workflowPath || r.Event != "pull_request" || r.Repository.ID != c.repo.ID || !strings.EqualFold(r.Repository.FullName, c.repoName) || !shaPattern.MatchString(r.HeadSHA) || r.HeadRepository.ID <= 0 {
 		return false
 	}
 	switch r.Status {

@@ -22,6 +22,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 		Concurrency struct {
 			Group  string `yaml:"group"`
 			Cancel bool   `yaml:"cancel-in-progress"`
+			Queue  string `yaml:"queue"`
 		} `yaml:"concurrency"`
 		Jobs map[string]struct {
 			Timeout     int               `yaml:"timeout-minutes"`
@@ -89,8 +90,8 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 	if len(workflow.Permissions) != 1 || workflow.Permissions["contents"] != "read" {
 		t.Fatal("publisher defaults must be contents-read only")
 	}
-	if workflow.Concurrency.Group != "pr-gate-publisher" || workflow.Concurrency.Cancel {
-		t.Fatal("commit-scoped check mutations require a single non-cancelling writer")
+	if workflow.Concurrency.Group != "pr-gate-publisher" || workflow.Concurrency.Cancel || workflow.Concurrency.Queue != "max" {
+		t.Fatal("commit-scoped check mutations require a single non-cancelling writer with pending-event retention")
 	}
 	job, ok := workflow.Jobs["publish"]
 	if !ok || len(workflow.Jobs) != 1 || job.Timeout <= 0 || job.Timeout > 10 {

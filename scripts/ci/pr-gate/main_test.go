@@ -8,11 +8,56 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestVerifyPolicySubprocessContract(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll("scripts/ci", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const script = `#!/bin/sh
+set -eu
+test "$PR_NUMBER" = 877
+test "$HEAD_SHA" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+test "$PR_GATE_ONCE" = 1
+test "$GH_REPO" = Hikyo-Org/Hikyo
+test "$GH_TOKEN" = controlled-test-token
+exit "$POLICY_FIXTURE_EXIT"
+`
+	if err := os.WriteFile(filepath.Join("scripts", "ci", "check-fork-validation.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PR_NUMBER", "wrong-pr")
+	t.Setenv("HEAD_SHA", "wrong-head")
+	t.Setenv("PR_GATE_ONCE", "0")
+	t.Setenv("GH_REPO", "Hikyo-Org/Hikyo")
+	t.Setenv("GH_TOKEN", "controlled-test-token")
+	for _, code := range []int{0, 1, 75, 2, 127} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Setenv("POLICY_FIXTURE_EXIT", strconv.Itoa(code))
+			got, err := verifyPolicy(context.Background(), 877, strings.Repeat("a", 40))
+			if code == 0 || code == 1 || code == 75 {
+				if err != nil || got != code {
+					t.Fatalf("mapped exit=%d error=%v, want %d", got, err, code)
+				}
+			} else if err == nil {
+				t.Fatalf("unexpected exit %d was accepted as %d", code, got)
+			}
+		})
+	}
+	if err := os.Remove(filepath.Join("scripts", "ci", "check-fork-validation.sh")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyPolicy(context.Background(), 877, strings.Repeat("a", 40)); err == nil {
+		t.Fatal("missing trusted verifier accepted")
+	}
+}
 
 type fakeAPI struct {
 	responses map[string]any
@@ -285,7 +330,9 @@ func TestForgedCallbackWorkflowAndAssociation(t *testing.T) {
 			case "repo":
 				f.event.Run.Repository.ID = 99
 			case "association":
-				f.source.Pulls = nil
+				other := f.pr
+				other.Number = 999
+				f.source.Pulls = []pull{other}
 				f.refresh()
 			}
 			if err := f.c.execute(context.Background(), "workflow_run", f.event); err == nil {
@@ -346,6 +393,129 @@ func TestEmptyForkAssociationUsesGitHubOwnedMergeProof(t *testing.T) {
 				status = "completed"
 			}
 			requireConclusion(t, f, status, tc.want)
+		})
+	}
+}
+
+func TestOmittedForkAssociationJSONStillNeedsImmutableProof(t *testing.T) {
+	for _, representation := range []string{"omitted", "null"} {
+		for _, proved := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/proved=%t", representation, proved), func(t *testing.T) {
+				f := newFixture(t)
+				f.pr.Head.Repo = repository{ID: 11, FullName: "fork/Hikyo"}
+				f.source.HeadRepository = f.pr.Head.Repo
+				f.source.Pulls = nil
+				if !proved {
+					f.source.References[0].Ref = "refs/pull/999/merge"
+				}
+				f.refresh()
+				raw, err := json.Marshal(f.source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var source map[string]json.RawMessage
+				if err := decode(raw, &source); err != nil {
+					t.Fatal(err)
+				}
+				if representation == "omitted" {
+					delete(source, "pull_requests")
+				}
+				// Both callback and REST source/list are actual JSON with this shape.
+				f.api.responses[f.c.endpoint("actions/runs/100")] = source
+				f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 1, "workflow_runs": []any{source}}
+				f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 2, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}}}
+				payload, err := json.Marshal(map[string]any{"repository": f.event.Repository, "workflow_run": source})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var callback event
+				if err := decode(payload, &callback); err != nil {
+					t.Fatal(err)
+				}
+				if callback.Run.Pulls != nil {
+					t.Fatal("fixture did not exercise nil associations")
+				}
+				if err := f.c.execute(context.Background(), "workflow_run", callback); err != nil {
+					t.Fatal(err)
+				}
+				if proved {
+					requireConclusion(t, f, "completed", "success")
+				} else {
+					requireConclusion(t, f, "queued", "")
+				}
+			})
+		}
+	}
+}
+
+func setOpenPRPages(f *fixture, pulls []pull) {
+	for page, offset := 1, 0; ; page, offset = page+1, offset+100 {
+		end := min(offset+100, len(pulls))
+		f.api.responses[f.c.endpoint(fmt.Sprintf("pulls?state=open&per_page=100&page=%d", page))] = pulls[offset:end]
+		if end-offset < 100 {
+			return
+		}
+	}
+}
+
+func manyOpenPRs(f *fixture, count int) []pull {
+	pulls := []pull{f.pr}
+	for i := 1; i < count; i++ {
+		p := f.pr
+		p.Number = 1000 + i
+		p.Head.SHA = fmt.Sprintf("%040x", i)
+		pulls = append(pulls, p)
+	}
+	return pulls
+}
+
+func TestOpenPRPaginationBeyondTwoPagesAndFreshCollisionScan(t *testing.T) {
+	for _, collision := range []bool{false, true} {
+		t.Run(fmt.Sprint(collision), func(t *testing.T) {
+			f := newFixture(t)
+			pulls := manyOpenPRs(f, 251)
+			if collision {
+				pulls[250].Head.SHA = f.pr.Head.SHA
+			}
+			setOpenPRPages(f, pulls)
+			if err := f.execute(); err != nil {
+				t.Fatal(err)
+			}
+			want := "success"
+			if collision {
+				want = "failure"
+			}
+			requireConclusion(t, f, "completed", want)
+			for page := 1; page <= 3; page++ {
+				if f.api.reads[f.c.endpoint(fmt.Sprintf("pulls?state=open&per_page=100&page=%d", page))] < 2 {
+					t.Fatalf("page %d was not refreshed before publication", page)
+				}
+			}
+		})
+	}
+}
+
+func TestOpenPRPaginationRejectsInconsistencies(t *testing.T) {
+	for _, name := range []string{"duplicate", "invalid", "null page", "transport failure"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			pulls := manyOpenPRs(f, 101)
+			setOpenPRPages(f, pulls)
+			path := f.c.endpoint("pulls?state=open&per_page=100&page=2")
+			switch name {
+			case "duplicate":
+				f.api.responses[path] = []pull{pulls[0]}
+			case "invalid":
+				pulls[100].State = "closed"
+			case "null page":
+				f.api.responses[path] = []pull(nil)
+			case "transport failure":
+				f.api.responses[path] = errors.New("transport failure")
+			}
+			if err := f.execute(); err == nil {
+				t.Fatal("incomplete or inconsistent collision list accepted")
+			}
+			requireConclusion(t, f, "queued", "")
 		})
 	}
 }
