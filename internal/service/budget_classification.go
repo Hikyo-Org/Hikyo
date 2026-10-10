@@ -185,6 +185,10 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpCredentialReset, authz.OpCredentialResetInstance,
 		authz.OpCredentialPolicyRead, authz.OpCredentialPolicyUpdate,
 		authz.OpBindingCreate,
+		// Bounded developer delegation: authenticated API budget governs lifecycle
+		// metadata and fixed-cap minting, matching existing credential governance.
+		authz.OpDeveloperCredentialMint, authz.OpDeveloperCredentialListProject, authz.OpDeveloperCredentialRevokeProject,
+		authz.OpDeveloperCredentialPolicyRead, authz.OpDeveloperCredentialPolicyUpdate,
 		// federation issuers
 		authz.OpFederationIssuerCreate, authz.OpFederationIssuerList,
 		authz.OpFederationIssuerUpdate, authz.OpFederationIssuerDelete,

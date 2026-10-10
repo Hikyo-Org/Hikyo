@@ -61,6 +61,17 @@ var parityExceptionClasses = map[string]struct {
 	admits func(op api.Operation) bool
 	rule   string
 }{
+	"bounded-developer-delegation": {
+		admits: func(op api.Operation) bool {
+			switch op.ID {
+			case "mintDeveloperCredential", "listMyDeveloperCredentials", "revokeMyDeveloperCredential", "revokeAllMyDeveloperCredentials":
+				return op.AdmitsArtifact(api.ArtifactHumanSession) && !op.AdmitsArtifact(api.ArtifactDeveloperCredential)
+			default:
+				return false
+			}
+		},
+		rule: "the explicitly CLI-only interactive delegation ceremony and self-custody lifecycle (#807)",
+	},
 	"preview-parameter-configuration": {
 		admits: func(op api.Operation) bool {
 			return op.Path == "/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters" &&
@@ -70,6 +81,11 @@ var parityExceptionClasses = map[string]struct {
 	},
 	"identity-protocol": {
 		admits: func(op api.Operation) bool {
+			// #807 delegates a domain delivery authority; its CLI custody
+			// lifecycle is covered by the narrower declared exception above.
+			if strings.HasPrefix(op.Path, "/api/v1/auth/developer-credentials") {
+				return false
+			}
 			return strings.HasPrefix(op.Path, "/api/v1/auth/") || strings.Contains(op.Path, "/scim/v2/")
 		},
 		rule: "protocol-shaped paths under /api/v1/auth/ or the SCIM wire under /scim/v2/",

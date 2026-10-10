@@ -1021,6 +1021,16 @@ func assertOnlyMigrationSeeds(ctx context.Context, tx pgx.Tx, tables []string) e
 			}
 			continue
 		}
+		if table == "developer_credential_policy" {
+			occupied, err := pggen.New(tx).RestoreDeveloperPolicySeedOccupied(ctx)
+			if err != nil {
+				return fmt.Errorf("store: check restore developer policy seed: %w", err)
+			}
+			if occupied {
+				return fmt.Errorf("%w: %s has non-seed policy", ErrTargetNotEmpty, table)
+			}
+			continue
+		}
 		if migrationSeededTables[table] {
 			continue
 		}

@@ -112,7 +112,7 @@ func authorizeSelfConfigCeremony(ctx context.Context, az *authz.TxAuthorizer, ca
 // Self-configuration accepts only fresh local TOTP or user-verifying passkey
 // evidence. Other reauth issuers and longer-lived disclosure windows cannot
 // acquire this authority by adopting its persisted purpose fields.
-func validateSelfConfigFactor(w authz.ReauthWindow, now time.Time) error {
+func validateExactIntentFactor(w authz.ReauthWindow, now time.Time) error {
 	if w.FactorClass != "totp" && w.FactorClass != "webauthn" {
 		return ErrReauthUnitMismatch
 	}

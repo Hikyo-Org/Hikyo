@@ -202,3 +202,19 @@ export const NothingToAuthorize: Story = {
     await expect(canvas.getByText(/this page has no cli transaction/i)).toBeVisible();
   },
 };
+
+export const DeveloperCredential: Story = {
+  beforeEach: withSearchParams({ transaction: STATE }),
+  parameters: { app: app(oidcIdentity, transaction({ body: {
+    ...base, purpose: 'developer-credential', operation: 'developer-credential.mint',
+    environments: [sliding], key_ids: keys,
+    developer_credential: { lifetime_seconds: 28800, consent_current_and_future: true },
+  } satisfies Transaction })) },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/authorize a developer credential/i)).toBeVisible();
+    await expect(canvas.getByText(/all current and future published keys/i)).toBeVisible();
+    await expect(canvas.getByText(/8 hours/)).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Authorize CLI' })).toBeEnabled();
+    await expect(canvas.queryByRole('button', { name: /re-authenticate with/i })).not.toBeInTheDocument();
+  },
+};

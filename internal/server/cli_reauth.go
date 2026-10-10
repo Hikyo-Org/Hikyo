@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -20,10 +21,18 @@ func (a *API) StartCLIReauth(ctx context.Context, req apigen.StartCLIReauthReque
 			keyIDs = append(keyIDs, string(keyID))
 		}
 	}
+	if req.Body.Purpose != apigen.CLIReauthStartRequestPurposeDeveloperCredential && len(keyIDs) > 500 {
+		return nil, domain.ErrInvalid
+	}
 	var intent service.ReauthIntent
 	var err error
-	if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeSelfConfig {
-		if req.Body.SelfConfig == nil || len(environments) != 0 || len(keyIDs) != 0 {
+	if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeDeveloperCredential {
+		if req.Body.DeveloperCredential == nil || req.Body.SelfConfig != nil || len(environments) != 1 || req.Body.Operation != apigen.CLIReauthStartRequestOperationDeveloperCredentialMint {
+			return nil, domain.ErrInvalid
+		}
+		intent, err = developerCredentialReauthIntent(environments[0], keyIDs, *req.Body.DeveloperCredential)
+	} else if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeSelfConfig {
+		if req.Body.DeveloperCredential != nil || req.Body.SelfConfig == nil || len(environments) != 0 || len(keyIDs) != 0 {
 			return nil, domain.ErrInvalid
 		}
 		intent, err = selfConfigReauthIntent(*req.Body.SelfConfig)
@@ -34,7 +43,7 @@ func (a *API) StartCLIReauth(ctx context.Context, req apigen.StartCLIReauthReque
 			}
 		}
 	} else if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeAdapter {
-		if req.Body.SelfConfig != nil {
+		if req.Body.DeveloperCredential != nil || req.Body.SelfConfig != nil {
 			return nil, domain.ErrInvalid
 		}
 		if len(keyIDs) != 0 {
@@ -42,7 +51,7 @@ func (a *API) StartCLIReauth(ctx context.Context, req apigen.StartCLIReauthReque
 		}
 		intent, err = service.NewAdapterReauthIntent(string(req.Body.Operation), environments)
 	} else {
-		if req.Body.SelfConfig != nil {
+		if req.Body.DeveloperCredential != nil || req.Body.SelfConfig != nil {
 			return nil, domain.ErrInvalid
 		}
 		intent, err = service.NewDisclosureReauthIntent(service.ReauthPurpose(req.Body.Purpose), environments, keyIDs)
@@ -85,7 +94,12 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 			target.PlanDigest = &v.PlanDigest
 		}
 	}
-	return apigen.ShowCLIReauthTransaction200JSONResponse{SelfConfig: target, State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
+	var developerTarget *apigen.DeveloperCredentialReauthIntent
+	if result.DeveloperCredential != nil {
+		v := result.DeveloperCredential
+		developerTarget = &apigen.DeveloperCredentialReauthIntent{LifetimeSeconds: int64(v.Lifetime / time.Second), ConsentCurrentAndFuture: apigen.DeveloperCredentialReauthIntentConsentCurrentAndFuture(v.ConsentCurrentAndFuture)}
+	}
+	return apigen.ShowCLIReauthTransaction200JSONResponse{DeveloperCredential: developerTarget, SelfConfig: target, State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
 }
 
 func (a *API) ApproveCLIReauth(ctx context.Context, req apigen.ApproveCLIReauthRequestObject) (apigen.ApproveCLIReauthResponseObject, error) {

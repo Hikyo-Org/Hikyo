@@ -9,12 +9,13 @@ import (
 )
 
 const (
-	ArtifactNone               = "none"
-	ArtifactHumanSession       = "human-session"
-	ArtifactMachineCredential  = "machine-credential"
-	ArtifactSCIMCredential     = "scim-credential"
-	ArtifactInstanceCredential = "instance-credential"
-	ArtifactLocal              = "local"
+	ArtifactNone                = "none"
+	ArtifactHumanSession        = "human-session"
+	ArtifactMachineCredential   = "machine-credential"
+	ArtifactDeveloperCredential = "developer-credential"
+	ArtifactSCIMCredential      = "scim-credential"
+	ArtifactInstanceCredential  = "instance-credential"
+	ArtifactLocal               = "local"
 )
 
 // Contract is one immutable network-operation admission row. It is built from

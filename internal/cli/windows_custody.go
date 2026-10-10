@@ -30,7 +30,7 @@ func privateWindowsAttributes(inherit bool) (*windows.SecurityAttributes, error)
 }
 
 func readPrivateStateFile(dir, name string) ([]byte, error) {
-	if name != "trust.json" && name != "sessions.json" {
+	if name != "trust.json" && name != "sessions.json" && name != "developer-credentials.json" {
 		return nil, errors.New("unsupported private state file")
 	}
 	// Reads (including doctor) never create state or repair custody. Only an

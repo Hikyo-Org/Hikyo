@@ -11,6 +11,8 @@ import {
 import { useAuthMethods, useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
+  runDeveloperCredentialPasskeyCeremony,
+  runDeveloperCredentialTOTPCeremony,
   runAdapterPasskeyCeremony,
   runAdapterTOTPCeremony,
   runPasskeyCeremony,
@@ -46,7 +48,19 @@ export function CLIReauth() {
         throw new Error('the CLI authorization transaction is unavailable');
       }
       const environmentIds = handoff.environments.map((environment) => environment.environment_id);
-      if (handoff.purpose === 'self-config') {
+      if (handoff.purpose === 'developer-credential') {
+        const target = handoff.developer_credential;
+        const environment = handoff.environments[0];
+        if (target === undefined || target.consent_current_and_future !== true || environment === undefined || handoff.environments.length !== 1 || strategy === 'oidc') {
+          throw new Error('The bounded developer delegation decision is unavailable.');
+        }
+        const input = { environmentId: environment.environment_id, keyIds: handoff.key_ids, lifetimeSeconds: target.lifetime_seconds, consentCurrentAndFuture: target.consent_current_and_future };
+        if (code.trim() !== '' && !environment.requires_webauthn) {
+          await runDeveloperCredentialTOTPCeremony(input, code.trim());
+        } else {
+          await runDeveloperCredentialPasskeyCeremony(input);
+        }
+      } else if (handoff.purpose === 'self-config') {
         if (handoff.self_config === undefined) throw new Error('The configuration decision is unavailable.');
         await reauthenticateSelfConfig(handoff.self_config, code.trim() === '' ? { kind: 'passkey' } : { kind: 'totp', code: code.trim() });
       } else if (handoff.purpose === 'adapter') {
@@ -113,9 +127,10 @@ export function CLIReauth() {
     return <Login />;
   }
 
+  const developerCredential = transaction.data?.purpose === 'developer-credential';
   const selfConfig = transaction.data?.purpose === 'self-config';
   const adapter = transaction.data?.purpose === 'adapter';
-  const disclosure = transaction.data !== undefined && transaction.data.purpose !== 'adapter' && !selfConfig;
+  const disclosure = transaction.data !== undefined && transaction.data.purpose !== 'adapter' && !selfConfig && !developerCredential;
   const slidingEnvironments =
     transaction.data?.environments.filter((environment) => !environment.requires_webauthn) ?? [];
   // An adapter handoff needs a code for every sliding environment (its
@@ -124,7 +139,7 @@ export function CLIReauth() {
   // an enrolled authenticator - and the passkey otherwise.
   const hasTotp = totpStatus.isSuccess && totpStatus.data.confirmed;
   const offersTOTP =
-    (selfConfig || ((adapter || disclosure) && slidingEnvironments.length > 0)) && hasTotp;
+    (selfConfig || ((adapter || disclosure || developerCredential) && slidingEnvironments.length > 0)) && hasTotp;
   const offersOIDC =
     disclosure && slidingEnvironments.length > 0 && oidcProvider !== null;
   const methodsFailed =
@@ -144,7 +159,10 @@ export function CLIReauth() {
         {transaction.data !== undefined ? (
           <>
             <p className="login__lede">
-              {transaction.data.purpose === 'self-config' && transaction.data.self_config !== undefined ? <>Authorize <strong>{transaction.data.self_config.action}</strong> on <code>{transaction.data.self_config.owner_instance_id}</code>, revision r{String(transaction.data.self_config.revision)}, generation {String(transaction.data.self_config.expected_generation)}, schema {transaction.data.self_config.schema_version}. {transaction.data.self_config.to === '' ? '' : `Send to ${transaction.data.self_config.to}.`} {transaction.data.self_config.confirm_restored_credentials ? 'This also confirms reviewed restored credentials and reconciled access grants.' : ''} This decision can be used once.</> : transaction.data.purpose === 'adapter' ? (
+              {transaction.data.purpose === 'developer-credential' && transaction.data.developer_credential !== undefined ? <>
+                Authorize a developer credential for this one environment. Its fixed lifetime is <strong>{developerCredentialLifetime(transaction.data.developer_credential.lifetime_seconds)}</strong>.
+                Consent covers all current and future published keys until expiry. This credential survives ordinary logout, and security revocation or lost access prevents the next fetch. It cannot renew or deliver offline. Your fresh proof authorizes this exact delegation once.
+              </> : transaction.data.purpose === 'self-config' && transaction.data.self_config !== undefined ? <>Authorize <strong>{transaction.data.self_config.action}</strong> on <code>{transaction.data.self_config.owner_instance_id}</code>, revision r{String(transaction.data.self_config.revision)}, generation {String(transaction.data.self_config.expected_generation)}, schema {transaction.data.self_config.schema_version}. {transaction.data.self_config.to === '' ? '' : `Send to ${transaction.data.self_config.to}.`} {transaction.data.self_config.confirm_restored_credentials ? 'This also confirms reviewed restored credentials and reconciled access grants.' : ''} This decision can be used once.</> : transaction.data.purpose === 'adapter' ? (
                 <>
                   Approve <span className="mono">{transaction.data.operation}</span> for the
                   environments below.
@@ -229,4 +247,12 @@ function adapterOperation(operation: string): AdapterOperation {
     default:
       throw new Error(`an adapter handoff named a non-adapter operation: ${operation}`);
   }
+}
+
+function developerCredentialLifetime(seconds: bigint): string {
+  if (seconds % 3600n === 0n) {
+    const hours = seconds / 3600n;
+    return `${String(hours)} ${hours === 1n ? 'hour' : 'hours'} (${String(seconds)} seconds)`;
+  }
+  return `${String(seconds)} seconds`;
 }

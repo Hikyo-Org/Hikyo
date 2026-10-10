@@ -477,6 +477,47 @@
     ]
   },
   {
+    "operation": "developer-credential.list-project",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "developer-credential.mint",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment",
+      "reveal@environment"
+    ]
+  },
+  {
+    "operation": "developer-credential.policy-read",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "developer-credential.policy-update",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "developer-credential.revoke-project",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
     "operation": "dynamic-provider.configure",
     "class": "tenant",
     "level": "project",

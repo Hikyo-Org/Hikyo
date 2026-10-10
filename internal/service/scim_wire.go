@@ -114,6 +114,7 @@ func (s *SCIM) wireTxOnce(
 		if err != nil {
 			return err
 		}
+		c.actor = caller.Principal
 		// Contact is recorded HERE, before the body, and that placement is the
 		// serialization (§9) rather than a detail of when the clock is stamped.
 		// It is an UPDATE on the binding row, so it takes the row's write lock

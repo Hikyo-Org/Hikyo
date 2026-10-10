@@ -572,6 +572,32 @@ type DeliveryTargetReport struct {
 	CreatedAt             pgtype.Timestamptz
 }
 
+type DeveloperCredential struct {
+	ID                   string
+	PrincipalID          string
+	AuthorityPrincipalID string
+	OrgID                string
+	ProjectID            string
+	EnvID                string
+	Verifier             []byte
+	PrefixHint           string
+	ParentSessionID      string
+	ProviderID           string
+	Oauth2ProviderID     string
+	SamlProviderID       string
+	AuthMethod           string
+	AuthorityGeneration  int64
+	CredentialEpoch      int64
+	CreatedAt            pgtype.Timestamptz
+	ExpiresAt            pgtype.Timestamptz
+	RevokedAt            pgtype.Timestamptz
+}
+
+type DeveloperCredentialPolicy struct {
+	ID                 int32
+	MaxLifetimeSeconds int64
+}
+
 type DynamicEffect struct {
 	ID             string
 	OrgID          string

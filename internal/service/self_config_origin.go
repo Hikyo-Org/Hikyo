@@ -104,7 +104,7 @@ func (s *SelfConfig) requireOriginRecovery(ctx context.Context, az *authz.TxAuth
 	if window.FactorClass != "totp" {
 		return invalidDetail("Changing the passkey hostname requires fresh TOTP reauthentication and a current local password credential")
 	}
-	if err := validateSelfConfigFactor(window, now); err != nil {
+	if err := validateExactIntentFactor(window, now); err != nil {
 		return err
 	}
 	account, err := az.AccountByPrincipal(ctx, caller.Principal)

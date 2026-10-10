@@ -16,6 +16,7 @@ import (
 type ReauthIntent struct {
 	variant           reauthIntentVariant
 	selfConfigBinding string
+	developerBinding  string
 	environmentID     string
 	environmentIDs    []string
 	keyIDs            []string
@@ -27,6 +28,7 @@ type reauthIntentVariant uint8
 
 const (
 	intentUnbound reauthIntentVariant = iota + 1
+	intentDeveloperCredential
 	intentReveal
 	intentCopy
 	intentPublish
@@ -68,6 +70,7 @@ type reauthIntentDescriptor struct {
 }
 
 var reauthIntentDescriptors = [...]reauthIntentDescriptor{
+	{variant: intentDeveloperCredential, purpose: PurposeDeveloperCredential, operation: authz.OpDeveloperCredentialMint},
 	{variant: intentSelfConfigAdopt, purpose: PurposeSelfConfig, operation: authz.OpSelfConfigAdopt},
 	{variant: intentSelfConfigApply, purpose: PurposeSelfConfig, operation: authz.OpSelfConfigApply},
 	{variant: intentSelfConfigTest, purpose: PurposeSelfConfig, operation: authz.OpSelfConfigTest},
@@ -159,7 +162,7 @@ func NewAccessBypassReauthIntent(environmentID string) (ReauthIntent, error) {
 // Past this constructor purpose, operation, environment and keys travel as one
 // value and cannot be recombined.
 func NewDisclosureReauthIntent(purpose ReauthPurpose, environmentIDs, keyIDs []string) (ReauthIntent, error) {
-	if purpose == PurposeAdapter || purpose == PurposeSelfConfig {
+	if purpose == PurposeAdapter || purpose == PurposeSelfConfig || purpose == PurposeDeveloperCredential {
 		return ReauthIntent{}, fmt.Errorf("%w: adapter reauthentication requires an adapter intent", domain.ErrInvalid)
 	}
 	descriptor, ok := disclosureDescriptorForPurpose(purpose)
@@ -274,6 +277,13 @@ func (i ReauthIntent) bindingFor(adapterEnvironmentID string) (reauthIntentBindi
 		return binding, nil
 	}
 	binding.purpose, binding.operation = descriptor.purpose, descriptor.operation
+	if i.isDeveloperCredential() {
+		if adapterEnvironmentID != "" && adapterEnvironmentID != i.environmentID {
+			return reauthIntentBinding{}, ErrReauthUnitMismatch
+		}
+		binding.challengeBinding = i.developerBinding
+		return binding, nil
+	}
 	if i.isSelfConfig() {
 		if adapterEnvironmentID != "" && adapterEnvironmentID != i.environmentID {
 			return reauthIntentBinding{}, ErrReauthUnitMismatch

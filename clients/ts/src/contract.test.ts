@@ -5,6 +5,8 @@ import type { AdapterProvider, SamlProviderWarning } from './generated/types.gen
 
 import {
   zAdapterProvider,
+  zMintDeveloperCredentialRequest,
+  zDeveloperCredentialReauthIntent,
   zUpdateAdapterTargetRequest,
   zDynamicProviderKind,
   zSamlProviderWarning,
@@ -168,4 +170,16 @@ test('GitLab update flags preserve omission and explicit false', () => {
   assert.deepEqual(schema.parse({}), {});
   const explicit = { variable_protected: false, variable_hidden: false, variable_expand: false };
   assert.deepEqual(schema.parse(explicit), explicit);
+});
+
+
+test('developer mint and reauthentication require the same concrete positive lifetime', () => {
+  for (const schema of [zMintDeveloperCredentialRequest, zDeveloperCredentialReauthIntent]) {
+    const consent = { consent_current_and_future: true, key_ids: [] };
+    assert.throws(() => schema.parse(consent));
+    for (const lifetime_seconds of [0n, -1n, 28801n]) {
+      assert.throws(() => schema.parse({ ...consent, lifetime_seconds }));
+    }
+    assert.equal(schema.parse({ ...consent, lifetime_seconds: 3600n }).lifetime_seconds, 3600n);
+  }
 });

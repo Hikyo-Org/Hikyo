@@ -570,6 +570,32 @@ type DeliveryTargetReport struct {
 	CreatedAt             string
 }
 
+type DeveloperCredential struct {
+	ID                   string
+	PrincipalID          string
+	AuthorityPrincipalID string
+	OrgID                string
+	ProjectID            string
+	EnvID                string
+	Verifier             []byte
+	PrefixHint           string
+	ParentSessionID      string
+	ProviderID           string
+	Oauth2ProviderID     string
+	SamlProviderID       string
+	AuthMethod           string
+	AuthorityGeneration  int64
+	CredentialEpoch      int64
+	CreatedAt            string
+	ExpiresAt            string
+	RevokedAt            sql.NullString
+}
+
+type DeveloperCredentialPolicy struct {
+	ID                 int64
+	MaxLifetimeSeconds int64
+}
+
 type DynamicEffect struct {
 	ID             string
 	OrgID          string

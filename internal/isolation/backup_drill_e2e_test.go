@@ -1143,7 +1143,7 @@ func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 		// The frozen legacy set plus the post-legacy set restore scans when the
 		// restored schema carries it (authn.restoreNextEpoch).
 		var block string
-		for _, name := range []string{"MaxKnownCredentialEpoch", "PostLegacyMaxCredentialEpoch"} {
+		for _, name := range []string{"MaxKnownCredentialEpoch", "PostLegacyMaxCredentialEpoch", "DeveloperMaxCredentialEpoch"} {
 			_, after, found := strings.Cut(string(src), "name: "+name+" ")
 			if !found {
 				t.Fatalf("%s/authn.sql has no %s query", engine, name)
@@ -1234,6 +1234,9 @@ func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
 	// frozen legacy scan does not read: restore must still find it.
 	execRaw(t, db, `INSERT INTO registration_signups (id, email, token_verifier, policy_id, credential_epoch, created_at, expires_at) `+
 		`VALUES ('rsu_forged', 'forged@example.com', `+strings.Replace(verifier, "666f7267656421", "666f7267656423", 1)+`, 'rp_forged', 20000, `+ts+`, '2030-01-01T00:00:00.000000Z')`)
+	// An independently introduced developer table must also outrun forged stamps.
+	execRaw(t, db, `INSERT INTO developer_credentials (id, principal_id, authority_principal_id, org_id, project_id, env_id, verifier, prefix_hint, parent_session_id, provider_id, oauth2_provider_id, saml_provider_id, auth_method, authority_generation, credential_epoch, created_at, expires_at) `+
+		`VALUES ('dev_forged', 'usr_alice', 'usr_alice', 'org_a', 'prj_a1', 'env_a1', `+strings.Replace(verifier, "666f7267656421", "666f7267656424", 1)+`, 'dev', 'ses_forged', '', '', '', 'password', 1, 30000, `+ts+`, '2030-01-01T00:00:00.000000Z')`)
 	execRaw(t, db, `UPDATE auth_instance_state SET credential_epoch = 3 WHERE id = 1`)
 	execRaw(t, db, `UPDATE principals SET reconciled_epoch = 100000`)
 
@@ -1247,15 +1250,15 @@ func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
 	recoverRestoredTarget(t, target, c)
 	restored := target.open(t)
 
-	// One past the largest stamp anywhere in the archive (the forged 20000 in
-	// registration_signups, above the forged 9999 session), never the
+	// One past the largest stamp anywhere in the archive (the forged 30000 developer
+	// credential, above the forged 20000 registration and 9999 session), never the
 	// archive's credential counter + 1 (which would be 4 and leave nothing
 	// distinguishing the planted 50 from a legitimate future bump).
-	if got := queryInt(t, restored, "SELECT credential_epoch FROM auth_instance_state WHERE id = 1"); got != 20001 {
-		t.Errorf("post-restore credential epoch = %d, want 20001 (max forged stamp + 1)", got)
+	if got := queryInt(t, restored, "SELECT credential_epoch FROM auth_instance_state WHERE id = 1"); got != 30001 {
+		t.Errorf("post-restore credential epoch = %d, want 30001 (max forged stamp + 1)", got)
 	}
-	if got := queryInt(t, restored, "SELECT restore_epoch FROM auth_instance_state WHERE id = 1"); got != 20001 {
-		t.Errorf("post-restore restore epoch = %d, want 20001", got)
+	if got := queryInt(t, restored, "SELECT restore_epoch FROM auth_instance_state WHERE id = 1"); got != 30001 {
+		t.Errorf("post-restore restore epoch = %d, want 30001", got)
 	}
 	// The planted session survived as a ROW (restore replays state verbatim)
 	// but its stamp no longer matches any epoch the instance will ever serve

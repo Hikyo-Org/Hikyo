@@ -33,7 +33,9 @@ type ArtifactType string
 const (
 	// ArtifactCLISession is a human CLI session — a distinct artifact type
 	// with its own storage, lifetime, audit identity and revocation surface.
-	ArtifactCLISession ArtifactType = "cli"
+	ArtifactCLISession          ArtifactType = "cli"
+	ArtifactDeveloper           ArtifactType = "dev"
+	ArtifactDeveloperCredential ArtifactType = ArtifactDeveloper
 	// ArtifactBootstrap is a credential-establishment authority.
 	ArtifactBootstrap ArtifactType = "bs"
 	// ArtifactBrowserSession is a human browser session, carried in the

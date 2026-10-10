@@ -7350,7 +7350,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: delivery.fetch
       x-hikyo-formula: [read@environment]
-      x-hikyo-artifacts: [machine-credential]
+      x-hikyo-artifacts: [machine-credential, developer-credential]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -14222,6 +14222,276 @@ paths:
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/developer-credentials:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    post:
+      operationId: mintDeveloperCredential
+      tags: [identities]
+      summary: Delegate current published delivery for one unprotected environment.
+      description: |
+        Self-delegation requires current read and reveal, explicit consent to
+        current and future published keys, and a fresh one-use reauthentication
+        bound to this environment, exact confirmed key set, requested lifetime
+        and consent. A generic reveal window cannot authorize this action.
+        The bearer is returned once, expires at a fixed server-set time within
+        the instance ceiling (at most eight hours), and cannot renew itself.
+        This artifact is admitted only to online current delivery, never to
+        metadata, historical pins, management or offline reconciliation.
+      x-hikyo-class: tenant
+      x-hikyo-operation: developer-credential.mint
+      x-hikyo-formula: [read@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MintDeveloperCredentialRequest"
+      responses:
+        "200":
+          description: Authorized result. Credential values appear only at mint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MintDeveloperCredentialResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/auth/developer-credentials:
+    get:
+      operationId: listMyDeveloperCredentials
+      tags: [identities]
+      summary: List the current human's developer credentials, metadata only.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      responses:
+        "200":
+          description: Authorized result. Credential values appear only at mint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeveloperCredentialList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    delete:
+      operationId: revokeAllMyDeveloperCredentials
+      tags: [identities]
+      summary: Revoke every developer credential owned by the current human.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      responses:
+        "204":
+          description: Revoked idempotently.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/auth/developer-credentials/{credential}:
+    parameters:
+      - $ref: "#/components/parameters/CredentialID"
+    delete:
+      operationId: revokeMyDeveloperCredential
+      tags: [identities]
+      summary: Revoke one developer credential owned by the current human.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      responses:
+        "204":
+          description: Revoked idempotently.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/orgs/{org}/projects/{project}/developer-credentials:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: listProjectDeveloperCredentials
+      tags: [identities]
+      summary: List project developer credentials for incident response, metadata only.
+      x-hikyo-class: tenant
+      x-hikyo-operation: developer-credential.list-project
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      responses:
+        "200":
+          description: Authorized result. Credential values appear only at mint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeveloperCredentialList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/orgs/{org}/projects/{project}/developer-credentials/{credential}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/CredentialID"
+    delete:
+      operationId: revokeProjectDeveloperCredential
+      tags: [identities]
+      summary: Revoke a project developer credential for incident response.
+      x-hikyo-class: tenant
+      x-hikyo-operation: developer-credential.revoke-project
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      responses:
+        "204":
+          description: Revoked idempotently.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/instance/developer-credential-policy:
+    get:
+      operationId: getDeveloperCredentialPolicy
+      tags: [identities]
+      summary: Read the instance developer credential lifetime ceiling.
+      x-hikyo-class: instance
+      x-hikyo-operation: developer-credential.policy-read
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      responses:
+        "200":
+          description: Authorized result. Credential values appear only at mint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeveloperCredentialPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    put:
+      operationId: setDeveloperCredentialPolicy
+      tags: [identities]
+      summary: Set the lifetime ceiling and durably clamp outstanding expiry.
+      x-hikyo-class: instance
+      x-hikyo-operation: developer-credential.policy-update
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeveloperCredentialPolicy"
+      responses:
+        "200":
+          description: Authorized result. Credential values appear only at mint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeveloperCredentialPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
 components:
   securitySchemes:
     hikyoSession:
@@ -14931,6 +15201,59 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    MintDeveloperCredentialRequest:
+      type: object
+      additionalProperties: false
+      required: [consent_current_and_future, key_ids, lifetime_seconds]
+      properties:
+        key_ids: {type: array, uniqueItems: true, maxItems: 1000, items: {$ref: "#/components/schemas/ID"}}
+        consent_current_and_future:
+          type: boolean
+          const: true
+          description: Explicit consent to every current and future published key in this environment until expiry.
+        lifetime_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 28800
+    DeveloperCredential:
+      type: object
+      additionalProperties: false
+      required: [id, principal_id, authority_principal_id, org_id, project_id, environment_id, created_at, expires_at, prefix_hint]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        principal_id: {$ref: "#/components/schemas/ID"}
+        authority_principal_id: {$ref: "#/components/schemas/ID"}
+        org_id: {$ref: "#/components/schemas/ID"}
+        project_id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time}
+        prefix_hint: {type: string}
+    DeveloperCredentialList:
+      type: object
+      additionalProperties: false
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/DeveloperCredential"}
+        count: {type: integer, minimum: 0}
+    MintDeveloperCredentialResult:
+      type: object
+      additionalProperties: false
+      required: [credential, value]
+      properties:
+        credential: {$ref: "#/components/schemas/DeveloperCredential"}
+        value: {type: string, description: Display-once opaque credential. Never returned by list.}
+    DeveloperCredentialPolicy:
+      type: object
+      additionalProperties: false
+      required: [max_lifetime_seconds]
+      properties:
+        max_lifetime_seconds: {type: integer, format: int64, minimum: 1, maximum: 28800}
+
     PkiName:
       type: string
       description: An issuer or profile name.
@@ -16687,12 +17010,31 @@ components:
           minLength: 6
           maxLength: 10
 
+    DeveloperCredentialReauthIntent:
+      type: object
+      additionalProperties: false
+      required: [lifetime_seconds, consent_current_and_future]
+      properties:
+        lifetime_seconds: {type: integer, format: int64, minimum: 1, maximum: 28800}
+        consent_current_and_future: {type: boolean, const: true}
+    TotpDeveloperCredentialReauthRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, environment_id, key_ids, developer_credential, code]
+      properties:
+        purpose: {type: string, const: developer-credential}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        key_ids: {type: array, uniqueItems: true, maxItems: 1000, items: {$ref: "#/components/schemas/ID"}}
+        developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
+        code: {type: string, minLength: 6, maxLength: 10}
+
     TotpReauthRequest:
       description: A disclosure reauthentication by TOTP in exactly one canonical intent shape.
       oneOf:
         - $ref: "#/components/schemas/TotpEnvironmentReauthRequest"
         - $ref: "#/components/schemas/TotpAdapterReauthRequest"
         - $ref: "#/components/schemas/TotpSelfConfigReauthRequest"
+        - $ref: "#/components/schemas/TotpDeveloperCredentialReauthRequest"
 
     TotpSelfConfigReauthRequest:
       type: object
@@ -16771,15 +17113,21 @@ components:
         Every non-adapter purpose carries an exact environment and key set. The
         browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
         names exactly the unit the decision covers.
+      anyOf:
+        - properties: {purpose: {enum: [developer-credential]}}
+        - properties:
+            purpose: {not: {enum: [developer-credential]}}
+            key_ids: {maxItems: 500}
       properties:
+        developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environment_ids: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
         key_ids:
           type: array
           uniqueItems: true
-          maxItems: 500
+          maxItems: 1000
           items: {$ref: "#/components/schemas/ID"}
           description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
         pkce_challenge: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}
@@ -16827,10 +17175,11 @@ components:
       additionalProperties: false
       required: [state, purpose, operation, environments, key_ids, redirect_uri, expires_at]
       properties:
+        developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
         state: {type: string, minLength: 1}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test]}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config, developer-credential]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test, developer-credential.mint]}
         environments: {type: array, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
         key_ids:
           type: array
@@ -19549,6 +19898,8 @@ components:
             Authenticated server receipt for this delivered value, present only
             with value. Store inside the encrypted offline snapshot. Required
             for later offline disclosure reconciliation; never log it.
+            Absent for developer-credential delivery, which never authorizes
+            offline snapshots or reconciliation.
         key_id:
           $ref: "#/components/schemas/ID"
         name:
@@ -21978,7 +22329,13 @@ components:
       type: object
       additionalProperties: false
       required: [operation, environment_id, key_ids]
+      anyOf:
+        - properties:
+            operation: {enum: [developer-credential]}
+            key_ids: {maxItems: 1000}
+        - properties: {operation: {not: {enum: [developer-credential]}}}
       properties:
+        developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         self_config:
           $ref: "#/components/schemas/SelfConfigReauthIntent"
         operation:
@@ -22015,6 +22372,7 @@ components:
         - mint
         - adapter
         - self-config
+        - developer-credential
         - approve
         - reject
         - bypass
@@ -22079,6 +22437,16 @@ components:
         Nothing here is material: it is project settings plus the caller's own
         window.
       properties:
+        developer_credential_max_lifetime_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 28800
+          description: |
+            Current instance ceiling for developer credentials, exposed through
+            this environment read-authorized surface. Clients resolve an omitted
+            lifetime before consent and bind the concrete positive lifetime to
+            reauthentication and mint. Later policy changes cannot extend it.
         effective_window_seconds:
           type: integer
           minimum: 0

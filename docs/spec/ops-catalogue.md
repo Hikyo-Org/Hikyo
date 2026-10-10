@@ -146,3 +146,20 @@ change-driven reports, on a latest-state table; the purge rides the existing hou
 ## Required measurement gate (not deferrable past implementation freeze)
 
 Per the declared [#77 amendment](https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780), all *(measured)* entries require the native ARM64 `floor-bench` CI artifact before implementation freeze. CPU measurements use committed conservative factors (4.0 until optional physical Pi calibration); memory uses factor 1.0. Missing factors or measurements refuse acceptance. Physical Pi calibration is optional; estimates must not be described as Pi measurements. Tracked in [open-items.md](./open-items.md).
+
+
+## Bounded developer credentials (#807)
+
+[developer-credentials.md](../adr/developer-credentials.md) owns the lifecycle;
+the owner-locked ops-spec amendment admits these values with the implementation.
+
+| Entry | Default | Scope |
+| --- | --- | --- |
+| Fixed lifetime | 8 hours | mint may shorten; instance ceiling may lower |
+| Hard lifetime maximum | 8 hours | fixed |
+| Minimum instance ceiling | 1 second | fixed |
+| Live credentials per human per instance | 4 | fixed |
+| Renewal, offline receipts and snapshot delivery | forbidden | fixed |
+
+Lowering the ceiling durably clamps existing expiry in the serialized policy
+transaction. Raising it never restores expiry or revives an expired bearer.

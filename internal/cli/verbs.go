@@ -205,6 +205,7 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"pki":                 runPKI,
 	"cert":                runCert,
 	"run":                 runRun,
+	"dev":                 runDeveloper,
 	"compose":             runCompose,
 	"file-target":         runFileTarget,
 	"file-sync":           runFileSync,
@@ -674,6 +675,19 @@ access:
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false
 
+developer credentials:
+  hikyo dev session --env E [--ttl 8h] [-o table|json]
+  hikyo dev session list [-o table|json]
+  hikyo dev session revoke --id <credential-id> | --all
+  hikyo instance-config developer-credential-policy get [-o table|json]
+  hikyo instance-config developer-credential-policy set --max-lifetime 8h
+
+  Mint requires a controlling terminal, current and future key consent,
+  and fresh scope-bound reauthentication. Private custody is outside the
+  repository. Only online hikyo run discovers this exact environment's
+  credential. Ordinary logout leaves it active until fixed expiry;
+  dev session revoke --all ends your delegations on this instance.
+
 machine identities:
   hikyo sa list [-o table|json]
   hikyo sa create --name <name> --kind workload|automation
@@ -1043,7 +1057,7 @@ func runLogout(ctx context.Context, ios IO, args []string) error {
 	if err := st.DeleteSession(session.Instance); err != nil {
 		return err
 	}
-	fmt.Fprintf(ios.Stderr, "logged out of %s\n", session.Origin)
+	fmt.Fprintf(ios.Stderr, "logged out of %s\nDeveloper credentials survive ordinary logout until fixed expiry. Use hikyo dev session revoke --all to end delegations.\n", session.Origin)
 	return nil
 }
 
