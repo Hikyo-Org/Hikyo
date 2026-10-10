@@ -184,8 +184,39 @@ never printed, logged, or placed in the browser URL.
 | `instance-config` | SAML, federation issuers, credential policy, and instance keys. |
 | `scim` | Provisioning bindings, mappings, credentials, users, and groups. |
 
-Display-once values use one of three destinations: a new mode-`0600` file, an
-interactive terminal, or explicit `--dangerously-print`.
+Display-once credentials use a new mode-`0600` file, an interactive terminal,
+or explicit `--dangerously-print`. Revealed key values also support the protected
+native clipboard destination described below.
+
+## Protected clipboard copy
+
+```text
+hikyo values get <KEY> --reveal --clipboard --env <environment>
+```
+
+Add `--instance`, `--org`, and `--project` when they are not selected by your
+context. This copies the exact revealed value, including multiline or empty
+values, without printing it. It uses the same reveal capability, audit event,
+and reauthentication ceremony as `values get --reveal`.
+
+On macOS, the CLI writes an AppKit pasteboard item with
+`org.nspasteboard.ConcealedType` and `org.nspasteboard.TransientType`. On Windows,
+it writes native Unicode text with `ExcludeClipboardContentFromMonitorProcessing`
+and zero-valued `CanIncludeInClipboardHistory` and `CanUploadToCloudClipboard`
+formats. Supported clipboard managers must honor these markers; the CLI cannot
+prevent a manager that ignores them from recording the value. The value stays
+in the live clipboard until replaced; this command does not schedule a clear.
+
+`--clipboard` requires `--reveal` and cannot be combined with `--output-file`,
+`--dangerously-print`, or `-o json`. Unsupported operating systems and clipboard
+failures are refused, with no plaintext printing fallback. On macOS, the command
+uses the system `/usr/bin/osascript` with a fixed AppKit script and supplies the
+value through stdin, keeping plaintext out of process arguments and files.
+
+On Windows, format registration and buffer preparation finish before the
+previous clipboard contents are replaced. If clipboard cleanup fails after
+publication and removal cannot be confirmed, the CLI warns that the value may
+remain available to paste.
 
 ## Target flags
 

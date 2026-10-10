@@ -8,7 +8,10 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -55,7 +58,7 @@ func (r *HikyoSecretReconciler) workloadHandler() handler.EventHandler {
 
 // patchWorkloads applies § 0.5 step 2: for each Deployment/StatefulSet/DaemonSet
 // in the CR's namespace whose hikyo.dev/secrets annotation names this target and
-// whose current pod-template stamp differs, strategic-merge patch the stamp
+// whose current pod-template stamp differs, conditionally patch the stamp
 // annotation. It is gated by TRIGGER_ROLLOUTS.
 //
 // It returns the names of already-stamped-but-not-progressed workloads
@@ -183,9 +186,28 @@ func (r *HikyoSecretReconciler) walkWorkloads(ctx context.Context, cr *hikyov1.H
 }
 
 // patchPodTemplateAnnotation writes the stamp into the pod template annotation
-// with a strategic-merge patch — the minimal mutation that requests a rollout
+// with a version-conditional JSON patch, the minimal mutation requesting a rollout
 // under the workload's own update strategy.
 func (r *HikyoSecretReconciler) patchPodTemplateAnnotation(ctx context.Context, obj client.Object, annKey, stamp string) error {
+	var lastConflict error
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultRetry, func(ctx context.Context) (bool, error) {
+		err := r.patchPodTemplateAnnotationOnce(ctx, obj, annKey, stamp)
+		if apierrors.IsConflict(err) {
+			lastConflict = err
+			return false, nil
+		}
+		return err == nil, err
+	})
+	// Distinguish exhausted conflicts from request timeouts and cancellation.
+	// RetryOnConflict's Interrupted handling would replace those errors with
+	// its last conflict (even nil), losing permanent failure evidence.
+	if errors.Is(err, wait.ErrWaitTimeout) {
+		return lastConflict
+	}
+	return err
+}
+
+func (r *HikyoSecretReconciler) patchPodTemplateAnnotationOnce(ctx context.Context, obj client.Object, annKey, stamp string) error {
 	fresh, ok := obj.DeepCopyObject().(client.Object)
 	if !ok {
 		return errors.New("workload object cannot be copied for an authoritative consent check")
@@ -201,6 +223,9 @@ func (r *HikyoSecretReconciler) patchPodTemplateAnnotation(ctx context.Context, 
 	if fresh.GetUID() != obj.GetUID() || !consumesTarget(fresh.GetAnnotations(), strings.TrimPrefix(annKey, hikyov1.StampAnnotationPrefix)) {
 		return errors.New("workload identity or rollout consent changed before patch")
 	}
+	if podAnnotation(podTemplateAnnotations(fresh), annKey) == stamp {
+		return nil
+	}
 	type operation struct {
 		Op    string `json:"op"`
 		Path  string `json:"path"`
@@ -209,7 +234,10 @@ func (r *HikyoSecretReconciler) patchPodTemplateAnnotation(ctx context.Context, 
 	escapePointer := strings.NewReplacer("~", "~0", "/", "~1")
 	operations := []operation{
 		{Op: "test", Path: "/metadata/uid", Value: string(fresh.GetUID())},
-		{Op: "test", Path: "/metadata/resourceVersion", Value: fresh.GetResourceVersion()},
+		// Replacing the version makes a concurrent status/spec write return a
+		// typed Conflict from Kubernetes' optimistic lock. A JSON Patch test
+		// instead returns Invalid, which cannot be safely classified for retry.
+		{Op: "replace", Path: "/metadata/resourceVersion", Value: fresh.GetResourceVersion()},
 		{Op: "test", Path: "/metadata/annotations/" + escapePointer.Replace(hikyov1.AnnotationWorkloadSecrets), Value: targets},
 	}
 	annotations := podTemplateAnnotations(fresh)

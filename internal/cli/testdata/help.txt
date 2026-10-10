@@ -81,7 +81,7 @@ hierarchy:
 
 values:                                            --env selects the environment
   hikyo values list [--reveal] [--output-file PATH | --dangerously-print]
-  hikyo values get <KEY> [--reveal] [--output-file PATH | --dangerously-print]
+  hikyo values get <KEY> [--reveal] [--output-file PATH | --dangerously-print | --clipboard]
   hikyo values set <KEY> (--stdin | --value-file PATH)   stages; publish commits
   hikyo values set <KEY> --clear                    stages a clear to absent
   hikyo values set <KEY> ... --acknowledge <token,token>   keep-as-config tokens from a prior scanning warning
