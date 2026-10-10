@@ -30,20 +30,21 @@ func (q *Queries) BindSessionToOAuth2Provider(ctx context.Context, arg BindSessi
 	return result.RowsAffected(), nil
 }
 
-const claimOAuth2Authority = `-- name: ClaimOAuth2Authority :execrows
-UPDATE credential_authorities SET consumed_at = $1, established_credential_kind = 'oauth2'
-WHERE id = $2 AND consumed_at IS NULL AND issued_by <> 'recovery'
+const claimFederatedAuthority = `-- name: ClaimFederatedAuthority :execrows
+UPDATE credential_authorities SET consumed_at = $1, established_credential_kind = $2
+WHERE id = $3 AND consumed_at IS NULL AND issued_by <> 'recovery'
 `
 
-type ClaimOAuth2AuthorityParams struct {
-	ConsumedAt pgtype.Timestamptz
-	ID         string
+type ClaimFederatedAuthorityParams struct {
+	ConsumedAt                pgtype.Timestamptz
+	EstablishedCredentialKind string
+	ID                        string
 }
 
-// hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.
+// hikyo:reason A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation.
 // hikyo:authn-resolution
-func (q *Queries) ClaimOAuth2Authority(ctx context.Context, arg ClaimOAuth2AuthorityParams) (int64, error) {
-	result, err := q.db.Exec(ctx, claimOAuth2Authority, arg.ConsumedAt, arg.ID)
+func (q *Queries) ClaimFederatedAuthority(ctx context.Context, arg ClaimFederatedAuthorityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimFederatedAuthority, arg.ConsumedAt, arg.EstablishedCredentialKind, arg.ID)
 	if err != nil {
 		return 0, err
 	}

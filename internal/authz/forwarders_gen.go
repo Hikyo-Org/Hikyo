@@ -132,8 +132,8 @@ func (a *TxAuthorizer) CLIReauthHandoffByState(ctx context.Context, verifier []b
 	return a.r.CLIReauthHandoffByState(ctx, verifier)
 }
 
-func (a *TxAuthorizer) ClaimOAuth2Authority(ctx context.Context, id string, at time.Time) (bool, error) {
-	return a.r.ClaimOAuth2Authority(ctx, id, at)
+func (a *TxAuthorizer) ClaimFederatedAuthority(ctx context.Context, id, kind string, at time.Time) (bool, error) {
+	return a.r.ClaimFederatedAuthority(ctx, id, kind, at)
 }
 
 // ClaimSAMLReplay atomically records an assertion ID. False means replay.

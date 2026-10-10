@@ -334,6 +334,9 @@ type OIDCTransaction struct {
 	// sign-up addresses, empty for the instance scope (spec 2.1).
 	Intent           string
 	SignupScopeOrgID string
+	// AuthorityID is the credential-establishment authority a claim
+	// transaction spends at its callback (#610); empty on every other purpose.
+	AuthorityID string
 }
 
 // NewOIDCTransaction is the transaction insert carrier.
@@ -358,6 +361,7 @@ type NewOIDCTransaction struct {
 	ExpiresAt              time.Time
 	Intent                 string
 	SignupScopeOrgID       string
+	AuthorityID            string
 }
 
 // CreateOIDCTransaction writes a single-use transaction row.
@@ -377,6 +381,7 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 			CreatedAt:              encodeTime(t.CreatedAt), ExpiresAt: encodeTime(t.ExpiresAt),
 			Intent:           nullString(t.Intent),
 			SignupScopeOrgID: nullString(t.SignupScopeOrgID),
+			AuthorityID:      nullString(t.AuthorityID),
 		})
 	}
 	return r.pg.InsertOIDCTransaction(ctx, pggen.InsertOIDCTransactionParams{
@@ -393,6 +398,7 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 		CreatedAt:              pgTimestamp(t.CreatedAt), ExpiresAt: pgTimestamp(t.ExpiresAt),
 		Intent:           pgText(t.Intent),
 		SignupScopeOrgID: pgText(t.SignupScopeOrgID),
+		AuthorityID:      pgText(t.AuthorityID),
 	})
 }
 
@@ -423,6 +429,7 @@ func (r *Resolver) OIDCTransactionByState(ctx context.Context, stateVerifier []b
 			EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String, Browser: row.Browser != 0,
 			CredentialEpoch: row.CredentialEpoch, CreatedAt: created, ExpiresAt: expires,
 			Consumed: row.ConsumedAt.Valid, Intent: row.Intent.String, SignupScopeOrgID: row.SignupScopeOrgID.String,
+			AuthorityID: row.AuthorityID.String,
 		}, nil
 	}
 	row, err := r.pg.GetOIDCTransactionByState(ctx, stateVerifier)
@@ -440,6 +447,7 @@ func (r *Resolver) OIDCTransactionByState(ctx context.Context, stateVerifier []b
 		EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String, Browser: row.Browser,
 		CredentialEpoch: row.CredentialEpoch, CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time,
 		Consumed: row.ConsumedAt.Valid, Intent: row.Intent.String, SignupScopeOrgID: row.SignupScopeOrgID.String,
+		AuthorityID: row.AuthorityID.String,
 	}, nil
 }
 

@@ -206,7 +206,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"ConsumeOAuth2Transaction":        true,
 	"BindSessionToOAuth2Provider":     true,
 	"DeleteSessionsForOAuth2Provider": true,
-	"ClaimOAuth2Authority":            true,
+	"ClaimFederatedAuthority":         true,
 	"StampCredentialEstablish":        true,
 
 	"ConsumeOIDCTransaction":    true,

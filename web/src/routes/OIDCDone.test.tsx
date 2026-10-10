@@ -2,6 +2,7 @@
 import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AUTHORITY_REFUSAL } from '../api/session.ts';
 import { OIDCDone } from './OIDCDone.tsx';
 
 const channels: Array<{ name: string; message?: unknown; closed: boolean }> = [];
@@ -125,4 +126,36 @@ it('restores the transaction-bound workspace approval after OIDC login', async (
     '/workspace/approve?state=workspace-state',
   );
   await unmount();
+});
+
+// An invitation claim (#610) returns here like a login: no broadcast, a
+// successful claim lands where the establish page asked, a refusal is the
+// establish page's one sentence with the way back to it.
+describe('OIDC done page: claim', () => {
+  it('lands a successful claim signed in where the establish page asked', async () => {
+    globalThis.sessionStorage.setItem('hikyo-oidc-return:claim-state', '/settings');
+    globalThis.history.replaceState({}, '', '/auth/oidc/done?state=claim-state&purpose=claim');
+    const { container, unmount } = await renderForm(<OIDCDone />);
+
+    // Like a login: the new session is announced, the transaction channel
+    // (an opener's link/reauth listener) hears nothing.
+    expect(channels.map((channel) => channel.name)).toEqual(['hikyo-root-auth']);
+    expect(container.textContent).toContain('Invitation claimed');
+    expect(globalThis.location.replace).toHaveBeenCalledWith('/settings');
+    await unmount();
+  });
+
+  it('voices a refused claim in the establish page sentence, with the way back to it', async () => {
+    globalThis.sessionStorage.setItem('hikyo-oidc-return:claim-refused', '/settings');
+    globalThis.history.replaceState({}, '', '/auth/oidc/done?state=claim-refused&purpose=claim&error=unauthenticated');
+    const { container, unmount } = await renderForm(<OIDCDone />);
+
+    expect(channels).toEqual([]);
+    expect(globalThis.location.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(AUTHORITY_REFUSAL);
+    const back = container.querySelector('a.btn');
+    expect(back?.getAttribute('href')).toBe('/establish');
+    expect(back?.textContent).toBe('Back to your setup authority');
+    await unmount();
+  });
 });
