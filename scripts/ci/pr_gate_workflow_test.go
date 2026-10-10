@@ -142,15 +142,15 @@ func TestRequiredJobCannotSkipOnPullRequests(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := workflow.On["merge_group"]; !ok || len(workflow.On) != 2 {
-		t.Fatal("legacy ci-required must retain merge-group and PR validation during observation")
+	if len(workflow.On) != 1 {
+		t.Fatal("the base-controlled PR gate must have no event that calls the validation graph")
 	}
 	if _, ok := workflow.On["pull_request_target"]; !ok {
 		t.Fatal("the existing base-controlled PR gate must remain enabled during observation")
 	}
 	gate, ok := workflow.Jobs["ci-required"]
-	if !ok || gate.If != "always() && !cancelled()" || gate.Needs != "validation" {
-		t.Fatal("the legacy required gate must run after ordinary PR validation failures")
+	if !ok || len(workflow.Jobs) != 1 || gate.If != "always() && !cancelled()" || gate.Needs != "" {
+		t.Fatal("the legacy required PR gate must run independently of untrusted validation")
 	}
 	checkedBase, verifiedPR := false, false
 	for _, step := range gate.Steps {

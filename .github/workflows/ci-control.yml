@@ -11,9 +11,6 @@ name: trusted-ci
 
 on:
   pull_request_target:
-  # The merge queue validates the exact merge result against the real base
-  # before it lands (#813): retargets and stale heads cannot carry an old pass.
-  merge_group:
 
 permissions:
   actions: read
@@ -24,22 +21,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validation:
-    if: github.event_name == 'merge_group'
-    uses: ./.github/workflows/ci.yml
-    with:
-      revision: ${{ github.sha }}
-    permissions:
-      actions: read
-      contents: read
-
   # Permanent required context. This job and its success criteria are loaded
   # from the base branch, so a PR cannot redefine its own merge gate.
   ci-required:
     # Ordinary validation failures still reach this gate. A superseded run
     # skips it so workflow concurrency releases the next PR head immediately.
     if: always() && !cancelled()
-    needs: validation
     runs-on: ubuntu-latest
     # Covers waiting for a fork's full validation run (the script's own limit is
     # 90 minutes).
@@ -49,11 +36,6 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - name: Require trusted validation
-        if: github.event_name == 'merge_group'
-        env:
-          VALIDATION_RESULT: ${{ needs.validation.result }}
-        run: test "$VALIDATION_RESULT" = success
       # Reads VOUCHED.td from the default branch through the API, so a PR cannot
       # vouch for itself. Collaborators with write access pass automatically.
       - name: Require a vouched fork author

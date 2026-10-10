@@ -4,6 +4,11 @@ name: floor-bench
 # tagged builds retain their independent measurement.
 on:
   workflow_call:
+    inputs:
+      revision:
+        description: Exact immutable commit bound to the caller's GitHub event
+        required: true
+        type: string
   push:
     tags: ['**']
 
@@ -15,30 +20,60 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
-      # Reusable calls retain the caller's event. A fork PR must use the
-      # unprivileged pull_request lane, never default-branch target context.
-      - name: Refuse unsupported source trust contexts
-        if: >-
-          ${{ !(github.event_name == 'pull_request' ||
-          (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) ||
-          github.event_name == 'push' || github.event_name == 'merge_group' ||
-          ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main')) }}
+      # Bind the reusable input independently before executing benchmark code.
+      # Direct tagged runs have no inputs and bind only to their event SHA.
+      - name: Validate the immutable caller or tag revision
+        env:
+          SOURCE_REVISION: ${{ inputs.revision }}
+          EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+          EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+          PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        shell: bash
         run: |
-          echo 'Floor proof requires a PR, tag push, merge group, or trusted main validation context.' >&2
-          exit 1
-      - name: Check out the exact pull request head
-        if: >-
-          ${{ github.event_name == 'pull_request' ||
-          (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) }}
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" = push ]]; then
+            [[ "$GITHUB_REF" == refs/tags/?* ]]
+            [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ -z "$SOURCE_REVISION" ]] || test "$SOURCE_REVISION" = "$GITHUB_SHA"
+            SOURCE_REVISION=$GITHUB_SHA
+          fi
+          [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Floor proof requires a full immutable revision.' >&2; exit 1; }
+          test "$EVENT_REPOSITORY" = "$GITHUB_REPOSITORY"
+          [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+              test "$SOURCE_REVISION" = "$PR_HEAD_SHA"
+              test "$PR_BASE_REPOSITORY" = "$GITHUB_REPOSITORY"
+              test "$PR_BASE_REPOSITORY_ID" = "$EVENT_REPOSITORY_ID"
+              [[ "$PR_HEAD_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+              [[ "$PR_HEAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+              ;;
+            merge_group)
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"
+              ;;
+            workflow_dispatch|schedule|repository_dispatch)
+              test "$GITHUB_REF" = refs/heads/main
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              ;;
+            push) ;;
+            *) echo 'Floor proof refuses this source context.' >&2; exit 1 ;;
+          esac
+      - name: Check out the validated immutable caller revision
+        if: github.event_name != 'push'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
-      # A merge group's github.sha is the exact merge result about to land.
-      - name: Check out the trusted push, merge-group or main validation source
-        if: >-
-          ${{ github.event_name == 'push' || github.event_name == 'merge_group' ||
-          ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main') }}
+      - name: Check out the exact tagged source
+        if: github.event_name == 'push'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -65,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: floor-bench-${{ github.event.pull_request.head.sha || github.sha }}
+          name: floor-bench-${{ inputs.revision || github.sha }}
           path: ${{ runner.temp }}/floor-bench/
           if-no-files-found: error
           retention-days: 90

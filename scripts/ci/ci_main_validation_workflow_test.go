@@ -79,7 +79,7 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if len(manual.Jobs) != 1 || manualValidation.Uses != "./.github/workflows/ci.yml" || manualValidation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(manualValidation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(manualValidation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
 		t.Fatal("manual main wrapper must select only the exact main event SHA")
 	}
-	for _, caller := range []struct{ name, revision string }{{"ci-fork.yml", "${{ github.event.pull_request.head.sha }}"}, {"ci-control.yml", "${{ github.sha }}"}} {
+	for _, caller := range []struct{ name, revision string }{{"ci-fork.yml", "${{ github.event.pull_request.head.sha }}"}, {"ci-merge-group.yml", "${{ github.sha }}"}} {
 		job := read(caller.name).Jobs["validation"]
 		if !reflect.DeepEqual(job.With, map[string]string{"revision": caller.revision}) {
 			t.Fatalf("%s must explicitly bind source authority", caller.name)
@@ -126,14 +126,12 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if classify.Run == "" || gate.Run == "" {
 		t.Fatal("missing executable classification or required-job proof")
 	}
-	const mainEvents = "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'"
 	floorAllows, floorCheckout := false, false
 	for _, step := range floor.Jobs["measure"].Steps {
-		condition := strings.Join(strings.Fields(step.If), " ")
-		if strings.Contains(condition, mainEvents) {
-			floorAllows = floorAllows || step.Name == "Refuse unsupported source trust contexts"
-			floorCheckout = floorCheckout || (strings.HasPrefix(step.Uses, "actions/checkout@") && step.With["ref"] == "${{ github.sha }}")
+		if step.Name == "Validate the immutable caller or tag revision" {
+			floorAllows = strings.Contains(step.Run, "workflow_dispatch|schedule|repository_dispatch)") && strings.Contains(step.Run, `test "$GITHUB_REF" = refs/heads/main`) && strings.Contains(step.Run, `test "$SOURCE_REVISION" = "$GITHUB_SHA"`)
 		}
+		floorCheckout = floorCheckout || (strings.HasPrefix(step.Uses, "actions/checkout@") && step.If == "github.event_name != 'push'" && step.With["ref"] == "${{ inputs.revision }}")
 	}
 	if !floorAllows || !floorCheckout {
 		t.Fatal("cache-free floor proof must allow main validation and check out its exact SHA")

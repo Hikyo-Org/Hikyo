@@ -296,7 +296,7 @@ jobs:
       - name: Completion-driven PR gate and workflow trust fixtures
         run: |
           go test -count=1 ./scripts/ci/pr-gate
-          go test -count=1 ./scripts/ci -run '^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust)$'
+          go test -count=1 ./scripts/ci -run '^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
       - name: Docker daemon mirror and PostgreSQL startup fixtures
         run: |
           ./scripts/ci/configure-docker-mirror_test.sh
@@ -1820,6 +1820,8 @@ jobs:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan)['floor-bench'] }}
     uses: ./.github/workflows/floor-bench.yml
+    with:
+      revision: ${{ inputs.revision }}
     permissions:
       contents: read
 

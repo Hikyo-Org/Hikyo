@@ -1,0 +1,41 @@
+# The merge queue validates its exact merge result against the current base.
+# Keep this caller separate from pull_request_target: the reusable validation
+# graph executes the selected code and must never inherit that event's base
+# cache scope or permissions. Pull requests use ci-fork.yml instead.
+name: trusted-merge-ci
+
+on:
+  merge_group:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: trusted-merge-ci-${{ github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
+    permissions:
+      actions: read
+      contents: read
+
+  # Preserve the permanent required context for the merge queue. A failed or
+  # skipped validation must reach this proof and cannot satisfy mergeability.
+  ci-required:
+    if: always() && !cancelled()
+    needs: validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require trusted validation
+        env:
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        run: test "$VALIDATION_RESULT" = success
