@@ -13,6 +13,8 @@ const acknowledgedFinding: RefusalFinding = {
 };
 
 const meta = {
+  title: 'Features/Values/ScanBlockDialog',
+  id: 'routes-scanblockdialog',
   component: ScanBlockDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

@@ -4,6 +4,7 @@ set -eu
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 workflow="$script_dir/../../.github/workflows/ci.yml"
 controller=${CI_CONTROL_WORKFLOW:-"$script_dir/../../.github/workflows/ci-control.yml"}
+merge_controller="$script_dir/../../.github/workflows/ci-merge-group.yml"
 # Out-of-band fuzz reporting moved to its own trusted base-context workflow
 # (#189): ci.yml / ci-control.yml execute untrusted PR code and hold no
 # issue/PR write, while fuzz-report.yml runs on workflow_run completion in the
@@ -27,7 +28,7 @@ require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/ci-job-registry.json\
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_classifier\" --files"
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/check-required-jobs.sh\" >\"\$trusted_checker\""
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" --supports-plan-v2"
-require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" \"\$GITHUB_EVENT_NAME\" \"\$NEEDS_JSON\" \"\$PLAN_JSON\""
+require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" \"\$checker_event\" \"\$NEEDS_JSON\" \"\$PLAN_JSON\""
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/analysis-shards-go/main.go\" >\"\$trusted_planner\""
 # shellcheck disable=SC2016
 require_line "$workflow" 'isolation_shard=$(go run "$trusted_planner" isolation --root .'
@@ -64,7 +65,8 @@ if grep -Eq '^[[:space:]]+pull_request:' "$workflow"; then
 	exit 1
 fi
 if ! grep -F 'pull_request_target:' "$controller" >/dev/null ||
-	! grep -F 'uses: ./.github/workflows/ci.yml' "$controller" >/dev/null; then
+	grep -F 'uses: ./.github/workflows/ci.yml' "$controller" >/dev/null ||
+	grep -Eq '^  merge_group:' "$controller"; then
 	printf 'trusted CI scripts fixture failed: base-controlled entrypoint is missing\n' >&2
 	exit 1
 fi
@@ -83,17 +85,16 @@ if grep -Eq '^  ci-required:' "$fork_workflow"; then
 	printf 'trusted CI scripts fixture failed: fork workflow defines the required ci-required context\n' >&2
 	exit 1
 fi
-require_line "$fork_workflow" "if: github.event.pull_request.head.repo.full_name != github.repository"
+require_line "$fork_workflow" "if: github.event.pull_request.head.repo.full_name != github.repository &&"
 # The fork gate binds runs to their PR by this exact title (quoted: a bare " #"
 # would start a YAML comment).
 # shellcheck disable=SC2016
-require_line "$fork_workflow" 'run-name: "fork-ci #${{ github.event.pull_request.number }}"'
+require_line "$fork_workflow" "&& 'pr-metadata' || 'fork-ci' }} #"
 # shellcheck disable=SC2016
 require_line "$script_dir/check-fork-validation.sh" 'select(.display_title == \"fork-ci #$PR_NUMBER\")'
 
-# The controller must execute the reusable validation graph only for a merge
-# group. Every pull request, including same-repository branches, is checked by
-# the PR-scoped workflow and the base-controlled gate below.
+# The PR controller never calls the reusable validation graph. Every pull
+# request is checked by the PR-scoped workflow and the base-controlled gate.
 require_controller_condition() {
 	marker=$1
 	expected=$2
@@ -107,19 +108,29 @@ require_controller_condition() {
 		exit 1
 	fi
 }
-require_controller_condition '  validation:' "    if: github.event_name == 'merge_group'"
 require_controller_condition '  ci-required:' '    if: always() && !cancelled()'
-require_controller_condition '      - name: Require trusted validation' "        if: github.event_name == 'merge_group'"
 require_controller_condition '      - name: Require a vouched fork author' "        if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository"
 require_controller_condition '      - name: Check out the base branch' "        if: github.event_name == 'pull_request_target'"
 require_controller_condition '      - name: Require PR-scoped validation' "        if: github.event_name == 'pull_request_target'"
 # The merge queue (#813) validates the exact merge result with the full suite.
 # The fork path must never run for a merge group (it has no pull_request), and
 # groups must not share, and so cancel, one concurrency slot.
-if ! grep -Eq '^  merge_group:' "$controller"; then
-	printf 'trusted CI scripts fixture failed: trusted-ci does not run for the merge queue\n' >&2
+if ! grep -Eq '^  merge_group:' "$merge_controller" ||
+	grep -Eq '^  pull_request_target:' "$merge_controller"; then
+	printf 'trusted CI scripts fixture failed: merge queue caller is not isolated from the PR control event\n' >&2
 	exit 1
 fi
+require_line "$merge_controller" 'uses: ./.github/workflows/ci.yml'
+# shellcheck disable=SC2016
+require_line "$merge_controller" 'revision: ${{ github.sha }}'
+require_line "$merge_controller" '    if: always() && !cancelled()'
+require_line "$merge_controller" '    needs: validation'
+# shellcheck disable=SC2016
+require_line "$merge_controller" 'VALIDATION_RESULT: ${{ needs.validation.result }}'
+# shellcheck disable=SC2016
+require_line "$merge_controller" 'run: test "$VALIDATION_RESULT" = success'
+# shellcheck disable=SC2016
+require_line "$merge_controller" 'group: trusted-merge-ci-${{ github.run_id }}'
 # shellcheck disable=SC2016
 require_line "$controller" 'group: trusted-ci-${{ github.event.pull_request.number || github.run_id }}'
 if [ "$(grep -c "github.event.pull_request.head.repo.full_name != github.repository" "$controller")" -ne \
@@ -127,14 +138,16 @@ if [ "$(grep -c "github.event.pull_request.head.repo.full_name != github.reposit
 	printf 'trusted CI scripts fixture failed: a fork step can run for a merge group\n' >&2
 	exit 1
 fi
-require_line "$workflow" "if: \${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}"
+require_line "$workflow" "if: \${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}"
 # Reusable jobs called from ci.yml keep the caller's event. floor-bench must
 # accept a merge group, or every queue run fails and nothing can merge.
 floor_bench="$script_dir/../../.github/workflows/floor-bench.yml"
-if [ "$(grep -c "github.event_name == 'merge_group'" "$floor_bench")" -ne 2 ]; then
-	printf 'trusted CI scripts fixture failed: floor-bench refuses or skips merge groups\n' >&2
-	exit 1
-fi
+require_line "$floor_bench" '            merge_group)'
+# shellcheck disable=SC2016
+require_line "$floor_bench" '              test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"'
+require_line "$floor_bench" "        if: github.event_name != 'push'"
+# shellcheck disable=SC2016
+require_line "$floor_bench" '          ref: ${{ inputs.revision }}'
 # A queue candidate must not supply its own planning/checking scripts: merge
 # groups load them from merge_group.base_sha, like PRs, with the full plan.
 # shellcheck disable=SC2016
@@ -145,6 +158,19 @@ if [ "$(grep -c 'BASE_SHA: ${{ github.event.pull_request.base.sha || github.even
 fi
 # shellcheck disable=SC2016
 require_line "$workflow" 'plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)'
+# Observation runs only trusted default-branch code and cannot publish the
+# existing required name. The legacy job below still owns PR merge authority.
+publisher="$script_dir/../../.github/workflows/ci-pr-gate.yml"
+require_line "$publisher" 'run: go run ./scripts/ci/pr-gate'
+# shellcheck disable=SC2016
+require_line "$publisher" 'ref: ${{ github.event.repository.default_branch }}'
+require_line "$publisher" 'persist-credentials: false'
+require_line "$publisher" 'checks: write'
+require_line "$publisher" 'PR_GATE_CHECK_NAME: ci-required-next'
+if grep -Eq '^  ci-required:|secrets[.:[]|download-artifact|pull_request:' "$publisher"; then
+	printf 'trusted CI scripts fixture failed: PR observer executes untrusted code or collides with required check\n' >&2
+	exit 1
+fi
 controller_gate_steps=$(sed -n '/^  ci-required:/,$p' "$controller")
 printf '%s\n' "$controller_gate_steps" |
 	grep -F 'run: ./scripts/ci/check-fork-validation.sh' >/dev/null || {

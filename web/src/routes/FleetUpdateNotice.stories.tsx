@@ -34,10 +34,12 @@ function clearDismissals(): void {
 }
 
 const meta = {
+  title: 'Shared/FleetUpdateNotice',
+  id: 'routes-fleetupdatenotice',
   component: FleetUpdateNotice,
   tags: ['ai-generated'],
   // The toast is position:fixed, so give the docs preview its own frame.
-  parameters: topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Publishes available local and remote Hikyo update notices through the application notification owner. Single local updates link to their release; remote or multiple updates link to the Remotes review screen. Dismissal is scoped to the principal and observed versions." } } },
   beforeEach: () => {
     clearDismissals();
     return clearDismissals;

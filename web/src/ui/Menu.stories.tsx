@@ -1,10 +1,24 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { isManualDocsFrame } from '../../.storybook/manualDocsFrame.ts';
 import { Menu, MenuItem } from './Menu.tsx';
 
 const meta = {
+  title: 'Design system/Menu',
+  id: 'ui-menu',
   component: Menu,
+  parameters: {
+    ...topLayerDocs,
+    docs: {
+      ...topLayerDocs.docs,
+      story: { ...topLayerDocs.docs.story, autoplay: false },
+      description: {
+        component: 'A native popover menu with keyboard navigation and focus return. Docs examples stay ready for manual exploration: use Enter or Space to open, arrows or Home and End to navigate, and Escape to return to the trigger. Canvas and browser tests execute each named interaction.',
+      },
+    },
+  },
   tags: ['ai-generated'],
   args: {
     label: 'Row actions',
@@ -25,6 +39,7 @@ export const Default: Story = {};
 
 export const Opens: Story = {
   play: async ({ canvas, canvasElement }) => {
+    if (isManualDocsFrame()) return;
     // Top layer is render-only; the panel node stays in the story subtree.
     // Assert visibility (not just `:popover-open`): the panel inherits
     // `.menu { display: flex }`, so a closed popover must be re-hidden by
@@ -49,6 +64,7 @@ export const Selects: Story = {
     ),
   },
   play: async ({ canvas, canvasElement }) => {
+    if (isManualDocsFrame()) return;
     onDelete.mockClear();
     await userEvent.click(canvas.getByRole('button', { name: 'Row actions' }));
     const panel = canvasElement.querySelector('[popover]');
@@ -64,6 +80,7 @@ export const Selects: Story = {
 // and returns focus to the trigger, and `aria-expanded` tracks all of it.
 export const Keyboard: Story = {
   play: async ({ canvas, canvasElement }) => {
+    if (isManualDocsFrame()) return;
     const trigger = canvas.getByRole('button', { name: 'Row actions' });
     const panel = canvasElement.querySelector('[popover]');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -113,6 +130,7 @@ export const TabLeaves: Story = {
     </>
   ),
   play: async ({ canvas, canvasElement }) => {
+    if (isManualDocsFrame()) return;
     const trigger = canvas.getByRole('button', { name: 'Row actions' });
     const panel = canvasElement.querySelector('[popover]');
     trigger.focus();
@@ -137,6 +155,7 @@ export const SelectsByKeyboard: Story = {
     ),
   },
   play: async ({ canvas, canvasElement }) => {
+    if (isManualDocsFrame()) return;
     onDelete.mockClear();
     const trigger = canvas.getByRole('button', { name: 'Row actions' });
     const panel = canvasElement.querySelector('[popover]');
@@ -163,6 +182,7 @@ export const DisabledSkipped: Story = {
     ),
   },
   play: async ({ canvas, canvasElement }) => {
+    if (isManualDocsFrame()) return;
     const trigger = canvas.getByRole('button', { name: 'Row actions' });
     const panel = canvasElement.querySelector('[popover]');
 

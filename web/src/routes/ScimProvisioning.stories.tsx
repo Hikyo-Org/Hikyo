@@ -199,10 +199,12 @@ const at = (search: string, responses: readonly MockRoute[]) => ({
 });
 
 const meta = {
+  title: 'Pages/ScimProvisioning',
+  id: 'routes-scimprovisioning',
   component: ScimProvisioningPage,
   tags: ['ai-generated'],
-  parameters: {
-    ...topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "SCIM provisioning bindings and their lifecycle on the organisation administration screen. The real page keeps pending, empty, refusal and configured states distinct; privileged changes retain their proof requirements." } },
+
     app: at('', [{ url: BINDINGS_URL, body: bindings }]),
   },
 } satisfies Meta<typeof ScimProvisioningPage>;

@@ -1,3 +1,5 @@
+@import "../ui/Button.css";
+
 /*
  * The chrome skeleton: org rail, sidebar, header, content well, and the login
  * page. Structure and navigation only, the deep surfaces (matrix, reveal,
@@ -117,57 +119,7 @@ select {
 
 /* --- Controls ------------------------------------------------------------ */
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-height: var(--control);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg-panel);
-  color: var(--tx);
-  cursor: pointer;
-  transition: background var(--dur) var(--ease);
-  font-size: var(--fs-md);
-  /* A button is one line: a label that wraps grows the control past the token
-     (the members table's "Reset credential" at 41px). */
-  white-space: nowrap;
-}
-
-.btn:hover {
-  background: color-mix(in oklch, var(--bg-panel), var(--tx) 8%);
-}
-
-.btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  font-weight: 500;
-}
-
-.btn--primary:hover {
-  background: color-mix(in oklch, var(--accent), black 10%);
-}
-
-/* `[disabled]` covers real controls; the modifier covers the ones that cannot
-   carry the attribute, a <label> standing in for a file input, for instance. */
-.btn[disabled],
-.btn--disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
-/* A square control that holds a single glyph, the theme toggle. Keeps the
-   control radius and the one control height (the touch floor on a coarse
-   pointer, through the token). */
-.btn--icon {
-  width: var(--control);
-  min-width: var(--control);
-  padding: 0;
-}
-
+/* The shared control skin lives beside Button; native links use it too. */
 .field {
   display: flex;
   flex-direction: column;
@@ -4297,13 +4249,6 @@ label.chk:has(input:disabled) {
   border-color: var(--accent);
 }
 
-.btn--danger {
-  border-color: var(--danger);
-  background: var(--danger-soft);
-  color: var(--danger);
-  font-weight: 500;
-}
-
 /* The opener is `btn btn--quiet` now, so the quiet variant owns the box and
    the type size and `.btn` the nowrap. Only the weight is the link's own: the
    column's headings are bold and a link in that column is not a heading. */
@@ -4441,14 +4386,6 @@ label.chk:has(input:disabled) {
 .field__hint {
   margin: 0;
   max-width: var(--measure);
-}
-
-.btn--quiet {
-  /* A short label ("Self") must still be a square's worth of target. */
-  min-width: var(--control);
-  min-height: var(--control);
-  padding: 0 var(--space-2);
-  font-size: var(--fs-sm);
 }
 
 /* Finalized app-chrome settings measure and card treatment. */

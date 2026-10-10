@@ -19,6 +19,7 @@ func TestGateReconciliationWorkflowTrust(t *testing.T) {
 		} `yaml:"on"`
 		Permissions map[string]string `yaml:"permissions"`
 		Jobs        map[string]struct {
+			If          string            `yaml:"if"`
 			Timeout     int               `yaml:"timeout-minutes"`
 			Permissions map[string]string `yaml:"permissions"`
 			Steps       []struct {
@@ -37,13 +38,16 @@ func TestGateReconciliationWorkflowTrust(t *testing.T) {
 		t.Fatal(err)
 	}
 	trigger, ok := workflow.On["workflow_run"]
-	if !ok || len(workflow.On) != 1 || len(trigger.Workflows) != 1 || trigger.Workflows[0] != "fork-ci" || len(trigger.Types) != 1 || trigger.Types[0] != "completed" {
-		t.Fatal("callback must only run after completed fork-ci validation")
+	if !ok || len(workflow.On) != 1 || len(trigger.Workflows) != 2 || trigger.Workflows[0] != "fork-ci" || trigger.Workflows[1] != "pr-validation" || len(trigger.Types) != 1 || trigger.Types[0] != "completed" {
+		t.Fatal("callback must only run after completed PR validation, including legacy runs")
 	}
 	if len(workflow.Permissions) != 1 || workflow.Permissions["contents"] != "read" {
 		t.Fatal("workflow default must remain contents-read only")
 	}
 	job, ok := workflow.Jobs["reconcile"]
+	if job.If != "github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.display_title, 'fork-ci #')" {
+		t.Fatal("legacy recovery must ignore metadata-only runs without a validation result")
+	}
 	if !ok || len(workflow.Jobs) != 1 || job.Timeout <= 0 || job.Timeout > 5 {
 		t.Fatal("callback requires one bounded reconciliation job")
 	}

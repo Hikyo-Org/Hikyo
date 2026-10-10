@@ -1,26 +1,33 @@
 # CI for the walking skeleton (#42): trusted base-branch orchestration runs
-# every validation domain affected by PR paths; main and the merge queue
-# (merge_group, the exact merge result about to land) run the complete suite.
+# every validation domain affected by PR paths. Manual main validation, nightly
+# publication and the merge queue run the complete suite. Merging a green PR
+# does not automatically run the same full suite again.
 # Merge groups, like PRs, load every planning/checking script from the base
 # (merge_group.base_sha), never from the candidate being validated.
 # Validation checks out exact PR heads with read-only permissions and no cache
 # writes. Actions and toolchains remain pinned.
 name: ci
 
+# Callers select the source: PR validation passes its authenticated head;
+# nightly and the input-free manual main wrapper pass github.sha.
+# Every job verifies the immutable input against that event before checkout.
 on:
-  push:
-    branches: [main]
   workflow_call:
+    inputs:
+      revision:
+        description: Exact immutable commit bound to the caller's GitHub event
+        required: true
+        type: string
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  # PR updates supersede the same PR; every main push stays independently
-  # queued so a burst cannot discard the middle commit's CI/cache seed.
+  # PR updates supersede the same PR. Manual and nightly main validation stay
+  # independent so a later request cannot discard a release's exact-SHA proof.
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
 
 jobs:
   # Keep the required workflow present on every PR, then select jobs inside it.
@@ -30,10 +37,49 @@ jobs:
     outputs:
       plan: ${{ steps.classify.outputs.plan }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - &validate-revision
+        name: Validate the immutable caller revision
+        env:
+          SOURCE_REVISION: ${{ inputs.revision }}
+          EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
+          EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+          PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Validation requires a full immutable revision.' >&2; exit 1; }
+          test "$EVENT_REPOSITORY" = "$GITHUB_REPOSITORY"
+          [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+              test "$SOURCE_REVISION" = "$PR_HEAD_SHA"
+              test "$PR_BASE_REPOSITORY" = "$GITHUB_REPOSITORY"
+              test "$PR_BASE_REPOSITORY_ID" = "$EVENT_REPOSITORY_ID"
+              [[ "$PR_HEAD_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+              [[ "$PR_HEAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+              ;;
+            merge_group)
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"
+              ;;
+            workflow_dispatch|schedule|repository_dispatch)
+              test "$GITHUB_REF" = refs/heads/main
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              ;;
+            *) echo 'Validation refuses this source context.' >&2; exit 1 ;;
+          esac
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Classify changed paths
         id: classify
@@ -43,7 +89,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -o pipefail
-          if [ "$EVENT_NAME" = push ]; then
+          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
+            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             plan=$(./scripts/ci/classify-changed-paths.sh --all)
           elif git cat-file -e "$BASE_SHA:scripts/ci/classify-changed-paths.sh" 2>/dev/null &&
             git cat-file -e "$BASE_SHA:scripts/ci/ci-job-registry.json" 2>/dev/null; then
@@ -71,9 +118,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).lint }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -120,7 +169,7 @@ jobs:
       - name: Save lint Go cache
         if: >-
           success() && steps.lint-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
@@ -131,10 +180,32 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['supply-chain-checks'] }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore shared test Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: |
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.3
@@ -180,7 +251,7 @@ jobs:
       - name: Native package identity fixture
         run: ./scripts/release/package-identity_test.sh
       - name: Native package verifier refusal tests
-        run: go test ./scripts/release
+        run: go test -count=1 ./scripts/release
       - name: In-process verifier accepts actual offline Cosign bundles
         env:
           COSIGN_BIN: cosign
@@ -207,7 +278,7 @@ jobs:
       - name: Changed-path classifier fixture
         run: ./scripts/ci/classify-changed-paths_test.sh
       - name: CI job registry and workflow bijection fixture
-        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench|TestStableSigningAndPublication)'
+        run: go test -count=1 ./scripts/ci -run '^(TestCIJobRegistry|TestReleaseFloorBench|TestStableSigningAndPublication|TestCoreValidationRunsAlongsideCrossPlatformProof|TestWebFlowMatrixWorkflow|TestPnpmReuseWorkflow|TestSharedGoReuseWorkflow|TestMainValidationWorkflowPolicy|TestMainFuzzReportingWorkflowPolicy|TestValidationCheckoutWorkflowPolicy)'
       - name: Chart check fixture
         run: ./scripts/ci/check-chart_test.sh
       - name: Trusted CI scripts fixture
@@ -222,6 +293,10 @@ jobs:
         run: ./scripts/ci/check-go-patch_test.sh
       - name: Fork gate reconciliation fixture
         run: ./scripts/ci/reconcile-fork-gate_test.sh
+      - name: Completion-driven PR gate and workflow trust fixtures
+        run: |
+          go test -count=1 ./scripts/ci/pr-gate
+          go test -count=1 ./scripts/ci -run '^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
       - name: Docker daemon mirror and PostgreSQL startup fixtures
         run: |
           ./scripts/ci/configure-docker-mirror_test.sh
@@ -269,9 +344,11 @@ jobs:
     # hung Go build or artifact transfer cannot stall the gate at the default 360.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -290,27 +367,29 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
-            go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
-      # pnpm's content-addressed store, shared by both lockfiles (web and
-      # clients/ts). app-build is the SINGLE WRITER: it runs before the browser
-      # legs (which `needs` it) and warms the store they restore. A warm store
-      # turns every later `pnpm install --frozen-lockfile` from a network fetch
-      # into a local hardlink.
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      # One trusted main host writer publishes the content-addressed store.
+      # PRs and all other consumers restore prior main data; changed locks
+      # fetch missing packages while preserving frozen-lockfile verification.
       - name: Restore pnpm store
         id: pnpm-store
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'clients/ts/pnpm-lock.yaml') }}
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
           restore-keys: |
-            pnpm-store-v1-${{ runner.os }}-
+            pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
+
       - name: Verify and build the SPA
         run: ./scripts/ci/build-spa.sh --verify
       - name: Build the release-shaped app
@@ -333,14 +412,14 @@ jobs:
           overwrite: true
           retention-days: 1
       # Single writer, same rule as the Go and Playwright caches: only a trusted
-      # main push publishes the store every later PR run restores.
+      # main validation publishes the store every later PR run restores.
       - name: Save pnpm store
         if: >-
           success() && steps.pnpm-store.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.local/share/pnpm/store
+          path: .ci-cache/pnpm/store
           key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
 
   release-snapshot:
@@ -348,9 +427,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['release-snapshot'] }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -378,6 +459,16 @@ jobs:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      - name: Restore pnpm store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
+          restore-keys: |
+            pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
       # Keep this small build parallel with app-build. Serial reuse saves one
       # sub-second Vite build but delays all six GoReleaser targets behind the
       # native browser binary and frontend validation.
@@ -414,7 +505,7 @@ jobs:
       - name: Classify complete snapshot manifest
         run: ./scripts/release/snapshot-manifest_test.sh
       - name: Mark the snapshot as unsigned development output
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         run: |
           printf '%s\n' \
             'UNSIGNED DEVELOPMENT SNAPSHOT — NOT AN OFFICIAL HIKYO RELEASE' \
@@ -423,7 +514,7 @@ jobs:
             'Do not use it for production or the offline release ceremony.' \
             >dist/DEVELOPMENT-SNAPSHOT.txt
       - name: Upload unsigned development snapshot
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: hikyo-development-${{ github.sha }}
@@ -439,7 +530,7 @@ jobs:
       - name: Save release-snapshot Go cache
         if: >-
           success() && steps.release-snapshot-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
@@ -456,10 +547,12 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: ${{ fromJSON(needs.changes.outputs.plan).generated || fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
@@ -526,13 +619,13 @@ jobs:
       - name: Save generated-code Go cache
         if: >-
           success() && steps.generated-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
           key: ${{ steps.generated-go-cache.outputs.cache-primary-key }}
       - name: Require DCO sign-off on every PR commit
-        if: ${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -559,10 +652,12 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan).client }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -593,6 +688,22 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore shared test Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: |
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Frozen generated client against current server, both engines
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
@@ -611,9 +722,11 @@ jobs:
       # dependencies are part of this digest-pinned multi-architecture image.
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
@@ -630,14 +743,32 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['compose-demo'] }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore shared test Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: |
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Install terminal automation
         run: sudo apt-get update && sudo apt-get install --yes expect
       - name: Require Docker Compose 2.30.0 or newer
@@ -689,24 +820,24 @@ jobs:
       matrix:
         project: [desktop, mobile]
         group: [1, 2, 3, 4]
-        # Balanced by measured desktop test time per spec (run 35883620401:
-        # members 107s, login 61s, reveal 49s, scanning 31s, settings 73s,
-        # workspace 63s, history 56s, account 120s, machine-access 130s,
-        # instance-admin 114s, shell 39s, matrix 197s). Every flow in
-        # e2e/registry.ts appears in exactly one group; the aggregator proves it.
+        # Balanced by both viewport timings from run 38063556913. These four
+        # complete spec groups retain every flow on desktop and mobile; their
+        # execution logs are checked together by web-closure.
         include:
           - group: 1
-            specs: e2e/flows/reveal.spec.ts e2e/flows/members.spec.ts e2e/flows/login.spec.ts e2e/flows/scanning.spec.ts
+            specs: e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts e2e/flows/scanning.spec.ts
           - group: 2
-            specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts e2e/flows/account.spec.ts
+            specs: e2e/flows/members.spec.ts e2e/flows/account.spec.ts e2e/flows/history.spec.ts
           - group: 3
-            specs: e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts
+            specs: e2e/flows/instance-admin.spec.ts e2e/flows/settings.spec.ts e2e/flows/workspace.spec.ts
           - group: 4
-            specs: e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts
+            specs: e2e/flows/machine-access.spec.ts e2e/flows/login.spec.ts e2e/flows/reveal.spec.ts
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Download the exact app build
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -721,16 +852,19 @@ jobs:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
 
-      # Restore the store app-build warmed. Restore only: app-build is the
-      # writer, so both viewport legs hardlink from it and never race a save.
+      # Restore prior trusted main Storybook dependencies into the workspace
+      # store. PR jobs read only and fetch any missing locked packages.
       - name: Restore pnpm store
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml', 'clients/ts/pnpm-lock.yaml') }}
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
           restore-keys: |
-            pnpm-store-v1-${{ runner.os }}-
+            pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
 
       # The SPA consumes clients/ts generated sources through aliases, so the
       # generated Zod schemas resolve `zod` from clients/ts's own node_modules;
@@ -794,9 +928,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
@@ -831,15 +967,28 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
       - name: Install Corepack and enable pnpm
         run: ./scripts/ci/install-corepack.sh
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        run: ./scripts/ci/export-pnpm-cache.sh
+      - name: Restore pnpm store
+        id: pnpm-store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('.nvmrc', 'web/package.json', 'web/pnpm-lock.yaml', 'web/pnpm-workspace.yaml', 'clients/ts/package.json', 'clients/ts/pnpm-lock.yaml', 'clients/ts/pnpm-workspace.yaml') }}
+          restore-keys: |
+            pnpm-store-v2-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
       # The SPA consumes clients/ts generated sources through aliases, so stories
       # that mount those components resolve deps from clients/ts's node_modules.
       - name: Install client package (generated sources' own deps)
@@ -871,6 +1020,14 @@ jobs:
       - name: Storybook production build
         working-directory: web
         run: pnpm exec storybook build
+      - name: Every source story module has generated Docs
+        working-directory: web
+        run: pnpm run check:storybook-docs
+      # Central switching/lifetime contracts use the immutable build. Both
+      # complete palette/a11y suites above remain required.
+      - name: Storybook theme switching and Docs lifetimes
+        working-directory: web
+        run: pnpm run test-storybook:theme
       - name: Every linked design image ships in the static build
         working-directory: web
         run: |
@@ -878,6 +1035,16 @@ jobs:
             [ -e "$png" ] || continue
             [ -f "storybook-static/design/$(basename "$png")" ] || { echo "missing storybook-static/design/$(basename "$png")"; exit 1; }
           done
+      # Containers choose gzip while hosted jobs choose zstd. One trusted
+      # Storybook writer owns this image's archive; browser legs restore it.
+      - name: Save Playwright pnpm store
+        if: >-
+          success() && steps.pnpm-store.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
 
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui
@@ -892,9 +1059,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Download the exact app build
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -919,9 +1088,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
-            go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       # The release ships the `ui`-tagged binary, so the shipped shape gets its
       # own govulncheck pass here; `test_core` scans the untagged build that every
       # Go-only change exercises. The binary is app-build's exact artifact.
@@ -954,8 +1123,8 @@ jobs:
   # non-Linux client platforms (Linux runs them in test_core). The macOS leg
   # also carries generic file synchronization (#164): the destination
   # publisher, the client, and the SQLite end-to-end run (Windows
-  # destinations are out of scope). Indirect: test_core needs it, so a
-  # failure here skips test_core and ci-required reports the mismatch.
+  # destinations are out of scope). ci-required gates both platform legs
+  # directly, so Linux validation can run without waiting for this proof.
   scan-xplat:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
@@ -965,9 +1134,11 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -986,13 +1157,15 @@ jobs:
           go test -count=1 -run '^TestFileSyncCLISQLite$' ./internal/isolation
 
   test_core:
-    needs: [changes, scan-xplat]
+    needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1096,7 +1269,7 @@ jobs:
       - name: Save test Go cache
         if: >-
           success() && steps.test-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
@@ -1105,7 +1278,7 @@ jobs:
       # job permanently won the shared module key for this dependency graph.
       - name: Save shared Go module cache
         if: >-
-          success() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          success() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main' &&
           steps.go-module-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1127,9 +1300,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1174,7 +1349,7 @@ jobs:
       - name: Save k8s-e2e Go cache
         if: >-
           success() && steps.k8s-e2e-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
@@ -1198,10 +1373,12 @@ jobs:
       race_shards: ${{ steps.plan.outputs.race_shards }}
       shards: ${{ steps.plan.outputs.shards }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1215,7 +1392,8 @@ jobs:
         run: |
           set -o pipefail
           trusted_planner="$RUNNER_TEMP/analysis-shards.go"
-          if [ "$EVENT_NAME" = push ]; then
+          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
+            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             cp ./scripts/ci/analysis-shards-go/main.go "$trusted_planner"
           else
             git show "$BASE_SHA:scripts/ci/analysis-shards-go/main.go" >"$trusted_planner"
@@ -1276,9 +1454,11 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1353,10 +1533,12 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1403,7 +1585,8 @@ jobs:
           # replace the scheduler to omit assigned coverage. App database-drop
           # cleanup runs after peer packages finish their durable migrations.
           scheduler="$RUNNER_TEMP/test-race-packages.sh"
-          if [ "$EVENT_NAME" = push ]; then
+          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
+            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             cp ./scripts/ci/test-race-packages.sh "$scheduler"
           else
             git show "$BASE_SHA:scripts/ci/test-race-packages.sh" >"$scheduler"
@@ -1417,10 +1600,10 @@ jobs:
           path: ${{ runner.temp }}/hikyo-race-timings/*.json
           if-no-files-found: ignore
           retention-days: 14
-      - name: Save race Go cache (main push only)
+      - name: Save race Go cache (trusted main validation only)
         if: >-
           success() && steps.race-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
@@ -1444,9 +1627,11 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1556,10 +1741,10 @@ jobs:
           path: ${{ runner.temp }}/fuzz-reproducers/
           if-no-files-found: error
           retention-days: 30
-      - name: Save fuzz Go cache (main push only)
+      - name: Save fuzz Go cache (trusted main validation only)
         if: >-
           success() && steps.fuzz-go-cache.outputs.cache-hit != 'true' &&
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
@@ -1587,9 +1772,11 @@ jobs:
     if: ${{ fromJSON(needs.changes.outputs.plan)['headline-guarantee'] }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.revision }}
           persist-credentials: false
       - name: Start healthy PostgreSQL with Docker Hub cache fallback
         id: ci-postgres
@@ -1633,6 +1820,8 @@ jobs:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan)['floor-bench'] }}
     uses: ./.github/workflows/floor-bench.yml
+    with:
+      revision: ${{ inputs.revision }}
     permissions:
       contents: read
 
@@ -1656,6 +1845,7 @@ jobs:
       - preflight
       - race_shard
       - release-snapshot
+      - scan-xplat
       - supply-chain-checks
       - test_core
       - web
@@ -1663,8 +1853,11 @@ jobs:
       - web-go
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.revision }}
           fetch-depth: 0
           persist-credentials: false
       # Preserve the reporter's single canonical artifact contract while allowing
@@ -1705,7 +1898,11 @@ jobs:
         run: |
           trusted_checker="$RUNNER_TEMP/check-required-jobs.sh"
           trusted_registry="$RUNNER_TEMP/ci-job-registry.json"
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
+          checker_event="$GITHUB_EVENT_NAME"
+          if [[ "$GITHUB_EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
+            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
+            # The checker applies its existing full-main policy to these runs.
+            checker_event=push
             cp ./scripts/ci/check-required-jobs.sh "$trusted_checker"
             cp ./scripts/ci/ci-job-registry.json "$trusted_registry"
           else
@@ -1718,4 +1915,24 @@ jobs:
             echo "trusted required-job checker does not support CI plan v2" >&2
             exit 1
           fi
-          CI_JOB_REGISTRY="$trusted_registry" "$trusted_checker" "$GITHUB_EVENT_NAME" "$NEEDS_JSON" "$PLAN_JSON"
+          # Older bases enforced scan-xplat through test_core's dependency.
+          # Check its live result before adapting only that known legacy shape;
+          # retain the trusted checker for every other result and plan key.
+          if ! jq -e 'has("scan-xplat")' <<<"$NEEDS_JSON" >/dev/null; then
+            echo "cross-platform validation result is missing" >&2
+            exit 1
+          fi
+          if jq -e '
+            .version == 2 and
+            .jobs["scan-xplat"] == {required_gate: "indirect", plan_jobs: ["test"]} and
+            .jobs.test_core == {required_gate: "planned", plan_jobs: ["test"]}
+          ' "$trusted_registry" >/dev/null; then
+            NEEDS_JSON=$(jq -ce --argjson plan "$PLAN_JSON" '
+              (if $plan.test == true then "success"
+               elif $plan.test == false then "skipped"
+               else error("test plan must be boolean") end) as $expected |
+              if .["scan-xplat"].result == $expected then del(.["scan-xplat"])
+              else error("cross-platform validation did not match the trusted test plan") end
+            ' <<<"$NEEDS_JSON")
+          fi
+          CI_JOB_REGISTRY="$trusted_registry" "$trusted_checker" "$checker_event" "$NEEDS_JSON" "$PLAN_JSON"

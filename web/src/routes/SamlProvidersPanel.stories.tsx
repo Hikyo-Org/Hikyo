@@ -122,6 +122,8 @@ const previewDiff = {
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 
 const meta = {
+  title: 'Features/Identity/SamlProvidersPanel',
+  id: 'routes-samlproviderspanel',
   component: SamlProvidersPanel,
   tags: ['ai-generated'],
   parameters: {

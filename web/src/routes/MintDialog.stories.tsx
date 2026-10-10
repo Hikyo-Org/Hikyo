@@ -40,6 +40,8 @@ const disclosed: Extract<MintLifecycle, { kind: 'disclosed' }> = {
 };
 
 const meta = {
+  title: 'Features/Machine access/MintDialog',
+  id: 'routes-mintdialog',
   component: MintDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

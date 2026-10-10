@@ -1,0 +1,58 @@
+# Observe completion-driven PR results under ci-required-next while the legacy
+# ci-required gate remains required. Execute default-branch tooling, read PR
+# code only as API metadata, and never download PR artifacts.
+# A queued check does not reserve a runner. Completion callbacks reassess live
+# state; periodic repair covers delayed/missing callbacks and approval changes.
+name: pr-gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, closed]
+  workflow_run:
+    workflows: [fork-ci, pr-validation]
+    types: [requested, in_progress, completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request to reassess against current GitHub state
+        required: true
+        type: string
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: read
+
+# Checks belong to commits, not PRs. One writer also serializes same-SHA PRs
+# and scheduled repair. Preserve up to 100 pending events instead of replacing
+# them; scheduled repair covers overflow and reassesses current live state.
+concurrency:
+  group: pr-gate-publisher
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Reconcile observed PR check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-required-next
+        run: go run ./scripts/ci/pr-gate

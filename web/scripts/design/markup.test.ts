@@ -5,6 +5,42 @@ import { scanMarkup } from './markup.ts';
 const lines = (text: string) => text.split('\n');
 
 describe('scanMarkup', () => {
+  it('keeps native semantic structure and specialized controls outside the shared styling policy', () => {
+    expect(scanMarkup(lines(`<section><h2>Heading</h2><p>Text</p><ul><li>Item</li></ul>
+      <table><tbody><tr><td>Cell</td></tr></tbody></table>
+      <form><label>Name<input name="name" /></label><button className="matrix-cell">Open cell</button></form>
+    </section>`))).toEqual([]);
+  });
+
+  it('flags shared button styling across multi-line, single-quoted and computed openers', () => {
+    const fixtures = [
+      `<button\n  className="btn"\n  type="button"\n>Action</button>`,
+      `<button className='btn btn--danger'>Action</button>`,
+      `<button className={cx('btn', busy && 'is-busy')}>Action</button>`,
+      `<button className={busy ? 'btn--primary' : 'btn'}>Action</button>`,
+      '<button className={`btn ${extra}`}>Action</button>',
+    ];
+    for (const fixture of fixtures) {
+      expect(scanMarkup(lines(fixture)).map((hit) => ({ line: hit.line, atom: hit.atom }))).toEqual([{ line: 1, atom: 'ui/Button' }]);
+    }
+    expect(scanMarkup(lines(`<button className="btnish">Specialized</button>`))).toEqual([]);
+    expect(scanMarkup(lines(`<button className="special">Native <span className="btn">text</span></button>`))).toEqual([]);
+    expect(scanMarkup(lines(`<button\n  onClick={() => run(3 > 2)}\n  className={'btn'}\n>Action</button>`))).toHaveLength(1);
+    expect(scanMarkup(lines(`<button className="special">Native</button><button aria-label="🔒" className="btn">Styled</button>`)).filter((hit) => hit.atom === 'ui/Button')).toHaveLength(1);
+  });
+
+  it('keeps a deliberate multiline native button ruling local to its element', () => {
+    expect(scanMarkup(lines(`
+      {/* markup-check: special native control */}
+      <button
+        className="btn"
+      >Specialized</button>
+      <button
+        className="btn"
+      >Sibling</button>
+    `)).map((hit) => ({ line: hit.line, atom: hit.atom }))).toEqual([{ line: 6, atom: 'ui/Button' }]);
+  });
+
   it('flags hand-written atoms, and a class token is a whole token', () => {
     expect(scanMarkup(lines(`
       <p className="notice machine__policy" role="status">no marker</p>

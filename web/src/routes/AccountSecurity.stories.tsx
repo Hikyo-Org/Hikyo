@@ -136,6 +136,8 @@ const populated: MockRoute[] = [
 ];
 
 const meta = {
+  title: 'Pages/AccountSecurity',
+  id: 'routes-accountsecurity',
   component: AccountSecurity,
   tags: ['ai-generated'],
   parameters: {

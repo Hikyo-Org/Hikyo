@@ -120,6 +120,8 @@ const reachReview = async (canvas: Canvas) => {
 };
 
 const meta = {
+  title: 'Features/Values/ImportWizard',
+  id: 'routes-importwizard',
   component: ImportWizard,
   tags: ['ai-generated'],
   args: { matrixRef: { org: ORG, project: PRJ }, environments, gitManaged: false, canDeclareKeys: true, onClose: fn() },

@@ -42,10 +42,12 @@ const providers = {
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 
 const meta = {
+  title: 'Features/Identity/OidcProvidersPanel',
+  id: 'routes-oidcproviderspanel',
   component: OidcProvidersPanel,
   tags: ['ai-generated'],
-  parameters: {
-    ...topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "OpenID Connect provider administration. Lists provider configuration, opens reconfiguration and typed-slug deletion, and reports required second-factor or failed reads without substituting an empty list." } },
+
     app: { responses: [list({ body: providers })] },
   },
 } satisfies Meta<typeof OidcProvidersPanel>;

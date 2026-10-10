@@ -52,6 +52,8 @@ const methods: MockRoute = {
 };
 
 const meta = {
+  title: 'Pages/WorkspaceApprove',
+  id: 'routes-workspaceapprove',
   component: WorkspaceApprove,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: { auth: true, responses: [] } },

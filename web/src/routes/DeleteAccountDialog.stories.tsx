@@ -21,6 +21,8 @@ const arm = async (canvas: StoryContext['canvas']) => {
 };
 
 const meta = {
+  title: 'Features/Machine access/DeleteAccountDialog',
+  id: 'routes-deleteaccountdialog',
   component: DeleteAccountDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

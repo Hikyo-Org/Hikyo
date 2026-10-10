@@ -9,6 +9,8 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // outright (machine consumers, adapters, SCIM). The gate renders this reason
 // instead of the page; a Router is all it needs (the app decorator supplies one).
 const meta = {
+  title: 'Shared/SystemScopeRefusal',
+  id: 'routes-systemscoperefusal',
   component: SystemScopeRefusal,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: { responses: [] } },

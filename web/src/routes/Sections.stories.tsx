@@ -14,6 +14,8 @@ import {
 // Panel is the primary component; meta.args covers its required props so
 // render-only stories for the sibling primitives don't require an `args` key.
 const meta = {
+  title: 'Shared/Sections',
+  id: 'routes-sections',
   component: Panel,
   tags: ['ai-generated'],
   args: {

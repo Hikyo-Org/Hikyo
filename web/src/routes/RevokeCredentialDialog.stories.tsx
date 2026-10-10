@@ -18,6 +18,8 @@ const adapter: Adapter = {
 };
 
 const meta = {
+  title: 'Features/Remotes/RevokeCredentialDialog',
+  id: 'routes-revokecredentialdialog',
   component: RevokeCredentialDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

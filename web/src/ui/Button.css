@@ -1,0 +1,60 @@
+/* Shared control skin, also used by native links, summaries and file labels. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-panel);
+  color: var(--tx);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+  font-size: var(--fs-md);
+  /* A button is one line: a label that wraps grows the control past the token
+     (the members table's "Reset credential" at 41px). */
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: color-mix(in oklch, var(--bg-panel), var(--tx) 8%);
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+
+.btn--primary:hover {
+  background: color-mix(in oklch, var(--accent), black 10%);
+}
+
+.btn[disabled] {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.btn--icon {
+  width: var(--control);
+  min-width: var(--control);
+  padding: 0;
+}
+
+.btn--danger {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.btn--quiet {
+  /* A short label ("Self") must still be a square's worth of target. */
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+}

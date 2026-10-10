@@ -4,6 +4,8 @@ import { expect, fn, userEvent } from 'storybook/test';
 import { AuthenticatorCodeField } from './AuthenticatorCodeField.tsx';
 
 const meta = {
+  title: 'Design system/Auth/AuthenticatorCodeField',
+  id: 'ui-auth-authenticatorcodefield',
   component: AuthenticatorCodeField,
   tags: ['ai-generated'],
   args: { submitLabel: 'Present code', busy: null, disabled: false, onSubmit: fn() },

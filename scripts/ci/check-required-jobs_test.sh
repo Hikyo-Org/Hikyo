@@ -64,6 +64,7 @@ all_success='{
 	"preflight":{"result":"success"},
 	"race_shard":{"result":"success"},
 	"release-snapshot":{"result":"success"},
+	"scan-xplat":{"result":"success"},
 	"supply-chain-checks":{"result":"success"},
 	"test_core":{"result":"success"},
 	"web":{"result":"success"},
@@ -83,6 +84,7 @@ docs_success=$(printf '%s' "$all_success" | jq '
 	.lint.result = "skipped" |
 	.race_shard.result = "skipped" |
 	.["release-snapshot"].result = "skipped" |
+	.["scan-xplat"].result = "skipped" |
 	.["supply-chain-checks"].result = "skipped" |
 	.test_core.result = "skipped" |
 	.web.result = "skipped" |
@@ -108,13 +110,24 @@ for result in failure cancelled skipped; do
 done
 expect_accept 'main push' push "$all_success" "$all_plan"
 
-for job in client compose-demo fuzz_shard isolation_shard preflight race_shard test_core; do
+for job in client compose-demo fuzz_shard isolation_shard preflight race_shard scan-xplat test_core; do
 	for result in failure cancelled skipped; do
 		expect_reject "selected $job with $result result" pull_request \
 			"$(printf '%s' "$all_success" | jq --arg job "$job" --arg result "$result" '.[ $job ].result = $result')" \
 			"$all_plan"
 	done
 done
+
+# Cross-platform proof is a direct gate even when independent Linux tests pass.
+for result in failure cancelled skipped; do
+	expect_reject "cross-platform $result while Linux tests pass" pull_request_target \
+		"$(printf '%s' "$all_success" | jq --arg result "$result" '.["scan-xplat"].result = $result')" \
+		"$all_plan"
+done
+expect_reject 'missing cross-platform proof while Linux tests pass' pull_request \
+	"$(printf '%s' "$all_success" | jq 'del(.["scan-xplat"])')" "$all_plan"
+expect_reject 'unplanned cross-platform proof ran' pull_request \
+	"$(printf '%s' "$docs_success" | jq '.["scan-xplat"].result = "success"')" "$docs_plan"
 
 expect_reject 'unselected web job unexpectedly ran' pull_request \
 	"$(printf '%s' "$docs_success" | jq '.web.result = "success"')" "$docs_plan"

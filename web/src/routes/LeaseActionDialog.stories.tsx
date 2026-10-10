@@ -31,6 +31,8 @@ const lease: DynamicLease = {
 const LEASE_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/environments/${PROD}/leases/${lease.id}`;
 
 const meta = {
+  title: 'Features/Machine access/LeaseActionDialog',
+  id: 'routes-leaseactiondialog',
   component: LeaseActionDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

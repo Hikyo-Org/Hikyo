@@ -25,11 +25,13 @@ const status: InstanceConfigStatus = {
 };
 
 const meta = {
+  title: 'Shared/SystemProjectNotice',
+  id: 'routes-systemprojectnotice',
   component: SystemProjectNotice,
   tags: ['ai-generated'],
   args: { org: ORG, project: PROJECT },
-  parameters: {
-    ...topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "The Hikyo system-project configuration notice. It explains why the project is managed as instance configuration and points to the appropriate management surface rather than offering unsupported project mutations." } },
+
     app: { responses: [{ url: '/api/v1/instance/config', body: status }] },
   },
 } satisfies Meta<typeof SystemProjectNotice>;

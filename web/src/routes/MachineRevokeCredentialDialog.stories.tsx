@@ -16,6 +16,8 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 const CREDENTIAL_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/dynamic-providers/${provider.id}/credential`;
 
 const meta = {
+  title: 'Features/Machine access/MachineRevokeCredentialDialog',
+  id: 'routes-machinerevokecredentialdialog',
   component: RevokeCredentialDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

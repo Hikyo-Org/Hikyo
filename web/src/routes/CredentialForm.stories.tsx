@@ -4,6 +4,8 @@ import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import { CredentialForm } from './Adapters.tsx';
 
 const meta = {
+  title: 'Features/Remotes/CredentialForm',
+  id: 'routes-credentialform',
   component: CredentialForm,
   tags: ['ai-generated'],
   args: {

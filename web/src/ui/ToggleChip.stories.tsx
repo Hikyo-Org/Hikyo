@@ -5,6 +5,9 @@ import { expect, userEvent } from 'storybook/test';
 import { ToggleChip } from './ToggleChip.tsx';
 
 const meta = {
+  parameters: { docs: { description: { component: "An inclusion or exclusion filter chip implemented as a pressed button. The mode determines which meaning an unpressed or pressed state carries; disabled chips retain their label and state without accepting activation." } } },
+  title: 'Design system/ToggleChip',
+  id: 'ui-togglechip',
   component: ToggleChip,
   tags: ['ai-generated'],
   args: { pressed: false, mono: true, children: 'staging' },

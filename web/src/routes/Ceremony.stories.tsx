@@ -51,6 +51,8 @@ const oidcIdentity: WhoAmI = {
 };
 
 const meta = {
+  title: 'Pages/Ceremony',
+  id: 'routes-ceremony',
   component: Ceremony,
   tags: ['ai-generated'],
   args: { request: production, onAuthorised: fn(), onCancel: fn() },

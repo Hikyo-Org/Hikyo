@@ -16,11 +16,13 @@ const settingsLink: Link = {
 };
 
 const meta = {
+  title: 'Shared/SidebarLinkItem',
+  id: 'routes-sidebarlinkitem',
   component: SidebarLinkItem,
   tags: ['ai-generated'],
   // The row renders a router Link/NavLink; the app harness supplies the
   // MemoryRouter. No fetch, so an empty response table is enough.
-  parameters: { ...topLayerDocs, app: { responses: [] } },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "One navigation link in the application sidebar. Accessible text, selected state and scope context come from the route-owned link data so the visual active state agrees with navigation." } },  app: { responses: [] } },
   args: {
     link: settingsLink,
     onNavigate: fn(),

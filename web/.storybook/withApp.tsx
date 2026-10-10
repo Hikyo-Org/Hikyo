@@ -1,10 +1,10 @@
 import type { Decorator } from '@storybook/react-vite'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router'
 
 import { AuthProvider } from '../src/app/AuthProvider.tsx'
-import { makeQueryClient } from '../src/app/queryClient.ts'
+import { makeQueryClient, retireQueryClient } from '../src/app/queryClient.ts'
 import { authenticatedIdentity } from '../src/testkit/identity.ts'
 
 /**
@@ -27,10 +27,14 @@ export type MockRoute = {
   readonly url: string | RegExp
   /** HTTP verb to match. Defaults to GET; a non-GET request without a matching row 404s. */
   readonly method?: string
+  /** Required query values. Unspecified keys are ignored; duplicate values do not match. */
+  readonly query?: Readonly<Record<string, string>>
   readonly status?: number
   readonly body?: unknown
   /** Never settle, the screen's query stays pending, so its loading state is the story. */
   readonly pending?: boolean
+  /** Request-aware fixtures for journeys; validate request and response with the app contracts. */
+  readonly handler?: (request: Request) => Response | Promise<Response>
 }
 
 export type AppParameters = {
@@ -38,6 +42,8 @@ export type AppParameters = {
   readonly path?: string
   /** Route path the Story element is mounted at. Default matches `path`. */
   readonly routePath?: string
+  /** Story renders the real AppRoutes tree; do not wrap it in a duplicate Route table. */
+  readonly routeTree?: boolean
   /** Value handed to `useOutletContext`. */
   readonly outlet?: unknown
   /** Mount the real AuthProvider and answer whoami. */
@@ -67,6 +73,11 @@ function matches(route: MockRoute, url: string, method: string): boolean {
   if ((route.method ?? 'GET').toUpperCase() !== method) {
     return false
   }
+  const parsed = new URL(url, globalThis.location.origin)
+  if (route.query !== undefined && Object.entries(route.query).some(([key, value]) => {
+    const values = parsed.searchParams.getAll(key)
+    return values.length !== 1 || values[0] !== value
+  })) return false
   // A string route matches the request path exactly (so '/orgs/x/projects' does
   // not swallow '/orgs/x/projects/p/environments'); a RegExp matches the href.
   if (typeof route.url !== 'string') {
@@ -75,13 +86,16 @@ function matches(route: MockRoute, url: string, method: string): boolean {
     route.url.lastIndex = 0
     return route.url.test(url)
   }
-  return new URL(url, globalThis.location.origin).pathname === route.url
+  return parsed.pathname === route.url
 }
 
 /** Build a fetch that answers from the table and 404s anything unmatched. */
-function router(routes: readonly MockRoute[]): typeof fetch {
+function router(routes: readonly MockRoute[], lifetime: AbortSignal): typeof fetch {
   return (input: RequestInfo | URL, init?: RequestInit) => {
     const { url, method } = readRequest(input, init)
+    const requestSignal = init?.signal !== undefined ? init.signal : (input instanceof Request ? input.signal : undefined)
+    const signal = requestSignal == null ? lifetime : AbortSignal.any([lifetime, requestSignal])
+    if (signal.aborted) return Promise.reject(signal.reason)
     const route = routes.find((candidate) => matches(candidate, url, method))
     if (route === undefined) {
       return Promise.resolve(
@@ -94,7 +108,21 @@ function router(routes: readonly MockRoute[]): typeof fetch {
     // A pending row never resolves; the retry-free query client holds the
     // screen in its loading state, which is exactly what the story shows.
     if (route.pending === true) {
-      return new Promise<Response>(() => {})
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    }
+    if (route.handler !== undefined) {
+      const request = new Request(input instanceof Request ? input : new URL(url, globalThis.location.origin), { ...init, signal })
+      const handler = route.handler
+      return new Promise<Response>((resolve, reject) => {
+        const onAbort = () => reject(signal.reason)
+        signal.addEventListener('abort', onAbort, { once: true })
+        void Promise.resolve().then(() => {
+          if (signal.aborted) throw signal.reason
+          return handler(request)
+        }).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+      })
     }
     return Promise.resolve(
       new Response(route.body === undefined ? null : JSON.stringify(route.body), {
@@ -104,6 +132,11 @@ function router(routes: readonly MockRoute[]): typeof fetch {
     )
   }
 }
+
+// One fixture lifetime per window. Framed Docs owns a separate module/window.
+// Retire an old lifetime before installing the next; a late cleanup must never
+// replace the newer story's fetch or restore an already retired dispatcher.
+let retireFixtures: (() => void) | undefined
 
 /**
  * Preview `beforeEach`: install the per-story fetch table before the screen
@@ -118,6 +151,7 @@ export async function installAppFetch(context: {
 }): Promise<() => void> {
   const app = context.parameters.app
   if (app === undefined) {
+    retireFixtures?.()
     return () => {}
   }
   // Docs renders a page's stories inline in ONE document by default, and this
@@ -128,6 +162,7 @@ export async function installAppFetch(context: {
   if (context.viewMode === 'docs') {
     throw new Error('parameters.app stories must spread topLayerDocs so Docs renders them framed: inline Docs examples share one globalThis.fetch')
   }
+  retireFixtures?.()
   const routes: MockRoute[] = [...(app.responses ?? [])]
   if (app.auth === true) {
     // A last-resort whoami so AuthProvider settles signed-in; a story that wants
@@ -135,10 +170,16 @@ export async function installAppFetch(context: {
     routes.push({ url: '/api/v1/auth/whoami', body: app.identity ?? authenticatedIdentity })
   }
   const original = globalThis.fetch
-  globalThis.fetch = router(routes)
-  return () => {
-    globalThis.fetch = original
+  const lifetime = new AbortController()
+  const installed = router(routes, lifetime.signal)
+  globalThis.fetch = installed
+  const cleanup = () => {
+    lifetime.abort(new DOMException('Story fixture retired', 'AbortError'))
+    if (globalThis.fetch === installed) globalThis.fetch = original
+    if (retireFixtures === cleanup) retireFixtures = undefined
   }
+  retireFixtures = cleanup
+  return cleanup
 }
 
 function Shell({ app, children }: { app: AppParameters; children: ReactNode }) {
@@ -146,11 +187,11 @@ function Shell({ app, children }: { app: AppParameters; children: ReactNode }) {
   const routePath = app.routePath ?? path
   return (
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
+      {app.routeTree === true ? children : <Routes>
         <Route element={<Outlet context={app.outlet} />}>
           <Route path={routePath} element={children} />
         </Route>
-      </Routes>
+      </Routes>}
     </MemoryRouter>
   )
 }
@@ -163,6 +204,7 @@ function Shell({ app, children }: { app: AppParameters; children: ReactNode }) {
  */
 function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(makeQueryClient)
+  useEffect(() => () => retireQueryClient(client), [client])
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 

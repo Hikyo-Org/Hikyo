@@ -17,6 +17,9 @@ set -eu
 : "${GH_REPO:?}" "${PR_NUMBER:?}" "${HEAD_SHA:?}"
 timeout_seconds=${FORK_GATE_TIMEOUT_SECONDS:-5400}
 poll_seconds=${FORK_GATE_POLL_SECONDS:-30}
+# Completion-driven controllers assess once and keep the required check pending
+# while validation runs. Existing trusted bases retain their polling behavior.
+gate_once=${PR_GATE_ONCE:-0}
 gate_job='validation / ci-required'
 # Repository policy, loaded from the trusted base, never from PR input or env.
 # Dunky13's immutable GitHub user ID survives account renames.
@@ -35,11 +38,20 @@ summary() {
 
 fail() {
 	category=${2:-policy-refusal}
-	printf 'fork validation gate [%s]: %s\n' "$category" "$1" >&2
-	summary "### Fork validation gate: $category"
+	printf 'PR validation gate [%s]: %s\n' "$category" "$1" >&2
+	summary "### PR validation gate: $category"
 	summary "$1"
 	[ -z "$run_url" ] || summary "Validation run: $run_url"
 	exit 1
+}
+
+pending() {
+	printf 'PR validation gate [pending]: %s\n' "$1" >&2
+	summary '### PR validation gate: pending'
+	summary "$1"
+	summary "Exact head: $HEAD_SHA"
+	[ -z "$run_url" ] || summary "Validation run: $run_url"
+	exit 75
 }
 
 # gh supports --paginate and --slurp but not --slurp with --jq. Keep the
@@ -77,7 +89,7 @@ gh_read() (
 		if [ "$attempt" -ge 3 ] || ! grep -Ei 'HTTP (429|5[0-9][0-9])|dial tcp|TLS handshake timeout|connection reset|i/o timeout|unexpected EOF|temporary failure in name resolution' "$api_work/error" >/dev/null; then
 			fail "read-only API request failed for $url (attempt $attempt)" api-failure
 		fi
-		printf 'fork validation gate: retrying transient API failure (%s/3) for %s\n' "$attempt" "$url" >&2
+		printf 'PR validation gate: retrying transient API failure (%s/3) for %s\n' "$attempt" "$url" >&2
 		sleep "${FORK_GATE_API_RETRY_SECONDS:-2}"
 		attempt=$((attempt + 1))
 	done
@@ -227,26 +239,32 @@ while :; do
 				timed_out/* | */timed_out) category=timeout ;;
 				*) ;;
 			esac
-			fail "fork-ci run $run_id: '$gate_job' concluded '${conclusion:-missing}'" "$category"
+			fail "PR validation run $run_id: '$gate_job' concluded '${conclusion:-missing}'" "$category"
 		fi
 		# Polling may outlive a push, a dismissed review, or collaborator removal.
 		# Re-prove workflow-edit authority and the head immediately before passing.
 		if [ "$workflow_changed" = true ]; then require_workflow_review; fi
 		check_current_pr
 		if [ "$mergeable" = true ]; then
-			summary "### Fork validation gate: success"
+			summary "### PR validation gate: success"
 			summary "Exact head: $HEAD_SHA. Validation run: $run_url"
-			printf 'fork validation gate: fork-ci run %s passed on %s\n' "$run_id" "$HEAD_SHA"
+			printf 'PR validation gate: run %s passed on %s\n' "$run_id" "$HEAD_SHA"
 			exit 0
 		fi
 		# A completed run does not resolve GitHub's pending mergeability.
+		if [ "$gate_once" = 1 ]; then
+			pending 'PR mergeability is still pending; reassess once GitHub resolves it'
+		fi
 		[ "$(date +%s)" -lt "$deadline" ] ||
 			fail "PR mergeability is still pending after ${timeout_seconds}s; re-run once GitHub resolves it" timeout
 	fi
+	if [ "$gate_once" = 1 ]; then
+		pending "PR validation is pending for $HEAD_SHA ($wait_reason)"
+	fi
 	if [ "$(date +%s)" -ge "$deadline" ]; then
 		report_run_progress
-		fail "no completed fork-ci run for $HEAD_SHA within ${timeout_seconds}s ($wait_reason); re-run this job once it finishes" timeout
+		fail "no completed PR validation run for $HEAD_SHA within ${timeout_seconds}s ($wait_reason); re-run this job once it finishes" timeout
 	fi
-	printf 'fork validation gate: waiting for fork-ci on %s (%s)\n' "$HEAD_SHA" "${run:-no run yet}"
+	printf 'PR validation gate: waiting for validation on %s (%s)\n' "$HEAD_SHA" "${run:-no run yet}"
 	sleep "$poll_seconds"
 done

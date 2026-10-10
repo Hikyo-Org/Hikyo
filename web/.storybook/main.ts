@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { StorybookConfig } from '@storybook/react-vite';
+import { scopeDocgen } from './docgen.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -42,5 +43,6 @@ const config: StorybookConfig & { managerEntries: (entries: string[]) => string[
   // Zero-telemetry ADR: no phone-home from local or CI builds.
   core: { disableTelemetry: true },
   managerEntries: (entries) => [...entries, fileURLToPath(new URL('./openpencil-addon.tsx', import.meta.url))],
+  viteFinal: async (vite) => ({ ...vite, plugins: await Promise.all((vite.plugins ?? []).map(scopeDocgen)) }),
 };
 export default config;
