@@ -38,6 +38,10 @@ const (
 	apiPrefix          = "/api/v4"
 )
 
+// ErrSPKIPinMismatch identifies a certificate pin refusal through the redacted
+// transport error chain. It does not replace normal certificate verification.
+var ErrSPKIPinMismatch = errors.New("gitlab: server certificate does not match the configured SPKI pin")
+
 // DestinationIdentity is the immutable numeric id and the current full path
 // GitLab reports for a project or group.
 type DestinationIdentity struct {
@@ -212,7 +216,7 @@ func TLSConfig(pin, caBundlePEM string) (*tls.Config, error) {
 					}
 				}
 			}
-			return errors.New("gitlab: server certificate does not match the configured SPKI pin")
+			return ErrSPKIPinMismatch
 		}
 	}
 	return config, nil

@@ -1,0 +1,86 @@
+# Advisories change independently of source commits. Scan both linked binary
+# shapes daily, and propose same-line Go patch updates without write authority.
+name: go-security
+
+on:
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-security-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  go-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Propose the latest supported Go patch
+        run: ./scripts/ci/check-go-patch.sh
+      - name: Preserve the proposed toolchain patch
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: go-patch-proposal
+          path: ${{ runner.temp }}/go-patch-proposal/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  binary-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pinned Corepack
+        run: ./scripts/ci/install-corepack.sh
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Build the embedded frontend
+        run: |
+          pnpm --dir clients/ts install --frozen-lockfile
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web run build
+      - name: Build both linked binary shapes
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/hikyo-core" ./cmd/hikyo
+          go build -trimpath -tags ui -o "$RUNNER_TEMP/hikyo-ui" ./cmd/hikyo
+          go version -m "$RUNNER_TEMP/hikyo-core" > "$RUNNER_TEMP/core-build-info.txt"
+          go version -m "$RUNNER_TEMP/hikyo-ui" > "$RUNNER_TEMP/ui-build-info.txt"
+      - name: Scan both linked binaries
+        run: |
+          status=0
+          ./scripts/ci/run-go-tool.sh govulncheck -mode=binary "$RUNNER_TEMP/hikyo-core" || status=1
+          ./scripts/ci/run-go-tool.sh govulncheck -mode=binary "$RUNNER_TEMP/hikyo-ui" || status=1
+          exit "$status"
+      - name: Preserve compiler and dependency metadata
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binary-security-build-info
+          path: ${{ runner.temp }}/*-build-info.txt
+          if-no-files-found: ignore
+          retention-days: 14

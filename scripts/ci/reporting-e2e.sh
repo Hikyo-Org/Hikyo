@@ -11,6 +11,7 @@
 # HIKYO_REPORTING_E2E_ARTIFACTS (default web/test-results/reporting-e2e).
 # Chromium must already be installed: `pnpm --dir web run e2e:install`.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 cd "$(git rev-parse --show-toplevel)"
 

@@ -3,6 +3,7 @@
 # Acquisition fixture: signed test releases and offline descriptors are supplied
 # by scripts/ci/unattendedfixture, never production release credentials.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"
 fixture=${HIKYO_UNATTENDED_FIXTURE_OUTPUT:?set the signed A/B/C fixture directory}
 for tool in kind kubectl helm docker jq openssl python3 grep; do

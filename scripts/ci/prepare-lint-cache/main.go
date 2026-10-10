@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/lint"
 )
@@ -39,12 +40,14 @@ func prepare() error {
 		}
 		args = append(args, lint.Module+"/...")
 		fmt.Printf("prepare lint cache: %s\n", ctx.Name)
+		started := time.Now()
 		cmd := exec.Command("go", args...)
 		cmd.Env = ctx.Env()
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("%s: %w", ctx.Name, err)
 		}
+		fmt.Printf("prepare lint cache: %s completed in %.1fs\n", ctx.Name, time.Since(started).Seconds())
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -163,9 +164,20 @@ func TestClientSPKIPinMismatchRefusesBeforeAnyRequest(t *testing.T) {
 	wrong := base64.StdEncoding.EncodeToString(make([]byte, sha256.Size))
 	client := testClient(t, server, wrong)
 	_, err := client.CreateVariable(t.Context(), project(), Variable{Key: "MODE", Value: "x"})
-	var transportError *url.Error
-	if !errors.As(err, &transportError) || !strings.Contains(transportError.Err.Error(), "SPKI pin") || len(*calls) != 0 {
+	if !errors.Is(err, ErrSPKIPinMismatch) || len(*calls) != 0 {
 		t.Fatalf("err=%v calls=%d; want pin refusal before request", err, len(*calls))
+	}
+}
+
+func TestClientVersionSPKIPinMismatch(t *testing.T) {
+	server, calls := tlsServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	wrong := base64.StdEncoding.EncodeToString(make([]byte, sha256.Size))
+	_, err := testClient(t, server, wrong).Version(t.Context())
+	if !errors.Is(err, ErrSPKIPinMismatch) || len(*calls) != 0 {
+		t.Fatalf("Version() with a wrong pin = %v, want pin refusal; requests=%d", err, len(*calls))
+	}
+	if got, want := err.Error(), "gitlab: provider request: provider transport request failed"; got != want {
+		t.Fatalf("Version() pin refusal text = %q, want redacted transport error %q", got, want)
 	}
 }
 
@@ -175,8 +187,10 @@ func TestClientUntrustedCertificateRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Version(t.Context()); err == nil || len(*calls) != 0 {
-		t.Fatalf("pin alone must not bypass chain verification: err=%v", err)
+	_, err = client.Version(t.Context())
+	var unknownCA x509.UnknownAuthorityError
+	if !errors.As(err, &unknownCA) || errors.Is(err, ErrSPKIPinMismatch) || len(*calls) != 0 {
+		t.Fatalf("pin alone must not bypass chain verification or classify CA failure as pin mismatch: err=%v", err)
 	}
 }
 
