@@ -3,6 +3,71 @@
   "kind": "source-backed coverage and catalogue handoff; not a runtime coverage gate",
   "sourceRevision": "44f77a2eb8610b83b6405229f7c0759ec5f995cb",
   "currentWorkingTree": true,
+  "deliveryIntegration": {
+    "integratedBaseRevision": "9a5d678a553ef469819530669044da062059e22e",
+    "implementationRevision": "d267e8b0b07588be323e1c565b14a158d44ce00d",
+    "approvedLocalSnapshot": "web/.artifacts/storybook-improvement/inventory/approved-local-642/durable-inventory.json",
+    "approvedLocalIndex": "web/.artifacts/storybook-improvement/after-theme-surface/storybook-static/index.json",
+    "approvedLocalStories": 642,
+    "implementationAddedStoryCount": 74,
+    "upstreamAddedStoryCount": 1,
+    "upstreamAddedCases": [
+      {
+        "id": "routes-clireauth--developer-credential",
+        "source": "web/src/routes/CLIReauth.stories.tsx",
+        "export": "DeveloperCredential",
+        "disposition": "upstream main addition retained; outside original implementation delta"
+      }
+    ],
+    "verifiedStoryAccounting": "The complete current index adds exactly one DeveloperCredential story to the preserved approved 642-story result. The assumed second upstream story is absent from both the integrated base source and generated index.",
+    "upstreamSourceOwners": [
+      {
+        "source": "web/src/routes/CLIReauth.stories.tsx",
+        "sourceSha256": "e83d170cd55c3c31c1277021fc2fa85702f67e078e0f3f22404bf52eb43d0ec7",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "web/src/routes/CLIReauth.tsx",
+        "sourceSha256": "2a9fd43f78c535847c014c7d6363f2f02705e547b016b697ecc36ba7df8d8fde",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "web/src/routes/CLIReauth.oidc.test.tsx",
+        "sourceSha256": "1461a562234f32c137131aa025985d18ce6166306e37c9c4fad94103ef070c47",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "web/src/api/cliReauth.ts",
+        "sourceSha256": "1c6136826c4005580ac4d0cc7214c3a9f4f19fab26e4e477676f7a79f36f4eef",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "web/src/api/values.ts",
+        "sourceSha256": "cf05ffa24c27cf11f33660ca408e70e2446a57bcac69b605878b3ef1cdeb79b1",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "web/src/api/sensitiveInventory.json",
+        "sourceSha256": "013442e6a556d94b886e484dbdd34c4636a0ade914843fa768c02b960613afd3",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "clients/ts/src/generated/types.gen.ts",
+        "sourceSha256": "b0dab42cd034d16bbb10b0787b1e0a7d2bdcb97af782cba9b0abb68984b09cf2",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "clients/ts/src/generated/zod.gen.ts",
+        "sourceSha256": "023f9a791efd358a37ad86d4929b9d97be1d50c9e61230dfecf676f1f669a872",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      },
+      {
+        "source": "clients/ts/src/generated/operations.gen.ts",
+        "sourceSha256": "96c7b3fe711ee1b394b6481373003f118e33ad2cfb556a3cd0686cb98abc2ef5",
+        "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
+      }
+    ]
+  },
   "baseline": {
     "sourceRevision": "44f77a2eb8610b83b6405229f7c0759ec5f995cb",
     "phase": "before",
@@ -18,21 +83,21 @@
     "routes": 30
   },
   "result": {
-    "sourceRevision": "44f77a2eb8610b83b6405229f7c0759ec5f995cb",
+    "sourceRevision": "d267e8b0b07588be323e1c565b14a158d44ce00d",
     "phase": "after",
-    "indexPath": "web/.artifacts/storybook-improvement/after-theme-surface/storybook-static/index.json",
+    "indexPath": "web/.artifacts/storybook-improvement/after-main-refresh/storybook-static/index.json",
     "modules": 131,
-    "stories": 642,
-    "builtStories": 642,
+    "stories": 643,
+    "builtStories": 643,
     "docs": 131,
     "visualComponents": 304,
     "directComponents": 136,
     "composedComponents": 166,
     "uncoveredComponents": 2,
     "routes": 30,
-    "fullPlays": 516,
+    "fullPlays": 517,
     "interactionOnce": 5,
-    "lightFullPlays": 511,
+    "lightFullPlays": 512,
     "lightAppearancePlays": 5,
     "storiesWithoutPlay": 126
   },
@@ -2611,12 +2676,12 @@
     },
     {
       "source": "web/src/routes/CLIReauth.stories.tsx",
-      "sourceSha256": "d39b71ea45b0e3b97344f78f5d161d0a65e691e3c2bd95954fd5e98c9110bc26",
+      "sourceSha256": "e83d170cd55c3c31c1277021fc2fa85702f67e078e0f3f22404bf52eb43d0ec7",
       "baselineTitle": "routes/CLIReauth",
       "title": "Pages/CLIReauth",
       "id": "routes-clireauth",
       "primaryComponent": "web/src/routes/CLIReauth.tsx#CLIReauth",
-      "primaryComponentSourceSha256": "bd7154ca76d1b30be512def24a75ecc29b332d3fb332699ecac3c3611288e093",
+      "primaryComponentSourceSha256": "2a9fd43f78c535847c014c7d6363f2f02705e547b016b697ecc36ba7df8d8fde",
       "metaRenderedComponents": [],
       "docs": [
         {
@@ -2716,6 +2781,17 @@
             "empty"
           ],
           "disposition": "retained with existing id"
+        },
+        {
+          "export": "DeveloperCredential",
+          "name": "Developer Credential",
+          "id": "routes-clireauth--developer-credential",
+          "line": 208,
+          "play": true,
+          "namedSteps": false,
+          "interactionOnce": null,
+          "stateTags": [],
+          "disposition": "retained upstream main addition"
         }
       ]
     },
@@ -28409,7 +28485,8 @@
       "title": "Pages/Adapters",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-adapters--failed",
@@ -28418,49 +28495,56 @@
       "title": "Pages/Adapters",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-adapters--adding",
       "module": "web/src/routes/Adapters.stories.tsx",
       "export": "Adding",
       "title": "Pages/Adapters",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-adapters-awsaccessfields--assume-role",
       "module": "web/src/routes/AwsAccessFields.stories.tsx",
       "export": "AssumeRole",
       "title": "Features/Adapters/AwsAccessFields",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-adapters-awsaccessfields--web-identity",
       "module": "web/src/routes/AwsAccessFields.stories.tsx",
       "export": "WebIdentity",
       "title": "Features/Adapters/AwsAccessFields",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-adapters-awsaccessfields--ambient",
       "module": "web/src/routes/AwsAccessFields.stories.tsx",
       "export": "Ambient",
       "title": "Features/Adapters/AwsAccessFields",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-adapters-awsaccessfields--static",
       "module": "web/src/routes/AwsAccessFields.stories.tsx",
       "export": "Static",
       "title": "Features/Adapters/AwsAccessFields",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-certificatestab--populated",
       "module": "web/src/routes/CertificatesTab.stories.tsx",
       "export": "Populated",
       "title": "Features/PKI/CertificatesTab",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-certificatestab--empty",
@@ -28469,7 +28553,8 @@
       "title": "Features/PKI/CertificatesTab",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-certificatestab--loading",
@@ -28478,21 +28563,24 @@
       "title": "Features/PKI/CertificatesTab",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-certificatestab--incomplete",
       "module": "web/src/routes/CertificatesTab.stories.tsx",
       "export": "Incomplete",
       "title": "Features/PKI/CertificatesTab",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-certificatestab--issue-from-csr",
       "module": "web/src/routes/CertificatesTab.stories.tsx",
       "export": "IssueFromCsr",
       "title": "Features/PKI/CertificatesTab",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-certificatestab--revoke-confirmation",
@@ -28501,21 +28589,24 @@
       "title": "Features/PKI/CertificatesTab",
       "stateHints": [
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-instance-instancemailpanel--configured",
       "module": "web/src/routes/InstanceMailPanel.stories.tsx",
       "export": "Configured",
       "title": "Features/Instance/InstanceMailPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-instance-instancemailpanel--unconfigured",
       "module": "web/src/routes/InstanceMailPanel.stories.tsx",
       "export": "Unconfigured",
       "title": "Features/Instance/InstanceMailPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-instance-instancemailpanel--loading",
@@ -28524,7 +28615,8 @@
       "title": "Features/Instance/InstanceMailPanel",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-instance-instancemailpanel--second-factor-required",
@@ -28534,7 +28626,8 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-instance-instancemailpanel--failed",
@@ -28543,7 +28636,8 @@
       "title": "Features/Instance/InstanceMailPanel",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-instance-instancemailpanel--fresh-proof-required",
@@ -28553,14 +28647,16 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--populated",
       "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
       "export": "Populated",
       "title": "Features/Identity/OAuth2ProvidersPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--empty",
@@ -28569,7 +28665,8 @@
       "title": "Features/Identity/OAuth2ProvidersPanel",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--loading",
@@ -28578,7 +28675,8 @@
       "title": "Features/Identity/OAuth2ProvidersPanel",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--second-factor-required",
@@ -28588,7 +28686,8 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--failed",
@@ -28597,14 +28696,16 @@
       "title": "Features/Identity/OAuth2ProvidersPanel",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--reconfiguring",
       "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
       "export": "Reconfiguring",
       "title": "Features/Identity/OAuth2ProvidersPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-identity-oauth2providerspanel--delete-confirmation",
@@ -28613,28 +28714,32 @@
       "title": "Features/Identity/OAuth2ProvidersPanel",
       "stateHints": [
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-members-openregistration--closed",
       "module": "web/src/routes/OpenRegistration.stories.tsx",
       "export": "Closed",
       "title": "Features/Members/OpenRegistration",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-members-openregistration--active",
       "module": "web/src/routes/OpenRegistration.stories.tsx",
       "export": "Active",
       "title": "Features/Members/OpenRegistration",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-members-openregistration--inactive-authority",
       "module": "web/src/routes/OpenRegistration.stories.tsx",
       "export": "InactiveAuthority",
       "title": "Features/Members/OpenRegistration",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-members-openregistration--loading",
@@ -28643,7 +28748,8 @@
       "title": "Features/Members/OpenRegistration",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-members-openregistration--failed",
@@ -28652,7 +28758,8 @@
       "title": "Features/Members/OpenRegistration",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-members-openregistration--editor-validation",
@@ -28662,7 +28769,8 @@
       "stateHints": [
         "validation",
         "overlay/expanded"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-overview--empty",
@@ -28671,14 +28779,16 @@
       "title": "Pages/Overview",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-overview--populated",
       "module": "web/src/routes/Overview.stories.tsx",
       "export": "Populated",
       "title": "Pages/Overview",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "pages-overview--long-names",
@@ -28687,21 +28797,24 @@
       "title": "Pages/Overview",
       "stateHints": [
         "long content"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-overview--create-project-journey",
       "module": "web/src/routes/Overview.stories.tsx",
       "export": "CreateProjectJourney",
       "title": "Pages/Overview",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiissuerspanel--populated",
       "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
       "export": "Populated",
       "title": "Features/PKI/PkiIssuersPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiissuerspanel--empty",
@@ -28710,7 +28823,8 @@
       "title": "Features/PKI/PkiIssuersPanel",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiissuerspanel--loading",
@@ -28719,7 +28833,8 @@
       "title": "Features/PKI/PkiIssuersPanel",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiissuerspanel--second-factor-required",
@@ -28729,7 +28844,8 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiissuerspanel--failed",
@@ -28738,14 +28854,16 @@
       "title": "Features/PKI/PkiIssuersPanel",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--populated",
       "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
       "export": "Populated",
       "title": "Features/PKI/PkiProfilesPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--empty",
@@ -28754,7 +28872,8 @@
       "title": "Features/PKI/PkiProfilesPanel",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--loading",
@@ -28763,7 +28882,8 @@
       "title": "Features/PKI/PkiProfilesPanel",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--second-factor-required",
@@ -28773,7 +28893,8 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--failed",
@@ -28782,7 +28903,8 @@
       "title": "Features/PKI/PkiProfilesPanel",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--narrowing",
@@ -28791,7 +28913,8 @@
       "title": "Features/PKI/PkiProfilesPanel",
       "stateHints": [
         "narrow"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-pki-pkiprofilespanel--invalid-policy",
@@ -28800,7 +28923,8 @@
       "title": "Features/PKI/PkiProfilesPanel",
       "stateHints": [
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-remotes--empty",
@@ -28809,7 +28933,8 @@
       "title": "Pages/Remotes",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-remotes--long-content",
@@ -28818,7 +28943,8 @@
       "title": "Pages/Remotes",
       "stateHints": [
         "long content"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-remotes--loading-directory",
@@ -28827,7 +28953,8 @@
       "title": "Pages/Remotes",
       "stateHints": [
         "loading"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-remotes--permission-required",
@@ -28837,14 +28964,16 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-samldone--missing-transaction",
       "module": "web/src/routes/SAMLDone.stories.tsx",
       "export": "MissingTransaction",
       "title": "Pages/SAMLDone",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-ssh-sshcertificatespanel--empty",
@@ -28853,7 +28982,8 @@
       "title": "Features/SSH/SSHCertificatesPanel",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-ssh-sshcertificatespanel--no-environments",
@@ -28862,7 +28992,8 @@
       "title": "Features/SSH/SSHCertificatesPanel",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-ssh-sshcertificatespanel--session-required",
@@ -28872,14 +29003,16 @@
       "stateHints": [
         "error/refusal",
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-ssh-sshcertificatespanel--populated",
       "module": "web/src/routes/SSHCertificates.stories.tsx",
       "export": "Populated",
       "title": "Features/SSH/SSHCertificatesPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "features-ssh-sshcertificatespanel--refused",
@@ -28888,35 +29021,40 @@
       "title": "Features/SSH/SSHCertificatesPanel",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "features-ssh-sshcertificatespanel--create-ca",
       "module": "web/src/routes/SSHCertificates.stories.tsx",
       "export": "CreateCa",
       "title": "Features/SSH/SSHCertificatesPanel",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "pages-signupverify--entry",
       "module": "web/src/routes/SignupVerify.stories.tsx",
       "export": "Entry",
       "title": "Pages/SignupVerify",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "pages-signupverify--fresh-organisation",
       "module": "web/src/routes/SignupVerify.stories.tsx",
       "export": "FreshOrganisation",
       "title": "Pages/SignupVerify",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "pages-signupverify--missing-link",
       "module": "web/src/routes/SignupVerify.stories.tsx",
       "export": "MissingLink",
       "title": "Pages/SignupVerify",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "pages-signupverify--validation",
@@ -28925,7 +29063,8 @@
       "title": "Pages/SignupVerify",
       "stateHints": [
         "validation"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-signupverify--busy",
@@ -28934,7 +29073,8 @@
       "title": "Pages/SignupVerify",
       "stateHints": [
         "disabled/busy"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "pages-signupverify--refused",
@@ -28943,28 +29083,32 @@
       "title": "Pages/SignupVerify",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "shared-workspacesettingslink--this-instance",
       "module": "web/src/routes/WorkspaceSettingsLink.stories.tsx",
       "export": "ThisInstance",
       "title": "Shared/WorkspaceSettingsLink",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "shared-workspacesettingslink--destination-instance",
       "module": "web/src/routes/WorkspaceSettingsLink.stories.tsx",
       "export": "DestinationInstance",
       "title": "Shared/WorkspaceSettingsLink",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-ceremonynotice--default",
       "module": "web/src/ui/CeremonyNotice.stories.tsx",
       "export": "Default",
       "title": "Design system/CeremonyNotice",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-ceremonynotice--long-content",
@@ -28973,14 +29117,16 @@
       "title": "Design system/CeremonyNotice",
       "stateHints": [
         "long content"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-auth-localsignupform--entry",
       "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
       "export": "Entry",
       "title": "Design system/Auth/LocalSignupForm",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-auth-localsignupform--no-organisation",
@@ -28989,14 +29135,16 @@
       "title": "Design system/Auth/LocalSignupForm",
       "stateHints": [
         "empty"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-auth-localsignupform--request-and-resend",
       "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
       "export": "RequestAndResend",
       "title": "Design system/Auth/LocalSignupForm",
-      "stateHints": []
+      "stateHints": [],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-auth-localsignupform--busy",
@@ -29005,7 +29153,8 @@
       "title": "Design system/Auth/LocalSignupForm",
       "stateHints": [
         "disabled/busy"
-      ]
+      ],
+      "origin": "local implementation"
     },
     {
       "id": "design-system-auth-localsignupform--refused",
@@ -29014,7 +29163,16 @@
       "title": "Design system/Auth/LocalSignupForm",
       "stateHints": [
         "error/refusal"
-      ]
+      ],
+      "origin": "local implementation"
+    },
+    {
+      "id": "routes-clireauth--developer-credential",
+      "module": "web/src/routes/CLIReauth.stories.tsx",
+      "export": "DeveloperCredential",
+      "title": "Pages/CLIReauth",
+      "stateHints": [],
+      "origin": "upstream main addition retained"
     }
   ],
   "preservedIdMigrations": [
@@ -30219,12 +30377,12 @@
   ],
   "interactionAccounting": {
     "type": "storybook-interaction-coverage",
-    "stories": 642,
+    "stories": 643,
     "docs": 131,
     "docsWithInheritedInteractionTag": 1,
     "interactionOnce": 5,
-    "fullPlays": 516,
-    "lightFullPlays": 511,
+    "fullPlays": 517,
+    "lightFullPlays": 512,
     "lightAppearancePlays": 5,
     "storiesWithoutPlay": 126,
     "cases": [
@@ -30556,11 +30714,11 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/Overview.stories.tsx",
+          "module": "web/src/routes/FleetUpdateNotice.stories.tsx",
           "depth": 1
         },
         {
-          "module": "web/src/routes/FleetUpdateNotice.stories.tsx",
+          "module": "web/src/routes/Overview.stories.tsx",
           "depth": 1
         }
       ],
@@ -31431,9 +31589,9 @@
     {
       "id": "web/src/routes/CLIReauth.tsx#CLIReauth",
       "source": "web/src/routes/CLIReauth.tsx",
-      "sourceSha256": "bd7154ca76d1b30be512def24a75ecc29b332d3fb332699ecac3c3611288e093",
+      "sourceSha256": "2a9fd43f78c535847c014c7d6363f2f02705e547b016b697ecc36ba7df8d8fde",
       "symbol": "CLIReauth",
-      "line": 26,
+      "line": 28,
       "exported": true,
       "propsDeclaration": null,
       "sourceDescriptionPresent": false,
@@ -31463,9 +31621,9 @@
     {
       "id": "web/src/routes/CLIReauth.tsx#CLIReauthMessage",
       "source": "web/src/routes/CLIReauth.tsx",
-      "sourceSha256": "bd7154ca76d1b30be512def24a75ecc29b332d3fb332699ecac3c3611288e093",
+      "sourceSha256": "2a9fd43f78c535847c014c7d6363f2f02705e547b016b697ecc36ba7df8d8fde",
       "symbol": "CLIReauthMessage",
-      "line": 213,
+      "line": 231,
       "exported": false,
       "propsDeclaration": "input: { title: string; text: string }",
       "sourceDescriptionPresent": false,
@@ -36904,26 +37062,6 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/Overview.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/AccountProfile.stories.tsx",
           "depth": 1
         },
@@ -36940,7 +37078,15 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/Members.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
           "depth": 1
         },
         {
@@ -36949,6 +37095,18 @@
         },
         {
           "module": "web/src/routes/OrgSettings.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/Overview.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
           "depth": 1
         },
         {
@@ -36972,10 +37130,6 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/Audit.stories.tsx",
           "depth": 2
         },
@@ -36985,6 +37139,10 @@
         },
         {
           "module": "web/src/routes/InstanceConfig.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
           "depth": 2
         },
         {
@@ -37011,15 +37169,15 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/DeleteAccountDialog.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/DeleteProviderDialog.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
           "depth": 1
         },
         {
@@ -37031,14 +37189,6 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/InstanceAdmin.stories.tsx",
           "depth": 2
         },
@@ -37048,6 +37198,14 @@
         },
         {
           "module": "web/src/routes/OidcProvidersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
           "depth": 2
         },
         {
@@ -39229,59 +39387,15 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/Adapters.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/CertificatesTab.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/Overview.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SAMLDone.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SSHCertificates.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SignupVerify.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/AccountProfile.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/AccountSecurity.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/Adapters.stories.tsx",
           "depth": 1
         },
         {
@@ -39302,6 +39416,10 @@
         },
         {
           "module": "web/src/routes/Ceremony.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/CertificatesTab.stories.tsx",
           "depth": 1
         },
         {
@@ -39361,6 +39479,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/LeaseActionDialog.stories.tsx",
           "depth": 1
         },
@@ -39409,6 +39531,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/OIDCDone.stories.tsx",
           "depth": 1
         },
@@ -39418,6 +39544,18 @@
         },
         {
           "module": "web/src/routes/OrgSettings.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/Overview.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
           "depth": 1
         },
         {
@@ -39441,11 +39579,23 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/Remotes.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/RetentionBoundsFields.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/RevokeConnectionDialog.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/SAMLDone.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/SSHCertificates.stories.tsx",
           "depth": 1
         },
         {
@@ -39473,6 +39623,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/SignupVerify.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/StepUpBanner.stories.tsx",
           "depth": 1
         },
@@ -39497,6 +39651,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/ui/auth/LoginForm.stories.tsx",
           "depth": 1
         },
@@ -39511,10 +39669,6 @@
         {
           "module": "web/src/ui/auth/SecondFactorSetup.stories.tsx",
           "depth": 1
-        },
-        {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 2
         },
         {
           "module": "web/src/routes/Audit.stories.tsx",
@@ -39546,6 +39700,10 @@
         },
         {
           "module": "web/src/routes/Login.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
           "depth": 2
         },
         {
@@ -39598,27 +39756,15 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/CertificatesTab.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SSHCertificates.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/AccountSecurity.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/BindingCard.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/CertificatesTab.stories.tsx",
           "depth": 1
         },
         {
@@ -39642,6 +39788,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/MachineAccess.stories.tsx",
           "depth": 1
         },
@@ -39658,11 +39808,19 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/OidcProvidersPanel.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/RemoteCard.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/SSHCertificates.stories.tsx",
           "depth": 1
         },
         {
@@ -39682,6 +39840,10 @@
           "depth": 2
         },
         {
+          "module": "web/src/routes/Login.stories.tsx",
+          "depth": 2
+        },
+        {
           "module": "web/src/routes/OpenRegistration.stories.tsx",
           "depth": 2
         },
@@ -39695,10 +39857,6 @@
         },
         {
           "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/Login.stories.tsx",
           "depth": 2
         },
         {
@@ -39751,43 +39909,15 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/Adapters.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/CertificatesTab.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SSHCertificates.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SignupVerify.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/AccountProfile.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/AccountSecurity.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/Adapters.stories.tsx",
           "depth": 1
         },
         {
@@ -39808,6 +39938,10 @@
         },
         {
           "module": "web/src/routes/Ceremony.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/CertificatesTab.stories.tsx",
           "depth": 1
         },
         {
@@ -39891,6 +40025,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/LeaseActionDialog.stories.tsx",
           "depth": 1
         },
@@ -39939,11 +40077,19 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/OIDCDone.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/routes/OidcProvidersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
           "depth": 1
         },
         {
@@ -39975,6 +40121,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/SSHCertificates.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/SamlProvidersPanel.stories.tsx",
           "depth": 1
         },
@@ -39996,6 +40146,10 @@
         },
         {
           "module": "web/src/routes/SetCredentialDialog.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/SignupVerify.stories.tsx",
           "depth": 1
         },
         {
@@ -40027,6 +40181,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/ui/auth/LoginForm.stories.tsx",
           "depth": 1
         },
@@ -40041,22 +40199,6 @@
         {
           "module": "web/src/ui/auth/SecondFactorSetup.stories.tsx",
           "depth": 1
-        },
-        {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/Overview.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 2
         },
         {
           "module": "web/src/routes/Audit.stories.tsx",
@@ -40075,7 +40217,19 @@
           "depth": 2
         },
         {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
+          "depth": 2
+        },
+        {
           "module": "web/src/routes/OrgSettings.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/Overview.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
           "depth": 2
         },
         {
@@ -40084,6 +40238,10 @@
         },
         {
           "module": "web/src/routes/Projects.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 2
         },
         {
@@ -40164,10 +40322,6 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/SSHCertificates.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/GrantDialog.stories.tsx",
           "depth": 2
         },
@@ -40200,8 +40354,8 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 3
+          "module": "web/src/routes/SSHCertificates.stories.tsx",
+          "depth": 2
         },
         {
           "module": "web/src/routes/ChangeApprovals.stories.tsx",
@@ -40209,6 +40363,10 @@
         },
         {
           "module": "web/src/routes/Matrix.stories.tsx",
+          "depth": 3
+        },
+        {
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -40300,19 +40458,11 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/CertificatesTab.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/SSHCertificates.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/Audit.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/CertificatesTab.stories.tsx",
           "depth": 2
         },
         {
@@ -40356,7 +40506,15 @@
           "depth": 2
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
           "module": "web/src/routes/OidcProvidersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/SSHCertificates.stories.tsx",
           "depth": 2
         },
         {
@@ -40376,11 +40534,11 @@
           "depth": 3
         },
         {
-          "module": "web/src/routes/Remotes.stories.tsx",
+          "module": "web/src/routes/ProjectSettings.stories.tsx",
           "depth": 3
         },
         {
-          "module": "web/src/routes/ProjectSettings.stories.tsx",
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -40445,11 +40603,11 @@
           "depth": 3
         },
         {
-          "module": "web/src/routes/Remotes.stories.tsx",
+          "module": "web/src/routes/Members.stories.tsx",
           "depth": 3
         },
         {
-          "module": "web/src/routes/Members.stories.tsx",
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -40476,14 +40634,6 @@
       ],
       "composedThrough": [
         {
-          "module": "web/src/routes/CertificatesTab.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/BindingDialog.stories.tsx",
           "depth": 1
         },
@@ -40493,6 +40643,10 @@
         },
         {
           "module": "web/src/routes/Ceremony.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/CertificatesTab.stories.tsx",
           "depth": 1
         },
         {
@@ -40564,6 +40718,10 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/RevisionDiff.stories.tsx",
           "depth": 1
         },
@@ -40600,23 +40758,15 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/Adapters.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/SSHCertificates.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/app/RuntimeMaintenanceBoundary.stories.tsx",
           "depth": 2
         },
         {
           "module": "web/src/routes/AccountSecurity.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/Adapters.stories.tsx",
           "depth": 2
         },
         {
@@ -40629,6 +40779,10 @@
         },
         {
           "module": "web/src/routes/InstanceAdmin.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/InstanceMailPanel.stories.tsx",
           "depth": 2
         },
         {
@@ -40652,12 +40806,8 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 3
-        },
-        {
-          "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 3
+          "module": "web/src/routes/SSHCertificates.stories.tsx",
+          "depth": 2
         },
         {
           "module": "web/src/routes/ChangeApprovals.stories.tsx",
@@ -40668,7 +40818,15 @@
           "depth": 3
         },
         {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
+          "depth": 3
+        },
+        {
           "module": "web/src/routes/ProjectSettings.stories.tsx",
+          "depth": 3
+        },
+        {
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -40767,22 +40925,6 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/SignupVerify.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/Matrix.stories.tsx",
           "depth": 2
         },
@@ -40795,6 +40937,18 @@
           "depth": 2
         },
         {
+          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/SignupVerify.stories.tsx",
+          "depth": 2
+        },
+        {
           "module": "web/src/routes/TargetForm.stories.tsx",
           "depth": 2
         },
@@ -40804,6 +40958,10 @@
         },
         {
           "module": "web/src/ui/auth/AuthenticatorCodeField.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
           "depth": 2
         },
         {
@@ -40820,14 +40978,6 @@
         },
         {
           "module": "web/src/routes/AwsAccessFields.stories.tsx",
-          "depth": 3
-        },
-        {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 3
-        },
-        {
-          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -40859,7 +41009,15 @@
           "depth": 3
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 3
+        },
+        {
           "module": "web/src/routes/OidcProvidersPanel.stories.tsx",
+          "depth": 3
+        },
+        {
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -40871,11 +41029,11 @@
           "depth": 3
         },
         {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
+          "module": "web/src/routes/CLIReauth.stories.tsx",
           "depth": 4
         },
         {
-          "module": "web/src/routes/CLIReauth.stories.tsx",
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
           "depth": 4
         },
         {
@@ -40968,10 +41126,6 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/Overview.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/FleetUpdateNotice.stories.tsx",
           "depth": 2
         },
@@ -40989,6 +41143,10 @@
         },
         {
           "module": "web/src/routes/OrgSettings.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/Overview.stories.tsx",
           "depth": 2
         },
         {
@@ -41060,18 +41218,6 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/routes/SignupVerify.stories.tsx",
-          "depth": 1
-        },
-        {
-          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
-          "depth": 1
-        },
-        {
           "module": "web/src/routes/Members.stories.tsx",
           "depth": 1
         },
@@ -41080,11 +41226,23 @@
           "depth": 1
         },
         {
+          "module": "web/src/routes/PkiProfilesPanel.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/routes/SignupVerify.stories.tsx",
+          "depth": 1
+        },
+        {
           "module": "web/src/routes/TargetForm.stories.tsx",
           "depth": 1
         },
         {
           "module": "web/src/ui/auth/AuthenticatorCodeField.stories.tsx",
+          "depth": 1
+        },
+        {
+          "module": "web/src/ui/auth/LocalSignupForm.stories.tsx",
           "depth": 1
         },
         {
@@ -41108,18 +41266,6 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
-          "depth": 2
-        },
-        {
-          "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/CredentialForm.stories.tsx",
           "depth": 2
         },
@@ -41136,7 +41282,19 @@
           "depth": 2
         },
         {
+          "module": "web/src/routes/OAuth2ProvidersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
           "module": "web/src/routes/OidcProvidersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/PkiIssuersPanel.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 2
         },
         {
@@ -41148,15 +41306,15 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 3
-        },
-        {
           "module": "web/src/routes/CLIReauth.stories.tsx",
           "depth": 3
         },
         {
           "module": "web/src/routes/MachineAccess.stories.tsx",
+          "depth": 3
+        },
+        {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
           "depth": 3
         },
         {
@@ -41252,19 +41410,19 @@
           "depth": 2
         },
         {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 3
-        },
-        {
-          "module": "web/src/routes/Remotes.stories.tsx",
-          "depth": 3
-        },
-        {
           "module": "web/src/routes/MachineAccess.stories.tsx",
           "depth": 3
         },
         {
           "module": "web/src/routes/Matrix.stories.tsx",
+          "depth": 3
+        },
+        {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
+          "depth": 3
+        },
+        {
+          "module": "web/src/routes/Remotes.stories.tsx",
           "depth": 3
         },
         {
@@ -41656,15 +41814,15 @@
           "depth": 1
         },
         {
-          "module": "web/src/routes/OpenRegistration.stories.tsx",
-          "depth": 2
-        },
-        {
           "module": "web/src/routes/AccountSecurity.stories.tsx",
           "depth": 2
         },
         {
           "module": "web/src/routes/InstanceAdmin.stories.tsx",
+          "depth": 2
+        },
+        {
+          "module": "web/src/routes/OpenRegistration.stories.tsx",
           "depth": 2
         },
         {
@@ -41854,15 +42012,15 @@
   },
   "artifacts": {
     "baselineIndex": "web/.artifacts/storybook-improvement/before/storybook-static/index.json",
-    "resultIndex": "web/.artifacts/storybook-improvement/after-theme-surface/storybook-static/index.json",
+    "resultIndex": "web/.artifacts/storybook-improvement/after-main-refresh/storybook-static/index.json",
     "baselineTree": "web/.artifacts/storybook-improvement/inventory/before-sidebar.txt",
     "resultTree": "web/.artifacts/storybook-improvement/inventory/after-sidebar.txt",
     "completeAuditMarkdown": "web/.artifacts/storybook-improvement/inventory/report.md",
     "offlineAuditHtml": "web/.artifacts/storybook-improvement/inventory/report.html",
     "beforeExtraction": "web/.artifacts/storybook-improvement/inventory/before-docgen.json",
     "afterExtraction": "web/.artifacts/storybook-improvement/inventory/after-docgen.json",
-    "afterExtractionSha256": "9d799ffb0ed9485ffdeb7ba5e117c37f4f78ae080f040fdb81527550bc779e78",
-    "resultIndexSha256": "1d6c2b73dfc0b52863dd4a919ced1fcbd1fa2149764ef34b359efc393a139244",
+    "afterExtractionSha256": "149d7ed9c802986a3ff234c3ceaea7ece0bec687d4f1b3ca839554b574049cdb",
+    "resultIndexSha256": "2a743e389ef5ee9a0651b6e8de540475378541f42a2c639ee4e13e44698a63cc",
     "routeJourneyBrowserLog": "web/.artifacts/storybook-improvement/inventory/overview-storybook-light-final.log",
     "routeFixtureRegressionLog": "web/.artifacts/storybook-improvement/inventory/overview-fixture-unit-final.log",
     "manualDocsWorkflowGuard": "web/.storybook/manualDocsFrame.ts",

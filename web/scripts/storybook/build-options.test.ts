@@ -6,6 +6,8 @@ describe('immutable Storybook output selection', () => {
   it('tracks the installed Storybook output flag forms while preserving its default', () => {
     expect(storybookOutputDirectory([])).toBe('storybook-static');
     expect(storybookOutputDirectory(['--quiet', '-o', '.artifacts/after'])).toBe('.artifacts/after');
+    expect(storybookOutputDirectory(['-o.artifacts/attached-output'])).toBe('.artifacts/attached-output');
+    expect(storybookOutputDirectory(['--output-dir=first', '-osecond'])).toBe('second');
     expect(storybookOutputDirectory(['--output-dir', '/tmp/immutable-storybook'])).toBe('/tmp/immutable-storybook');
     expect(storybookOutputDirectory(['--output-dir=.artifacts/after'])).toBe('.artifacts/after');
     expect(() => storybookOutputDirectory(['-o'])).toThrow('requires an output directory');
