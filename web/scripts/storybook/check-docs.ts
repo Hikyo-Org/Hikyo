@@ -2,11 +2,12 @@ import { glob, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { INTERACTION_ONCE } from '../../.storybook/interactionCoverage.ts';
+import { storybookIndexDirectory } from './build-options.ts';
 import { STORY_SOURCE_GLOB, validateAppDocsFrames, validateStorybookIndex } from './index.ts';
 import { validateInteractionCoverage } from './interaction-coverage.ts';
 
 const web = resolve(import.meta.dirname, '../..');
-const build = resolve(web, process.argv[2] ?? 'storybook-static');
+const build = resolve(web, storybookIndexDirectory(process.argv.slice(2)));
 const modules: string[] = [];
 for await (const path of glob(STORY_SOURCE_GLOB, { cwd: web })) modules.push(path);
 const sources = await Promise.all(modules.map(async (path) => ({ path, text: await readFile(resolve(web, path), 'utf8') })));

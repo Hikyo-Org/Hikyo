@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { storybookOutputDirectory } from './build-options.ts';
+import { storybookIndexDirectory, storybookOutputDirectory } from './build-options.ts';
 
 describe('immutable Storybook output selection', () => {
+  it('accepts the Docs directory with or without a package-manager separator', () => {
+    expect(storybookIndexDirectory([])).toBe('storybook-static');
+    expect(storybookIndexDirectory(['--'])).toBe('storybook-static');
+    expect(storybookIndexDirectory(['.artifacts/after'])).toBe('.artifacts/after');
+    expect(storybookIndexDirectory(['--', '.artifacts/after'])).toBe('.artifacts/after');
+    expect(() => storybookIndexDirectory(['first', 'second'])).toThrow('one build directory');
+  });
   it('tracks the installed Storybook output flag forms while preserving its default', () => {
     expect(storybookOutputDirectory([])).toBe('storybook-static');
     expect(storybookOutputDirectory(['--quiet', '-o', '.artifacts/after'])).toBe('.artifacts/after');

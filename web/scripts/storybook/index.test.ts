@@ -8,14 +8,14 @@ const docs = { id: 'ui-button--docs', title: 'UI/Button', name: 'Docs', importPa
 const json = (...entries: (typeof story)[]) => JSON.stringify({ v: 5, entries: Object.fromEntries(entries.map((entry) => [entry.id, entry])) });
 
 describe('complete built Storybook Docs coverage', () => {
-  it('requires the shared Docs isolation convention for every app fixture module', () => {
-    const module = (text: string) => [{ path: button, text }];
-    expect(validateAppDocsFrames(module('parameters: { app: {}, ...topLayerDocs }'))).toBe(1);
-    expect(validateAppDocsFrames(module('parameters: { ...topLayerDocs, app: app(responses) }'))).toBe(1);
-    expect(validateAppDocsFrames(module('parameters: topLayerDocs; Default: { parameters: { app: {} } }'))).toBe(1);
-    expect(validateAppDocsFrames(module('parameters: { controls: {} }'))).toBe(0);
-    expect(() => validateAppDocsFrames(module('parameters: { app: {} }'))).toThrow('require the shared topLayerDocs');
-    expect(() => validateAppDocsFrames(module('parameters: { app: {}, ...topLayerDocs, docs: { story: { inline: true } } }'))).toThrow('must not override');
+  it('rejects an app export when only its sibling uses the shared frame', () => {
+    const text = `
+      import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+      export default { title: 'UI/Button' };
+      export const Framed = { parameters: { ...topLayerDocs } };
+      export const Unframed = { parameters: { app: {} } };
+    `;
+    expect(() => validateAppDocsFrames([{ path: button, text }])).toThrow('Unframed');
   });
 
   it('matches generated Docs by normalized source import path and counts variants once as a module', () => {

@@ -66,6 +66,20 @@
         "sourceSha256": "96c7b3fe711ee1b394b6481373003f118e33ad2cfb556a3cd0686cb98abc2ef5",
         "responsibility": "current upstream CLI reauthorization UI, fixture, API contract or security inventory; read-only source evidence"
       }
+    ],
+    "qodoFindings": [
+      {
+        "discussionId": 4238000062,
+        "disposition": "confirmed and fixed",
+        "owner": "web/scripts/storybook/docs-frames.ts",
+        "regression": "web/scripts/storybook/index.test.ts; web/scripts/storybook/docs-frames.test.ts"
+      },
+      {
+        "discussionId": 4238000065,
+        "disposition": "confirmed against pnpm 11.24.0 and fixed",
+        "owner": "web/scripts/storybook/build-options.ts; web/scripts/storybook/check-docs.ts",
+        "regression": "web/scripts/storybook/build-options.test.ts; actual pnpm command"
+      }
     ]
   },
   "baseline": {
@@ -111,7 +125,8 @@
     "browserReadinessOwnership": "The existing Storybook Vitest project explicitly prebundles storybook/internal/core-events. The first cold theme run discovered this newly used preview dependency during setup and reloaded active test modules. Preparing the dependency before suite startup removes that reload race without changing project coverage, test assertions, browser matrix or timeouts.",
     "docsRendererOwnership": "Live form preservation required the public Docs renderer extension point in addition to theme attributes. Installed Storybook 10.6 assigns a new root ErrorBoundary key on a Docs globals render, replacing independent frames and clearing manual drafts. The facade delegates to the exported original DocsRenderer and deduplicates only the identical context, parameters object and mount element. New/HMR context, changed parameters, separate mounts, explicit unmount and rejected-render retries delegate normally. Completion is shared while pending, and a failed older render cannot evict its newer replacement. Four owner regressions cover frame/input retention, lifecycle delegation and asynchronous failures; real browser form/theme proof remains separate.",
     "docsSurfaceOwnership": "The built-in backgrounds addon applied an important sb-show-main surface that overrode Hikyo app tokens after a toolbar theme change. Preview disables that competing backgrounds feature so application --bg remains the single surface owner; the centralized browser checker compares computed body background against the resolved app token in both palettes. Current browser proof is reported separately.",
-    "interactionCoverageOwnership": "Only explicitly registered behavior cases use interactionOnce in the light test project. Appearance callbacks preserve visible/readiness assertions and the same final view; static palette assertions remain full plays in both projects. The existing Docs guard also validates the complete interaction accounting against source-bound literal helper calls/static tags, retained story references and test eligibility. Generated Docs may inherit the first story tag and are not interaction cases. No blanket theme/play or accessibility opt-out is introduced."
+    "interactionCoverageOwnership": "Only explicitly registered behavior cases use interactionOnce in the light test project. Appearance callbacks preserve visible/readiness assertions and the same final view; static palette assertions remain full plays in both projects. The existing Docs guard also validates the complete interaction accounting against source-bound literal helper calls/static tags, retained story references and test eligibility. Generated Docs may inherit the first story tag and are not interaction cases. No blanket theme/play or accessibility opt-out is introduced.",
+    "appDocsIsolationOwnership": "Each exported app story is checked with installed CSF parsing, metadata/story parameter inheritance, static canonical frame imports, local const aliases and simple synchronous helper return objects. Unrelated sibling/comment/constant frames, shallow replacements, inline overrides, shadowed helper isolation references, invalid app scalars, evaluated assignments/updates and unsupported top-level control flow are rejected. This bounded source convention does not execute arbitrary JavaScript; the runtime inline-Docs refusal remains an independent backstop."
   },
   "exclusions": [
     {
@@ -30496,7 +30511,7 @@
     },
     {
       "source": "web/scripts/storybook/check-docs.ts",
-      "sourceSha256": "94053775cdfaac0955492895862dad05a4738e4e358ff786df7564fe9123d455",
+      "sourceSha256": "34bfe4fed5c323c7f1dd05c9ac7ad02874439ca84920b827a3252dbff88277ca",
       "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
     },
     {
@@ -30532,6 +30547,41 @@
     {
       "source": "web/vite.config.ts",
       "sourceSha256": "7eba0b457acb277c58cdd8cb9a34e150493c76ea45ca8c22d2abf6638a821f68",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/docs-frames.ts",
+      "sourceSha256": "ca03510088b48701523aa61c60112446e106719562e2869c421de307fc5394f0",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/docs-frames.test.ts",
+      "sourceSha256": "45d57e8bd62c0a72e01a6cca614077275d1c38a80831d4f7cfe1581cadcd81a4",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/build-options.ts",
+      "sourceSha256": "7cc6694e530df4ef5e1ae52c9ffe36597a6ab8c4577ce44f43220af78affcd7f",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/build-options.test.ts",
+      "sourceSha256": "44a23c6ae8bcab8f72bfeed472c69e99d86aa4ff9e74dc0028e3b56c77dcdfc3",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/index.ts",
+      "sourceSha256": "37b7e7f5c4cde781946d8e9dde545afb59fa3da0d177b8e8029c8f374ef57586",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/index.test.ts",
+      "sourceSha256": "3188da031882b65a65b1f02d11bff38f90c9e6b9aa6cce56f15688761d23dc52",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/.storybook/README.md",
+      "sourceSha256": "6030b1d4d384e7ac316348bc47b63a54617e9fb9cbf95df96742e91fd8111477",
       "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
     }
   ],

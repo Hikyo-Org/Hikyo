@@ -50,6 +50,19 @@ The app theme toolbar owns both foreground and background through application to
 
 The public Docs container subscribes to the same globals event as installed Docs Controls. It publishes the toolbar theme to same-origin examples through an owned attribute. Frame observers change CSS without replacing their URLs, React trees, providers or live forms, and disconnect on navigation. The browser test project prebundles this event dependency to avoid a dependency-optimizer reload during initial test imports.
 
+The Docs isolation guard checks each exported story's effective metadata and
+story parameters using the installed CSF parser. It follows static local aliases,
+the canonical `topLayerDocs` import and simple fixture helper return objects;
+JavaScript spreads remain shallow before Storybook merges parameter levels.
+An unrelated sibling, comment or constant cannot supply frame evidence. Inline
+overrides, invalid scalar `app` parameters and unresolved isolation expressions
+fail visibly. A helper may use arguments for fixture data, but isolation fields
+must be statically declared without depending on shadowed helper parameters.
+Keep parameter aliases immutable. Top-level calls or mutations are not static
+isolation declarations; direct CSF story annotation assignments are parsed by
+Storybook. Asynchronous or cyclic parameter helpers fail visibly.
+The runtime harness's inline-Docs refusal remains the independent backstop.
+
 Storybook 10.6 also rerenders Docs for globals updates. Its exported renderer
 rekeys the root error boundary on each call, replacing framed examples and
 their unsaved state. The local `docs.renderer` facade retains the existing

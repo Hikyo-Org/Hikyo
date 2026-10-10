@@ -4,19 +4,7 @@ import { z } from 'zod';
 /** Independent recursive source inventory also catches discovery narrowed in main.ts. */
 export const STORY_SOURCE_GLOB = 'src/**/*.stories.{js,jsx,mjs,ts,tsx}';
 
-/** Source convention paired with withApp's runtime refusal of inline Docs. */
-export function validateAppDocsFrames(modules: readonly { path: string; text: string }[]): number {
-  const failures: string[] = [];
-  let framed = 0;
-  for (const { path, text } of modules) {
-    if (!/\bapp\s*:/.test(text)) continue;
-    if (!/(?:\.\.\.|parameters\s*:\s*)topLayerDocs\b/.test(text)) failures.push(`${path}: app fixtures require the shared topLayerDocs frame parameters`);
-    if (/\binline\s*:\s*true\b/.test(text)) failures.push(`${path}: app fixtures must not override Docs frames with inline: true`);
-    framed++;
-  }
-  if (failures.length > 0) throw new Error(`Storybook Docs isolation failed:\n${failures.join('\n')}`);
-  return framed;
-}
+export { validateAppDocsFrames } from './docs-frames.ts';
 
 const entry = z.object({
   id: z.string().regex(/\S/),

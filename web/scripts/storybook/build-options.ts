@@ -15,3 +15,10 @@ export function storybookOutputDirectory(args: readonly string[]): string {
   }
   return directory;
 }
+
+/** pnpm may forward its separator; Node's --run consumes it itself. */
+export function storybookIndexDirectory(args: readonly string[]): string {
+  const paths = args.filter((argument) => argument !== '--');
+  if (paths.length > 1) throw new Error('Docs check accepts one build directory');
+  return paths[0] ?? 'storybook-static';
+}
