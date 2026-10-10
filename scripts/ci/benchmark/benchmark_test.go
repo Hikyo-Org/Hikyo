@@ -357,12 +357,12 @@ func TestCheckboxRunsAndReportsOnlyTheAuthorizedPullRequest(t *testing.T) {
 	measured.Conclusion = "success"
 	measured.RunnerName = "macro"
 	log := fakeGH(t, map[string]string{
-		"repos/o/r/collaborators/maintainer/permission":                     `{"permission":"write"}`,
-		"repos/o/r/pulls/7":                                                 `{"number":7,"state":"open","head":{"sha":"` + head + `"}}`,
-		"repos/o/r/issues/7/comments?per_page=100":                          encode(t, [][]comment{{c}}),
-		"repos/o/r/issues/comments/20":                                      `{}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":    `{"sha":"trusted"}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head: `{"sha":"trusted"}`,
+		"repos/o/r/collaborators/maintainer/permission":                                                           `{"permission":"write"}`,
+		"repos/o/r/pulls/7":                                                                                       `{"number":7,"state":"open","head":{"sha":"` + head + `"}}`,
+		"repos/o/r/issues/7/comments?per_page=100":                                                                encode(t, [][]comment{{c}}),
+		"repos/o/r/issues/comments/20":                                                                            `{}`,
+		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":                                          `{"sha":"trusted"}`,
+		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head:                                       `{"sha":"trusted"}`,
 		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?event=pull_request&head_sha=" + head + "&per_page=100": encode(t, []map[string][]benchmarkRun{{"workflow_runs": {wrongPR, r}}}),
 		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":                                              `[{"workflow_runs":[]}]`,
 		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100":                                          fmt.Sprintf(`[{"workflow_runs":[{"id":10,"run_attempt":2,"event":"pull_request","status":"completed","updated_at":%q}]}]`, time.Now().UTC().Format(time.RFC3339)),
