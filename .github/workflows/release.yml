@@ -50,23 +50,18 @@ jobs:
       packages: write
       id-token: write
     runs-on: ubuntu-latest
-    services:
-      release-schema:
-        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
-        env:
-          POSTGRES_USER: hikyo
-          POSTGRES_PASSWORD: release-schema-fixture
-          POSTGRES_DB: hikyo_release_schema
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hikyo -d hikyo_release_schema"
-          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        env:
+          POSTGRES_PASSWORD: release-schema-fixture
+          POSTGRES_DB: hikyo_release_schema
+          POSTGRES_HEALTH_RETRIES: 12
+        run: ./scripts/ci/start-ci-postgres.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -417,3 +412,6 @@ jobs:
             printf 'Review manifest SHA-256: %s\n' "$(sha256sum "$downloaded/release-manifest.json" | awk '{print $1}')"
             printf 'Use the local online ceremony publish command from current clean main with this version and digest after review.\n'
           } >>"$GITHUB_STEP_SUMMARY"
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres

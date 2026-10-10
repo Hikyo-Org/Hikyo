@@ -21,7 +21,7 @@ if [[ "$1" == list ]]; then
   esac
 elif [[ "$1" == test ]]; then
   shift
-  for flag in -race -p 2 -timeout=20m -vet=off -count=1; do
+  for flag in -json -race -p 2 -timeout=20m -vet=off -count=1; do
     if [[ "${1:-}" != "$flag" ]]; then
       echo 'race fixture: detector, parallelism, timeout, vet or count flags changed' >&2
       exit 91
@@ -60,6 +60,9 @@ elif [[ "$1" == test ]]; then
       fi
       ;;
   esac
+  printf '{"Action":"build-output","ImportPath":"%s","Output":"fixture compiler diagnostic\\n"}\n' "$package"
+  printf '{"Action":"output","Package":"%s","Output":"fixture output\\n"}\n' "$package"
+  printf '{"Action":"pass","Package":"%s","Test":"TestFixture","Elapsed":1.25}\n' "$package"
   [[ "$RACE_TEST_FAIL" != "$suite" ]] || exit 94
 else
   exit 96
@@ -123,6 +126,7 @@ for scope in mixed app-only service-only filtered-only peers-only; do
     : >"$RACE_TEST_EXECUTED"
     : >"$RACE_TEST_CALLS"
     export RACE_TEST_FAIL="$failure"
+    rm -rf "$RUNNER_TEMP/hikyo-race-timings"
     result=0
     "$runner" "$work/shard" >"$work/log" 2>&1 || result=$?
     expected_failure=false
@@ -135,6 +139,15 @@ for scope in mixed app-only service-only filtered-only peers-only; do
       echo "race fixture: incorrect failure propagation for $scope/$failure" >&2
       exit 1
     fi
+    # Timings preserve target elapsed and process wall time on green and red.
+    timing_dir="$RUNNER_TEMP/hikyo-race-timings"
+    [[ $(find "$timing_dir" -name '*.wall.json' | wc -l) -eq $(wc -l <"$RACE_TEST_CALLS") ]]
+    jq -se 'all(.[]; .Test == "TestFixture" and .Elapsed == 1.25)' \
+      < <(jq -c 'select(.Test)' "$timing_dir"/*.json) >/dev/null
+    jq -se 'all(.[]; (.WallSeconds | type) == "number" and (.ExitCode | type) == "number")' \
+      "$timing_dir"/*.wall.json >/dev/null
+    grep -q 'fixture output' "$work/log"
+    grep -q 'fixture compiler diagnostic' "$work/log"
     # Pool entries run concurrently in any order; app and service follow.
     awk -v calls="$pool_calls" 'NR <= calls' "$RACE_TEST_EXECUTED" | sort | cmp "$work/expected-pool" -
     awk -v calls="$pool_calls" 'NR > calls' "$RACE_TEST_EXECUTED" | cmp "$work/expected-sequential" -

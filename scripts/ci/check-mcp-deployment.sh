@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 compose="$root/deploy/mcp/compose.yaml"

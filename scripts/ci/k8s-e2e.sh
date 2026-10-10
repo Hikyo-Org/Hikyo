@@ -11,6 +11,7 @@
 # deleting something this script did not create is the one move that is never
 # safe.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 cd "$(git rev-parse --show-toplevel)"
 

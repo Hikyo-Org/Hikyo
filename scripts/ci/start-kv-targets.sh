@@ -7,6 +7,7 @@
 # HIKYO_TEST_KV_REQUIRED=1 into $GITHUB_ENV, so the contract in this job fails
 # loud if a server did not come up, while jobs that never set the flag skip it.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 
 : "${GITHUB_ENV:?GITHUB_ENV must name the step environment file}"
 

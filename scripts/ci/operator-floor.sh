@@ -2,6 +2,7 @@
 # Native arm64 acceptance of the actual operator process, its informers and
 # leader election. Only the newly created kind cluster may be mutated.
 set -euo pipefail
+"$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/configure-docker-mirror.sh"
 cd "$(git rev-parse --show-toplevel)"
 for tool in docker kind kubectl helm jq go; do
 	command -v "$tool" >/dev/null || { echo "operator-floor: missing $tool" >&2; exit 1; }
