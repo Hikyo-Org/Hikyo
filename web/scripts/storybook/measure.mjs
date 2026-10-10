@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { z } from 'zod';
+import { initialAssets } from './initial-assets.ts';
 import { staticImports } from './static-imports.ts';
 
 async function files(directory) {
@@ -41,10 +42,8 @@ async function measure(appDirectory, storybookDirectory) {
       await visit(resolve(dirname(path), dependency));
     }
   }
-  for (const tag of html.matchAll(/<(?:script|link)\b[^>]*>/g)) {
-    if (!/type="module"|rel="modulepreload"|rel="stylesheet"/.test(tag[0])) continue;
-    const path = tag[0].match(/(?:src|href)="([^"]+)"/)?.[1];
-    if (path) await visit(resolve(app, path.replace(/^\//, '')));
+  for (const path of await initialAssets(html)) {
+    await visit(resolve(app, path.replace(/^\//, '')));
   }
   const appFiles = await files(app);
   const catalogueFiles = await files(catalogue);

@@ -80,6 +80,15 @@
         "owner": "web/scripts/storybook/build-options.ts; web/scripts/storybook/check-docs.ts",
         "regression": "web/scripts/storybook/build-options.test.ts; actual pnpm command"
       }
+    ],
+    "codeqlFindings": [
+      {
+        "alertNumber": 61,
+        "discussionId": 4238041259,
+        "disposition": "confirmed and fixed; exact-head remote scan pending",
+        "owner": "web/scripts/storybook/initial-assets.ts",
+        "regression": "web/scripts/storybook/initial-assets.test.ts; immutable original/uppercase CLI comparison"
+      }
     ]
   },
   "baseline": {
@@ -30581,7 +30590,22 @@
     },
     {
       "source": "web/.storybook/README.md",
-      "sourceSha256": "6030b1d4d384e7ac316348bc47b63a54617e9fb9cbf95df96742e91fd8111477",
+      "sourceSha256": "10659b94c4d0e73b79105ffabf60789b5b9ca0b3733cfbfd90c8105d7d152f85",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/measure.mjs",
+      "sourceSha256": "cddb64a13dfa489c916a25ae9f437bb4427b6822f8dcdb98dd691395e284baec",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/initial-assets.ts",
+      "sourceSha256": "77de613775f0956242ba49a12e70013e38e72a0dbe95e5624be687952ea939d3",
+      "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
+    },
+    {
+      "source": "web/scripts/storybook/initial-assets.test.ts",
+      "sourceSha256": "dced6232e55de414f9bdbeb409f0b13a6f56799e03dc132d01a1791f1bfc70ed",
       "responsibility": "Storybook frame, fixture, manual workflow, theme, renderer, build or validation infrastructure; not an additional application component or story module"
     }
   ],

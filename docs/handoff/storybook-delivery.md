@@ -48,17 +48,17 @@ Logs and exact command JSON: `web/.artifacts/storybook-improvement/after-main-re
 
 The original before/after measurements and baseline artifacts remain intact in the full handoff. Startup and total lazy chunks are reported separately. Five light shortcuts are a coverage policy, not a proven speed gain: matched timings varied, including one light reference faster than the optimized run. No reliable light-suite speedup or app-startup reduction is claimed.
 
-Current-main integration footprint below uses gzip level 9, mtime 0, and counts source assets separately from compressed siblings; these numbers include upstream changes and are not attributed to this improvement alone.
+Current-main integration footprint below uses the installed measurement CLI and Node zlib gzip level 9. This refresh replaces the delivery table's intermediate Python-compressed gzip values; original approved before/after artifacts remain unchanged. App startup and total lazy chunks are still separate. These numbers include upstream changes and are not attributed to this improvement alone.
 
 | Asset group | Files | Bytes | Gzip bytes |
 | --- | --- | --- | --- |
-| appInitialJS | 2 | 647475 | 175697 |
-| appInitialCSS | 1 | 105305 | 18406 |
-| appTotalJS | 8 | 1647033 | 447347 |
-| appTotalCSS | 1 | 105305 | 18406 |
-| storybookJS | 345 | 10795555 | 2880520 |
-| storybookCSS | 1 | 105250 | 18431 |
-| storybookAssets | 46 | 2576214 | 856728 |
+| appInitialJS | 2 | 647475 | 175904 |
+| appInitialCSS | 1 | 105305 | 18411 |
+| appTotalJS | 8 | 1647033 | 447563 |
+| appTotalCSS | 1 | 105305 | 18411 |
+| storybookJS | 345 | 10795555 | 2889705 |
+| storybookCSS | 1 | 105250 | 18436 |
+| storybookAssets | 46 | 2576214 | 856435 |
 
 The approved matched Canvas/Docs desktop/phone comparisons, Button controls, API screen, modal/popover, long content, keyboard, theme switching and repeated navigation are archived in the full offline handoff. Current T3 browser rechecked the upstream developer-credential Canvas and light Button generated Docs (description, defaults, controls and sidebar) on the refreshed immutable build. Early Docs `No Preview` was a loading sentinel; completed Docs rendered correctly before capture. Current preview: http://192.168.0.30:6027/storybook/?path=/docs/ui-button--docs . HTTP 200 verified; server session `80216` remains running through review.
 
@@ -73,3 +73,21 @@ The per-export guard uses effective metadata/story parameters, canonical frame i
 Validation artifacts: `web/.artifacts/storybook-improvement/after-qodo-fix/`; before-failure proofs: `delivery/qodo-frames-before.log` and `delivery/qodo-argv-before.log`. Typecheck, lint, design checks, full units, actual attached-output full Storybook build and complete Docs/accounting guard exited 0. After the final mutation regressions, typecheck/lint, full units (184 files, **1,624 tests**) and the installed pnpm complete-index command passed again. The final guard validates 67 app modules, 643 stories and 131 source-matched Docs. Follow-up Standards review is CLEAN; cross-provider remains SKIPPED. Browser/application source and stories are unchanged by these guard-only corrections, so the prior full dark/light and central theme evidence remains applicable; browser suites were not duplicated locally.
 
 The machine inventory includes current source hashes and both finding dispositions. GitHub required exact-head CI remains pending; merge and its receipt will be verified separately.
+
+## CodeQL measurement correction, 10 October 2026
+
+CodeQL alert #61 and discussion `4238041259` were confirmed against the current source, despite the notification naming an older head. The HTML tag regex skipped uppercase tags: an equivalent copied build reported zero startup assets instead of two JavaScript assets and one stylesheet. This is measurement correctness; the script does not sanitize or publish HTML.
+
+Replaced HTML regex extraction with `initial-assets.ts` using the existing installed Happy DOM parser, disabling script evaluation and external resource loads and closing the detached window. Added three owner regressions for uppercase/mixed tags and attributes, valid quoting, comments/raw script text, quoted `>` characters and entities. No dependencies, application/browser source or Storybook entries changed. Follow-up Standards review is CLEAN; cross-provider remains SKIPPED.
+
+Actual CLI before/after evidence is in `web/.artifacts/storybook-improvement/after-codeql-fix/`: `normal-before.json`, `uppercase-before.json`, `normal-after.json`, `uppercase-after.json`. Before equivalence failed (exit 1); afterward the entire output matches for both HTML forms (exit 0), and original generated-build measurements remain exactly unchanged. Current startup: JS 647,475 bytes / 175,904 gzip; CSS 105,305 bytes / 18,411 gzip. Static-import traversal and all lazy/catalogue groups remain separate. Required remote security scanning must pass on the corrected head before merge.
+
+Final measurement-only validation: **185 unit files / 1,627 tests** pass. The owning HTML attribute handling follows [the HTML Standard's module type semantics](https://html.spec.whatwg.org/multipage/scripting.html#the-script-element). All three relevant installed-script checks passed:
+
+| Command | Exit | Wall time |
+| --- | --- | --- |
+| `node --run typecheck` | 0 | 1.95s |
+| `node --run lint` | 0 | 0.21s |
+| `node --run test` | 0 | 15.70s |
+
+Browser/application source and catalogue are unchanged, so existing full dark/light, central theme, build and Docs evidence remains applicable. Required remote scans and CI remain intact.

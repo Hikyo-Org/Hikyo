@@ -149,6 +149,12 @@ node scripts/storybook/measure.mjs BEFORE_APP BEFORE_STORYBOOK
 node scripts/storybook/measure.mjs AFTER_APP AFTER_STORYBOOK
 ```
 
+The measurement script parses entry-point HTML with the already installed
+Happy DOM parser. Script evaluation and resource loading are disabled, and the
+detached window is closed after parsing. HTML case, comments and attribute
+quoting cannot change which startup assets are counted. Static imports and
+lazy chunks retain their separate accounting; gzip uses Node zlib at level 9.
+
 The source-backed inventory and local verification handoff live under
 `docs/handoff/storybook-improvement*`. Catalogue counts are snapshots, not a
 cleanup target or proof that every composition branch was exercised.
