@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Compiler patch proposals come from the read-only go-security lane.
+  # Dependabot proposes module updates, including indirect networking fixes.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: fix(deps)
+    groups:
+      go-networking:
+        patterns:
+          - golang.org/x/*
+      go-patches:
+        update-types:
+          - patch
+    ignore:
+      # Moving this generator requires an architecture ADR amendment.
+      - dependency-name: github.com/oapi-codegen/oapi-codegen/v2
+        versions: ['*']
