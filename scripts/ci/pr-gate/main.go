@@ -7,6 +7,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -22,8 +24,8 @@ import (
 )
 
 const workflowPath = ".github/workflows/ci-candidate.yml"
-const externalPrefix = "hikyo-pr-gate:v1:"
-const compactExternalPrefix = "hikyo-pr-gate:v2:"
+const externalPrefix = "hikyo-pr-gate:v2:"
+const legacyExternalPrefix = "hikyo-pr-gate:v1:"
 const externalIDLimit = 255
 const actionsAppID = 15368
 
@@ -102,7 +104,7 @@ type check struct {
 		Summary string `json:"summary"`
 	} `json:"output"`
 }
-type binding struct {
+type legacyBinding struct {
 	RepoID  int64  `json:"repo"`
 	PR      int    `json:"pr"`
 	Head    string `json:"head"`
@@ -110,45 +112,49 @@ type binding struct {
 	Base    string `json:"base"`
 	Run     int64  `json:"run"`
 	Attempt int64  `json:"attempt"`
-	// Only decoded v2 bindings use this field. The digest keeps every possible
-	// Git ref bound without exceeding GitHub's 255-byte external_id limit.
-	BaseRefDigest string `json:"-"`
 }
 
-func (b binding) refDigest() string {
-	if b.BaseRef != "" {
-		return fmt.Sprintf("%x", sha256.Sum256([]byte(b.BaseRef)))
-	}
-	return b.BaseRefDigest
+type binding struct {
+	RepoID, Run, Attempt int64
+	PR                   int
+	Head, Base           string
+	BaseRef              [sha256.Size]byte
 }
+
 func (b binding) externalID() string {
-	// Four maximum-width signed integers and three SHA digests fit within the
-	// provider limit. Ref names are hashed in full, never shortened.
-	return fmt.Sprintf("%s%d:%d:%s:%s:%s:%d:%d", compactExternalPrefix, b.RepoID, b.PR, b.Head, b.Base, b.refDigest(), b.Run, b.Attempt)
+	// GitHub truncates external_id at 255 characters. Fixed-width metadata and
+	// a full SHA-256 reference digest keep every binding at 156 characters,
+	// independent of branch-name and numeric-ID length.
+	data := make([]byte, 104)
+	binary.BigEndian.PutUint64(data[0:8], uint64(b.RepoID))
+	binary.BigEndian.PutUint64(data[8:16], uint64(b.PR))
+	binary.BigEndian.PutUint64(data[16:24], uint64(b.Run))
+	binary.BigEndian.PutUint64(data[24:32], uint64(b.Attempt))
+	head, _ := hex.DecodeString(b.Head)
+	base, _ := hex.DecodeString(b.Base)
+	copy(data[32:52], head)
+	copy(data[52:72], base)
+	copy(data[72:], b.BaseRef[:])
+	return externalPrefix + base64.RawURLEncoding.EncodeToString(data)
 }
 func decodeBinding(value string) (binding, error) {
 	var b binding
-	if strings.HasPrefix(value, compactExternalPrefix) {
-		parts := strings.Split(strings.TrimPrefix(value, compactExternalPrefix), ":")
-		if len(parts) != 7 || len(value) > externalIDLimit {
-			return b, errors.New("invalid compact controller check binding")
+	if strings.HasPrefix(value, legacyExternalPrefix) {
+		data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, legacyExternalPrefix))
+		if err != nil {
+			return b, errors.New("invalid legacy controller check binding")
 		}
-		var err error
-		if b.RepoID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
+		var old legacyBinding
+		if err := decode(data, &old); err != nil {
 			return b, err
 		}
-		if b.PR, err = strconv.Atoi(parts[1]); err != nil {
-			return b, err
+		canonical, _ := json.Marshal(old)
+		if legacyExternalPrefix+base64.RawURLEncoding.EncodeToString(canonical) != value || old.BaseRef == "" || !shaPattern.MatchString(old.Head) || !shaPattern.MatchString(old.Base) {
+			return b, errors.New("noncanonical legacy controller check binding")
 		}
-		b.Head, b.Base, b.BaseRefDigest = parts[2], parts[3], parts[4]
-		if b.Run, err = strconv.ParseInt(parts[5], 10, 64); err != nil {
-			return b, err
-		}
-		if b.Attempt, err = strconv.ParseInt(parts[6], 10, 64); err != nil {
-			return b, err
-		}
-		if len(b.BaseRefDigest) != 64 || strings.Trim(b.BaseRefDigest, "0123456789abcdef") != "" || !validBinding(b) || b.externalID() != value {
-			return b, errors.New("invalid or noncanonical compact controller check binding")
+		b = binding{RepoID: old.RepoID, PR: old.PR, Head: old.Head, Base: old.Base, BaseRef: sha256.Sum256([]byte(old.BaseRef)), Run: old.Run, Attempt: old.Attempt}
+		if !b.valid() {
+			return binding{}, errors.New("invalid legacy controller check binding")
 		}
 		return b, nil
 	}
@@ -156,34 +162,38 @@ func decodeBinding(value string) (binding, error) {
 		return b, errors.New("not a controller check")
 	}
 	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, externalPrefix))
-	if err != nil {
+	if err != nil || len(data) != 104 {
 		return b, errors.New("invalid controller check binding")
 	}
-	if err := decode(data, &b); err != nil {
-		return b, err
-	}
-	if !validBinding(b) || b.BaseRef == "" {
+	b.RepoID = int64(binary.BigEndian.Uint64(data[0:8]))
+	pr := binary.BigEndian.Uint64(data[8:16])
+	b.PR = int(pr)
+	b.Run = int64(binary.BigEndian.Uint64(data[16:24]))
+	b.Attempt = int64(binary.BigEndian.Uint64(data[24:32]))
+	b.Head = hex.EncodeToString(data[32:52])
+	b.Base = hex.EncodeToString(data[52:72])
+	copy(b.BaseRef[:], data[72:])
+	if !b.valid() || uint64(b.PR) != pr {
 		return b, errors.New("invalid controller check binding")
 	}
-	canonical, _ := json.Marshal(b)
-	if externalPrefix+base64.RawURLEncoding.EncodeToString(canonical) != value {
+	if b.externalID() != value {
 		return b, errors.New("noncanonical controller check binding")
 	}
 	return b, nil
 }
 
-func validBinding(b binding) bool {
-	return b.RepoID > 0 && b.PR > 0 && shaPattern.MatchString(b.Head) && shaPattern.MatchString(b.Base) && b.Run >= 0 && b.Attempt >= 0 && (b.Run == 0) == (b.Attempt == 0)
+func (b binding) valid() bool {
+	return b.RepoID > 0 && b.PR > 0 && b.Run >= 0 && b.Attempt >= 0 && (b.Run == 0) == (b.Attempt == 0)
 }
 
 // Recognize canonical v1 truncations only after the surviving complete repo,
 // PR and head identities have been verified. Old base/attempt metadata grants
 // only authority to supersede the broken check with a new queued barrier.
-func truncatedLegacyBinding(value string, p pull, repoID int64) bool {
-	if len(value) != externalIDLimit || !strings.HasPrefix(value, externalPrefix) {
+func truncatedLegacyBinding(value string, repoID int64, head string) bool {
+	if len(value) != externalIDLimit || !strings.HasPrefix(value, legacyExternalPrefix) {
 		return false
 	}
-	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, externalPrefix))
+	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, legacyExternalPrefix))
 	if err != nil {
 		return false
 	}
@@ -204,7 +214,7 @@ func truncatedLegacyBinding(value string, p pull, repoID int64) bool {
 			return false
 		}
 	}
-	if identity.Repo != repoID || identity.PR <= 0 || identity.Head != p.Head.SHA {
+	if identity.Repo != repoID || identity.PR <= 0 || identity.Head != head {
 		return false
 	}
 	prefix := fmt.Sprintf(`{"repo":%d,"pr":%d,"head":%q`, identity.Repo, identity.PR, identity.Head)
@@ -448,7 +458,7 @@ func (c *controller) init(ctx context.Context) error {
 func validReference(r reference) bool {
 	return shaPattern.MatchString(r.SHA) && r.Ref != "" && r.Repo.ID > 0 && repoPattern.MatchString(r.Repo.FullName)
 }
-func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
+func (c *controller) readPRMetadata(ctx context.Context, number int) (pull, error) {
 	var p pull
 	if number <= 0 {
 		return p, errors.New("invalid PR number")
@@ -458,6 +468,32 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 	}
 	if p.Number != number || (p.State != "open" && p.State != "closed") || !validReference(p.Head) || !validReference(p.Base) || p.Base.Repo.ID != c.repo.ID || !strings.EqualFold(p.Base.Repo.FullName, c.repoName) {
 		return p, errors.New("invalid current PR metadata")
+	}
+	return p, nil
+}
+func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
+	p, err := c.readPRMetadata(ctx, number)
+	if err != nil {
+		return p, err
+	}
+	// REST pull.base.sha may remain the branch divergence commit after main
+	// advances. Resolve the authenticated branch ref on every read, including
+	// final publication, instead of treating that PR metadata as the live tip.
+	if p.State == "open" && p.Base.Ref == c.repo.DefaultBranch {
+		var ref struct {
+			Ref    string `json:"ref"`
+			Object struct {
+				Type string `json:"type"`
+				SHA  string `json:"sha"`
+			} `json:"object"`
+		}
+		if err := c.api.read(ctx, c.endpoint("git/ref/heads/"+url.PathEscape(c.repo.DefaultBranch)), &ref); err != nil {
+			return p, err
+		}
+		if ref.Ref != "refs/heads/"+c.repo.DefaultBranch || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
+			return p, errors.New("invalid live default-branch ref")
+		}
+		p.Base.SHA = ref.Object.SHA
 	}
 	return p, nil
 }
@@ -505,7 +541,7 @@ func associated(r run, p pull, exactBase bool) bool {
 	count := 0
 	for _, a := range r.Pulls {
 		if a.Number == p.Number && a.Head.SHA == p.Head.SHA && a.Head.Repo.ID == p.Head.Repo.ID && a.Base.Repo.ID == p.Base.Repo.ID {
-			if !exactBase || (a.Base.SHA == p.Base.SHA && a.Base.Ref == p.Base.Ref) {
+			if !exactBase || (a.Base.Ref == p.Base.Ref) {
 				count++
 			}
 		}
@@ -659,7 +695,7 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			if v.Name != c.checkName {
 				continue
 			}
-			if !strings.HasPrefix(v.ExternalID, externalPrefix) && !strings.HasPrefix(v.ExternalID, compactExternalPrefix) {
+			if !strings.HasPrefix(v.ExternalID, externalPrefix) && !strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 				if v.App.ID == actionsAppID || v.App.Slug == "github-actions" {
 					return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
 				}
@@ -670,11 +706,11 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			}
 			b, err := decodeBinding(v.ExternalID)
 			if err != nil {
-				if !truncatedLegacyBinding(v.ExternalID, p, c.repo.ID) {
-					return nil, err
+				if truncatedLegacyBinding(v.ExternalID, c.repo.ID, p.Head.SHA) {
+					own = append(own, v)
+					continue
 				}
-				own = append(own, v)
-				continue
+				return nil, err
 			}
 			if b.RepoID != c.repo.ID || b.Head != p.Head.SHA {
 				return nil, errors.New("controller check repository/head mismatch")
@@ -717,7 +753,7 @@ func (c *controller) snapshot(ctx context.Context, number int) (snapshot, error)
 	for _, other := range all {
 		if other.Number == p.Number {
 			found = true
-			if other.Head != p.Head || other.Base != p.Base {
+			if other.Head != p.Head || other.Base.Ref != p.Base.Ref || other.Base.Repo != p.Base.Repo {
 				return s, errors.New("PR changed during collision scan")
 			}
 		}
@@ -732,7 +768,7 @@ func (c *controller) snapshot(ctx context.Context, number int) (snapshot, error)
 	return s, err
 }
 func (s snapshot) binding(repoID int64) binding {
-	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: s.PR.Base.Ref, Base: s.PR.Base.SHA}
+	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: sha256.Sum256([]byte(s.PR.Base.Ref)), Base: s.PR.Base.SHA}
 	if s.Run != nil {
 		b.Run, b.Attempt = s.Run.ID, s.Run.Attempt
 	}
@@ -748,6 +784,9 @@ func refused(summary string) outcome {
 	return outcome{Status: "completed", Conclusion: "failure", Title: "PR validation refused", Summary: summary}
 }
 func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) {
+	if s.PR.Base.Ref != c.repo.DefaultBranch {
+		return refused("The full candidate gate only authorizes the current default branch."), nil
+	}
 	policy, err := c.verify(ctx, s.PR.Number, s.PR.Head.SHA)
 	if err != nil {
 		return outcome{}, err
@@ -758,6 +797,9 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 	}
 	if s.Collision {
 		return refused("Another open PR shares this head. A commit-level check cannot safely authorize distinct PR policy and integration candidates."), nil
+	}
+	if code == 75 {
+		return pending("Trusted policy verification is still pending; validation success alone cannot authorize the merge."), nil
 	}
 	if code == 1 {
 		return refused("The trusted exact-head policy verifier refused this PR. Inspect the controller workflow log for the policy or validation failure."), nil
@@ -836,9 +878,6 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 	}
 	if !contract {
 		return refused("Candidate workflow or reusable validation differs from the trusted base without current exact-head workflow-change authority."), nil
-	}
-	if code == 75 {
-		return pending("Trusted policy verification is still pending; validation success alone cannot authorize the merge."), nil
 	}
 	return outcome{Status: "completed", Conclusion: "success", Title: "PR validation passed", Summary: fmt.Sprintf("Trusted policy and validation run %d attempt %d passed for PR #%d head %s against %s at %s.", r.ID, r.Attempt, s.PR.Number, s.PR.Head.SHA, s.PR.Base.Ref, s.PR.Base.SHA)}, nil
 }
@@ -1115,7 +1154,7 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	// Reruns supersede completed checks by creating a fresh queued check.
 	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
-		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.refDigest() == b.refDigest()
+		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.BaseRef == b.BaseRef
 		if !placeholder {
 			selected = nil
 		}
@@ -1153,7 +1192,7 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	return nil
 }
 func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
-	p, err := c.readPR(ctx, number)
+	p, err := c.readPRMetadata(ctx, number)
 	if err != nil {
 		return err
 	}
@@ -1171,9 +1210,8 @@ func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 			latest = &copy
 		}
 	}
-	malformedLegacy := latest != nil && truncatedLegacyBinding(latest.ExternalID, p, c.repo.ID)
-	if latest == nil || malformedLegacy || (latest.Status == "completed" && latest.Conclusion == "success") {
-		current, err := c.readPR(ctx, number)
+	if latest == nil || strings.HasPrefix(latest.ExternalID, legacyExternalPrefix) || (latest.Status == "completed" && latest.Conclusion == "success") {
+		current, err := c.readPRMetadata(ctx, number)
 		if err != nil {
 			return err
 		}
@@ -1202,7 +1240,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 		if e.Number <= 0 || e.Pull.Number != e.Number {
 			return errors.New("invalid pull_request_target event")
 		}
-		p, err := c.readPR(ctx, e.Number)
+		p, err := c.readPRMetadata(ctx, e.Number)
 		if err != nil {
 			return err
 		}
@@ -1241,7 +1279,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 			if a.Number <= 0 {
 				return errors.New("invalid callback PR hint")
 			}
-			p, err := c.readPR(ctx, a.Number)
+			p, err := c.readPRMetadata(ctx, a.Number)
 			if err != nil {
 				return err
 			}
@@ -1281,7 +1319,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 				return errors.New("invalid or ambiguous callback PR association")
 			}
 			seen[a.Number] = true
-			p, err := c.readPR(ctx, a.Number)
+			p, err := c.readPRMetadata(ctx, a.Number)
 			if err != nil {
 				return err
 			}
@@ -1325,7 +1363,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 }
 func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 	for _, hint := range hints {
-		p, err := c.readPR(ctx, hint.Number)
+		p, err := c.readPRMetadata(ctx, hint.Number)
 		if err != nil {
 			return err
 		}

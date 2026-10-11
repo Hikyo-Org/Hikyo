@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   vouch:
-    if: github.event.label.name == 'ci:full' && github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event.label.name == 'ci:full' && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Require a vouched author
@@ -33,7 +33,7 @@ jobs:
 
   validation:
     needs: vouch
-    if: ${{ !cancelled() && github.event.label.name == 'ci:full' && (needs.vouch.result == 'success' || (needs.vouch.result == 'skipped' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ !cancelled() && github.event.label.name == 'ci:full' && github.event.pull_request.base.ref == github.event.repository.default_branch && (needs.vouch.result == 'success' || (needs.vouch.result == 'skipped' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     uses: ./.github/workflows/ci.yml
     with:
       revision: ${{ github.sha }}
@@ -62,11 +62,14 @@ jobs:
       - name: Bind tested code to both authenticated candidate parents
         env:
           CANDIDATE_SHA: ${{ github.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git show -s --format=%P HEAD | wc -w | tr -d ' ')" = 2
+          BASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
           test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"

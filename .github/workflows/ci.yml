@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plan: ${{ steps.classify.outputs.plan }}
+      base_sha: ${{ steps.classify.outputs.base_sha }}
     steps:
       - &validate-revision
         name: Validate the immutable caller revision
@@ -52,6 +53,8 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           FULL_CANDIDATE: ${{ inputs.candidate }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
@@ -73,6 +76,7 @@ jobs:
                   test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
                   [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
                   [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+                  test "$PR_BASE_REF" = "$DEFAULT_BRANCH"
                   ;;
                 false) test "$SOURCE_REVISION" = "$PR_HEAD_SHA" ;;
                 *) echo 'Unknown candidate mode.' >&2; exit 1 ;;
@@ -105,8 +109,18 @@ jobs:
           FULL_CANDIDATE: ${{ inputs.candidate }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -o pipefail
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
+            BASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$(git show -s --format=%P HEAD | wc -w | tr -d ' ')" = 2
+            test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
+            test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"
+            printf 'base_sha=%s\n' "$BASE_SHA" >>"$GITHUB_OUTPUT"
+          fi
           if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
             test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             plan=$(./scripts/ci/classify-changed-paths.sh --all)
@@ -650,7 +664,7 @@ jobs:
       - name: Require DCO sign-off on every PR commit
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           # GitHub sets the PR actor from the authenticated opener; it cannot be
           # spoofed by commit metadata. Only then do we exempt Dependabot's
@@ -1410,7 +1424,7 @@ jobs:
       - name: Plan complete test, race, and fuzz shards
         id: plan
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -o pipefail
@@ -1594,7 +1608,7 @@ jobs:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
           RACE_PLAN: ${{ needs.analysis_shards.outputs.race_plan }}
           RACE_SHARD: ${{ matrix.shard }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           packages="$RUNNER_TEMP/race-packages"
@@ -1916,7 +1930,7 @@ jobs:
           retention-days: 30
       - name: Require every validation job
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           NEEDS_JSON: ${{ toJSON(needs) }}
           PLAN_JSON: ${{ needs.changes.outputs.plan }}
           FULL_CANDIDATE: ${{ inputs.candidate }}

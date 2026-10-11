@@ -135,13 +135,13 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 	}
 	guard := steps[0]
 	expectedEnv := map[string]string{
-		"SOURCE_REVISION":       "${{ inputs.revision }}",
-		"EVENT_REPOSITORY":      "${{ github.event.repository.full_name }}",
-		"EVENT_REPOSITORY_ID":   "${{ github.event.repository.id }}",
-		"PR_NUMBER":             "${{ github.event.pull_request.number }}",
-		"PR_HEAD_SHA":           "${{ github.event.pull_request.head.sha }}",
-		"PR_MERGE_SHA":          "${{ github.event.pull_request.merge_commit_sha }}",
-		"FULL_CANDIDATE":        "${{ inputs.candidate }}",
+		"SOURCE_REVISION":     "${{ inputs.revision }}",
+		"EVENT_REPOSITORY":    "${{ github.event.repository.full_name }}",
+		"EVENT_REPOSITORY_ID": "${{ github.event.repository.id }}",
+		"PR_NUMBER":           "${{ github.event.pull_request.number }}",
+		"PR_HEAD_SHA":         "${{ github.event.pull_request.head.sha }}",
+		"PR_MERGE_SHA":        "${{ github.event.pull_request.merge_commit_sha }}",
+		"PR_BASE_REF":         "${{ github.event.pull_request.base.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}", "FULL_CANDIDATE": "${{ inputs.candidate }}",
 		"PR_HEAD_REPOSITORY":    "${{ github.event.pull_request.head.repo.full_name }}",
 		"PR_HEAD_REPOSITORY_ID": "${{ github.event.pull_request.head.repo.id }}",
 		"PR_BASE_REPOSITORY":    "${{ github.event.pull_request.base.repo.full_name }}",

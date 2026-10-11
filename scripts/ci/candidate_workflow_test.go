@@ -65,10 +65,10 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 		t.Fatal("full candidates must reject selective plans independently of classification")
 	}
 	guard := ci.Jobs["changes"].Steps[0]
-	for _, mutation := range []string{"valid", "head-only", "wrong-merge", "missing-base", "invalid-mode", "wrong-repository"} {
+	for _, mutation := range []string{"valid", "head-only", "wrong-merge", "missing-base", "invalid-mode", "wrong-repository", "nondefault-target"} {
 		t.Run(mutation, func(t *testing.T) {
 			head, merge, base := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
-			env := map[string]string{"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": merge, "FULL_CANDIDATE": "true", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "1", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "PR_BASE_SHA": base, "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10"}
+			env := map[string]string{"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": merge, "FULL_CANDIDATE": "true", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "1", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "PR_BASE_SHA": base, "PR_BASE_REF": "main", "DEFAULT_BRANCH": "main", "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10"}
 			switch mutation {
 			case "head-only":
 				env["SOURCE_REVISION"] = head
@@ -78,6 +78,8 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 				env["PR_BASE_SHA"] = ""
 			case "invalid-mode":
 				env["FULL_CANDIDATE"] = "yes"
+			case "nondefault-target":
+				env["PR_BASE_REF"] = "release"
 			case "wrong-repository":
 				env["PR_BASE_REPOSITORY"] = "other/Hikyo"
 			}
@@ -89,6 +91,73 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 			output, err := command.CombinedOutput()
 			if (err == nil) != (mutation == "valid") {
 				t.Fatalf("candidate source allowed=%v: %v %s", err == nil, err, output)
+			}
+		})
+	}
+}
+
+func TestCandidateBaseResolutionUsesLiveRefInsteadOfEventMetadata(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow mainValidationWorkflow
+	if err = yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	script := strings.Split(workflow.Jobs["changes"].Steps[2].Run, "if [[ \"$EVENT_NAME\"")[0]
+	for _, fresh := range []bool{false, true} {
+		t.Run(map[bool]string{false: "stale-event-base", true: "fresh-live-base"}[fresh], func(t *testing.T) {
+			dir := t.TempDir()
+			git := func(args ...string) string {
+				t.Helper()
+				cmd := exec.Command("git", args...)
+				cmd.Dir = dir
+				out, e := cmd.CombinedOutput()
+				if e != nil {
+					t.Fatalf("git %v: %v %s", args, e, out)
+				}
+				return strings.TrimSpace(string(out))
+			}
+			git("init", "-q")
+			git("config", "user.name", "Fixture")
+			git("config", "user.email", "fixture@example.test")
+			git("config", "commit.gpgsign", "false")
+			if err := os.WriteFile(filepath.Join(dir, "file"), []byte("base"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			git("add", "file")
+			git("commit", "-qm", "base")
+			base := git("rev-parse", "HEAD")
+			git("checkout", "-qb", "feature")
+			if err := os.WriteFile(filepath.Join(dir, "feature"), []byte("head"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			git("add", "feature")
+			git("commit", "-qm", "head")
+			head := git("rev-parse", "HEAD")
+			git("checkout", "-q", "--detach", base)
+			git("merge", "--no-ff", "-qm", "candidate", head)
+			live := strings.Repeat("d", 40)
+			if fresh {
+				live = base
+			}
+			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' "+live+"\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(dir, "output")
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "EVENT_NAME=pull_request", "FULL_CANDIDATE=true", "BASE_SHA="+strings.Repeat("e", 40), "HEAD_SHA="+head, "DEFAULT_BRANCH=main", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_OUTPUT="+output)
+			out, err := cmd.CombinedOutput()
+			if (err == nil) != fresh {
+				t.Fatalf("fresh=%v error=%v %s", fresh, err, out)
+			}
+			if fresh {
+				bytes, err := os.ReadFile(output)
+				if err != nil || string(bytes) != "base_sha="+base+"\n" {
+					t.Fatal("actual base was not propagated")
+				}
 			}
 		})
 	}
