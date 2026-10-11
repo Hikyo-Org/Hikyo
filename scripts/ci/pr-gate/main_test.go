@@ -1514,6 +1514,9 @@ func TestLiveMainRefOverridesStalePullMetadata(t *testing.T) {
 			if err := f.execute(); err != nil {
 				t.Fatal(err)
 			}
+			if len(f.api.checks) != 1 || len(f.api.writes) != 2 || f.api.writes[0]["method"] != "POST" || f.api.writes[1]["method"] != "PATCH" {
+				t.Fatal("metadata-bound pending barrier must be updated, not stranded beside a new check")
+			}
 			if fresh {
 				requireConclusion(t, f, "completed", "success")
 			} else {
@@ -1522,6 +1525,112 @@ func TestLiveMainRefOverridesStalePullMetadata(t *testing.T) {
 			b, err := decodeBinding(f.api.checks[len(f.api.checks)-1].ExternalID)
 			if err != nil || b.Base != live {
 				t.Fatal("check did not bind actual main tip")
+			}
+		})
+	}
+}
+
+func TestFailedCandidateProofDistinguishesStalenessFromBadEvidence(t *testing.T) {
+	for _, name := range []string{"current", "advanced main", "new merge", "missing", "duplicate", "wrong head", "wrong attempt", "wrong run", "malformed source", "integration API failure"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.source.Conclusion = "failure"
+			f.refresh()
+			path := f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")
+			response := f.api.responses[path].(map[string]any)
+			jobs := response["jobs"].([]job)
+			jobs[1].Conclusion = "failure"
+			if name != "current" && name != "integration API failure" {
+				// Leave REST pull.base.sha unchanged, as GitHub does after main
+				// advances. Only the authenticated live ref moves.
+				live := strings.Repeat("d", 40)
+				f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": live}}
+			}
+			switch name {
+			case "new merge":
+				f.pr.MergeCommitSHA = strings.Repeat("e", 40)
+				f.api.responses[f.c.endpoint("pulls/7")] = f.pr
+				f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr}
+			case "missing":
+				jobs = jobs[:1]
+			case "duplicate":
+				copy := jobs[1]
+				copy.ID++
+				jobs = append(jobs, copy)
+			case "wrong head":
+				jobs[1].HeadSHA = strings.Repeat("f", 40)
+			case "wrong attempt":
+				jobs[1].Attempt = 2
+			case "wrong run":
+				jobs[1].RunID = 101
+			case "malformed source":
+				f.source.References[0].Ref = "refs/pull/8/merge"
+				f.api.responses[f.c.endpoint("actions/runs/100")] = f.source
+			case "integration API failure":
+				f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = errors.New("commit transport failure")
+			}
+			response["jobs"], response["total_count"] = jobs, len(jobs)
+			err := f.execute()
+			if name == "wrong attempt" || name == "wrong run" || name == "malformed source" || name == "integration API failure" {
+				if err == nil {
+					t.Fatal("invalid or unreadable provenance must not be treated as a stale candidate")
+				}
+				requireConclusion(t, f, "queued", "")
+			} else if name == "advanced main" || name == "new merge" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				requireConclusion(t, f, "queued", "")
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				requireConclusion(t, f, "completed", "failure")
+			}
+		})
+	}
+}
+
+func TestPublisherOnlyReusesIncompleteUnboundSameIdentityBarrier(t *testing.T) {
+	for _, name := range []string{"queued", "in progress", "completed", "run bound", "wrong repo", "wrong PR", "wrong head", "wrong base ref"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			if err := f.c.init(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			current := (snapshot{PR: f.pr, Run: &f.source}).binding(f.c.repo.ID)
+			old := current
+			old.Run, old.Attempt, old.Base = 0, 0, strings.Repeat("d", 40)
+			status := "queued"
+			switch name {
+			case "in progress":
+				status = "in_progress"
+			case "completed":
+				status = "completed"
+			case "run bound":
+				old.Run, old.Attempt = 99, 1
+			case "wrong repo":
+				old.RepoID++
+			case "wrong PR":
+				old.PR++
+			case "wrong head":
+				old.Head = strings.Repeat("e", 40)
+			case "wrong base ref":
+				old.BaseRef = sha256.Sum256([]byte("other"))
+			}
+			prior := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, ExternalID: old.externalID(), Status: status}
+			prior.App.ID, prior.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{prior}
+			result := outcome{Status: "completed", Conclusion: "success", Title: "passed", Summary: "fresh proof"}
+			if err := f.c.publish(context.Background(), f.pr, current, &prior, result); err != nil {
+				t.Fatal(err)
+			}
+			want := "POST"
+			if name == "queued" || name == "in progress" {
+				want = "PATCH"
+			}
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != want {
+				t.Fatalf("want %s for %s barrier, got %#v", want, name, f.api.writes)
 			}
 		})
 	}

@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,6 +56,9 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 	}
 	ci := read("ci.yml")
 	classifier := ci.Jobs["changes"].Steps[2]
+	if classifier.Env["BASE_SHA"] != "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" {
+		t.Fatal("initial classifier trust must come from the event base for legacy PRs and merge groups")
+	}
 	for _, required := range []string{"[ \"$FULL_CANDIDATE\" = true ]", "git rev-parse HEAD^1", "git rev-parse HEAD^2", "CI_JOB_REGISTRY=\"$trusted_registry\" \"$trusted_classifier\" --all"} {
 		if !strings.Contains(classifier.Run, required) {
 			t.Fatalf("missing candidate planning boundary: %s", required)
@@ -183,6 +187,102 @@ func TestCandidateBaseResolutionUsesLiveRefInsteadOfEventMetadata(t *testing.T) 
 				if err != nil || string(bytes) != "base_sha="+base+"\n" {
 					t.Fatal("actual base was not propagated")
 				}
+			}
+		})
+	}
+}
+
+// Execute the actual YAML classifier against a source checkout that poisons
+// both local tooling files. Planning must use the immutable base's tools.
+func TestTrustedClassifierUsesBaseToolsForEveryCandidateMode(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	script := workflow.Jobs["changes"].Steps[2].Run
+	for _, name := range []string{"merge-group", "full-PR", "legacy-PR", "missing-registry", "missing-classifier"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			git := func(args ...string) string {
+				t.Helper()
+				cmd := exec.Command("git", args...)
+				cmd.Dir = dir
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("git %v: %v %s", args, err, out)
+				}
+				return strings.TrimSpace(string(out))
+			}
+			write := func(path, content string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, path)), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			git("init", "-q")
+			git("config", "user.name", "Fixture")
+			git("config", "user.email", "fixture@example.test")
+			git("config", "commit.gpgsign", "false")
+			write("file", "base")
+			if name != "missing-classifier" {
+				write("scripts/ci/classify-changed-paths.sh", "#!/bin/sh\nset -eu\ntest \"$(cat \"$CI_JOB_REGISTRY\")\" = trusted-registry\ncase \"$1\" in --all) mode=all ;; --files) cat >/dev/null; mode=files ;; *) exit 92 ;; esac\nprintf '{\"trusted\":true,\"mode\":\"%s\"}\\n' \"$mode\"\n")
+			}
+			if name != "missing-registry" {
+				write("scripts/ci/ci-job-registry.json", "trusted-registry\n")
+			}
+			git("add", ".")
+			git("commit", "-qm", "trusted base")
+			base := git("rev-parse", "HEAD")
+			git("checkout", "-qb", "feature")
+			write("scripts/ci/classify-changed-paths.sh", "#!/bin/sh\necho source-tool-executed >&2\nexit 91\n")
+			write("scripts/ci/ci-job-registry.json", "source-registry\n")
+			git("add", ".")
+			git("commit", "-qm", "poison source tools")
+			head := git("rev-parse", "HEAD")
+			git("checkout", "-q", "--detach", base)
+			git("merge", "--no-ff", "-qm", "candidate", head)
+			write("bin/gh", "#!/bin/sh\nprintf '%s\\n' "+base+"\n")
+			output, runner := filepath.Join(dir, "output"), filepath.Join(dir, "runner")
+			if err := os.Mkdir(runner, 0700); err != nil {
+				t.Fatal(err)
+			}
+			event, full, mode := "pull_request", "false", "files"
+			if name == "merge-group" {
+				event, mode = "merge_group", "all"
+			}
+			if name == "full-PR" {
+				full, mode = "true", "all"
+			}
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "EVENT_NAME="+event, "FULL_CANDIDATE="+full, "BASE_SHA="+base, "HEAD_SHA="+head, "DEFAULT_BRANCH=main", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_OUTPUT="+output, "RUNNER_TEMP="+runner)
+			out, err := cmd.CombinedOutput()
+			if strings.HasPrefix(name, "missing-") {
+				if err == nil || !strings.Contains(string(out), "trusted CI classifier or job registry is missing") || strings.Contains(string(out), "source-tool-executed") {
+					t.Fatalf("missing trusted tooling must fail without local fallback: %v %s", err, out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("trusted planning: %v %s", err, out)
+			}
+			got, err := os.ReadFile(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := fmt.Sprintf("plan={\"trusted\":true,\"mode\":\"%s\"}\n", mode)
+			if full == "true" {
+				want = "base_sha=" + base + "\n" + want
+			}
+			if string(got) != want {
+				t.Fatalf("planning output: got %q want %q", got, want)
 			}
 		})
 	}

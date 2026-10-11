@@ -819,7 +819,7 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 		return outcome{}, err
 	}
 	aggregates, candidates, vouches := 0, 0, 0
-	aggregateOK, candidateOK, vouchOK := false, false, false
+	aggregateOK, candidateOK, candidateSourceOK, vouchOK := false, false, false, false
 	for _, j := range jobs {
 		if j.Name == "validation / ci-required" {
 			aggregates++
@@ -827,7 +827,8 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 		}
 		if j.Name == "candidate-proof" {
 			candidates++
-			candidateOK = j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
+			candidateSourceOK = j.Status == "completed" && j.HeadSHA == r.HeadSHA
+			candidateOK = candidateSourceOK && j.Conclusion == "success"
 		}
 		if j.Name == "vouch" {
 			vouches++
@@ -837,8 +838,22 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 	if aggregates != 1 {
 		return refused("Validation must contain exactly one validation / ci-required aggregate for the current attempt."), nil
 	}
-	if candidates != 1 || !candidateOK {
+	if candidates != 1 || !candidateSourceOK {
 		return refused("Validation requires exactly one successful candidate-proof job for this source head and attempt. Earlier selective or head-only runs cannot authorize merge."), nil
+	}
+	// A completed marker from this exact source/attempt can fail because main
+	// moved during validation. Check its immutable integration before deciding
+	// whether that failure belongs to the current candidate. Invalid marker
+	// identity and unreadable provenance still fail closed above and below.
+	proved, err := c.proveIntegration(ctx, r, s.PR)
+	if err != nil {
+		return outcome{}, err
+	}
+	if !proved {
+		return pending("The validation run does not prove the current base/head integration candidate. Fresh validation is required."), nil
+	}
+	if !candidateOK {
+		return refused("Validation requires a successful candidate-proof job for the current integration candidate."), nil
 	}
 	if r.Conclusion != "success" || !aggregateOK {
 		return refused(fmt.Sprintf("Validation run %d attempt %d failed or did not produce a successful aggregate.", r.ID, r.Attempt)), nil
@@ -864,13 +879,6 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 		if !vouched {
 			return refused("The fork author is no longer vouched by current default-branch policy or current collaborator permission."), nil
 		}
-	}
-	proved, err := c.proveIntegration(ctx, r, s.PR)
-	if err != nil {
-		return outcome{}, err
-	}
-	if !proved {
-		return pending("The validation run does not prove the current base/head integration candidate. Fresh validation is required."), nil
 	}
 	contract, err := c.proveWorkflowContract(ctx, s.PR, policy.WorkflowChangeAuthorized)
 	if err != nil {
@@ -1154,7 +1162,10 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	// Reruns supersede completed checks by creating a fresh queued check.
 	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
-		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.BaseRef == b.BaseRef
+		// The pre-ref-read barrier carries PR metadata, whose base SHA can be
+		// stale. Only an incomplete, unbound barrier for this same identity may
+		// acquire the freshly proved live base/run binding in place.
+		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.BaseRef == b.BaseRef
 		if !placeholder {
 			selected = nil
 		}
