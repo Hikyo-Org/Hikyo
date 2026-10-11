@@ -77,9 +77,26 @@ jobs:
         with:
           go-version-file: feedback-tools/go.mod
           cache: false
-      # Bulk main Go archives cost 65 seconds (3.2 GiB) in run 38150465028
-      # without completing the selected compilation. Let Go fetch only modules
-      # it needs and compile from scratch instead of importing unrelated caches.
+      # The isolated Go lane exceeded 201 seconds cold in run 38153567123.
+      # Restore compiled entries only (43 seconds in run 38150465028); module
+      # download announcements span 15 seconds; skip the 22-second module archive.
+      # Every selected package is still compiled: Go validates each cached
+      # action against its toolchain, sources, flags and dependency identities.
+      - name: Select Go build cache runner ABI
+        id: runner-cache-abi
+        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"
+      - name: Check budget before Go build cache restore
+        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
+      - name: Restore existing Go build cache
+        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 1
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Check budget before runtime setup
         if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60

@@ -38,6 +38,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 			Env      map[string]string `yaml:"env"`
 			Steps    []struct {
 				Name      string            `yaml:"name"`
+				ID        string            `yaml:"id"`
 				Run       string            `yaml:"run"`
 				Uses      string            `yaml:"uses"`
 				If        string            `yaml:"if"`
@@ -90,21 +91,39 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if job.Steps[1].With["fetch-depth"] != "2" {
 		return fmt.Errorf("immutable tooling must retain the synthetic merge's actual parents")
 	}
-	var pinnedBase bool
+	var pinnedBase, buildReader, runnerABI bool
+	buildReaders := 0
 	for _, step := range job.Steps {
 		if step.Name == "Select fast feedback domains" {
 			pinnedBase = strings.Contains(step.Run, "rev-parse HEAD^1") && strings.Contains(step.Run, `test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"`) && strings.Contains(step.Run, `export FAST_FEEDBACK_BASE="$base"`)
 		}
+		if step.Name == "Select Go build cache runner ABI" {
+			runnerABI = step.ID == "runner-cache-abi" && step.If == "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" && step.Run == `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"`
+		}
+		if step.With["path"] == "~/.cache/go-build" && step.Name != "Restore existing Go build cache" {
+			return fmt.Errorf("every build-cache reader must satisfy the exact Go-only compatibility contract")
+		}
+		if step.Name == "Restore existing Go build cache" {
+			buildReaders++
+			buildReader = step.Uses == "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" &&
+				step.If == "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" &&
+				!step.Continue && reflect.DeepEqual(step.With, map[string]string{
+				"path":         "~/.cache/go-build",
+				"key":          "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}",
+				"restore-keys": "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
+			})
+		}
+
 	}
-	if !pinnedBase {
-		return fmt.Errorf("feedback needs a verified integration base")
+	if !pinnedBase || !buildReader || !runnerABI || buildReaders != 1 {
+		return fmt.Errorf("feedback needs a verified integration base and bounded compatible read-only Go build cache")
 	}
 	for index, step := range job.Steps {
 		if strings.Contains(step.Run, "fast-feedback_test.sh") || strings.Contains(step.Run, "fast-feedback-deadline_test.sh") {
 			return fmt.Errorf("refusal and deadline self-tests belong to mandatory full lint, not the per-commit budget")
 		}
-		if step.With["path"] == "~/go/pkg/mod" || step.With["path"] == "~/.cache/go-build" || (strings.Contains(step.Uses, "setup-go@") && step.With["cache"] != "false") {
-			return fmt.Errorf("feedback must not spend its deadline restoring bulk Go archives")
+		if step.With["path"] == "~/go/pkg/mod" || (strings.Contains(step.Uses, "setup-go@") && step.With["cache"] != "false") {
+			return fmt.Errorf("feedback must not restore bulk module archives or implicit setup-go caches")
 		}
 		if step.Uses != "" {
 			if step.Timeout != 1 {
@@ -123,7 +142,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 		if step.Name == "Install verified pinned ShellCheck" && step.If != "matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).shell" {
 			return fmt.Errorf("selected shell scripts belong to the Go/tooling lane")
 		}
-		if strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh") || strings.Contains(step.Uses, "cache/restore@") || step.Name == "Select explicit pnpm cache path and ABI" {
+		if strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh") || (strings.Contains(step.Uses, "cache/restore@") && step.Name != "Restore existing Go build cache") || step.Name == "Select explicit pnpm cache path and ABI" {
 			if !strings.HasPrefix(step.If, "matrix.lane == 'frontend' && ") {
 				return fmt.Errorf("frontend dependency preparation must not compete with Go/tooling")
 			}
@@ -150,6 +169,25 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutation := range map[string]func(map[string]any){
+		"duplicate incompatible reader": func(j map[string]any) { duplicateFeedbackCache(j, "go-test-v2-") },
+		"duplicate compatible reader":   func(j map[string]any) { duplicateFeedbackCache(j, "") },
+		"module archive reintroduced":   func(j map[string]any) { mutateFeedbackCacheWith(j, "path", "~/go/pkg/mod") },
+		"wrong runner image fallback": func(j map[string]any) {
+			mutateFeedbackCacheWith(j, "restore-keys", "go-test-v2-${{ runner.os }}-${{ runner.arch }}-ubuntu22-")
+		},
+		"cache write": func(j map[string]any) {
+			mutateFeedbackCache(j, "uses", "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
+		},
+		"frontend build restore":      func(j map[string]any) { mutateFeedbackCache(j, "if", "matrix.lane == 'frontend'") },
+		"incompatible cache fallback": func(j map[string]any) { mutateFeedbackCacheWith(j, "restore-keys", "go-test-v2-") },
+		"missing dependency key": func(j map[string]any) {
+			mutateFeedbackCacheWith(j, "key", "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}")
+		},
+		"cache source override": func(j map[string]any) { mutateFeedbackCacheWith(j, "path", "source") },
+		"skip compile on cache hit": func(j map[string]any) {
+			steps := j["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["if"] = "steps.go-cache.outputs.cache-hit != 'true'"
+		},
 		"missing explicit fail-fast": func(j map[string]any) { delete(j["strategy"].(map[string]any), "fail-fast") },
 		"cancel sibling lane":        func(j map[string]any) { j["strategy"].(map[string]any)["fail-fast"] = true },
 		"exclude frontend": func(j map[string]any) {
@@ -186,6 +224,53 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 				t.Fatal("unsafe feedback configuration escaped actual workflow contract")
 			}
 		})
+	}
+}
+
+func duplicateFeedbackCache(j map[string]any, fallback string) {
+	steps := j["steps"].([]any)
+	for i, value := range steps {
+		step := value.(map[string]any)
+		if step["name"] != "Restore existing Go build cache" {
+			continue
+		}
+		duplicate := make(map[string]any)
+		for key, value := range step {
+			duplicate[key] = value
+		}
+		with := make(map[string]any)
+		for key, value := range step["with"].(map[string]any) {
+			with[key] = value
+		}
+		if fallback != "" {
+			with["restore-keys"] = fallback
+		}
+		duplicate["with"] = with
+		// Each reader has its own real reserve guard. The refusal must prove
+		// duplicate identity/configuration, not just a missing budget step.
+		changed := append([]any{}, steps[:i]...)
+		changed = append(changed, duplicate, steps[i-1])
+		j["steps"] = append(changed, steps[i:]...)
+		return
+	}
+}
+
+func mutateFeedbackCache(j map[string]any, key string, value any) {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == "Restore existing Go build cache" {
+			step[key] = value
+			return
+		}
+	}
+}
+func mutateFeedbackCacheWith(j map[string]any, key string, value any) {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == "Restore existing Go build cache" {
+			step["with"].(map[string]any)[key] = value
+			return
+		}
 	}
 }
 
