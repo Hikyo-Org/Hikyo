@@ -23,6 +23,16 @@ func legacySnapshotBinding(s snapshot, repoID int64) legacyBinding {
 	return legacyBinding{RepoID: b.RepoID, PR: b.PR, Head: b.Head, Base: b.Base, BaseRef: s.PR.Base.Ref, Run: b.Run, Attempt: b.Attempt}
 }
 
+func legacyExternalID(t *testing.T, b binding, ref string) string {
+	old := legacyBinding{RepoID: b.RepoID, PR: b.PR, Head: b.Head, Base: b.Base, BaseRef: ref, Run: b.Run, Attempt: b.Attempt}
+	t.Helper()
+	data, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return legacyExternalPrefix + base64.RawURLEncoding.EncodeToString(data)
+}
+
 func TestCompactBindingBoundsAndFullIdentity(t *testing.T) {
 	b := binding{RepoID: math.MaxInt64, PR: math.MaxInt, Head: strings.Repeat("a", 40), Base: strings.Repeat("b", 40), Run: math.MaxInt64, Attempt: math.MaxInt64}
 	for _, ref := range []string{"main", "dependabot/go_modules/github.com/sigstore/sigstore-1.11.0", strings.Repeat("stack/秘密/🦦/", 1000)} {
@@ -59,7 +69,13 @@ func TestCompactBindingRejectsMalformedAndNoncanonicalIDs(t *testing.T) {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 	last := strings.IndexByte(alphabet, id[len(id)-1])
 	noncanonical := id[:len(id)-1] + string(alphabet[last+1])
-	for _, value := range []string{externalPrefix + "bogus", noncanonical, id + ":extra", id[:len(id)-1], id + "="} {
+	invalid := []string{externalPrefix + "bogus", id + "=", noncanonical, id + ":extra", id[:len(id)-1]}
+	for _, mutation := range []func(*binding){func(b *binding) { b.RepoID = -1 }, func(b *binding) { b.PR = -7 }, func(b *binding) { b.Run = 0 }, func(b *binding) { b.Attempt = -1 }} {
+		changed := b
+		mutation(&changed)
+		invalid = append(invalid, changed.externalID())
+	}
+	for _, value := range invalid {
 		if _, err := decodeBinding(value); err == nil {
 			t.Fatalf("accepted malformed binding %q", value)
 		}
@@ -136,9 +152,10 @@ func TestTruncatedLegacyOwnedCheckRepairsBeforePolicyReads(t *testing.T) {
 		for _, failRead := range []bool{false, true} {
 			f := newFixture(t)
 			f.pr.Base.Ref = ref
+			f.allowDefaultRef()
 			f.source.Pulls = []pull{f.pr}
 			f.refresh()
-			legacy := legacyID(t, legacySnapshotBinding(snapshot{PR: f.pr}, 10))
+			legacy := legacyExternalID(t, (snapshot{PR: f.pr}).binding(10), f.pr.Base.Ref)
 			if len(legacy) <= externalIDLimit {
 				t.Fatal("fixture did not exceed provider limit")
 			}
@@ -204,8 +221,8 @@ func TestTruncatedLegacyHostileIdentityCannotBeRepaired(t *testing.T) {
 			if err := f.execute(); err == nil {
 				t.Fatal("malformed foreign check accepted")
 			}
-			if len(f.api.writes) != 0 {
-				t.Fatal("malformed foreign check mutated")
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" || f.api.checks[0] != v {
+				t.Fatal("refusal must create only a fresh owned pending barrier and preserve the foreign check")
 			}
 		})
 	}
@@ -288,8 +305,10 @@ set -eu
 test "$PR_NUMBER" = 877
 test "$HEAD_SHA" = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 test "$PR_GATE_ONCE" = 1
+test "$PR_GATE_POLICY_ONLY" = 1
 test "$GH_REPO" = Hikyo-Org/Hikyo
 test "$GH_TOKEN" = controlled-test-token
+printf '{"workflow_change_authorized":false}\n'
 exit "$POLICY_FIXTURE_EXIT"
 `
 	if err := os.WriteFile(filepath.Join("scripts", "ci", "check-fork-validation.sh"), []byte(script), 0o755); err != nil {
@@ -298,6 +317,7 @@ exit "$POLICY_FIXTURE_EXIT"
 	t.Setenv("PR_NUMBER", "wrong-pr")
 	t.Setenv("HEAD_SHA", "wrong-head")
 	t.Setenv("PR_GATE_ONCE", "0")
+	t.Setenv("PR_GATE_POLICY_ONLY", "0")
 	t.Setenv("GH_REPO", "Hikyo-Org/Hikyo")
 	t.Setenv("GH_TOKEN", "controlled-test-token")
 	for _, code := range []int{0, 1, 75, 2, 127} {
@@ -305,11 +325,11 @@ exit "$POLICY_FIXTURE_EXIT"
 			t.Setenv("POLICY_FIXTURE_EXIT", strconv.Itoa(code))
 			got, err := verifyPolicy(context.Background(), 877, strings.Repeat("a", 40))
 			if code == 0 || code == 1 || code == 75 {
-				if err != nil || got != code {
-					t.Fatalf("mapped exit=%d error=%v, want %d", got, err, code)
+				if err != nil || got.Code != code {
+					t.Fatalf("mapped decision=%v error=%v, want %d", got, err, code)
 				}
 			} else if err == nil {
-				t.Fatalf("unexpected exit %d was accepted as %d", code, got)
+				t.Fatalf("unexpected exit %d was accepted as %v", code, got)
 			}
 		})
 	}
@@ -352,8 +372,16 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 			}
 		}
 		filtered := []check{}
-		for _, v := range latest {
-			filtered = append(filtered, v)
+		if u.Query().Get("filter") == "all" {
+			for _, v := range f.checks {
+				if v.Name == u.Query().Get("check_name") {
+					filtered = append(filtered, v)
+				}
+			}
+		} else {
+			for _, v := range latest {
+				filtered = append(filtered, v)
+			}
 		}
 		sort.Slice(filtered, func(i, j int) bool { return filtered[i].ID < filtered[j].ID })
 		page, err := strconv.Atoi(u.Query().Get("page"))
@@ -445,13 +473,14 @@ func (f *fakeAPI) write(_ context.Context, method, path string, payload, result 
 }
 
 type fixture struct {
-	c           *controller
-	api         *fakeAPI
-	pr          pull
-	source      run
-	event       event
-	verifyCode  int
-	verifyCalls int
+	c                  *controller
+	api                *fakeAPI
+	pr                 pull
+	source             run
+	event              event
+	verifyCode         int
+	workflowAuthorized bool
+	verifyCalls        int
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -461,7 +490,7 @@ func newFixture(t *testing.T) *fixture {
 	yes := true
 	f.pr = pull{Number: 7, State: "open", Head: reference{SHA: strings.Repeat("a", 40), Ref: "feature", Repo: repo}, Base: reference{SHA: strings.Repeat("b", 40), Ref: "main", Repo: repo}, MergeCommitSHA: strings.Repeat("c", 40), Mergeable: &yes}
 	f.pr.User.ID, f.pr.User.Login = 12, "valentinhl"
-	f.source = run{ID: 100, Attempt: 1, WorkflowID: 20, Path: workflowPath, Name: "fork-ci", DisplayTitle: "fork-ci #7", Event: "pull_request", HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success", Repository: repo, HeadRepository: repo, Pulls: []pull{f.pr}}
+	f.source = run{ID: 100, Attempt: 1, WorkflowID: 20, Path: workflowPath, Name: "pr-candidate", DisplayTitle: "candidate-ci #7", Event: "pull_request", HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success", Repository: repo, HeadRepository: repo, Pulls: []pull{f.pr}}
 	f.source.References = append(f.source.References, struct {
 		Path string `json:"path"`
 		Ref  string `json:"ref"`
@@ -469,11 +498,14 @@ func newFixture(t *testing.T) *fixture {
 	}{Path: repo.FullName + "/.github/workflows/ci.yml@" + f.pr.MergeCommitSHA, Ref: "refs/pull/7/merge", SHA: f.pr.MergeCommitSHA})
 	f.api = &fakeAPI{responses: make(map[string]any), reads: make(map[string]int), checks: []check{}}
 	f.c = &controller{api: f.api, repoName: repo.FullName, checkName: "ci-required", output: &bytes.Buffer{}}
-	f.c.verify = func(context.Context, int, string) (int, error) { f.verifyCalls++; return f.verifyCode, nil }
+	f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+		f.verifyCalls++
+		return policyDecision{Code: f.verifyCode, WorkflowChangeAuthorized: f.workflowAuthorized}, nil
+	}
 	f.api.responses["repos/"+repo.FullName] = repo
 	f.api.responses[f.c.endpoint("collaborators/valentinhl/permission")] = map[string]any{"permission": "read", "user": map[string]int{"id": 12}}
 	f.api.responses[f.c.endpoint("contents/.github/VOUCHED.td?ref=main")] = map[string]any{"type": "file", "encoding": "base64", "path": ".github/VOUCHED.td", "content": base64.StdEncoding.EncodeToString([]byte("github:valentinhl\n"))}
-	f.api.responses[f.c.endpoint("actions/workflows/ci-fork.yml")] = workflow{ID: 20, Path: workflowPath, Name: "fork-ci"}
+	f.api.responses[f.c.endpoint("actions/workflows/ci-candidate.yml")] = workflow{ID: 20, Path: workflowPath, Name: "pr-candidate"}
 	f.event.Repository = repo
 	f.event.Inputs.PR = "7"
 	f.refresh()
@@ -481,11 +513,17 @@ func newFixture(t *testing.T) *fixture {
 }
 func (f *fixture) refresh() {
 	f.api.responses[f.c.endpoint("pulls/7")] = f.pr
+	f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": f.pr.Base.SHA}}
 	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr}
-	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 1, "workflow_runs": []run{f.source}}
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 1, "workflow_runs": []run{f.source}}
 	f.api.responses[f.c.endpoint("actions/runs/100")] = f.source
-	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/runs/100/attempts/%d/jobs?per_page=100&page=1", f.source.Attempt))] = map[string]any{"total_count": 1, "jobs": []job{{ID: 200, RunID: 100, Attempt: f.source.Attempt, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}}}
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/runs/100/attempts/%d/jobs?per_page=100&page=1", f.source.Attempt))] = map[string]any{"total_count": 2, "jobs": []job{{ID: 200, RunID: 100, Attempt: f.source.Attempt, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 250, RunID: 100, Attempt: f.source.Attempt, HeadSHA: f.source.HeadSHA, Name: "candidate-proof", Status: "completed", Conclusion: "success"}}}
 	f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = map[string]any{"sha": f.pr.MergeCommitSHA, "parents": []map[string]string{{"sha": f.pr.Base.SHA}, {"sha": f.pr.Head.SHA}}}
+	for _, path := range []string{workflowPath, ".github/workflows/ci.yml"} {
+		for _, revision := range []string{f.pr.Base.SHA, f.pr.MergeCommitSHA} {
+			f.api.responses[f.c.endpoint("contents/"+path+"?ref="+revision)] = map[string]any{"type": "file", "path": path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("trusted workflow contract"))}
+		}
+	}
 }
 func (f *fixture) execute() error {
 	return f.c.execute(context.Background(), "workflow_dispatch", f.event)
@@ -629,7 +667,7 @@ func TestEmptyForkAssociationUsesGitHubOwnedMergeProof(t *testing.T) {
 		want   string
 	}{
 		{"genuine fork", func(*fixture) {}, "success"},
-		{"forged PR title", func(f *fixture) { f.source.DisplayTitle = "fork-ci #999" }, ""},
+		{"forged PR title", func(f *fixture) { f.source.DisplayTitle = "candidate-ci #999" }, ""},
 		{"forged merge ref", func(f *fixture) { f.source.References[0].Ref = "refs/pull/999/merge" }, ""},
 		{"wrong immutable merge", func(f *fixture) {
 			f.source.References[0].SHA = strings.Repeat("d", 40)
@@ -649,7 +687,7 @@ func TestEmptyForkAssociationUsesGitHubOwnedMergeProof(t *testing.T) {
 			f.source.Pulls = []pull{}
 			tc.modify(f)
 			f.refresh()
-			f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 2, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}}}
+			f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 3, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}, {ID: 250, RunID: 100, Attempt: 1, HeadSHA: f.source.HeadSHA, Name: "candidate-proof", Status: "completed", Conclusion: "success"}}}
 			f.event.Run = f.source
 			if err := f.c.execute(context.Background(), "workflow_run", f.event); err != nil {
 				t.Fatal(err)
@@ -688,8 +726,8 @@ func TestOmittedForkAssociationJSONStillNeedsImmutableProof(t *testing.T) {
 				}
 				// Both callback and REST source/list are actual JSON with this shape.
 				f.api.responses[f.c.endpoint("actions/runs/100")] = source
-				f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 1, "workflow_runs": []any{source}}
-				f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 2, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}}}
+				f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 1, "workflow_runs": []any{source}}
+				f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 3, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}, {ID: 250, RunID: 100, Attempt: 1, HeadSHA: f.source.HeadSHA, Name: "candidate-proof", Status: "completed", Conclusion: "success"}}}
 				payload, err := json.Marshal(map[string]any{"repository": f.event.Repository, "workflow_run": source})
 				if err != nil {
 					t.Fatal(err)
@@ -797,9 +835,9 @@ func TestImmutableMergeCandidateProof(t *testing.T) {
 			f.refresh()
 		}, ""},
 		{"missing referenced workflow", func(f *fixture) { f.source.References = nil; f.refresh() }, ""},
-		{"stacked synthetic base parent", func(f *fixture) {
+		{"stacked synthetic base parent refused", func(f *fixture) {
 			f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = map[string]any{"sha": f.pr.MergeCommitSHA, "parents": []map[string]string{{"sha": strings.Repeat("e", 40)}, {"sha": f.pr.Head.SHA}}}
-		}, "success"},
+		}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -813,6 +851,131 @@ func TestImmutableMergeCandidateProof(t *testing.T) {
 			}
 			requireConclusion(t, f, status, tc.want)
 		})
+	}
+}
+
+func TestFullCandidateMarkerRefusesHistoricalOrForgedProof(t *testing.T) {
+	for _, name := range []string{"missing", "skipped", "failed", "duplicate", "wrong head", "wrong attempt", "wrong run"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			path := f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")
+			response := f.api.responses[path].(map[string]any)
+			jobs := response["jobs"].([]job)
+			switch name {
+			case "missing":
+				jobs = jobs[:1]
+			case "skipped":
+				jobs[1].Conclusion = "skipped"
+			case "failed":
+				jobs[1].Conclusion = "failure"
+			case "duplicate":
+				copy := jobs[1]
+				copy.ID++
+				jobs = append(jobs, copy)
+			case "wrong head":
+				jobs[1].HeadSHA = strings.Repeat("f", 40)
+			case "wrong attempt":
+				jobs[1].Attempt = 2
+			case "wrong run":
+				jobs[1].RunID = 101
+			}
+			response["jobs"], response["total_count"] = jobs, len(jobs)
+			err := f.execute()
+			if name == "wrong attempt" || name == "wrong run" {
+				if err == nil {
+					t.Fatal("untrusted job provenance accepted")
+				}
+				for _, write := range f.api.writes {
+					if write["conclusion"] == "success" {
+						t.Fatal("success published on malformed provenance")
+					}
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				requireConclusion(t, f, "completed", "failure")
+			}
+		})
+	}
+}
+
+func TestDefaultBranchPushRevokesStaleCandidate(t *testing.T) {
+	f := newFixture(t)
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	f.pr.Base.SHA = strings.Repeat("d", 40)
+	f.refresh()
+	// Preserve the old immutable candidate even if mutable associations move.
+	f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = map[string]any{"sha": f.pr.MergeCommitSHA, "parents": []map[string]string{{"sha": strings.Repeat("b", 40)}, {"sha": f.pr.Head.SHA}}}
+	f.event.Ref = "refs/heads/main"
+	if err := f.c.execute(context.Background(), "push", f.event); err != nil {
+		t.Fatal(err)
+	}
+	last := f.api.writes[len(f.api.writes)-1]
+	if last["status"] != "queued" || last["conclusion"] == "success" {
+		t.Fatalf("base advancement retained prior success: %#v", last)
+	}
+	writes := len(f.api.writes)
+	f.event.Ref = "refs/heads/feature"
+	if err := f.c.execute(context.Background(), "push", f.event); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.api.writes) != writes {
+		t.Fatal("feature branch push mutated merge readiness")
+	}
+}
+
+func TestSpoofedCandidateWorkflowNeedsExistingExactHeadAuthority(t *testing.T) {
+	for _, path := range []string{workflowPath, ".github/workflows/ci.yml"} {
+		for _, authorized := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/authorized=%t", path, authorized), func(t *testing.T) {
+				f := newFixture(t)
+				f.workflowAuthorized = authorized
+				f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.MergeCommitSHA)] = map[string]any{"type": "file", "path": path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("forged marker and aggregate workflow"))}
+				if err := f.execute(); err != nil {
+					t.Fatal(err)
+				}
+				conclusion := "failure"
+				if authorized {
+					conclusion = "success"
+				}
+				requireConclusion(t, f, "completed", conclusion)
+			})
+		}
+	}
+}
+
+func TestWorkflowChangeAuthorityRevokedBeforePublication(t *testing.T) {
+	f := newFixture(t)
+	f.api.responses[f.c.endpoint("contents/"+workflowPath+"?ref="+f.pr.MergeCommitSHA)] = map[string]any{"type": "file", "path": workflowPath, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("reviewed candidate contract change"))}
+	f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+		f.verifyCalls++
+		return policyDecision{WorkflowChangeAuthorized: f.verifyCalls == 1}, nil
+	}
+	if err := f.execute(); err == nil {
+		t.Fatal("workflow contract published after authority disappeared")
+	}
+	for _, write := range f.api.writes {
+		if write["conclusion"] == "success" {
+			t.Fatal("revoked workflow authority published success")
+		}
+	}
+}
+
+func TestPolicyDecisionRequiresMachineReadableAuthority(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll("scripts/ci", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, output := range []string{"", "{}", "not-json", `{"workflow_change_authorized":"true"}`, `{"workflow_change_authorized":true} {}`} {
+		if err := os.WriteFile("scripts/ci/check-fork-validation.sh", []byte("#!/bin/sh\nprintf '%s' '"+output+"'\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := verifyPolicy(context.Background(), 7, strings.Repeat("a", 40)); err == nil {
+			t.Fatalf("malformed workflow authority accepted: %q", output)
+		}
 	}
 }
 func TestRevalidateImmediatelyBeforeMutation(t *testing.T) {
@@ -884,7 +1047,10 @@ func TestForeignControllerCheckIdentityRejected(t *testing.T) {
 			if err := f.execute(); err == nil {
 				t.Fatal("untrusted/ambiguous check accepted")
 			}
-			if len(f.api.writes) != 0 {
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+				t.Fatal("identity refusal must create an owned pending barrier without mutating the foreign check")
+			}
+			if f.api.checks[0] != v {
 				t.Fatal("foreign check mutated")
 			}
 		})
@@ -934,7 +1100,7 @@ func TestForkVouchRequired(t *testing.T) {
 			f.source.Pulls = []pull{f.pr}
 			f.refresh()
 			if vouched {
-				f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 2, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}}}
+				f.api.responses[f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 3, "jobs": []job{{ID: 200, RunID: 100, Attempt: 1, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 201, RunID: 100, Attempt: 1, Name: "vouch", Status: "completed", Conclusion: "success"}, {ID: 250, RunID: 100, Attempt: 1, HeadSHA: f.source.HeadSHA, Name: "candidate-proof", Status: "completed", Conclusion: "success"}}}
 			}
 			if err := f.execute(); err != nil {
 				t.Fatal(err)
@@ -1001,7 +1167,7 @@ func TestForkRerunRefusesUnprovedOrRevokedVouch(t *testing.T) {
 			case "API failure":
 				f.api.responses[path] = errors.New("transport failure")
 			case "failed current admission":
-				f.api.responses[f.c.endpoint("actions/runs/100/attempts/2/jobs?per_page=100&page=1")] = map[string]any{"total_count": 2, "jobs": []job{{ID: 200, RunID: 100, Attempt: 2, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 203, RunID: 100, Attempt: 2, Name: "vouch", Status: "completed", Conclusion: "failure"}}}
+				f.api.responses[f.c.endpoint("actions/runs/100/attempts/2/jobs?per_page=100&page=1")] = map[string]any{"total_count": 3, "jobs": []job{{ID: 200, RunID: 100, Attempt: 2, Name: "validation / ci-required", Status: "completed", Conclusion: "success"}, {ID: 203, RunID: 100, Attempt: 2, Name: "vouch", Status: "completed", Conclusion: "failure"}, {ID: 250, RunID: 100, Attempt: 2, HeadSHA: f.source.HeadSHA, Name: "candidate-proof", Status: "completed", Conclusion: "success"}}}
 			}
 			err := f.execute()
 			if err != nil {
@@ -1018,7 +1184,7 @@ func TestMetadataOnlyRunDoesNotSupersedeValidation(t *testing.T) {
 	metadata.ID = 101
 	metadata.DisplayTitle = "pr-metadata #7"
 	metadata.Conclusion = "success"
-	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.source}}
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.source}}
 	if err := f.execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -1166,12 +1332,12 @@ func TestFinalPolicyRevocationPublishesRefusal(t *testing.T) {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			f := newFixture(t)
 			count := 0
-			f.c.verify = func(context.Context, int, string) (int, error) {
+			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
 				count++
 				if count == 2 {
-					return code, nil
+					return policyDecision{Code: code}, nil
 				}
-				return 0, nil
+				return policyDecision{}, nil
 			}
 			if err := f.execute(); err != nil {
 				t.Fatal(err)
@@ -1234,7 +1400,7 @@ func TestHistoricalChecksDoNotExhaustCurrentIdentityLookup(t *testing.T) {
 		t.Fatal("unrelated historical checks prevented current success")
 	}
 	for path := range f.api.reads {
-		if strings.Contains(path, "/check-runs?") && (!strings.Contains(path, "filter=latest") || !strings.Contains(path, "check_name=ci-required")) {
+		if strings.Contains(path, "/check-runs?") && (!strings.Contains(path, "filter=all") || !strings.Contains(path, "check_name=ci-required")) {
 			t.Fatal("lookup scans unbounded historical/unrelated checks")
 		}
 	}
@@ -1250,7 +1416,7 @@ func TestLatestCheckPaginationExactMultiple(t *testing.T) {
 		v.App.Slug = "independent-provider"
 		f.api.checks = append(f.api.checks, v)
 	}
-	if err := f.execute(); err != nil {
+	if _, err := f.c.ownedChecks(context.Background(), f.pr); err != nil {
 		t.Fatal(err)
 	}
 	for path := range f.api.reads {
@@ -1263,6 +1429,7 @@ func TestLatestCheckPaginationExactMultiple(t *testing.T) {
 func TestPublisherAcceptsLongBaseReference(t *testing.T) {
 	f := newFixture(t)
 	f.pr.Base.Ref = "dependabot/go_modules/" + strings.Repeat("long-module-name/", 20)
+	f.allowDefaultRef()
 	f.source.Pulls = []pull{f.pr}
 	f.refresh()
 	if err := f.execute(); err != nil {
@@ -1386,9 +1553,360 @@ func TestLegacyRecoveryRejectsForeignOrMalformedMetadata(t *testing.T) {
 			if err := f.execute(); err == nil {
 				t.Fatal("foreign or malformed metadata accepted")
 			}
-			if len(f.api.writes) != 0 {
-				t.Fatal("foreign metadata mutated")
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" || f.api.checks[0] != v {
+				t.Fatal("refusal must create only a fresh owned pending barrier and preserve the foreign check")
 			}
 		})
+	}
+}
+
+func TestLiveMainRefOverridesStalePullMetadata(t *testing.T) {
+	for _, fresh := range []bool{false, true} {
+		t.Run(strconv.FormatBool(fresh), func(t *testing.T) {
+			f := newFixture(t)
+			live := strings.Repeat("d", 40)
+			f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": live}}
+			if fresh {
+				f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = map[string]any{"sha": f.pr.MergeCommitSHA, "parents": []map[string]string{{"sha": live}, {"sha": f.pr.Head.SHA}}}
+				for _, path := range []string{workflowPath, ".github/workflows/ci.yml"} {
+					f.api.responses[f.c.endpoint("contents/"+path+"?ref="+live)] = f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Base.SHA)]
+				}
+			}
+			if err := f.execute(); err != nil {
+				t.Fatal(err)
+			}
+			if len(f.api.checks) != 1 || len(f.api.writes) != 2 || f.api.writes[0]["method"] != "POST" || f.api.writes[1]["method"] != "PATCH" {
+				t.Fatal("metadata-bound pending barrier must be updated, not stranded beside a new check")
+			}
+			if fresh {
+				requireConclusion(t, f, "completed", "success")
+			} else {
+				requireConclusion(t, f, "queued", "")
+			}
+			b, err := decodeBinding(f.api.checks[len(f.api.checks)-1].ExternalID)
+			if err != nil || b.Base != live {
+				t.Fatal("check did not bind actual main tip")
+			}
+		})
+	}
+}
+
+func TestFailedCandidateProofDistinguishesStalenessFromBadEvidence(t *testing.T) {
+	for _, name := range []string{"current", "advanced main", "new merge", "missing", "duplicate", "wrong head", "wrong attempt", "wrong run", "malformed source", "integration API failure"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.source.Conclusion = "failure"
+			f.refresh()
+			path := f.c.endpoint("actions/runs/100/attempts/1/jobs?per_page=100&page=1")
+			response := f.api.responses[path].(map[string]any)
+			jobs := response["jobs"].([]job)
+			jobs[1].Conclusion = "failure"
+			if name != "current" && name != "integration API failure" {
+				// Leave REST pull.base.sha unchanged, as GitHub does after main
+				// advances. Only the authenticated live ref moves.
+				live := strings.Repeat("d", 40)
+				f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": live}}
+			}
+			switch name {
+			case "new merge":
+				f.pr.MergeCommitSHA = strings.Repeat("e", 40)
+				f.api.responses[f.c.endpoint("pulls/7")] = f.pr
+				f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr}
+			case "missing":
+				jobs = jobs[:1]
+			case "duplicate":
+				copy := jobs[1]
+				copy.ID++
+				jobs = append(jobs, copy)
+			case "wrong head":
+				jobs[1].HeadSHA = strings.Repeat("f", 40)
+			case "wrong attempt":
+				jobs[1].Attempt = 2
+			case "wrong run":
+				jobs[1].RunID = 101
+			case "malformed source":
+				f.source.References[0].Ref = "refs/pull/8/merge"
+				f.api.responses[f.c.endpoint("actions/runs/100")] = f.source
+			case "integration API failure":
+				f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = errors.New("commit transport failure")
+			}
+			response["jobs"], response["total_count"] = jobs, len(jobs)
+			err := f.execute()
+			if name == "wrong attempt" || name == "wrong run" || name == "malformed source" || name == "integration API failure" {
+				if err == nil {
+					t.Fatal("invalid or unreadable provenance must not be treated as a stale candidate")
+				}
+				requireConclusion(t, f, "queued", "")
+			} else if name == "advanced main" || name == "new merge" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				requireConclusion(t, f, "queued", "")
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				requireConclusion(t, f, "completed", "failure")
+			}
+		})
+	}
+}
+
+func TestPublisherOnlyReusesIncompleteUnboundSameIdentityBarrier(t *testing.T) {
+	for _, name := range []string{"queued", "in progress", "completed", "run bound", "wrong repo", "wrong PR", "wrong head", "wrong base ref"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			if err := f.c.init(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			current := (snapshot{PR: f.pr, Run: &f.source}).binding(f.c.repo.ID)
+			old := current
+			old.Run, old.Attempt, old.Base = 0, 0, strings.Repeat("d", 40)
+			status := "queued"
+			switch name {
+			case "in progress":
+				status = "in_progress"
+			case "completed":
+				status = "completed"
+			case "run bound":
+				old.Run, old.Attempt = 99, 1
+			case "wrong repo":
+				old.RepoID++
+			case "wrong PR":
+				old.PR++
+			case "wrong head":
+				old.Head = strings.Repeat("e", 40)
+			case "wrong base ref":
+				old.BaseRef = sha256.Sum256([]byte("other"))
+			}
+			prior := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, ExternalID: old.externalID(), Status: status}
+			prior.App.ID, prior.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{prior}
+			result := outcome{Status: "completed", Conclusion: "success", Title: "passed", Summary: "fresh proof"}
+			if err := f.c.publish(context.Background(), f.pr, current, &prior, result); err != nil {
+				t.Fatal(err)
+			}
+			want := "POST"
+			if name == "queued" || name == "in progress" {
+				want = "PATCH"
+			}
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != want {
+				t.Fatalf("want %s for %s barrier, got %#v", want, name, f.api.writes)
+			}
+		})
+	}
+}
+func TestCandidateRejectsNonDefaultTarget(t *testing.T) {
+	f := newFixture(t)
+	f.pr.Base.Ref = "release"
+	f.source.Pulls = []pull{f.pr}
+	f.refresh()
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	requireConclusion(t, f, "completed", "failure")
+}
+func TestPendingPolicyDoesNotReadDifferingWorkflowContract(t *testing.T) {
+	f := newFixture(t)
+	f.verifyCode = 75
+	f.api.responses[f.c.endpoint("contents/"+workflowPath+"?ref="+f.pr.MergeCommitSHA)] = errors.New("contract must not be read while authority is pending")
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	requireConclusion(t, f, "queued", "")
+	for path := range f.api.reads {
+		if strings.Contains(path, "contents/"+workflowPath) {
+			t.Fatal("pending authority evaluated changed contract")
+		}
+	}
+}
+
+// Long-reference codec cases use a repository whose default branch is long;
+// they do not grant the main-only gate authority over a nondefault PR target.
+func (f *fixture) allowDefaultRef() {
+	repo := f.event.Repository
+	repo.DefaultBranch = f.pr.Base.Ref
+	f.event.Repository = repo
+	f.api.responses["repos/"+repo.FullName] = repo
+	f.api.responses[f.c.endpoint("git/ref/heads/"+url.PathEscape(repo.DefaultBranch))] = map[string]any{"ref": "refs/heads/" + repo.DefaultBranch, "object": map[string]string{"type": "commit", "sha": f.pr.Base.SHA}}
+}
+
+func TestLiveMainRefAdvanceDuringPublicationRevokesSuccess(t *testing.T) {
+	f := newFixture(t)
+	path := f.c.endpoint("git/ref/heads/main")
+	f.api.readHook = func(read string, count int) {
+		if read == path && f.verifyCalls == 2 {
+			f.api.responses[path] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": strings.Repeat("d", 40)}}
+		}
+	}
+	if err := f.execute(); err == nil {
+		t.Fatal("live main advancement during final reads was accepted")
+	}
+	for _, write := range f.api.writes {
+		if write["conclusion"] == "success" {
+			t.Fatal("stale success published")
+		}
+	}
+}
+
+func TestLiveMainReadFailureRevokesPriorSuccessBeforeFailure(t *testing.T) {
+	f := newFixture(t)
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	f.api.writes = nil
+	f.api.responses[f.c.endpoint("git/ref/heads/main")] = errors.New("branch ref temporarily unavailable")
+	if err := f.execute(); err == nil {
+		t.Fatal("live ref failure ignored")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("prior success not invalidated before live ref read")
+	}
+	latest := f.api.checks[len(f.api.checks)-1]
+	if latest.Status != "queued" || latest.Conclusion != "" {
+		t.Fatal("old success survived live ref read failure")
+	}
+}
+
+// GitHub latest filtering is per app and can hide our earlier result behind a
+// native workflow check. A collision must refuse proof and publish pending.
+func TestNativeCheckCannotHideOwnedSuccessWithoutBarrier(t *testing.T) {
+	f := newFixture(t)
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	owned := f.api.checks[len(f.api.checks)-1]
+	foreign := owned
+	foreign.ID += 100
+	foreign.ExternalID = ""
+	f.api.checks = append(f.api.checks, foreign)
+	f.api.writes = nil
+	if err := f.execute(); err == nil {
+		t.Fatal("native collision accepted")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("collision left no fresh owned pending barrier")
+	}
+	if f.api.checks[len(f.api.checks)-2] != foreign {
+		t.Fatal("foreign green was mutated")
+	}
+	for path := range f.api.reads {
+		if strings.Contains(path, "/check-runs?") && !strings.Contains(path, "filter=all") {
+			t.Fatal("owned success can be hidden by latest-per-app filtering")
+		}
+	}
+}
+
+func TestCheckListingFailureStillPublishesPending(t *testing.T) {
+	f := newFixture(t)
+	// An impossible bounded count is a listing refusal, not merge evidence.
+	for i := 0; i < 1001; i++ {
+		f.api.checks = append(f.api.checks, check{ID: int64(i + 1), Name: "ci-required"})
+	}
+	if err := f.execute(); err == nil {
+		t.Fatal("unbounded historical listing accepted")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("listing error left no pending barrier")
+	}
+}
+
+func TestNativeCollisionAfterInitialBarrierStillRefusesProof(t *testing.T) {
+	f := newFixture(t)
+	checkReads := 0
+	var foreign check
+	f.api.readHook = func(path string, _ int) {
+		if !strings.Contains(path, "/check-runs?") {
+			return
+		}
+		checkReads++
+		if checkReads == 3 {
+			foreign = f.api.checks[len(f.api.checks)-1]
+			foreign.ID += 100
+			foreign.Status, foreign.Conclusion, foreign.ExternalID = "completed", "success", ""
+			f.api.checks = append(f.api.checks, foreign)
+		}
+	}
+	if err := f.execute(); err == nil {
+		t.Fatal("late native collision accepted")
+	}
+	last := f.api.writes[len(f.api.writes)-1]
+	if last["method"] != "POST" || last["status"] != "queued" {
+		t.Fatal("late collision left foreign green without a fresh owned barrier")
+	}
+	for _, mutation := range f.api.writes {
+		if mutation["conclusion"] == "success" || mutation["path"] == f.c.endpoint(fmt.Sprintf("check-runs/%d", foreign.ID)) {
+			t.Fatal("collision authorized green or mutated foreign check")
+		}
+	}
+}
+
+func TestCollisionMetadataMovementPublishesFreshBarrier(t *testing.T) {
+	for _, change := range []string{"head", "base SHA", "base ref", "closed"} {
+		t.Run(change, func(t *testing.T) {
+			f := newFixture(t)
+			foreign := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success"}
+			foreign.App.ID, foreign.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{foreign}
+			moved := false
+			f.api.readHook = func(path string, n int) {
+				if path != f.c.endpoint("pulls/7") || n != 2 {
+					return
+				}
+				moved = true
+				switch change {
+				case "head":
+					f.pr.Head.SHA = strings.Repeat("c", 40)
+				case "base SHA":
+					f.pr.Base.SHA = strings.Repeat("c", 40)
+				case "base ref":
+					f.pr.Base.Ref = "release"
+				case "closed":
+					f.pr.State = "closed"
+				}
+				f.refresh()
+			}
+			if err := f.execute(); err == nil {
+				t.Fatal("collision authorized proof")
+			}
+			if !moved {
+				t.Fatal("movement hook did not execute")
+			}
+			if change == "closed" {
+				if len(f.api.writes) != 0 {
+					t.Fatal("closed PR received a barrier")
+				}
+				return
+			}
+			if len(f.api.writes) != 1 {
+				t.Fatal("identity movement suppressed owned pending barrier")
+			}
+			v := f.api.checks[len(f.api.checks)-1]
+			b, err := decodeBinding(v.ExternalID)
+			if err != nil || v.HeadSHA != f.pr.Head.SHA || v.Status != "queued" || b != (snapshot{PR: f.pr}).binding(f.c.repo.ID) {
+				t.Fatal("pending barrier did not bind fresh authenticated identity")
+			}
+			if f.api.checks[0] != foreign {
+				t.Fatal("foreign check mutated")
+			}
+		})
+	}
+}
+
+func TestCollisionMetadataRefreshFailureStillPublishesPending(t *testing.T) {
+	f := newFixture(t)
+	foreign := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success"}
+	foreign.App.ID, foreign.App.Slug = actionsAppID, "github-actions"
+	f.api.checks = []check{foreign}
+	f.api.readHook = func(path string, n int) {
+		if path == f.c.endpoint("pulls/7") && n == 2 {
+			f.api.responses[path] = errors.New("PR refresh unavailable")
+		}
+	}
+	if err := f.execute(); err == nil || !strings.Contains(err.Error(), "PR refresh unavailable") {
+		t.Fatal("refresh error ignored")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" || f.api.writes[0]["method"] != "POST" || f.api.checks[0] != foreign {
+		t.Fatal("refresh failure retained green without an owned barrier")
 	}
 }

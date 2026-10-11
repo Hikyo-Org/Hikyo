@@ -24,11 +24,14 @@ func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 	}
 	guard := ci.Jobs["changes"].Steps[0]
 	expectedEnv := map[string]string{
-		"SOURCE_REVISION":       "${{ inputs.revision }}",
-		"EVENT_REPOSITORY":      "${{ github.event.repository.full_name }}",
-		"EVENT_REPOSITORY_ID":   "${{ github.event.repository.id }}",
-		"PR_NUMBER":             "${{ github.event.pull_request.number }}",
-		"PR_HEAD_SHA":           "${{ github.event.pull_request.head.sha }}",
+		"SOURCE_REVISION":     "${{ inputs.revision }}",
+		"EVENT_REPOSITORY":    "${{ github.event.repository.full_name }}",
+		"EVENT_REPOSITORY_ID": "${{ github.event.repository.id }}",
+		"PR_NUMBER":           "${{ github.event.pull_request.number }}",
+		"PR_HEAD_SHA":         "${{ github.event.pull_request.head.sha }}",
+		"PR_MERGE_SHA":        "${{ github.event.pull_request.merge_commit_sha }}",
+		"PR_BASE_SHA":         "${{ github.event.pull_request.base.sha }}",
+		"PR_BASE_REF":         "${{ github.event.pull_request.base.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}", "FULL_CANDIDATE": "${{ inputs.candidate }}",
 		"PR_HEAD_REPOSITORY":    "${{ github.event.pull_request.head.repo.full_name }}",
 		"PR_HEAD_REPOSITORY_ID": "${{ github.event.pull_request.head.repo.id }}",
 		"PR_BASE_REPOSITORY":    "${{ github.event.pull_request.base.repo.full_name }}",
@@ -68,7 +71,7 @@ func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 					if event == "pull_request" {
 						source = head
 					}
-					env := map[string]string{"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref, "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": source, "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "882", "PR_HEAD_SHA": head, "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10", "MERGE_GROUP_SHA": merge}
+					env := map[string]string{"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref, "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": source, "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "882", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "FULL_CANDIDATE": "false", "PR_BASE_SHA": strings.Repeat("d", 40), "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10", "MERGE_GROUP_SHA": merge}
 					want := event == "pull_request" || event == "merge_group" || (ref == "refs/heads/main" && (event == "workflow_dispatch" || event == "schedule" || event == "repository_dispatch"))
 					switch mutation {
 					case "wrong-revision":

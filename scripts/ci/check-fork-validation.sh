@@ -196,6 +196,16 @@ if printf '%s\n' "$files" | tr '\t' '\n' | grep '^\.github/' >&2; then
 	require_workflow_review
 fi
 
+# The completion publisher proves run, attempt and immutable integration source
+# independently. Its verifier only owns current PR/workflow-edit authority;
+# legacy polling remains isolated until the shadow check is activated.
+if [ "${PR_GATE_POLICY_ONLY:-0}" = 1 ]; then
+	check_current_pr
+	[ "$mergeable" = true ] || pending 'PR mergeability is still pending'
+	printf '{"workflow_change_authorized":%s}\n' "$workflow_changed"
+	exit 0
+fi
+
 deadline=$(($(date +%s) + timeout_seconds))
 while :; do
 	check_current_pr

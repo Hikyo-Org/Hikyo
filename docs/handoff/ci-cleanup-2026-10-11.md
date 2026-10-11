@@ -1,66 +1,68 @@
 # CI cleanup, 11 October 2026
 
-The local cleanup reduces 26 workflow files to 20, removes the standalone
-benchmark-smoke runner, and repairs the observation gate's long-branch identifier
-failure. The existing required gate and repository protections remain active.
-This is a locally validated implementation prepared for PR delivery, not a merged
-change or a measured hosted speedup. The [CI guide](../development/ci.md) is the
-contributor entry point.
+PR #886 integrates the completed #887 fast-feedback/full-candidate split with
+workflow consolidation and benchmark compilation reuse. The prepared final
+source contains 19 workflow files: the original 26, eight retired standalone
+entries, two consolidation menus, two feedback/candidate entry points, and
+three retired legacy validation/polling workflows.
 
-## What to use now
+This is the source handoff, not a claim that gate activation, #886 merge, or a
+universal five-minute hosted deadline is complete. Follow the
+[CI guide](../development/ci.md) for contributor choices and protected activation.
 
-| Task | Workflow |
+## Final behavior
+
+| Task | Workflow and merge authority |
 | --- | --- |
-| Normal contribution | Automatic `pr-validation`; follow the required `ci-required` check. |
-| Full validation of main | Manual `ci-main`. Nightly also runs the full graph before publishing. |
-| Security, GitLab, reporting, race, channel maintenance | `reliability`, with a suite selector. Original daily/weekly schedules remain. |
-| Manual backup/restore or operator acceptance | `release-acceptance`, with a suite selector. |
-| Operations acceptance | `ops-floor`, retained separately because it accepts PR execution. |
-| Paid performance measurement | Existing `codspeed` and PR benchmark controls, with existing admission budgets. |
+| Each pushed PR head | Automatic `ci-feedback`; selected checks only, never merge authority. Four-minute runner limit includes setup, with queue time measured separately. |
+| Final merge candidate | Maintainer requests `pr-candidate` with `ci:full`; every full-suite domain tests the exact head merged with current main. |
+| Required merge check | `ci-required-next`, published by trusted `ci-pr-gate` after exact repository/workflow/run/attempt/source/parent proof. Live requirement changes only after protected hosted activation. |
+| Complete main validation | Manual `ci-main`; nightly publication also depends on full validation. |
+| Security/GitLab/reporting/race/channel maintenance | `reliability`; original schedules and isolated job contracts remain. |
+| Native backup/restore/operator acceptance | `release-acceptance`; existing custody secrets remain confined to the backup step. |
+| Operations acceptance and paid measurements | Separate `ops-floor` and existing performance workflows, preserving hardware and budget boundaries. |
+| Nightly/stable/docs publication | Existing separate pipelines with their independent credentials and gates. |
 
-## Changes and reasons
+The request label authorizes work only. After head or main changes, remove and
+reapply it. Ordinary pushes receive feedback without restarting full validation.
+Metadata edits cannot cancel or evict useful feedback. The trusted gate rejects
+selective/head-only old runs and independently rechecks live source freshness.
+Existing fork vouching and explicit exact-head workflow-change approval policies
+remain; a label does not expand their authority.
 
-1. Five scheduled/manual entry points become `reliability.yml`: `go-security`,
-   `gitlab-e2e`, `reporting-e2e`, `race-isolation`, and `security-channel`.
-   Original suite steps, cron cadence, native runners, matrices, timeouts, pinned
-   tools, caches, and artifacts remain. Only the fallback-channel job can write
-   issues. Explicit routing rejects unknown events, cron values, and menu choices.
-2. `floor-acceptance` and `operator-floor` become `release-acceptance.yml`.
-   Backup custody secrets remain confined to the existing backup step. The
-   PR-capable `ops-floor` workflow remains separate from this secret-bearing flow.
-3. Benchmark smoke runs as a step in `test_core`, immediately after the same
-   packages have been compiled and tested. It still exercises every benchmark in
-   crypto, dotenv, scanning, server, and service once. Its failure now fails a
-   required job. The separate three-iteration scanning guard remains. Relevant
-   changes retain coverage; docs-only changes lose the unrelated cold Go job.
-4. The observed PR gate writes bounded versioned check identifiers. Its old
-   base64-encoded JSON exceeded GitHub's persisted length on long base refs.
-   The replacement retains full commit identities and hashes the complete base
-   ref. Legacy-state recovery only permits invalidation and fresh reassessment;
-   an incomplete old identifier is never success evidence.
-5. Metadata-only validation callbacks skip the observer runner, matching the
-   controller's existing no-op. New-run, in-progress, completed, lifecycle, and
-   scheduled repair events remain. In-progress callbacks matter because
-   [GitHub does not send requested events for reruns](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
-6. A single [CI guide](../development/ci.md), linked from CONTRIBUTING, explains
-   all 20 remaining files, manual commands, trust boundaries, and gate migration.
-   Active policy/docs references follow the consolidated workflows; historical
-   reports retain their original evidence.
+## Conservation and load reduction
 
-Consolidation improves navigation but adds a small routing job to each maintenance
-or acceptance run. It does not remove those suites' test execution. Benchmark
-reuse removes one separately allocated job on relevant PRs and the entire smoke
-job on irrelevant PRs. These are structural reductions, not measured elapsed-time
-savings. Smoke adds a short serial step to core tests; the independent local run
-completed its service benchmarks in 23.1 seconds, excluding other packages and
-compilation. No tests, security scans, signatures, or paid-run admission gates were
-removed to make CI green.
+Five maintenance entry points become `reliability`, retaining daily security,
+Monday 04:00 race, Monday 05:00 GitLab/reporting, and Monday 06:17 channel checks.
+Two native manual acceptance entries become `release-acceptance`; PR-capable
+operations remain separate. Routing rejects unknown events and suite selections.
 
-## What the measurements show
+The required core job exercises every benchmark once in crypto, dotenv,
+scanning, server, and service after compiling/testing those packages. This removes
+its separate smoke runner without deleting benchmark execution. The separate
+three-iteration scanning guard remains. Smoke adds serial work to the full core
+job; compilation reuse is not a measured hosted wall-clock improvement.
 
-Read-only GitHub evidence was collected on 11 October. Queue is job start minus
-job creation; execution is job completion minus job start. Runner-minute sums
-across parallel jobs are neither wall-clock duration nor invoice amounts.
+The frozen full-domain/execution baseline remains unchanged. Exact additive
+#884 demo and #886 benchmark steps require independent assertions and refusal
+mutations. Tests for removed legacy producers transfer their applicable source,
+permissions, cache, fork, trigger, and failure guarantees to active workflows.
+No test, race, fuzz, security, signature, native hardware, release, or paid-budget
+gate may be dropped to obtain green.
+
+The completion-driven gate uses short callbacks and queued Checks API results.
+`ci-control`, `ci-fork`, and `ci-gate-reconcile` retire after hosted proof and an
+atomic required-context swap. Same-name legacy/new writers must not coexist as
+alternative success authority. Branch rules match check names and optional app
+identity, not producer workflows; the generic GitHub Actions app cannot establish
+stronger workflow-origin enforcement. Manual inspection of the exact trusted
+publisher/full-candidate provenance remains mandatory. This platform limit
+predates the split and is not claimed solved here. The bounded binary v2 identifiers and conservative
+truncated-v1 invalidation repair remain compatible with deployed checks.
+
+## Evidence and its limits
+
+Historical full-suite samples collected on11October:
 
 | Run | Context | Elapsed minutes | Execution job-minutes | Median job queue minutes |
 | --- | --- | ---: | ---: | ---: |
@@ -71,87 +73,72 @@ across parallel jobs are neither wall-clock duration nor invoice amounts.
 | [38063236970](https://github.com/Hikyo-Org/Hikyo/actions/runs/38063236970) | Main | 150.83 | 417.52 | 56.60 |
 | [38058367653](https://github.com/Hikyo-Org/Hikyo/actions/runs/38058367653) | Main | 36.72 | 374.25 | 2.29 |
 
-Each sampled run has 46 successful jobs. Similar full graphs finish in roughly
-32 minutes with little queueing and take 151 minutes under contention. Some PR
-jobs waited 61-92 minutes for a runner. This establishes queue contention as the
-dominant source of the extreme durations; it does not identify the effective
-organization quota or other repositories' load.
+The sampled full graphs have46successful jobs; quiet runs take about32minutes,
+while contention stretches them toward151minutes. Execution runner-minutes are
+parallel work, not elapsed duration or invoice amounts. These samples identify
+queue contention; they do not prove a reserved feedback capacity.
 
-The GitHub inventory has 32 registered workflows versus 26 original source files:
-four provider-generated entries and two historical deleted paths account for the
-difference. Deleting YAML does not erase Actions history or guarantee that its old
-sidebar entry disappears. A separately approved archive-and-delete operation
-retires obsolete history. The eight workflows replaced here must remain active
-until these replacements reach main. GitHub-managed security settings stay intact.
+#887's final bootstrap head `d48a18a2a4ce1571eb4b01638548d5758fd8e880`
+completed [full run38133568624](https://github.com/Hikyo-Org/Hikyo/actions/runs/38133568624)
+and [required controller38133566382](https://github.com/Hikyo-Org/Hikyo/actions/runs/38133566382).
+All16mandatory domains passed on an integration tree matching current main48087
+plus that head. It merged as `a5059c93f13d475b30c6eae6629c67f7a4b7aba3`.
+This legacy bootstrap result does not prove the new hosted candidate publisher.
 
-## Why the polling gate stays for now
+The final #887 feedback completed in95seconds:19seconds to runner start and
+75seconds execution, with API timestamps accounting for the remaining second.
+The first observed feedback took5minutes15seconds, dominated by4minutes02seconds
+of queueing. A four-minute execution deadline does not guarantee five-minute
+commit-to-feedback under a saturated shared runner pool. Measure new accepted
+heads after activation, distinguishing queue, setup, execution, and provider waits.
 
-The earlier replacement is still called `ci-required-next`. Hosted observation
-accepted queued checks and successes, and REST `filter=latest` selected the newest
-check. But long stacked Dependabot refs produced exactly 255-byte identifiers
-containing incomplete JSON. [Scheduled reconciliation 38101138824](https://github.com/Hikyo-Org/Hikyo/actions/runs/38101138824)
-failed with unexpected EOF for four PRs; 17 of the latest 60 sampled observer runs
-were failed callbacks. The local identifier repair addresses that proven defect.
+#886's prior `ceef331b8fe008565e7c6af7675faac9a349bc14` full run
+[38128732411](https://github.com/Hikyo-Org/Hikyo/actions/runs/38128732411)
+was cancelled during authorized resource cleanup. It is missing proof, not a
+passing suite or a new application failure. Qodo resolved its contributor-doc
+finding; CodeRabbit's then-current coverage was older2491dee with rate-limited
+ceef review. Optional paid benchmarks skipped budget admission. Provider skips
+are unavailable evidence, never clean reviews or performance success.
 
-Same-head rerun invalidation and recognition as the required repository check
-remain unproven on GitHub. Ruleset 20539346 still requires the old `ci-required`,
-strict current-base status, signatures, and resolved review threads, with no bypass
-actors. Removing the old polling job and its repair workflow before this proof
-would be premature. No ruleset changes are part of this patch.
+Original #886 local validation included CI/gate tests, vet, workflow lint,
+shell policy/cache/source fixtures, two real five-package benchmark runs, and
+routing/security comparison. After integration, rerun the relevant complete CI
+script tests, workflow lint, shell fixtures, docs checks and independent review.
+The migrated OSS-policy fixtures passed against the existing built site, including
+seven canonical gate/protection refusal mutations and a complete positive
+synthetic baseline. ShellCheck on both OSS scripts, read-only docs content
+preparation, and scoped whitespace checks also passed. These are local checks;
+they do not prove live protection activation.
 
-The largest remaining speed opportunity is replacing the runner-held wait with
-the repaired completion-driven gate. The rollout must demonstrate long-ref
-publication/readback, stale-success invalidation after rerun/base changes, and
-required-check recognition before removing the legacy pair. Increasing timeouts,
-dropping race coverage, or blindly reducing shard count would not fix the
-measured source of delay. The sampled longest race shard already takes 22.5
-minutes against a 30-minute limit.
+Record final exact-head hosted evidence separately; do not carry old CLEAN or
+local validation claims forward to the changed patch.
 
-## Validation and review
+## Operator completion checklist
 
-Passed validation:
+1. Validate the integrated signed/DCO #886 range and complete fresh full-candidate
+   CI on the exact latest-main merge. Independently inspect all mandatory jobs,
+   trusted-source identity, run attempt, completion marker and both parents.
+2. Prove the default-branch shadow producer publishes correct pending/terminal
+   states and invalidates stale successes. Inspect policy refusal and shared-head
+   check ownership; native legacy checks cannot become success evidence.
+3. Atomically require `ci-required-next` while preserving every other original
+   protection. Verify semantic readback and required-check recognition. The live
+   ruleset may still require legacy `ci-required` until this step; do not silently
+   treat local configuration as live activation.
+4. Merge the prepared #886 source retirement only after that swap, with the
+   complete final exact-head/latest-main suite and addressed review findings.
+   The workflow deletions are already in the tested final head; live retirement
+   occurs at merge, without a separate retirement edit that would change the head.
+   Revalidate after any head/base change. No tests are waived.
+5. Measure per-commit feedback including queue under representative load. If the
+   shared hosted pool cannot meet the target, report capacity limits honestly;
+   removing polling does not reserve runner slots. Nightly, main/manual,
+   release and publication acceptance remain independent.
 
-- `go test ./scripts/ci/... -count=1`, `go vet ./scripts/ci/...`, and gate race tests.
-- Repository-pinned workflow lint via `scripts/ci/run-go-tool.sh actionlint`,
-  ShellCheck on changed shell files, import formatting for 1,884 handwritten Go
-  files, and `git diff --check`.
-- Required-job, trusted-script, cache-policy, artifact-reuse, changed-path, and
-  OSS-policy shell fixtures. No required job or classifier registry was weakened.
-- The unchanged real five-package benchmark command, run by the implementer and
-  independently by the reviewer. Tests execute revision guards, command failure
-  propagation, and rejection of a failed core job by the required aggregate.
-- Every manual menu choice and preserved schedule, unknown-event/input refusals,
-  original-job structural comparison, and cross-job permission/secret checks.
-- Docs typecheck: 43 files with zero errors/warnings/hints. Full docs build:
-  76 pages. The new contributor link is rewritten by the canonical site mapper.
-
-GPT-6.1 Sol at high effort performed research and implementation, followed by
-two fresh independent reviews. The workflow review caught an unquoted YAML `#`
-in the metadata filter; the folded expression fixed it. Security review caught
-legacy identifier recovery failing after base movement/retargeting and at some
-truncation boundaries. The final recovery handles those without trusting old
-outcomes. Independent adversarial tests cover malformed numbers/digests,
-canonicality, stale bases, retargets, old PRs sharing a head, Unicode and escape
-boundaries, and the two actual malformed checks saved from GitHub. Both reviews
-report no remaining actionable findings. Hosted publication remains untested.
-
-After PR #885 reached main, the overlapping controller changes were combined
-with its deployed 156-character binary v2 identifier format. This preserves
-compatibility with checks already published by main while retaining this PR's
-stricter partial-JSON validation and publication checks. Regression cases from
-both branches remain covered. The prior head's `ci-required` failure explicitly
-reported a merge conflict, rather than a failed application test.
-
-The merged controller source SHA-256 is
-`13ed08b103d8b4e70aa192312afee22b5f8bc0ef502b73726f8e8ed59810f6d2`.
-Raw timing JSON, test logs, and paired research/security-review artifacts are
-retained locally under `/tmp/hikyo-ci-audit`. The linked GitHub runs are the
-durable sources for the measurements. Delivery proceeds through a signed PR with
-hosted checks; merge, release, deployment, and gate activation are not established
-by the local checks above. The separately approved sidebar cleanup archives
-available logs/artifacts before deleting runs belonging only to retired workflows.
-
-The graph was rebuilt for navigation using AST extraction without an LLM/API
-charge; its 17 parser warnings concern partially understood existing files, so
-workflow/runtime conclusions use source and executable checks. Graph extraction
-used zero semantic-model tokens; agent/review token usage was not measured.
+Deleting workflow YAML does not erase historical Actions entries or provider-
+generated security workflows. This patch does not delete run history, publish
+releases, deploy applications, or change paid benchmark admission. Historical
+research raw data remains under `/tmp/hikyo-ci-audit`; newer scoped audit and
+readiness evidence is under `/tmp/hikyo-ci-five-minute`. GitHub links above are
+the durable sources. Graph output is navigational and runtime claims require
+source and executable evidence.

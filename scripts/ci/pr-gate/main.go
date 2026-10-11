@@ -23,7 +23,7 @@ import (
 	"unicode/utf8"
 )
 
-const workflowPath = ".github/workflows/ci-fork.yml"
+const workflowPath = ".github/workflows/ci-candidate.yml"
 const externalPrefix = "hikyo-pr-gate:v2:"
 const legacyExternalPrefix = "hikyo-pr-gate:v1:"
 const externalIDLimit = 255
@@ -338,6 +338,7 @@ func canonicalStringPrefix(data []byte) bool {
 
 type event struct {
 	Repository repository `json:"repository"`
+	Ref        string     `json:"ref"`
 	Number     int        `json:"number"`
 	Pull       pull       `json:"pull_request"`
 	Run        run        `json:"workflow_run"`
@@ -384,26 +385,38 @@ func (ghAPI) write(ctx context.Context, method, path string, payload, result any
 	return decode(response, result)
 }
 
-type verifier func(context.Context, int, string) (int, error)
+type policyDecision struct {
+	Code                     int
+	WorkflowChangeAuthorized bool
+}
 
-func verifyPolicy(ctx context.Context, pr int, head string) (int, error) {
+type verifier func(context.Context, int, string) (policyDecision, error)
+
+func verifyPolicy(ctx context.Context, pr int, head string) (policyDecision, error) {
 	cmd := exec.CommandContext(ctx, "sh", "scripts/ci/check-fork-validation.sh")
 	// Override only the controller-owned settings, retaining gh authentication.
 	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "PR_NUMBER=") && !strings.HasPrefix(value, "HEAD_SHA=") && !strings.HasPrefix(value, "PR_GATE_ONCE=") {
+		if !strings.HasPrefix(value, "PR_NUMBER=") && !strings.HasPrefix(value, "HEAD_SHA=") && !strings.HasPrefix(value, "PR_GATE_ONCE=") && !strings.HasPrefix(value, "PR_GATE_POLICY_ONLY=") {
 			cmd.Env = append(cmd.Env, value)
 		}
 	}
-	cmd.Env = append(cmd.Env, "PR_NUMBER="+strconv.Itoa(pr), "HEAD_SHA="+head, "PR_GATE_ONCE=1")
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	cmd.Env = append(cmd.Env, "PR_NUMBER="+strconv.Itoa(pr), "HEAD_SHA="+head, "PR_GATE_ONCE=1", "PR_GATE_POLICY_ONLY=1")
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, os.Stderr
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 75) {
-			return exit.ExitCode(), nil
+			return policyDecision{Code: exit.ExitCode()}, nil
 		}
-		return 0, errors.New("trusted one-shot policy verifier could not execute")
+		return policyDecision{}, errors.New("trusted one-shot policy verifier could not execute")
 	}
-	return 0, nil
+	var response struct {
+		WorkflowChangeAuthorized *bool `json:"workflow_change_authorized"`
+	}
+	if err := decode(output.Bytes(), &response); err != nil || response.WorkflowChangeAuthorized == nil {
+		return policyDecision{}, errors.New("trusted policy verifier omitted its typed workflow authority decision")
+	}
+	return policyDecision{WorkflowChangeAuthorized: *response.WorkflowChangeAuthorized}, nil
 }
 
 type controller struct {
@@ -419,7 +432,7 @@ type controller struct {
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
 func validWorkflow(w workflow) bool {
-	return w.ID > 0 && w.Path == workflowPath && (w.Name == "fork-ci" || w.Name == "pr-validation")
+	return w.ID > 0 && w.Path == workflowPath && w.Name == "pr-candidate"
 }
 func (c *controller) init(ctx context.Context) error {
 	if !repoPattern.MatchString(c.repoName) {
@@ -434,7 +447,7 @@ func (c *controller) init(ctx context.Context) error {
 	if c.repo.ID <= 0 || !strings.EqualFold(c.repo.FullName, c.repoName) {
 		return errors.New("repository identity mismatch")
 	}
-	if err := c.api.read(ctx, c.endpoint("actions/workflows/ci-fork.yml"), &c.workflow); err != nil {
+	if err := c.api.read(ctx, c.endpoint("actions/workflows/ci-candidate.yml"), &c.workflow); err != nil {
 		return err
 	}
 	if !validWorkflow(c.workflow) {
@@ -445,7 +458,7 @@ func (c *controller) init(ctx context.Context) error {
 func validReference(r reference) bool {
 	return shaPattern.MatchString(r.SHA) && r.Ref != "" && r.Repo.ID > 0 && repoPattern.MatchString(r.Repo.FullName)
 }
-func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
+func (c *controller) readPRMetadata(ctx context.Context, number int) (pull, error) {
 	var p pull
 	if number <= 0 {
 		return p, errors.New("invalid PR number")
@@ -455,6 +468,32 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 	}
 	if p.Number != number || (p.State != "open" && p.State != "closed") || !validReference(p.Head) || !validReference(p.Base) || p.Base.Repo.ID != c.repo.ID || !strings.EqualFold(p.Base.Repo.FullName, c.repoName) {
 		return p, errors.New("invalid current PR metadata")
+	}
+	return p, nil
+}
+func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
+	p, err := c.readPRMetadata(ctx, number)
+	if err != nil {
+		return p, err
+	}
+	// REST pull.base.sha may remain the branch divergence commit after main
+	// advances. Resolve the authenticated branch ref on every read, including
+	// final publication, instead of treating that PR metadata as the live tip.
+	if p.State == "open" && p.Base.Ref == c.repo.DefaultBranch {
+		var ref struct {
+			Ref    string `json:"ref"`
+			Object struct {
+				Type string `json:"type"`
+				SHA  string `json:"sha"`
+			} `json:"object"`
+		}
+		if err := c.api.read(ctx, c.endpoint("git/ref/heads/"+url.PathEscape(c.repo.DefaultBranch)), &ref); err != nil {
+			return p, err
+		}
+		if ref.Ref != "refs/heads/"+c.repo.DefaultBranch || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
+			return p, errors.New("invalid live default-branch ref")
+		}
+		p.Base.SHA = ref.Object.SHA
 	}
 	return p, nil
 }
@@ -502,7 +541,7 @@ func associated(r run, p pull, exactBase bool) bool {
 	count := 0
 	for _, a := range r.Pulls {
 		if a.Number == p.Number && a.Head.SHA == p.Head.SHA && a.Head.Repo.ID == p.Head.Repo.ID && a.Base.Repo.ID == p.Base.Repo.ID {
-			if !exactBase || (a.Base.SHA == p.Base.SHA && a.Base.Ref == p.Base.Ref) {
+			if !exactBase || (a.Base.Ref == p.Base.Ref) {
 				count++
 			}
 		}
@@ -534,7 +573,7 @@ func (c *controller) latest(ctx context.Context, p pull) (*run, error) {
 			Total int   `json:"total_count"`
 			Runs  []run `json:"workflow_runs"`
 		}
-		path := fmt.Sprintf("actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page)
+		path := fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page)
 		if err := c.api.read(ctx, c.endpoint(path), &list); err != nil {
 			return nil, err
 		}
@@ -546,7 +585,7 @@ func (c *controller) latest(ctx context.Context, p pull) (*run, error) {
 				return nil, errors.New("invalid or duplicate validation run metadata")
 			}
 			seen[r.ID] = true
-			if r.HeadRepository.ID != p.Head.Repo.ID || !associated(r, p, false) || (r.DisplayTitle != fmt.Sprintf("fork-ci #%d", p.Number) && r.DisplayTitle != fmt.Sprintf("pr-validation #%d", p.Number)) {
+			if r.HeadRepository.ID != p.Head.Repo.ID || !associated(r, p, false) || r.DisplayTitle != fmt.Sprintf("candidate-ci #%d", p.Number) {
 				continue
 			}
 			if latest == nil || r.ID > latest.ID {
@@ -632,7 +671,12 @@ func (c *controller) reusedVouch(ctx context.Context, r run) (bool, error) {
 	}
 	return count == 1 && successful, nil
 }
-func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
+func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, err error) {
+	defer func() {
+		if err != nil {
+			err = c.refuseCheckIdentity(ctx, p, err)
+		}
+	}()
 	var own []check
 	listed := 0
 	seen := make(map[int64]bool)
@@ -641,7 +685,7 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			Total  int     `json:"total_count"`
 			Checks []check `json:"check_runs"`
 		}
-		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=latest&per_page=100&page=%d", p.Head.SHA, c.checkName, page)), &list); err != nil {
+		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", p.Head.SHA, c.checkName, page)), &list); err != nil {
 			return nil, err
 		}
 		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {
@@ -714,7 +758,7 @@ func (c *controller) snapshot(ctx context.Context, number int) (snapshot, error)
 	for _, other := range all {
 		if other.Number == p.Number {
 			found = true
-			if other.Head != p.Head || other.Base != p.Base {
+			if other.Head != p.Head || other.Base.Ref != p.Base.Ref || other.Base.Repo != p.Base.Repo {
 				return s, errors.New("PR changed during collision scan")
 			}
 		}
@@ -745,15 +789,22 @@ func refused(summary string) outcome {
 	return outcome{Status: "completed", Conclusion: "failure", Title: "PR validation refused", Summary: summary}
 }
 func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) {
-	code, err := c.verify(ctx, s.PR.Number, s.PR.Head.SHA)
+	if s.PR.Base.Ref != c.repo.DefaultBranch {
+		return refused("The full candidate gate only authorizes the current default branch."), nil
+	}
+	policy, err := c.verify(ctx, s.PR.Number, s.PR.Head.SHA)
 	if err != nil {
 		return outcome{}, err
 	}
+	code := policy.Code
 	if code != 0 && code != 1 && code != 75 {
 		return outcome{}, errors.New("invalid one-shot verifier result")
 	}
 	if s.Collision {
 		return refused("Another open PR shares this head. A commit-level check cannot safely authorize distinct PR policy and integration candidates."), nil
+	}
+	if code == 75 {
+		return pending("Trusted policy verification is still pending; validation success alone cannot authorize the merge."), nil
 	}
 	if code == 1 {
 		return refused("The trusted exact-head policy verifier refused this PR. Inspect the controller workflow log for the policy or validation failure."), nil
@@ -772,12 +823,17 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 	if err != nil {
 		return outcome{}, err
 	}
-	aggregates, vouches := 0, 0
-	aggregateOK, vouchOK := false, false
+	aggregates, candidates, vouches := 0, 0, 0
+	aggregateOK, candidateOK, candidateSourceOK, vouchOK := false, false, false, false
 	for _, j := range jobs {
 		if j.Name == "validation / ci-required" {
 			aggregates++
 			aggregateOK = j.Status == "completed" && j.Conclusion == "success"
+		}
+		if j.Name == "candidate-proof" {
+			candidates++
+			candidateSourceOK = j.Status == "completed" && j.HeadSHA == r.HeadSHA
+			candidateOK = candidateSourceOK && j.Conclusion == "success"
 		}
 		if j.Name == "vouch" {
 			vouches++
@@ -786,6 +842,23 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 	}
 	if aggregates != 1 {
 		return refused("Validation must contain exactly one validation / ci-required aggregate for the current attempt."), nil
+	}
+	if candidates != 1 || !candidateSourceOK {
+		return refused("Validation requires exactly one successful candidate-proof job for this source head and attempt. Earlier selective or head-only runs cannot authorize merge."), nil
+	}
+	// A completed marker from this exact source/attempt can fail because main
+	// moved during validation. Check its immutable integration before deciding
+	// whether that failure belongs to the current candidate. Invalid marker
+	// identity and unreadable provenance still fail closed above and below.
+	proved, err := c.proveIntegration(ctx, r, s.PR)
+	if err != nil {
+		return outcome{}, err
+	}
+	if !proved {
+		return pending("The validation run does not prove the current base/head integration candidate. Fresh validation is required."), nil
+	}
+	if !candidateOK {
+		return refused("Validation requires a successful candidate-proof job for the current integration candidate."), nil
 	}
 	if r.Conclusion != "success" || !aggregateOK {
 		return refused(fmt.Sprintf("Validation run %d attempt %d failed or did not produce a successful aggregate.", r.ID, r.Attempt)), nil
@@ -812,15 +885,12 @@ func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) 
 			return refused("The fork author is no longer vouched by current default-branch policy or current collaborator permission."), nil
 		}
 	}
-	proved, err := c.proveIntegration(ctx, r, s.PR)
+	contract, err := c.proveWorkflowContract(ctx, s.PR, policy.WorkflowChangeAuthorized)
 	if err != nil {
 		return outcome{}, err
 	}
-	if !proved {
-		return pending("The validation run does not prove the current base/head integration candidate. Fresh validation is required."), nil
-	}
-	if code == 75 {
-		return pending("Trusted policy verification is still pending; validation success alone cannot authorize the merge."), nil
+	if !contract {
+		return refused("Candidate workflow or reusable validation differs from the trusted base without current exact-head workflow-change authority."), nil
 	}
 	return outcome{Status: "completed", Conclusion: "success", Title: "PR validation passed", Summary: fmt.Sprintf("Trusted policy and validation run %d attempt %d passed for PR #%d head %s against %s at %s.", r.ID, r.Attempt, s.PR.Number, s.PR.Head.SHA, s.PR.Base.Ref, s.PR.Base.SHA)}, nil
 }
@@ -909,7 +979,8 @@ func (c *controller) currentVouch(ctx context.Context, p pull) (bool, error) {
 func (c *controller) proveIntegration(ctx context.Context, r run, p pull) (bool, error) {
 	// API PR associations can change after retargets. GitHub records the actual
 	// reusable workflow merge commit. Compare it with GitHub's current merge
-	// candidate, including stacked PRs whose first parent is a synthetic merge.
+	// candidate. The first parent must be the current base itself: a synthetic
+	// stacked base is not proof of testing the exact current-main candidate.
 	var mergeSHA string
 	count := 0
 	for _, ref := range r.References {
@@ -944,7 +1015,40 @@ func (c *controller) proveIntegration(ctx context.Context, r run, p pull) (bool,
 	if commit.SHA != mergeSHA || commit.Parents == nil {
 		return false, errors.New("invalid immutable integration commit")
 	}
-	return len(commit.Parents) == 2 && shaPattern.MatchString(commit.Parents[0].SHA) && commit.Parents[1].SHA == p.Head.SHA, nil
+	return len(commit.Parents) == 2 && commit.Parents[0].SHA == p.Base.SHA && commit.Parents[1].SHA == p.Head.SHA, nil
+}
+
+func (c *controller) proveWorkflowContract(ctx context.Context, p pull, authorizedChange bool) (bool, error) {
+	// A forged marker and aggregate are not proof. Normally the immutable
+	// candidate's workflow contract must equal the trusted base byte for byte.
+	// Differences retain the existing exact-head workflow approval/BDFL policy;
+	// they never obtain authority just by producing successful job names.
+	for _, path := range []string{workflowPath, ".github/workflows/ci.yml"} {
+		var versions [][]byte
+		for _, revision := range []string{p.Base.SHA, p.MergeCommitSHA} {
+			var file struct {
+				Type     string `json:"type"`
+				Path     string `json:"path"`
+				Encoding string `json:"encoding"`
+				Content  string `json:"content"`
+			}
+			if err := c.api.read(ctx, c.endpoint("contents/"+path+"?ref="+revision), &file); err != nil {
+				return false, err
+			}
+			if file.Type != "file" || file.Path != path || file.Encoding != "base64" {
+				return false, errors.New("invalid immutable workflow contract response")
+			}
+			data, err := base64.StdEncoding.DecodeString(file.Content)
+			if err != nil || len(data) == 0 {
+				return false, errors.New("invalid immutable workflow contract bytes")
+			}
+			versions = append(versions, data)
+		}
+		if !bytes.Equal(versions[0], versions[1]) && !authorizedChange {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 func sameSnapshot(a, b snapshot, repoID int64) bool {
 	if a.PR.State != b.PR.State || a.PR.Head != b.PR.Head || a.PR.Base != b.PR.Base || a.PR.MergeCommitSHA != b.PR.MergeCommitSHA || a.Collision != b.Collision || a.binding(repoID) != b.binding(repoID) {
@@ -988,12 +1092,14 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 	}
 	// Repeat authorization just before publication, including current maintainer
 	// approval. Both reads and checks are intentionally bounded and never sleep.
+	var finalPolicy policyDecision
 	if result.Conclusion == "success" {
-		code, err := c.verify(ctx, number, s.PR.Head.SHA)
+		decision, err := c.verify(ctx, number, s.PR.Head.SHA)
 		if err != nil {
 			return err
 		}
-		switch code {
+		finalPolicy = decision
+		switch decision.Code {
 		case 0:
 		case 1:
 			result = refused("Trusted policy was refused during the final authorization check.")
@@ -1026,6 +1132,13 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 		}
 		if !proved {
 			return errors.New("integration candidate changed before success publication")
+		}
+		contract, err := c.proveWorkflowContract(ctx, final.PR, finalPolicy.WorkflowChangeAuthorized)
+		if err != nil {
+			return err
+		}
+		if !contract {
+			return errors.New("workflow contract authority changed before success publication")
 		}
 	}
 	own, err = c.ownedChecks(ctx, final.PR)
@@ -1061,7 +1174,10 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	// Reruns supersede completed checks by creating a fresh queued check.
 	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
-		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.BaseRef == b.BaseRef
+		// The pre-ref-read barrier carries PR metadata, whose base SHA can be
+		// stale. Only an incomplete, unbound barrier for this same identity may
+		// acquire the freshly proved live base/run binding in place.
+		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.BaseRef == b.BaseRef
 		if !placeholder {
 			selected = nil
 		}
@@ -1098,8 +1214,30 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	}
 	return nil
 }
+func (c *controller) refuseCheckIdentity(ctx context.Context, p pull, err error) error {
+	// A native same-name check can hide an older owned success. Listing or
+	// identity refusal must still leave a fresh owned pending barrier; never
+	// modify the foreign check or treat its green result as proof.
+	current, readErr := c.readPRMetadata(ctx, p.Number)
+	if readErr != nil {
+		// The caller already authenticated p. A refresh failure cannot make
+		// its prior green trustworthy; pending against that identity is safe.
+		err = errors.Join(err, readErr)
+		current = p
+	}
+	if current.State != "open" {
+		return err
+	}
+	// A concurrent retarget/head change is also pending. Bind only the fresh
+	// authenticated identity; a pending barrier never authorizes merge.
+	b := (snapshot{PR: current}).binding(c.repo.ID)
+	if writeErr := c.publish(ctx, current, b, nil, pending("Check identity or listing could not be verified; refusing merge proof.")); writeErr != nil {
+		return errors.Join(err, writeErr)
+	}
+	return err
+}
 func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
-	p, err := c.readPR(ctx, number)
+	p, err := c.readPRMetadata(ctx, number)
 	if err != nil {
 		return err
 	}
@@ -1118,7 +1256,7 @@ func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 		}
 	}
 	if latest == nil || strings.HasPrefix(latest.ExternalID, legacyExternalPrefix) || (latest.Status == "completed" && latest.Conclusion == "success") {
-		current, err := c.readPR(ctx, number)
+		current, err := c.readPRMetadata(ctx, number)
 		if err != nil {
 			return err
 		}
@@ -1147,7 +1285,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 		if e.Number <= 0 || e.Pull.Number != e.Number {
 			return errors.New("invalid pull_request_target event")
 		}
-		p, err := c.readPR(ctx, e.Number)
+		p, err := c.readPRMetadata(ctx, e.Number)
 		if err != nil {
 			return err
 		}
@@ -1186,7 +1324,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 			if a.Number <= 0 {
 				return errors.New("invalid callback PR hint")
 			}
-			p, err := c.readPR(ctx, a.Number)
+			p, err := c.readPRMetadata(ctx, a.Number)
 			if err != nil {
 				return err
 			}
@@ -1226,7 +1364,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 				return errors.New("invalid or ambiguous callback PR association")
 			}
 			seen[a.Number] = true
-			p, err := c.readPR(ctx, a.Number)
+			p, err := c.readPRMetadata(ctx, a.Number)
 			if err != nil {
 				return err
 			}
@@ -1247,7 +1385,10 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 			}
 		}
 		return nil
-	case "schedule":
+	case "schedule", "push":
+		if eventName == "push" && e.Ref != "refs/heads/"+c.repo.DefaultBranch {
+			return nil
+		}
 		pulls, err := c.openPRs(ctx)
 		if err != nil {
 			return err
@@ -1267,7 +1408,7 @@ func (c *controller) execute(ctx context.Context, eventName string, e event) err
 }
 func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 	for _, hint := range hints {
-		p, err := c.readPR(ctx, hint.Number)
+		p, err := c.readPRMetadata(ctx, hint.Number)
 		if err != nil {
 			return err
 		}
@@ -1295,7 +1436,7 @@ func main() {
 	}
 	checkName := os.Getenv("PR_GATE_CHECK_NAME")
 	if checkName == "" {
-		checkName = "ci-required"
+		checkName = "ci-required-next"
 	}
 	data, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
 	var e event

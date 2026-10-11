@@ -65,8 +65,8 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 1 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
-		t.Fatal("CI must require one immutable revision input")
+	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
+		t.Fatal("CI must require an immutable revision and optional candidate mode")
 	}
 	if len(manual.On) != 1 {
 		t.Fatal("manual main wrapper must have only dispatch entrypoint")
@@ -79,10 +79,16 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if len(manual.Jobs) != 1 || manualValidation.Uses != "./.github/workflows/ci.yml" || manualValidation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(manualValidation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(manualValidation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
 		t.Fatal("manual main wrapper must select only the exact main event SHA")
 	}
-	for _, caller := range []struct{ name, revision string }{{"ci-fork.yml", "${{ github.event.pull_request.head.sha }}"}, {"ci-merge-group.yml", "${{ github.sha }}"}} {
+	for _, caller := range []struct {
+		name   string
+		inputs map[string]string
+	}{
+		{"ci-candidate.yml", map[string]string{"revision": "${{ github.sha }}", "candidate": "true"}},
+		{"ci-merge-group.yml", map[string]string{"revision": "${{ github.sha }}"}},
+	} {
 		job := read(caller.name).Jobs["validation"]
-		if !reflect.DeepEqual(job.With, map[string]string{"revision": caller.revision}) {
-			t.Fatalf("%s must explicitly bind source authority", caller.name)
+		if !reflect.DeepEqual(job.With, caller.inputs) {
+			t.Fatalf("%s must explicitly bind source authority and full-candidate mode", caller.name)
 		}
 	}
 	validation := nightly.Jobs["validation"]

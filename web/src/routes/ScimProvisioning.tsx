@@ -221,6 +221,7 @@ function BindingCard({
           variant={selected ? 'primary' : 'secondary'}
           aria-pressed={selected}
           onClick={onSelect}
+          readOnlySafe
         >
           {selected ? 'Administering' : 'Administer'}
         </Button>

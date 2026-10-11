@@ -4,15 +4,32 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const siteRoot = resolve(scriptDirectory, '..');
-const repositoryRoot = resolve(siteRoot, '../..');
+let repositoryRoot = resolve(siteRoot, '../..');
+const arguments_ = process.argv.slice(2);
+let checkOnly = false;
+let sourceRoot;
+for (let index = 0; index < arguments_.length; index += 1) {
+  const argument = arguments_[index];
+  if (argument === '--check' && !checkOnly) {
+    checkOnly = true;
+  } else if (argument === '--source-root' && sourceRoot === undefined && arguments_[index + 1] && !arguments_[index + 1].startsWith('--')) {
+    sourceRoot = arguments_[++index];
+  } else {
+    throw new Error('Usage: prepare-content.mjs [--check [--source-root PATH]]');
+  }
+}
+if (sourceRoot !== undefined) {
+  if (!checkOnly) throw new Error('--source-root requires read-only --check mode');
+  repositoryRoot = resolve(sourceRoot);
+}
 const docsRoot = resolve(siteRoot, 'src/content/docs');
 
 // Keep the first-use upgrade entrypoint identical to the reviewed source.
-await mkdir(resolve(siteRoot, 'public'), { recursive: true });
-await writeFile(
-  resolve(siteRoot, 'public/upgrade-nightly.sh'),
-  await readFile(resolve(repositoryRoot, 'install/upgrade-nightly.sh')),
-);
+const upgradeScript = await readFile(resolve(repositoryRoot, 'install/upgrade-nightly.sh'));
+if (!checkOnly) {
+  await mkdir(resolve(siteRoot, 'public'), { recursive: true });
+  await writeFile(resolve(siteRoot, 'public/upgrade-nightly.sh'), upgradeScript);
+}
 
 // Targets are .mdx, not .md: Astro only applies the Fumadocs `components`
 // override (the overflow-scrolling table wrapper and the anchor-linked headings)
@@ -48,6 +65,7 @@ const pages = [
 ];
 
 const siteLinks = new Map([
+  ['scripts/dev/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/scripts/dev/README.md'],
   ['online-signing.md', '/release/online-signing/'],
   ['online-signing.md#one-time-setup', '/release/online-signing/#one-time-setup'],
   ['online-signing.md#custody-and-recovery', '/release/online-signing/#custody-and-recovery'],
@@ -73,15 +91,17 @@ const siteLinks = new Map([
   ['./TRADEMARK.md', '/trademark/'],
 ]);
 
-for (const page of pages) {
-  await rm(resolve(docsRoot, page.target), { force: true });
-  // Remove the pre-.mdx artifact too so a stale local .md never collides with
-  // the .mdx page for the same slug.
-  await rm(resolve(docsRoot, page.target.replace(/\.mdx$/, '.md')), { force: true });
+if (!checkOnly) {
+  for (const page of pages) {
+    await rm(resolve(docsRoot, page.target), { force: true });
+    // Remove the pre-.mdx artifact too so a stale local .md never collides with
+    // the .mdx page for the same slug.
+    await rm(resolve(docsRoot, page.target.replace(/\.mdx$/, '.md')), { force: true });
+  }
+  await rm(resolve(docsRoot, 'policies'), { recursive: true, force: true });
+  await rm(resolve(docsRoot, 'license.md'), { force: true });
+  await mkdir(resolve(docsRoot, 'release'), { recursive: true });
 }
-await rm(resolve(docsRoot, 'policies'), { recursive: true, force: true });
-await rm(resolve(docsRoot, 'license.md'), { force: true });
-await mkdir(resolve(docsRoot, 'release'), { recursive: true });
 
 for (const page of pages) {
   const source = await readFile(resolve(repositoryRoot, page.source), 'utf8');
@@ -117,6 +137,7 @@ for (const page of pages) {
       `${page.source}: relative links have no site mapping in prepare-content.mjs: ${unrewritten.join(', ')}`,
     );
   }
+  if (checkOnly) continue;
   const destination = resolve(docsRoot, page.target);
   await mkdir(dirname(destination), { recursive: true });
   await writeFile(
@@ -126,7 +147,7 @@ for (const page of pages) {
 }
 
 const license = await readFile(resolve(repositoryRoot, 'LICENSE'), 'utf8');
-await writeFile(
+if (!checkOnly) await writeFile(
   resolve(docsRoot, 'license.md'),
   `---\ntitle: Mozilla Public License 2.0\neditUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/LICENSE\n---\n\n\`\`\`text\n${license}\`\`\`\n`,
 );

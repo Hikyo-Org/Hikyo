@@ -1,3 +1,4 @@
+import { isDemo } from '../demo/config.ts';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 
@@ -280,9 +281,11 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           {/* A plain same-origin GET: the browser streams the JSONL to disk under
               the session cookie, so the SPA never holds the trail in memory and no
               token rides the URL. */}
-          <a className="btn" href={auditExportUrl(scope, applied)} download>
-            Export JSONL
-          </a>
+          {isDemo ? <Button type="button" disabled title="Export is not available in the demo">Export JSONL</Button> : (
+            <a className="btn" href={auditExportUrl(scope, applied)} download>
+              Export JSONL
+            </a>
+          )}
         </div>
       </form>
       </Panel>

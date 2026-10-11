@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 
+import { isDemo, demoRole, demoCanEdit } from '../demo/config.ts';
 import { useSensitiveState } from "../api/sensitiveMutation.ts";
 import {
   disclosureRefusalText,
@@ -586,6 +587,7 @@ function ValuesSurface({
           <label htmlFor="publish-destination">Publish into</label>
           <select
             id="publish-destination"
+            disabled={isDemo}
             value={destination}
             onChange={(event) => setDestination(event.target.value)}
           >
@@ -602,7 +604,7 @@ function ValuesSurface({
         <Button
           type="button"
           onClick={doPublishInto}
-          disabled={secretsSet.length === 0 || destination === ""}
+          disabled={isDemo || secretsSet.length === 0 || destination === ""}
         >
           Publish into environment
         </Button>
@@ -650,7 +652,7 @@ function ValuesSurface({
                       setEditing(editing === cell.name ? null : cell.name)
                     }
                     aria-expanded={editing === cell.name}
-                    disabled={setValue.isPending}
+                    disabled={setValue.isPending || (isDemo && !demoCanEdit(demoRole(), env.environment))}
                   >
                     {cell.name}
                   </button>

@@ -1,5 +1,7 @@
 import {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -45,8 +47,15 @@ import {
   readChromeIdentity,
 } from './chrome-identity.ts';
 import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
+import { isDemo } from '../demo/config.ts';
+import { demoSurfaceAvailable } from '../demo/surfaces.ts';
+
 import { StepUpBanner } from './StepUpBanner.tsx';
 import { ChromeDiagnostic, OpsDiagnosticBanners } from './OpsDiagnosticBanners.tsx';
+
+const DemoToolbar = import.meta.env.MODE === 'demo'
+  ? lazy(() => import('../demo/DemoToolbar.tsx').then((module) => ({ default: module.DemoToolbar })))
+  : null;
 
 type ProjectSidebarGroup = {
   readonly id: string;
@@ -337,7 +346,12 @@ export function Shell({ session }: { session: WhoAmI }) {
 
   return (
     <div className="chrome" data-nav={navOpen ? 'open' : 'closed'}>
-      <a className="skip" href="#content" tabIndex={navOpen ? -1 : undefined}>
+      <a className="skip" href="#content" tabIndex={navOpen ? -1 : undefined}
+        onClick={isDemo ? (event) => {
+          event.preventDefault();
+          document.getElementById('content')?.focus();
+        } : undefined}
+      >
         Skip to content
       </a>
 
@@ -597,6 +611,7 @@ export function Shell({ session }: { session: WhoAmI }) {
           )}
           <ThemeToggle />
         </header>
+        {DemoToolbar === null ? null : <Suspense fallback={null}><DemoToolbar /></Suspense>}
         {pruneWarning?.kind === 'error' ? (
           <ChromeDiagnostic severity="error">
             Retention health could not be checked. Reload to try again.
@@ -657,6 +672,9 @@ export function SidebarLinkItem({
   onNavigate: () => void;
 }) {
   const location = useLocation();
+  if (isDemo && !demoSurfaceAvailable(link.id)) {
+    return <span className="sidebar__link sidebar__link--disabled" aria-disabled="true" title="Not available in the demo">{link.label} · unavailable</span>;
+  }
   if (link.disabledReason !== null) {
     return (
       <span
@@ -935,7 +953,7 @@ export function AccountEntry({
             role="menuitem"
             className="menu__item"
             onClick={() => logout.mutate()}
-            disabled={logout.isPending}
+            disabled={isDemo || logout.isPending}
           >
             Sign out
           </button>

@@ -1,6 +1,6 @@
-# Observe completion-driven PR results under ci-required-next while the legacy
-# ci-required gate remains required. Execute default-branch tooling, read PR
-# code only as API metadata, and never download PR artifacts.
+# Publish completion-driven PR results under ci-required-next. Execute only
+# default-branch tooling, read PR code as API metadata, and never download PR
+# artifacts. Activate the required context only after a proved full candidate.
 # A queued check does not reserve a runner. Completion callbacks reassess live
 # state; periodic repair covers delayed/missing callbacks and approval changes.
 name: pr-gate
@@ -8,8 +8,10 @@ name: pr-gate
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, closed]
+  push:
+    branches: [main]
   workflow_run:
-    workflows: [fork-ci, pr-validation]
+    workflows: [pr-candidate]
     types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
