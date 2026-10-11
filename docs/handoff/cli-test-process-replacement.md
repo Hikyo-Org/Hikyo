@@ -24,6 +24,11 @@ binary and exited successfully, discarding the remaining tests and cleanup.
   direct snapshot/cursor failure tests and a valid-format SPKI pin for the trust
   atomic-write test. The snapshot failure case now reaches its intended storage
   failure instead of stopping at receipt validation.
+- Allocate the Compose sync fixture's runtime directory under `/dev/shm` on
+  Linux. An ordinary temporary directory can be disk-backed, causing the real
+  tmpfs guard to refuse before the test reaches Docker apply and lock checks.
+  Other platforms retain their ordinary temporary directory; all guards and
+  assertions remain intact.
 
 ## Verification
 
@@ -49,6 +54,14 @@ not accepted as proof. Changed Go files also pass `gofmt` inspection.
 Independent static review identified the external-package `testIO` execution
 gap. It was repaired and re-reviewed with no remaining findings, then both
 complete suites were rerun. Remote CI status is tracked by the associated PR.
+
+The first full CI run exposed the Linux Compose sync fixture failure above.
+It was reproduced using a cross-compiled Linux arm64 CLI test binary inside
+the local `golang:1.27` container as UID/GID 1000, with `/tmp` disk-backed.
+The corrected binary then passed all 275 Linux top-level tests in that container;
+the additional macOS test covers the Darwin-only protected clipboard.
+The follow-up received independent static review with no findings, plus fresh
+macOS normal/race runs and vet. Linux CI must still validate the pushed commit.
 
 ## Scope
 
