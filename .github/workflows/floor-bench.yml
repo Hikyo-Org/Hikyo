@@ -9,6 +9,10 @@ on:
         description: Exact immutable commit bound to the caller's GitHub event
         required: true
         type: string
+      candidate:
+        required: false
+        default: false
+        type: boolean
   push:
     tags: ['**']
 
@@ -29,6 +33,10 @@ jobs:
           EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          FULL_CANDIDATE: ${{ inputs.candidate }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
           PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
@@ -49,7 +57,15 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             pull_request)
               [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-              test "$SOURCE_REVISION" = "$PR_HEAD_SHA"
+              case "$FULL_CANDIDATE" in
+                true)
+                  test "$SOURCE_REVISION" = "$GITHUB_SHA"
+                  test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
+                  test "$PR_BASE_REF" = "$DEFAULT_BRANCH"
+                  ;;
+                false) test "$SOURCE_REVISION" = "$PR_HEAD_SHA" ;;
+                *) echo 'Unknown candidate mode.' >&2; exit 1 ;;
+              esac
               test "$PR_BASE_REPOSITORY" = "$GITHUB_REPOSITORY"
               test "$PR_BASE_REPOSITORY_ID" = "$EVENT_REPOSITORY_ID"
               [[ "$PR_HEAD_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]

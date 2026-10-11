@@ -184,6 +184,23 @@ Before you request review, run the checks for what you touched:
 You do not need to reproduce the full release gate locally; CI is the source of
 truth for that.
 
+For optional feedback using the same package checks as the fast CI workflow:
+
+```sh
+scripts/ci/fast-feedback.sh
+scripts/ci/fast-feedback.sh --working-tree # explicitly include local edits
+```
+
+The default comparison base is `hikyo-upstream/main`. Set `FAST_FEEDBACK_BASE`
+and `FAST_FEEDBACK_HEAD` to test an explicit base/revision pair in a clean
+checkout of that revision. `--plan` prints the selected domains without running
+checks. Prepare the pinned tools and frozen client/web dependencies first; this
+command does not install Node dependencies, generate files, or fix source. Go
+checks can download modules/toolchains and populate normal Go caches. See
+[the local feedback contract](scripts/dev/README.md)
+for the checks and limits. The signed-commit pre-push hook remains installed;
+fast feedback is optional and does not authorize merge.
+
 ## Continuous integration
 
 Every pull request runs the complete gate. The aggregate `ci-required` check

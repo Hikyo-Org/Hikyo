@@ -5,6 +5,66 @@ Fast local feedback for the checks CI actually fails on. Not a full CI mirror â€
 `no-egress`/`k8s-e2e`/service jobs don't work under nested Docker, and a full
 run is slower than real CI while giving less trustworthy results).
 
+## `fast-feedback.sh` - optional local feedback
+
+Run `scripts/ci/fast-feedback.sh` from a clean checkout before a push, or add
+`--working-tree` to explicitly check local edits. Set `FAST_FEEDBACK_BASE` and
+`FAST_FEEDBACK_HEAD` to name the comparison base and checked-out revision;
+otherwise they default to `hikyo-upstream/main` and `HEAD`. Both refs must exist
+and share history. The command prints their resolved IDs, and committed mode
+refuses a dirty checkout or a different checked-out revision. `--plan` emits
+the selected domains as JSON, without running checks.
+
+The profile checks range whitespace, formatting of changed Go files, compilation
+of their owning packages including tests (without running them), pinned
+ShellCheck 0.11.0 for changed shell scripts/hooks, and the repository's pinned
+Actionlint wrapper for workflow changes. Web changes run the package's existing
+typecheck, lint, and unit tests; client changes run client typecheck/tests and
+the web checks that consume the generated client. API schema and Node/pnpm
+manifest changes also select these frontend checks. Go file deletions select
+their owning package when it still contains Go files. Deleting its final Go file
+leaves no owner to compile, and unchanged importers are not selected; they can
+fail to compile while fast feedback passes. Reverse import dependencies and
+complete package deletions are validated by the mandatory full candidate suite.
+The default branch's complete CI classifier and inventory still own the full
+merge coverage contract.
+
+Changes to documentation policy inputs, docs site files, the upgrade script,
+and Node/pnpm configuration also run the docs preparation validator in read-only
+mode. It catches unmapped repository links and malformed comments without
+generating pages or requiring docs dependencies. CI uses the validator from
+its immutable tooling checkout with `--check --source-root` pointing at the
+exact checked-out PR head. The full candidate still builds and tests the site.
+
+Go dependency manifest changes select `go mod verify` for cached dependency
+integrity; complete dependency compatibility remains part of candidate CI.
+Compiling changed Go packages can be expensive from a cold cache; it checks
+buildability, and does not establish that any test assertion passed. Database
+fixtures and `TestMain` are never executed by this compile-only check.
+
+Install matching tools and frozen dependencies before invoking feedback:
+
+```sh
+pnpm --dir clients/ts install --frozen-lockfile
+pnpm --dir web install --frozen-lockfile
+scripts/ci/fast-feedback.sh --working-tree
+```
+
+Frontend dependencies are only required when their domain is selected. Missing
+dependencies or tool version mismatches fail with preparation instructions.
+The helper never runs Node dependency installation or generation commands and
+never auto-fixes source. Go compilation and pinned Actionlint can download
+modules/toolchains and populate normal Go caches, so prepare
+its dependencies before measuring a warm run.
+
+A pass means the listed checks completed. It does not cover full Go tests,
+race/fuzz, generated freshness, Storybook, browser closure, services, native
+releases, or Linux/platform acceptance. Full current-main candidate CI remains
+required before merge. Runtime depends on scope, dependency readiness, and cold
+compiler caches; the remote workflow owns its deadline. A five-minute local
+completion guarantee is not claimed. Keep the existing signature pre-push hook;
+this command is optional, with no additional mandatory expensive hooks.
+
 ## `preflight.sh` â€” pre-push gate
 
 Runs the cheap, deterministic checks that account for most pre-merge CI reds,

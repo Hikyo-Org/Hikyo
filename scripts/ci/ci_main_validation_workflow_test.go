@@ -65,8 +65,8 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 1 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
-		t.Fatal("CI must require one immutable revision input")
+	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
+		t.Fatal("CI must require an immutable revision and optional candidate mode")
 	}
 	if len(manual.On) != 1 {
 		t.Fatal("manual main wrapper must have only dispatch entrypoint")

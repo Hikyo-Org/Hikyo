@@ -1,0 +1,109 @@
+# Per-commit feedback is separate from the mandatory full-candidate merge gate.
+# The four-minute runner deadline includes setup; queue time is measured
+# separately and is not guaranteed by GitHub's shared hosted runner pool.
+name: ci-feedback
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A skipped metadata edit must not cancel a running verdict or evict a queued
+  # one. Unique per-run groups isolate these events before the job-level guard.
+  # Empty-string comparison also preserves legitimate numeric branch names;
+  # GitHub's loose equality would consider the previous ref "0" equal to null.
+  group: ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
+  cancel-in-progress: true
+
+jobs:
+  feedback:
+    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }}
+    if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    defaults:
+      run:
+        working-directory: source
+    env:
+      FAST_FEEDBACK_TOOLS_DIR: ${{ github.workspace }}/feedback-tools/scripts/ci
+      FAST_FEEDBACK_BASE: ${{ github.event.pull_request.base.sha }}
+      FAST_FEEDBACK_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out immutable feedback tooling without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: feedback-tools
+          persist-credentials: false
+      - name: Check out the exact commit without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select fast feedback domains
+        id: plan
+        run: |
+          plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)
+          echo "plan=$plan" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).shell
+        with:
+          go-version-file: feedback-tools/go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        if: fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).shell
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client || fromJSON(steps.plan.outputs.plan).docs
+        with:
+          node-version-file: source/.nvmrc
+      - name: Install pinned Corepack
+        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        run: |
+          "$FAST_FEEDBACK_TOOLS_DIR/install-corepack.sh"
+      - name: Select explicit pnpm cache path and ABI
+        id: pnpm-cache
+        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        run: |
+          "$FAST_FEEDBACK_TOOLS_DIR/export-pnpm-cache.sh"
+      - name: Restore frontend dependencies
+        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/pnpm/store
+          key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('source/.nvmrc', 'source/web/package.json', 'source/web/pnpm-lock.yaml', 'source/web/pnpm-workspace.yaml', 'source/clients/ts/package.json', 'source/clients/ts/pnpm-lock.yaml', 'source/clients/ts/pnpm-workspace.yaml') }}
+          restore-keys: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
+      - name: Install locked client dependencies
+        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        working-directory: source/clients/ts
+        run: pnpm install --frozen-lockfile
+      - name: Install locked web dependencies
+        if: fromJSON(steps.plan.outputs.plan).web
+        working-directory: source/web
+        run: pnpm install --frozen-lockfile
+      - name: Install verified pinned ShellCheck
+        if: fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          archive="$RUNNER_TEMP/shellcheck.tar.xz"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            "https://github.com/koalaman/shellcheck/releases/download/$SHELLCHECK_VERSION/shellcheck-$SHELLCHECK_VERSION.linux.x86_64.tar.xz" --output "$archive"
+          printf '%s  %s\n' "$SHELLCHECK_SHA256" "$archive" | sha256sum --check --strict
+          tar -xJf "$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
+      - name: Verify the feedback command refusal fixtures
+        if: fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback_test.sh"
+      - name: Run fast feedback
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh"

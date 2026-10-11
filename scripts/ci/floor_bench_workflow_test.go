@@ -58,7 +58,7 @@ func TestReleaseFloorBenchPRUsesRequiredValidation(t *testing.T) {
 	if job.Uses != "./.github/workflows/floor-bench.yml" || !reflect.DeepEqual(workflowPlanJobs(job.If), []string{"floor-bench"}) {
 		t.Fatalf("required validation must call the planned floor benchmark, got %+v", job)
 	}
-	if !reflect.DeepEqual(job.With, map[string]string{"revision": "${{ inputs.revision }}"}) {
+	if !reflect.DeepEqual(job.With, map[string]string{"revision": "${{ inputs.revision }}", "candidate": "${{ inputs.candidate }}"}) {
 		t.Fatal("required floor measurement must inherit CI's validated immutable revision")
 	}
 	dependencies, err := workflowNeeds(job.Needs)
@@ -117,14 +117,15 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 		Inputs map[string]struct {
 			Required bool   `yaml:"required"`
 			Type     string `yaml:"type"`
+			Default  *bool  `yaml:"default"`
 		} `yaml:"inputs"`
 	}
 	call := floor.On["workflow_call"]
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 1 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
-		t.Fatal("reusable floor proof requires one immutable revision input")
+	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["candidate"].Required || contract.Inputs["candidate"].Type != "boolean" || contract.Inputs["candidate"].Default == nil || *contract.Inputs["candidate"].Default {
+		t.Fatal("reusable floor proof requires an immutable revision and optional boolean candidate input")
 	}
 	if !reflect.DeepEqual(read("release.yml").Jobs["floor-bench"].With, map[string]string{"revision": "${{ github.sha }}"}) {
 		t.Fatal("stable release must measure its exact tag event SHA")
@@ -135,11 +136,13 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 	}
 	guard := steps[0]
 	expectedEnv := map[string]string{
-		"SOURCE_REVISION":       "${{ inputs.revision }}",
-		"EVENT_REPOSITORY":      "${{ github.event.repository.full_name }}",
-		"EVENT_REPOSITORY_ID":   "${{ github.event.repository.id }}",
-		"PR_NUMBER":             "${{ github.event.pull_request.number }}",
-		"PR_HEAD_SHA":           "${{ github.event.pull_request.head.sha }}",
+		"SOURCE_REVISION":     "${{ inputs.revision }}",
+		"EVENT_REPOSITORY":    "${{ github.event.repository.full_name }}",
+		"EVENT_REPOSITORY_ID": "${{ github.event.repository.id }}",
+		"PR_NUMBER":           "${{ github.event.pull_request.number }}",
+		"PR_HEAD_SHA":         "${{ github.event.pull_request.head.sha }}",
+		"PR_MERGE_SHA":        "${{ github.event.pull_request.merge_commit_sha }}",
+		"PR_BASE_REF":         "${{ github.event.pull_request.base.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}", "FULL_CANDIDATE": "${{ inputs.candidate }}",
 		"PR_HEAD_REPOSITORY":    "${{ github.event.pull_request.head.repo.full_name }}",
 		"PR_HEAD_REPOSITORY_ID": "${{ github.event.pull_request.head.repo.id }}",
 		"PR_BASE_REPOSITORY":    "${{ github.event.pull_request.base.repo.full_name }}",
@@ -174,6 +177,46 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 	if !measured || !uploaded {
 		t.Fatal("full floor measurement and exact-source evidence must remain intact")
 	}
+	// Exercise the floor guard itself: the main validation guard is a separate
+	// script and cannot prove that this benchmark refuses a head-only candidate.
+	for _, mutation := range []string{"valid", "same-repository", "head-only", "wrong-event-sha", "wrong-merge", "nondefault-target", "invalid-mode"} {
+		t.Run("full-candidate/"+mutation, func(t *testing.T) {
+			head, merge := strings.Repeat("a", 40), strings.Repeat("b", 40)
+			env := map[string]string{
+				"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/882/merge",
+				"GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo",
+				"SOURCE_REVISION": merge, "EVENT_REPOSITORY": "Hikyo-Org/Hikyo",
+				"EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "882", "PR_HEAD_SHA": head,
+				"PR_MERGE_SHA": merge, "FULL_CANDIDATE": "true", "PR_BASE_REF": "main",
+				"DEFAULT_BRANCH": "main", "PR_HEAD_REPOSITORY": "fork/Hikyo",
+				"PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo",
+				"PR_BASE_REPOSITORY_ID": "10",
+			}
+			switch mutation {
+			case "same-repository":
+				env["PR_HEAD_REPOSITORY"], env["PR_HEAD_REPOSITORY_ID"] = "Hikyo-Org/Hikyo", "10"
+			case "head-only":
+				env["SOURCE_REVISION"] = head
+			case "wrong-event-sha":
+				env["GITHUB_SHA"] = head
+			case "wrong-merge":
+				env["PR_MERGE_SHA"] = head
+			case "nondefault-target":
+				env["PR_BASE_REF"] = "release"
+			case "invalid-mode":
+				env["FULL_CANDIDATE"] = "yes"
+			}
+			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard.Run)
+			cmd.Env = os.Environ()
+			for key, value := range env {
+				cmd.Env = append(cmd.Env, key+"="+value)
+			}
+			output, err := cmd.CombinedOutput()
+			if (err == nil) != (mutation == "valid" || mutation == "same-repository") {
+				t.Fatalf("floor candidate allowed=%v: %v %s", err == nil, err, output)
+			}
+		})
+	}
 	for _, event := range []string{"pull_request", "merge_group", "workflow_dispatch", "schedule", "repository_dispatch", "push", "pull_request_target", "workflow_run"} {
 		for _, ref := range []string{"refs/heads/main", "refs/heads/feature", "refs/tags/v1.2.3", "refs/tags/"} {
 			for _, mutation := range []string{"valid", "wrong-revision", "missing-revision", "mutable-ref", "uppercase-sha", "invalid-tag-sha", "wrong-repository", "missing-repository-id", "wrong-base-repository", "wrong-base-id", "missing-head-repository", "missing-head-id", "missing-pr", "wrong-merge-sha", "same-repository-head"} {
@@ -183,7 +226,7 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 					if event == "pull_request" {
 						source = head
 					}
-					env := map[string]string{"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref, "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": source, "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "882", "PR_HEAD_SHA": head, "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10", "MERGE_GROUP_SHA": merge}
+					env := map[string]string{"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref, "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": source, "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "882", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "FULL_CANDIDATE": "false", "PR_BASE_SHA": strings.Repeat("d", 40), "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10", "MERGE_GROUP_SHA": merge}
 					want := event == "pull_request" || event == "merge_group" ||
 						(ref == "refs/heads/main" && (event == "workflow_dispatch" || event == "schedule" || event == "repository_dispatch")) ||
 						(event == "push" && ref == "refs/tags/v1.2.3")

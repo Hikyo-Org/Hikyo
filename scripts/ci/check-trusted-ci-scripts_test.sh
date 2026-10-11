@@ -148,14 +148,14 @@ require_line "$floor_bench" '              test "$SOURCE_REVISION" = "$MERGE_GRO
 require_line "$floor_bench" "        if: github.event_name != 'push'"
 # shellcheck disable=SC2016
 require_line "$floor_bench" '          ref: ${{ inputs.revision }}'
-# A queue candidate must not supply its own planning/checking scripts: merge
-# groups load them from merge_group.base_sha, like PRs, with the full plan.
-# shellcheck disable=SC2016
-if [ "$(grep -c 'BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}' "$workflow")" -ne 4 ] ||
-	grep -F '= merge_group ]; then' "$workflow" | grep -v 'if \[ "\$EVENT_NAME" = merge_group \]; then' >/dev/null; then
-	printf 'trusted CI scripts fixture failed: merge groups may run candidate-supplied CI scripts\n' >&2
-	exit 1
-fi
+# Parse each downstream base selector and execute the actual YAML classifier
+# against poisoned source tools. Merge groups and full PR candidates must use
+# the full plan from immutable base tools; legacy PRs use that same trust source.
+# Missing trusted tooling must refuse planning rather than fall back locally.
+(
+	cd "$script_dir/../.."
+	go test ./scripts/ci -count=1 -run '^(TestCandidateWorkflowAdmissionAndCoverage|TestTrustedClassifierUsesBaseToolsForEveryCandidateMode)$'
+)
 # shellcheck disable=SC2016
 require_line "$workflow" 'plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)'
 # Observation runs only trusted default-branch code and cannot publish the
