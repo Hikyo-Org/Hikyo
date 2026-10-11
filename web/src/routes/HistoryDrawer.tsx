@@ -37,6 +37,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { isDemo } from '../demo/config.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -1049,7 +1050,7 @@ function RevisionDetail({
               {secret ? <span className="history__presence">write-presence only</span> : null}
               <Button
                 type="button"
-                disabled={!gate.restore || !detail.isSuccess}
+                disabled={isDemo || !gate.restore || !detail.isSuccess}
                 onClick={() => onRestore(revisionKeys, changed.keyId)}
               >
                 {`Restore ${changed.name}…`}
@@ -1059,11 +1060,12 @@ function RevisionDetail({
         })}
       </ul>
 
+      {isDemo ? <p className="hint-wrap">History is read-only in the demo. Restore and revision pinning are available in the full app.</p> : null}
       <div className="history__actions">
         <Button
           type="button"
           variant="primary"
-          disabled={!gate.restore || !detail.isSuccess}
+          disabled={isDemo || !gate.restore || !detail.isSuccess}
           title={gate.restore ? undefined : gate.reason ?? undefined}
           onClick={() => onRestore(revisionKeys, null)}
         >
@@ -1071,7 +1073,7 @@ function RevisionDetail({
         </Button>
         <Button
           type="button"
-          disabled={!gate.pin || !detail.isSuccess}
+          disabled={isDemo || !gate.pin || !detail.isSuccess}
           title={gate.pin ? undefined : gate.reason ?? undefined}
           onClick={() => onPin(revisionKeys)}
         >
@@ -1080,8 +1082,8 @@ function RevisionDetail({
       </div>
 
       <div className="history__actions">
-        <Button type="button" disabled={!revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</Button>
-        <Button type="button" disabled={!revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</Button>
+        <Button type="button" disabled={isDemo || !revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</Button>
+        <Button type="button" disabled={isDemo || !revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</Button>
       </div>
       {diffTarget !== null ? <RevisionDiffDialog key={`${env.environment}:${String(revision.revision)}:${String(diffTarget)}`} env={env} environmentName={environmentName} left={diffTarget < revision.revision ? diffTarget : revision.revision} right={diffTarget < revision.revision ? revision.revision : diffTarget} onClose={() => setDiffTarget(null)} /> : null}
 
@@ -1138,6 +1140,7 @@ function RevisionDetail({
                 ) : null}
                 <Button
                   type="button"
+                  disabled={isDemo}
                   onClick={() => onRelease(pin)}
                 >
                   Release

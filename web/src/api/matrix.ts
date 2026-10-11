@@ -66,6 +66,7 @@ import {
   useEnvironments,
 } from './settings.ts';
 import { useTransport } from './transport.tsx';
+import { isDemo } from '../demo/config.ts';
 
 /**
  * Whole-project matrix API boundary.
@@ -556,7 +557,7 @@ export function useMatrixProject(ref: MatrixRef) {
         void queries.invalidateQueries({ queryKey });
       }
     },
-    ref.org !== '' && ref.project !== '',
+    !isDemo && ref.org !== '' && ref.project !== '',
   );
   const signalsStream = stream.connection;
   const { org, project } = ref;
@@ -639,7 +640,7 @@ export function useMatrixProject(ref: MatrixRef) {
       // stream that has not connected or has failed. A healthy stream shows
       // `false` and the tab holds exactly one events connection, zero
       // periodic signals requests.
-      refetchInterval: signalsPollInterval(signalsStream),
+      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
     })),
   });
   const pendingDrafts = useQueries({
@@ -656,7 +657,7 @@ export function useMatrixProject(ref: MatrixRef) {
       // Same fallback as signals: a pending marker refreshed by the poll
       // needs its draft preview refreshed by the same cadence, or the sheet
       // shows a marker without the draft behind it until the stream is back.
-      refetchInterval: signalsPollInterval(signalsStream),
+      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
     })),
   });
 

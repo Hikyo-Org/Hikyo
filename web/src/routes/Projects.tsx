@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { generatePath, Link, useOutletContext } from 'react-router';
 
 import { createProjectRefusalText, useCreateProject, useProjects } from '../api/settings.ts';
+import { isDemo } from '../demo/config.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -20,7 +21,7 @@ export function Projects() {
   // taking it away would lose whatever was typed in between.
   const scope = useInSystemScope(activeOrgId, null);
   const systemOrg = scope === 'system';
-  const formReady = scope === 'ordinary';
+  const formReady = !isDemo && scope === 'ordinary';
 
   return (
     <div className="page page--chrome projects">

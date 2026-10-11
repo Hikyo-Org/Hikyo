@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { generatePath, Link } from 'react-router';
 
+import { isDemo, demoRole, demoCanEdit } from '../demo/config.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { historyHref } from '../api/history.ts';
 import type { MatrixKeyList, MatrixSignalCell } from '../api/matrix.ts';
@@ -130,7 +131,8 @@ export function MatrixRowEditor({
   const disclosure = useCellDisclosure(refData, keyRecord, sourceRow);
   // Degraded columns (#451) are never editable here: bulk edit and fill-all
   // target only the columns whose reads succeeded.
-  const editableRows = rows.filter((row) => !row.degraded);
+  const canEdit = (id: string) => !isDemo || demoCanEdit(demoRole(), id);
+  const editableRows = rows.filter((row) => !row.degraded && canEdit(row.environmentId));
   const visibleRows = editAll ? editableRows : [sourceRow];
   // A copy destination or bulk edit for a since-degraded column (#451) is dropped
   // by remounting this editor: Matrix keys it on the degraded-column set, so a
@@ -246,7 +248,7 @@ export function MatrixRowEditor({
               disclosure, and the LABEL carries the mode ("Edit all environments"
               becomes "Back to <env> only"), which an `aria-pressed` toggle may not
               do: a flipping label plus a flipping state says the same thing twice. */}
-          {rows.length > 1 ? (
+          {rows.length > 1 && (!isDemo || editableRows.length > 1) ? (
             <Button
               className="matrix-row-editor__toggle"
               type="button"
@@ -266,6 +268,7 @@ export function MatrixRowEditor({
               {editAll ? `Back to ${environment.name} only` : 'Edit all environments'}
             </Button>
           ) : null}
+          {canEdit(environmentId) ? null : <p className="hint-wrap">Read-only for this account. Use the demo account switcher to try editing with different permissions.</p>}
           <div className="matrix-row-editor__panel">
             {editAll ? (
               <Field
@@ -376,6 +379,7 @@ export function MatrixRowEditor({
                           {...control}
                           className={valueClass}
                           rows={2}
+                          readOnly={!canEdit(rowEnvironmentId)}
                           autoComplete="off"
                           value={
                             edit?.op === 'set'
@@ -426,7 +430,7 @@ export function MatrixRowEditor({
                     {editAll ? null : (
                     <Button
                       type="button"
-                      disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending?.operation))}
+                      disabled={!canEdit(rowEnvironmentId) || busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending?.operation))}
                       onClick={() => {
                         setEdits((current) => {
                           if (clearing) {
@@ -457,7 +461,7 @@ export function MatrixRowEditor({
             )}
           </p>
 
-          {keyRecord.classification === 'config' && sourceSet ? (
+          {!isDemo && keyRecord.classification === 'config' && sourceSet ? (
             <Button
               className="matrix-row-editor__toggle"
               type="button"
@@ -553,7 +557,7 @@ export function MatrixRowEditor({
               </Button>
             ) : null}
             <Link className="btn" to={declarationHref} onClick={onClose}>
-              Edit declaration
+              {isDemo ? 'View declaration' : 'Edit declaration'}
             </Link>
             {/*
               The per-key history entry point. Per-key history is a FILTER over
@@ -572,7 +576,7 @@ export function MatrixRowEditor({
             <Button
               type="submit"
               variant="primary"
-              disabled={changes.length === 0 || busy || applying}
+              disabled={(isDemo && demoRole() === 'viewer') || changes.length === 0 || busy || applying}
             >
               {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
             </Button>
