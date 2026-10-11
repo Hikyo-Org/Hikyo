@@ -59,6 +59,65 @@ cp "$repo_root/docs/site/src/content/docs/docs/meta.json" \
 # Prove the complete synthetic fixture passes before interpreting refusals.
 "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site"
 
+# Execute the real parsed policy check against complete YAML mutations. Tokens
+# in environment values, comments or another step cannot grant job authority or
+# replace the unique executable failure notification.
+for mutation in env-permission wrong-permission inherited-permission scalar-permissions typed-permission decoy-notification step-env comment-body quoted-body false-condition missing-alert duplicate-alert duplicate-permission malformed-yaml; do
+	cp "$repo_root/.github/workflows/reliability.yml" \
+		"$fixture_dir/.github/workflows/reliability.yml"
+	"${NODE_BIN:-node}" --input-type=module - "$fixture_dir/.github/workflows/reliability.yml" "$mutation" "$repo_root/docs/site/package.json" <<'JS'
+import fs from "node:fs";
+import { createRequire } from "node:module";
+const require = createRequire(process.argv[4]);
+const { parse, stringify } = require("yaml");
+const path = process.argv[2];
+const workflow = parse(fs.readFileSync(path, "utf8"));
+const channel = workflow.jobs["fallback-channel"];
+const alert = channel.steps.find((step) => step.name === "Surface fallback-channel degradation");
+switch (process.argv[3]) {
+  case "env-permission":
+    delete channel.permissions.issues;
+    channel.env = { DECOY: "issues: write" };
+    break;
+  case "wrong-permission": channel.permissions.issues = "read"; break;
+  case "inherited-permission": delete channel.permissions; workflow.permissions.issues = "write"; break;
+  case "scalar-permissions": channel.permissions = "write-all"; break;
+  case "typed-permission": channel.permissions.issues = true; break;
+  case "decoy-notification":
+    channel.steps.push({ name: "Unrelated decoy", if: "failure()", run: alert.run });
+    alert.if = "false";
+    alert.run = "echo notification removed";
+    break;
+  case "step-env":
+    alert.env.DECOY = "Fallback security channel health check failed";
+    alert.run = "echo notification removed";
+    break;
+  case "comment-body": alert.run = alert.run.split("\n").map((line) => "# " + line).join("\n"); break;
+  case "quoted-body": alert.run = "printf '%s\n' '" + alert.run.replaceAll("'", "'\\''") + "'"; break;
+  case "false-condition": alert.if = "false && failure()"; break;
+  case "missing-alert": channel.steps = channel.steps.filter((step) => step !== alert); break;
+  case "duplicate-alert": channel.steps.push({ ...alert }); break;
+  case "duplicate-permission":
+    fs.writeFileSync(path, stringify(workflow).replace("      issues: write", "      issues: read\n      issues: write"));
+    process.exit(0);
+  case "malformed-yaml": fs.writeFileSync(path, "jobs: [unterminated"); process.exit(0);
+  default: throw new Error("unknown workflow policy mutation");
+}
+fs.writeFileSync(path, stringify(workflow));
+JS
+	if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/workflow-refusal.log" 2>&1; then
+		printf 'OSS policy fixture failed: %s was accepted\n' "$mutation" >&2
+		exit 1
+	fi
+	grep -F 'OSS policy gate: fallback-channel workflow:' "$fixture_dir/workflow-refusal.log" >/dev/null || {
+		cat "$fixture_dir/workflow-refusal.log" >&2
+		printf 'OSS policy fixture failed: %s failed outside the workflow policy assertion\n' "$mutation" >&2
+		exit 1
+	}
+done
+cp "$repo_root/.github/workflows/reliability.yml" \
+	"$fixture_dir/.github/workflows/reliability.yml"
+
 for mutation in old-context feedback-context extra-context loose-status disabled signatures unresolved-threads; do
 	cp "$repo_root/release/repository/main-ci-gate.json" \
 		"$fixture_dir/release/repository/main-ci-gate.json"

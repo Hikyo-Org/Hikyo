@@ -116,7 +116,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 		t.Fatal("trusted publisher must use repository-pinned Go without consuming execution caches")
 	}
 	if publish.Name != "Reconcile observed PR check" || publish.Run != "go run ./scripts/ci/pr-gate" || len(publish.Env) != 3 || publish.Env["GH_TOKEN"] != "${{ github.token }}" || publish.Env["GH_REPO"] != "${{ github.repository }}" || publish.Env["PR_GATE_CHECK_NAME"] != "ci-required-next" {
-		t.Fatal("publisher must execute only the trusted controller under an required complete-candidate check name")
+		t.Fatal("publisher must execute only the trusted controller under a required complete-candidate check name")
 	}
 	for _, forbidden := range []string{"secrets.", "download-artifact", "continue-on-error", "pull_request.head.sha"} {
 		if strings.Contains(string(raw), forbidden) {

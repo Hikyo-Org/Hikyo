@@ -142,6 +142,9 @@ importers:
       workbox-build:
         specifier: 7.4.1
         version: 7.4.1(@types/babel__core@7.20.5)(supports-color@7.2.0)
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
 packages:
 

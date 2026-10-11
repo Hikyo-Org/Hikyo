@@ -57,12 +57,13 @@ alternative success authority. Branch rules match check names and optional app
 identity, not producer workflows; the generic GitHub Actions app cannot establish
 stronger workflow-origin enforcement. Manual inspection of the exact trusted
 publisher/full-candidate provenance remains mandatory. This platform limit
-predates the split and is not claimed solved here. The bounded binary v2 identifiers and conservative
-truncated-v1 invalidation repair remain compatible with deployed checks.
+predates the split and is not claimed solved here. The bounded binary v2
+identifiers and conservative truncated-v1 invalidation repair remain compatible
+with deployed checks.
 
 ## Evidence and its limits
 
-Historical full-suite samples collected on11October:
+Historical full-suite samples collected on 11 October:
 
 | Run | Context | Elapsed minutes | Execution job-minutes | Median job queue minutes |
 | --- | --- | ---: | ---: | ---: |
@@ -73,30 +74,30 @@ Historical full-suite samples collected on11October:
 | [38063236970](https://github.com/Hikyo-Org/Hikyo/actions/runs/38063236970) | Main | 150.83 | 417.52 | 56.60 |
 | [38058367653](https://github.com/Hikyo-Org/Hikyo/actions/runs/38058367653) | Main | 36.72 | 374.25 | 2.29 |
 
-The sampled full graphs have46successful jobs; quiet runs take about32minutes,
-while contention stretches them toward151minutes. Execution runner-minutes are
+The sampled full graphs have 46 successful jobs; quiet runs take about 32 minutes,
+while contention stretches them toward 151 minutes. Execution runner-minutes are
 parallel work, not elapsed duration or invoice amounts. These samples identify
 queue contention; they do not prove a reserved feedback capacity.
 
-#887's final bootstrap head `d48a18a2a4ce1571eb4b01638548d5758fd8e880`
-completed [full run38133568624](https://github.com/Hikyo-Org/Hikyo/actions/runs/38133568624)
-and [required controller38133566382](https://github.com/Hikyo-Org/Hikyo/actions/runs/38133566382).
-All16mandatory domains passed on an integration tree matching current main48087
+PR #887's final bootstrap head `d48a18a2a4ce1571eb4b01638548d5758fd8e880`
+completed [full run 38133568624](https://github.com/Hikyo-Org/Hikyo/actions/runs/38133568624)
+and [required controller 38133566382](https://github.com/Hikyo-Org/Hikyo/actions/runs/38133566382).
+All 16 mandatory domains passed on an integration tree matching current main `48087bde`
 plus that head. It merged as `a5059c93f13d475b30c6eae6629c67f7a4b7aba3`.
 This legacy bootstrap result does not prove the new hosted candidate publisher.
 
-The final #887 feedback completed in95seconds:19seconds to runner start and
-75seconds execution, with API timestamps accounting for the remaining second.
-The first observed feedback took5minutes15seconds, dominated by4minutes02seconds
+The final #887 feedback completed in 95 seconds: 19 seconds to runner start and
+75 seconds execution, with API timestamps accounting for the remaining second.
+The first observed feedback took 5 minutes 15 seconds, dominated by 4 minutes 02 seconds
 of queueing. A four-minute execution deadline does not guarantee five-minute
 commit-to-feedback under a saturated shared runner pool. Measure new accepted
 heads after activation, distinguishing queue, setup, execution, and provider waits.
 
-#886's prior `ceef331b8fe008565e7c6af7675faac9a349bc14` full run
+PR #886's prior `ceef331b8fe008565e7c6af7675faac9a349bc14` full run
 [38128732411](https://github.com/Hikyo-Org/Hikyo/actions/runs/38128732411)
 was cancelled during authorized resource cleanup. It is missing proof, not a
 passing suite or a new application failure. Qodo resolved its contributor-doc
-finding; CodeRabbit's then-current coverage was older2491dee with rate-limited
+finding; CodeRabbit's then-current coverage was older `2491dee` with rate-limited
 ceef review. Optional paid benchmarks skipped budget admission. Provider skips
 are unavailable evidence, never clean reviews or performance success.
 
