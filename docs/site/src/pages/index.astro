@@ -20,6 +20,7 @@ const repository = repositoryUrl;
 const themeIcon = sunMoonSvg.replace(/^<\?xml[^>]*\?>\s*/, '');
 const links = {
   contributing: `${base}contributing/`,
+  demo: `${base}demo/`,
   docs: `${base}docs/`,
   governance: `${base}governance/`,
   license: `${base}license/`,
@@ -212,6 +213,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
                 data-posthog-event="github_cta_clicked"
                 data-posthog-placement="hero"
               >Explore on GitHub <span aria-hidden="true">↗</span></a>
+              <a class="button" href={links.demo}>Try the demo <span aria-hidden="true">→</span></a>
               <a
                 class="text-link"
                 href={links.docs}
@@ -624,6 +626,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
               data-posthog-event="github_cta_clicked"
               data-posthog-placement="final"
             >Explore on GitHub <span aria-hidden="true">↗</span></a>
+            <a class="button" href={links.demo}>Try the demo <span aria-hidden="true">→</span></a>
             <a
               class="text-link"
               href={links.docs}
