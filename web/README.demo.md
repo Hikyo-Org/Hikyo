@@ -82,6 +82,13 @@ An imported boolean alone does not remove dynamic chunks with this Vite build.
 The normal `build` command checks its emitted assets for demo implementation
 markers before compression. The demo adds no dependencies.
 
+The static build adds a Content-Security-Policy meta tag before scripts load.
+Scripts, styles, images, and fonts stay on the same origin; network connections,
+base tags, and form submissions are refused. Both the build and the copied Pages
+artifact run the CSP gate. Browser tests reject console errors during normal
+flows and verify that an injected inline script cannot execute. Header-only
+protections such as frame-ancestors are not supplied by a static meta policy.
+
 ## Keeping the demo in sync
 
 The demo mounts the same route components, layouts, styles, and generated API

@@ -26,8 +26,14 @@ import { fileURLToPath } from 'node:url';
 // style-src is not hash-strict (Radix injects <style> elements at runtime and
 // React renders inline style="" from SSR; see astro.config.mjs), so styles get a
 // fixed-posture assertion instead of hashing.
+// --demo DIST checks the standalone demo or its copied Pages directory. It has
+// no prototype exceptions or bootstrap allowlist, and keeps scripts/styles
+// self-only while refusing connections, base tags, and form submissions.
 
-const dist = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
+const args = process.argv.slice(2);
+const demo = args[0] === '--demo';
+assert.ok(args.length === 0 || (demo && args.length === 2), 'usage: test-csp.mjs [--demo DIST]');
+const dist = demo ? resolve(args[1]) : resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 
 const sha256 = (body) => `sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}`;
 const quote = (hash) => `'${hash}'`;
@@ -195,7 +201,7 @@ for await (const rel of glob('**/*.html', { cwd: dist })) {
 
   // Partition: prototype pages are static public/ files with no CSP; every other
   // page is Astro-generated and must carry exactly one meta.
-  if (page.startsWith('prototypes/')) {
+  if (!demo && page.startsWith('prototypes/')) {
     assert.equal(metas.length, 0, `${page} is a static prototype but carries a CSP meta`);
     ungoverned++;
     continue;
@@ -211,7 +217,9 @@ for await (const rel of glob('**/*.html', { cwd: dist })) {
     `${page} CSP meta is not inside <head>`,
   );
 
-  const policy = parseAttrs(metas[0][1]).content ?? '';
+  // Vite escapes apostrophes in injected attribute values. Decode that known
+  // build output before splitting directives; the browser does the same.
+  const policy = (parseAttrs(metas[0][1]).content ?? '').replaceAll('&#39;', "'");
   const directive = (name) => {
     const found = policy.split(';').map((p) => p.trim()).find((p) => p === name || p.startsWith(`${name} `));
     return found ? found.slice(name.length).trim() : undefined;
@@ -223,8 +231,17 @@ for await (const rel of glob('**/*.html', { cwd: dist })) {
 
   assert.equal(directive('default-src'), "'self'", `${page} default-src is not 'self'`);
   assert.equal(directive('object-src'), "'none'", `${page} object-src is not 'none'`);
-  assert.equal(directive('base-uri'), "'self'", `${page} base-uri is not 'self'`);
-  assert.equal(directive('form-action'), "'self'", `${page} form-action is not 'self'`);
+  assert.equal(directive('base-uri'), demo ? "'none'" : "'self'", `${page} has an unexpected base-uri`);
+  assert.equal(directive('form-action'), demo ? "'none'" : "'self'", `${page} has an unexpected form-action`);
+  if (demo) {
+    assert.equal(scriptSrc, "'self'", `${page} demo scripts must be same-origin only`);
+    for (const override of ['script-src-elem', 'script-src-attr', 'style-src-elem']) {
+      assert.equal(directive(override), undefined, `${page} demo must not override ${override}`);
+    }
+    assert.equal(directive('connect-src'), "'none'", `${page} demo must refuse network connections`);
+    assert.equal(directive('img-src'), "'self'", `${page} demo images must be same-origin only`);
+    assert.equal(directive('font-src'), "'self'", `${page} demo fonts must be same-origin only`);
+  }
 
   // Every governed inline script after the meta must be hashed into script-src.
   // Recompute the browser's sha256 and assert it is present -- this is the check
@@ -255,6 +272,7 @@ for await (const rel of glob('**/*.html', { cwd: dist })) {
     const close = rest.search(/<\/script\s*>/i);
     const body = close === -1 ? rest : rest.slice(0, close);
     if (body.trim() === '') continue;
+    assert.ok(!demo, `${page} demo has a script BEFORE the CSP meta`);
     assert.ok(
       PRE_META_ALLOWED.has(sha256(body)),
       `${page} has an unrecognised inline script BEFORE the CSP meta (hash ${sha256(body)}); it would be ungoverned by CSP`,
@@ -288,15 +306,15 @@ for await (const rel of glob('**/*.html', { cwd: dist })) {
   // injects <style> at runtime and React renders inline style="" from SSR, neither
   // hashable. Pin the exact posture so a dropped 'self' or a stray re-add of style
   // hashing trips.
-  assert.equal(directive('style-src'), "'self' 'unsafe-inline'", `${page} style-src is not "'self' 'unsafe-inline'"`);
+  assert.equal(directive('style-src'), demo ? "'self'" : "'self' 'unsafe-inline'", `${page} has an unexpected style-src`);
   assert.equal(directive('style-src-attr'), undefined, `${page} emits a separate style-src-attr; fold it into style-src`);
 }
 
 // Floors, not exact counts: the partition asserts every non-prototype page carries
 // a meta, so a lost meta or a stray public page already trips above. These just
 // catch a glob that matched nothing (a broken dist path).
-assert.ok(governed > 0, 'no Astro-governed pages found; dist path or glob is broken');
-assert.ok(ungoverned > 0, 'no static prototype pages found; dist path or glob is broken');
+assert.ok(governed > 0, 'no governed pages found; dist path or glob is broken');
+if (!demo) assert.ok(ungoverned > 0, 'no static prototype pages found; dist path or glob is broken');
 console.log(
-  `CSP gate: ${governed} governed pages (script-src hash-strict, style-src 'self' 'unsafe-inline'), ${ungoverned} ungoverned prototype pages`,
+  `CSP gate: ${governed} governed ${demo ? 'demo' : 'docs'} pages, ${ungoverned} ungoverned prototype pages`,
 );

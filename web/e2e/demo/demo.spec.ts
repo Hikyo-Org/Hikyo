@@ -15,6 +15,9 @@ const DEMO_MATRIX_PATH = `/orgs/${DEMO_IDS.org}/projects/${DEMO_IDS.project}/mat
 // calls are handled before they reach the browser network stack.
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => { throw error; });
+  page.on('console', (message) => {
+    if (message.type() === 'error') throw new Error(`Browser console error: ${message.text()}`);
+  });
   page.on('request', (request) => {
     const url = new URL(request.url());
     expect(url.origin).toBe('http://127.0.0.1:5196');
@@ -72,6 +75,14 @@ test('settings and members are read-only, remote connections stay disabled, and 
   await expect(page.getByRole('heading', { name: 'Project settings · Payments', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Read-only demo settings' })).toHaveAttribute('disabled', '');
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Download definitions bundle', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Download portable bundle', exact: true })).toBeDisabled();
+  for (const control of await page.locator('#project-policy input, #project-policy select, #project-policy textarea, #project-policy button').all()) {
+    await expect(control).toBeDisabled();
+  }
+  // A disabled fieldset does not disable anchors. Downloads must not navigate
+  // around the fetch adapter to a nonexistent API on the static host.
+  await expect(page.locator('a[href*="/api/"]')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Project settings · Payments', exact: true })).toBeVisible();
   await page.goto(`./?account=admin#/orgs/${DEMO_IDS.org}/members`);
@@ -167,6 +178,7 @@ for (const surface of SURFACES) {
         }
         await expect(page.getByText(/^Loading/)).toHaveCount(0);
         await expect(page.locator('main .alert')).toHaveCount(0);
+        await expect(page.locator('a[href*="/api/"]')).toHaveCount(0);
       });
     }
   });
@@ -182,6 +194,7 @@ test('read-only details and filters work while management actions stay disabled'
     await expect(page.getByRole('main').getByText(/^Loading/)).toHaveCount(0);
     await expect(page.getByRole('main').locator('.alert')).toHaveCount(0);
     await expect(page.getByRole('main').getByText(/does not support delivery-target/)).toHaveCount(0);
+    await expect(page.locator('a[href*="/api/"]')).toHaveCount(0);
   }
 
   await page.goto(`./?account=admin#${projectPath}/adapters`);

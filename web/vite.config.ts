@@ -34,7 +34,21 @@ export default defineConfig(({ mode }) => ({
   // The real instance stays root-only. The static playground uses hash routes
   // and can live alongside the documentation or at a GitHub Pages repo path.
   base: mode === 'demo' ? (process.env['HIKYO_DEMO_BASE'] ?? '/demo/') : '/',
-  plugins: [react(), ...(mode === 'prototype' ? [prototypeMockApi()] : [])],
+  plugins: [react(), ...(mode === 'prototype' ? [prototypeMockApi()] : []), ...(mode === 'demo' ? [{
+    name: 'demo-content-security-policy',
+    apply: 'build',
+    transformIndexHtml: () => [{
+      tag: 'meta',
+      attrs: {
+        'http-equiv': 'Content-Security-Policy',
+        // Pages cannot supply Hikyo's response headers. Keep its strict asset
+        // policy, with no network connections or form submissions in the demo.
+        // frame-ancestors is header-only and cannot be enforced by a meta tag.
+        content: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'",
+      },
+      injectTo: 'head-prepend',
+    }],
+  } satisfies import('vite').Plugin] : [])],
   resolve: {
     alias: {
       // The generated client is consumed as source rather than as a published

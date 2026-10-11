@@ -82,7 +82,7 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (path === '/api/v1/orgs') return json(list([org]));
         if (path === orgRoot) return json(org);
         if (path === `${orgRoot}/projects`) return json(list([project]));
-        if (path === projectRoot) return json(project);
+        if (path === projectRoot) return json({ ...project, can_manage_policy: role === 'admin' });
         if (path === `${orgRoot}/retention`) return json(retention);
         if (path === `${projectRoot}/retention`) return json({ ...retention, inherited: true });
         if (path === `${projectRoot}/definitions/settings`) return json({ definitions_source: 'db', can_declare_keys: false, can_edit_definitions: false });
@@ -94,7 +94,6 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (path === `${projectRoot}/grants` || path === `${orgRoot}/grants`) return json(list(grants));
         if (path === `${projectRoot}/rules` || path === `${orgRoot}/rules`) return json(list([]));
         if (path === '/api/v1/auth/totp') return json({ confirmed: true, pending: false });
-        if (path === '/api/v1/auth/webauthn/credentials') return json({ passkeys: [] });
         if (path === '/api/v1/auth/methods') return json({ local_login_enabled: false, providers: [], signup_open: false, signup_paused: true, signup_methods: [] });
         const key = keys.find((candidate) => path === `${projectRoot}/keys/${candidate.id}` || path === `${projectRoot}/keys/${candidate.name}`);
         if (key !== undefined) return json(key);
@@ -108,11 +107,16 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (resource === 'values') return json(list(keys.map((key) => cell(environment.id, key))));
         if (resource === 'settings') return json({ protected: false, reauth_window_seconds: 900, expected_protected: environment.id === DEMO_IDS.production });
         if (resource === 'reveal-window') return json({ effective_window_seconds: revealWindowSeconds, protected: false, totp_offered: false, live: role === 'admin', single_decision: false, can_reveal: role === 'admin', ...(role === 'admin' ? { expires_at: new Date(Date.now() + revealWindowSeconds * 1000).toISOString() } : {}) });
-        if (resource === 'signals') return json({ environment_id: environment.id, revision, cells: keys.map((key) => {
-          const draft = drafts.get(`${environment.id}:${key.id}`);
-          return { key_id: key.id, name: key.name, classification: key.classification, pending_by_others: false, changed_in_revision: revision,
-            ...(draft === undefined ? {} : { pending_version_id: draft.version_id, pending_operation: draft.operation }) };
-        }) });
+        if (resource === 'signals') {
+          // Like the real service, signal only cells changed in this environment's latest publish.
+          const changedKeys = new Set(histories.get(environment.id)?.[0]?.changed_keys.map((key) => key.key_id));
+          return json({ environment_id: environment.id, revision, cells: keys.map((key) => {
+            const draft = drafts.get(`${environment.id}:${key.id}`);
+            return { key_id: key.id, name: key.name, classification: key.classification, pending_by_others: false,
+              ...(changedKeys.has(key.id) ? { changed_in_revision: revision } : {}),
+              ...(draft === undefined ? {} : { pending_version_id: draft.version_id, pending_operation: draft.operation }) };
+          }) });
+        }
         if (resource === 'pending') return json(list(ownDrafts.map((draft) => ({ ...pending(draft), revealed: draft.key.classification === 'config' && draft.operation === 'set',
           ...(draft.key.classification === 'config' && draft.operation === 'set' ? { value: draft.value } : {}) }))));
         if (resource === 'revisions') return json(list(histories.get(environment.id) ?? []));

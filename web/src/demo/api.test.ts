@@ -17,7 +17,7 @@ import {
 } from '@hikyo/zod';
 import { parsed } from '../api/client.ts';
 import { createDemoFetch } from './api.ts';
-import { DEMO_IDS } from './config.ts';
+import { DEMO_ACCOUNTS, DEMO_IDS } from './config.ts';
 
 const origin = 'https://demo.example.test';
 const org = `/api/v1/orgs/${DEMO_IDS.org}`;
@@ -54,6 +54,28 @@ describe('browser demo API', () => {
     const first = zWhoAmI.parse(await (await fetch('/api/v1/auth/whoami')).json());
     const second = zWhoAmI.parse(await (await fetch('/api/v1/auth/whoami')).json());
     expect(first.session).toEqual(second.session);
+  });
+
+  it.each(DEMO_ACCOUNTS)('keeps $label project policy read-only and exposes its panel only for admin', async ({ id }) => {
+    const fetch = createDemoFetch(id, { origin });
+    const detail = zProject.parse(await (await fetch(project)).json());
+    expect(detail.can_manage_policy).toBe(id === 'admin');
+    expect(detail.can_delete).toBe(false);
+    const definitionsPath = `${project}/definitions/settings`;
+    const definitions = zDefinitionsSettings.parse(await (await fetch(definitionsPath)).json());
+    expect(definitions.can_declare_keys).toBe(false);
+    expect(definitions.can_edit_definitions).toBe(false);
+    const writes = [
+      { path: project, method: 'PATCH', body: { name: 'Renamed project' } },
+      { path: definitionsPath, method: 'PUT', body: { definitions_source: 'git' } },
+      { path: `${project}/retention`, method: 'PUT', body: { mode: 'keep-if-either', max_age_seconds: 86400, last_revisions: 5 } },
+      { path: `${env()}/settings`, method: 'PUT', body: { protected: true, reauth_window_seconds: 600 } },
+    ];
+    for (const write of writes) {
+      const response = await fetch(write.path, { method: write.method, body: JSON.stringify(write.body), headers: { 'Content-Type': 'application/json' } });
+      expect(response.status, write.path).toBe(404);
+    }
+    expect(zDefinitionsSettings.parse(await (await fetch(definitionsPath)).json())).toEqual(definitions);
   });
 
   it('serves useful schema-valid read-only examples for every expanded screen and nested details', async () => {
@@ -104,6 +126,8 @@ describe('browser demo API', () => {
       const reports = zDeliveryTargetList.parse(await (await fetch(`${env(environment)}/delivery-targets`)).json());
       expect(reports).toEqual({ principals: [], targets: [] });
     }
+    const passkeys = zPasskeyList.parse(await (await fetch('/api/v1/auth/webauthn/credentials')).json());
+    expect(passkeys.passkeys.map((passkey) => passkey.label)).toEqual(['Sample security key']);
     const accounts = zServiceAccountList.parse(await (await fetch(`${project}/service-accounts`)).json());
     expect(accounts.items.map((item) => item.name)).toEqual(['payments-api', 'release-pipeline']);
     const adapters = zAdapterList.parse(await (await fetch(`${project}/adapters`)).json());
@@ -168,6 +192,13 @@ describe('browser demo API', () => {
     expect(remaining.items.map((item) => item.version_id)).toEqual([untouchedDraft.version_id]);
     const history = zRevisionList.parse(await (await fetch(`${env()}/revisions`)).json());
     expect(history.items[0]).toMatchObject({ revision: 2n, changed_keys: [{ name: 'LOG_LEVEL', change: 'edited' }] });
+    const signals = zEnvironmentSignals.parse(await (await fetch(`${env()}/signals`)).json());
+    expect(signals.cells.find((cell) => cell.name === 'LOG_LEVEL')?.changed_in_revision).toBe(2n);
+    expect(signals.cells.find((cell) => cell.name === 'FEATURE_CHECKOUT')).toMatchObject({ pending_version_id: untouchedDraft.version_id });
+    expect(signals.cells.find((cell) => cell.name === 'FEATURE_CHECKOUT')).not.toHaveProperty('changed_in_revision');
+    expect(signals.cells.find((cell) => cell.name === 'PUBLIC_APP_URL')).not.toHaveProperty('changed_in_revision');
+    const otherEnvironment = zEnvironmentSignals.parse(await (await fetch(`${env(DEMO_IDS.staging)}/signals`)).json());
+    expect(otherEnvironment.cells.find((cell) => cell.name === 'LOG_LEVEL')?.changed_in_revision).toBe(1n);
   });
 
   it('masks secrets in ordinary and draft reads; only admin can reveal fake material', async () => {
@@ -219,6 +250,12 @@ describe('browser demo API', () => {
     expect(zPublishResult.parse(await response.json()).environments[0]?.revision).toBe(2n);
     const values = zValueList.parse(await (await fetch(`${env()}/values`)).json());
     expect(values.items.find((item) => item.name === 'LOG_LEVEL')).toMatchObject({ set: false, revealed: false });
+    const signals = zEnvironmentSignals.parse(await (await fetch(`${env()}/signals`)).json());
+    expect(signals.cells.find((cell) => cell.name === 'LOG_LEVEL')?.changed_in_revision).toBe(2n);
+    expect(signals.cells.find((cell) => cell.name === 'FEATURE_CHECKOUT')).not.toHaveProperty('changed_in_revision');
+    const seededProduction = zEnvironmentSignals.parse(await (await fetch(`${env(DEMO_IDS.production)}/signals`)).json());
+    expect(seededProduction.cells.find((cell) => cell.name === 'LOG_LEVEL')?.changed_in_revision).toBe(1n);
+    expect(seededProduction.cells.find((cell) => cell.name === 'AUTH_SECRET')).not.toHaveProperty('changed_in_revision');
     expect(zEnvironmentSignals.parse(await (await fetch(`${env(DEMO_IDS.staging)}/signals`)).json()).revision).toBe(1n);
     const oldSnapshot = zRevisionDetail.parse(await (await fetch(`${env()}/revisions/1`)).json());
     const newSnapshot = zRevisionDetail.parse(await (await fetch(`${env()}/revisions/2`)).json());
@@ -229,6 +266,11 @@ describe('browser demo API', () => {
     expect(stagingSnapshot.keys.some((key) => key.name === 'LOG_LEVEL')).toBe(true);
     expect(productionSnapshot.keys.some((key) => key.name === 'AUTH_SECRET')).toBe(false);
     expect((await fetch(`${env(DEMO_IDS.staging)}/revisions/2`)).status).toBe(404);
+    const nextDraft = await stage(fetch, 'FEATURE_CHECKOUT', 'false');
+    await fetch(`${env()}/publish`, { method: 'POST', body: JSON.stringify({ version_ids: [nextDraft.version_id] }) });
+    const nextSignals = zEnvironmentSignals.parse(await (await fetch(`${env()}/signals`)).json());
+    expect(nextSignals.cells.find((cell) => cell.name === 'LOG_LEVEL')).not.toHaveProperty('changed_in_revision');
+    expect(nextSignals.cells.find((cell) => cell.name === 'FEATURE_CHECKOUT')?.changed_in_revision).toBe(3n);
   });
 
   it('never forwards unsupported API calls or remote traffic, but can fetch same-origin static assets', async () => {
