@@ -421,8 +421,9 @@ export async function seedTenant(
     issuer: MACHINE.issuer,
     issuer_type: 'kubernetes',
     jwks_mode: 'static',
+    // RFC 8032 section 7.1, test vector 1 public key.
     static_jwks:
-      '{"keys":[{"kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","kid":"e2e-seed","use":"sig"}]}',
+      '{"keys":[{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","kid":"e2e-seed","use":"sig"}]}',
     // The API server's own audience, which no binding may name and no token may
     // carry, the rule the mandatory audience exists to enforce.
     refused_audiences: ['https://kubernetes.default.svc'],

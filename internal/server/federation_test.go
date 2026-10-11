@@ -502,7 +502,7 @@ func TestFederationIssuerRouteHidesTheStaticDocument(t *testing.T) {
 }
 
 func TestFederationIssuerRouteRejectsImpossibleKeySources(t *testing.T) {
-	valid := `{"keys":[{"kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","kid":"test","use":"sig"}]}`
+	valid := `{"keys":[{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","kid":"test","use":"sig"}]}`
 	empty := ""
 	for _, tc := range []struct {
 		name   string
@@ -534,7 +534,8 @@ func TestFederationIssuerRouteRejectsImpossibleKeySources(t *testing.T) {
 }
 
 func TestFederationIssuerRouteCanonicalizesStaticJWKSOnce(t *testing.T) {
-	raw := "{\n  \"keys\": [{\"use\":\"sig\",\"x\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"kid\":\"test\",\"crv\":\"Ed25519\",\"kty\":\"OKP\"}]\n}"
+	// RFC 8032 section 7.1, test vector 1 public key.
+	raw := "{\n  \"keys\": [{\"use\":\"sig\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"kid\":\"test\",\"crv\":\"Ed25519\",\"kty\":\"OKP\"}]\n}"
 	var got service.IssuerRequest
 	srv := federationServer(t, stubFederation{createRequest: &got}, stubDelivery{})
 	body := apigen.CreateFederationIssuerRequest{
