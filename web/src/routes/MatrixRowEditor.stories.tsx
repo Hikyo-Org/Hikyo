@@ -54,6 +54,8 @@ const rows: Props['rows'] = [
 ];
 
 const meta = {
+  title: 'Features/Values/MatrixRowEditor',
+  id: 'routes-matrixroweditor',
   component: MatrixRowEditor,
   tags: ['ai-generated'],
   // A config key needs no reveal window, so an empty response table is enough:

@@ -83,6 +83,7 @@ case $url in
 	esac
 	fixture=runs
 	;;
+*/runs/41/jobs*) fixture=jobs-older ;;
 */runs/42/jobs*) fixture=jobs ;;
 *) printf 'stub gh: unexpected %s\n' "$url" >&2; exit 1 ;;
 esac
@@ -97,6 +98,7 @@ fixture() {
 	printf '{"head":{"sha":"%s","repo":{"id":2,"full_name":"fork/r"}},"base":{"repo":{"id":1,"full_name":"o/r"}},"user":{"id":10,"login":"author"},"changed_files":%s,"mergeable":true}\n' "$head" "$1" >"$work/pr.json"
 	printf '%s\n' "$2" >"$work/files.json"
 	printf '%s\n' "$3" >"$work/runs.json"
+	printf '{"jobs":[]}\n' >"$work/jobs-older.json"
 	printf '{"jobs":[{"name":"validation / changes","conclusion":"success"},{"name":"validation / ci-required","conclusion":"%s"}]}\n' "$4" >"$work/jobs.json"
 	printf '[[]]\n' >"$work/reviews.json"
 	printf '[[]]\n' >"$work/reviews-later.json"
@@ -124,7 +126,7 @@ approval() {
 gate() {
 	: >"$work/summary"
 	PATH="$work/bin:$PATH" FIXTURES=$work GH_REPO=o/r PR_NUMBER=7 HEAD_SHA=${1:-$head} \
-		GITHUB_STEP_SUMMARY="$work/summary" FORK_GATE_API_RETRY_SECONDS=0 FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
+		GITHUB_STEP_SUMMARY="$work/summary" FORK_GATE_API_RETRY_SECONDS=0 FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >"$work/stdout" 2>"$work/stderr"
 }
 
 # expect_pending <description>: rejected only by the deadline, never as a result.
@@ -133,7 +135,7 @@ expect_pending() {
 		printf 'fork gate fixture failed: accepted %s\n' "$1" >&2
 		exit 1
 	fi
-	grep -F 'no completed fork-ci run' "$work/stderr" >/dev/null || {
+	grep -F 'no completed PR validation run' "$work/stderr" >/dev/null || {
 		printf 'fork gate fixture failed: treated %s as a result: %s\n' "$1" "$(cat "$work/stderr")" >&2
 		exit 1
 	}
@@ -141,6 +143,23 @@ expect_pending() {
 
 expect_accept() {
 	gate || { printf 'fork gate fixture failed: rejected %s\n' "$1" >&2; exit 1; }
+}
+
+expect_policy_stdout() {
+	expect_accept "$1"
+	printf '%s\n' "$2" >"$work/expected-stdout"
+	cmp -s "$work/expected-stdout" "$work/stdout" || {
+		printf 'fork gate fixture failed: policy stdout differs for %s\n' "$1" >&2
+		cat "$work/stdout" >&2
+		exit 1
+	}
+}
+
+expect_policy_silent() {
+	[ ! -s "$work/stdout" ] || {
+		printf 'fork gate fixture failed: non-success policy emitted authority\n' >&2
+		exit 1
+	}
 }
 
 expect_reject() {
@@ -198,6 +217,25 @@ fixture 1 "$docs" "$done_run" failure
 expect_reject 'a failed fork-ci gate'
 fixture 1 "$docs" "$done_run" skipped
 expect_reject 'a skipped fork-ci gate'
+
+# GitHub can list an older cancelled run first when two events create runs in
+# the same second. The newest run ID, not response order, owns the verdict.
+tied_runs='{"workflow_runs":[{"id":41,"status":"completed","conclusion":"cancelled","display_title":"fork-ci #7","created_at":"2026-10-10T19:05:24Z"},{"id":42,"status":"queued","conclusion":null,"display_title":"fork-ci #7","created_at":"2026-10-10T19:05:24Z"},{"id":99,"status":"completed","conclusion":"success","display_title":"fork-ci #8"}]}'
+fixture 1 "$docs" "$tied_runs" success
+expect_pending 'newer validation behind a cancelled run with the same timestamp'
+jq '.workflow_runs |= reverse' "$work/runs.json" >"$work/runs-new.json"
+mv "$work/runs-new.json" "$work/runs.json"
+expect_pending 'newer validation regardless of API response order'
+jq '(.workflow_runs[] | select(.id == 42)) |= (.status = "completed" | .conclusion = "success")' "$work/runs.json" >"$work/runs-new.json"
+mv "$work/runs-new.json" "$work/runs.json"
+expect_accept 'newest successful validation with older cancellation and unrelated newer PR'
+
+fixture 1 "$docs" "$tied_runs" failure
+printf '{"jobs":[{"name":"validation / ci-required","conclusion":"success"}]}\n' >"$work/jobs-older.json"
+jq '(.workflow_runs[] | select(.id == 41 or .id == 42)) |= (.status = "completed" | .conclusion = (if .id == 41 then "success" else "failure" end))' "$work/runs.json" >"$work/runs-new.json"
+mv "$work/runs-new.json" "$work/runs.json"
+expect_reject 'newer failed validation despite an older successful run'
+grep -F 'validation-failure' "$work/summary" >/dev/null
 
 fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","display_title":"fork-ci #8"}]}' success
 expect_reject 'a passing run that belongs to another PR on the same commit'
@@ -377,7 +415,7 @@ fixture 1 "$docs" "$done_run" failure
 jq '.jobs += [{id:124,name:"validation / go-race",conclusion:"timed_out"}]' "$work/jobs.json" >"$work/jobs-new.json"
 mv "$work/jobs-new.json" "$work/jobs.json"
 expect_reject 'upstream timeout behind a failed aggregate'
-grep -F 'Fork validation gate: timeout' "$work/summary" >/dev/null
+grep -F 'PR validation gate: timeout' "$work/summary" >/dev/null
 fixture 1 "$docs" "$done_run" success
 expect_reject 'superseded head summary' fedcba9876543210fedcba9876543210fedcba98
 grep -F 'superseded' "$work/summary" >/dev/null
@@ -386,4 +424,65 @@ same_repo
 expect_reject 'policy refusal summary'
 grep -F 'policy-refusal' "$work/summary" >/dev/null
 
-printf 'fork gate fixture: exact-head validation, untouched fork YAML, and same-repo workflow authority from independent approval or the pinned current-maintainer BDFL\n'
+# The event-driven controller distinguishes unfinished validation from failure.
+# Trap every sleep: pending decisions must release their runner immediately,
+# even when the legacy timeout is zero or the queue takes hours.
+cat >"$work/bin/sleep" <<'EOF'
+#!/bin/sh
+printf 'unexpected sleep\n' >>"$FIXTURES/sleeps"
+exit 1
+EOF
+chmod +x "$work/bin/sleep"
+export PR_GATE_ONCE=1
+expect_once_pending() {
+	result=0
+	gate || result=$?
+	[ "$result" -eq 75 ] || {
+		printf 'one-shot gate returned %s for %s: %s\n' "$result" "$1" "$(cat "$work/stderr")" >&2
+		exit 1
+	}
+	grep -F 'PR validation gate [pending]' "$work/stderr" >/dev/null
+	[ ! -f "$work/sleeps" ] || { printf 'one-shot gate slept\n' >&2; exit 1; }
+}
+for state in queued in_progress waiting pending requested; do
+	fixture 1 "$docs" "{\"workflow_runs\":[{\"id\":42,\"status\":\"$state\",\"display_title\":\"fork-ci #7\"}]}" success
+	expect_once_pending "$state validation"
+done
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+expect_once_pending 'validation not yet created'
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":"action_required","display_title":"fork-ci #7"}]}' success
+expect_once_pending 'validation awaiting approval'
+fixture 1 "$docs" "$done_run" success
+jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_once_pending 'mergeability still being calculated'
+fixture 1 "$docs" "$done_run" success
+expect_accept 'completed validation in one-shot mode'
+fixture 1 "$docs" "$done_run" failure
+result=0
+gate || result=$?
+[ "$result" -eq 1 ] || { printf 'one-shot failure was not a refusal\n' >&2; exit 1; }
+fixture 1 "$workflow" "$done_run" success
+same_repo
+result=0
+gate || result=$?
+[ "$result" -eq 1 ] || { printf 'one-shot mode bypassed workflow approval\n' >&2; exit 1; }
+export PR_GATE_POLICY_ONLY=1
+fixture 1 "$docs" '{"workflow_runs":[]}' failure
+expect_policy_stdout 'policy-only verification does not trust or wait for validation results' '{"workflow_change_authorized":false}'
+fixture 1 "$workflow" '{"workflow_runs":[]}' success
+same_repo
+expect_reject 'policy-only verification retains workflow authority'
+expect_policy_silent
+approval
+expect_policy_stdout 'policy-only workflow authority is independent of result publication' '{"workflow_change_authorized":true}'
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_once_pending 'policy-only pending mergeability'
+expect_policy_silent
+expect_reject 'policy-only superseded head' fedcba9876543210fedcba9876543210fedcba98
+expect_policy_silent
+unset PR_GATE_ONCE PR_GATE_POLICY_ONLY
+
+printf 'PR gate fixture: exact-head validation, independent workflow authority, and runner-free pending decisions\n'

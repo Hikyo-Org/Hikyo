@@ -8,6 +8,8 @@ import { InviteDialog } from './InviteDialog.tsx';
 // The invite submits through a real API call the story cannot mock without a
 // harness, so plays only exercise the form's rendered state, never Invite.
 const meta = {
+  title: 'Features/Members/InviteDialog',
+  id: 'routes-invitedialog',
   component: InviteDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

@@ -1,0 +1,20 @@
+# Manual full validation is bound to the selected main commit. There is no
+# user-provided source input; the reusable graph rechecks this event binding.
+name: ci-main
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validation:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
+    permissions:
+      actions: read
+      contents: read

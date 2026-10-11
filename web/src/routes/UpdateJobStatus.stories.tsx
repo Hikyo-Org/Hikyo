@@ -19,6 +19,8 @@ const base: Job = {
 };
 
 const meta = {
+  title: 'Shared/UpdateJobStatus',
+  id: 'routes-updatejobstatus',
   component: UpdateJobStatus,
   tags: ['ai-generated'],
   args: { jobID },

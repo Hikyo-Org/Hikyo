@@ -83,7 +83,8 @@ function TokensPage() {
 }
 
 const meta = {
-  title: 'ui/Tokens',
+  title: 'Design system/Tokens',
+  id: 'ui-tokens',
   component: TokensPage,
   tags: ['ai-generated'],
 } satisfies Meta<typeof TokensPage>;

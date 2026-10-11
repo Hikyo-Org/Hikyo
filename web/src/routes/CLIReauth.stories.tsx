@@ -108,6 +108,8 @@ const app = (identity: WhoAmI, ...rows: MockRoute[]) => ({
 });
 
 const meta = {
+  title: 'Pages/CLIReauth',
+  id: 'routes-clireauth',
   component: CLIReauth,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: app(authenticatedIdentity, transaction({ body: disclosure })) },

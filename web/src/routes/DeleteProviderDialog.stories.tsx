@@ -23,6 +23,8 @@ const arm = async (canvas: StoryContext['canvas']) => {
 };
 
 const meta = {
+  title: 'Features/Machine access/DeleteProviderDialog',
+  id: 'routes-deleteproviderdialog',
   component: DeleteProviderDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

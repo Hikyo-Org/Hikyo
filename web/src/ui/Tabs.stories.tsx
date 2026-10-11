@@ -28,7 +28,9 @@ function Demo({ initial = 'accounts', label = 'Machine access sections' }: { ini
 }
 
 const meta = {
-  title: 'ui/Tabs',
+  parameters: { docs: { description: { component: "Controlled tabs and their labelled panels. Each example owns a generated identifier prefix so inline Docs instances remain independent; arrow navigation updates the selected tab and its associated panel." } } },
+  title: 'Design system/Tabs',
+  id: 'ui-tabs',
   component: Demo,
   tags: ['ai-generated'],
 } satisfies Meta<typeof Demo>;

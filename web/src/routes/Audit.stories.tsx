@@ -36,6 +36,8 @@ const page = (items: readonly (typeof event)[]) => ({
 const trail = (rest: Partial<MockRoute>): MockRoute => ({ url: /\/audit(\?|$)/, ...rest });
 
 const meta = {
+  title: 'Pages/Audit',
+  id: 'routes-audit',
   component: Audit,
   tags: ['ai-generated'],
   parameters: {

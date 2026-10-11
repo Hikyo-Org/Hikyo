@@ -28,6 +28,8 @@ const withReturn = (params: Record<string, string>) => () => {
 };
 
 const meta = {
+  title: 'Pages/OIDCDone',
+  id: 'routes-oidcdone',
   component: OIDCDone,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

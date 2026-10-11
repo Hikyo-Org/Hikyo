@@ -10,6 +10,8 @@ function clearThemeChoice(): void {
 }
 
 const meta = {
+  title: 'Shared/ThemeToggle',
+  id: 'routes-themetoggle',
   component: ThemeToggle,
   tags: ['ai-generated'],
   beforeEach: () => {

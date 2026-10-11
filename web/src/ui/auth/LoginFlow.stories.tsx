@@ -34,7 +34,9 @@ type Stage =
   | { at: 'setup'; username: string; step: SetupStep; busy: 'password' | 'totp' | 'passkey' | 'code' | null; error: string | null }
   | { at: 'done'; how: string; assurance: string };
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 400));
+// Let React commit and paint the pending state once. Busy variants are also
+// retained in the owning form stories; simulated transport needs no timed wait.
+const tick = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 const wrongPassword = 'That username and password did not match. Check both and try again.';
 const wrongCode =
   'That code was not accepted. A code is valid for one time step and is used once: wait for the next code and try again.';
@@ -193,7 +195,9 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
 }
 
 const meta = {
-  title: 'ui/auth/LoginFlow',
+  parameters: { docs: { description: { component: "Interactive sign-in compositions using the real login form, second-factor challenge and enrolment setup components. Named stages demonstrate password, authenticator, passkey and identity-provider decisions with inert local callbacks; browser-owned prompts remain human-only." } } },
+  title: 'Design system/Auth/LoginFlow',
+  id: 'ui-auth-loginflow',
   component: LoginFlow,
   tags: ['ai-generated'],
   args: { scenario: 'password-enrolled', policy: 'require-second-factor' },

@@ -57,6 +57,8 @@ const issuers = {
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 
 const meta = {
+  title: 'Features/Identity/FederationIssuersPanel',
+  id: 'routes-federationissuerspanel',
   component: FederationIssuersPanel,
   tags: ['ai-generated'],
   parameters: {

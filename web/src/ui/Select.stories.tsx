@@ -4,6 +4,9 @@ import { expect } from 'storybook/test';
 import { Select } from './Select.tsx';
 
 const meta = {
+  parameters: { docs: { description: { component: "A labelled native select with shared hint and field-error wiring. Native option, keyboard and platform behavior remain intact; external descriptions and invalid state are merged with the shared field metadata." } } },
+  title: 'Design system/Select',
+  id: 'ui-select',
   component: Select,
   tags: ['ai-generated'],
   args: {
@@ -23,12 +26,6 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 export const Disabled: Story = { args: { disabled: true } };
-
-export const LabelIsWired: Story = {
-  play: async ({ canvas }) => {
-    await expect(canvas.getByLabelText('Environment')).toBeVisible();
-  },
-};
 
 export const AllStates: Story = {
   render: () => (

@@ -95,9 +95,11 @@ const app = (status: Partial<MockRoute>) => ({
 });
 
 const meta = {
+  title: 'Pages/InstanceConfig',
+  id: 'routes-instanceconfig',
   component: InstanceConfig,
   tags: ['ai-generated'],
-  parameters: { ...topLayerDocs, app: app({ body: active }) },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Instance configuration management, including managed settings and their effective sources. Reading or changing privileged configuration is distinct from an unavailable or undisclosed response." } },  app: app({ body: active }) },
 } satisfies Meta<typeof InstanceConfig>;
 
 export default meta;

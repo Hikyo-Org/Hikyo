@@ -15,6 +15,8 @@ const development = {
 const production = { ...development, id: 'env_01989abc-def0-7123-8123-000000000002', name: 'production', display_order: 1 };
 
 const meta = {
+  title: 'Features/Values/MatrixKeyCreate',
+  id: 'routes-matrixkeycreate',
   component: MatrixKeyCreate,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

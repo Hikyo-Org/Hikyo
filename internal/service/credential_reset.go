@@ -22,9 +22,9 @@ import (
 //     no network route, reaching any target including instance-capability holders.
 //
 // Both mint a single-use, hashed, expiring credential-establishment authority
-// that establishes a password and nothing else, advance the target's generation,
-// and revoke its sessions in one transaction — the recovery flow's shape, minus
-// self-service.
+// that establishes a password, or a federated identity through claim while the
+// target holds no credential of any kind. They advance the target's generation
+// and revoke its sessions in one transaction, without self-service recovery.
 
 // ErrNoResetTarget is the ONE uniform refusal for every network reset that must
 // not enumerate the target's grant shape: an unknown principal, a machine

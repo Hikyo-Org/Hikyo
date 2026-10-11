@@ -29,9 +29,11 @@ function Emit({ kind }: { kind: 'error' | 'success' | 'info' }) {
 }
 
 const meta = {
+  title: 'Shared/Notifications',
+  id: 'app-notifications',
   component: ToastViewport,
   tags: ['ai-generated'],
-  parameters: topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Application feedback notifications with accessible announcement roles and labelled dismiss controls. The examples cover long messages and notification removal without changing the underlying application operation." } } },
 } satisfies Meta<typeof ToastViewport>;
 
 export default meta;

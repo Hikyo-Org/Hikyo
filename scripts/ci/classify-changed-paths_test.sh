@@ -207,3 +207,23 @@ printf '%s' "$floor_plan" | jq -e '.["floor-bench"] == true' >/dev/null
 # Pin the workflow's extraction boundary as well as the classifier itself.
 # shellcheck disable=SC2016
 grep -F 'git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA"' "$script_dir/../../.github/workflows/ci.yml" >/dev/null
+
+# Benchmark smoke is a blocking step of test_core. Select its existing test
+# plan for every measured package, Go dependency, generated API and embedded
+# fixture. An unknown path remains a full-plan backstop.
+for benchmark_path in \
+	internal/crypto/envelope_benchmark_test.go \
+	internal/dotenv/dotenv_benchmark_test.go \
+	internal/scanning/corpus_test.go \
+	internal/server/admission_benchmark_test.go \
+	internal/service/workflows_benchmark_test.go \
+	internal/service/mail_templates/signup.txt \
+	internal/service/common-passwords.txt \
+	internal/securefile/atomic.go \
+	internal/store/query.sql \
+	api/apigen/apigen.gen.go \
+	api/openapi.yaml \
+	scripts/ci/go-tool-modules.txt \
+	go.mod go.sum; do
+	expect_selected "$benchmark_path" test "$benchmark_path"
+done

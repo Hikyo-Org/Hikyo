@@ -42,6 +42,8 @@ const disclosed: Extract<Lifecycle, { kind: 'disclosed' }> = {
 };
 
 const meta = {
+  title: 'Features/Machine access/LeaseMintDialog',
+  id: 'routes-leasemintdialog',
   component: LeaseMintDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

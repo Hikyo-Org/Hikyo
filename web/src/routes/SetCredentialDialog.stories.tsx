@@ -20,6 +20,8 @@ const submit = async (canvas: StoryContext['canvas']) => {
 };
 
 const meta = {
+  title: 'Features/Machine access/SetCredentialDialog',
+  id: 'routes-setcredentialdialog',
   component: SetCredentialDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

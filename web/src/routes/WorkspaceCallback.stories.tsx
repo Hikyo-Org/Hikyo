@@ -22,6 +22,8 @@ const withResult = () => {
 };
 
 const meta = {
+  title: 'Pages/WorkspaceCallback',
+  id: 'routes-workspacecallback',
   component: WorkspaceCallback,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

@@ -6,6 +6,9 @@ import { ProfileUpdateBadge } from './Shell.tsx';
 type Props = Parameters<typeof ProfileUpdateBadge>[0];
 
 const meta = {
+  parameters: { docs: { description: { component: "A labelled available-version indicator in the account navigation control. The badge uses an image role and accessible update text; the owning button supplies the action." } } },
+  title: 'Shared/ProfileUpdateBadge',
+  id: 'routes-profileupdatebadge',
   component: ProfileUpdateBadge,
   // The badge is a 10px dot pinned to the corner of the account avatar; alone
   // it has no corner to pin to, so the story mounts it on one.

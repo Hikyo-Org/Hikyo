@@ -7,6 +7,9 @@ import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 // is read-only: a preview plus its children, with no way to change the
 // identity from the browser. That is the mode Storybook always runs in.
 const meta = {
+  parameters: { docs: { description: { component: "Organisation and project identity previews used by navigation chrome. The production surface is read-only because no persistence API exists; prototype mode exposes browser-local hue, glyph and image choices with accessible control names." } } },
+  title: 'Shared/ChromeIdentityControls',
+  id: 'routes-chromeidentitycontrols',
   component: ChromeIdentityControls,
   tags: ['ai-generated'],
   args: {

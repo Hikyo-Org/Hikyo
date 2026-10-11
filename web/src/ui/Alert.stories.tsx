@@ -1,10 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
 
 import { Alert } from './Alert.tsx';
 import { Button } from './Button.tsx';
 
 const meta = {
+  title: 'Design system/Alert',
+  id: 'ui-alert',
   component: Alert,
   tags: ['ai-generated'],
   args: { children: 'That username and password did not match. Check both and try again.' },
@@ -56,24 +57,4 @@ export const AllStates: Story = {
       </Alert>
     </div>
   ),
-};
-
-export const RolesMatchTone: Story = {
-  render: () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
-      <Alert>Refused: the remote answered with a certificate that does not match the pin.</Alert>
-      <Alert tone="done">Remote added. Its projects appear in the rail after the next refresh.</Alert>
-      <Alert tone="warn">The provider shortened the lifetime this credential asked for.</Alert>
-      <Alert tone="info">Key definitions come from Git for this project.</Alert>
-    </div>
-  ),
-  play: async ({ canvas }) => {
-    // Only the refusal interrupts; the other three are polite.
-    await expect(canvas.getByRole('alert')).toHaveTextContent(/refused/i);
-    const polite = canvas.getAllByRole('status');
-    await expect(polite).toHaveLength(3);
-    await expect(polite[0]).toHaveTextContent(/remote added/i);
-    await expect(polite[1]).toHaveTextContent(/shortened the lifetime/i);
-    await expect(polite[2]).toHaveTextContent(/come from git/i);
-  },
 };

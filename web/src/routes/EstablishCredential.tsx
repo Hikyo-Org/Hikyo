@@ -76,6 +76,7 @@ export function EstablishCredential() {
       setAuthority('');
       setPassword('');
       setRepeat('');
+      setContacting(null);
     };
     globalThis.addEventListener('pagehide', wipe);
     return () => globalThis.removeEventListener('pagehide', wipe);
@@ -99,6 +100,7 @@ export function EstablishCredential() {
           setAuthority('');
           setPassword('');
           setRepeat('');
+          setContacting(null);
         },
       },
       {

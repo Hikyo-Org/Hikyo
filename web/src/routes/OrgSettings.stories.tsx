@@ -97,6 +97,8 @@ const populated: readonly MockRoute[] = [
 const app = (responses: readonly MockRoute[]) => ({ auth: true, path: PATH, routePath: ROUTE, responses });
 
 const meta = {
+  title: 'Pages/OrgSettings',
+  id: 'routes-orgsettings',
   component: OrgSettings,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: app(populated) },

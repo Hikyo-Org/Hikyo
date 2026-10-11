@@ -31,6 +31,9 @@ const credential: MachineCredential = {
 };
 
 const meta = {
+  parameters: { docs: { description: { component: "One federation credential binding on a machine account. Shows its identity, readiness and lifecycle controls, including replacement and revocation, with the owning account and credential passed explicitly." } } },
+  title: 'Features/Machine access/BindingCard',
+  id: 'routes-bindingcard',
   component: BindingCard,
   tags: ['ai-generated'],
   args: { account, credential, now, ready: true, onReplace: fn(), onRevoke: fn() },

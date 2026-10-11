@@ -7,6 +7,8 @@ import { Field } from './Field.tsx';
 // this page shows the layout those share with a bare control, so the label,
 // hint and error rows can be designed once.
 const meta = {
+  title: 'Design system/Field',
+  id: 'ui-field',
   component: Field,
   tags: ['ai-generated'],
   args: {

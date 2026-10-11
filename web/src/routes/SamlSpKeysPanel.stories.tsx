@@ -25,6 +25,8 @@ const keys = {
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 
 const meta = {
+  title: 'Features/Identity/SamlSpKeysPanel',
+  id: 'routes-samlspkeyspanel',
   component: SamlSpKeysPanel,
   tags: ['ai-generated'],
   parameters: {

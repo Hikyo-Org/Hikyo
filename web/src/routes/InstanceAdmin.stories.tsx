@@ -82,6 +82,8 @@ const uniformly = (rest: Partial<MockRoute>): readonly MockRoute[] =>
 const app = (responses: readonly MockRoute[]) => ({ auth: true, path: '/instance', responses });
 
 const meta = {
+  title: 'Pages/InstanceAdmin',
+  id: 'routes-instanceadmin',
   component: InstanceAdmin,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: app(populated) },

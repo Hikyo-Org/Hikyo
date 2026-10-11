@@ -58,6 +58,8 @@ function StepUp(props: Omit<ComponentProps<typeof WorkspaceStepUp>, 'firstRef'>)
 }
 
 const meta = {
+  title: 'Pages/WorkspaceStepUp',
+  id: 'routes-workspacestepup',
   component: StepUp,
   tags: ['ai-generated'],
   args: {

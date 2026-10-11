@@ -187,6 +187,8 @@ const app = (search: string, responses: readonly MockRoute[] = rows()) => ({
 });
 
 const meta = {
+  title: 'Features/Values/HistoryDrawer',
+  id: 'routes-historydrawer',
   component: HistoryDrawer,
   tags: ['ai-generated'],
   args: {

@@ -32,6 +32,8 @@ const items: readonly ScanWarnItem[] = [
 ];
 
 const meta = {
+  title: 'Features/Values/ScanWarnDialog',
+  id: 'routes-scanwarndialog',
   component: ScanWarnDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

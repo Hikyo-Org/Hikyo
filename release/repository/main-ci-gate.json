@@ -28,7 +28,7 @@
         "do_not_enforce_on_create": false,
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          {"context": "ci-required"}
+          {"context": "ci-required-next"}
         ]
       }
     },

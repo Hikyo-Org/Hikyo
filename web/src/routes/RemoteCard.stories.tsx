@@ -43,6 +43,8 @@ const handoffResponses: readonly MockRoute[] = [
 ];
 
 const meta = {
+  title: 'Features/Remotes/RemoteCard',
+  id: 'routes-remotecard',
   component: RemoteCard,
   tags: ['ai-generated'],
   // The card renders a top-level <li>; the screen owns a <ul className="remotes">
@@ -54,7 +56,7 @@ const meta = {
       </ul>
     ),
   ],
-  parameters: { ...topLayerDocs, app: { responses: handoffResponses } },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "One connected-instance directory card. Shows reachability, stale observations, pinned-credential refusal and duplicate identity with an explicit workspace handoff affordance. Actual popup sign-in remains a human-only flow." } },  app: { responses: handoffResponses } },
   args: { remote: base, duplicateIdentity: false },
 } satisfies Meta<typeof RemoteCard>;
 

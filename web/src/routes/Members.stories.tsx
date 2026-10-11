@@ -77,11 +77,13 @@ const grants = {
 } satisfies z.input<typeof zGrantList>;
 
 const meta = {
+  title: 'Pages/Members',
+  id: 'routes-members',
   component: Members,
   tags: ['ai-generated'],
   args: { scope: { kind: 'org' } },
-  parameters: {
-    ...topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Organisation or instance membership and access administration. The same route-owned screen displays invitations, principals, grants and registration policy with the scope supplied by its real providers and route parameters." } },
+
     app: {
       auth: true,
       identity: authenticatedIdentity,

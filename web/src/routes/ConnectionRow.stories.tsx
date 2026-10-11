@@ -21,6 +21,8 @@ const base: Connection = {
 };
 
 const meta = {
+  title: 'Features/Remotes/ConnectionRow',
+  id: 'routes-connectionrow',
   component: ConnectionRow,
   tags: ['ai-generated'],
   // A bare <li> outside a list fails the axe listitem rule; the section that

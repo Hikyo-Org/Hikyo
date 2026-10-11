@@ -17,6 +17,8 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 const status = (rest: Partial<MockRoute>): MockRoute => ({ url: '/api/v1/runtime/status', ...rest });
 
 const meta = {
+  title: 'Shared/RuntimeMaintenanceBoundary',
+  id: 'app-runtimemaintenanceboundary',
   component: RuntimeMaintenanceBoundary,
   tags: ['ai-generated'],
   args: {

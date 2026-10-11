@@ -20,7 +20,7 @@ type raceIsolationStep struct {
 
 func raceIsolationRunStep(t *testing.T, job, name string) raceIsolationStep {
 	t.Helper()
-	raw, err := os.ReadFile("../../.github/workflows/race-isolation.yml")
+	raw, err := os.ReadFile("../../.github/workflows/reliability.yml")
 	if err != nil {
 		t.Fatal(err)
 	}

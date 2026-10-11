@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 import { recordPinnedRun } from '../registry.ts';
 
@@ -599,9 +600,19 @@ async function interactiveElements(page: Page): Promise<Locator[]> {
   const modal = page.locator('dialog[open]');
   const scope = (await modal.count()) > 0 ? modal.first() : page;
   const all = scope.locator(INTERACTIVE_ELEMENT_SELECTOR);
+  // Pin DOM identity in one browser operation. Numeric locators rebind when
+  // asynchronous chrome queries insert even hidden links before a control.
+  // Keep existing identities across sweeps, so late visible controls can be
+  // checked without substituting a different node for an earlier target.
+  const identities = await all.evaluateAll((elements, prefix) => elements.map((element, index) => {
+    const existing = element.getAttribute('data-hikyo-pinned-control');
+    const identity = existing ?? `${prefix}-${index}`;
+    element.setAttribute('data-hikyo-pinned-control', identity);
+    return identity;
+  }), randomUUID());
   const out: Locator[] = [];
-  for (let i = 0; i < (await all.count()); i++) {
-    const one = all.nth(i);
+  for (const identity of identities) {
+    const one = scope.locator(`[data-hikyo-pinned-control="${identity}"]`);
     const operable = await one.evaluate((element) => element.closest('[inert]') === null);
     if (operable && await one.isVisible()) {
       out.push(one);
@@ -609,6 +620,29 @@ async function interactiveElements(page: Page): Promise<Locator[]> {
   }
   expect(out.length, 'a surface with no interactive elements is not a surface').toBeGreaterThan(0);
   return out;
+}
+
+/** Assert every discovered control, including controls added while focus moves. */
+export async function expectInteractiveAssertionSet(page: Page): Promise<void> {
+  const checked = new Set<string>();
+  // A surface that continuously adds controls never establishes the assertion
+  // set. Refuse it rather than silently stopping discovery after a budget.
+  for (let sweep = 0; sweep < 10; sweep += 1) {
+    const interactive: Locator[] = [];
+    for (const target of await interactiveElements(page)) {
+      const identity = await target.getAttribute('data-hikyo-pinned-control');
+      if (identity === null) throw new Error('a discovered interactive control lost its identity');
+      if (!checked.has(identity)) {
+        interactive.push(target);
+        checked.add(identity);
+      }
+    }
+    if (interactive.length === 0) return;
+    await expectEveryFocusIndicator(page, interactive);
+    await expectTouchTargets(page, interactive);
+    await expectEveryContrast(page, interactive);
+  }
+  throw new Error('interactive controls kept appearing during the pinned assertion set');
 }
 
 /** PinnedSurface is what a flow declares about the surface it is standing on. */
@@ -671,10 +705,8 @@ export async function expectPinnedAssertionSet(page: Page, surface: PinnedSurfac
 
   await expectNoSeriousAxeViolations(page);
 
-  const interactive = await interactiveElements(page);
-  await expectEveryFocusIndicator(page, interactive);
-  await expectTouchTargets(page, interactive);
-  await expectEveryContrast(page, [...interactive, ...surface.text]);
+  await expectInteractiveAssertionSet(page);
+  await expectEveryContrast(page, [...surface.text]);
 
   for (const [target, role] of surface.radii) {
     await expectRadiusRole(page, target, role);

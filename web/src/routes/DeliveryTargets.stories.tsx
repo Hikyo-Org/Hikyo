@@ -9,10 +9,14 @@ import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
 // The Kubernetes tab's two layers, one story per derived state (#790). The
 // panel is presentational: each story hands it a parsed listing. The empty
 // `app` parameter mounts the router its key-view links need, and no fetch.
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 const meta = {
+  title: 'Features/Machine access/DeliveryTargets',
+  id: 'routes-deliverytargets',
   component: DeliveryTargetsPanel,
   tags: ['ai-generated'],
-  parameters: { app: { responses: [] } },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Kubernetes delivery reports, their observation age and reporter authority. Reported, stale, refused, revoked and unknown are separate server-derived states; an absent report never implies a healthy target." } },  app: { responses: [] } },
   args: {
     project: { org: ORG, project: PRJ },
     accounts: [serviceAccount],

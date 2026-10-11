@@ -9,9 +9,11 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // states what a standing decryption capability on a machine principal means and
 // gates its button on an acknowledgement; withdrawing states the other half.
 const meta = {
+  title: 'Features/Machine access/MachineRevealDialog',
+  id: 'routes-machinerevealdialog',
   component: MachineRevealDialog,
   tags: ['ai-generated'],
-  parameters: topLayerDocs,
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Confirmation for the per-project machine-reveal policy. Enabling explicitly acknowledges that reveal-bearing machine principals become standing decryption capabilities; withdrawing states the resulting disclosure boundary." } } },
   args: { enable: true, busy: false, failure: null, onConfirm: fn(), onClose: fn() },
 } satisfies Meta<typeof MachineRevealDialog>;
 

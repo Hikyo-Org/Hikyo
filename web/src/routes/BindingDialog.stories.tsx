@@ -58,6 +58,8 @@ const fill = async (canvas: StoryContext['canvas']) => {
 };
 
 const meta = {
+  title: 'Features/Machine access/BindingDialog',
+  id: 'routes-bindingdialog',
   component: BindingDialog,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, app: {} },

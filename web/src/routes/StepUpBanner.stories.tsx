@@ -37,6 +37,8 @@ const onePasskey = {
 };
 
 const meta = {
+  title: 'Shared/StepUpBanner',
+  id: 'routes-stepupbanner',
   component: StepUpBanner,
   tags: ['ai-generated'],
   args: { session: passwordOnly },

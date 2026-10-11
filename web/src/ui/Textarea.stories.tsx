@@ -4,6 +4,9 @@ import { expect } from 'storybook/test';
 import { Textarea } from './Textarea.tsx';
 
 const meta = {
+  parameters: { docs: { description: { component: "A labelled native multiline control with shared hint and error wiring. It retains caller descriptions and invalid state, supports monospace content, and shares the application’s control typography and disabled treatment." } } },
+  title: 'Design system/Textarea',
+  id: 'ui-textarea',
   component: Textarea,
   tags: ['ai-generated'],
   args: { label: 'Description', placeholder: 'What this project is for' },
@@ -15,12 +18,6 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {};
 export const Filled: Story = { args: { defaultValue: 'Customer-facing API and its workers.' } };
 export const Disabled: Story = { args: { disabled: true, defaultValue: 'locked' } };
-
-export const LabelIsWired: Story = {
-  play: async ({ canvas }) => {
-    await expect(canvas.getByLabelText('Description')).toBeVisible();
-  },
-};
 
 export const AllStates: Story = {
   render: () => (

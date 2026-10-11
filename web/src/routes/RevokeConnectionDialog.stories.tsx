@@ -21,6 +21,8 @@ const connection: Props['connection'] = {
 };
 
 const meta = {
+  title: 'Features/Remotes/RevokeConnectionDialog',
+  id: 'routes-revokeconnectiondialog',
   component: RevokeConnectionDialog,
   tags: ['ai-generated'],
   // The dialog runs a real useRevokeConnection mutation; the harness supplies

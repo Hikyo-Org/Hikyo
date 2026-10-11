@@ -4,6 +4,8 @@ import { expect } from 'storybook/test';
 import { QrCode } from './QrCode.tsx';
 
 const meta = {
+  title: 'Design system/Auth/QrCode',
+  id: 'ui-auth-qrcode',
   component: QrCode,
   tags: ['ai-generated'],
   args: {

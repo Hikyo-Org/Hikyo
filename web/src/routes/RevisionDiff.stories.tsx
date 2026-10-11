@@ -90,6 +90,8 @@ const disclosed: Diff = {
 const diff = (rest: Omit<MockRoute, 'url' | 'method'>): MockRoute => ({ url: DIFF_URL, method: 'POST', ...rest });
 
 const meta = {
+  title: 'Features/Values/RevisionDiff',
+  id: 'routes-revisiondiff',
   component: RevisionDiffDialog,
   tags: ['ai-generated'],
   args: {
@@ -99,7 +101,7 @@ const meta = {
     right: 7n,
     onClose: fn(),
   },
-  parameters: { ...topLayerDocs, app: { auth: true, responses: [diff({ body: populated })] } },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "A revision-comparison dialog for environment values. Shows the actual changed-key and revision context, including long content, through the shared modal owner instead of duplicating its overlay behavior." } },  app: { auth: true, responses: [diff({ body: populated })] } },
 } satisfies Meta<typeof RevisionDiffDialog>;
 
 export default meta;

@@ -13,6 +13,8 @@ const minted: Props['minted'] = {
 };
 
 const meta = {
+  title: 'Features/Remotes/ConnectionMintDialog',
+  id: 'routes-connectionmintdialog',
   component: ConnectionMintDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

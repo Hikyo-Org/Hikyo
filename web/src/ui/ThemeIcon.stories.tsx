@@ -4,6 +4,8 @@ import { expect } from 'storybook/test';
 import { ThemeIcon } from './ThemeIcon.tsx';
 
 const meta = {
+  title: 'Design system/ThemeIcon',
+  id: 'ui-themeicon',
   component: ThemeIcon,
   tags: ['ai-generated'],
   args: { dark: false },

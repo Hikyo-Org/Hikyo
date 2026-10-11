@@ -5,6 +5,8 @@ import { topLayerDocs } from '../../../.storybook/topLayerDocs.ts';
 import { ProofDialog } from './ProofDialog.tsx';
 
 const meta = {
+  title: 'Design system/Auth/ProofDialog',
+  id: 'ui-auth-proofdialog',
   component: ProofDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

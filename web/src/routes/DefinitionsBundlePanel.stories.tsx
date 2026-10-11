@@ -123,10 +123,12 @@ const chooseBundle = async (canvas: Canvas) => {
 };
 
 const meta = {
+  title: 'Features/Values/DefinitionsBundlePanel',
+  id: 'routes-definitionsbundlepanel',
   component: DefinitionsBundlePanel,
   tags: ['ai-generated'],
   args: { org: ORG, project: PRJ, settings: db },
-  parameters: { ...topLayerDocs, ...app() },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "Download, check and compare project definition bundles, then review an immutable impact plan before applying supported catalogue changes. Git-managed projects retain checking and planning while refusing browser apply; workspace downloads remain on the destination instance." } },  ...app() },
 } satisfies Meta<typeof DefinitionsBundlePanel>;
 
 export default meta;

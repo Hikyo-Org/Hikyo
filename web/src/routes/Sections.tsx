@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 
+import { isDemo } from '../demo/config.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -24,7 +25,14 @@ export function JumpIndex({ sections }: { sections: readonly SectionRef[] }) {
       <ul>
         {sections.map((section) => (
           <li key={section.id}>
-            <a className="jump__link" href={`#${section.id}`}>
+            <a className="jump__link" href={`#${section.id}`}
+              onClick={isDemo ? (event) => {
+                event.preventDefault();
+                const target = document.getElementById(section.id);
+                target?.focus({ preventScroll: true });
+                target?.scrollIntoView({ block: 'start' });
+              } : undefined}
+            >
               {section.label}
             </a>
           </li>

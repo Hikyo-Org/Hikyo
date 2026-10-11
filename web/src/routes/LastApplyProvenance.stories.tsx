@@ -13,6 +13,8 @@ const applied = {
 };
 
 const meta = {
+  title: 'Features/Values/LastApplyProvenance',
+  id: 'routes-lastapplyprovenance',
   component: LastApplyProvenance,
   tags: ['ai-generated'],
   args: { lastApply: applied },

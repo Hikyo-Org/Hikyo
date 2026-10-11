@@ -14,6 +14,8 @@ const idleMint: Props['mint'] = {
 };
 
 const meta = {
+  title: 'Features/Remotes/MintConnectionForm',
+  id: 'routes-mintconnectionform',
   component: MintConnectionForm,
   tags: ['ai-generated'],
   args: { mint: idleMint, onMinted: fn() },

@@ -290,6 +290,8 @@ const app = (responses: readonly MockRoute[]) => ({
 });
 
 const meta = {
+  title: 'Pages/Matrix',
+  id: 'routes-matrix',
   component: Matrix,
   tags: ['ai-generated'],
   parameters: { ...topLayerDocs, ...app([...catalogue({}), ...allReady]) },

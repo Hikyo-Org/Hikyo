@@ -9,7 +9,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-gate-reconcile.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
 report() {
-	printf 'fork gate reconciliation: %s\n' "$1" >&2
+	printf 'PR gate reconciliation: %s\n' "$1" >&2
 	[ -z "${GITHUB_STEP_SUMMARY:-}" ] || printf '%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"
 }
 fail() { report "$1"; exit 1; }
@@ -22,7 +22,7 @@ read_api() {
 repo=$(read_api "repos/$GH_REPO") || exit 1
 repo_id=$(printf '%s\n' "$repo" | jq -er '.id | select(type == "number" and . > 0 and floor == .)') || fail 'invalid repository metadata'
 fork_workflow=$(read_api "repos/$GH_REPO/actions/workflows/ci-fork.yml") || exit 1
-fork_id=$(printf '%s\n' "$fork_workflow" | jq -er 'select(.path == ".github/workflows/ci-fork.yml" and .name == "fork-ci") | .id | select(type == "number" and . > 0 and floor == .)') || fail 'invalid fork workflow identity'
+fork_id=$(printf '%s\n' "$fork_workflow" | jq -er 'select(.path == ".github/workflows/ci-fork.yml" and (.name == "fork-ci" or .name == "pr-validation")) | .id | select(type == "number" and . > 0 and floor == .)') || fail 'invalid PR validation workflow identity'
 trusted_workflow=$(read_api "repos/$GH_REPO/actions/workflows/ci-control.yml") || exit 1
 trusted_id=$(printf '%s\n' "$trusted_workflow" | jq -er 'select(.path == ".github/workflows/ci-control.yml" and .name == "trusted-ci") | .id | select(type == "number" and . > 0 and floor == .)') || fail 'invalid trusted workflow identity'
 source=$(read_api "repos/$GH_REPO/actions/runs/$SOURCE_RUN_ID") || exit 1
@@ -37,7 +37,7 @@ printf '%s\n' "$source" | jq -e --argjson id "$SOURCE_RUN_ID" --argjson workflow
 	(.pull_requests | type == "array")' >/dev/null || fail 'invalid source workflow or PR metadata'
 pr_number=$(printf '%s\n' "$source" | jq -r '.display_title | ltrimstr("fork-ci #")')
 head=$(printf '%s\n' "$source" | jq -r '.head_sha')
-printf '%s\n' "$source" | jq -e --arg title "fork-ci #$pr_number" '(.name == "fork-ci" or .name == $title)' >/dev/null || fail 'invalid source workflow name'
+printf '%s\n' "$source" | jq -e --arg title "fork-ci #$pr_number" '(.name == "fork-ci" or .name == "pr-validation" or .name == $title)' >/dev/null || fail 'invalid source workflow name'
 [ "$(printf '%s\n' "$source" | jq -r '.run_attempt')" = "$SOURCE_RUN_ATTEMPT" ] || noop 'source completion belongs to an older attempt'
 [ "$(printf '%s\n' "$source" | jq -r '.status')" = completed ] || noop 'source run has not completed'
 

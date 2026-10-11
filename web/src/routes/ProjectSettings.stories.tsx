@@ -90,6 +90,8 @@ const commonResponses = [
 ];
 
 const meta = {
+  title: 'Pages/ProjectSettings',
+  id: 'routes-projectsettings',
   component: ProjectSettings,
   tags: ['ai-generated'],
   parameters: {

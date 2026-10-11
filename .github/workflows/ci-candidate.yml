@@ -1,0 +1,75 @@
+# Explicit full-candidate admission. The label requests expensive work once;
+# it never authorizes a result. The trusted completion gate independently
+# verifies workflow policy, every full-suite job, and the live base/head pair.
+# Remove and reapply ci:full after either revision changes. Ordinary pushes
+# receive ci-feedback and cannot restart an admitted full suite.
+# PR code executes only in pull_request's read-only, PR-scoped cache context.
+name: pr-candidate
+run-name: "${{ github.event.label.name == 'ci:full' && 'candidate-ci' || 'pr-metadata' }} #${{ github.event.pull_request.number }}"
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ${{ github.event.label.name == 'ci:full' && 'candidate-ci' || 'pr-metadata' }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  vouch:
+    if: github.event.label.name == 'ci:full' && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a vouched author
+        uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+        with:
+          user: ${{ github.event.pull_request.user.login }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  validation:
+    needs: vouch
+    if: ${{ !cancelled() && github.event.label.name == 'ci:full' && github.event.pull_request.base.ref == github.event.repository.default_branch && (needs.vouch.result == 'success' || (needs.vouch.result == 'skipped' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
+      candidate: true
+    permissions:
+      actions: read
+      contents: read
+
+  # Legacy selective or head-only validations cannot produce this proof.
+  candidate-proof:
+    needs: validation
+    if: ${{ always() && !cancelled() && github.event.label.name == 'ci:full' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Require the complete candidate validation
+        env:
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        run: test "$VALIDATION_RESULT" = success
+      - name: Check out the immutable candidate without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Bind tested code to both authenticated candidate parents
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git show -s --format=%P HEAD | wc -w | tr -d ' ')" = 2
+          BASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
+          test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"

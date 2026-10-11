@@ -19,6 +19,8 @@ env:
 jobs:
   floor-bench:
     uses: ./.github/workflows/floor-bench.yml
+    with:
+      revision: ${{ github.sha }}
     permissions:
       contents: read
 

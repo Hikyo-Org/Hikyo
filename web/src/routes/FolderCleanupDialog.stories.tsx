@@ -17,6 +17,8 @@ const outcomes: readonly FolderMoveOutcome[] = proposals
   .map((proposal) => ({ id: proposal.id, error: null }));
 
 const meta = {
+  title: 'Features/Values/FolderCleanupDialog',
+  id: 'routes-foldercleanupdialog',
   component: FolderCleanupDialog,
   tags: ['ai-generated'],
   parameters: topLayerDocs,

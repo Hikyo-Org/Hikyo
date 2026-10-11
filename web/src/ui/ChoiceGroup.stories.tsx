@@ -28,6 +28,8 @@ const keys = (
 );
 
 const meta = {
+  title: 'Design system/ChoiceGroup',
+  id: 'ui-choicegroup',
   component: ChoiceGroup,
   tags: ['ai-generated'],
   args: { legend: 'Outcomes', children: outcomes },

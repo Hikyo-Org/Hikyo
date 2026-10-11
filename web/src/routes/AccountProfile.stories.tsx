@@ -24,9 +24,11 @@ const local = {
 const profile = (rest: Partial<MockRoute>): MockRoute => ({ url: '/api/v1/me/profile', ...rest });
 
 const meta = {
+  title: 'Pages/AccountProfile',
+  id: 'routes-accountprofile',
   component: AccountProfile,
   tags: ['ai-generated'],
-  parameters: { ...topLayerDocs, app: { auth: true, responses: [profile({ body: local })] } },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "The authenticated account profile: principal details, display-name editing and linked sign-in identities. Responses run through the real account API code; refusal and pending states remain visible to the person editing." } },  app: { auth: true, responses: [profile({ body: local })] } },
 } satisfies Meta<typeof AccountProfile>;
 
 export default meta;

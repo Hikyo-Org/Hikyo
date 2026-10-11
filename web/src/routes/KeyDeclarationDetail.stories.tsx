@@ -108,6 +108,8 @@ const app = (rest: { key?: Answer; definitions?: Answer } = {}) => ({
 const noImpact = { setEnvironmentIds: [], pendingEnvironmentIds: [] };
 
 const meta = {
+  title: 'Features/Values/KeyDeclarationDetail',
+  id: 'routes-keydeclarationdetail',
   component: KeyDeclarationDetail,
   tags: ['ai-generated'],
   args: {

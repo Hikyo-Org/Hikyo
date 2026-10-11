@@ -188,4 +188,14 @@ fixture
 if ( POST_ERROR=true run ); then printf 'failed mutation was accepted\n' >&2; exit 1; fi
 [ "$(wc -l <"$work/posts" | tr -d ' ')" -eq 1 ]
 grep -F 'no mutation retry attempted' "$work/stderr" >/dev/null
+# The display name can change while existing runs keep their old metadata.
+# Keep immutable workflow/path/PR/head checks for both admitted names.
+for name in fork-ci pr-validation; do
+	fixture
+	change fork-workflow ".name=\"$name\""
+	change source ".name=\"$name\""
+	run || { cat "$work/stderr" >&2; exit 1; }
+	[ "$(wc -l <"$work/posts" | tr -d ' ')" -eq 1 ]
+done
+fixture; change fork-workflow '.name="other"'; reject 'unknown workflow display name'
 printf 'fork gate reconciliation fixtures passed: exact PR/head/workflow/attempt binding, no-op states, malformed data, and one no-retry mutation\n'

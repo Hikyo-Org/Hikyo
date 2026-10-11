@@ -32,6 +32,8 @@ const started: MockRoute = {
 };
 
 const meta = {
+  title: 'Pages/Reconnect',
+  id: 'routes-reconnect',
   component: Reconnect,
   tags: ['ai-generated'],
   args: { origin: ORIGIN, name: 'production' },

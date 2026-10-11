@@ -85,9 +85,11 @@ const rows = (values: MockRoute, window: MockRoute = { url: WINDOW_URL, body: lo
 });
 
 const meta = {
+  title: 'Pages/Values',
+  id: 'routes-values',
   component: Values,
   tags: ['ai-generated'],
-  parameters: { ...topLayerDocs, ...rows({ url: VALUES_URL, body: populated }) },
+  parameters: { ...topLayerDocs, docs: { ...topLayerDocs.docs, description: { component: "The real environment-values screen. Data reads distinguish loading, empty and refused states; stored secret disclosure stays behind the existing authorization ceremony and is excluded from ordinary fixtures." } },  ...rows({ url: VALUES_URL, body: populated }) },
 } satisfies Meta<typeof Values>;
 
 export default meta;

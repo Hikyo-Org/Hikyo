@@ -67,6 +67,8 @@ const app = (rest: { folders?: Answer; groups?: Answer; definitions?: MockRoute;
 });
 
 const meta = {
+  title: 'Features/Values/CatalogueManageDialog',
+  id: 'routes-cataloguemanagedialog',
   component: CatalogueManageDialog,
   tags: ['ai-generated'],
   args: { refData: { org: ORG, project: PRJ }, onClose: fn() },

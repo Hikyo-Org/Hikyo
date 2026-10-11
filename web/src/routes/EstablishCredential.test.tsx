@@ -247,6 +247,41 @@ describe('EstablishCredential', () => {
     await unmount();
   });
 
+  it('restores each provider button after returning from a successful claim start', async () => {
+    for (const provider of [GOOGLE, GITHUB]) {
+      const { assign, posted, rendered } = mount({ providers: [provider] });
+      const { container, unmount } = await rendered;
+      await provided(container, `Continue with ${provider.display_name}`);
+      typeInto(field(container, 'authority'), 'hik_cea_authority_value_1234');
+      await settle();
+      await click(button(container, `Continue with ${provider.display_name}`));
+      expect(assign).toHaveBeenCalledOnce();
+
+      await act(async () => {
+        const event = new Event('pagehide');
+        Object.defineProperty(event, 'persisted', { value: true });
+        globalThis.dispatchEvent(event);
+      });
+      await settle();
+      expect(container.textContent).not.toContain('Contacting identity provider');
+      const restored = button(container, `Continue with ${provider.display_name}`);
+      expect(restored.disabled).toBe(true);
+      expect(field(container, 'authority').value).toBe('');
+
+      typeInto(field(container, 'authority'), 'hik_cea_fresh_authority_5678');
+      await settle();
+      expect(restored.disabled).toBe(false);
+      await click(restored);
+      expect(posted('/start')).toHaveLength(2);
+      expect(await posted('/start')[1]?.json()).toEqual({
+        purpose: 'claim', proof: 'hik_cea_fresh_authority_5678', browser: true,
+      });
+      await unmount();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
   it('offers no provider after a recovery: a recovery-issued authority never claims', async () => {
     const { rendered } = mount({ providers: [GOOGLE, GITHUB], url: '/establish?mode=recover' });
     const { container, unmount } = await rendered;

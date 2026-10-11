@@ -64,6 +64,8 @@ const liveness: MockRoute = {
 };
 
 const meta = {
+  title: 'Pages/WorkspaceScope',
+  id: 'routes-workspacescope',
   component: WorkspaceScope,
   tags: ['ai-generated'],
   args: { remote: NAME, children: <p>The product surface, pointed at the remote.</p> },

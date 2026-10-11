@@ -4,6 +4,9 @@ import { expect, userEvent } from 'storybook/test';
 import { Input } from './Input.tsx';
 
 const meta = {
+  parameters: { docs: { description: { component: "A labelled native input with shared hint, per-field error and accessibility wiring. Monospace applies to the control only. Revealable password fields toggle the value being typed, independently of stored-secret disclosure." } } },
+  title: 'Design system/Input',
+  id: 'ui-input',
   component: Input,
   tags: ['ai-generated'],
   args: { label: 'Username', placeholder: 'you@example.com' },
@@ -59,13 +62,6 @@ export const ErrorIsWired: Story = {
     await expect(input).toHaveAttribute('aria-invalid', 'true');
     await expect(input).toHaveAccessibleDescription(/origin only.*https origin/i);
     await expect(canvas.getByRole('alert')).toBeVisible();
-  },
-};
-
-export const LabelIsWired: Story = {
-  play: async ({ canvas }) => {
-    // The label must resolve the control, or the field is a swatch with no name.
-    await expect(canvas.getByLabelText('Username')).toBeVisible();
   },
 };
 

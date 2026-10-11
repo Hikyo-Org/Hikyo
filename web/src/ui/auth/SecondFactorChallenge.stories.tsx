@@ -4,6 +4,8 @@ import { expect, fn, userEvent } from 'storybook/test';
 import { SecondFactorChallenge } from './SecondFactorChallenge.tsx';
 
 const meta = {
+  title: 'Design system/Auth/SecondFactorChallenge',
+  id: 'ui-auth-secondfactorchallenge',
   component: SecondFactorChallenge,
   tags: ['ai-generated'],
   args: {

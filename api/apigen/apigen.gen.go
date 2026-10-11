@@ -6091,8 +6091,10 @@ type CredentialPolicyResult struct {
 // CredentialResetResult defines model for CredentialResetResult.
 type CredentialResetResult struct {
 	// Authority The single-use credential-establishment authority for the target,
-	// returned once. It creates no session and may only ever establish a
-	// password; hand it to the target out of band.
+	// returned once. Issuing it creates no session. It establishes a
+	// password, or an OIDC/OAuth2 identity through a `claim` start when the
+	// target holds no credential of any kind. Hand it to the target out of
+	// band. Recovery-issued authorities establish only a password.
 	Authority string `json:"authority"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
@@ -7625,8 +7627,9 @@ type InvitationResult struct {
 	AccountId ID `json:"account_id"`
 
 	// Authority The single-use credential-establishment authority for the new
-	// account, returned once. It creates no session and may only ever
-	// establish a password; hand it to the invitee out of band.
+	// account, returned once. Issuing it creates no session. It establishes
+	// the account's first credential: a password, or an OIDC/OAuth2 identity
+	// through a `claim` start. Hand it to the invitee out of band.
 	Authority string `json:"authority"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.

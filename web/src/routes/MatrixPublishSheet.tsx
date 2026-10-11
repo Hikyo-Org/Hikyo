@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { isDemo, demoRole } from '../demo/config.ts';
 import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
@@ -239,6 +240,7 @@ export function MatrixPublishSheet({
             onChange={(event) => setProtectedConfirmed(event.target.checked)}
           />
         ) : null}
+        {isDemo && demoRole() !== 'admin' ? <p className="hint-wrap">Publishing is available to the Demo admin account. This account can stage drafts only.</p> : null}
         {protectedGuard.error === null ? null : (
           <Alert>{protectedGuard.error}</Alert>
         )}
@@ -246,6 +248,7 @@ export function MatrixPublishSheet({
           type="button"
           variant="primary"
           disabled={
+            (isDemo && demoRole() !== 'admin') ||
             busy ||
             selectedEnvironmentIds.length === 0 ||
             (protectedConfirmationRequired && !protectedConfirmed)

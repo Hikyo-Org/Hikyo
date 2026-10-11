@@ -6,6 +6,8 @@ import { MatrixPublishSheet } from './MatrixPublishSheet.tsx';
 // Every story reuses one publish target (env `env_a`, revision r1) and varies
 // only problems/protectedEnvironmentIds.
 const meta = {
+  title: 'Features/Values/MatrixPublishSheet',
+  id: 'routes-matrixpublishsheet',
   component: MatrixPublishSheet,
   tags: ['ai-generated'],
   args: {
