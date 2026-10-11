@@ -20,7 +20,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectInteractiveAssertionSet, expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
 import {
   ADMIN,
@@ -62,6 +62,69 @@ import { test } from '../fixtures/passkey.ts';
  */
 
 const seed = readSeed();
+
+test.describe('interactive assertion identity', () => {
+  test.use({ hasTouch: true });
+
+  async function controls(page: Page): Promise<void> {
+    await page.setContent(`<style>
+      body { background: white; color: black; }
+      button { width: 44px; height: 44px; color: black; background: white; }
+      button:focus-visible { outline: 2px solid black; }
+      @media (forced-colors: active) { button:focus-visible { outline: 2px solid Highlight; } }
+    </style><button id="original">Account</button>`);
+  }
+
+  test('keeps the original control when hidden navigation is inserted during focus', async ({ page }) => {
+    await controls(page);
+    await page.evaluate(() => {
+      document.addEventListener('focusin', () => {
+        const hidden = document.createElement('a');
+        hidden.href = '/audit';
+        hidden.hidden = true;
+        hidden.textContent = 'Audit';
+        document.body.prepend(hidden);
+      }, { once: true });
+    });
+    await expectInteractiveAssertionSet(page);
+    await expect(page.locator('#original')).toBeFocused();
+    await expect(page.getByText('Audit')).toBeHidden();
+  });
+
+  test('asserts the touch floor on controls added during focus', async ({ page }) => {
+    await controls(page);
+    await page.evaluate(() => {
+      document.addEventListener('focusin', () => {
+        const late = document.createElement('button');
+        late.textContent = 'Late control';
+        late.style.height = '40px';
+        document.body.append(late);
+      }, { once: true });
+    });
+    await expect(expectInteractiveAssertionSet(page)).rejects.toThrow('touch height of Late control');
+  });
+
+  test('still refuses an original undersized control', async ({ page }) => {
+    await controls(page);
+    await page.locator('#original').evaluate((element) => { element.style.width = '40px'; });
+    await expect(expectInteractiveAssertionSet(page)).rejects.toThrow('touch width of Account');
+  });
+
+  test('refuses an original control removed during focus', async ({ page }) => {
+    await controls(page);
+    page.setDefaultTimeout(500);
+    await page.evaluate(() => {
+      document.addEventListener('focusin', () => document.querySelector('#original')?.remove(), { once: true });
+    });
+    await expect(expectInteractiveAssertionSet(page)).rejects.toThrow('an element that no longer resolves');
+  });
+
+  test('still refuses a control without a focus ring', async ({ page }) => {
+    await controls(page);
+    await page.addStyleTag({ content: 'button:focus-visible { outline: none !important; box-shadow: none !important; }' });
+    await expect(expectInteractiveAssertionSet(page)).rejects.toThrow('nothing is drawn on focus');
+  });
+});
 
 function samlMetadata(slug: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'hikyo-saml-e2e-'));

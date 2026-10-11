@@ -18,6 +18,11 @@ import (
 	"testing"
 )
 
+func legacySnapshotBinding(s snapshot, repoID int64) legacyBinding {
+	b := s.binding(repoID)
+	return legacyBinding{RepoID: b.RepoID, PR: b.PR, Head: b.Head, Base: b.Base, BaseRef: s.PR.Base.Ref, Run: b.Run, Attempt: b.Attempt}
+}
+
 func legacyExternalID(t *testing.T, b binding, ref string) string {
 	old := legacyBinding{RepoID: b.RepoID, PR: b.PR, Head: b.Head, Base: b.Base, BaseRef: ref, Run: b.Run, Attempt: b.Attempt}
 	t.Helper()
@@ -59,7 +64,12 @@ func TestCompactBindingBoundsAndFullIdentity(t *testing.T) {
 func TestCompactBindingRejectsMalformedAndNoncanonicalIDs(t *testing.T) {
 	b := binding{RepoID: 10, PR: 7, Head: strings.Repeat("a", 40), Base: strings.Repeat("b", 40), BaseRef: sha256.Sum256([]byte("main")), Run: 100, Attempt: 1}
 	id := b.externalID()
-	invalid := []string{externalPrefix + "bogus", id + "=", id + ":extra", id[:len(id)-1]}
+	// A 104-byte payload leaves two unused bits in its last base64 character.
+	// Changing those bits preserves the decoded bytes but is noncanonical.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := strings.IndexByte(alphabet, id[len(id)-1])
+	noncanonical := id[:len(id)-1] + string(alphabet[last+1])
+	invalid := []string{externalPrefix + "bogus", id + "=", noncanonical, id + ":extra", id[:len(id)-1]}
 	for _, mutation := range []func(*binding){func(b *binding) { b.RepoID = -1 }, func(b *binding) { b.PR = -7 }, func(b *binding) { b.Run = 0 }, func(b *binding) { b.Attempt = -1 }} {
 		changed := b
 		mutation(&changed)
@@ -70,12 +80,52 @@ func TestCompactBindingRejectsMalformedAndNoncanonicalIDs(t *testing.T) {
 			t.Fatalf("accepted malformed binding %q", value)
 		}
 	}
+	for _, changed := range []binding{
+		{RepoID: 10, PR: 7, Head: b.Head, Base: b.Base, Run: 0, Attempt: 1},
+		{RepoID: 10, PR: -7, Head: b.Head, Base: b.Base},
+		{RepoID: -10, PR: 7, Head: b.Head, Base: b.Base},
+	} {
+		if _, err := decodeBinding(changed.externalID()); err == nil {
+			t.Fatal("accepted invalid binding IDs")
+		}
+	}
+}
+
+func TestPublishRejectsInvalidBindingBeforeMutation(t *testing.T) {
+	for _, field := range []string{"head", "base", "head case", "base length", "repo", "pr", "attempt"} {
+		t.Run(field, func(t *testing.T) {
+			f := newFixture(t)
+			b := (snapshot{PR: f.pr, Run: &f.source}).binding(10)
+			switch field {
+			case "head":
+				b.Head = strings.Repeat("g", 40)
+			case "base":
+				b.Base = strings.Repeat("g", 40)
+			case "head case":
+				b.Head = strings.ToUpper(b.Head)
+			case "base length":
+				b.Base = b.Base[:len(b.Base)-1]
+			case "repo":
+				b.RepoID = -1
+			case "pr":
+				b.PR = 0
+			case "attempt":
+				b.Attempt = 0
+			}
+			if err := f.c.publish(context.Background(), f.pr, b, nil, pending("invalid binding")); err == nil {
+				t.Fatal("invalid publication binding accepted")
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("invalid publication binding mutated checks")
+			}
+		})
+	}
 }
 
 func TestLegacyBindingRemainsReadableAndMigrates(t *testing.T) {
 	f := newFixture(t)
 	b := (snapshot{PR: f.pr, Run: &f.source}).binding(10)
-	legacy := legacyExternalID(t, b, f.pr.Base.Ref)
+	legacy := legacyID(t, legacySnapshotBinding(snapshot{PR: f.pr, Run: &f.source}, 10))
 	decoded, err := decodeBinding(legacy)
 	if err != nil || decoded != b {
 		t.Fatalf("legacy binding lost its full authority: %v", err)
@@ -141,7 +191,7 @@ func TestTruncatedLegacyHostileIdentityCannotBeRepaired(t *testing.T) {
 			f.pr.Base.Ref = "dependabot/go_modules/github.com/sigstore/sigstore-1.11.0"
 			f.source.Pulls = []pull{f.pr}
 			f.refresh()
-			b := (snapshot{PR: f.pr}).binding(10)
+			b := legacySnapshotBinding(snapshot{PR: f.pr}, 10)
 			switch field {
 			case "repository":
 				b.RepoID++
@@ -150,7 +200,7 @@ func TestTruncatedLegacyHostileIdentityCannotBeRepaired(t *testing.T) {
 			case "head":
 				b.Head = strings.Repeat("c", 40)
 			}
-			legacy := legacyExternalID(t, b, f.pr.Base.Ref)
+			legacy := legacyID(t, b)
 			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: legacy[:externalIDLimit], Status: "queued"}
 			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
 			switch field {
@@ -171,8 +221,8 @@ func TestTruncatedLegacyHostileIdentityCannotBeRepaired(t *testing.T) {
 			if err := f.execute(); err == nil {
 				t.Fatal("malformed foreign check accepted")
 			}
-			if len(f.api.writes) != 0 {
-				t.Fatal("malformed foreign check mutated")
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" || f.api.checks[0] != v {
+				t.Fatal("refusal must create only a fresh owned pending barrier and preserve the foreign check")
 			}
 		})
 	}
@@ -183,7 +233,7 @@ func TestTruncatedLegacyStaleBindingIsSupersededBeforeReadFailure(t *testing.T) 
 		t.Run(changed, func(t *testing.T) {
 			f := newFixture(t)
 			f.pr.Base.Ref = "dependabot/go_modules/golang.org/x/tools-0.51.0"
-			old := (snapshot{PR: f.pr, Run: &f.source}).binding(10)
+			old := legacySnapshotBinding(snapshot{PR: f.pr, Run: &f.source}, 10)
 			switch changed {
 			case "base SHA":
 				f.pr.Base.SHA = strings.Repeat("d", 40)
@@ -194,7 +244,7 @@ func TestTruncatedLegacyStaleBindingIsSupersededBeforeReadFailure(t *testing.T) 
 			}
 			f.source.Pulls = []pull{f.pr}
 			f.refresh()
-			id := legacyExternalID(t, old, "dependabot/go_modules/golang.org/x/tools-0.51.0")
+			id := legacyID(t, old)
 			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: id[:externalIDLimit], Status: "completed", Conclusion: "success"}
 			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
 			f.api.checks = []check{v}
@@ -219,7 +269,7 @@ func TestEveryCanonicalLegacyTruncationBoundaryCanBeInvalidated(t *testing.T) {
 	for _, text := range refs {
 		for size := 1; size < 160; size++ {
 			for _, run := range []int64{0, 1, 100, 38092256249, math.MaxInt64} {
-				b := legacyBinding{RepoID: 10, PR: f.pr.Number, Head: f.pr.Head.SHA, Base: f.pr.Base.SHA}
+				b := legacySnapshotBinding(snapshot{PR: f.pr}, 10)
 				b.BaseRef = strings.Repeat(text, size)
 				b.Run = run
 				if run > 0 {
@@ -322,8 +372,16 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 			}
 		}
 		filtered := []check{}
-		for _, v := range latest {
-			filtered = append(filtered, v)
+		if u.Query().Get("filter") == "all" {
+			for _, v := range f.checks {
+				if v.Name == u.Query().Get("check_name") {
+					filtered = append(filtered, v)
+				}
+			}
+		} else {
+			for _, v := range latest {
+				filtered = append(filtered, v)
+			}
 		}
 		sort.Slice(filtered, func(i, j int) bool { return filtered[i].ID < filtered[j].ID })
 		page, err := strconv.Atoi(u.Query().Get("page"))
@@ -989,7 +1047,10 @@ func TestForeignControllerCheckIdentityRejected(t *testing.T) {
 			if err := f.execute(); err == nil {
 				t.Fatal("untrusted/ambiguous check accepted")
 			}
-			if len(f.api.writes) != 0 {
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+				t.Fatal("identity refusal must create an owned pending barrier without mutating the foreign check")
+			}
+			if f.api.checks[0] != v {
 				t.Fatal("foreign check mutated")
 			}
 		})
@@ -1339,7 +1400,7 @@ func TestHistoricalChecksDoNotExhaustCurrentIdentityLookup(t *testing.T) {
 		t.Fatal("unrelated historical checks prevented current success")
 	}
 	for path := range f.api.reads {
-		if strings.Contains(path, "/check-runs?") && (!strings.Contains(path, "filter=latest") || !strings.Contains(path, "check_name=ci-required")) {
+		if strings.Contains(path, "/check-runs?") && (!strings.Contains(path, "filter=all") || !strings.Contains(path, "check_name=ci-required")) {
 			t.Fatal("lookup scans unbounded historical/unrelated checks")
 		}
 	}
@@ -1355,7 +1416,7 @@ func TestLatestCheckPaginationExactMultiple(t *testing.T) {
 		v.App.Slug = "independent-provider"
 		f.api.checks = append(f.api.checks, v)
 	}
-	if err := f.execute(); err != nil {
+	if _, err := f.c.ownedChecks(context.Background(), f.pr); err != nil {
 		t.Fatal(err)
 	}
 	for path := range f.api.reads {
@@ -1492,8 +1553,8 @@ func TestLegacyRecoveryRejectsForeignOrMalformedMetadata(t *testing.T) {
 			if err := f.execute(); err == nil {
 				t.Fatal("foreign or malformed metadata accepted")
 			}
-			if len(f.api.writes) != 0 {
-				t.Fatal("foreign metadata mutated")
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" || f.api.checks[0] != v {
+				t.Fatal("refusal must create only a fresh owned pending barrier and preserve the foreign check")
 			}
 		})
 	}
@@ -1704,5 +1765,148 @@ func TestLiveMainReadFailureRevokesPriorSuccessBeforeFailure(t *testing.T) {
 	latest := f.api.checks[len(f.api.checks)-1]
 	if latest.Status != "queued" || latest.Conclusion != "" {
 		t.Fatal("old success survived live ref read failure")
+	}
+}
+
+// GitHub latest filtering is per app and can hide our earlier result behind a
+// native workflow check. A collision must refuse proof and publish pending.
+func TestNativeCheckCannotHideOwnedSuccessWithoutBarrier(t *testing.T) {
+	f := newFixture(t)
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	owned := f.api.checks[len(f.api.checks)-1]
+	foreign := owned
+	foreign.ID += 100
+	foreign.ExternalID = ""
+	f.api.checks = append(f.api.checks, foreign)
+	f.api.writes = nil
+	if err := f.execute(); err == nil {
+		t.Fatal("native collision accepted")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("collision left no fresh owned pending barrier")
+	}
+	if f.api.checks[len(f.api.checks)-2] != foreign {
+		t.Fatal("foreign green was mutated")
+	}
+	for path := range f.api.reads {
+		if strings.Contains(path, "/check-runs?") && !strings.Contains(path, "filter=all") {
+			t.Fatal("owned success can be hidden by latest-per-app filtering")
+		}
+	}
+}
+
+func TestCheckListingFailureStillPublishesPending(t *testing.T) {
+	f := newFixture(t)
+	// An impossible bounded count is a listing refusal, not merge evidence.
+	for i := 0; i < 1001; i++ {
+		f.api.checks = append(f.api.checks, check{ID: int64(i + 1), Name: "ci-required"})
+	}
+	if err := f.execute(); err == nil {
+		t.Fatal("unbounded historical listing accepted")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("listing error left no pending barrier")
+	}
+}
+
+func TestNativeCollisionAfterInitialBarrierStillRefusesProof(t *testing.T) {
+	f := newFixture(t)
+	checkReads := 0
+	var foreign check
+	f.api.readHook = func(path string, _ int) {
+		if !strings.Contains(path, "/check-runs?") {
+			return
+		}
+		checkReads++
+		if checkReads == 3 {
+			foreign = f.api.checks[len(f.api.checks)-1]
+			foreign.ID += 100
+			foreign.Status, foreign.Conclusion, foreign.ExternalID = "completed", "success", ""
+			f.api.checks = append(f.api.checks, foreign)
+		}
+	}
+	if err := f.execute(); err == nil {
+		t.Fatal("late native collision accepted")
+	}
+	last := f.api.writes[len(f.api.writes)-1]
+	if last["method"] != "POST" || last["status"] != "queued" {
+		t.Fatal("late collision left foreign green without a fresh owned barrier")
+	}
+	for _, mutation := range f.api.writes {
+		if mutation["conclusion"] == "success" || mutation["path"] == f.c.endpoint(fmt.Sprintf("check-runs/%d", foreign.ID)) {
+			t.Fatal("collision authorized green or mutated foreign check")
+		}
+	}
+}
+
+func TestCollisionMetadataMovementPublishesFreshBarrier(t *testing.T) {
+	for _, change := range []string{"head", "base SHA", "base ref", "closed"} {
+		t.Run(change, func(t *testing.T) {
+			f := newFixture(t)
+			foreign := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success"}
+			foreign.App.ID, foreign.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{foreign}
+			moved := false
+			f.api.readHook = func(path string, n int) {
+				if path != f.c.endpoint("pulls/7") || n != 2 {
+					return
+				}
+				moved = true
+				switch change {
+				case "head":
+					f.pr.Head.SHA = strings.Repeat("c", 40)
+				case "base SHA":
+					f.pr.Base.SHA = strings.Repeat("c", 40)
+				case "base ref":
+					f.pr.Base.Ref = "release"
+				case "closed":
+					f.pr.State = "closed"
+				}
+				f.refresh()
+			}
+			if err := f.execute(); err == nil {
+				t.Fatal("collision authorized proof")
+			}
+			if !moved {
+				t.Fatal("movement hook did not execute")
+			}
+			if change == "closed" {
+				if len(f.api.writes) != 0 {
+					t.Fatal("closed PR received a barrier")
+				}
+				return
+			}
+			if len(f.api.writes) != 1 {
+				t.Fatal("identity movement suppressed owned pending barrier")
+			}
+			v := f.api.checks[len(f.api.checks)-1]
+			b, err := decodeBinding(v.ExternalID)
+			if err != nil || v.HeadSHA != f.pr.Head.SHA || v.Status != "queued" || b != (snapshot{PR: f.pr}).binding(f.c.repo.ID) {
+				t.Fatal("pending barrier did not bind fresh authenticated identity")
+			}
+			if f.api.checks[0] != foreign {
+				t.Fatal("foreign check mutated")
+			}
+		})
+	}
+}
+
+func TestCollisionMetadataRefreshFailureStillPublishesPending(t *testing.T) {
+	f := newFixture(t)
+	foreign := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success"}
+	foreign.App.ID, foreign.App.Slug = actionsAppID, "github-actions"
+	f.api.checks = []check{foreign}
+	f.api.readHook = func(path string, n int) {
+		if path == f.c.endpoint("pulls/7") && n == 2 {
+			f.api.responses[path] = errors.New("PR refresh unavailable")
+		}
+	}
+	if err := f.execute(); err == nil || !strings.Contains(err.Error(), "PR refresh unavailable") {
+		t.Fatal("refresh error ignored")
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" || f.api.writes[0]["method"] != "POST" || f.api.checks[0] != foreign {
+		t.Fatal("refresh failure retained green without an owned barrier")
 	}
 }

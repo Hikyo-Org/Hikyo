@@ -194,7 +194,7 @@ func truncatedLegacyBinding(value string, repoID int64, head string) bool {
 		return false
 	}
 	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, legacyExternalPrefix))
-	if err != nil {
+	if err != nil || json.Valid(data) {
 		return false
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -214,7 +214,7 @@ func truncatedLegacyBinding(value string, repoID int64, head string) bool {
 			return false
 		}
 	}
-	if identity.Repo != repoID || identity.PR <= 0 || identity.Head != head {
+	if identity.Repo <= 0 || identity.Repo != repoID || identity.PR <= 0 || !shaPattern.MatchString(identity.Head) || identity.Head != head {
 		return false
 	}
 	prefix := fmt.Sprintf(`{"repo":%d,"pr":%d,"head":%q`, identity.Repo, identity.PR, identity.Head)
@@ -671,7 +671,12 @@ func (c *controller) reusedVouch(ctx context.Context, r run) (bool, error) {
 	}
 	return count == 1 && successful, nil
 }
-func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
+func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, err error) {
+	defer func() {
+		if err != nil {
+			err = c.refuseCheckIdentity(ctx, p, err)
+		}
+	}()
 	var own []check
 	listed := 0
 	seen := make(map[int64]bool)
@@ -680,7 +685,7 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			Total  int     `json:"total_count"`
 			Checks []check `json:"check_runs"`
 		}
-		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=latest&per_page=100&page=%d", p.Head.SHA, c.checkName, page)), &list); err != nil {
+		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", p.Head.SHA, c.checkName, page)), &list); err != nil {
 			return nil, err
 		}
 		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {
@@ -1154,9 +1159,16 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
+	if !shaPattern.MatchString(b.Head) || !shaPattern.MatchString(b.Base) {
+		return errors.New("refuse invalid publication binding")
+	}
 	externalID := b.externalID()
-	if _, err := decodeBinding(externalID); err != nil {
+	decoded, err := decodeBinding(externalID)
+	if err != nil {
 		return fmt.Errorf("refuse invalid publication binding: %w", err)
+	}
+	if decoded != b {
+		return errors.New("refuse invalid publication binding")
 	}
 	// GitHub's Checks schema does not accept null conclusions/completed_at.
 	// Reruns supersede completed checks by creating a fresh queued check.
@@ -1201,6 +1213,28 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 		return errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted")
 	}
 	return nil
+}
+func (c *controller) refuseCheckIdentity(ctx context.Context, p pull, err error) error {
+	// A native same-name check can hide an older owned success. Listing or
+	// identity refusal must still leave a fresh owned pending barrier; never
+	// modify the foreign check or treat its green result as proof.
+	current, readErr := c.readPRMetadata(ctx, p.Number)
+	if readErr != nil {
+		// The caller already authenticated p. A refresh failure cannot make
+		// its prior green trustworthy; pending against that identity is safe.
+		err = errors.Join(err, readErr)
+		current = p
+	}
+	if current.State != "open" {
+		return err
+	}
+	// A concurrent retarget/head change is also pending. Bind only the fresh
+	// authenticated identity; a pending barrier never authorizes merge.
+	b := (snapshot{PR: current}).binding(c.repo.ID)
+	if writeErr := c.publish(ctx, current, b, nil, pending("Check identity or listing could not be verified; refusing merge proof.")); writeErr != nil {
+		return errors.Join(err, writeErr)
+	}
+	return err
 }
 func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 	p, err := c.readPRMetadata(ctx, number)

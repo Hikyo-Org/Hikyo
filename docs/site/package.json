@@ -56,7 +56,8 @@
     "@types/react-dom": "19.2.4",
     "typescript": "6.0.3",
     "vite": "8.2.1",
-    "workbox-build": "7.4.1"
+    "workbox-build": "7.4.1",
+    "yaml": "2.9.1"
   },
   "packageManager": "pnpm@11.24.0"
 }

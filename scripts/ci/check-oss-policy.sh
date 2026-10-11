@@ -9,6 +9,7 @@ fi
 repo_root=$1
 site_root=$2
 NODE_BIN=${NODE_BIN:-node}
+script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 
 require_file() {
 	[ -f "$1" ] || {
@@ -44,15 +45,46 @@ require_file "$issue_chooser"
 require_text "$issue_chooser" 'https://github.com/Hikyo-Org/Hikyo/security/advisories/new'
 require_text "$issue_chooser" 'Do not report vulnerabilities in public issues.'
 
-security_channel_workflow="$repo_root/.github/workflows/security-channel.yml"
+security_channel_workflow="$repo_root/.github/workflows/reliability.yml"
 require_file "$security_channel_workflow"
-require_text "$security_channel_workflow" 'issues: write'
-require_text "$security_channel_workflow" 'if: failure()'
-require_text "$security_channel_workflow" 'Fallback security channel health check failed'
+# Parse the actual job/step mappings. Environment text, comments, another job's
+# permissions, or another step's notification must not satisfy this policy.
+"$NODE_BIN" "$script_dir/../../docs/site/scripts/check-fallback-workflow.mjs" \
+	"$security_channel_workflow"
 
 main_gate="$repo_root/release/repository/main-ci-gate.json"
 require_file "$main_gate"
-require_text "$main_gate" '{"context": "ci-required"}'
+"$NODE_BIN" -e '
+const fs = require("node:fs");
+const gate = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const rules = gate.rules;
+const one = (type) => {
+  const matches = Array.isArray(rules) ? rules.filter((rule) => rule.type === type) : [];
+  if (matches.length !== 1) throw new Error("missing or duplicated " + type);
+  return matches[0];
+};
+try {
+  const status = one("required_status_checks").parameters;
+  const contexts = status.required_status_checks;
+  if (!Array.isArray(contexts) || contexts.length !== 1 || contexts[0].context !== "ci-required-next")
+    throw new Error("required context must be ci-required-next only");
+  if (status.strict_required_status_checks_policy !== true || status.do_not_enforce_on_create !== false)
+    throw new Error("required status checks must remain strict");
+  if (gate.target !== "branch" || gate.enforcement !== "active" ||
+      !Array.isArray(gate.bypass_actors) || gate.bypass_actors.length !== 0 ||
+      JSON.stringify(gate.conditions?.ref_name?.include) !== JSON.stringify(["refs/heads/main"]) ||
+      JSON.stringify(gate.conditions?.ref_name?.exclude) !== JSON.stringify([]))
+    throw new Error("main protection must remain active without bypass actors");
+  one("required_signatures");
+  one("deletion");
+  one("non_fast_forward");
+  if (one("pull_request").parameters.required_review_thread_resolution !== true)
+    throw new Error("review thread resolution must remain required");
+} catch (error) {
+  console.error("OSS policy gate: " + error.message);
+  process.exit(1);
+}
+' "$main_gate"
 
 license_sha=$(sha256sum "$repo_root/LICENSE" | awk '{print $1}')
 [ "$license_sha" = '3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04' ] || {

@@ -100,35 +100,45 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return err
 	}
-	expectedDemo := map[string]any{
-		"name":              "Static demo accounts and interactions",
-		"working-directory": "web",
-		"run":               "pnpm run build:demo\npnpm run test:demo\n",
+	// PR886 moves the same five-package benchmark smoke into required core
+	// validation, reusing its compiled packages. It is additive to this frozen
+	// inventory, and must not become skipped, fail-open, narrowed, or duplicated.
+	additions := map[string]map[string]any{
+		"storybook": {
+			"name": "Static demo accounts and interactions", "working-directory": "web",
+			"run": "pnpm run build:demo\npnpm run test:demo\n",
+		},
+		"test_core": {
+			"name": "Exercise every benchmark once",
+			"run":  "go test -run '^$' -bench . -benchtime=1x ./internal/crypto/ ./internal/dotenv/ ./internal/scanning/ ./internal/server/ ./internal/service/",
+		},
 	}
-	steps, ok := workflow.Jobs["storybook"]["steps"].([]any)
-	if !ok {
-		return fmt.Errorf("storybook lost the upstream demo validation steps")
-	}
-	kept := make([]any, 0, len(steps))
-	found := 0
-	for _, value := range steps {
-		step, ok := value.(map[string]any)
+	for jobName, expected := range additions {
+		steps, ok := workflow.Jobs[jobName]["steps"].([]any)
 		if !ok {
-			return fmt.Errorf("storybook has malformed step configuration")
+			return fmt.Errorf("%s lost mandatory additive validation", jobName)
 		}
-		if step["name"] == expectedDemo["name"] {
-			if !reflect.DeepEqual(step, expectedDemo) {
-				return fmt.Errorf("upstream demo validation lost its exact fail-closed configuration")
+		kept := make([]any, 0, len(steps))
+		found := 0
+		for _, value := range steps {
+			step, ok := value.(map[string]any)
+			if !ok {
+				return fmt.Errorf("%s has malformed step configuration", jobName)
 			}
-			found++
-		} else {
-			kept = append(kept, step)
+			if step["name"] == expected["name"] {
+				if !reflect.DeepEqual(step, expected) {
+					return fmt.Errorf("%s additive validation lost its exact fail-closed configuration", jobName)
+				}
+				found++
+			} else {
+				kept = append(kept, step)
+			}
 		}
+		if found != 1 {
+			return fmt.Errorf("%s requires exactly one mandatory additive validation step, got %d", jobName, found)
+		}
+		workflow.Jobs[jobName]["steps"] = kept
 	}
-	if found != 1 {
-		return fmt.Errorf("expected exactly one mandatory upstream demo validation step, got %d", found)
-	}
-	workflow.Jobs["storybook"]["steps"] = kept
 	normalized, err := yaml.Marshal(workflow)
 	if err != nil {
 		return err
@@ -222,6 +232,20 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				}
 			}
 		},
+		"remove benchmark smoke": func(j map[string]map[string]any) {
+			steps := j["test_core"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Exercise every benchmark once" {
+					j["test_core"]["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
+		"skip benchmark smoke":      func(j map[string]map[string]any) { mutateBenchmarkStep(j, "if", "false") },
+		"fail open benchmark smoke": func(j map[string]map[string]any) { mutateBenchmarkStep(j, "continue-on-error", true) },
+		"narrow benchmark smoke": func(j map[string]map[string]any) {
+			mutateBenchmarkStep(j, "run", "go test -run '^$' -bench . -benchtime=1x ./internal/crypto/")
+		},
 		"skip upstream demo gate":      func(j map[string]map[string]any) { mutateDemoStep(j, "if", "false") },
 		"fail open upstream demo gate": func(j map[string]map[string]any) { mutateDemoStep(j, "continue-on-error", true) },
 		"remove demo browser tests":    func(j map[string]map[string]any) { mutateDemoStep(j, "run", "pnpm run build:demo\n") },
@@ -248,6 +272,15 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 func mutateDemoStep(jobs map[string]map[string]any, key string, value any) {
 	for _, step := range jobs["storybook"]["steps"].([]any) {
 		if step.(map[string]any)["name"] == "Static demo accounts and interactions" {
+			step.(map[string]any)[key] = value
+			return
+		}
+	}
+}
+
+func mutateBenchmarkStep(jobs map[string]map[string]any, key string, value any) {
+	for _, step := range jobs["test_core"]["steps"].([]any) {
+		if step.(map[string]any)["name"] == "Exercise every benchmark once" {
 			step.(map[string]any)[key] = value
 			return
 		}

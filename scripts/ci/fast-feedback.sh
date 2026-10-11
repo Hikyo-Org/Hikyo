@@ -130,7 +130,7 @@ if [ "${#shell_files[@]}" -gt 0 ]; then
 fi
 if [ "$workflows" = true ]; then
 	need go
-	# CI may select immutable base tooling while checking PR source. Run its Go
+	# CI may select immutable merge tooling while checking PR source. Run its Go
 	# module from that checkout, passing only the source workflow paths as data.
 	tools_dir=$(CDPATH='' cd -- "${FAST_FEEDBACK_TOOLS_DIR:-$repo_root/scripts/ci}" && pwd)
 	workflow_files=()

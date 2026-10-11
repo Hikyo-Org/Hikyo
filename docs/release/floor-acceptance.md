@@ -4,7 +4,7 @@ Marc's [2026-08-20 amendment to #79](https://github.com/Hikyo-Org/Hikyo/issues/7
 
 ## Run the recovery lane
 
-Dispatch `.github/workflows/floor-acceptance.yml` at the reviewed release-candidate branch or tag. It checks out that exact revision, uses `ubuntu-24.04-arm`, and runs `scripts/ci/floor-acceptance.sh` under native arm64 Docker cgroup v2 limits: 4 CPUs, 4 GiB RAM, zero swap. Compilation happens before the measured container. The measured container has no external network, a read-only image, and disposable SQLite data on tmpfs.
+Dispatch `.github/workflows/release-acceptance.yml` with `suite=backup-restore` (or `all`) at the reviewed release-candidate branch or tag. It checks out that exact revision, uses `ubuntu-24.04-arm`, and runs `scripts/ci/floor-acceptance.sh` under native arm64 Docker cgroup v2 limits: 4 CPUs, 4 GiB RAM, zero swap. Compilation happens before the measured container. The measured container has no external network, a read-only image, and disposable SQLite data on tmpfs.
 
 Configure two **dedicated disposable TEST** GitHub repository secrets before dispatch. Never reuse production custody or release signing keys:
 

@@ -20,6 +20,14 @@ whether you also want a local Docker or source-built instance to explore, and
 continues independent contributor setup while you decide. It preserves existing
 signing configuration and does not push, merge, or deploy without authorization.
 
+## Finding the right CI workflow
+
+Start with the [CI guide](./docs/development/ci.md). It explains the required PR
+checks, the maintenance and release-acceptance menus, and which workflows are
+internal helpers. Every push receives automatic `ci-feedback`. Before merge, a
+maintainer requests the complete current-main candidate with the `ci:full` label;
+`ci-required-next` is the completion-driven merge check after gate activation.
+
 ## Developer Certificate of Origin
 
 Every commit in a pull request must carry a Developer Certificate of Origin
@@ -141,7 +149,7 @@ are separate checks, and both must pass.
 Hikyo uses [vouch](https://github.com/mitchellh/vouch). CI validates a fork's
 pull request only after its author is listed in
 [`.github/VOUCHED.td`](https://github.com/Hikyo-Org/Hikyo/blob/main/.github/VOUCHED.td);
-until then, `ci-required` reports the author as not vouched and the pull
+until then, `ci-required-next` reports the author as not vouched and the pull
 request stays open. A maintainer vouches for you, usually after you have opened
 an issue about the change, and a maintainer approves each workflow run from a
 fork. CI runs fork code without secrets. A fork pull
@@ -203,23 +211,36 @@ fast feedback is optional and does not authorize merge.
 
 ## Continuous integration
 
-Every pull request runs the complete gate. The aggregate `ci-required` check
-stays red, and blocks merge, until all of these pass:
+Each pushed commit receives fast `ci-feedback` using selected package checks.
+Its four-minute runner timeout includes setup; shared-runner queue time is extra.
+This feedback does not authorize merge or replace any full-suite coverage.
+
+When the change is ready, a maintainer adds `ci:full` to request `pr-candidate`.
+It runs the complete suite on the immutable merge of the exact PR head with
+current main. Remove and reapply the label after either revision changes;
+ordinary pushes do not restart the expensive suite. The trusted
+`ci-required-next` check blocks merge until that complete current candidate
+passes all mandatory domains, including:
 
 - `lint`, `test`, and the sharded isolation suites;
 - `race`, the race detector over every package except `./internal/isolation/`
-  (that suite runs race-instrumented on the weekly `race-isolation` workflow);
+  (that suite runs race-instrumented in the `reliability` workflow's `race` suite,
+  scheduled Mondays at 04:00 UTC or started manually with `suite=race`);
 - `fuzz` (see below);
 - `govulncheck` for known vulnerabilities, plus the supply-chain, web, compose,
   and Kubernetes end-to-end checks.
 
-You do not run these by hand as a rule; open the pull request and let CI report.
+You do not need to run the complete suite locally. Follow automatic feedback,
+then request maintainer admission for the final candidate. During rollout the
+live ruleset can still require legacy `ci-required`; the operator must prove the
+replacement and switch the required context before retiring that producer.
+See the [CI guide](./docs/development/ci.md) for the activation order.
 
 ### Fuzzing
 
 Fuzzing feeds a function randomised inputs to surface crashes and panics that
 example-based tests miss. CI runs a bounded fuzz pass over every `Fuzz*` target
-on every pull request, so you never have to fuzz manually. To reproduce or
+on every admitted full candidate, so you never have to fuzz manually. To reproduce or
 extend one target locally:
 
 ```sh
@@ -230,5 +251,5 @@ When fuzzing finds a failure, CI keeps the minimised input for 30 days and
 replays it against the pull request's trusted base. A finding that does not
 reproduce on the base is added to the pull request with its replay command; one
 that also fails on the base opens or updates a standalone bug issue. Either way,
-`fuzz` and `ci-required` stay red until it is fixed. Commit the minimised input
+`fuzz` and `ci-required-next` stay red until it is fixed. Commit the minimised input
 with the fix so `go test ./...` keeps it as a regression case.

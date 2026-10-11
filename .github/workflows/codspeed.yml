@@ -1,7 +1,7 @@
 name: codspeed
 
 # Daily and manual main runs use the same budget-checked walltime lane.
-# PR smoke checks have separate cancellation in benchmark-smoke.yml.
+# Benchmark smoke runs inside ci.yml's required core tests, without paid runners.
 on:
   schedule:
     - cron: '17 3 * * *'

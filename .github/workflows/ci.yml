@@ -1278,6 +1278,17 @@ jobs:
         run: |
           ./scripts/ci/test-core-packages_test.sh
           ./scripts/ci/test-core-packages.sh
+      # Reuse the packages just compiled by core tests and the shared caches.
+      # The test plan covers every Go/API dependency and unknown fixture path;
+      # docs and web source changes do not need a separate benchmark runner.
+      - name: Exercise every benchmark once
+        run: >-
+          go test -run '^$' -bench . -benchtime=1x
+          ./internal/crypto/
+          ./internal/dotenv/
+          ./internal/scanning/
+          ./internal/server/
+          ./internal/service/
       - name: Root systemd upgrade adapter boundaries in isolated Linux
         run: sh scripts/ci/test-host-upgrade.sh
       - name: Real systemd upgrade service and reboot fence acceptance
@@ -1561,7 +1572,7 @@ jobs:
   # retry and a single-writer SQLite pool gets its data races found here, not
   # in production. The probe-based isolation E2E suite exceeds the per-package
   # timeout under the detector, so its race-instrumented run lives in the
-  # scheduled race-isolation workflow instead of on the PR wall-clock.
+  # scheduled reliability race suite instead of on the PR wall-clock.
   race_shard:
     name: race shard (${{ matrix.shard }})
     needs:

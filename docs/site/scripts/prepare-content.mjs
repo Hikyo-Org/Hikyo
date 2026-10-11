@@ -79,6 +79,7 @@ const siteLinks = new Map([
   ['./docs/status/README.md', '/implementation-status/'],
   ['./docs/status/README.md#obl-repository-transfer', '/implementation-status/#obl-repository-transfer'],
   ['./docs/adr/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/README.md'],
+  ['./docs/development/ci.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/development/ci.md'],
   ['./docs/spec/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/README.md'],
   ['./docs/adr/oss-mechanics.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/oss-mechanics.md'],
   [

@@ -1,6 +1,7 @@
 package ci_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,6 +26,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 			Queue  string `yaml:"queue"`
 		} `yaml:"concurrency"`
 		Jobs map[string]struct {
+			If          string            `yaml:"if"`
 			Timeout     int               `yaml:"timeout-minutes"`
 			Permissions map[string]string `yaml:"permissions"`
 			Steps       []struct {
@@ -94,6 +96,9 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 		t.Fatal("commit-scoped check mutations require a single non-cancelling writer with pending-event retention")
 	}
 	job, ok := workflow.Jobs["publish"]
+	if job.If != "github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title, 'pr-metadata #')" {
+		t.Fatal("only metadata-only callback runs may skip the publisher runner; lifecycle and validation events must reconcile")
+	}
 	if !ok || len(workflow.Jobs) != 1 || job.Timeout <= 0 || job.Timeout > 10 {
 		t.Fatal("publisher must be one bounded job, never a ci-required job")
 	}
@@ -111,7 +116,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 		t.Fatal("trusted publisher must use repository-pinned Go without consuming execution caches")
 	}
 	if publish.Name != "Reconcile observed PR check" || publish.Run != "go run ./scripts/ci/pr-gate" || len(publish.Env) != 3 || publish.Env["GH_TOKEN"] != "${{ github.token }}" || publish.Env["GH_REPO"] != "${{ github.repository }}" || publish.Env["PR_GATE_CHECK_NAME"] != "ci-required-next" {
-		t.Fatal("observer must execute only the trusted controller under an isolated non-required check name")
+		t.Fatal("publisher must execute only the trusted controller under a required complete-candidate check name")
 	}
 	for _, forbidden := range []string{"secrets.", "download-artifact", "continue-on-error", "pull_request.head.sha"} {
 		if strings.Contains(string(raw), forbidden) {
@@ -120,72 +125,103 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 	}
 }
 
+// The required API context must be produced by the independent trusted
+// controller, never by an admission-skipped native PR job.
 func TestRequiredJobCannotSkipOnPullRequests(t *testing.T) {
-	var workflow struct {
-		On   map[string]yaml.Node `yaml:"on"`
-		Jobs map[string]struct {
-			If    string `yaml:"if"`
-			Needs string `yaml:"needs"`
-			Steps []struct {
-				Name string            `yaml:"name"`
-				If   string            `yaml:"if"`
-				Run  string            `yaml:"run"`
-				With map[string]string `yaml:"with"`
-				Env  map[string]string `yaml:"env"`
-			} `yaml:"steps"`
-		} `yaml:"jobs"`
+	root := repositoryRoot(t)
+	for _, name := range []string{"ci-control.yml", "ci-fork.yml", "ci-gate-reconcile.yml"} {
+		if _, err := os.Stat(filepath.Join(root, ".github/workflows", name)); !os.IsNotExist(err) {
+			t.Fatalf("obsolete automatic producer %s must be retired", name)
+		}
 	}
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-control.yml"))
+	var policy struct {
+		Rules []struct {
+			Type       string `json:"type"`
+			Parameters struct {
+				Checks []struct {
+					Context string `json:"context"`
+				} `json:"required_status_checks"`
+			} `json:"parameters"`
+		} `json:"rules"`
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "release/repository/main-ci-gate.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+	if err := json.Unmarshal(raw, &policy); err != nil {
 		t.Fatal(err)
 	}
-	if len(workflow.On) != 1 {
-		t.Fatal("the base-controlled PR gate must have no event that calls the validation graph")
-	}
-	if _, ok := workflow.On["pull_request_target"]; !ok {
-		t.Fatal("the existing base-controlled PR gate must remain enabled during observation")
-	}
-	gate, ok := workflow.Jobs["ci-required"]
-	if !ok || len(workflow.Jobs) != 1 || gate.If != "always() && !cancelled()" || gate.Needs != "" {
-		t.Fatal("the legacy required PR gate must run independently of untrusted validation")
-	}
-	checkedBase, verifiedPR := false, false
-	for _, step := range gate.Steps {
-		if step.Name == "Check out the base branch" {
-			checkedBase = step.If == "github.event_name == 'pull_request_target'" && step.With["ref"] == "${{ github.event.pull_request.base.sha }}" && step.With["persist-credentials"] == "false"
-		}
-		if step.Run == "./scripts/ci/check-fork-validation.sh" {
-			verifiedPR = step.If == "github.event_name == 'pull_request_target'" && step.Env["PR_NUMBER"] == "${{ github.event.pull_request.number }}" && step.Env["HEAD_SHA"] == "${{ github.event.pull_request.head.sha }}" && step.Env["PR_GATE_ONCE"] == ""
+	var contexts []string
+	for _, rule := range policy.Rules {
+		if rule.Type == "required_status_checks" {
+			for _, c := range rule.Parameters.Checks {
+				contexts = append(contexts, c.Context)
+			}
 		}
 	}
-	if !checkedBase || !verifiedPR {
-		t.Fatal("the required PR gate must execute its real base-controlled verifier rather than skip or accept pending")
+	if !slices.Equal(contexts, []string{"ci-required-next"}) {
+		t.Fatal("canonical policy must require the complete candidate producer")
 	}
 	var observer struct {
 		Jobs map[string]struct {
+			If    string    `yaml:"if"`
+			Needs yaml.Node `yaml:"needs"`
 			Steps []struct {
 				Run string            `yaml:"run"`
 				Env map[string]string `yaml:"env"`
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
-	raw, err = os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-pr-gate.yml"))
+	raw, err = os.ReadFile(filepath.Join(root, ".github/workflows/ci-pr-gate.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := yaml.Unmarshal(raw, &observer); err != nil {
 		t.Fatal(err)
 	}
-	isolated := false
-	for _, step := range observer.Jobs["publish"].Steps {
+	job := observer.Jobs["publish"]
+	if job.If != "github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title, 'pr-metadata #')" || job.Needs.Kind != 0 {
+		t.Fatal("head/base lifecycle reconciliation must run independently of label/vouch/validation admission")
+	}
+	found := false
+	for _, step := range job.Steps {
 		if step.Run == "go run ./scripts/ci/pr-gate" {
-			isolated = step.Env["PR_GATE_CHECK_NAME"] == "ci-required-next"
+			found = step.Env["PR_GATE_CHECK_NAME"] == contexts[0]
 		}
 	}
-	if !isolated {
-		t.Fatal("observation must not emit the existing required check name")
+	if !found {
+		t.Fatal("required policy context must match trusted API publisher")
+	}
+	if strings.Contains(string(raw), "uses: ./.github/workflows/ci.yml") {
+		t.Fatal("credentialed publisher must never execute the untrusted validation graph")
+	}
+	// GitHub required contexts have a name/app identity, not workflow identity.
+	// This prevents accidental native collisions; actual hostile collisions are
+	// refused with owned pending barriers by the controller's runtime tests.
+	entries, err := os.ReadDir(filepath.Join(root, ".github/workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yml") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(root, ".github/workflows", entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var w struct {
+			Jobs map[string]struct {
+				Name string `yaml:"name"`
+			} `yaml:"jobs"`
+		}
+		if err := yaml.Unmarshal(content, &w); err != nil {
+			t.Fatal(err)
+		}
+		for id, j := range w.Jobs {
+			if id == contexts[0] || j.Name == contexts[0] {
+				t.Fatalf("native workflow %s must not publish the required PR context", entry.Name())
+			}
+		}
 	}
 }

@@ -1,6 +1,6 @@
-# Observe completion-driven PR results under ci-required-next while the legacy
-# ci-required gate remains required. Execute default-branch tooling, read PR
-# code only as API metadata, and never download PR artifacts.
+# Publish completion-driven PR results under ci-required-next. Execute only
+# default-branch tooling, read PR code as API metadata, and never download PR
+# artifacts. Activate the required context only after a proved full candidate.
 # A queued check does not reserve a runner. Completion callbacks reassess live
 # state; periodic repair covers delayed/missing callbacks and approval changes.
 name: pr-gate
@@ -35,6 +35,10 @@ concurrency:
 
 jobs:
   publish:
+    # Metadata-only validation runs cannot produce evidence. The controller
+    # already ignores these callbacks; avoid allocating a runner for them.
+    if: >-
+      github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title, 'pr-metadata #')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

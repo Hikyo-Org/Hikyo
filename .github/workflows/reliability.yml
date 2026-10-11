@@ -1,0 +1,404 @@
+name: reliability
+
+# Periodic checks share one menu while retaining their original cadence,
+# isolation, runner policies and evidence. Only the channel reporter can write.
+on:
+  schedule:
+    - cron: '23 7 * * *'
+    - cron: '0 4 * * 1'
+    - cron: '0 5 * * 1'
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Reliability suite to run at the selected revision
+        type: choice
+        required: true
+        default: all
+        options: [all, security, gitlab, reporting, race, channel]
+
+permissions:
+  contents: read
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      security: ${{ steps.select.outputs.security }}
+      gitlab: ${{ steps.select.outputs.gitlab }}
+      reporting: ${{ steps.select.outputs.reporting }}
+      race: ${{ steps.select.outputs.race }}
+      channel: ${{ steps.select.outputs.channel }}
+    steps:
+      - name: Select scheduled or requested reliability suites
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          REQUESTED_SUITE: ${{ inputs.suite }}
+        run: |
+          set -euo pipefail
+          security=false gitlab=false reporting=false race=false channel=false
+          case "$EVENT_NAME" in
+            schedule)
+              case "$EVENT_SCHEDULE" in
+                '23 7 * * *') security=true ;;
+                '0 4 * * 1') race=true ;;
+                '0 5 * * 1') gitlab=true reporting=true ;;
+                '17 6 * * 1') channel=true ;;
+                *) echo 'Unknown reliability schedule.' >&2; exit 1 ;;
+              esac
+              ;;
+            workflow_dispatch)
+              case "$REQUESTED_SUITE" in
+                all) security=true gitlab=true reporting=true race=true channel=true ;;
+                security) security=true ;;
+                gitlab) gitlab=true ;;
+                reporting) reporting=true ;;
+                race) race=true ;;
+                channel) channel=true ;;
+                *) echo 'Unknown reliability suite.' >&2; exit 1 ;;
+              esac
+              ;;
+            *) echo 'Unsupported reliability event.' >&2; exit 1 ;;
+          esac
+          printf 'security=%s\ngitlab=%s\nreporting=%s\nrace=%s\nchannel=%s\n' \
+            "$security" "$gitlab" "$reporting" "$race" "$channel" >>"$GITHUB_OUTPUT"
+
+  go-patch:
+    needs: route
+    if: needs.route.outputs.security == 'true'
+    concurrency:
+      group: reliability-go-patch-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Propose the latest supported Go patch
+        run: ./scripts/ci/check-go-patch.sh
+      - name: Preserve the proposed toolchain patch
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: go-patch-proposal
+          path: ${{ runner.temp }}/go-patch-proposal/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  binary-security:
+    needs: route
+    if: needs.route.outputs.security == 'true'
+    concurrency:
+      group: reliability-binary-security-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pinned Corepack
+        run: ./scripts/ci/install-corepack.sh
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Build the embedded frontend
+        run: |
+          pnpm --dir clients/ts install --frozen-lockfile
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web run build
+      - name: Build both linked binary shapes
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/hikyo-core" ./cmd/hikyo
+          go build -trimpath -tags ui -o "$RUNNER_TEMP/hikyo-ui" ./cmd/hikyo
+          go version -m "$RUNNER_TEMP/hikyo-core" > "$RUNNER_TEMP/core-build-info.txt"
+          go version -m "$RUNNER_TEMP/hikyo-ui" > "$RUNNER_TEMP/ui-build-info.txt"
+      - name: Scan both linked binaries
+        run: |
+          status=0
+          ./scripts/ci/run-go-tool.sh govulncheck -mode=binary "$RUNNER_TEMP/hikyo-core" || status=1
+          ./scripts/ci/run-go-tool.sh govulncheck -mode=binary "$RUNNER_TEMP/hikyo-ui" || status=1
+          exit "$status"
+      - name: Preserve compiler and dependency metadata
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binary-security-build-info
+          path: ${{ runner.temp }}/*-build-info.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  gitlab-e2e:
+    needs: route
+    if: needs.route.outputs.gitlab == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Start disposable GitLab CE
+        run: ./scripts/ci/start-gitlab.sh
+      - name: GitLab adapter lifecycle (both datastore engines)
+        env:
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
+        run: go test -count=1 -timeout 20m -run 'TestGitLabRealLifecycle' -v ./internal/isolation/
+      - name: GitLab logs on failure
+        if: ${{ failure() && env.HIKYO_TEST_GITLAB_CONTAINER != '' }}
+        run: docker logs --tail 300 "$HIKYO_TEST_GITLAB_CONTAINER"
+      - name: Remove GitLab
+        if: ${{ always() && env.HIKYO_TEST_GITLAB_CONTAINER != '' }}
+        run: docker rm -f "$HIKYO_TEST_GITLAB_CONTAINER"
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
+  reporting-e2e:
+    needs: route
+    if: needs.route.outputs.reporting == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
+      # A pinned, checksummed binary download, the k8s-e2e job's pattern: kind
+      # is a single static binary, no third-party action needed.
+      - name: Install kind (pinned archive)
+        env:
+          KIND_VERSION: v0.32.0
+          KIND_SHA256: 50030de23cf40a18505f20426f6a8506bedf13c6e509244bd1fa9463721b0f54
+        run: |
+          binary="$RUNNER_TEMP/kind"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            --retry 4 --retry-delay 2 --retry-all-errors \
+            "https://github.com/kubernetes-sigs/kind/releases/download/$KIND_VERSION/kind-linux-amd64" \
+            --output "$binary"
+          printf '%s  %s\n' "$KIND_SHA256" "$binary" | sha256sum --check --strict
+          chmod +x "$binary"
+          sudo install "$binary" /usr/local/bin/kind
+          kind version
+      # The exact Chromium of the locked @playwright/test. The flow suite gets
+      # it from the Playwright container; this job needs the host's Docker for
+      # kind, so it installs the browser on the runner instead.
+      - name: Install web dependencies and Chromium
+        run: |
+          pnpm --dir clients/ts install --frozen-lockfile
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web exec playwright install --with-deps chromium
+      - name: Operator to browser reporting suite
+        env:
+          HIKYO_REPORTING_E2E_ARTIFACTS: ${{ runner.temp }}/reporting-e2e
+        run: ./scripts/ci/reporting-e2e.sh
+      - name: Preserve screenshots, operator log and captured report bodies
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reporting-e2e-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/reporting-e2e/
+            web/test-results/reporting/
+          if-no-files-found: error
+          retention-days: 30
+
+  plan:
+    needs: route
+    if: needs.route.outputs.race == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Plan every race isolation target exactly once
+        id: plan
+        shell: bash
+        run: |
+          matrix='[]'
+          for shard in $(seq 0 7); do
+            targets=$(./scripts/ci/analysis-shards isolation-race --root . --shard "$shard" --shards 8 |
+              jq -Rsc 'split("\n") | map(select(length > 0))')
+            if [ "$(printf '%s' "$targets" | jq length)" -gt 0 ]; then
+              matrix=$(jq -cn --argjson matrix "$matrix" --argjson shard "$shard" --argjson targets "$targets" \
+                '$matrix + [{shard: $shard, targets: $targets}]')
+            fi
+          done
+          # Verify completeness against the independent one-shard inventory,
+          # including fuzz seeds and runnable examples. Duplicate targets fail.
+          ./scripts/ci/analysis-shards isolation-race --root . --shard 0 --shards 1 | sort >expected
+          printf '%s' "$matrix" | jq -r '.[].targets[]' | sort >actual
+          test -s expected
+          test -z "$(uniq -d actual)"
+          cmp expected actual
+          echo "matrix={\"include\":$matrix}" >>"$GITHUB_OUTPUT"
+
+  race-isolation:
+    name: race isolation shard (${{ matrix.shard }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore race Go cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: |
+            go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      - name: Race detector (probe-based isolation E2E suite)
+        shell: bash
+        env:
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
+          ISOLATION_TARGETS: ${{ toJSON(matrix.targets) }}
+        run: |
+          tests=$(printf '%s' "$ISOLATION_TARGETS" | jq -er \
+            'if type == "array" and length > 0 and all(.[]; type == "string" and test("^[A-Za-z0-9_]+$"))
+              then join("|") else error("invalid isolation target inventory") end')
+          started=$SECONDS
+          status=0
+          go test -json -race -count=1 -timeout 150m ./internal/isolation/ -run "^(${tests})$" |
+            tee "$RUNNER_TEMP/isolation-race.json" |
+            jq --unbuffered -rj 'select(.Action == "output" or .Action == "build-output") | .Output' || status=$?
+          jq -cn --argjson seconds "$((SECONDS - started))" --argjson status "$status" \
+            '{WallSeconds: $seconds, ExitCode: $status}' >"$RUNNER_TEMP/isolation-race.wall.json"
+          exit "$status"
+      - name: Upload race isolation timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: isolation-race-timings-${{ matrix.shard }}
+          overwrite: true
+          path: ${{ runner.temp }}/isolation-race*.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
+  fallback-channel:
+    needs: route
+    if: needs.route.outputs.channel == 'true'
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Require a recent end-to-end fallback notification test
+        run: >-
+          ./scripts/ci/check-fallback-channel-test.sh
+          release/repository/fallback-channel-test.json
+          security@developwent.io
+      - name: Surface fallback-channel degradation
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='Fallback security channel health check failed'
+          label='security-channel-alert'
+          marker='<!-- hikyo-security-channel-alert -->'
+          gh label create "$label" --force --color B60205 \
+            --description 'Automation-owned fallback security channel alert'
+          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
+            --json number,title,author,body \
+            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
+          if [ -n "$issue_number" ]; then
+            gh issue comment "$issue_number" --body "The scheduled fallback-channel gate failed again: $RUN_URL"
+            exit 0
+          fi
+          gh issue create --title "$title" \
+            --label "$label" \
+            --body "$marker
+
+          The scheduled fallback-channel gate failed: $RUN_URL"
+      - name: Close resolved fallback-channel alert
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title='Fallback security channel health check failed'
+          label='security-channel-alert'
+          marker='<!-- hikyo-security-channel-alert -->'
+          issue_number=$(gh issue list --state open --label "$label" --limit 100 \
+            --json number,title,author,body \
+            --jq ".[] | select(.title == \"$title\" and .author.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .number" | head -n 1)
+          if [ -n "$issue_number" ]; then
+            gh issue close "$issue_number" \
+              --comment 'The scheduled fallback-channel gate is healthy again.'
+          fi
