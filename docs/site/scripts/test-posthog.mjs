@@ -13,6 +13,16 @@ const docsPage = await readFile(resolve(dist, 'docs/index.html'), 'utf8');
 // substring is not a reliable gate.
 const postHogBuilt = /data-posthog-host=/.test(landingPage);
 
+const demoLinks = Array.from(landingPage.matchAll(/<a\b[^>]*data-posthog-event="demo_cta_clicked"[^>]*>/g), (match) => match[0]);
+assert.equal(demoLinks.length, 2, 'hero and final demo CTAs must both emit conversion events');
+for (const placement of ['hero', 'final']) {
+  assert.equal(
+    demoLinks.filter((link) => link.includes(`data-posthog-placement="${placement}"`)).length,
+    1,
+    `${placement} demo CTA must identify its placement`,
+  );
+}
+
 if (!postHogBuilt) {
   assert.notEqual(process.env.POSTHOG_REQUIRED, 'true', 'required PostHog build omitted analytics');
   assert.doesNotMatch(landingPage, /\/static\/array\.js/, 'disabled analytics still ships the PostHog bootstrap');
