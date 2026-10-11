@@ -1,6 +1,8 @@
 package ci_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,6 +24,8 @@ func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T)
 		} `yaml:"concurrency"`
 		Permissions map[string]string `yaml:"permissions"`
 		Jobs        map[string]struct {
+			Name    string            `yaml:"name"`
+			If      string            `yaml:"if"`
 			Timeout int               `yaml:"timeout-minutes"`
 			Env     map[string]string `yaml:"env"`
 			Steps   []struct {
@@ -36,13 +40,19 @@ func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T)
 	if err := yaml.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Concurrency.Group != "ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}" || !got.Concurrency.Cancel {
-		t.Fatal("a later pushed commit must not cancel an earlier commit's feedback; only duplicate exact inputs may supersede")
+	if got.Concurrency.Group != "ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}" || !got.Concurrency.Cancel {
+		t.Fatal("distinct commits and skipped metadata edits must not cancel or evict useful feedback; only duplicate admitted inputs may supersede")
 	}
 	if !reflect.DeepEqual(got.Permissions, map[string]string{"contents": "read"}) {
 		t.Fatal("feedback execution must remain read-only")
 	}
 	job := got.Jobs["feedback"]
+	if job.Name != "${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }}" {
+		t.Fatal("metadata skips must have a separate check name so they cannot hide the actual feedback verdict")
+	}
+	if job.If != "github.event.action != 'edited' || github.event.changes.base.ref.from != ''" {
+		t.Fatal("push/open/reopen and genuine base edits must run; metadata-only edits must skip")
+	}
 	if len(got.Jobs) != 1 || job.Timeout != 4 {
 		t.Fatal("one bounded feedback runner includes setup in its four-minute budget")
 	}
@@ -65,5 +75,85 @@ func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T)
 		if strings.Contains(step.Uses, "checkout@") && step.With["persist-credentials"] != "false" {
 			t.Fatal("source and tooling must not persist credentials")
 		}
+	}
+}
+
+func TestFeedbackConcurrencyMetadataCannotCancelOrEvictCommitVerdict(t *testing.T) {
+	// GitHub allows one running and one pending run per group. A new run in
+	// that group replaces the pending run even with cancel-in-progress=false.
+	// Model both states: the validated workflow expression above must give
+	// skipped edits a unique group before the job guard can skip their jobs.
+	type event struct {
+		action, head, base string
+		baseChanged        bool
+		runID              int
+	}
+	group := func(e event) string {
+		suffix := "admitted"
+		if e.action == "edited" && !e.baseChanged {
+			suffix = fmt.Sprint(e.runID)
+		}
+		return fmt.Sprintf("ci-feedback-887-%s-%s-%s", e.head, e.base, suffix)
+	}
+	checkName := func(e event) string {
+		if e.action == "edited" && !e.baseChanged {
+			return "metadata (ignored)"
+		}
+		return "feedback"
+	}
+	commit := event{action: "synchronize", head: "head-a", base: "main-a", runID: 1}
+	// GitHub treats a missing property and an explicit null identically. Decode
+	// realistic edited payloads instead of assuming changes.base always exists.
+	metadata := func(payload string, runID int) event {
+		var decoded struct {
+			Changes struct {
+				Base struct {
+					Ref struct {
+						From *string `json:"from"`
+					} `json:"ref"`
+				} `json:"base"`
+			} `json:"changes"`
+		}
+		if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		return event{action: "edited", head: "head-a", base: "main-a", baseChanged: decoded.Changes.Base.Ref.From != nil && *decoded.Changes.Base.Ref.From != "", runID: runID}
+	}
+	cases := []struct {
+		name       string
+		incoming   event
+		supersedes bool
+	}{
+		{"body edit", event{action: "edited", head: "head-a", base: "main-a", runID: 2}, false},
+		{"title edit", event{action: "edited", head: "head-a", base: "main-a", runID: 3}, false},
+		{"missing changes", metadata(`{}`, 8), false},
+		{"null changes", metadata(`{"changes":null}`, 9), false},
+		{"null base ref origin", metadata(`{"changes":{"base":{"ref":{"from":null}}}}`, 10), false},
+		{"later push", event{action: "synchronize", head: "head-b", base: "main-a", runID: 4}, false},
+		{"real base retarget", event{action: "edited", head: "head-a", base: "main-b", baseChanged: true, runID: 5}, false},
+		{"duplicate useful push", event{action: "synchronize", head: "head-a", base: "main-a", runID: 6}, true},
+		{"useful base edit duplicate", event{action: "edited", head: "head-a", base: "main-a", baseChanged: true, runID: 7}, true},
+		{"opened duplicate", event{action: "opened", head: "head-a", base: "main-a", runID: 11}, true},
+		{"reopened duplicate", event{action: "reopened", head: "head-a", base: "main-a", runID: 12}, true},
+		{"decoded real base edit duplicate", metadata(`{"changes":{"base":{"ref":{"from":"previous-main"}}}}`, 13), true},
+		{"empty previous ref", metadata(`{"changes":{"base":{"ref":{"from":""}}}}`, 14), false},
+		{"numeric previous ref 0", metadata(`{"changes":{"base":{"ref":{"from":"0"}}}}`, 15), true},
+		{"numeric previous ref 0.0", metadata(`{"changes":{"base":{"ref":{"from":"0.0"}}}}`, 16), true},
+		{"numeric previous ref 0e1", metadata(`{"changes":{"base":{"ref":{"from":"0e1"}}}}`, 17), true},
+	}
+	for _, state := range []string{"running", "pending"} {
+		for _, tc := range cases {
+			t.Run(state+"/"+tc.name, func(t *testing.T) {
+				if supersedes := group(commit) == group(tc.incoming); supersedes != tc.supersedes {
+					t.Fatalf("incoming event supersedes %s commit verdict = %v, want %v", state, supersedes, tc.supersedes)
+				}
+				if tc.incoming.action == "edited" && !tc.incoming.baseChanged && checkName(commit) == checkName(tc.incoming) {
+					t.Fatal("an ignored metadata skip must not replace the visible feedback check")
+				}
+			})
+		}
+	}
+	if group(cases[0].incoming) == group(cases[1].incoming) {
+		t.Fatal("ignored edits require per-run groups, not a shared metadata queue")
 	}
 }
