@@ -215,6 +215,47 @@ describe('EstablishCredential', () => {
     }
   });
 
+  it('clears sensitive DOM values synchronously before navigation to either provider', async () => {
+    for (const provider of [GOOGLE, GITHUB]) {
+      const { assign, rendered } = mount({ providers: [provider] });
+      const { container, unmount } = await rendered;
+      await provided(container, `Continue with ${provider.display_name}`);
+      typeInto(field(container, 'authority'), 'hik_cea_authority_value_1234');
+      typeInto(field(container, 'password'), PASSWORD);
+      typeInto(field(container, 'repeat'), PASSWORD);
+      await settle();
+      let departingValues: string[] = [];
+      assign.mockImplementation(() => {
+        departingValues = ['authority', 'password', 'repeat'].map((name) => field(container, name).value);
+      });
+      await click(button(container, `Continue with ${provider.display_name}`));
+      expect(assign).toHaveBeenCalledOnce();
+      expect(departingValues).toEqual(['', '', '']);
+      await unmount();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('clears sensitive DOM values before a persisted pagehide listener returns', async () => {
+    const { rendered } = mount({ providers: [GOOGLE] });
+    const { container, unmount } = await rendered;
+    await provided(container, 'Continue with Google');
+    typeInto(field(container, 'authority'), 'hik_cea_authority_value_1234');
+    typeInto(field(container, 'password'), PASSWORD);
+    typeInto(field(container, 'repeat'), PASSWORD);
+    await settle();
+    let hiddenValues: string[] = [];
+    await act(async () => {
+      const event = new Event('pagehide');
+      Object.defineProperty(event, 'persisted', { value: true });
+      globalThis.dispatchEvent(event);
+      hiddenValues = ['authority', 'password', 'repeat'].map((name) => field(container, name).value);
+    });
+    expect(hiddenValues).toEqual(['', '', '']);
+    await unmount();
+  });
+
   it('voices a refused claim start in the same one sentence and stays', async () => {
     const { assign, rendered } = mount({ providers: [GOOGLE], start: 401 });
     const { container, unmount } = await rendered;

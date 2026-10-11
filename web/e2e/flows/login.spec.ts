@@ -800,6 +800,73 @@ test.describe('login', () => {
 test.describe('invitation claim', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
+  test('clears sensitive inputs on provider departure and Back before a fresh claim', async ({ page, browser }, testInfo) => {
+    const seed = readSeed();
+    const stamp = `${testInfo.project.name}-${Date.now().toString(36)}`;
+    const adminContext = await browser.newContext({ storageState: STORAGE_STATE });
+    const adminPage = await adminContext.newPage();
+    const invitationSchema = z.object({ authority: z.string(), principal_id: z.string() });
+    const invite = (suffix: string) => browserApi(
+      adminPage, 'POST', `/api/v1/orgs/${seed.org}/invitations`, invitationSchema,
+      { username: `claim-back-${stamp}-${suffix}` },
+    );
+    const [invitation, freshInvitation] = await Promise.all([invite('depart'), invite('return')])
+      .finally(() => adminContext.close());
+
+    await page.goto('/establish');
+    const provider = page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+    await expect(provider).toBeDisabled();
+    await page.getByLabel('Setup authority').fill(invitation.authority);
+    await page.getByLabel('New password', { exact: true }).fill('a browser departure password');
+    await page.getByLabel('Repeat the password').fill('a browser departure password');
+    await expect(provider).toBeEnabled();
+    // Console events can be lost during document teardown. Retain only three
+    // numeric lengths in test storage, never authority/password plaintext.
+    await page.evaluate(() => {
+      sessionStorage.removeItem('claim-departure-lengths');
+      globalThis.addEventListener('pagehide', (event) => {
+        if (!event.isTrusted) return;
+        const lengths = ['authority', 'password', 'repeat'].map((name) =>
+          document.querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value.length ?? -1);
+        sessionStorage.setItem('claim-departure-lengths', JSON.stringify(lengths));
+      }, { once: true });
+    });
+    await page.route(/\/authorize\?/, async (route) => {
+      await route.fulfill({ contentType: 'text/html', body: '<h1>Claim provider paused</h1>' });
+    });
+    await provider.click();
+    await expect(page.getByRole('heading', { name: 'Claim provider paused' })).toBeVisible();
+
+    // Playwright Chromium can reload on Back; the unit test separately proves
+    // synchronous clearing at persisted pagehide without claiming BFCache here.
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Establish your credential' })).toBeVisible();
+    const departure = await page.evaluate(() => {
+      const lengths = sessionStorage.getItem('claim-departure-lengths');
+      sessionStorage.removeItem('claim-departure-lengths');
+      return lengths;
+    });
+    expect(z.array(z.number()).length(3).parse(JSON.parse(departure ?? 'null'))).toEqual([0, 0, 0]);
+    for (const label of ['Setup authority', 'New password', 'Repeat the password']) {
+      await expect(page.getByLabel(label, { exact: true })).toHaveValue('');
+    }
+    await expect(provider).toBeDisabled();
+    await expect(page.getByText('Contacting identity provider…')).toHaveCount(0);
+    await page.unroute(/\/authorize\?/);
+    await page.route(/\/authorize\?/, async (route) => {
+      await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(`claim-back-${stamp}`)}` });
+    });
+    await page.getByLabel('Setup authority').fill(freshInvitation.authority);
+    await expect(provider).toBeEnabled();
+    const start = page.waitForRequest((request) => request.method() === 'POST'
+      && new URL(request.url()).pathname.endsWith('/start'));
+    await provider.click();
+    expect((await start).postDataJSON()).toEqual({ purpose: 'claim', proof: freshInvitation.authority, browser: true });
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.getByRole('heading', { name: 'Account & security' })).toBeVisible();
+    expect((await page.context().cookies()).find((cookie) => cookie.name === '__Host-hikyo')).toBeDefined();
+  });
+
   test('claims an invitation with a provider and lands signed in; the login page never offers a claim', async ({ page, browser }, testInfo) => {
     const seed = readSeed();
     const stamp = `${testInfo.project.name}-${Date.now().toString(36)}`;

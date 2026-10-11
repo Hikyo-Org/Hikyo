@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import { useAuthMethods } from '../api/account.ts';
@@ -55,6 +55,9 @@ export function EstablishCredential() {
   const authorityId = useId();
   const passwordId = useId();
   const repeatId = useId();
+  const authorityInput = useRef<HTMLInputElement>(null);
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const repeatInput = useRef<HTMLInputElement>(null);
   const claim = useClaimStart();
   const methods = useAuthMethods();
   // A claim binds an OIDC or OAuth2 identity; SAML has no claim purpose.
@@ -67,20 +70,29 @@ export function EstablishCredential() {
   const busy = pending || claim.isPending;
   const noAuthority = authority.trim() === '';
 
+  // React can batch state updates until after navigation starts. Retire the
+  // controlled DOM values immediately, then keep sensitive state in sync.
+  const clearSecrets = useCallback(() => {
+    for (const input of [authorityInput.current, passwordInput.current, repeatInput.current]) {
+      if (input !== null) input.value = '';
+    }
+    setAuthority('');
+    setPassword('');
+    setRepeat('');
+    setContacting(null);
+  }, [setAuthority, setPassword, setRepeat]);
+
   // Leaving for a provider can park this page in the back-forward cache
   // without unmounting it, so the secrets are wiped on a persisted pagehide
   // too: Back from the provider must never restore a live authority.
   useEffect(() => {
     const wipe = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-      setAuthority('');
-      setPassword('');
-      setRepeat('');
-      setContacting(null);
+      clearSecrets();
     };
     globalThis.addEventListener('pagehide', wipe);
     return () => globalThis.removeEventListener('pagehide', wipe);
-  }, [setAuthority, setPassword, setRepeat]);
+  }, [clearSecrets]);
 
   const onClaim = (provider: LoginProvider & { kind: 'oidc' | 'oauth2' }) => {
     setFailure(null);
@@ -96,12 +108,7 @@ export function EstablishCredential() {
         authority: authority.trim(),
         returnTo: surfaceById('settings').path,
         // Cleared before the browser leaves for the provider (#610 review).
-        beforeLeave: () => {
-          setAuthority('');
-          setPassword('');
-          setRepeat('');
-          setContacting(null);
-        },
+        beforeLeave: clearSecrets,
       },
       {
         // Success leaves the page for the provider; only a refusal returns.
@@ -218,6 +225,7 @@ export function EstablishCredential() {
           <div className="field">
             <label htmlFor={authorityId}>Setup authority</label>
             <input
+              ref={authorityInput}
               id={authorityId}
               name="authority"
               type="password"
@@ -234,6 +242,7 @@ export function EstablishCredential() {
         <div className="field">
           <label htmlFor={passwordId}>New password</label>
           <input
+            ref={passwordInput}
             id={passwordId}
             name="password"
             type="password"
@@ -248,6 +257,7 @@ export function EstablishCredential() {
         <div className="field">
           <label htmlFor={repeatId}>Repeat the password</label>
           <input
+            ref={repeatInput}
             id={repeatId}
             name="repeat"
             type="password"

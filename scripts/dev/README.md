@@ -59,14 +59,17 @@ modules/toolchains and populate normal Go caches, so prepare
 its dependencies before measuring a warm run.
 
 CI starts one 220-second cumulative deadline before checkout and setup, within
-its unchanged four-minute job limit. Read-only module and build cache restores
-reuse the trusted main cache buckets. The immutable integration merge supplies
-the comparison base. Go/tooling checks overlap the frontend lane; client checks
+its unchanged four-minute job limit. Feedback skips bulk Go cache archives:
+run 38150465028 spent 65 seconds restoring 3.2 GiB of older fallback archives
+and still exhausted its budget. Go fetches only the required modules and builds
+selected packages. The immutable integration merge supplies the comparison base. Go/tooling checks overlap the frontend lane; client checks
 still finish before web checks. Every selected check must finish successfully.
 An expired budget fails explicitly, and failed lanes terminate their sibling
 processes. CI supervision requires Bash 5.1 and GNU timeout, both present on the
 hosted Linux runner. Without `FAST_FEEDBACK_DEADLINE`, local use retains its
-existing tools and sequential lanes with no imposed deadline.
+existing tools and sequential lanes with no imposed deadline. The mandatory
+full-candidate lint job runs every refusal and deadline supervisor fixture;
+per-commit feedback spends its budget on the selected source checks.
 
 A pass means the listed checks completed. It does not cover full Go tests,
 race/fuzz, generated freshness, Storybook, browser closure, services, native

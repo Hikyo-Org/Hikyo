@@ -71,32 +71,9 @@ jobs:
         with:
           go-version-file: feedback-tools/go.mod
           cache: false
-      - name: Check budget before cache restore
-        if: fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).shell
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
-      - name: Restore shared Go module cache
-        if: fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).shell
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        timeout-minutes: 1
-        with:
-          path: ~/go/pkg/mod
-          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}
-          restore-keys: go-mod-v2-${{ runner.os }}-
-      - name: Select Go build cache runner ABI
-        id: runner-cache-abi
-        if: fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"
-      - name: Check budget before Go build cache restore
-        if: fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
-      - name: Restore trusted-main Go build cache
-        if: fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        timeout-minutes: 1
-        with:
-          path: ~/.cache/go-build
-          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}
-          restore-keys: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      # Bulk main Go archives cost 65 seconds (3.2 GiB) in run 38150465028
+      # without completing the selected compilation. Let Go fetch only modules
+      # it needs and compile from scratch instead of importing unrelated caches.
       - name: Check budget before runtime setup
         if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client || fromJSON(steps.plan.outputs.plan).docs
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
@@ -134,7 +111,7 @@ jobs:
         working-directory: source/web
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" pnpm install --frozen-lockfile
       - name: Install verified pinned ShellCheck
-        if: fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
+        if: fromJSON(steps.plan.outputs.plan).shell
         env:
           SHELLCHECK_VERSION: v0.11.0
           SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
@@ -147,8 +124,5 @@ jobs:
           tar -xJf "$archive" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
           INSTALL_SHELLCHECK
-      - name: Verify the feedback command refusal fixtures
-        if: fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback_test.sh"
       - name: Run fast feedback
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh"

@@ -70,19 +70,22 @@ func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T)
 	if job.Steps[1].With["fetch-depth"] != "2" {
 		t.Fatal("immutable tooling must retain the synthetic merge's actual parents")
 	}
-	var pinnedBase, buildReader bool
+	var pinnedBase bool
 	for _, step := range job.Steps {
 		if step.Name == "Select fast feedback domains" {
 			pinnedBase = strings.Contains(step.Run, "rev-parse HEAD^1") && strings.Contains(step.Run, `test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"`) && strings.Contains(step.Run, `export FAST_FEEDBACK_BASE="$base"`)
 		}
-		if step.Name == "Restore trusted-main Go build cache" {
-			buildReader = step.With["path"] == "~/.cache/go-build" && strings.HasPrefix(step.With["key"], "go-test-v2-") && strings.Contains(step.With["key"], "hashFiles('feedback-tools/go.mod'") && strings.Contains(step.Uses, "cache/restore@")
-		}
 	}
-	if !pinnedBase || !buildReader {
-		t.Fatal("feedback needs a verified integration base and read-only existing main build bucket")
+	if !pinnedBase {
+		t.Fatal("feedback needs a verified integration base")
 	}
 	for index, step := range job.Steps {
+		if strings.Contains(step.Run, "fast-feedback_test.sh") || strings.Contains(step.Run, "fast-feedback-deadline_test.sh") {
+			t.Fatal("refusal and deadline self-tests belong to mandatory full lint, not the per-commit budget")
+		}
+		if step.With["path"] == "~/go/pkg/mod" || step.With["path"] == "~/.cache/go-build" || (strings.Contains(step.Uses, "setup-go@") && step.With["cache"] != "false") {
+			t.Fatal("feedback must not spend its deadline restoring bulk Go archives")
+		}
 		if step.Uses != "" {
 			if step.Timeout != 1 {
 				t.Fatal("external Actions require a one-minute bound")
