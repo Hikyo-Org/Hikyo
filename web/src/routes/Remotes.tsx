@@ -1,3 +1,4 @@
+import { isDemo } from '../demo/config.ts';
 import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -189,7 +190,9 @@ export function RemoteCard({
   const handoff = useWorkspaceHandoff(origin, {
     // A live card hides the launcher and must not stage an unused transaction.
     preparation:
-      duplicateIdentity
+      isDemo
+        ? { kind: 'refused', message: 'Remote connections are read-only in this demo.' }
+        : duplicateIdentity
         ? { kind: 'refused', message: remoteRecoveryText(remote, 'duplicate-identity') ?? '' }
         : live === undefined
           ? { kind: 'establishment' }
@@ -262,7 +265,7 @@ export function RemoteCard({
           {/* A rejected credential is fixed on the PEER's own Connection
               credentials section: link straight to it rather than describe
               where it lives (AC#1). */}
-          {state === 'credential-rejected' ? (
+          {state === 'credential-rejected' && !isDemo ? (
             <>
               {' '}
               <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
@@ -307,7 +310,7 @@ export function RemoteCard({
 
       {/* A duplicate identity's refusal is the recovery line above; the
           handoff's own failed phase would only repeat it. */}
-      {live !== undefined || duplicateIdentity || handoff.phase.kind !== 'failed' ? null : (
+      {isDemo || live !== undefined || duplicateIdentity || handoff.phase.kind !== 'failed' ? null : (
         <Alert>{handoff.phase.message}</Alert>
       )}
 
@@ -360,9 +363,9 @@ export function RemoteCard({
             variant="primary"
             type="button"
             onClick={handoffAction.onClick}
-            disabled={handoffAction.disabled || duplicateIdentity}
+            disabled={isDemo || handoffAction.disabled || duplicateIdentity}
           >
-            {duplicateIdentity ? 'Open workspace' : handoffAction.label}
+            {isDemo || duplicateIdentity ? 'Open workspace' : handoffAction.label}
           </Button>
         ) : null}
         {live === undefined ? null : (

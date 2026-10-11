@@ -8,7 +8,11 @@
   "scripts": {
     "dev": "vite",
     "prototype": "vite --mode prototype",
-    "build": "vite build && node scripts/precompress.mjs ../internal/webui/dist",
+    "demo": "vite --mode demo --host 0.0.0.0",
+    "build:demo": "vite build --mode demo",
+    "preview:demo": "vite preview --mode demo --host 0.0.0.0",
+    "test:demo": "playwright test --config e2e/demo.config.ts",
+    "build": "vite build && node scripts/check-demo-isolation.mjs && node scripts/precompress.mjs ../internal/webui/dist",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives",
     "test": "vitest run --project unit",

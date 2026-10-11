@@ -63,6 +63,7 @@ release/trust/*.key
 web/node_modules/
 scripts/mcp-conformance/node_modules/
 web/test-results/
+web/demo-dist/
 web/.artifacts/
 web/playwright-report/
 web/.playwright/

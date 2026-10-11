@@ -5,6 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
+import { isDemo } from '../demo/config.ts';
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import { historyHref } from '../api/history.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
@@ -148,11 +149,11 @@ export function Matrix({
   const selfConfig = useSelfConfig();
   const systemManaged = selfConfig.data?.binding?.org_id === ref.org && selfConfig.data.binding.project_id === ref.project;
   const canDeclareKeys = definitionsSettings.data?.can_declare_keys === true;
-  const declarationsLocked = gitManaged || systemManaged || !canDeclareKeys;
+  const declarationsLocked = isDemo || gitManaged || systemManaged || !canDeclareKeys;
   // Cleanup only moves keys between folders, which republishes nothing and so
   // needs `definitions-edit` alone.
   const foldersLocked =
-    gitManaged || systemManaged || definitionsSettings.data?.can_edit_definitions !== true;
+    isDemo || gitManaged || systemManaged || definitionsSettings.data?.can_edit_definitions !== true;
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
@@ -935,7 +936,7 @@ export function Matrix({
         {/* #495: import a .env file. Value import is not git-gated, so the entry
             stays available on a git-managed project; the wizard skips new keys
             there. Needs at least one environment to target. */}
-        {environments.length > 0 && !systemManaged ? (
+        {environments.length > 0 && !systemManaged && !isDemo ? (
           <Button
             type="button"
             className="matrix__import"
@@ -946,7 +947,7 @@ export function Matrix({
         ) : null}
         {/* #493: folder & key-group lifecycle. Project-scoped organisation in its
             own dialog, reachable here and from the empty state. */}
-        {systemManaged ? null : <Button type="button" className="matrix__manage" onClick={() => setManageOpen(true)}>
+        {systemManaged || isDemo ? null : <Button type="button" className="matrix__manage" onClick={() => setManageOpen(true)}>
           Folders &amp; linked keys
         </Button>}
         {foldersLocked || keys.every((key) => key.folder_path !== '') ? null : (
@@ -1060,7 +1061,7 @@ export function Matrix({
                       Declare first key
                     </Button>
                   )}
-                  <Button type="button" onClick={() => setManageOpen(true)}>
+                  <Button type="button" disabled={isDemo} onClick={() => setManageOpen(true)}>
                     Folders &amp; linked keys
                   </Button>
                 </div>

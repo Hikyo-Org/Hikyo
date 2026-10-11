@@ -31,9 +31,9 @@ if (!existsSync(here('../clients/ts/node_modules/zod'))) {
 // asserts it has no `unsafe-inline`). Two settings below exist only to keep
 // the emitted document legal under it — they are load-bearing, not tuning.
 export default defineConfig(({ mode }) => ({
-  // Root-only, per the system-architecture ADR: subpath mounting is deferred,
-  // which keeps RP ID/origin and asset resolution trivial.
-  base: '/',
+  // The real instance stays root-only. The static playground uses hash routes
+  // and can live alongside the documentation or at a GitHub Pages repo path.
+  base: mode === 'demo' ? (process.env['HIKYO_DEMO_BASE'] ?? '/demo/') : '/',
   plugins: [react(), ...(mode === 'prototype' ? [prototypeMockApi()] : [])],
   resolve: {
     alias: {
@@ -59,7 +59,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    outDir: here('../internal/webui/dist'),
+    outDir: mode === 'demo' ? here('demo-dist') : here('../internal/webui/dist'),
     emptyOutDir: true,
     assetsDir: 'assets',
     // No data: URIs. Inlining would need `img-src data:` in the CSP, which is

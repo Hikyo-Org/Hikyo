@@ -1,3 +1,4 @@
+import { isDemo } from '../demo/config.ts';
 import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 import { useEffect, useRef, useState } from 'react';
 
@@ -241,9 +242,11 @@ export function SSHCertificatesPanel({
                 </Button>{' '}
                 {workspace === null ? (
                   <>
-                    <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
-                      Download KRL
-                    </a>{' '}
+                    {isDemo ? <Button type="button" disabled title="Downloads are unavailable in the demo">Download KRL</Button> : (
+                      <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
+                        Download KRL
+                      </a>
+                    )}{' '}
                   </>
                 ) : null}
                 <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'rotate', ca })}>

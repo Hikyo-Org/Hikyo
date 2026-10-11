@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactElement } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router';
 
 import { NotFound, Overview } from '../routes/Placeholder.tsx';
 import { Shell } from '../routes/Shell.tsx';
@@ -12,6 +12,17 @@ import {
 } from './navigation.ts';
 import { ToastViewport } from './notifications.tsx';
 import { useAuth } from './AuthProvider.tsx';
+import { isDemo, DEMO_MATRIX_PATH } from '../demo/config.ts';
+
+const Router = isDemo ? HashRouter : BrowserRouter;
+const DemoSurface = import.meta.env.MODE === 'demo'
+  ? lazy(() => import('../demo/DemoSurface.tsx').then((module) => ({ default: module.DemoSurface })))
+  : null;
+
+function surfaceElement(id: SurfaceId): ReactElement {
+  const element = ELEMENTS[id];
+  return DemoSurface === null ? element : withRouteFallback(<DemoSurface id={id}>{element}</DemoSurface>);
+}
 
 const loadAuthRoutes = () => import('./route-groups/auth.ts');
 const loadWorkspaceRoutes = () => import('./route-groups/workspace.ts');
@@ -204,7 +215,7 @@ export function AppRoutes() {
       {live === null ? (
         <Routes>
           {anonymousSurfaces.map((surface) => (
-            <Route key={surface.id} path={surface.path} element={ELEMENTS[surface.id]} />
+            <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />
           ))}
           <Route path="*" element={<Navigate to={surfaceById('login').path} replace />} />
         </Routes>
@@ -221,14 +232,14 @@ export function AppRoutes() {
       ) : (
         <Routes>
           {(['login', 'signup'] as const).map((id) => (
-            <Route key={id} path={surfaceById(id).path} element={<Navigate to={surfaceById('projects').path} replace />} />
+            <Route key={id} path={surfaceById(id).path} element={<Navigate to={isDemo ? DEMO_MATRIX_PATH : surfaceById('projects').path} replace />} />
           ))}
           {sessionChromelessSurfaces.map((surface) => (
-            <Route key={surface.id} path={surface.path} element={ELEMENTS[surface.id]} />
+            <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />
           ))}
           <Route element={<Shell session={live} />}>
             {shellSurfaces.map((surface) => (
-              <Route key={surface.id} path={surface.path} element={ELEMENTS[surface.id]} />
+              <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />
             ))}
             <Route path="*" element={<NotFound />} />
           </Route>
@@ -239,5 +250,5 @@ export function AppRoutes() {
 }
 
 export function App() {
-  return <BrowserRouter><AppRoutes /></BrowserRouter>;
+  return <Router><AppRoutes /></Router>;
 }
