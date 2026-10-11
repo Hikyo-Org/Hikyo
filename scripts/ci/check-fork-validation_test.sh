@@ -126,7 +126,7 @@ approval() {
 gate() {
 	: >"$work/summary"
 	PATH="$work/bin:$PATH" FIXTURES=$work GH_REPO=o/r PR_NUMBER=7 HEAD_SHA=${1:-$head} \
-		GITHUB_STEP_SUMMARY="$work/summary" FORK_GATE_API_RETRY_SECONDS=0 FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
+		GITHUB_STEP_SUMMARY="$work/summary" FORK_GATE_API_RETRY_SECONDS=0 FORK_GATE_TIMEOUT_SECONDS=${TEST_GATE_TIMEOUT_SECONDS:-0} FORK_GATE_POLL_SECONDS=0 "$script" >"$work/stdout" 2>"$work/stderr"
 }
 
 # expect_pending <description>: rejected only by the deadline, never as a result.
@@ -143,6 +143,23 @@ expect_pending() {
 
 expect_accept() {
 	gate || { printf 'fork gate fixture failed: rejected %s\n' "$1" >&2; exit 1; }
+}
+
+expect_policy_stdout() {
+	expect_accept "$1"
+	printf '%s\n' "$2" >"$work/expected-stdout"
+	cmp -s "$work/expected-stdout" "$work/stdout" || {
+		printf 'fork gate fixture failed: policy stdout differs for %s\n' "$1" >&2
+		cat "$work/stdout" >&2
+		exit 1
+	}
+}
+
+expect_policy_silent() {
+	[ ! -s "$work/stdout" ] || {
+		printf 'fork gate fixture failed: non-success policy emitted authority\n' >&2
+		exit 1
+	}
 }
 
 expect_reject() {
@@ -452,17 +469,20 @@ gate || result=$?
 [ "$result" -eq 1 ] || { printf 'one-shot mode bypassed workflow approval\n' >&2; exit 1; }
 export PR_GATE_POLICY_ONLY=1
 fixture 1 "$docs" '{"workflow_runs":[]}' failure
-expect_accept 'policy-only verification does not trust or wait for validation results'
+expect_policy_stdout 'policy-only verification does not trust or wait for validation results' '{"workflow_change_authorized":false}'
 fixture 1 "$workflow" '{"workflow_runs":[]}' success
 same_repo
 expect_reject 'policy-only verification retains workflow authority'
+expect_policy_silent
 approval
-expect_accept 'policy-only workflow authority is independent of result publication'
+expect_policy_stdout 'policy-only workflow authority is independent of result publication' '{"workflow_change_authorized":true}'
 fixture 1 "$docs" '{"workflow_runs":[]}' success
 jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
 mv "$work/pr-new.json" "$work/pr.json"
 expect_once_pending 'policy-only pending mergeability'
+expect_policy_silent
 expect_reject 'policy-only superseded head' fedcba9876543210fedcba9876543210fedcba98
+expect_policy_silent
 unset PR_GATE_ONCE PR_GATE_POLICY_ONLY
 
 printf 'PR gate fixture: exact-head validation, independent workflow authority, and runner-free pending decisions\n'

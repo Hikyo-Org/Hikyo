@@ -21,9 +21,13 @@ ShellCheck 0.11.0 for changed shell scripts/hooks, and the repository's pinned
 Actionlint wrapper for workflow changes. Web changes run the package's existing
 typecheck, lint, and unit tests; client changes run client typecheck/tests and
 the web checks that consume the generated client. API schema and Node/pnpm
-manifest changes also select these frontend checks. Deletions select their
-owning package. The default branch's complete CI classifier and inventory still
-own the full merge coverage contract.
+manifest changes also select these frontend checks. Go file deletions select
+their owning package when it still contains Go files. Deleting its final Go file
+leaves no owner to compile, and unchanged importers are not selected; they can
+fail to compile while fast feedback passes. Reverse import dependencies and
+complete package deletions are validated by the mandatory full candidate suite.
+The default branch's complete CI classifier and inventory still own the full
+merge coverage contract.
 
 Go dependency manifest changes select `go mod verify` for cached dependency
 integrity; complete dependency compatibility remains part of candidate CI.

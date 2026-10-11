@@ -64,6 +64,31 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 	if !strings.Contains(checker.Run, "[ \"$FULL_CANDIDATE\" = true ]") || !strings.Contains(checker.Run, "checker_event=merge_group") {
 		t.Fatal("full candidates must reject selective plans independently of classification")
 	}
+
+	// Every trusted downstream tool must use the same resolved base as planning.
+	for jobName, stepName := range map[string]string{
+		"preflight":       "Require DCO sign-off on every PR commit",
+		"analysis_shards": "Plan complete test, race, and fuzz shards",
+		"race_shard":      "Race detector (all packages except the isolation suite)",
+		"ci-required":     "Require every validation job",
+	} {
+		expected := "${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
+		if jobName == "preflight" {
+			expected = "${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha }}"
+		}
+		found := false
+		for _, step := range ci.Jobs[jobName].Steps {
+			if step.Name == stepName {
+				found = true
+				if step.Env["BASE_SHA"] != expected {
+					t.Fatalf("%s trusted tooling lost the resolved candidate base", jobName)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%s trusted-tooling step missing", jobName)
+		}
+	}
 	guard := ci.Jobs["changes"].Steps[0]
 	for _, mutation := range []string{"valid", "head-only", "wrong-merge", "missing-base", "invalid-mode", "wrong-repository", "nondefault-target"} {
 		t.Run(mutation, func(t *testing.T) {
