@@ -159,12 +159,20 @@ fi
 grep -F 'path: ~/go/pkg/mod' "$@" >/dev/null || fail 'no Go module cache reader found'
 grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache reader found'
 for file in "$@"; do
-	awk '
+	feedback_cache=false
+	[ "$(basename "$file")" != ci-feedback.yml ] || feedback_cache=true
+	awk -v feedback_cache="$feedback_cache" '
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
 			if (index(block, "path: ~/go/pkg/mod") > 0) {
-				if (index(block, "key: go-mod-v2-${{ runner.os }}-${{ hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047) }}") == 0 ||
-					index(block, "restore-keys: go-mod-v2-${{ runner.os }}-") == 0) bad = 1
+				module_key = "key: go-mod-v2-${{ runner.os }}-${{ hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047) }}"
+                if (feedback_cache == "true") {
+                    # Feedback tools run from a separate immutable merge checkout.
+                    # Its module/tool manifest is the compatibility owner.
+                    module_key = "key: go-mod-v2-${{ runner.os }}-${{ hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047, \047feedback-tools/scripts/ci/go-tool-modules.txt\047) }}"
+                }
+                if (index(block, module_key) == 0 ||
+                    index(block, "restore-keys: go-mod-v2-${{ runner.os }}-") == 0) bad = 1
 			}
 			if (index(block, "path: ~/.cache/go-build") > 0) {
 				if (index(block, "key: go-") == 0 ||

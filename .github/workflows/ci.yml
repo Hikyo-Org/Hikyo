@@ -18,6 +18,11 @@ on:
         description: Exact immutable commit bound to the caller's GitHub event
         required: true
         type: string
+      candidate:
+        description: Full PR integration candidate for the completion gate
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -45,6 +50,9 @@ jobs:
           EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FULL_CANDIDATE: ${{ inputs.candidate }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
           PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
@@ -59,7 +67,16 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             pull_request)
               [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-              test "$SOURCE_REVISION" = "$PR_HEAD_SHA"
+              case "$FULL_CANDIDATE" in
+                true)
+                  test "$SOURCE_REVISION" = "$GITHUB_SHA"
+                  test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
+                  [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+                  [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+                  ;;
+                false) test "$SOURCE_REVISION" = "$PR_HEAD_SHA" ;;
+                *) echo 'Unknown candidate mode.' >&2; exit 1 ;;
+              esac
               test "$PR_BASE_REPOSITORY" = "$GITHUB_REPOSITORY"
               test "$PR_BASE_REPOSITORY_ID" = "$EVENT_REPOSITORY_ID"
               [[ "$PR_HEAD_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
@@ -85,6 +102,7 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
+          FULL_CANDIDATE: ${{ inputs.candidate }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -99,7 +117,12 @@ jobs:
             git show "$BASE_SHA:scripts/ci/classify-changed-paths.sh" >"$trusted_classifier"
             git show "$BASE_SHA:scripts/ci/ci-job-registry.json" >"$trusted_registry"
             chmod +x "$trusted_classifier"
-            if [ "$EVENT_NAME" = merge_group ]; then
+            if [ "$EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
+              test "$(git show -s --format=%P HEAD | wc -w | tr -d ' ')" = 2
+              test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
+              test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"
+              plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
+            elif [ "$EVENT_NAME" = merge_group ]; then
               # The queue candidate gets the full plan from the base's trusted
               # classifier: a candidate must not choose its own plan (#813).
               plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
@@ -1822,6 +1845,7 @@ jobs:
     uses: ./.github/workflows/floor-bench.yml
     with:
       revision: ${{ inputs.revision }}
+      candidate: ${{ inputs.candidate }}
     permissions:
       contents: read
 
@@ -1895,10 +1919,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           NEEDS_JSON: ${{ toJSON(needs) }}
           PLAN_JSON: ${{ needs.changes.outputs.plan }}
+          FULL_CANDIDATE: ${{ inputs.candidate }}
         run: |
           trusted_checker="$RUNNER_TEMP/check-required-jobs.sh"
           trusted_registry="$RUNNER_TEMP/ci-job-registry.json"
           checker_event="$GITHUB_EVENT_NAME"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
+            checker_event=merge_group
+          fi
           if [[ "$GITHUB_EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
             test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             # The checker applies its existing full-main policy to these runs.

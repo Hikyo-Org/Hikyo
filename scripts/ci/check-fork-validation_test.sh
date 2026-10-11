@@ -450,6 +450,19 @@ same_repo
 result=0
 gate || result=$?
 [ "$result" -eq 1 ] || { printf 'one-shot mode bypassed workflow approval\n' >&2; exit 1; }
-unset PR_GATE_ONCE
+export PR_GATE_POLICY_ONLY=1
+fixture 1 "$docs" '{"workflow_runs":[]}' failure
+expect_accept 'policy-only verification does not trust or wait for validation results'
+fixture 1 "$workflow" '{"workflow_runs":[]}' success
+same_repo
+expect_reject 'policy-only verification retains workflow authority'
+approval
+expect_accept 'policy-only workflow authority is independent of result publication'
+fixture 1 "$docs" '{"workflow_runs":[]}' success
+jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_once_pending 'policy-only pending mergeability'
+expect_reject 'policy-only superseded head' fedcba9876543210fedcba9876543210fedcba98
+unset PR_GATE_ONCE PR_GATE_POLICY_ONLY
 
 printf 'PR gate fixture: exact-head validation, independent workflow authority, and runner-free pending decisions\n'

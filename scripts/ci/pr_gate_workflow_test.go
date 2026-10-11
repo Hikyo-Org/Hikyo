@@ -58,10 +58,10 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 	if err := yaml.Unmarshal(withoutOn, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 4 {
+	if len(events) != 5 {
 		t.Fatal("publisher must handle PR lifecycle, validation callbacks, manual repair and scheduled repair")
 	}
-	for _, name := range []string{"pull_request_target", "workflow_run", "workflow_dispatch", "schedule"} {
+	for _, name := range []string{"pull_request_target", "workflow_run", "workflow_dispatch", "schedule", "push"} {
 		if _, ok := events[name]; !ok {
 			t.Fatalf("missing trusted event %s", name)
 		}
@@ -84,7 +84,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 	if err := callbackEvent.Decode(&callback); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) || !slices.Equal(callback.Workflows, []string{"fork-ci", "pr-validation"}) {
+	if !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) || !slices.Equal(callback.Workflows, []string{"pr-candidate"}) {
 		t.Fatal("callback must cover new runs, reruns and completion under both workflow names")
 	}
 	if len(workflow.Permissions) != 1 || workflow.Permissions["contents"] != "read" {

@@ -8,8 +8,10 @@ name: pr-gate
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, closed]
+  push:
+    branches: [main]
   workflow_run:
-    workflows: [fork-ci, pr-validation]
+    workflows: [pr-candidate]
     types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
