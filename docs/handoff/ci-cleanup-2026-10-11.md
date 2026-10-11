@@ -135,8 +135,15 @@ canonicality, stale bases, retargets, old PRs sharing a head, Unicode and escape
 boundaries, and the two actual malformed checks saved from GitHub. Both reviews
 report no remaining actionable findings. Hosted publication remains untested.
 
-The final reviewed controller source SHA-256 is
-`f2037c8757efe64cf63f9253fb0515ef7f192488d955ae606d4ab9a6b32004d1`.
+After PR #885 reached main, the overlapping controller changes were combined
+with its deployed 156-character binary v2 identifier format. This preserves
+compatibility with checks already published by main while retaining this PR's
+stricter partial-JSON validation and publication checks. Regression cases from
+both branches remain covered. The prior head's `ci-required` failure explicitly
+reported a merge conflict, rather than a failed application test.
+
+The merged controller source SHA-256 is
+`13ed08b103d8b4e70aa192312afee22b5f8bc0ef502b73726f8e8ed59810f6d2`.
 Raw timing JSON, test logs, and paired research/security-review artifacts are
 retained locally under `/tmp/hikyo-ci-audit`. The linked GitHub runs are the
 durable sources for the measurements. Delivery proceeds through a signed PR with

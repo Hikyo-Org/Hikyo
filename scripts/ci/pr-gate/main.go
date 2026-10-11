@@ -7,6 +7,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -22,8 +24,8 @@ import (
 )
 
 const workflowPath = ".github/workflows/ci-fork.yml"
-const externalPrefix = "hikyo-pr-gate:v1:"
-const compactExternalPrefix = "hikyo-pr-gate:v2:"
+const externalPrefix = "hikyo-pr-gate:v2:"
+const legacyExternalPrefix = "hikyo-pr-gate:v1:"
 const externalIDLimit = 255
 const actionsAppID = 15368
 
@@ -102,7 +104,7 @@ type check struct {
 		Summary string `json:"summary"`
 	} `json:"output"`
 }
-type binding struct {
+type legacyBinding struct {
 	RepoID  int64  `json:"repo"`
 	PR      int    `json:"pr"`
 	Head    string `json:"head"`
@@ -110,45 +112,49 @@ type binding struct {
 	Base    string `json:"base"`
 	Run     int64  `json:"run"`
 	Attempt int64  `json:"attempt"`
-	// Only decoded v2 bindings use this field. The digest keeps every possible
-	// Git ref bound without exceeding GitHub's 255-byte external_id limit.
-	BaseRefDigest string `json:"-"`
 }
 
-func (b binding) refDigest() string {
-	if b.BaseRef != "" {
-		return fmt.Sprintf("%x", sha256.Sum256([]byte(b.BaseRef)))
-	}
-	return b.BaseRefDigest
+type binding struct {
+	RepoID, Run, Attempt int64
+	PR                   int
+	Head, Base           string
+	BaseRef              [sha256.Size]byte
 }
+
 func (b binding) externalID() string {
-	// Four maximum-width signed integers and three SHA digests fit within the
-	// provider limit. Ref names are hashed in full, never shortened.
-	return fmt.Sprintf("%s%d:%d:%s:%s:%s:%d:%d", compactExternalPrefix, b.RepoID, b.PR, b.Head, b.Base, b.refDigest(), b.Run, b.Attempt)
+	// GitHub truncates external_id at 255 characters. Fixed-width metadata and
+	// a full SHA-256 reference digest keep every binding at 156 characters,
+	// independent of branch-name and numeric-ID length.
+	data := make([]byte, 104)
+	binary.BigEndian.PutUint64(data[0:8], uint64(b.RepoID))
+	binary.BigEndian.PutUint64(data[8:16], uint64(b.PR))
+	binary.BigEndian.PutUint64(data[16:24], uint64(b.Run))
+	binary.BigEndian.PutUint64(data[24:32], uint64(b.Attempt))
+	head, _ := hex.DecodeString(b.Head)
+	base, _ := hex.DecodeString(b.Base)
+	copy(data[32:52], head)
+	copy(data[52:72], base)
+	copy(data[72:], b.BaseRef[:])
+	return externalPrefix + base64.RawURLEncoding.EncodeToString(data)
 }
 func decodeBinding(value string) (binding, error) {
 	var b binding
-	if strings.HasPrefix(value, compactExternalPrefix) {
-		parts := strings.Split(strings.TrimPrefix(value, compactExternalPrefix), ":")
-		if len(parts) != 7 || len(value) > externalIDLimit {
-			return b, errors.New("invalid compact controller check binding")
+	if strings.HasPrefix(value, legacyExternalPrefix) {
+		data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, legacyExternalPrefix))
+		if err != nil {
+			return b, errors.New("invalid legacy controller check binding")
 		}
-		var err error
-		if b.RepoID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
+		var old legacyBinding
+		if err := decode(data, &old); err != nil {
 			return b, err
 		}
-		if b.PR, err = strconv.Atoi(parts[1]); err != nil {
-			return b, err
+		canonical, _ := json.Marshal(old)
+		if legacyExternalPrefix+base64.RawURLEncoding.EncodeToString(canonical) != value || old.BaseRef == "" || !shaPattern.MatchString(old.Head) || !shaPattern.MatchString(old.Base) {
+			return b, errors.New("noncanonical legacy controller check binding")
 		}
-		b.Head, b.Base, b.BaseRefDigest = parts[2], parts[3], parts[4]
-		if b.Run, err = strconv.ParseInt(parts[5], 10, 64); err != nil {
-			return b, err
-		}
-		if b.Attempt, err = strconv.ParseInt(parts[6], 10, 64); err != nil {
-			return b, err
-		}
-		if len(b.BaseRefDigest) != 64 || strings.Trim(b.BaseRefDigest, "0123456789abcdef") != "" || !validBinding(b) || b.externalID() != value {
-			return b, errors.New("invalid or noncanonical compact controller check binding")
+		b = binding{RepoID: old.RepoID, PR: old.PR, Head: old.Head, Base: old.Base, BaseRef: sha256.Sum256([]byte(old.BaseRef)), Run: old.Run, Attempt: old.Attempt}
+		if !b.valid() {
+			return binding{}, errors.New("invalid legacy controller check binding")
 		}
 		return b, nil
 	}
@@ -156,35 +162,39 @@ func decodeBinding(value string) (binding, error) {
 		return b, errors.New("not a controller check")
 	}
 	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, externalPrefix))
-	if err != nil {
+	if err != nil || len(data) != 104 {
 		return b, errors.New("invalid controller check binding")
 	}
-	if err := decode(data, &b); err != nil {
-		return b, err
-	}
-	if !validBinding(b) || b.BaseRef == "" {
+	b.RepoID = int64(binary.BigEndian.Uint64(data[0:8]))
+	pr := binary.BigEndian.Uint64(data[8:16])
+	b.PR = int(pr)
+	b.Run = int64(binary.BigEndian.Uint64(data[16:24]))
+	b.Attempt = int64(binary.BigEndian.Uint64(data[24:32]))
+	b.Head = hex.EncodeToString(data[32:52])
+	b.Base = hex.EncodeToString(data[52:72])
+	copy(b.BaseRef[:], data[72:])
+	if !b.valid() || uint64(b.PR) != pr {
 		return b, errors.New("invalid controller check binding")
 	}
-	canonical, _ := json.Marshal(b)
-	if externalPrefix+base64.RawURLEncoding.EncodeToString(canonical) != value {
+	if b.externalID() != value {
 		return b, errors.New("noncanonical controller check binding")
 	}
 	return b, nil
 }
 
-func validBinding(b binding) bool {
-	return b.RepoID > 0 && b.PR > 0 && shaPattern.MatchString(b.Head) && shaPattern.MatchString(b.Base) && b.Run >= 0 && b.Attempt >= 0 && (b.Run == 0) == (b.Attempt == 0)
+func (b binding) valid() bool {
+	return b.RepoID > 0 && b.PR > 0 && b.Run >= 0 && b.Attempt >= 0 && (b.Run == 0) == (b.Attempt == 0)
 }
 
 // Recognize canonical v1 truncations only after the surviving complete repo,
 // PR and head identities have been verified. Old base/attempt metadata grants
 // only authority to supersede the broken check with a new queued barrier.
-func truncatedLegacyBinding(value string, p pull, repoID int64) bool {
-	if len(value) != externalIDLimit || !strings.HasPrefix(value, externalPrefix) {
+func truncatedLegacyBinding(value string, repoID int64, head string) bool {
+	if len(value) != externalIDLimit || !strings.HasPrefix(value, legacyExternalPrefix) {
 		return false
 	}
-	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, externalPrefix))
-	if err != nil {
+	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, legacyExternalPrefix))
+	if err != nil || json.Valid(data) {
 		return false
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -204,7 +214,7 @@ func truncatedLegacyBinding(value string, p pull, repoID int64) bool {
 			return false
 		}
 	}
-	if identity.Repo != repoID || identity.PR <= 0 || identity.Head != p.Head.SHA {
+	if identity.Repo <= 0 || identity.Repo != repoID || identity.PR <= 0 || !shaPattern.MatchString(identity.Head) || identity.Head != head {
 		return false
 	}
 	prefix := fmt.Sprintf(`{"repo":%d,"pr":%d,"head":%q`, identity.Repo, identity.PR, identity.Head)
@@ -646,7 +656,7 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			if v.Name != c.checkName {
 				continue
 			}
-			if !strings.HasPrefix(v.ExternalID, externalPrefix) && !strings.HasPrefix(v.ExternalID, compactExternalPrefix) {
+			if !strings.HasPrefix(v.ExternalID, externalPrefix) && !strings.HasPrefix(v.ExternalID, legacyExternalPrefix) {
 				if v.App.ID == actionsAppID || v.App.Slug == "github-actions" {
 					return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
 				}
@@ -657,11 +667,11 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			}
 			b, err := decodeBinding(v.ExternalID)
 			if err != nil {
-				if !truncatedLegacyBinding(v.ExternalID, p, c.repo.ID) {
-					return nil, err
+				if truncatedLegacyBinding(v.ExternalID, c.repo.ID, p.Head.SHA) {
+					own = append(own, v)
+					continue
 				}
-				own = append(own, v)
-				continue
+				return nil, err
 			}
 			if b.RepoID != c.repo.ID || b.Head != p.Head.SHA {
 				return nil, errors.New("controller check repository/head mismatch")
@@ -719,7 +729,7 @@ func (c *controller) snapshot(ctx context.Context, number int) (snapshot, error)
 	return s, err
 }
 func (s snapshot) binding(repoID int64) binding {
-	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: s.PR.Base.Ref, Base: s.PR.Base.SHA}
+	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: sha256.Sum256([]byte(s.PR.Base.Ref)), Base: s.PR.Base.SHA}
 	if s.Run != nil {
 		b.Run, b.Attempt = s.Run.ID, s.Run.Attempt
 	}
@@ -1036,15 +1046,22 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
+	if !shaPattern.MatchString(b.Head) || !shaPattern.MatchString(b.Base) {
+		return errors.New("refuse invalid publication binding")
+	}
 	externalID := b.externalID()
-	if _, err := decodeBinding(externalID); err != nil {
+	decoded, err := decodeBinding(externalID)
+	if err != nil {
 		return fmt.Errorf("refuse invalid publication binding: %w", err)
+	}
+	if decoded != b {
+		return errors.New("refuse invalid publication binding")
 	}
 	// GitHub's Checks schema does not accept null conclusions/completed_at.
 	// Reruns supersede completed checks by creating a fresh queued check.
 	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
-		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.refDigest() == b.refDigest()
+		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.BaseRef == b.BaseRef
 		if !placeholder {
 			selected = nil
 		}
@@ -1100,8 +1117,7 @@ func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 			latest = &copy
 		}
 	}
-	malformedLegacy := latest != nil && truncatedLegacyBinding(latest.ExternalID, p, c.repo.ID)
-	if latest == nil || malformedLegacy || (latest.Status == "completed" && latest.Conclusion == "success") {
+	if latest == nil || strings.HasPrefix(latest.ExternalID, legacyExternalPrefix) || (latest.Status == "completed" && latest.Conclusion == "success") {
 		current, err := c.readPR(ctx, number)
 		if err != nil {
 			return err
