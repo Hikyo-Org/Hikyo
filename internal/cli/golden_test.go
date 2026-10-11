@@ -73,6 +73,11 @@ func testIO(t *testing.T, env map[string]string) (cli.IO, *bytes.Buffer, *bytes.
 		Stderr:  &stderr,
 		Env:     cli.Env{Getenv: get},
 		Workdir: work,
+		// A failed refusal must fail the test, never replace the test process.
+		// Tests that expect execution inject their own Exec capture.
+		Exec: func(string, []string, []string) error {
+			return errors.New("unexpected child execution: inject IO.Exec to capture the command")
+		},
 	}, &stdout, &stderr
 }
 
