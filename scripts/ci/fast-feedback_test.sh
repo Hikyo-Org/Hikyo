@@ -183,7 +183,7 @@ FIXTURE_TOOLS_ROOT="$work/tooling" FIXTURE_SOURCE_ROOT="$repo" \
 
 # Docs-only inputs use the real checker from the tooling owner against source.
 rm -rf .github scripts/ci
-printf '%s\n' "$(node --version | sed 's/^v//')" >.nvmrc
+cp "$script_dir/../../.nvmrc" .nvmrc
 commit_fixture
 docs_base=$(git rev-parse HEAD)
 for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do

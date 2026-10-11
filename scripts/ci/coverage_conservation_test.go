@@ -100,6 +100,40 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return err
 	}
+	// The feedback fixtures execute the real documentation checker. Pin its
+	// owner runtime before the fixtures, and normalize only this exact addition.
+	expectedNode := map[string]any{
+		"name": "Select pinned Node for feedback fixtures",
+		"uses": "actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903",
+		"with": map[string]any{"node-version-file": ".nvmrc"},
+	}
+	lintSteps, ok := workflow.Jobs["lint"]["steps"].([]any)
+	if !ok {
+		return fmt.Errorf("lint lost feedback fixture tooling")
+	}
+	keptLint := make([]any, 0, len(lintSteps))
+	pinnedNode := false
+	for _, value := range lintSteps {
+		step, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("lint has malformed step configuration")
+		}
+		if step["name"] == expectedNode["name"] {
+			if pinnedNode || !reflect.DeepEqual(step, expectedNode) {
+				return fmt.Errorf("feedback fixtures require exactly one unconditional pinned Node setup")
+			}
+			pinnedNode = true
+		} else {
+			if step["name"] == "Fast feedback refusal and deadline fixtures" && !pinnedNode {
+				return fmt.Errorf("pinned Node must precede feedback fixture execution")
+			}
+			keptLint = append(keptLint, step)
+		}
+	}
+	if !pinnedNode {
+		return fmt.Errorf("feedback fixtures lost pinned Node setup")
+	}
+	workflow.Jobs["lint"]["steps"] = keptLint
 	// PR886 moves the same five-package benchmark smoke into required core
 	// validation, reusing its compiled packages. It is additive to this frozen
 	// inventory, and must not become skipped, fail-open, narrowed, or duplicated.
@@ -205,6 +239,30 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	baseline, original := readCoverageBaseline(t)
 	for name, mutation := range map[string]func(map[string]map[string]any){
+		"remove fixture Node pin": func(j map[string]map[string]any) {
+			steps := j["lint"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Select pinned Node for feedback fixtures" {
+					j["lint"]["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
+		"skip fixture Node pin":           func(j map[string]map[string]any) { mutateFeedbackNodeStep(j, "if", "false") },
+		"fail open fixture Node pin":      func(j map[string]map[string]any) { mutateFeedbackNodeStep(j, "continue-on-error", true) },
+		"unversioned fixture Node action": func(j map[string]map[string]any) { mutateFeedbackNodeStep(j, "uses", "actions/setup-node@v6") },
+		"runner-default fixture Node": func(j map[string]map[string]any) {
+			mutateFeedbackNodeStep(j, "with", map[string]any{"node-version": "latest"})
+		},
+		"fixture Node pin too late": func(j map[string]map[string]any) {
+			steps := j["lint"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Select pinned Node for feedback fixtures" {
+					steps[i], steps[i+1] = steps[i+1], steps[i]
+					return
+				}
+			}
+		},
 		"remove feedback fixtures": func(j map[string]map[string]any) {
 			steps := j["lint"]["steps"].([]any)
 			for i, value := range steps {
@@ -308,6 +366,15 @@ func mutateBenchmarkStep(jobs map[string]map[string]any, key string, value any) 
 func mutateFeedbackFixtureStep(jobs map[string]map[string]any, key string, value any) {
 	for _, step := range jobs["lint"]["steps"].([]any) {
 		if step.(map[string]any)["name"] == "Fast feedback refusal and deadline fixtures" {
+			step.(map[string]any)[key] = value
+			return
+		}
+	}
+}
+
+func mutateFeedbackNodeStep(jobs map[string]map[string]any, key string, value any) {
+	for _, step := range jobs["lint"]["steps"].([]any) {
+		if step.(map[string]any)["name"] == "Select pinned Node for feedback fixtures" {
 			step.(map[string]any)[key] = value
 			return
 		}
