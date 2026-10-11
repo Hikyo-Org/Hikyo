@@ -59,7 +59,7 @@ func socialEmailFixtures() []socialEmailFixture {
 // one-byte blob, {t}/{f} a boolean literal for a BOOLEAN column on postgres.
 func socialSQL(cfg store.Config, stmt string) string {
 	pairs := []string{}
-	for i := 1; i <= 40; i++ {
+	for i := 1; i <= 60; i++ {
 		blob := fmt.Sprintf("X'%02x'", i)
 		if cfg.Engine == store.EnginePostgres {
 			blob = fmt.Sprintf("decode('%02x','hex')", i)
@@ -339,6 +339,13 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		{"oauth2 login bound to a session", socialTx("oauth2", "o2x_r2", "21", "login", "sign-in", "", "session", "", "", "", "")},
 		{"oauth2 reauth", socialTx("oauth2", "o2x_r3", "22", "reauth", "", "", "session", "acc_social", "", "", "")},
 		{"oauth2 authority without claim", socialTx("oauth2", "o2x_r4", "23", "establish", "", "", "session", "acc_social", "", "", "cra_social")},
+		// (purpose = claim) = (authority_id IS NOT NULL), every purpose of both
+		// tables (#610).
+		{"authority on an establish", socialTx("oidc", "otx_r11", "41", "establish", "", "", "session", "acc_social", "", "", "cra_social")},
+		{"authority on a reauth", socialTx("oidc", "otx_r12", "42", "reauth", "", "", "session", "acc_social", "env_x", "", "cra_social")},
+		{"oauth2 claim without authority", socialTx("oauth2", "o2x_r5", "43", "claim", "", "", "browser-cookie", "acc_social", "", "", "")},
+		{"oauth2 authority on a login", socialTx("oauth2", "o2x_r6", "44", "login", "sign-in", "", "browser-cookie", "", "", "", "cra_social")},
+		{"oauth2 authority on a link", socialTx("oauth2", "o2x_r7", "45", "link", "", "", "session", "acc_social", "", "cer_o2r7", "cra_social")},
 		{"oidc and oauth2 provider on one session", socialSession("ses_r1", "24", "prv_oidc", "", "prv_oauth2")},
 		{"saml and oauth2 provider on one session", socialSession("ses_r2", "25", "", "prv_saml", "prv_oauth2")},
 		{"oidc and saml provider on one session", socialSession("ses_r3", "26", "prv_oidc", "prv_saml", "")},
@@ -429,6 +436,11 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		{"login without intent", socialTx("oidc", "otx_s7", "36", "login", "", "", "browser-cookie", "", "", "", "")},
 		{"signup scope on a sign-in login", socialTx("oidc", "otx_s8", "37", "login", "sign-in", "org_social", "browser-cookie", "", "", "", "")},
 		{"intent on a link", socialTx("oidc", "otx_s9", "38", "link", "sign-in", "", "session", "acc_social", "", "cer_s9", "")},
+		{"claim without authority", socialTx("oidc", "otx_s10", "46", "claim", "", "", "browser-cookie", "acc_social", "", "", "")},
+		{"authority on a sign-in login", socialTx("oidc", "otx_s11", "47", "login", "sign-in", "", "browser-cookie", "", "", "", "cra_social")},
+		{"authority on a link", socialTx("oidc", "otx_s12", "48", "link", "", "", "session", "acc_social", "", "cer_s12", "cra_social")},
+		{"authority on a reauth", socialTx("oidc", "otx_s13", "49", "reauth", "", "", "session", "acc_social", "env_x", "", "cra_social")},
+		{"authority on an establish", socialTx("oidc", "otx_s14", "50", "establish", "", "", "session", "acc_social", "", "", "cra_social")},
 	} {
 		err := exec(c.label, c.stmt)
 		if err == nil {

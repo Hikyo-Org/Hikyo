@@ -82,7 +82,7 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 		return OIDCStartResult{}, ErrOAuth2Reauth
 	}
 	switch purpose {
-	case purposeLogin, purposeLink, "establish", "claim":
+	case purposeLogin, purposeLink, "establish", purposeClaim:
 	default:
 		return OIDCStartResult{}, ErrBadPurpose
 	}
@@ -107,15 +107,16 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 	// unauthenticated caller refuses identically (uniform 401) whether the slug
 	// is known or not: provider existence is never what a prober learns first.
 	var (
-		authority authz.CredentialAuthority
-		provider  authz.OAuth2Provider
-		epoch     int64
-		account   authz.Account
-		sessionID string
+		authority  authz.CredentialAuthority
+		provider   authz.OAuth2Provider
+		epoch      int64
+		account    authz.Account
+		sessionID  string
+		claimCause string
 	)
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		var e error
-		if purpose != purposeLogin && purpose != "claim" {
+		if purpose != purposeLogin && purpose != purposeClaim {
 			id, e := az.Authenticate(ctx, presented, s.now())
 			if e != nil {
 				return e
@@ -126,23 +127,14 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 			}
 			sessionID = id.SessionID
 		}
-		if purpose == "claim" {
-			if crypto.ParseArtifact(proof, crypto.ArtifactBootstrap) != nil {
-				return domain.ErrUnauthenticated
-			}
-			authority, e = az.AuthorityByValue(ctx, crypto.ArtifactVerifier(proof))
-			if e != nil {
-				return domain.ErrUnauthenticated
-			}
-			epoch, e = az.CredentialEpoch(ctx)
-			if e != nil {
+		if purpose == purposeClaim {
+			// The authority is the proof (#610): phase-1 checks without
+			// consumption, refused by cause before the provider is resolved.
+			if epoch, e = az.CredentialEpoch(ctx); e != nil {
 				return e
 			}
-			if authorityCause(authority, epoch, s.now()) != "" {
-				return domain.ErrUnauthenticated
-			}
-			account, e = az.AccountByID(ctx, authority.AccountID)
-			if e != nil {
+			authority, account, claimCause, e = s.claimAuthority(ctx, az, proof, epoch)
+			if e != nil || claimCause != "" {
 				return e
 			}
 		}
@@ -159,7 +151,7 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 		if epoch, e = az.CredentialEpoch(ctx); e != nil {
 			return e
 		}
-		if purpose == "establish" || purpose == "claim" {
+		if purpose == "establish" {
 			local, err := hasLocalProof(ctx, az, account.ID)
 			if err != nil {
 				return err
@@ -167,25 +159,19 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 			if local {
 				return ErrBadPurpose
 			}
-			if purpose == "claim" {
-				ids, err := az.ExternalIdentitiesForAccount(ctx, account.ID)
-				if err != nil {
-					return err
-				}
-				if len(ids) > 0 {
-					return ErrBadPurpose
-				}
-			}
 		}
 		return nil
 	})
 	if err != nil {
 		return OIDCStartResult{}, err
 	}
+	if claimCause != "" {
+		return OIDCStartResult{}, s.refuseAuthority(ctx, claimCause)
+	}
 	// link ride the per-account backoff so a stolen session cannot be an
 	// unthrottled Argon2 oracle; the per-IP admission slot is already held, so
 	// this adds only the account-scoped delay, never a second slot.
-	if purpose != purposeLogin && purpose != "claim" {
+	if purpose != purposeLogin && purpose != purposeClaim {
 		if s.Admission.AccountDelay(account.ID) > 0 {
 			return OIDCStartResult{}, admission.ErrOverloaded
 		}
@@ -239,7 +225,7 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 		Intent: intent, SignupScopeOrgID: signupOrg,
 	}
 	var bindingCookie string
-	if purpose == purposeLogin || purpose == "claim" {
+	if purpose == purposeLogin || purpose == purposeClaim {
 		obVal, obVerifier, aerr := crypto.NewArtifact(crypto.ArtifactOIDCBinding)
 		if aerr != nil {
 			return OIDCStartResult{}, aerr
@@ -252,7 +238,7 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 		newTx.InitiatingSessionID = sessionID
 		newTx.AccountID = account.ID
 	}
-	if purpose == "claim" {
+	if purpose == purposeClaim {
 		newTx.AccountID = account.ID
 		newTx.AuthorityID = authority.ID
 	}
@@ -413,7 +399,7 @@ func (s *Auth) OAuth2Callback(ctx context.Context, slug, code, stateValue, issPa
 		result, err = s.completeOAuth2Link(ctx, prov, txn, claims, presented)
 	case "establish":
 		result, err = s.completeOAuth2Establish(ctx, prov, txn, claims, presented)
-	case "claim":
+	case purposeClaim:
 		result, err = s.completeOAuth2Claim(ctx, prov, txn, claims)
 	default:
 		return metadata, ErrBadPurpose
@@ -503,8 +489,9 @@ func (s *Auth) completeOAuth2Login(ctx context.Context, prov authz.OAuth2Provide
 		switch {
 		case errors.Is(e, domain.ErrNotFound):
 			// Login never creates accounts; only a sign-up intent enters a
-			// registration policy (#604 d3). Invitation and explicit linking
-			// remain the other ways this identity may authenticate.
+			// registration policy (#604 d3). An invitation claim (purpose
+			// claim, #610) and explicit linking are the other ways this
+			// identity may come to authenticate.
 			if txn.Intent != IntentSignUp {
 				return refuse(causeUnknownIdentity)
 			}
@@ -738,19 +725,6 @@ func hasLocalProof(ctx context.Context, az *authz.TxAuthorizer, accountID string
 	}
 	return false, nil
 }
-func authorityCause(a authz.CredentialAuthority, epoch int64, now time.Time) string {
-	switch {
-	case a.Consumed:
-		return "consumed"
-	case !now.Before(a.ExpiresAt):
-		return "expired"
-	case a.CredentialEpoch != epoch:
-		return "epoch-superseded"
-	case a.Purpose != "establish-credential" || a.IssuedBy == "recovery":
-		return "purpose"
-	}
-	return ""
-}
 func (s *Auth) completeOAuth2Establish(ctx context.Context, prov authz.OAuth2Provider, txn authz.OAuth2Transaction, claims oauth2rp.User, presented string) (OIDCCallbackResult, error) {
 	var result OIDCCallbackResult
 	attempt, err := writeCommittedSessionAttempt(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, a *sessionCompletionAttempt) error {
@@ -821,95 +795,27 @@ func (s *Auth) completeOAuth2Establish(ctx context.Context, prov authz.OAuth2Pro
 	}
 	return OIDCCallbackResult{Login: attempt.result}, attempt.refusal()
 }
+
+// completeOAuth2Claim spends the transaction's authority on the shared claim
+// core (claim.go); the session is single-factor, as every OAuth2 login.
 func (s *Auth) completeOAuth2Claim(ctx context.Context, prov authz.OAuth2Provider, txn authz.OAuth2Transaction, claims oauth2rp.User) (OIDCCallbackResult, error) {
-	attempt, err := writeCommittedSessionAttempt(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, a *sessionCompletionAttempt) error {
-		refuse := func(cause string) error {
-			a.refused = sessionRefusedUnauthenticated
+	login, err := s.completeClaim(ctx, federatedClaim{
+		kind: OAuth2Kind, providerID: prov.ID, issuer: txn.Issuer, subject: claims.Subject,
+		epoch: txn.CredentialEpoch, authorityID: txn.AuthorityID, accountID: txn.AccountID,
+		revalidate: func(ctx context.Context, az *authz.TxAuthorizer) (string, error) {
+			return s.revalidateOAuth2Provider(ctx, az, prov)
+		},
+		refuse: func(ctx context.Context, az *authz.TxAuthorizer, cause string) error {
 			return s.stageOAuth2LoginRefuse(ctx, az, cause, prov.ID, txn)
-		}
-		cause, err := s.revalidateOAuth2Provider(ctx, az, prov)
-		if err != nil {
-			return err
-		}
-		if cause != "" {
-			return refuse(cause)
-		}
-		epoch, err := az.CredentialEpoch(ctx)
-		if err != nil {
-			return err
-		}
-		if epoch != txn.CredentialEpoch {
-			return refuse(causeEpoch)
-		}
-		authority, err := az.CredentialAuthorityByID(ctx, txn.AuthorityID)
-		if errors.Is(err, domain.ErrNotFound) {
-			return refuse(causePurpose)
-		}
-		if err != nil {
-			return err
-		}
-		if authorityCause(authority, epoch, s.now()) != "" || authority.AccountID != txn.AccountID {
-			return refuse(causePurpose)
-		}
-		account, err := az.AccountByID(ctx, txn.AccountID)
-		if err != nil {
-			return err
-		}
-		if err := az.LockTargetPrincipal(ctx, account.PrincipalID); err != nil {
-			return err
-		}
-		local, err := hasLocalProof(ctx, az, account.ID)
-		if err != nil {
-			return err
-		}
-		if local {
-			return refuse(causePurpose)
-		}
-		ids, err := az.ExternalIdentitiesForAccount(ctx, account.ID)
-		if err != nil {
-			return err
-		}
-		if len(ids) > 0 {
-			return refuse(causePurpose)
-		}
-		_, err = az.ExternalIdentityByKey(ctx, OAuth2Kind, txn.Issuer, claims.Subject)
-		if err == nil {
-			return refuse("identity-exists")
-		}
-		if !errors.Is(err, domain.ErrNotFound) {
-			return err
-		}
-		id, err := newID("eid")
-		if err != nil {
-			return err
-		}
-		if err := az.CreateExternalIdentity(ctx, authz.NewExternalIdentity{ID: id, AccountID: account.ID, Kind: OAuth2Kind, Issuer: txn.Issuer, Subject: claims.Subject, ProviderID: prov.ID, CredentialEpoch: epoch, CreatedAt: s.now()}); err != nil {
-			return err
-		}
-		claimed, err := az.ClaimOAuth2Authority(ctx, authority.ID, s.now())
-		if err != nil {
-			return err
-		}
-		if !claimed {
-			return domain.ErrUnauthenticated
-		}
-		ev, err := newAuditEvent(ctx, audit.EventAuthCredentialEstablished, account.PrincipalID, audit.Object{Type: "account", ID: account.ID}, audit.OutcomeSuccess, "", audit.Payload{"authority_id": authority.ID, "account_id": account.ID, "credential": "oauth2", "established_credential_kind": "oauth2", "identity_id": id, "provider_id": prov.ID, "kind": OAuth2Kind})
-		if err != nil {
-			return err
-		}
-		if err := az.RecordAuthEvent(ctx, ev); err != nil {
-			return err
-		}
-		a.result, err = s.mintOAuth2Session(ctx, az, account, prov, txn, s.now())
-		return err
+		},
+		mint: func(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, now time.Time) (LoginResult, error) {
+			return s.mintOAuth2Session(ctx, az, account, prov, txn, now)
+		},
 	})
 	if err != nil {
 		return OIDCCallbackResult{}, err
 	}
-	if err := attempt.refusal(); err != nil {
-		return OIDCCallbackResult{}, err
-	}
-	return OIDCCallbackResult{Login: attempt.result}, nil
+	return OIDCCallbackResult{Login: login}, nil
 }
 
 func (s *Auth) refuseOAuth2Transaction(ctx context.Context, cause, providerID string, txn authz.OAuth2Transaction) error {

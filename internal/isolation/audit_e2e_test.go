@@ -391,6 +391,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// before the emitter check: provider config + read, link, federated
 		// login, a refusal, and unlink.
 		runOIDCLifecycle(t, auth, ctx, boot.PrincipalID, "e2e-admin", password)
+		runOIDCClaimLifecycle(t, auth, ctx, boot.PrincipalID)
 		runOAuth2Lifecycle(t, auth, ctx, boot.PrincipalID, "e2e-admin", password)
 		runOAuth2EstablishLifecycle(t, auth)
 

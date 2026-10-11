@@ -184,6 +184,42 @@ export function useOIDCLogin() {
   });
 }
 
+/**
+ * Start an invitation claim (#610) and redirect to the provider. The
+ * credential-establishment authority is the proof of a purpose-`claim` start
+ * on the provider's own kind; the server checks it without spending it, and
+ * the callback spends it, binds the identity and signs the invitee in. The
+ * callback returns through the SPA to `returnTo`. Only the establish page
+ * offers this: the login page never does.
+ */
+export function useClaimStart() {
+  return useSensitiveMutation({
+    // `beforeLeave` runs after a successful start and before the browser
+    // leaves for the provider: the caller wipes the authority it holds, so a
+    // back-forward-cache restore never brings a live one back.
+    mutationFn: (start: {
+      provider: string;
+      kind: 'oidc' | 'oauth2';
+      authority: string;
+      returnTo: string;
+      beforeLeave: () => void;
+    }) =>
+      parsed(start.kind === 'oauth2' ? oauth2StartOp : oidcStartOp, {
+        path: { provider: start.provider },
+        body: { purpose: 'claim', proof: start.authority, browser: true },
+      }),
+    onSuccess: (result, start) => {
+      const state = new URL(result.authorization_url).searchParams.get('state') ?? '';
+      if (state === '') {
+        throw new Error('the claim continuation is not a valid transaction');
+      }
+      rememberOIDCReturn(state, start.returnTo);
+      start.beforeLeave();
+      globalThis.location.assign(result.authorization_url);
+    },
+  });
+}
+
 // --- credential establishment (#568) ----------------------------------------
 
 /**
@@ -195,11 +231,6 @@ export function establishCredential(authority: string, password: string): Promis
   return ok(establishCredentialOp, { body: { authority, password } });
 }
 
-/**
- * establishFailureText keeps the server's oracle closed: an expired, spent,
- * unknown or malformed authority is one sentence, so the page cannot be used
- * to tell which.
- */
 /**
  * beginRecovery spends one recovery code for a display-once establishment
  * authority (#571). Public and sessionless like establishment: the holder has
@@ -222,9 +253,19 @@ export function recoveryFailureText(error: unknown): string {
   return transportRefusalText(error) ?? 'Recovery could not begin, or the answer did not match the contract.';
 }
 
+/**
+ * The establish page's one refusal sentence (#610, prototype social-signin/2):
+ * an expired, spent, unknown, malformed or recovery-issued authority, an
+ * account that already holds a credential and an identity already bound
+ * elsewhere all read the same, whether the password form or a provider
+ * refused, so the page cannot be used to tell which.
+ */
+export const AUTHORITY_REFUSAL = "That authority can't be used. Ask whoever invited you for a new one.";
+
+/** establishFailureText keeps the server's oracle closed (see AUTHORITY_REFUSAL). */
 export function establishFailureText(error: unknown): string {
   if (error instanceof ApiError && (error.status === 400 || error.status === 401)) {
-    return 'The authority was not accepted. It may have expired or already been used.';
+    return AUTHORITY_REFUSAL;
   }
   return (
     transportRefusalText(error) ??

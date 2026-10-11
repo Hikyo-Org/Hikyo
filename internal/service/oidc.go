@@ -48,6 +48,9 @@ const (
 	purposeLogin  = "login"
 	purposeLink   = "link"
 	purposeReauth = "reauth"
+	// purposeClaim spends a credential-establishment authority through a
+	// federated round-trip (#610); shared by the oidc and oauth2 kinds.
+	purposeClaim = "claim"
 )
 
 // OIDC refusal causes: the closed enum recorded on auth.oidc_refused. By class,
@@ -71,6 +74,9 @@ const (
 	causeWindowClosed    = "window-zero"
 	causeNoPossession    = "no-possession"
 	causeDowngrade       = "downgrade"
+	// causeIdentityExists refuses a claim whose (kind, issuer, subject) is
+	// already bound to an account; the authority stays unspent (#610).
+	causeIdentityExists = "identity-exists"
 )
 
 // possessionAMR is the closed set of RFC 8176 amr values hikyo accepts as

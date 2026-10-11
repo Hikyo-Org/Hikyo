@@ -559,7 +559,7 @@ test.describe('members and grants', () => {
         await invitee.getByLabel('Setup authority').fill(value);
         await invitee.getByLabel('New password').fill(password);
         await invitee.getByLabel('Repeat the password').fill(password);
-        await invitee.getByRole('button', { name: 'Establish credential' }).click();
+        await invitee.getByRole('button', { name: 'Establish password' }).click();
       };
       const signIn = async (password: string) => {
         await invitee.getByRole('link', { name: 'Sign in' }).click();
@@ -590,7 +590,7 @@ test.describe('members and grants', () => {
       await invitee.context().clearCookies();
       await establish(authority, secondPassword);
       const alert = invitee.locator('.login__card').getByRole('alert');
-      await expect(alert).toContainText('was not accepted');
+      await expect(alert).toContainText("That authority can't be used.");
 
       // Reset from the row action: display-once again, and the invitee's first
       // password is dead once the new one is established.

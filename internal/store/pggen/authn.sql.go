@@ -940,7 +940,7 @@ const getOIDCTransactionByState = `-- name: GetOIDCTransactionByState :one
 SELECT id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
        purpose, binding_kind, initiating_session_id, browser_binding_verifier,
        account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
-       expires_at, consumed_at, intent, signup_scope_org_id
+       expires_at, consumed_at, intent, signup_scope_org_id, authority_id
 FROM oidc_transactions WHERE state_verifier = $1
 `
 
@@ -966,6 +966,7 @@ type GetOIDCTransactionByStateRow struct {
 	ConsumedAt             pgtype.Timestamptz
 	Intent                 pgtype.Text
 	SignupScopeOrgID       pgtype.Text
+	AuthorityID            pgtype.Text
 }
 
 // hikyo:authn-resolution
@@ -994,6 +995,7 @@ func (q *Queries) GetOIDCTransactionByState(ctx context.Context, stateVerifier [
 		&i.ConsumedAt,
 		&i.Intent,
 		&i.SignupScopeOrgID,
+		&i.AuthorityID,
 	)
 	return i, err
 }
@@ -1539,8 +1541,8 @@ INSERT INTO oidc_transactions
     (id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
      purpose, binding_kind, initiating_session_id, browser_binding_verifier,
      account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
-     expires_at, consumed_at, intent, signup_scope_org_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULL, $19, $20)
+     expires_at, consumed_at, intent, signup_scope_org_id, authority_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULL, $19, $20, $21)
 `
 
 type InsertOIDCTransactionParams struct {
@@ -1564,6 +1566,7 @@ type InsertOIDCTransactionParams struct {
 	ExpiresAt              pgtype.Timestamptz
 	Intent                 pgtype.Text
 	SignupScopeOrgID       pgtype.Text
+	AuthorityID            pgtype.Text
 }
 
 // hikyo:authn-resolution
@@ -1589,6 +1592,7 @@ func (q *Queries) InsertOIDCTransaction(ctx context.Context, arg InsertOIDCTrans
 		arg.ExpiresAt,
 		arg.Intent,
 		arg.SignupScopeOrgID,
+		arg.AuthorityID,
 	)
 	return err
 }

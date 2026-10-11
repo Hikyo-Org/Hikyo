@@ -662,7 +662,7 @@ type txForwarded interface {
 	BindSessionToOAuth2Provider(ctx context.Context, sessionID, providerID string) (bool, error)
 	DeleteSessionsForOAuth2Provider(ctx context.Context, providerID string) (int64, error)
 	CredentialAuthorityByID(ctx context.Context, id string) (CredentialAuthority, error)
-	ClaimOAuth2Authority(ctx context.Context, id string, at time.Time) (bool, error)
+	ClaimFederatedAuthority(ctx context.Context, id, kind string, at time.Time) (bool, error)
 	StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error
 	RegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error)
 	RegistrationSignupByVerifier(ctx context.Context, verifier []byte) (RegistrationSignup, error)

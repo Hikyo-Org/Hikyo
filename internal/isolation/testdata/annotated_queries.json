@@ -159,10 +159,10 @@
   },
   {
     "engine": "postgres",
-    "name": "ClaimOAuth2Authority",
+    "name": "ClaimFederatedAuthority",
     "annotation": "authn-resolution",
-    "hash": "5f6a92c240147e70e2b5c66660cc1b3e3f894b24f2de7fff600717a76f325ea4",
-    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+    "hash": "2064b452137547f751bc28a8d91a2e1f324069d30d44c53d962a1a65e6d911ad",
+    "reason": "A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation."
   },
   {
     "engine": "postgres",
@@ -1181,7 +1181,7 @@
     "engine": "postgres",
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
-    "hash": "c89322d69c0c1bb97a1dfa481dbc35d27463a55ad2bb4fccf10c4ed4cdd060c6"
+    "hash": "89eb4230e078f9074ecf5b69a9f7f60d49f9c819bb0b0b188a1f3078fe38fdf0"
   },
   {
     "engine": "postgres",
@@ -1541,7 +1541,7 @@
     "engine": "postgres",
     "name": "InsertOIDCTransaction",
     "annotation": "authn-resolution",
-    "hash": "47bb1531eadd8a2617f46f5068b876f143a7597047744a592303b927d294493e"
+    "hash": "2ffd8291f296798e8a7fa8858c3976c53c946c6c77d6f67105cd1445abaa5713"
   },
   {
     "engine": "postgres",
@@ -3388,10 +3388,10 @@
   },
   {
     "engine": "sqlite",
-    "name": "ClaimOAuth2Authority",
+    "name": "ClaimFederatedAuthority",
     "annotation": "authn-resolution",
-    "hash": "7aa3636a041dc18031b785777ec1d4daf6ac92b7bb7acdd53f8dd5a3f1cebe5d",
-    "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
+    "hash": "8eb2802827f73e43ed000666ddf0039b7ea9ffe01e9618832eb7e7919c80b338",
+    "reason": "A federated claim (#610) spends an invitation or reset authority at an OIDC or OAuth2 callback, before any principal exists in the request; the service binds the authority to its transaction, account, epoch and kind before mutation."
   },
   {
     "engine": "sqlite",
@@ -4382,7 +4382,7 @@
     "engine": "sqlite",
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
-    "hash": "c736f9d0f6b7cc0f765e009d9791bf1e6226ff6e54c441283e7cf1aa66d5477f"
+    "hash": "f967c2109d692140a94ca85bc0af74738d994c449d9a31731e71a78d772fae13"
   },
   {
     "engine": "sqlite",
@@ -4742,7 +4742,7 @@
     "engine": "sqlite",
     "name": "InsertOIDCTransaction",
     "annotation": "authn-resolution",
-    "hash": "3039e6aa6047ca03bd3b9d91a2a1f6fee2a421486f60897c9cc4296a567feeb1"
+    "hash": "d5b5aa256abb95b728fd316e482a0af74f04c2c0313abbb693cf7668b4da26cb"
   },
   {
     "engine": "sqlite",

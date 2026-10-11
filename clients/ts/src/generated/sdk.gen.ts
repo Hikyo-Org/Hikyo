@@ -2045,13 +2045,17 @@ export const getInstanceMail = <ThrowOnError extends boolean = false>(options?: 
 export const authMethods = <ThrowOnError extends boolean = false>(options?: Options<AuthMethodsData, ThrowOnError>) => (options?.client ?? client).get<AuthMethodsResponses, AuthMethodsErrors, ThrowOnError>({ url: '/api/v1/auth/methods', ...options });
 
 /**
- * Begin an OIDC transaction (login, link or reauth).
+ * Begin an OIDC transaction (login, link, reauth or claim).
  *
  * Creates a single-use server-side transaction (PKCE S256 always) and
  * returns the IdP authorization URL. `login` is anonymous and bound by a
  * `__Host-` browser-binding cookie set on this response (A2/A16); `link`
  * and `reauth` require an authenticated session and are session-bound, and
- * `link` verifies the account-security proof up front (A6). A `login`
+ * `link` verifies the account-security proof up front (A6). `claim`
+ * (#610) is anonymous and browser-cookie-bound: its `proof` is a
+ * credential-establishment authority, checked without being consumed;
+ * the callback spends it, binds the identity and signs the invitee in.
+ * Every refused authority answers the uniform 401. A `login`
  * records its `intent` (absent = `sign-in`) and, for a `sign-up`, the
  * addressed scope (`signup_org`, absent = instance); the start reads no
  * registration policy (#604 d5).

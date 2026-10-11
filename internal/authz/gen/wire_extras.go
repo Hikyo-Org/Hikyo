@@ -30,8 +30,8 @@ var reviewedWireExtras = wireExtras{
 		"http:GET /api/v1/auth/cli-reauth/transactions/{state}":                                                 {Events: []string{"EventAuthCLIReauthHandoff"}},
 		// A sign-up-intent login (#607) adds the registration outcomes and, for
 		// a landing, the org creation and template grants its authority writes.
-		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
-		"http:GET /api/v1/auth/oauth2/{provider}/callback":     {Events: []string{"EventOAuth2Login", "EventOAuth2Refused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
+		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
+		"http:GET /api/v1/auth/oauth2/{provider}/callback":     {Events: []string{"EventOAuth2Login", "EventOAuth2Refused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/workspace/transactions/{state}": {Events: []string{"EventRemoteWorkspaceHandoffRead"}},
 		// The audit trail read surface (#45). Query and export at each addressed
 		// depth; the depth is in the path, so one operation per route. Reading is
@@ -122,13 +122,14 @@ var reviewedWireExtras = wireExtras{
 		// result duplicates what the login event already recorded, so it is the
 		// one auth path with no event of its own, pinned in the exemption
 		// fixture with that reason rather than silently absent.
-		// OIDC (#54). start emits only a throttle crossing directly; the callback
-		// is where a login/link/reauth lands, so it carries the family of outcomes
-		// (login success, refusal by cause, link, the reissued/rotated session,
-		// reauth). link start mirrors start; unlink emits the unlink plus the
-		// reissued session. Provider administration is operation-modeled (Ops).
-		"http:POST /api/v1/auth/oidc/{provider}/start":   {Events: []string{"EventAuthThrottleCrossed"}},
-		"http:POST /api/v1/auth/oauth2/{provider}/start": {Events: []string{"EventAuthThrottleCrossed"}},
+		// OIDC (#54). start emits a throttle crossing and, for a claim (#610), the
+		// authority refusal by cause; the callback is where a login/link/reauth/
+		// claim lands, so it carries the family of outcomes (login success,
+		// refusal by cause, link, the claimed credential, the reissued/rotated
+		// session, reauth). link start mirrors start; unlink emits the unlink plus
+		// the reissued session. Provider administration is operation-modeled (Ops).
+		"http:POST /api/v1/auth/oidc/{provider}/start":   {Events: []string{"EventAuthAuthorityRefused", "EventAuthThrottleCrossed"}},
+		"http:POST /api/v1/auth/oauth2/{provider}/start": {Events: []string{"EventAuthAuthorityRefused", "EventAuthThrottleCrossed"}},
 		// The TOTP half of the disclosure ceremony (#58). Unauthenticated-class
 		// for the same reason as every other reauth leg: it authenticates a factor
 		// rather than acting on a tenant object, and its refusals are uniform.

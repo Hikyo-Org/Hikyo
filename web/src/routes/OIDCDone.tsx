@@ -2,14 +2,18 @@ import { useEffect } from 'react';
 
 import { announceSessionChange } from '../api/sessionEpoch.ts';
 import { oidcChannelName, peekOIDCReturn, takeOIDCReturn } from '../api/oidcChannel.ts';
+import { AUTHORITY_REFUSAL } from '../api/session.ts';
+import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
-type Purpose = 'login' | 'link' | 'reauth';
+type Purpose = 'login' | 'link' | 'reauth' | 'claim';
 
 function purposeFromLocation(): Purpose | null {
   const purpose = new URLSearchParams(globalThis.location.search).get('purpose');
-  return purpose === 'login' || purpose === 'link' || purpose === 'reauth' ? purpose : null;
+  return purpose === 'login' || purpose === 'link' || purpose === 'reauth' || purpose === 'claim'
+    ? purpose
+    : null;
 }
 
 /** The one-line outcome per purpose, so "Signed in." never reads as a reauth. */
@@ -21,6 +25,8 @@ function successLede(purpose: Purpose | null): string {
       return 'Identity linked.';
     case 'reauth':
       return 'Reauthentication completed. You can close this window.';
+    case 'claim':
+      return 'Invitation claimed. Signing you in.';
     case null:
       return 'Returning.';
   }
@@ -28,7 +34,12 @@ function successLede(purpose: Purpose | null): string {
 
 const NO_TRANSACTION = 'This page was opened without an OIDC transaction. Close it and start again.';
 
-/** Same-origin return page for browser-started OIDC login/link/reauth flows. */
+/**
+ * Same-origin return page for browser-started OIDC and OAuth2 login, link,
+ * reauth and claim flows. A claim (#610) behaves as a login: success lands
+ * signed in where the establish page asked; a refusal is the establish page's
+ * one sentence, with the way back to it (the authority may still be spendable).
+ */
 export function OIDCDone() {
   const params = new URLSearchParams(globalThis.location.search);
   const purpose = purposeFromLocation();
@@ -46,16 +57,23 @@ export function OIDCDone() {
       ? null
       : purpose === 'login'
         ? 'Your identity provider refused this sign-in. Return to sign in and try again.'
-        : purpose === 'link'
-          ? 'Your identity provider refused this link. Return to account security and try again.'
-          : 'Your identity provider refused this reauthentication. Go back and try again.';
-  const returnTarget = invalid || error === null ? null : peekOIDCReturn(state);
+        : purpose === 'claim'
+          ? AUTHORITY_REFUSAL
+          : purpose === 'link'
+            ? 'Your identity provider refused this link. Return to account security and try again.'
+            : 'Your identity provider refused this reauthentication. Go back and try again.';
+  const returnTarget =
+    invalid || error === null
+      ? null
+      : purpose === 'claim'
+        ? surfaceById('establish-credential').path
+        : peekOIDCReturn(state);
 
   useEffect(() => {
     if (invalid) {
       return;
     }
-    if (purpose === 'login') {
+    if (purpose === 'login' || purpose === 'claim') {
       // A refused sign-in only shows the derived failure; it neither broadcasts
       // nor navigates. A success announces the new session and restores the
       // same-origin page that owns the OIDC transaction, defaulting home.
@@ -102,9 +120,11 @@ export function OIDCDone() {
           <a className="btn" href={returnTarget}>
             {purpose === 'login'
               ? 'Return to sign in'
-              : purpose === 'link'
-                ? 'Return to account security'
-                : 'Back'}
+              : purpose === 'claim'
+                ? 'Back to your setup authority'
+                : purpose === 'link'
+                  ? 'Return to account security'
+                  : 'Back'}
           </a>
         ) : (
           <Button type="button" onClick={() => globalThis.close()}>

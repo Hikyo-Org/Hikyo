@@ -20,7 +20,10 @@ import (
 // The fixture enforces PKCE rather than merely accepting its parameters. The
 // production profile still names github.com/api.github.com; only HTTP is replaced.
 type githubFixture struct {
-	challenge  string
+	challenge string
+	// challenges admits further PKCE challenges beside challenge, for a
+	// fixture driving two transactions at once (the concurrent claim, #610).
+	challenges map[string]bool
 	subject    int64
 	emails     int
 	userError  bool
@@ -38,7 +41,8 @@ func (f *githubFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		b, _ := io.ReadAll(req.Body)
 		q, _ := url.ParseQuery(string(b))
 		hash := sha256.Sum256([]byte(q.Get("code_verifier")))
-		if q.Get("redirect_uri") == "" || base64.RawURLEncoding.EncodeToString(hash[:]) != f.challenge || q.Get("code") != "oauth-code" || req.Header.Get("Accept") != "application/json" {
+		presented := base64.RawURLEncoding.EncodeToString(hash[:])
+		if q.Get("redirect_uri") == "" || (presented != f.challenge && !f.challenges[presented]) || q.Get("code") != "oauth-code" || req.Header.Get("Accept") != "application/json" {
 			status = 400
 			body = `{"error":"invalid_grant"}`
 		} else {

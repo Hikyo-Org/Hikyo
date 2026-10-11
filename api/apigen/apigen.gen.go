@@ -6091,8 +6091,10 @@ type CredentialPolicyResult struct {
 // CredentialResetResult defines model for CredentialResetResult.
 type CredentialResetResult struct {
 	// Authority The single-use credential-establishment authority for the target,
-	// returned once. It creates no session and may only ever establish a
-	// password; hand it to the target out of band.
+	// returned once. Issuing it creates no session. It establishes a
+	// password, or an OIDC/OAuth2 identity through a `claim` start when the
+	// target holds no credential of any kind. Hand it to the target out of
+	// band. Recovery-issued authorities establish only a password.
 	Authority string `json:"authority"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
@@ -7625,8 +7627,9 @@ type InvitationResult struct {
 	AccountId ID `json:"account_id"`
 
 	// Authority The single-use credential-establishment authority for the new
-	// account, returned once. It creates no session and may only ever
-	// establish a password; hand it to the invitee out of band.
+	// account, returned once. Issuing it creates no session. It establishes
+	// the account's first credential: a password, or an OIDC/OAuth2 identity
+	// through a `claim` start. Hand it to the invitee out of band.
 	Authority string `json:"authority"`
 
 	// ExpiresAt RFC 3339 UTC, microsecond precision.
@@ -8257,7 +8260,8 @@ type Oauth2StartRequest struct {
 	// either. Supplied on any other purpose, the start refuses uniformly.
 	Intent *Oauth2StartRequestIntent `json:"intent,omitempty"`
 
-	// Proof Required for link; the pre-existing password.
+	// Proof Required for link (the pre-existing password) and for claim (the
+	// credential-establishment authority being spent, #610).
 	Proof *string `json:"proof,omitempty"`
 
 	// Purpose Reauth is always refused with 409 and a local-factor remedy.
@@ -8355,7 +8359,8 @@ type OidcStartRequest struct {
 	// either. Supplied on any other purpose, the start refuses uniformly.
 	Intent *OidcStartRequestIntent `json:"intent,omitempty"`
 
-	// Proof Required for link; the pre-existing password.
+	// Proof Required for link (the pre-existing password) and for claim (the
+	// credential-establishment authority being spent, #610).
 	Proof   *string `json:"proof,omitempty"`
 	Purpose string  `json:"purpose"`
 
@@ -14027,7 +14032,7 @@ type ServerInterface interface {
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams)
-	// OidcStart Begin an OIDC transaction (login, link or reauth).
+	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
 	// ReauthTotp Open a disclosure reauthentication window with a TOTP code.
@@ -15260,7 +15265,7 @@ func (_ Unimplemented) OidcCallback(w http.ResponseWriter, r *http.Request, prov
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// OidcStart Begin an OIDC transaction (login, link or reauth).
+// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 // (POST /api/v1/auth/oidc/{provider}/start)
 func (_ Unimplemented) OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -77029,7 +77034,7 @@ type StrictServerInterface interface {
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(ctx context.Context, request OidcCallbackRequestObject) (OidcCallbackResponseObject, error)
-	// OidcStart Begin an OIDC transaction (login, link or reauth).
+	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(ctx context.Context, request OidcStartRequestObject) (OidcStartResponseObject, error)
 	// ReauthTotp Open a disclosure reauthentication window with a TOTP code.

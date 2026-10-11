@@ -1139,8 +1139,10 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			"kind":                        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
-			"established_credential_kind": {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"kind": {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			// Recorded at every consumption (#610): the password path and a
+			// federated claim of either kind.
+			"established_credential_kind": {Kind: KindString, Enum: []string{"password", "oidc", "oauth2"}},
 			"identity_id":                 {Kind: KindString}, "provider_id": {Kind: KindString},
 			"authority_id": {Kind: KindString, Required: true},
 			"account_id":   {Kind: KindString, Required: true},
@@ -1153,10 +1155,11 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			// By class — unknown | expired | consumed | epoch — never by
-			// detail, so the trail does not become the oracle the response
-			// deliberately is not.
-			"cause": {Kind: KindString, Required: true},
+			// By class, never by detail, so the trail does not become the
+			// oracle the response deliberately is not. `purpose` is a claim
+			// refusal (#610): a recovery-issued authority, or an account that
+			// already holds a credential.
+			"cause": {Kind: KindString, Required: true, Enum: []string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},
 		},
 	},
 	EventAuthThrottleCrossed: {
@@ -1325,7 +1328,7 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
 			"method":               {Kind: KindString, Required: true}, // oidc:<issuer>
-			"purpose":              {Kind: KindString, Required: true, Enum: []string{"login", "reauth"}},
+			"purpose":              {Kind: KindString, Required: true, Enum: []string{"login", "reauth", "claim"}},
 			"account_id":           {Kind: KindString, Required: true},
 			"assurance":            {Kind: KindString, Required: true, Enum: []string{"single-factor", "multi-factor"}},
 			"provider_id":          {Kind: KindString, Required: true},
@@ -1348,8 +1351,10 @@ var registry = map[EventType]TypeSpec{
 			"cause": {Kind: KindString, Required: true, Enum: []string{
 				"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch",
 				"idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding",
-				"reconciliation", "window-zero", "no-possession", "downgrade",
+				"reconciliation", "window-zero", "no-possession", "downgrade", "identity-exists",
 			}},
+			// The refused transaction's purpose, recorded once it resolved.
+			"purpose":     {Kind: KindString, Enum: []string{"login", "link", "reauth", "claim"}},
 			"provider_id": {Kind: KindString},
 			// A refused login's recorded intent and sign-up scope (#604 d8).
 			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
