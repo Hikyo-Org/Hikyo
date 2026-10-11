@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -150,6 +151,10 @@ func (f *fakeAPI) write(_ context.Context, method, path string, payload, result 
 		f.nextID++
 	}
 	created.App.ID, created.App.Slug = actionsAppID, "github-actions"
+	// Match the deployed Checks API boundary, including silent truncation.
+	if len(created.ExternalID) > 255 {
+		created.ExternalID = created.ExternalID[:255]
+	}
 	if method == "PATCH" {
 		for _, prior := range f.checks {
 			if path == fmt.Sprintf("repos/Hikyo-Org/Hikyo/check-runs/%d", prior.ID) {
@@ -603,7 +608,7 @@ func TestForeignControllerCheckIdentityRejected(t *testing.T) {
 	for _, field := range []string{"app", "external id", "unrelated actions check"} {
 		t.Run(field, func(t *testing.T) {
 			f := newFixture(t)
-			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: binding{RepoID: 10, PR: 7, Head: f.pr.Head.SHA, Base: f.pr.Base.SHA, BaseRef: "main"}.externalID()}
+			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: (snapshot{PR: f.pr}).binding(10).externalID()}
 			v.App.ID = actionsAppID
 			v.App.Slug = "github-actions"
 			switch field {
@@ -991,5 +996,138 @@ func TestLatestCheckPaginationExactMultiple(t *testing.T) {
 		if strings.Contains(path, "/check-runs?") && strings.Contains(path, "page=2") {
 			t.Fatal("exact 100 results unnecessarily fetched page 2")
 		}
+	}
+}
+
+func TestPublisherAcceptsLongBaseReference(t *testing.T) {
+	f := newFixture(t)
+	f.pr.Base.Ref = "dependabot/go_modules/" + strings.Repeat("long-module-name/", 20)
+	f.source.Pulls = []pull{f.pr}
+	f.refresh()
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	requireConclusion(t, f, "completed", "success")
+	for _, c := range f.api.checks {
+		if len(c.ExternalID) > 255 {
+			t.Fatal("identifier exceeds GitHub limit")
+		}
+	}
+}
+
+func legacyID(t *testing.T, b legacyBinding) string {
+	t.Helper()
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return legacyExternalPrefix + base64.RawURLEncoding.EncodeToString(data)
+}
+
+func TestCompactBindingRoundTripAndLegacyCompatibility(t *testing.T) {
+	const maxID = int64(1<<63 - 1)
+	old := legacyBinding{RepoID: maxID, PR: int(maxID), Head: strings.Repeat("a", 40), Base: strings.Repeat("b", 40), BaseRef: strings.Repeat("branch/", 100), Run: maxID, Attempt: maxID}
+	b, err := decodeBinding(legacyID(t, old))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.BaseRef != sha256.Sum256([]byte(old.BaseRef)) {
+		t.Fatal("full base ref was not bound")
+	}
+	if len(b.externalID()) != 156 {
+		t.Fatalf("unexpected length %d", len(b.externalID()))
+	}
+	got, err := decodeBinding(b.externalID())
+	if err != nil || got != b {
+		t.Fatalf("round trip: %v, %#v", err, got)
+	}
+	old.BaseRef += "different"
+	other, err := decodeBinding(legacyID(t, old))
+	if err != nil || other.externalID() == b.externalID() {
+		t.Fatal("base reference collision")
+	}
+	for _, invalid := range []string{b.externalID()[:100], b.externalID() + "=", externalPrefix + strings.Repeat("A", 139)} {
+		if _, err := decodeBinding(invalid); err == nil {
+			t.Fatal("malformed binding accepted")
+		}
+	}
+	for _, invalid := range []binding{
+		{RepoID: -1, PR: 1}, {RepoID: 1, PR: -1}, {RepoID: 1, PR: 1, Run: -1, Attempt: -1}, {RepoID: 1, PR: 1, Run: 1, Attempt: 0},
+	} {
+		if _, err := decodeBinding(invalid.externalID()); err == nil {
+			t.Fatal("invalid IDs accepted")
+		}
+	}
+}
+
+func TestTruncatedLegacyRecordIsSupersededBeforeSourceRead(t *testing.T) {
+	for _, status := range []string{"queued", "completed"} {
+		t.Run(status, func(t *testing.T) {
+			f := newFixture(t)
+			old := legacyBinding{RepoID: 10, PR: 8, Head: f.pr.Head.SHA, Base: strings.Repeat("d", 40), BaseRef: "old/" + strings.Repeat("branch/", 50), Run: 50, Attempt: 1}
+			id := legacyID(t, old)[:255]
+			v := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, ExternalID: id, Status: status}
+			if status == "completed" {
+				v.Conclusion = "success"
+			}
+			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{v}
+			f.api.responses[f.c.endpoint("actions/runs/100")] = errors.New("source unavailable")
+			if err := f.execute(); err == nil {
+				t.Fatal("source failure ignored")
+			}
+			if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" || f.api.writes[0]["method"] != "POST" {
+				t.Fatal("legacy result was not replaced by fresh pending barrier")
+			}
+			current := f.api.checks[len(f.api.checks)-1]
+			b, err := decodeBinding(current.ExternalID)
+			if err != nil || b.PR != f.pr.Number || b.Base != f.pr.Base.SHA || b.Run != 0 {
+				t.Fatal("replacement does not bind current candidate")
+			}
+			f.refresh()
+			f.api.writes = nil
+			if err := f.execute(); err != nil {
+				t.Fatal(err)
+			}
+			requireConclusion(t, f, "completed", "success")
+		})
+	}
+}
+
+func TestLegacyRecoveryRejectsForeignOrMalformedMetadata(t *testing.T) {
+	for _, field := range []string{"repo", "head", "app", "short", "malformed", "overflow"} {
+		t.Run(field, func(t *testing.T) {
+			f := newFixture(t)
+			old := legacyBinding{RepoID: 10, PR: 7, Head: f.pr.Head.SHA, Base: f.pr.Base.SHA, BaseRef: strings.Repeat("branch/", 50)}
+			if field == "repo" {
+				old.RepoID = 11
+			}
+			if field == "head" {
+				old.Head = strings.Repeat("d", 40)
+			}
+			id := legacyID(t, old)[:255]
+			if field == "short" {
+				id = id[:254]
+			}
+			if field == "malformed" {
+				id = legacyExternalPrefix + strings.Repeat("x", 255-len(legacyExternalPrefix))
+			}
+			if field == "overflow" {
+				id = legacyExternalPrefix + base64.RawURLEncoding.EncodeToString([]byte(`{"repo":10,"pr":999999999999999999999999,"head":"`+f.pr.Head.SHA+`","base_ref":"`+strings.Repeat("b", 100)))
+				id = id[:255]
+			}
+			v := check{ID: 99, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, ExternalID: id, Status: "completed", Conclusion: "success"}
+			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+			if field == "app" {
+				v.App.ID = 66
+			}
+			f.api.checks = []check{v}
+			if err := f.execute(); err == nil {
+				t.Fatal("foreign or malformed metadata accepted")
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("foreign metadata mutated")
+			}
+		})
 	}
 }
