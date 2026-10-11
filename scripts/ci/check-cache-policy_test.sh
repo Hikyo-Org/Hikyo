@@ -190,12 +190,14 @@ for file in "$@"; do
                     index(block, "restore-keys: go-mod-v2-${{ runner.os }}-") == 0) bad = 1
 			}
 			if (index(block, "path: ~/.cache/go-build") > 0) {
+                    build_hash = "hashFiles(\047go.mod\047, \047go.sum\047"
+                    if (feedback_cache == "true") build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047"
 				if (index(block, "key: go-") == 0 ||
 					index(block, "-v2-") == 0 ||
 					index(block, "${{ runner.os }}") == 0 ||
 					index(block, "${{ runner.arch }}") == 0 ||
 					index(block, "${{ steps.runner-cache-abi.outputs.value }}") == 0 ||
-					index(block, "hashFiles(\047go.mod\047, \047go.sum\047") == 0 ||
+					index(block, build_hash) == 0 ||
 					index(block, "restore-keys:") == 0) bad = 1
 			}
 		}

@@ -104,6 +104,12 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	// validation, reusing its compiled packages. It is additive to this frozen
 	// inventory, and must not become skipped, fail-open, narrowed, or duplicated.
 	additions := map[string]map[string]any{
+		// PR883 transfers all feedback supervisor/refusal fixtures from fast
+		// feedback into full validation. Require the exact unconditional step.
+		"lint": {
+			"name": "Fast feedback refusal and deadline fixtures",
+			"run":  "bash scripts/ci/fast-feedback_test.sh",
+		},
 		"storybook": {
 			"name": "Static demo accounts and interactions", "working-directory": "web",
 			"run": "pnpm run build:demo\npnpm run test:demo\n",
@@ -199,8 +205,20 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	baseline, original := readCoverageBaseline(t)
 	for name, mutation := range map[string]func(map[string]map[string]any){
-		"skip job":      func(j map[string]map[string]any) { j["test_core"]["if"] = "false" },
-		"job fail open": func(j map[string]map[string]any) { j["test_core"]["continue-on-error"] = true },
+		"remove feedback fixtures": func(j map[string]map[string]any) {
+			steps := j["lint"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Fast feedback refusal and deadline fixtures" {
+					j["lint"]["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
+		"skip feedback fixtures":      func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "if", "false") },
+		"fail open feedback fixtures": func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "continue-on-error", true) },
+		"drop supervisor fixtures":    func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "run", "true") },
+		"skip job":                    func(j map[string]map[string]any) { j["test_core"]["if"] = "false" },
+		"job fail open":               func(j map[string]map[string]any) { j["test_core"]["continue-on-error"] = true },
 		"narrow platform matrix": func(j map[string]map[string]any) {
 			j["scan-xplat"]["strategy"] = map[string]any{"matrix": map[string]any{"os": []any{"ubuntu-latest"}}}
 		},
@@ -281,6 +299,15 @@ func mutateDemoStep(jobs map[string]map[string]any, key string, value any) {
 func mutateBenchmarkStep(jobs map[string]map[string]any, key string, value any) {
 	for _, step := range jobs["test_core"]["steps"].([]any) {
 		if step.(map[string]any)["name"] == "Exercise every benchmark once" {
+			step.(map[string]any)[key] = value
+			return
+		}
+	}
+}
+
+func mutateFeedbackFixtureStep(jobs map[string]map[string]any, key string, value any) {
+	for _, step := range jobs["lint"]["steps"].([]any) {
+		if step.(map[string]any)["name"] == "Fast feedback refusal and deadline fixtures" {
 			step.(map[string]any)[key] = value
 			return
 		}
