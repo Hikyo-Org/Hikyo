@@ -149,6 +149,22 @@ commit_fixture
 # The workflow check's failure must propagate after changed-shell validation.
 refuse 'pinned actionlint invoked'
 
+# A workflow-only change needs pinned ShellCheck for actionlint's inline
+# shell analysis, even though no standalone shell script changed.
+workflow_only_base=$(git rev-parse HEAD)
+printf '# workflow-only update\n' >>.github/workflows/fixture.yml
+commit_fixture
+FAST_FEEDBACK_BASE="$workflow_only_base" run_feedback --plan
+jq -e '.workflows == true and .shell == false' "$work/output" >/dev/null
+cat >"$work/bin/shellcheck" <<'EOF'
+#!/bin/sh
+printf 'version: 0.10.0\n'
+EOF
+chmod +x "$work/bin/shellcheck"
+FAST_FEEDBACK_BASE="$workflow_only_base" PATH="$work/bin:$PATH" refuse 'ShellCheck 0.11.0 is required'
+if grep -F 'pinned actionlint invoked' "$work/output"; then exit 1; fi
+rm "$work/bin/shellcheck"
+
 # Tooling can come from a separate immutable checkout while workflow inputs
 # remain the tested checkout. Verify both the owner working directory and data.
 mkdir -p "$work/tooling/scripts/ci"

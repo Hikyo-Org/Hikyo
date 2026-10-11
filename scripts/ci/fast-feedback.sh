@@ -45,6 +45,11 @@ if [ "${FAST_FEEDBACK_DEADLINE+x}" = x ]; then
 				"$BASH" "$0" "$@" &
 			supervisor_pid=$!
 			wait "$supervisor_pid" || status=$?
+			deadline_expired=false
+			# Attribute the result before cleanup spends time escalating descendants.
+			if { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; } && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; then
+				deadline_expired=true
+			fi
 			if [ "$status" -ne 0 ]; then
 				# The wrapper is outside the monitor's isolated group. Escalate
 				# here even if a TERM handler already made the monitor exit.
@@ -52,7 +57,7 @@ if [ "${FAST_FEEDBACK_DEADLINE+x}" = x ]; then
 				sleep 1
 				kill -KILL -- "-$supervisor_pid" 2>/dev/null || true
 			fi
-			if [ "$status" -eq 124 ] || { [ "$status" -eq 137 ] && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; }; then
+			if [ "$deadline_expired" = true ]; then
 				fail 'deadline exhausted; incomplete selected checks cannot pass'
 			fi
 			exit "$status"
@@ -150,8 +155,13 @@ run() {
 		# kills the entire group; this one also names the interrupted command.
 		local status=0
 		"$timeout_tool" --foreground --kill-after=5s "${remaining}s" "$@" || status=$?
-		[ "$status" -ne 124 ] || fail "deadline exhausted during $*"
-		[ "$status" -eq 0 ] || return "$status"
+		if { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; } && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; then
+			fail "deadline exhausted during $*"
+		fi
+		if [ "$status" -ne 0 ]; then
+			printf 'fast-feedback: check failed (exit %s): %s\n' "$status" "$*" >&2
+			return "$status"
+		fi
 	else
 		"$@"
 	fi
@@ -193,9 +203,11 @@ if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 		run go test -c -o /dev/null "${go_packages[@]}"
 	fi
 fi
-if [ "${#shell_files[@]}" -gt 0 ]; then
+if [ "${#shell_files[@]}" -gt 0 ] || [ "$workflows" = true ]; then
 	need shellcheck
 	shellcheck --version | grep -Fx 'version: 0.11.0' >/dev/null || fail 'ShellCheck 0.11.0 is required, matching CI'
+fi
+if [ "${#shell_files[@]}" -gt 0 ]; then
 	run shellcheck -- "${shell_files[@]}"
 fi
 if [ "$workflows" = true ]; then

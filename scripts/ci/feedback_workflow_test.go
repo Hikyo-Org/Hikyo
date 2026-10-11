@@ -43,6 +43,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 				Uses      string            `yaml:"uses"`
 				If        string            `yaml:"if"`
 				With      map[string]string `yaml:"with"`
+				Env       map[string]string `yaml:"env"`
 				Directory string            `yaml:"working-directory"`
 				Timeout   int               `yaml:"timeout-minutes"`
 				Continue  bool              `yaml:"continue-on-error"`
@@ -118,6 +119,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if !pinnedBase || !buildReader || !runnerABI || buildReaders != 1 {
 		return fmt.Errorf("feedback needs a verified integration base and bounded compatible read-only Go build cache")
 	}
+	shellcheckInstallers := 0
 	for index, step := range job.Steps {
 		if strings.Contains(step.Run, "fast-feedback_test.sh") || strings.Contains(step.Run, "fast-feedback-deadline_test.sh") {
 			return fmt.Errorf("refusal and deadline self-tests belong to mandatory full lint, not the per-commit budget")
@@ -139,8 +141,13 @@ func requireFeedbackWorkflow(raw []byte) error {
 		if strings.Contains(step.Uses, "setup-node@") && step.If != "(matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)" {
 			return fmt.Errorf("frontend and read-only docs must retain their pinned Node runtime")
 		}
-		if step.Name == "Install verified pinned ShellCheck" && step.If != "matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).shell" {
-			return fmt.Errorf("selected shell scripts belong to the Go/tooling lane")
+		if step.Name == "Install verified pinned ShellCheck" {
+			shellcheckInstallers++
+			if step.If != "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)" || step.Continue ||
+				step.Env["SHELLCHECK_VERSION"] != "v0.11.0" || step.Env["SHELLCHECK_SHA256"] != "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198" ||
+				!strings.Contains(step.Run, "sha256sum --check --strict") {
+				return fmt.Errorf("shell and workflow-only checks require verified pinned ShellCheck in the Go/tooling lane")
+			}
 		}
 		if strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh") || (strings.Contains(step.Uses, "cache/restore@") && step.Name != "Restore existing Go build cache") || step.Name == "Select explicit pnpm cache path and ABI" {
 			if !strings.HasPrefix(step.If, "matrix.lane == 'frontend' && ") {
@@ -160,6 +167,9 @@ func requireFeedbackWorkflow(raw []byte) error {
 			return fmt.Errorf("source and tooling must not persist credentials")
 		}
 	}
+	if shellcheckInstallers != 1 {
+		return fmt.Errorf("feedback requires exactly one pinned ShellCheck installer")
+	}
 	return nil
 }
 
@@ -169,6 +179,13 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutation := range map[string]func(map[string]any){
+		"workflow-only loses shellcheck": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "if", "matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).shell")
+		},
+		"shellcheck fail open": func(j map[string]any) { mutateFeedbackShellcheck(j, "continue-on-error", true) },
+		"unpinned shellcheck": func(j map[string]any) {
+			mutateFeedbackShellcheck(j, "env", map[string]any{"SHELLCHECK_VERSION": "v0.10.0"})
+		},
 		"duplicate incompatible reader": func(j map[string]any) { duplicateFeedbackReuse(j, "go-test-v2-") },
 		"duplicate compatible reader":   func(j map[string]any) { duplicateFeedbackReuse(j, "") },
 		"module archive reintroduced":   func(j map[string]any) { mutateFeedbackReuseWith(j, "path", "~/go/pkg/mod") },
@@ -224,6 +241,16 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 				t.Fatal("unsafe feedback configuration escaped actual workflow contract")
 			}
 		})
+	}
+}
+
+func mutateFeedbackShellcheck(j map[string]any, key string, value any) {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == "Install verified pinned ShellCheck" {
+			step[key] = value
+			return
+		}
 	}
 }
 

@@ -15,7 +15,10 @@ timeout_tool=$(command -v timeout || command -v gtimeout) || fail 'CI deadline n
 printf 'fast-feedback: setup has %ss remaining: %s\n' "$remaining" "$*"
 status=0
 "$timeout_tool" --kill-after=5s "${remaining}s" "$@" || status=$?
-if [ "$status" -eq 124 ] || { [ "$status" -eq 137 ] && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; }; then
+if { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; } && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; then
 	fail 'deadline exhausted during setup; selected checks did not complete'
+fi
+if [ "$status" -ne 0 ]; then
+	printf 'fast-feedback: setup command failed (exit %s): %s\n' "$status" "$*" >&2
 fi
 exit "$status"
