@@ -7,6 +7,8 @@ on:
       - ".github/workflows/docs.yml"
       - "docs/**"
       - "web/**"
+      - "clients/ts/**"
+      - "api/openapi.yaml"
       - "scripts/ci/check-docs-live*"
       - "scripts/ci/check-fallback-channel*"
       - "scripts/ci/check-oss-policy*"
@@ -58,6 +60,14 @@ jobs:
           pnpm --dir web install --frozen-lockfile
           pnpm --dir web run build-storybook
           cp -r web/storybook-static docs/site/dist/storybook
+      - name: Build and verify the browser-only demo
+        # Copy after the docs service worker is built so demo assets are not
+        # precached as documentation. The playground owns no service worker.
+        run: |
+          pnpm --dir web run build:demo
+          pnpm --dir web run test:demo
+          cp -r web/demo-dist docs/site/dist/demo
+          node docs/site/scripts/test-csp.mjs --demo docs/site/dist/demo
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - name: Archive Pages artifact, including security.txt

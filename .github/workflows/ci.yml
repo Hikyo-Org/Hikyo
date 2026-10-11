@@ -1065,6 +1065,11 @@ jobs:
       - name: Storybook theme switching and Docs lifetimes
         working-directory: web
         run: pnpm run test-storybook:theme
+      - name: Static demo accounts and interactions
+        working-directory: web
+        run: |
+          pnpm run build:demo
+          pnpm run test:demo
       - name: Every linked design image ships in the static build
         working-directory: web
         run: |

@@ -36,6 +36,7 @@ import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { isDemo } from '../demo/config.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
@@ -166,7 +167,7 @@ export function KeyDeclarationDetail({
   // `definitions-edit` alone; every other editor republishes each environment.
   const permitted = definitions.data?.can_declare_keys === true;
   const dbManaged =
-    definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged;
+    !isDemo && definitions.isSuccess && !sourceUntrusted && source === 'db' && !systemManaged;
   const editable = dbManaged && permitted;
   const metadataEditable = dbManaged && definitions.data?.can_edit_definitions === true;
   const gitManaged = source === 'git';

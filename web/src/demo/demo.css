@@ -1,0 +1,55 @@
+.demo-toolbar {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--chrome-line);
+  background: var(--accent-soft);
+  color: var(--tx);
+  font-size: var(--fs-sm);
+}
+
+.demo-toolbar__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.demo-toolbar__badge {
+  color: var(--accent);
+  margin-right: var(--space-2);
+}
+
+.demo-toolbar__note,
+.demo-toolbar p {
+  color: var(--tx-dim);
+}
+
+.demo-toolbar p {
+  margin: var(--space-1) 0 0;
+}
+
+.demo-toolbar__controls select {
+  width: auto;
+}
+
+.demo-readonly__notice {
+  color: var(--tx-dim);
+  margin: 0 0 var(--space-4);
+}
+
+.demo-readonly__fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+@media (max-width: 700px) {
+  .demo-toolbar__note {
+    flex-basis: 100%;
+  }
+}
+
+.demo-readonly__fields > .card + .card {
+  margin-top: var(--space-5);
+}

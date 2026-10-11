@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
+import { isDemo } from '../demo/config.ts';
 import { Glyph } from '../ui/Glyph.tsx';
 
 type Notification = {
@@ -93,7 +94,7 @@ export function ToastViewport() {
           {notification.action === undefined ? null : (
             <a
               className="toast__action"
-              href={notification.action.href}
+              href={isDemo && notification.action.href.startsWith('/') ? `#${notification.action.href}` : notification.action.href}
               target="_blank"
               rel="noreferrer"
             >

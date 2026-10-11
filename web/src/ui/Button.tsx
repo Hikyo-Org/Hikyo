@@ -1,4 +1,6 @@
-import type { ComponentProps } from 'react';
+import { useContext, type ComponentProps } from 'react';
+
+import { ReadOnlyContext } from './ReadOnlyContext.ts';
 
 import { cx } from './cx.ts';
 
@@ -22,9 +24,12 @@ import { cx } from './cx.ts';
  */
 type ButtonProps = ComponentProps<'button'> & {
   variant?: 'primary' | 'secondary' | 'danger' | 'quiet';
+  /** Navigation or inspection that remains available inside a read-only preview. */
+  readOnlySafe?: boolean;
 } & ({ icon?: false } | { icon: true; 'aria-label': string });
 
-export function Button({ variant = 'secondary', icon, className, ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', icon, className, readOnlySafe = false, ...rest }: ButtonProps) {
+  const readOnly = useContext(ReadOnlyContext);
   return (
     <button
       className={cx(
@@ -36,6 +41,7 @@ export function Button({ variant = 'secondary', icon, className, ...rest }: Butt
         className,
       )}
       {...rest}
+      disabled={rest.disabled || (readOnly && !readOnlySafe)}
     />
   );
 }

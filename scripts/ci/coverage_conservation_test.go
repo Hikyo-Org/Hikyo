@@ -90,7 +90,50 @@ func coverageDigests(raw []byte, candidate bool) (map[string]string, error) {
 }
 
 func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
-	actual, err := coverageDigests(raw, true)
+	// Main 48087bde06fd28546dfbca9bfb5b7c16f5b13002 (#884) added this
+	// mandatory demo gate. Require its complete configuration first, then omit
+	// only that exact additive step when comparing the unchanged e4 inventory.
+	// Replacing the old hashes would conceal an unrelated execution reduction.
+	var workflow struct {
+		Jobs map[string]map[string]any `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		return err
+	}
+	expectedDemo := map[string]any{
+		"name":              "Static demo accounts and interactions",
+		"working-directory": "web",
+		"run":               "pnpm run build:demo\npnpm run test:demo\n",
+	}
+	steps, ok := workflow.Jobs["storybook"]["steps"].([]any)
+	if !ok {
+		return fmt.Errorf("storybook lost the upstream demo validation steps")
+	}
+	kept := make([]any, 0, len(steps))
+	found := 0
+	for _, value := range steps {
+		step, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("storybook has malformed step configuration")
+		}
+		if step["name"] == expectedDemo["name"] {
+			if !reflect.DeepEqual(step, expectedDemo) {
+				return fmt.Errorf("upstream demo validation lost its exact fail-closed configuration")
+			}
+			found++
+		} else {
+			kept = append(kept, step)
+		}
+	}
+	if found != 1 {
+		return fmt.Errorf("expected exactly one mandatory upstream demo validation step, got %d", found)
+	}
+	workflow.Jobs["storybook"]["steps"] = kept
+	normalized, err := yaml.Marshal(workflow)
+	if err != nil {
+		return err
+	}
+	actual, err := coverageDigests(normalized, true)
 	if err != nil {
 		return err
 	}
@@ -170,6 +213,18 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 		"change action input": func(j map[string]map[string]any) {
 			j["test_core"]["steps"].([]any)[1].(map[string]any)["with"].(map[string]any)["ref"] = "HEAD"
 		},
+		"remove upstream demo gate": func(j map[string]map[string]any) {
+			steps := j["storybook"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Static demo accounts and interactions" {
+					j["storybook"]["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
+		"skip upstream demo gate":      func(j map[string]map[string]any) { mutateDemoStep(j, "if", "false") },
+		"fail open upstream demo gate": func(j map[string]map[string]any) { mutateDemoStep(j, "continue-on-error", true) },
+		"remove demo browser tests":    func(j map[string]map[string]any) { mutateDemoStep(j, "run", "pnpm run build:demo\n") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var workflow struct {
@@ -187,5 +242,14 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				t.Fatal("coverage reduction escaped the frozen execution inventory")
 			}
 		})
+	}
+}
+
+func mutateDemoStep(jobs map[string]map[string]any, key string, value any) {
+	for _, step := range jobs["storybook"]["steps"].([]any) {
+		if step.(map[string]any)["name"] == "Static demo accounts and interactions" {
+			step.(map[string]any)[key] = value
+			return
+		}
 	}
 }

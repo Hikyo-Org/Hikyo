@@ -15,6 +15,7 @@ import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definitions.ts';
 import { useEnvironments } from '../api/settings.ts';
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
+import { isDemo } from '../demo/config.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
@@ -41,12 +42,25 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
         <span className="settings-row__spacer" />
         {workspace === null ? (
           <>
-            <a className="btn" href={path} download="definitions.json">
-              Download definitions bundle
-            </a>
-            <a className="btn" href={`${path}?portable=true`} download="definitions-portable.json">
-              Download portable bundle
-            </a>
+            {isDemo ? (
+              <>
+                <Button type="button" disabled title="Downloads are unavailable in the demo">
+                  Download definitions bundle
+                </Button>
+                <Button type="button" disabled title="Downloads are unavailable in the demo">
+                  Download portable bundle
+                </Button>
+              </>
+            ) : (
+              <>
+                <a className="btn" href={path} download="definitions.json">
+                  Download definitions bundle
+                </a>
+                <a className="btn" href={`${path}?portable=true`} download="definitions-portable.json">
+                  Download portable bundle
+                </a>
+              </>
+            )}
           </>
         ) : (
           <span>Open settings on the instance itself to download a bundle.</span>

@@ -797,7 +797,7 @@ function MoveDetail({
     <aside className="panel adapters__detail" aria-label="Route move">
       <div className="adapters__adapter-head">
         <h2>Route move</h2>
-        <Button type="button" variant="quiet" onClick={onClose}>
+        <Button type="button" variant="quiet" onClick={onClose} readOnlySafe>
           Close
         </Button>
       </div>
@@ -1560,7 +1560,7 @@ function TargetDetail({
     <aside className="panel adapters__detail" aria-label="Target detail">
       <div className="adapters__adapter-head">
         <h2>Target</h2>
-        <Button type="button" variant="quiet" onClick={onClose}>
+        <Button type="button" variant="quiet" onClick={onClose} readOnlySafe>
           Close
         </Button>
       </div>
