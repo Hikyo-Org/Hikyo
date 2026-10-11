@@ -26,7 +26,7 @@ for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LI
 	mkdir -p "$(dirname "$path")"
 	cp "$owner/$path" "$path"
 done
-printf '%s\n' "$(node --version | cut -c2-)" > .nvmrc
+cp "$owner/.nvmrc" .nvmrc
 printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
 printf 'module fixture.invalid/lanes\n\ngo 1.27.2\n' >go.mod
 commit_fixture

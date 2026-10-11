@@ -46,6 +46,8 @@ case "$FIXTURE_MODE" in
 	pass)
 		while [ ! -e "$FIXTURE_WORK/frontend.started" ]; do sleep .02; done
 		sleep .2; touch "$FIXTURE_WORK/go.finished" ;;
+	early-124) exit 124 ;;
+	early-137) kill -KILL "$BASHPID" ;;
 	fail-go) while [ ! -e "$FIXTURE_WORK/frontend.child" ]; do sleep .02; done; exit 31 ;;
 	*)
 		bash -c 'trap "" TERM; echo "$BASHPID" >"$FIXTURE_WORK/go.child"; while :; do sleep 1; done' &
@@ -62,6 +64,8 @@ case "$FIXTURE_MODE" in
 	pass)
 		while [ ! -e "$FIXTURE_WORK/go.started" ]; do sleep .02; done
 		touch "$FIXTURE_WORK/frontend.finished" ;;
+	early-124) exit 124 ;;
+	early-137) kill -KILL "$BASHPID" ;;
 	fail-frontend) while [ ! -e "$FIXTURE_WORK/go.child" ]; do sleep .02; done; exit 32 ;;
 	*)
 		bash -c 'trap "" TERM; echo "$BASHPID" >"$FIXTURE_WORK/frontend.child"; while :; do sleep 1; done' &
@@ -153,6 +157,59 @@ for expected in '103 D' '104 R' '105 S'; do grep -F "surviving descendant $expec
 for pid in 103 104 105; do
 	count=$(cat "$work/ps-$pid.count")
 	[ "$count" -gt 1 ] && [ "$count" -le 40 ]
+done
+# A check's status is not timeout evidence. Execute the real helper and
+# setup wrapper with early exits, retaining exact nonzero status and diagnostics.
+for code in 124 137; do
+	for selected_lane in go frontend; do
+		export FIXTURE_MODE="early-$code" FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 30))
+		status=0
+		bash "$script" "--lane=$selected_lane" >"$work/output" 2>&1 || status=$?
+		[ "$status" -eq "$code" ] || { cat "$work/output" >&2; exit 1; }
+		if grep -F 'deadline exhausted' "$work/output"; then exit 1; fi
+		grep -F "check failed (exit $code):" "$work/output"
+		if grep -F 'selected checks passed' "$work/output"; then exit 1; fi
+	done
+	status=0
+	FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 30)) bash "$script_dir/feedback-budget.sh" bash -c "exit $code" >"$work/output" 2>&1 || status=$?
+	[ "$status" -eq "$code" ]
+	if grep -F 'deadline exhausted' "$work/output"; then exit 1; fi
+	grep -F "setup command failed (exit $code):" "$work/output"
+done
+# Cleanup may cross the deadline after an early failure. Advance a controlled
+# clock only when the real supervisor begins its one-second cleanup escalation.
+mkdir "$work/cleanup-clock"
+FIXTURE_REAL_DATE=$(command -v date)
+FIXTURE_REAL_SLEEP=$(command -v sleep)
+export FIXTURE_REAL_DATE FIXTURE_REAL_SLEEP
+cat >"$work/cleanup-clock/date" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+if [ "${1:-}" = +%s ]; then
+	if [ -e "$FIXTURE_WORK/cleanup.started" ]; then
+		printf '%s\n' "$((FAST_FEEDBACK_DEADLINE + 1))"
+	else
+		printf '%s\n' "$((FAST_FEEDBACK_DEADLINE - 30))"
+	fi
+else
+	exec "$FIXTURE_REAL_DATE" "$@"
+fi
+STUB
+cat >"$work/cleanup-clock/sleep" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+[ "${1:-}" != 1 ] || touch "$FIXTURE_WORK/cleanup.started"
+exec "$FIXTURE_REAL_SLEEP" "$@"
+STUB
+chmod +x "$work/cleanup-clock/"*
+for code in 124 137; do
+	rm -f "$work/cleanup.started"
+	export FIXTURE_MODE="early-$code" FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 30))
+	status=0
+	PATH="$work/cleanup-clock:$PATH" bash "$script" --lane=go >"$work/output" 2>&1 || status=$?
+	[ "$status" -eq "$code" ] && [ -e "$work/cleanup.started" ] || { cat "$work/output" >&2; exit 1; }
+	if grep -F 'deadline exhausted' "$work/output"; then exit 1; fi
+	grep -F "check failed (exit $code):" "$work/output"
 done
 run_case pass
 run_case fail-go
