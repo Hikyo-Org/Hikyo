@@ -41,7 +41,9 @@ func deliveryJSON(t *testing.T, resp apigen.DeliveryResponse) string {
 }
 
 // composeIO builds an IO with the given state dir, workdir, token, and captured
-// streams.
+// streams. Refuse unexpected child execution so a broken refusal cannot replace
+// the test process and silently skip the rest of the suite. Tests that expect
+// execution must inject their own Exec capture.
 func composeIO(stateDir, workdir, token string, extra map[string]string) (IO, *bytes.Buffer, *bytes.Buffer) {
 	var stdout, stderr bytes.Buffer
 	get := func(k string) string {
@@ -61,6 +63,9 @@ func composeIO(stateDir, workdir, token string, extra map[string]string) (IO, *b
 		Stderr:  &stderr,
 		Env:     Env{Getenv: get},
 		Workdir: workdir,
+		Exec: func(string, []string, []string) error {
+			return errors.New("unexpected child execution: inject IO.Exec to capture the command")
+		},
 	}, &stdout, &stderr
 }
 
@@ -243,9 +248,12 @@ func TestRunLoaderControlRefusal(t *testing.T) {
 }
 
 func TestRunMergeCollisionAndAllowOverride(t *testing.T) {
-	t.Setenv("HIKYO_TEST_COLLIDE", "inherited")
+	// HIKYO_* is stripped before merging, so use a child application variable
+	// to exercise an actual collision with the inherited environment.
+	const key = "APP_TEST_COLLIDE"
+	t.Setenv(key, "inherited")
 	server := deliveryServer(t, deliveryResp([]apigen.DeliveredKey{
-		{KeyId: "key_c", Name: "HIKYO_TEST_COLLIDE", Classification: apigen.KeyClassificationConfig, Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("fetched")},
+		{KeyId: "key_c", Name: key, Classification: apigen.KeyClassificationConfig, Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("fetched")},
 	}))
 	defer server.Close()
 
@@ -257,7 +265,7 @@ func TestRunMergeCollisionAndAllowOverride(t *testing.T) {
 	if code != ExitRefused {
 		t.Fatalf("collision without override exit=%d, want ExitRefused; stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stderr.String(), "HIKYO_TEST_COLLIDE") || !strings.Contains(stderr.String(), "--allow-override") {
+	if !strings.Contains(stderr.String(), key) || !strings.Contains(stderr.String(), "--allow-override") {
 		t.Fatalf("collision message must name key and --allow-override: %s", stderr)
 	}
 
@@ -265,12 +273,12 @@ func TestRunMergeCollisionAndAllowOverride(t *testing.T) {
 	ios2, _, stderr2 := composeIO(stateDir, t.TempDir(), "wl_token", nil)
 	var gotEnv []string
 	ios2.Exec = func(_ string, _, env []string) error { gotEnv = env; return nil }
-	code = Run(t.Context(), ios2, []string{"run", "--instance", "local", "--org", "org_1", "--project", "prj_1", "--env", "env_1", "--allow-override", "HIKYO_TEST_COLLIDE", "--", "true"})
+	code = Run(t.Context(), ios2, []string{"run", "--instance", "local", "--org", "org_1", "--project", "prj_1", "--env", "env_1", "--allow-override", key, "--", "true"})
 	if code != ExitOK {
 		t.Fatalf("allow-override exit=%d, want ExitOK; stderr=%s", code, stderr2)
 	}
-	if !slices.Contains(gotEnv, "HIKYO_TEST_COLLIDE=fetched") {
-		t.Fatalf("fetched value did not win: %v", envFilter(gotEnv, "HIKYO_TEST_COLLIDE"))
+	if !slices.Contains(gotEnv, key+"=fetched") {
+		t.Fatalf("fetched value did not win: %v", envFilter(gotEnv, key))
 	}
 	_ = st
 }
@@ -1001,6 +1009,7 @@ func TestComposeRenderSnapshotFailureLeavesPublishedGenerationUsable(t *testing.
 	resp := deliveryResp([]apigen.DeliveredKey{{
 		KeyId: "key_1", Name: "DATABASE_URL", Classification: apigen.KeyClassificationConfig,
 		Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("postgres://x"),
+		SnapshotReceipt: strPtr("server-receipt-key_1"),
 	}})
 	binding, err = bindSnapshotDelivery(binding, resp)
 	if err != nil {
@@ -1060,6 +1069,7 @@ func TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(t *test
 	resp := deliveryResp([]apigen.DeliveredKey{{
 		KeyId: "key_1", Name: "DATABASE_URL", Classification: apigen.KeyClassificationConfig,
 		Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("postgres://x"),
+		SnapshotReceipt: strPtr("server-receipt-key_1"),
 	}})
 	binding, err = bindSnapshotDelivery(binding, resp)
 	if err != nil {
