@@ -149,6 +149,22 @@ commit_fixture
 # The workflow check's failure must propagate after changed-shell validation.
 refuse 'pinned actionlint invoked'
 
+# A workflow-only change needs pinned ShellCheck for actionlint's inline
+# shell analysis, even though no standalone shell script changed.
+workflow_only_base=$(git rev-parse HEAD)
+printf '# workflow-only update\n' >>.github/workflows/fixture.yml
+commit_fixture
+FAST_FEEDBACK_BASE="$workflow_only_base" run_feedback --plan
+jq -e '.workflows == true and .shell == false' "$work/output" >/dev/null
+cat >"$work/bin/shellcheck" <<'EOF'
+#!/bin/sh
+printf 'version: 0.10.0\n'
+EOF
+chmod +x "$work/bin/shellcheck"
+FAST_FEEDBACK_BASE="$workflow_only_base" PATH="$work/bin:$PATH" refuse 'ShellCheck 0.11.0 is required'
+if grep -F 'pinned actionlint invoked' "$work/output"; then exit 1; fi
+rm "$work/bin/shellcheck"
+
 # Tooling can come from a separate immutable checkout while workflow inputs
 # remain the tested checkout. Verify both the owner working directory and data.
 mkdir -p "$work/tooling/scripts/ci"
@@ -167,7 +183,7 @@ FIXTURE_TOOLS_ROOT="$work/tooling" FIXTURE_SOURCE_ROOT="$repo" \
 
 # Docs-only inputs use the real checker from the tooling owner against source.
 rm -rf .github scripts/ci
-printf '%s\n' "$(node --version | sed 's/^v//')" >.nvmrc
+cp "$script_dir/../../.nvmrc" .nvmrc
 commit_fixture
 docs_base=$(git rev-parse HEAD)
 for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
@@ -203,3 +219,6 @@ for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LI
 done
 
 printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow/docs failure cases passed\n'
+
+bash "$script_dir/fast-feedback-lanes_test.sh"
+bash "$script_dir/fast-feedback-deadline_test.sh"

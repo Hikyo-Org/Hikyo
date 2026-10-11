@@ -6,16 +6,65 @@ set -euo pipefail
 
 working_tree=false
 plan_only=false
+lane=all
 for argument in "$@"; do
 	case "$argument" in
 		--working-tree) working_tree=true ;;
 		--plan) plan_only=true ;;
-		*) printf 'usage: %s [--working-tree] [--plan]\n' "$0" >&2; exit 2 ;;
+		--lane=*) lane=${argument#--lane=} ;;
+		*) printf 'usage: %s [--working-tree] [--plan] [--lane=all|go|frontend]\n' "$0" >&2; exit 2 ;;
 	esac
 done
 
 fail() { printf 'fast-feedback: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "missing $1; prepare the pinned contributor toolchain first"; }
+case "$lane" in
+	all | go | frontend) ;;
+	*) fail 'invalid lane; expected all, go or frontend' ;;
+esac
+
+# CI supplies one absolute deadline before setup. Local feedback without that
+# timestamp keeps its existing tool requirements and has no imposed deadline.
+supervised=false
+timeout_tool=''
+if [ "${FAST_FEEDBACK_DEADLINE+x}" = x ]; then
+	[[ "$FAST_FEEDBACK_DEADLINE" =~ ^[1-9][0-9]{0,10}$ ]] || fail 'invalid FAST_FEEDBACK_DEADLINE; expected a positive epoch timestamp'
+	remaining=$((FAST_FEEDBACK_DEADLINE - $(date +%s)))
+	[ "$remaining" -gt 0 ] || fail 'deadline exhausted before checks; selected checks did not complete'
+	if [ "$plan_only" = false ]; then
+		timeout_tool=$(command -v timeout || command -v gtimeout) || fail 'CI deadline needs GNU timeout (or gtimeout)'
+		((BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1))) || fail 'CI deadline needs Bash 5.1 or newer'
+		group=$(ps -o pgid= -p "$BASHPID" | tr -d ' ')
+		if [ "${FAST_FEEDBACK_SUPERVISOR_PID:-}" != "$PPID" ] || [ "$group" != "$PPID" ]; then
+			# GNU timeout owns an isolated process group. Both parallel lanes and
+			# their descendants stay in it, including on a failed lane or timeout.
+			status=0
+			# shellcheck disable=SC2016 # Expanded in the supervised child.
+			"$timeout_tool" --kill-after=5s "${remaining}s" "$BASH" -c \
+				'export FAST_FEEDBACK_SUPERVISOR_PID=$PPID; exec "$@"' _ \
+				"$BASH" "$0" "$@" &
+			supervisor_pid=$!
+			wait "$supervisor_pid" || status=$?
+			deadline_expired=false
+			# Attribute the result before cleanup spends time escalating descendants.
+			if { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; } && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; then
+				deadline_expired=true
+			fi
+			if [ "$status" -ne 0 ]; then
+				# The wrapper is outside the monitor's isolated group. Escalate
+				# here even if a TERM handler already made the monitor exit.
+				kill -TERM -- "-$supervisor_pid" 2>/dev/null || true
+				sleep 1
+				kill -KILL -- "-$supervisor_pid" 2>/dev/null || true
+			fi
+			if [ "$deadline_expired" = true ]; then
+				fail 'deadline exhausted; incomplete selected checks cannot pass'
+			fi
+			exit "$status"
+		fi
+		supervised=true
+	fi
+fi
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 base=$(git rev-parse --verify "${FAST_FEEDBACK_BASE:-hikyo-upstream/main}^{commit}") || fail 'missing comparison base; fetch canonical main using CONTRIBUTING.md'
@@ -27,7 +76,21 @@ if [ "$working_tree" = false ]; then
 fi
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-fast-feedback.XXXXXX")
-trap 'rm -rf "$work"' EXIT
+lane_pids=()
+cleanup() {
+	local status=$?
+	trap - EXIT TERM INT
+	if [ "${#lane_pids[@]}" -gt 0 ]; then
+		for lane in go frontend; do
+			[ -f "$work/$lane.done" ] || printf 'fast-feedback: %s lane incomplete\n' "$lane" >&2
+		done
+	fi
+	rm -rf "$work"
+	exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 124' TERM
+trap 'exit 130' INT
 if [ "$working_tree" = true ]; then
 	# Preserve both owners of a cross-package rename as deletion and addition.
 	git diff --no-renames --name-only -z "$comparison" >"$work/changed"
@@ -85,10 +148,26 @@ started=$SECONDS
 run() {
 	local check_started=$SECONDS
 	printf 'fast-feedback: running %s\n' "$*"
-	"$@"
+	if [ "$supervised" = true ]; then
+		local remaining=$((FAST_FEEDBACK_DEADLINE - $(date +%s)))
+		[ "$remaining" -gt 0 ] || fail "deadline exhausted before $*"
+		# Keep descendants in the outer supervisor's group. The outer timeout
+		# kills the entire group; this one also names the interrupted command.
+		local status=0
+		"$timeout_tool" --foreground --kill-after=5s "${remaining}s" "$@" || status=$?
+		if { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; } && [ "$(date +%s)" -ge "$FAST_FEEDBACK_DEADLINE" ]; then
+			fail "deadline exhausted during $*"
+		fi
+		if [ "$status" -ne 0 ]; then
+			printf 'fast-feedback: check failed (exit %s): %s\n' "$status" "$*" >&2
+			return "$status"
+		fi
+	else
+		"$@"
+	fi
 	printf 'fast-feedback: completed in %ss\n' "$((SECONDS - check_started))"
 }
-printf 'fast-feedback: base=%s revision=%s working-tree=%s\n' "$base" "$head" "$working_tree"
+printf 'fast-feedback: base=%s revision=%s working-tree=%s lane=%s\n' "$base" "$head" "$working_tree" "$lane"
 if [ "$working_tree" = true ]; then
 	run git diff --check "$comparison"
 	while IFS= read -r -d '' path; do
@@ -102,6 +181,7 @@ else
 	run git diff --check "$comparison" "$head"
 fi
 
+go_checks() {
 if [ "${#go_files[@]}" -gt 0 ]; then
 	need go
 	gofmt="$(go env GOROOT)/bin/gofmt"
@@ -116,16 +196,18 @@ if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 		# The full candidate still compiles and tests every package.
 		run go mod verify
 	fi
-	index=0
-	for package in "${go_packages[@]:-}"; do
-		[ -n "$package" ] || continue
-		run go test -c -o "$work/compile-$index.test" "$package"
-		index=$((index + 1))
-	done
+	if [ "${#go_packages[@]}" -gt 0 ]; then
+		# One build graph shares compilation and linking across every owner.
+		# Null output also supports distinct packages with the same basename;
+		# no test/init/TestMain executes and no binaries dirty the checkout.
+		run go test -c -o /dev/null "${go_packages[@]}"
+	fi
 fi
-if [ "${#shell_files[@]}" -gt 0 ]; then
+if [ "${#shell_files[@]}" -gt 0 ] || [ "$workflows" = true ]; then
 	need shellcheck
 	shellcheck --version | grep -Fx 'version: 0.11.0' >/dev/null || fail 'ShellCheck 0.11.0 is required, matching CI'
+fi
+if [ "${#shell_files[@]}" -gt 0 ]; then
 	run shellcheck -- "${shell_files[@]}"
 fi
 if [ "$workflows" = true ]; then
@@ -148,6 +230,9 @@ if [ "$docs" = true ]; then
 	docs_checker="${FAST_FEEDBACK_TOOLS_DIR:-$repo_root/scripts/ci}/../../docs/site/scripts/prepare-content.mjs"
 	run node "$docs_checker" --check --source-root "$repo_root"
 fi
+}
+
+frontend_checks() {
 if [ "$web" = true ] || [ "$client" = true ]; then
 	[ -d clients/ts/node_modules ] || fail 'client dependencies missing; run pnpm --dir clients/ts install --frozen-lockfile before feedback'
 	if [ "$web" = true ]; then
@@ -169,4 +254,33 @@ if [ "$web" = true ]; then
 	run pnpm --dir web run lint
 	run pnpm --dir web run test
 fi
-printf 'fast-feedback: selected checks passed in %ss; full candidate CI remains required\n' "$((SECONDS - started))"
+}
+
+if [ "$lane" = go ]; then
+	go_checks
+elif [ "$lane" = frontend ]; then
+	frontend_checks
+elif [ "$supervised" = true ]; then
+	# The lanes share no generated files: client commands precede web commands
+	# inside their lane, while Go compilation and read-only tooling overlap it.
+	(trap - EXIT TERM INT; go_checks; touch "$work/go.done") &
+	lane_pids+=("$!")
+	(trap - EXIT TERM INT; frontend_checks; touch "$work/frontend.done") &
+	lane_pids+=("$!")
+	for ((completed = 0; completed < 2; completed++)); do
+		status=0
+		finished=''
+		wait -n -p finished "${lane_pids[@]}" || status=$?
+		[ "$status" -eq 0 ] || fail "selected lane failed (exit $status); all lanes must pass"
+		pending=()
+		for pid in "${lane_pids[@]}"; do
+			[ "$pid" = "$finished" ] || pending+=("$pid")
+		done
+		lane_pids=("${pending[@]}")
+	done
+	lane_pids=()
+else
+	go_checks
+	frontend_checks
+fi
+printf 'fast-feedback: selected checks passed in %ss (lane=%s); full candidate CI remains required\n' "$((SECONDS - started))" "$lane"

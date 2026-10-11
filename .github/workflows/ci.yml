@@ -203,6 +203,14 @@ jobs:
         run: go test ./scripts/ci -run '^TestWorkflowActionPins' -count=1
       - name: Actionlint
         run: ./scripts/ci/run-go-tool.sh actionlint
+      # Keep supervisor/refusal regressions mandatory without spending the
+      # per-commit deadline testing the feedback harness itself.
+      - name: Select pinned Node for feedback fixtures
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Fast feedback refusal and deadline fixtures
+        run: bash scripts/ci/fast-feedback_test.sh
       - name: Save lint Go cache
         if: >-
           success() && steps.lint-go-cache.outputs.cache-hit != 'true' &&
