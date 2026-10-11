@@ -58,7 +58,7 @@ jobs:
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client || fromJSON(steps.plan.outputs.plan).docs
         with:
           node-version-file: source/.nvmrc
       - name: Install pinned Corepack

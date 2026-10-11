@@ -165,4 +165,41 @@ FIXTURE_TOOLS_ROOT="$work/tooling" FIXTURE_SOURCE_ROOT="$repo" \
 	FAST_FEEDBACK_TOOLS_DIR="$work/tooling/scripts/ci" \
 	refuse 'separate tooling owner and exact source workflow verified'
 
-printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow failure cases passed\n'
+# Docs-only inputs use the real checker from the tooling owner against source.
+rm -rf .github scripts/ci
+printf '%s\n' "$(node --version | sed 's/^v//')" >.nvmrc
+commit_fixture
+docs_base=$(git rev-parse HEAD)
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
+	mkdir -p "$(dirname "$path")"
+	printf '# Fixture\n\nContent\n' >"$path"
+done
+printf '#!/bin/sh\nexit 0\n' >install/upgrade-nightly.sh
+mkdir -p docs/site/scripts
+printf 'throw new Error("source generator executed");\n' >docs/site/scripts/prepare-content.mjs
+printf '# Contributing\n\n[Feedback](scripts/dev/README.md)\n' >CONTRIBUTING.md
+commit_fixture
+FAST_FEEDBACK_BASE="$docs_base" run_feedback --plan
+jq -e '.docs == true and .web == false and .client == false' "$work/output" >/dev/null
+FAST_FEEDBACK_BASE="$docs_base" FAST_FEEDBACK_TOOLS_DIR="$script_dir" run_feedback
+[ ! -e docs/site/public ] && [ ! -e docs/site/src ]
+printf '# Contributing\n\n[Broken](missing.md)\n' >CONTRIBUTING.md
+commit_fixture
+FAST_FEEDBACK_BASE="$docs_base" FAST_FEEDBACK_TOOLS_DIR="$script_dir" refuse 'relative links have no site mapping'
+[ ! -e docs/site/public ] && [ ! -e docs/site/src ]
+# Each consumed policy/site/runtime input, including deletions, selects docs.
+selection_base=$(git rev-parse HEAD)
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
+	if [ -f "$path" ]; then
+		mv "$path" "$work/input-backup"
+		FAST_FEEDBACK_BASE="$selection_base" run_feedback --working-tree --plan
+		mv "$work/input-backup" "$path"
+	else
+		printf 'fixture\n' >"$path"
+		FAST_FEEDBACK_BASE="$selection_base" run_feedback --working-tree --plan
+		rm "$path"
+	fi
+	jq -e '.docs == true' "$work/output" >/dev/null
+done
+
+printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow/docs failure cases passed\n'

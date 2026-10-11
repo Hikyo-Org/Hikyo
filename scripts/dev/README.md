@@ -29,6 +29,13 @@ complete package deletions are validated by the mandatory full candidate suite.
 The default branch's complete CI classifier and inventory still own the full
 merge coverage contract.
 
+Changes to documentation policy inputs, docs site files, the upgrade script,
+and Node/pnpm configuration also run the docs preparation validator in read-only
+mode. It catches unmapped repository links and malformed comments without
+generating pages or requiring docs dependencies. CI uses the validator from
+its immutable tooling checkout with `--check --source-root` pointing at the
+exact checked-out PR head. The full candidate still builds and tests the site.
+
 Go dependency manifest changes select `go mod verify` for cached dependency
 integrity; complete dependency compatibility remains part of candidate CI.
 Compiling changed Go packages can be expensive from a cold cache; it checks

@@ -28,6 +28,7 @@ func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T)
 				Name string            `yaml:"name"`
 				Run  string            `yaml:"run"`
 				Uses string            `yaml:"uses"`
+				If   string            `yaml:"if"`
 				With map[string]string `yaml:"with"`
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
@@ -52,6 +53,12 @@ func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T)
 		t.Fatal("old PR heads must bootstrap feedback from the immutable merge revision without changing tested source")
 	}
 	for _, step := range job.Steps {
+		if strings.Contains(step.Uses, "setup-node@") && !strings.Contains(step.If, "fromJSON(steps.plan.outputs.plan).docs") {
+			t.Fatal("docs-only feedback must select the pinned Node runtime")
+		}
+		if (strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh")) && strings.Contains(step.If, ".docs") {
+			t.Fatal("read-only docs preparation must not require Node dependency installation")
+		}
 		if strings.Contains(step.Uses, "cache/save") || strings.Contains(step.Uses, "/.github/workflows/ci.yml") || strings.Contains(step.Run, "bash scripts/ci/fast-feedback.sh") {
 			t.Fatal("feedback cannot write shared caches, run the full graph, or depend on a helper in an old head")
 		}

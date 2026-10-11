@@ -40,6 +40,7 @@ fi
 web=false
 client=false
 workflows=false
+docs=false
 all_go=false
 go_files=()
 go_packages=()
@@ -49,6 +50,9 @@ while IFS= read -r -d '' path; do
 		web/*) web=true ;;
 		clients/ts/* | api/openapi.yaml) client=true; web=true ;;
 		.nvmrc | package.json | pnpm-lock.yaml | pnpm-workspace.yaml) client=true; web=true ;;
+	esac
+	case "$path" in
+		SECURITY.md | SUPPORT.md | GOVERNANCE.md | TRADEMARK.md | CONTRIBUTING.md | LICENSE | docs/status/* | docs/release/* | docs/site/* | install/upgrade-nightly.sh | .nvmrc | package.json | pnpm-lock.yaml | pnpm-workspace.yaml) docs=true ;;
 	esac
 	case "$path" in
 		.github/workflows/*.yml | .github/workflows/*.yaml) workflows=true ;;
@@ -71,9 +75,9 @@ while IFS= read -r -d '' path; do
 done <"$work/changed"
 
 if [ "$plan_only" = true ]; then
-	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s}\n' \
+	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s}\n' \
 		"$web" "$client" "$workflows" "$([ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ] && printf true || printf false)" \
-		"$([ "${#shell_files[@]}" -gt 0 ] && printf true || printf false)"
+		"$([ "${#shell_files[@]}" -gt 0 ] && printf true || printf false)" "$docs"
 	exit 0
 fi
 
@@ -135,6 +139,14 @@ if [ "$workflows" = true ]; then
 	done
 	[ "${#workflow_files[@]}" -gt 0 ] || fail 'no workflows remain to validate'
 	(cd "$tools_dir/../.."; run "$tools_dir/run-go-tool.sh" actionlint "${workflow_files[@]}")
+fi
+if [ "$docs" = true ]; then
+	need node
+	[ "$(node --version)" = "v$(tr -d '\r\n' <.nvmrc)" ] || fail 'Node differs from .nvmrc; select the pinned contributor toolchain'
+	# Use the checker with the supported read-only interface from the tooling
+	# checkout; an older source checkout may have a generation-only script.
+	docs_checker="${FAST_FEEDBACK_TOOLS_DIR:-$repo_root/scripts/ci}/../../docs/site/scripts/prepare-content.mjs"
+	run node "$docs_checker" --check --source-root "$repo_root"
 fi
 if [ "$web" = true ] || [ "$client" = true ]; then
 	[ -d clients/ts/node_modules ] || fail 'client dependencies missing; run pnpm --dir clients/ts install --frozen-lockfile before feedback'
