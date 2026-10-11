@@ -197,7 +197,8 @@ stays red, and blocks merge, until all of these pass:
 
 - `lint`, `test`, and the sharded isolation suites;
 - `race`, the race detector over every package except `./internal/isolation/`
-  (that suite runs race-instrumented on the weekly `race-isolation` workflow);
+  (that suite runs race-instrumented in the `reliability` workflow's `race` suite,
+  scheduled Mondays at 04:00 UTC or started manually with `suite=race`);
 - `fuzz` (see below);
 - `govulncheck` for known vulnerabilities, plus the supply-chain, web, compose,
   and Kubernetes end-to-end checks.

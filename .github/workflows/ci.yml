@@ -1530,7 +1530,7 @@ jobs:
   # retry and a single-writer SQLite pool gets its data races found here, not
   # in production. The probe-based isolation E2E suite exceeds the per-package
   # timeout under the detector, so its race-instrumented run lives in the
-  # scheduled race-isolation workflow instead of on the PR wall-clock.
+  # scheduled reliability race suite instead of on the PR wall-clock.
   race_shard:
     name: race shard (${{ matrix.shard }})
     needs:
