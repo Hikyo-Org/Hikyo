@@ -21,8 +21,8 @@ cp "$repo_root/release/repository/fallback-channel-test.json" \
 	"$fixture_dir/release/repository/fallback-channel-test.json"
 cp "$repo_root/.github/ISSUE_TEMPLATE/config.yml" \
 	"$fixture_dir/.github/ISSUE_TEMPLATE/config.yml"
-cp "$repo_root/.github/workflows/security-channel.yml" \
-	"$fixture_dir/.github/workflows/security-channel.yml"
+cp "$repo_root/.github/workflows/reliability.yml" \
+	"$fixture_dir/.github/workflows/reliability.yml"
 cp "$repo_root/docs/adr/oss-mechanics.md" "$fixture_dir/docs/adr/oss-mechanics.md"
 cp "$repo_root/docs/adr/system-architecture.md" "$fixture_dir/docs/adr/system-architecture.md"
 cp "$repo_root/docs/site/src/content/docs/docs/installation.mdx" \
@@ -93,18 +93,34 @@ fi
 
 cp "$repo_root/release/repository/main-ci-gate.json" \
 	"$fixture_dir/release/repository/main-ci-gate.json"
-sed '/issues: write/d' "$fixture_dir/.github/workflows/security-channel.yml" \
+sed '/issues: write/d' "$fixture_dir/.github/workflows/reliability.yml" \
 	>"$fixture_dir/security-channel-unprivileged.yml"
 mv "$fixture_dir/security-channel-unprivileged.yml" \
-	"$fixture_dir/.github/workflows/security-channel.yml"
+	"$fixture_dir/.github/workflows/reliability.yml"
 
 if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >/dev/null 2>&1; then
 	printf 'OSS policy fixture failed: silent fallback-channel failure was accepted\n' >&2
 	exit 1
 fi
 
-cp "$repo_root/.github/workflows/security-channel.yml" \
-	"$fixture_dir/.github/workflows/security-channel.yml"
+cp "$repo_root/.github/workflows/reliability.yml" \
+	"$fixture_dir/.github/workflows/reliability.yml"
+awk '
+	/issues: write/ { next }
+	{ print }
+	$0 == "  go-patch:" {
+		print "    permissions:"
+		print "      contents: read"
+		print "      issues: write"
+	}
+' "$fixture_dir/.github/workflows/reliability.yml" >"$fixture_dir/channel-writer-moved.yml"
+mv "$fixture_dir/channel-writer-moved.yml" "$fixture_dir/.github/workflows/reliability.yml"
+if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >/dev/null 2>&1; then
+	printf 'OSS policy fixture failed: unrelated issue writer substituted for fallback channel\n' >&2
+	exit 1
+fi
+cp "$repo_root/.github/workflows/reliability.yml" \
+	"$fixture_dir/.github/workflows/reliability.yml"
 sed "s/Homebrew does \*\*not\*\* verify Hikyo's pinned signing root/Homebrew verifies downloads/" \
 	"$fixture_dir/docs/site/src/content/docs/docs/installation.mdx" \
 	>"$fixture_dir/installation-trust-erased.mdx"

@@ -1,0 +1,211 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hikyo CI cleanup</title><style>
+:root{color-scheme:light dark;--ink:#203045;--paper:#f7f8fa;--line:#ccd4de;--accent:#126458}
+@media(prefers-color-scheme:dark){:root{--ink:#e1e7ee;--paper:#14191f;--line:#394450;--accent:#7fd7c5}}
+*{box-sizing:border-box}body{font:16px/1.65 system-ui,sans-serif;color:var(--ink);background:var(--paper);margin:0;padding:32px 22px}
+main{max-width:1000px;margin:auto}h1{font-size:2rem;letter-spacing:-.025em;line-height:1.2}h2{margin-top:2.1em;font-size:1.25rem}p,li{max-width:86ch}a{color:var(--accent);text-underline-offset:3px}code{font: .9em ui-monospace,monospace;overflow-wrap:anywhere}pre{overflow:auto;padding:16px;border:1px solid var(--line);border-radius:10px}table{border-collapse:collapse;width:100%;font-size:.91rem;margin:20px 0}th,td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid var(--line)}th{font-weight:650}td:first-child{font-weight:550}li{margin:12px 0}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0}.metric{padding:18px;border:1px solid var(--line);border-radius:12px}.metric b{font-size:1.65rem;display:block;line-height:1.3}.metric span{font-size:.9rem}.table-scroll{overflow:auto}footer{margin-top:28px;border-top:1px solid var(--line);padding-top:14px;font-size:.85rem}@media(max-width:540px){body{padding:20px 12px}.metrics{grid-template-columns:1fr}.metric{padding:12px}h1{font-size:1.6rem}th,td{padding:7px;font-size:.85rem}}@media print{body{background:white;color:black}a{color:inherit}.metrics{break-inside:avoid}}
+</style></head><body><main><h1>CI cleanup, 11 October 2026</h1><div class="metrics" aria-label="Implementation summary"><div class="metric"><b>26 → 20</b><span>Workflow files</span></div><div class="metric"><b>1 fewer</b><span>Standalone PR runner for smoke</span></div><div class="metric"><b>Hosted proof pending</b><span>Gate activation and elapsed speedup</span></div></div>
+<p>The local cleanup reduces 26 workflow files to 20, removes the standalone
+benchmark-smoke runner, and repairs the observation gate's long-branch identifier
+failure. The existing required gate and repository protections remain active.
+This is a locally validated implementation prepared for PR delivery, not a merged
+change or a measured hosted speedup. The <a href="../development/ci.md">CI guide</a> is the
+contributor entry point.</p>
+<h2>What to use now</h2>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Workflow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal contribution</td>
+<td>Automatic <code>pr-validation</code>; follow the required <code>ci-required</code> check.</td>
+</tr>
+<tr>
+<td>Full validation of main</td>
+<td>Manual <code>ci-main</code>. Nightly also runs the full graph before publishing.</td>
+</tr>
+<tr>
+<td>Security, GitLab, reporting, race, channel maintenance</td>
+<td><code>reliability</code>, with a suite selector. Original daily/weekly schedules remain.</td>
+</tr>
+<tr>
+<td>Manual backup/restore or operator acceptance</td>
+<td><code>release-acceptance</code>, with a suite selector.</td>
+</tr>
+<tr>
+<td>Operations acceptance</td>
+<td><code>ops-floor</code>, retained separately because it accepts PR execution.</td>
+</tr>
+<tr>
+<td>Paid performance measurement</td>
+<td>Existing <code>codspeed</code> and PR benchmark controls, with existing admission budgets.</td>
+</tr>
+</tbody>
+</table></div>
+<h2>Changes and reasons</h2>
+<ol>
+<li>Five scheduled/manual entry points become <code>reliability.yml</code>: <code>go-security</code>,
+   <code>gitlab-e2e</code>, <code>reporting-e2e</code>, <code>race-isolation</code>, and <code>security-channel</code>.
+   Original suite steps, cron cadence, native runners, matrices, timeouts, pinned
+   tools, caches, and artifacts remain. Only the fallback-channel job can write
+   issues. Explicit routing rejects unknown events, cron values, and menu choices.</li>
+<li><code>floor-acceptance</code> and <code>operator-floor</code> become <code>release-acceptance.yml</code>.
+   Backup custody secrets remain confined to the existing backup step. The
+   PR-capable <code>ops-floor</code> workflow remains separate from this secret-bearing flow.</li>
+<li>Benchmark smoke runs as a step in <code>test_core</code>, immediately after the same
+   packages have been compiled and tested. It still exercises every benchmark in
+   crypto, dotenv, scanning, server, and service once. Its failure now fails a
+   required job. The separate three-iteration scanning guard remains. Relevant
+   changes retain coverage; docs-only changes lose the unrelated cold Go job.</li>
+<li>The observed PR gate writes bounded versioned check identifiers. Its old
+   base64-encoded JSON exceeded GitHub's persisted length on long base refs.
+   The replacement retains full commit identities and hashes the complete base
+   ref. Legacy-state recovery only permits invalidation and fresh reassessment;
+   an incomplete old identifier is never success evidence.</li>
+<li>Metadata-only validation callbacks skip the observer runner, matching the
+   controller's existing no-op. New-run, in-progress, completed, lifecycle, and
+   scheduled repair events remain. In-progress callbacks matter because
+   <a href="https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run">GitHub does not send requested events for reruns</a>.</li>
+<li>A single <a href="../development/ci.md">CI guide</a>, linked from CONTRIBUTING, explains
+   all 20 remaining files, manual commands, trust boundaries, and gate migration.
+   Active policy/docs references follow the consolidated workflows; historical
+   reports retain their original evidence.</li>
+</ol>
+<p>Consolidation improves navigation but adds a small routing job to each maintenance
+or acceptance run. It does not remove those suites' test execution. Benchmark
+reuse removes one separately allocated job on relevant PRs and the entire smoke
+job on irrelevant PRs. These are structural reductions, not measured elapsed-time
+savings. Smoke adds a short serial step to core tests; the independent local run
+completed its service benchmarks in 23.1 seconds, excluding other packages and
+compilation. No tests, security scans, signatures, or paid-run admission gates were
+removed to make CI green.</p>
+<h2>What the measurements show</h2>
+<p>Read-only GitHub evidence was collected on 11 October. Queue is job start minus
+job creation; execution is job completion minus job start. Runner-minute sums
+across parallel jobs are neither wall-clock duration nor invoice amounts.</p>
+<div class="table-scroll"><table>
+<thead>
+<tr>
+<th>Run</th>
+<th>Context</th>
+<th style="text-align: right;">Elapsed minutes</th>
+<th style="text-align: right;">Execution job-minutes</th>
+<th style="text-align: right;">Median job queue minutes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38092256249">38092256249</a></td>
+<td>PR</td>
+<td style="text-align: right;">148.58</td>
+<td style="text-align: right;">373.60</td>
+<td style="text-align: right;">42.73</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38092248570">38092248570</a></td>
+<td>PR</td>
+<td style="text-align: right;">148.00</td>
+<td style="text-align: right;">402.57</td>
+<td style="text-align: right;">39.67</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38092248227">38092248227</a></td>
+<td>PR</td>
+<td style="text-align: right;">143.23</td>
+<td style="text-align: right;">398.28</td>
+<td style="text-align: right;">36.99</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38074450244">38074450244</a></td>
+<td>Main</td>
+<td style="text-align: right;">32.13</td>
+<td style="text-align: right;">356.13</td>
+<td style="text-align: right;">0.37</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38063236970">38063236970</a></td>
+<td>Main</td>
+<td style="text-align: right;">150.83</td>
+<td style="text-align: right;">417.52</td>
+<td style="text-align: right;">56.60</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38058367653">38058367653</a></td>
+<td>Main</td>
+<td style="text-align: right;">36.72</td>
+<td style="text-align: right;">374.25</td>
+<td style="text-align: right;">2.29</td>
+</tr>
+</tbody>
+</table></div>
+<p>Each sampled run has 46 successful jobs. Similar full graphs finish in roughly
+32 minutes with little queueing and take 151 minutes under contention. Some PR
+jobs waited 61-92 minutes for a runner. This establishes queue contention as the
+dominant source of the extreme durations; it does not identify the effective
+organization quota or other repositories' load.</p>
+<p>The GitHub inventory has 32 registered workflows versus 26 original source files:
+four provider-generated entries and two historical deleted paths account for the
+difference. Deleting YAML does not erase Actions history or guarantee that its old
+sidebar entry disappears. A separately approved archive-and-delete operation
+retires obsolete history. The eight workflows replaced here must remain active
+until these replacements reach main. GitHub-managed security settings stay intact.</p>
+<h2>Why the polling gate stays for now</h2>
+<p>The earlier replacement is still called <code>ci-required-next</code>. Hosted observation
+accepted queued checks and successes, and REST <code>filter=latest</code> selected the newest
+check. But long stacked Dependabot refs produced exactly 255-byte identifiers
+containing incomplete JSON. <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38101138824">Scheduled reconciliation 38101138824</a>
+failed with unexpected EOF for four PRs; 17 of the latest 60 sampled observer runs
+were failed callbacks. The local identifier repair addresses that proven defect.</p>
+<p>Same-head rerun invalidation and recognition as the required repository check
+remain unproven on GitHub. Ruleset 20539346 still requires the old <code>ci-required</code>,
+strict current-base status, signatures, and resolved review threads, with no bypass
+actors. Removing the old polling job and its repair workflow before this proof
+would be premature. No ruleset changes are part of this patch.</p>
+<p>The largest remaining speed opportunity is replacing the runner-held wait with
+the repaired completion-driven gate. The rollout must demonstrate long-ref
+publication/readback, stale-success invalidation after rerun/base changes, and
+required-check recognition before removing the legacy pair. Increasing timeouts,
+dropping race coverage, or blindly reducing shard count would not fix the
+measured source of delay. The sampled longest race shard already takes 22.5
+minutes against a 30-minute limit.</p>
+<h2>Validation and review</h2>
+<p>Passed validation:</p>
+<ul>
+<li><code>go test ./scripts/ci/... -count=1</code>, <code>go vet ./scripts/ci/...</code>, and gate race tests.</li>
+<li>Repository-pinned workflow lint via <code>scripts/ci/run-go-tool.sh actionlint</code>,
+  ShellCheck on changed shell files, import formatting for 1,884 handwritten Go
+  files, and <code>git diff --check</code>.</li>
+<li>Required-job, trusted-script, cache-policy, artifact-reuse, changed-path, and
+  OSS-policy shell fixtures. No required job or classifier registry was weakened.</li>
+<li>The unchanged real five-package benchmark command, run by the implementer and
+  independently by the reviewer. Tests execute revision guards, command failure
+  propagation, and rejection of a failed core job by the required aggregate.</li>
+<li>Every manual menu choice and preserved schedule, unknown-event/input refusals,
+  original-job structural comparison, and cross-job permission/secret checks.</li>
+<li>Docs typecheck: 43 files with zero errors/warnings/hints. Full docs build:
+  76 pages. The new contributor link is rewritten by the canonical site mapper.</li>
+</ul>
+<p>GPT-6.1 Sol at high effort performed research and implementation, followed by
+two fresh independent reviews. The workflow review caught an unquoted YAML <code>#</code>
+in the metadata filter; the folded expression fixed it. Security review caught
+legacy identifier recovery failing after base movement/retargeting and at some
+truncation boundaries. The final recovery handles those without trusting old
+outcomes. Independent adversarial tests cover malformed numbers/digests,
+canonicality, stale bases, retargets, old PRs sharing a head, Unicode and escape
+boundaries, and the two actual malformed checks saved from GitHub. Both reviews
+report no remaining actionable findings. Hosted publication remains untested.</p>
+<p>The final reviewed controller source SHA-256 is
+<code>f2037c8757efe64cf63f9253fb0515ef7f192488d955ae606d4ab9a6b32004d1</code>.
+Raw timing JSON, test logs, and paired research/security-review artifacts are
+retained locally under <code>/tmp/hikyo-ci-audit</code>. The linked GitHub runs are the
+durable sources for the measurements. Delivery proceeds through a signed PR with
+hosted checks; merge, release, deployment, and gate activation are not established
+by the local checks above. The separately approved sidebar cleanup archives
+available logs/artifacts before deleting runs belonging only to retired workflows.</p>
+<p>The graph was rebuilt for navigation using AST extraction without an LLM/API
+charge; its 17 parser warnings concern partially understood existing files, so
+workflow/runtime conclusions use source and executable checks. Graph extraction
+used zero semantic-model tokens; agent/review token usage was not measured.</p><footer>Self-contained offline report. External links are optional evidence references; reading the report requires no network connection.</footer></main></body></html>

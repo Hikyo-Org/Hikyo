@@ -44,11 +44,19 @@ require_file "$issue_chooser"
 require_text "$issue_chooser" 'https://github.com/Hikyo-Org/Hikyo/security/advisories/new'
 require_text "$issue_chooser" 'Do not report vulnerabilities in public issues.'
 
-security_channel_workflow="$repo_root/.github/workflows/security-channel.yml"
+security_channel_workflow="$repo_root/.github/workflows/reliability.yml"
 require_file "$security_channel_workflow"
-require_text "$security_channel_workflow" 'issues: write'
-require_text "$security_channel_workflow" 'if: failure()'
-require_text "$security_channel_workflow" 'Fallback security channel health check failed'
+security_channel_job=$(awk '
+	$0 == "  fallback-channel:" { found = 1 }
+	found && $0 != "  fallback-channel:" && $0 ~ /^  [A-Za-z0-9_-]+:/ { exit }
+	found { print }
+' "$security_channel_workflow")
+for required in 'issues: write' 'if: failure()' 'Fallback security channel health check failed'; do
+	printf '%s\n' "$security_channel_job" | grep -F -- "$required" >/dev/null || {
+		printf 'OSS policy gate: fallback-channel job is missing %s\n' "$required" >&2
+		exit 1
+	}
+done
 
 main_gate="$repo_root/release/repository/main-ci-gate.json"
 require_file "$main_gate"

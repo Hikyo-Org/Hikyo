@@ -25,6 +25,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 			Queue  string `yaml:"queue"`
 		} `yaml:"concurrency"`
 		Jobs map[string]struct {
+			If          string            `yaml:"if"`
 			Timeout     int               `yaml:"timeout-minutes"`
 			Permissions map[string]string `yaml:"permissions"`
 			Steps       []struct {
@@ -94,6 +95,9 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 		t.Fatal("commit-scoped check mutations require a single non-cancelling writer with pending-event retention")
 	}
 	job, ok := workflow.Jobs["publish"]
+	if job.If != "github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title, 'pr-metadata #')" {
+		t.Fatal("only metadata-only callback runs may skip the publisher runner; lifecycle and validation events must reconcile")
+	}
 	if !ok || len(workflow.Jobs) != 1 || job.Timeout <= 0 || job.Timeout > 10 {
 		t.Fatal("publisher must be one bounded job, never a ci-required job")
 	}

@@ -33,6 +33,10 @@ concurrency:
 
 jobs:
   publish:
+    # Metadata-only validation runs cannot produce evidence. The controller
+    # already ignores these callbacks; avoid allocating a runner for them.
+    if: >-
+      github.event_name != 'workflow_run' || !startsWith(github.event.workflow_run.display_title, 'pr-metadata #')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

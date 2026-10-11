@@ -20,6 +20,12 @@ whether you also want a local Docker or source-built instance to explore, and
 continues independent contributor setup while you decide. It preserves existing
 signing configuration and does not push, merge, or deploy without authorization.
 
+## Finding the right CI workflow
+
+Start with the [CI guide](./docs/development/ci.md). It explains the required PR
+checks, the maintenance and release-acceptance menus, and which workflows are
+internal helpers. Most contributions need only the automatic PR validation.
+
 ## Developer Certificate of Origin
 
 Every commit in a pull request must carry a Developer Certificate of Origin

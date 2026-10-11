@@ -65,7 +65,7 @@ for file in "$@"; do
 				fail 'required floor bench must not use shared caches'
 			fi
 			;;
-		floor-acceptance.yml | operator-floor.yml)
+		release-acceptance.yml)
 			# Native arm64 acceptance is an explicit release obligation. These
 			# manual jobs never share the ordinary x86 build caches.
 			expected_runner=ubuntu-24.04-arm
@@ -83,6 +83,21 @@ for file in "$@"; do
 			;;
 	esac
 	runner_source=$file
+	if [ "$(basename "$file")" = release-acceptance.yml ]; then
+		# Routing uses an ordinary runner; measured acceptance stays native ARM.
+		route=$(workflow_job_block "$file" route)
+		printf '%s\n' "$route" | grep -Fx '    runs-on: ubuntu-latest' >/dev/null ||
+			fail 'release acceptance routing must use an ordinary GitHub runner'
+		if printf '%s\n' "$route" | grep -E 'secrets\.|actions/cache(@|/)' >/dev/null; then
+			fail 'release acceptance routing must not receive custody or shared caches'
+		fi
+		runner_source=$(mktemp)
+		awk '
+			$0 == "  route:" { skip = 1; next }
+			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
+			!skip { print }
+		' "$file" >"$runner_source"
+	fi
 	if [ "$(basename "$file")" = codspeed.yml ] || [ "$(basename "$file")" = pr-benchmark.yml ]; then
 		# Only the daily/manual main job and the explicitly requested, read-only
 		# PR job may use Macro. Other jobs stay in the GitHub-hosted pool.
@@ -197,7 +212,7 @@ grep -F 'key: go-fuzz-v2-' "$workflow" |
 grep -F 'key: go-release-snapshot-v2-' "$workflow" |
 	grep -F "hashFiles('go.mod', 'go.sum', '.goreleaser.yaml')" >/dev/null ||
 	fail 'release-snapshot cache does not include GoReleaser configuration'
-require_line "$repo_root/.github/workflows/race-isolation.yml" 'name: Restore race Go cache'
+require_line "$repo_root/.github/workflows/reliability.yml" 'name: Restore race Go cache'
 
 # Browser jobs run inside the exact Playwright image matching both lockfiles.
 # No live apt mirror belongs on the critical path.

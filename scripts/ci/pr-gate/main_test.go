@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,6 +16,225 @@ import (
 	"strings"
 	"testing"
 )
+
+func legacyExternalID(t *testing.T, b binding) string {
+	t.Helper()
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return externalPrefix + base64.RawURLEncoding.EncodeToString(data)
+}
+
+func TestCompactBindingBoundsAndFullIdentity(t *testing.T) {
+	b := binding{RepoID: math.MaxInt64, PR: math.MaxInt, Head: strings.Repeat("a", 40), Base: strings.Repeat("b", 40), Run: math.MaxInt64, Attempt: math.MaxInt64}
+	for _, ref := range []string{"main", "dependabot/go_modules/github.com/sigstore/sigstore-1.11.0", strings.Repeat("stack/秘密/🦦/", 1000)} {
+		b.BaseRef = ref
+		id := b.externalID()
+		if len(id) > externalIDLimit {
+			t.Fatalf("external_id has %d bytes", len(id))
+		}
+		decoded, err := decodeBinding(id)
+		if err != nil || decoded.externalID() != id || decoded.refDigest() != b.refDigest() {
+			t.Fatalf("binding failed round trip: %v", err)
+		}
+		changes := []binding{b, b, b, b, b, b, b}
+		changes[0].RepoID--
+		changes[1].PR--
+		changes[2].Head = strings.Repeat("c", 40)
+		changes[3].Base = strings.Repeat("c", 40)
+		changes[4].BaseRef += "/changed"
+		changes[5].Run--
+		changes[6].Attempt--
+		for _, changed := range changes {
+			if changed.externalID() == id {
+				t.Fatal("changed authority shares the identifier")
+			}
+		}
+	}
+}
+
+func TestCompactBindingRejectsMalformedAndNoncanonicalIDs(t *testing.T) {
+	b := binding{RepoID: 10, PR: 7, Head: strings.Repeat("a", 40), Base: strings.Repeat("b", 40), BaseRef: "main", Run: 100, Attempt: 1}
+	id := b.externalID()
+	for _, value := range []string{compactExternalPrefix + "bogus", strings.Replace(id, ":10:", ":010:", 1), id + ":extra", id[:len(id)-1], strings.Replace(id, ":100:1", ":0:1", 1), strings.Replace(id, ":7:", ":-7:", 1), strings.Replace(id, b.refDigest(), strings.Repeat("g", 64), 1)} {
+		if _, err := decodeBinding(value); err == nil {
+			t.Fatalf("accepted malformed binding %q", value)
+		}
+	}
+}
+
+func TestLegacyBindingRemainsReadableAndMigrates(t *testing.T) {
+	f := newFixture(t)
+	b := (snapshot{PR: f.pr, Run: &f.source}).binding(10)
+	legacy := legacyExternalID(t, b)
+	decoded, err := decodeBinding(legacy)
+	if err != nil || decoded != b {
+		t.Fatalf("legacy binding lost its full authority: %v", err)
+	}
+	v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: legacy, Status: "completed", Conclusion: "success"}
+	v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+	f.api.checks = []check{v}
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	requireConclusion(t, f, "completed", "success")
+	if f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("legacy success was not invalidated by a new queued check")
+	}
+	for _, write := range f.api.writes {
+		if !strings.HasPrefix(write["external_id"].(string), compactExternalPrefix) {
+			t.Fatal("migration wrote another legacy identifier")
+		}
+	}
+}
+
+func TestTruncatedLegacyOwnedCheckRepairsBeforePolicyReads(t *testing.T) {
+	for _, ref := range []string{"dependabot/go_modules/github.com/sigstore/sigstore-1.11.0", strings.Repeat("stack/秘密/🦦/", 100)} {
+		for _, failRead := range []bool{false, true} {
+			f := newFixture(t)
+			f.pr.Base.Ref = ref
+			f.source.Pulls = []pull{f.pr}
+			f.refresh()
+			legacy := legacyExternalID(t, (snapshot{PR: f.pr}).binding(10))
+			if len(legacy) <= externalIDLimit {
+				t.Fatal("fixture did not exceed provider limit")
+			}
+			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: legacy[:externalIDLimit], Status: "completed", Conclusion: "success"}
+			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{v}
+			if failRead {
+				f.api.responses[f.c.endpoint("actions/runs/100")] = errors.New("source unavailable")
+			}
+			err := f.execute()
+			if (err != nil) != failRead {
+				t.Fatalf("repair error=%v, source read failure=%v", err, failRead)
+			}
+			if len(f.api.writes) == 0 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+				t.Fatal("truncated check did not receive a fresh queued barrier")
+			}
+			latest := f.api.checks[len(f.api.checks)-1]
+			if failRead {
+				if latest.Status != "queued" || latest.Conclusion != "" {
+					t.Fatal("malformed legacy success survived a policy read failure")
+				}
+			} else {
+				requireConclusion(t, f, "completed", "success")
+			}
+		}
+	}
+}
+
+func TestTruncatedLegacyHostileIdentityCannotBeRepaired(t *testing.T) {
+	for _, field := range []string{"repository", "invalid PR", "head", "app", "check head", "length", "encoding", "invalid suffix"} {
+		t.Run(field, func(t *testing.T) {
+			f := newFixture(t)
+			f.pr.Base.Ref = "dependabot/go_modules/github.com/sigstore/sigstore-1.11.0"
+			f.source.Pulls = []pull{f.pr}
+			f.refresh()
+			b := (snapshot{PR: f.pr}).binding(10)
+			switch field {
+			case "repository":
+				b.RepoID++
+			case "invalid PR":
+				b.PR = -7
+			case "head":
+				b.Head = strings.Repeat("c", 40)
+			}
+			legacy := legacyExternalID(t, b)
+			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: legacy[:externalIDLimit], Status: "queued"}
+			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+			switch field {
+			case "app":
+				v.App.ID++
+			case "check head":
+				v.HeadSHA = strings.Repeat("c", 40)
+			case "length":
+				v.ExternalID = v.ExternalID[:externalIDLimit-1]
+			case "encoding":
+				v.ExternalID = externalPrefix + strings.Repeat("!", externalIDLimit-len(externalPrefix))
+			case "invalid suffix":
+				data, _ := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(v.ExternalID, externalPrefix))
+				data[len(data)-1] = 1
+				v.ExternalID = externalPrefix + base64.RawURLEncoding.EncodeToString(data)
+			}
+			f.api.checks = []check{v}
+			if err := f.execute(); err == nil {
+				t.Fatal("malformed foreign check accepted")
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("malformed foreign check mutated")
+			}
+		})
+	}
+}
+
+func TestTruncatedLegacyStaleBindingIsSupersededBeforeReadFailure(t *testing.T) {
+	for _, changed := range []string{"base SHA", "retarget", "prior PR"} {
+		t.Run(changed, func(t *testing.T) {
+			f := newFixture(t)
+			f.pr.Base.Ref = "dependabot/go_modules/golang.org/x/tools-0.51.0"
+			old := (snapshot{PR: f.pr, Run: &f.source}).binding(10)
+			switch changed {
+			case "base SHA":
+				f.pr.Base.SHA = strings.Repeat("d", 40)
+			case "retarget":
+				f.pr.Base.Ref = "main"
+			case "prior PR":
+				old.PR = 8
+			}
+			f.source.Pulls = []pull{f.pr}
+			f.refresh()
+			id := legacyExternalID(t, old)
+			v := check{ID: 99, Name: "ci-required", HeadSHA: f.pr.Head.SHA, ExternalID: id[:externalIDLimit], Status: "completed", Conclusion: "success"}
+			v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = []check{v}
+			f.api.responses[f.c.endpoint("actions/runs/100")] = errors.New("source unavailable")
+			if err := f.execute(); err == nil {
+				t.Fatal("source failure ignored")
+			}
+			if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" || f.api.writes[0]["method"] != "POST" {
+				t.Fatal("stale legacy success survived reassessment")
+			}
+			b, err := decodeBinding(f.api.checks[len(f.api.checks)-1].ExternalID)
+			if err != nil || b.PR != f.pr.Number || b.Base != f.pr.Base.SHA || b.refDigest() != (snapshot{PR: f.pr}).binding(10).refDigest() || b.Run != 0 {
+				t.Fatalf("repair did not bind the current PR: %v", err)
+			}
+		})
+	}
+}
+
+func TestEveryCanonicalLegacyTruncationBoundaryCanBeInvalidated(t *testing.T) {
+	f := newFixture(t)
+	refs := []string{"a", "<", "秘密", "🦦", "\\", "\"", "\n", "\u2028", "&"}
+	for _, text := range refs {
+		for size := 1; size < 160; size++ {
+			for _, run := range []int64{0, 1, 100, 38092256249, math.MaxInt64} {
+				b := (snapshot{PR: f.pr}).binding(10)
+				b.BaseRef = strings.Repeat(text, size)
+				b.Run = run
+				if run > 0 {
+					b.Attempt = 1
+				}
+				id := legacyExternalID(t, b)
+				if len(id) <= externalIDLimit {
+					continue
+				}
+				if !truncatedLegacyBinding(id[:externalIDLimit], f.pr, 10) {
+					t.Fatalf("ref=%q repeat=%d run=%d canonical truncation refused", text, size, run)
+				}
+			}
+		}
+	}
+}
+
+func TestMalformedLegacyStringPrefixesCannotBeRepaired(t *testing.T) {
+	for _, value := range []string{`"bad\q`, `"bad\ud8`, `"bad\u00f`, `"raw<`, `"raw&`, "\"bad\x01", string([]byte{'"', 0xff})} {
+		if canonicalStringPrefix([]byte(value)) {
+			t.Fatalf("noncanonical legacy string prefix accepted: %q", value)
+		}
+	}
+}
 
 func TestVerifyPolicySubprocessContract(t *testing.T) {
 	t.Chdir(t.TempDir())

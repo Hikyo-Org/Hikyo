@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,10 +18,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const workflowPath = ".github/workflows/ci-fork.yml"
 const externalPrefix = "hikyo-pr-gate:v1:"
+const compactExternalPrefix = "hikyo-pr-gate:v2:"
+const externalIDLimit = 255
 const actionsAppID = 15368
 
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -106,14 +110,48 @@ type binding struct {
 	Base    string `json:"base"`
 	Run     int64  `json:"run"`
 	Attempt int64  `json:"attempt"`
+	// Only decoded v2 bindings use this field. The digest keeps every possible
+	// Git ref bound without exceeding GitHub's 255-byte external_id limit.
+	BaseRefDigest string `json:"-"`
 }
 
+func (b binding) refDigest() string {
+	if b.BaseRef != "" {
+		return fmt.Sprintf("%x", sha256.Sum256([]byte(b.BaseRef)))
+	}
+	return b.BaseRefDigest
+}
 func (b binding) externalID() string {
-	data, _ := json.Marshal(b)
-	return externalPrefix + base64.RawURLEncoding.EncodeToString(data)
+	// Four maximum-width signed integers and three SHA digests fit within the
+	// provider limit. Ref names are hashed in full, never shortened.
+	return fmt.Sprintf("%s%d:%d:%s:%s:%s:%d:%d", compactExternalPrefix, b.RepoID, b.PR, b.Head, b.Base, b.refDigest(), b.Run, b.Attempt)
 }
 func decodeBinding(value string) (binding, error) {
 	var b binding
+	if strings.HasPrefix(value, compactExternalPrefix) {
+		parts := strings.Split(strings.TrimPrefix(value, compactExternalPrefix), ":")
+		if len(parts) != 7 || len(value) > externalIDLimit {
+			return b, errors.New("invalid compact controller check binding")
+		}
+		var err error
+		if b.RepoID, err = strconv.ParseInt(parts[0], 10, 64); err != nil {
+			return b, err
+		}
+		if b.PR, err = strconv.Atoi(parts[1]); err != nil {
+			return b, err
+		}
+		b.Head, b.Base, b.BaseRefDigest = parts[2], parts[3], parts[4]
+		if b.Run, err = strconv.ParseInt(parts[5], 10, 64); err != nil {
+			return b, err
+		}
+		if b.Attempt, err = strconv.ParseInt(parts[6], 10, 64); err != nil {
+			return b, err
+		}
+		if len(b.BaseRefDigest) != 64 || strings.Trim(b.BaseRefDigest, "0123456789abcdef") != "" || !validBinding(b) || b.externalID() != value {
+			return b, errors.New("invalid or noncanonical compact controller check binding")
+		}
+		return b, nil
+	}
 	if !strings.HasPrefix(value, externalPrefix) {
 		return b, errors.New("not a controller check")
 	}
@@ -124,13 +162,168 @@ func decodeBinding(value string) (binding, error) {
 	if err := decode(data, &b); err != nil {
 		return b, err
 	}
-	if b.RepoID <= 0 || b.PR <= 0 || !shaPattern.MatchString(b.Head) || !shaPattern.MatchString(b.Base) || b.BaseRef == "" || b.Run < 0 || b.Attempt < 0 || (b.Run == 0) != (b.Attempt == 0) {
+	if !validBinding(b) || b.BaseRef == "" {
 		return b, errors.New("invalid controller check binding")
 	}
-	if b.externalID() != value {
+	canonical, _ := json.Marshal(b)
+	if externalPrefix+base64.RawURLEncoding.EncodeToString(canonical) != value {
 		return b, errors.New("noncanonical controller check binding")
 	}
 	return b, nil
+}
+
+func validBinding(b binding) bool {
+	return b.RepoID > 0 && b.PR > 0 && shaPattern.MatchString(b.Head) && shaPattern.MatchString(b.Base) && b.Run >= 0 && b.Attempt >= 0 && (b.Run == 0) == (b.Attempt == 0)
+}
+
+// Recognize canonical v1 truncations only after the surviving complete repo,
+// PR and head identities have been verified. Old base/attempt metadata grants
+// only authority to supersede the broken check with a new queued barrier.
+func truncatedLegacyBinding(value string, p pull, repoID int64) bool {
+	if len(value) != externalIDLimit || !strings.HasPrefix(value, externalPrefix) {
+		return false
+	}
+	data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(value, externalPrefix))
+	if err != nil {
+		return false
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var identity struct {
+		Repo int64
+		PR   int
+		Head string
+	}
+	if token, err := dec.Token(); err != nil || token != json.Delim('{') {
+		return false
+	}
+	for _, member := range []struct {
+		name  string
+		value any
+	}{{"repo", &identity.Repo}, {"pr", &identity.PR}, {"head", &identity.Head}} {
+		if token, err := dec.Token(); err != nil || token != member.name || dec.Decode(member.value) != nil {
+			return false
+		}
+	}
+	if identity.Repo != repoID || identity.PR <= 0 || identity.Head != p.Head.SHA {
+		return false
+	}
+	prefix := fmt.Sprintf(`{"repo":%d,"pr":%d,"head":%q`, identity.Repo, identity.PR, identity.Head)
+	if !bytes.HasPrefix(data, []byte(prefix)) {
+		return false
+	}
+	tail := data[len(prefix):]
+	var run int64
+	for _, field := range []string{"base_ref", "base", "run", "attempt"} {
+		literal := []byte(`,"` + field + `":`)
+		if len(tail) < len(literal) {
+			return bytes.HasPrefix(literal, tail)
+		}
+		if !bytes.HasPrefix(tail, literal) {
+			return false
+		}
+		tail = tail[len(literal):]
+		if field == "base_ref" || field == "base" {
+			var text string
+			d := json.NewDecoder(bytes.NewReader(tail))
+			if err := d.Decode(&text); err != nil {
+				if !(errors.Is(err, io.ErrUnexpectedEOF) || (errors.Is(err, io.EOF) && len(tail) == 0)) || !canonicalStringPrefix(tail) {
+					return false
+				}
+				return field == "base_ref" || len(tail) == 0 || (len(tail) <= 41 && strings.Trim(string(tail[1:]), "0123456789abcdef") == "")
+			}
+			canonical, _ := json.Marshal(text)
+			if text == "" || (field == "base" && !shaPattern.MatchString(text)) || !bytes.HasPrefix(tail, canonical) {
+				return false
+			}
+			tail = tail[len(canonical):]
+			continue
+		}
+		i := bytes.IndexByte(tail, ',')
+		if i < 0 {
+			i = len(tail)
+		}
+		digits := string(tail[:i])
+		if digits == "" {
+			return i == len(tail)
+		}
+		number, err := strconv.ParseInt(digits, 10, 64)
+		if err != nil || number < 0 || strconv.FormatInt(number, 10) != digits {
+			return false
+		}
+		if field == "run" {
+			run = number
+		} else if (run == 0) != (number == 0) {
+			return false
+		}
+		if i == len(tail) {
+			return true
+		}
+		tail = tail[i:]
+	}
+	return false
+}
+
+func canonicalStringPrefix(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
+	if data[0] != '"' {
+		return false
+	}
+	for i := 1; i < len(data); {
+		c := data[i]
+		if c == '\\' {
+			i++
+			if i == len(data) {
+				return true
+			}
+			if strings.ContainsRune(`"\bfnrt`, rune(data[i])) {
+				i++
+				continue
+			}
+			if data[i] != 'u' {
+				return false
+			}
+			i++
+			start := i
+			for i < len(data) && i-start < 4 {
+				if !strings.ContainsRune("0123456789abcdef", rune(data[i])) {
+					return false
+				}
+				i++
+			}
+			code := string(data[start:i])
+			allowed := []string{"0026", "003c", "003e", "2028", "2029"}
+			for control := 0; control < 0x20; control++ {
+				if control != '\b' && control != '\t' && control != '\n' && control != '\f' && control != '\r' {
+					allowed = append(allowed, fmt.Sprintf("%04x", control))
+				}
+			}
+			possible := false
+			for _, escape := range allowed {
+				possible = possible || strings.HasPrefix(escape, code)
+			}
+			if !possible {
+				return false
+			}
+			if i-start < 4 {
+				return true
+			}
+			continue
+		}
+		if c < 0x20 || c == '"' || c == '<' || c == '>' || c == '&' {
+			return false
+		}
+		r, size := utf8.DecodeRune(data[i:])
+		if r == utf8.RuneError && size == 1 {
+			return !utf8.FullRune(data[i:])
+		}
+		if r == '\u2028' || r == '\u2029' {
+			return false
+		}
+		i += size
+	}
+	return true
 }
 
 type event struct {
@@ -453,7 +646,7 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			if v.Name != c.checkName {
 				continue
 			}
-			if !strings.HasPrefix(v.ExternalID, externalPrefix) {
+			if !strings.HasPrefix(v.ExternalID, externalPrefix) && !strings.HasPrefix(v.ExternalID, compactExternalPrefix) {
 				if v.App.ID == actionsAppID || v.App.Slug == "github-actions" {
 					return nil, errors.New("ambiguous same-name GitHub Actions check outside the controller")
 				}
@@ -464,7 +657,11 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) ([]check, error) {
 			}
 			b, err := decodeBinding(v.ExternalID)
 			if err != nil {
-				return nil, err
+				if !truncatedLegacyBinding(v.ExternalID, p, c.repo.ID) {
+					return nil, err
+				}
+				own = append(own, v)
+				continue
 			}
 			if b.RepoID != c.repo.ID || b.Head != p.Head.SHA {
 				return nil, errors.New("controller check repository/head mismatch")
@@ -840,11 +1037,14 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
 	externalID := b.externalID()
+	if _, err := decodeBinding(externalID); err != nil {
+		return fmt.Errorf("refuse invalid publication binding: %w", err)
+	}
 	// GitHub's Checks schema does not accept null conclusions/completed_at.
 	// Reruns supersede completed checks by creating a fresh queued check.
 	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
-		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.BaseRef == b.BaseRef
+		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.Base == b.Base && old.refDigest() == b.refDigest()
 		if !placeholder {
 			selected = nil
 		}
@@ -900,7 +1100,8 @@ func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 			latest = &copy
 		}
 	}
-	if latest == nil || (latest.Status == "completed" && latest.Conclusion == "success") {
+	malformedLegacy := latest != nil && truncatedLegacyBinding(latest.ExternalID, p, c.repo.ID)
+	if latest == nil || malformedLegacy || (latest.Status == "completed" && latest.Conclusion == "success") {
 		current, err := c.readPR(ctx, number)
 		if err != nil {
 			return err

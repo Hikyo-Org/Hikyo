@@ -27,7 +27,7 @@ func TestGoSecurityWorkflowPolicy(t *testing.T) {
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "go-security.yml"))
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "reliability.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,8 @@ func TestGoSecurityWorkflowPolicy(t *testing.T) {
 	if len(workflow.Permissions) != 1 || workflow.Permissions["contents"] != "read" {
 		t.Fatal("security scan and patch proposal must have only contents read permission")
 	}
-	for name, job := range workflow.Jobs {
+	for _, name := range []string{"go-patch", "binary-security"} {
+		job := workflow.Jobs[name]
 		if len(job.Permissions) != 0 {
 			t.Fatalf("%s must inherit read-only permissions", name)
 		}

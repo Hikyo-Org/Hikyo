@@ -299,7 +299,7 @@
       "summary": "Native arm64 operator acceptance records the operator process peak RSS at 98,889,728 bytes under the 128 MiB limit, with PID, start-time, container identity and executable hash verification.",
       "source": "docs/spec/open-items.md",
       "evidence": [
-        { "label": "operator floor workflow", "path": ".github/workflows/operator-floor.yml" },
+        { "label": "operator floor workflow", "path": ".github/workflows/release-acceptance.yml" },
         { "label": "operator floor report", "path": "docs/reports/1.0/operator-floor.html" },
         { "label": "RSS correction report", "path": "docs/reports/1.0/operator-rss-correction.html" },
         { "label": "operator limits", "path": "chart/hikyo/values.yaml" }
