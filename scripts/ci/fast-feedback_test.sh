@@ -204,4 +204,5 @@ done
 
 printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow/docs failure cases passed\n'
 
+bash "$script_dir/fast-feedback-lanes_test.sh"
 bash "$script_dir/fast-feedback-deadline_test.sh"

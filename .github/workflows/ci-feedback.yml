@@ -20,10 +20,16 @@ concurrency:
 
 jobs:
   feedback:
-    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }}
+    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }} (${{ matrix.lane }})
     if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
     runs-on: ubuntu-latest
     timeout-minutes: 4
+    # Both complete lanes are required for a successful workflow conclusion.
+    # Separate runners avoid cold Go compilation starving frontend workers.
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [go, frontend]
     defaults:
       run:
         working-directory: source
@@ -63,11 +69,11 @@ jobs:
           plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)
           echo "plan=$plan" >> "$GITHUB_OUTPUT"
       - name: Check budget before runtime setup
-        if: fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).shell
+        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         timeout-minutes: 1
-        if: fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).shell
+        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
         with:
           go-version-file: feedback-tools/go.mod
           cache: false
@@ -75,27 +81,27 @@ jobs:
       # without completing the selected compilation. Let Go fetch only modules
       # it needs and compile from scratch instead of importing unrelated caches.
       - name: Check budget before runtime setup
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client || fromJSON(steps.plan.outputs.plan).docs
+        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         timeout-minutes: 1
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client || fromJSON(steps.plan.outputs.plan).docs
+        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)
         with:
           node-version-file: source/.nvmrc
       - name: Install pinned Corepack
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
         run: |
           bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/install-corepack.sh"
       - name: Select explicit pnpm cache path and ABI
         id: pnpm-cache
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
         run: |
           bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-pnpm-cache.sh"
       - name: Check budget before cache restore
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - name: Restore frontend dependencies
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 1
         with:
@@ -103,15 +109,15 @@ jobs:
           key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('source/.nvmrc', 'source/web/package.json', 'source/web/pnpm-lock.yaml', 'source/web/pnpm-workspace.yaml', 'source/clients/ts/package.json', 'source/clients/ts/pnpm-lock.yaml', 'source/clients/ts/pnpm-workspace.yaml') }}
           restore-keys: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
       - name: Install locked client dependencies
-        if: fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client
+        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
         working-directory: source/clients/ts
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" pnpm install --frozen-lockfile
       - name: Install locked web dependencies
-        if: fromJSON(steps.plan.outputs.plan).web
+        if: matrix.lane == 'frontend' && fromJSON(steps.plan.outputs.plan).web
         working-directory: source/web
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" pnpm install --frozen-lockfile
       - name: Install verified pinned ShellCheck
-        if: fromJSON(steps.plan.outputs.plan).shell
+        if: matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).shell
         env:
           SHELLCHECK_VERSION: v0.11.0
           SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
@@ -125,4 +131,4 @@ jobs:
           echo "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
           INSTALL_SHELLCHECK
       - name: Run fast feedback
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh"
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane }}

@@ -6,16 +6,22 @@ set -euo pipefail
 
 working_tree=false
 plan_only=false
+lane=all
 for argument in "$@"; do
 	case "$argument" in
 		--working-tree) working_tree=true ;;
 		--plan) plan_only=true ;;
-		*) printf 'usage: %s [--working-tree] [--plan]\n' "$0" >&2; exit 2 ;;
+		--lane=*) lane=${argument#--lane=} ;;
+		*) printf 'usage: %s [--working-tree] [--plan] [--lane=all|go|frontend]\n' "$0" >&2; exit 2 ;;
 	esac
 done
 
 fail() { printf 'fast-feedback: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "missing $1; prepare the pinned contributor toolchain first"; }
+case "$lane" in
+	all | go | frontend) ;;
+	*) fail 'invalid lane; expected all, go or frontend' ;;
+esac
 
 # CI supplies one absolute deadline before setup. Local feedback without that
 # timestamp keeps its existing tool requirements and has no imposed deadline.
@@ -151,7 +157,7 @@ run() {
 	fi
 	printf 'fast-feedback: completed in %ss\n' "$((SECONDS - check_started))"
 }
-printf 'fast-feedback: base=%s revision=%s working-tree=%s\n' "$base" "$head" "$working_tree"
+printf 'fast-feedback: base=%s revision=%s working-tree=%s lane=%s\n' "$base" "$head" "$working_tree" "$lane"
 if [ "$working_tree" = true ]; then
 	run git diff --check "$comparison"
 	while IFS= read -r -d '' path; do
@@ -165,6 +171,7 @@ else
 	run git diff --check "$comparison" "$head"
 fi
 
+go_checks() {
 if [ "${#go_files[@]}" -gt 0 ]; then
 	need go
 	gofmt="$(go env GOROOT)/bin/gofmt"
@@ -172,7 +179,6 @@ if [ "${#go_files[@]}" -gt 0 ]; then
 	[ -z "$unformatted" ] || { printf '%s\n' "$unformatted" >&2; fail 'changed Go files need gofmt'; }
 	printf 'fast-feedback: Go formatting passed (%s files)\n' "${#go_files[@]}"
 fi
-go_checks() {
 if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 	need go
 	if [ "$all_go" = true ]; then
@@ -238,7 +244,11 @@ if [ "$web" = true ]; then
 fi
 }
 
-if [ "$supervised" = true ]; then
+if [ "$lane" = go ]; then
+	go_checks
+elif [ "$lane" = frontend ]; then
+	frontend_checks
+elif [ "$supervised" = true ]; then
 	# The lanes share no generated files: client commands precede web commands
 	# inside their lane, while Go compilation and read-only tooling overlap it.
 	(trap - EXIT TERM INT; go_checks; touch "$work/go.done") &
@@ -261,4 +271,4 @@ else
 	go_checks
 	frontend_checks
 fi
-printf 'fast-feedback: selected checks passed in %ss; full candidate CI remains required\n' "$((SECONDS - started))"
+printf 'fast-feedback: selected checks passed in %ss (lane=%s); full candidate CI remains required\n' "$((SECONDS - started))" "$lane"

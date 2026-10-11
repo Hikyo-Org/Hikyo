@@ -75,6 +75,25 @@ STUB
 chmod +x "$work/bin/"*
 export PATH="$work/bin:$PATH"
 export FAST_FEEDBACK_SUPERVISOR_PID=$PPID # Inherited marker cannot bypass isolation.
+# SIGKILL delivery is asynchronous, especially for Linux uninterruptible I/O.
+# Give all captured children one bounded settling window, accepting only absent
+# or zombie processes. Every other state remains a leak if it survives the bound.
+assert_children_gone() {
+	local attempt pid state started=$SECONDS
+	local survivors=()
+	for ((attempt = 0; attempt < 40; attempt++)); do
+		survivors=()
+		for pid in "$@"; do
+			state=$(ps -o stat= -p "$pid" 2>/dev/null | tr -d '[:space:]' || true)
+			if [ -n "$state" ] && [[ "$state" != Z* ]]; then survivors+=("$pid $state"); fi
+		done
+		[ "${#survivors[@]}" -gt 0 ] || return 0
+		[ "$((SECONDS - started))" -lt 2 ] || break
+		if [ "$attempt" -lt 39 ]; then sleep .05; fi
+	done
+	printf 'surviving descendant %s\n' "${survivors[@]}" >&2
+	return 1
+}
 run_case() {
 	rm -f "$work/"*.started "$work/"*.finished "$work/"*.child "$work/"*.commands
 	export FIXTURE_MODE=$1 FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 3))
@@ -95,15 +114,46 @@ run_case() {
 			fail-frontend) [ -s "$work/go.child" ] ;;
 			timeout) [ -s "$work/go.child" ] && [ -s "$work/frontend.child" ] ;;
 		esac
+		local children=()
 		for path in "$work/"*.child; do
 			[ -f "$path" ] || continue
-			pid=$(cat "$path")
-			# A reaped or zombie process cannot continue executing descendants.
-			state=$(ps -o stat= -p "$pid" || true)
-			[ -z "$state" ] || [[ "$state" = Z* ]] || { printf 'surviving descendant %s %s\n' "$pid" "$state" >&2; exit 1; }
+			children+=("$(cat "$path")")
 		done
+		assert_children_gone "${children[@]}"
 	fi
 }
+# Exercise the actual death oracle deterministically: transient D is not
+# accepted until a later absent/Z observation; sustained live states stay red.
+mkdir "$work/ps-oracle"
+cat >"$work/ps-oracle/ps" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+pid=$4
+count_file="$FIXTURE_WORK/ps-$pid.count"
+count=0
+[ ! -f "$count_file" ] || count=$(cat "$count_file")
+printf '%s\n' "$((count + 1))" >"$count_file"
+case "$pid" in
+	101) [ "$count" -gt 0 ] || printf 'D\n' ;;
+	102) if [ "$count" -eq 0 ]; then printf 'D\n'; else printf 'Z\n'; fi ;;
+	103) printf 'D\n' ;;
+	104) printf 'R\n' ;;
+	105) printf 'S\n' ;;
+	*) exit 1 ;;
+esac
+STUB
+chmod +x "$work/ps-oracle/ps"
+PATH="$work/ps-oracle:$PATH" assert_children_gone 101 102
+[ "$(cat "$work/ps-101.count")" -eq 2 ] && [ "$(cat "$work/ps-102.count")" -eq 2 ]
+if PATH="$work/ps-oracle:$PATH" assert_children_gone 103 104 105 >"$work/oracle-output" 2>&1; then
+	printf 'death oracle accepted sustained live states\n' >&2
+	exit 1
+fi
+for expected in '103 D' '104 R' '105 S'; do grep -F "surviving descendant $expected" "$work/oracle-output"; done
+for pid in 103 104 105; do
+	count=$(cat "$work/ps-$pid.count")
+	[ "$count" -gt 1 ] && [ "$count" -le 40 ]
+done
 run_case pass
 run_case fail-go
 run_case fail-frontend
