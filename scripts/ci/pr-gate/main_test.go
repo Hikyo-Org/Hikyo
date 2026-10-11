@@ -342,13 +342,14 @@ exit "$POLICY_FIXTURE_EXIT"
 }
 
 type fakeAPI struct {
-	responses map[string]any
-	readHook  func(string, int)
-	reads     map[string]int
-	writes    []map[string]any
-	writeErr  error
-	checks    []check
-	nextID    int64
+	scopeChecksToHead bool
+	responses         map[string]any
+	readHook          func(string, int)
+	reads             map[string]int
+	writes            []map[string]any
+	writeErr          error
+	checks            []check
+	nextID            int64
 }
 
 func (f *fakeAPI) read(_ context.Context, path string, result any) error {
@@ -358,12 +359,21 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 	}
 	var response any
 	if strings.Contains(path, "/check-runs?") {
+		checks := f.checks
+		if f.scopeChecksToHead {
+			checks = nil
+			for _, v := range f.checks {
+				if strings.Contains(path, "/commits/"+v.HeadSHA+"/") {
+					checks = append(checks, v)
+				}
+			}
+		}
 		u, err := url.Parse(path)
 		if err != nil {
 			return err
 		}
 		latest := make(map[int64]check)
-		for _, v := range f.checks {
+		for _, v := range checks {
 			if v.Name != u.Query().Get("check_name") {
 				continue
 			}
@@ -373,7 +383,7 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 		}
 		filtered := []check{}
 		if u.Query().Get("filter") == "all" {
-			for _, v := range f.checks {
+			for _, v := range checks {
 				if v.Name == u.Query().Get("check_name") {
 					filtered = append(filtered, v)
 				}
@@ -982,6 +992,7 @@ func TestRevalidateImmediatelyBeforeMutation(t *testing.T) {
 	for _, field := range []string{"head", "base", "attempt", "merge candidate"} {
 		t.Run(field, func(t *testing.T) {
 			f := newFixture(t)
+			f.api.scopeChecksToHead = true
 			f.api.readHook = func(path string, n int) {
 				if path == f.c.endpoint("pulls/7") && n == 4 {
 					switch field {
@@ -995,10 +1006,19 @@ func TestRevalidateImmediatelyBeforeMutation(t *testing.T) {
 						f.pr.MergeCommitSHA = strings.Repeat("d", 40)
 					}
 					f.refresh()
+					if field == "head" {
+						f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 0, "workflow_runs": []run{}}
+					}
 				}
 			}
-			if err := f.execute(); err == nil {
-				t.Fatal("changed state accepted")
+			if err := f.execute(); err != nil {
+				t.Fatal(err)
+			}
+			requireConclusion(t, f, "queued", "")
+			last := f.api.checks[len(f.api.checks)-1]
+			b, err := decodeBinding(last.ExternalID)
+			if err != nil || b.Head != f.pr.Head.SHA || b.Run != 0 {
+				t.Fatal("movement did not leave current unbound blocking check")
 			}
 			for _, v := range f.api.writes {
 				if v["conclusion"] == "success" {
@@ -1739,8 +1759,13 @@ func TestLiveMainRefAdvanceDuringPublicationRevokesSuccess(t *testing.T) {
 			f.api.responses[path] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": strings.Repeat("d", 40)}}
 		}
 	}
-	if err := f.execute(); err == nil {
-		t.Fatal("live main advancement during final reads was accepted")
+	if err := f.execute(); err != nil {
+		t.Fatal(err)
+	}
+	requireConclusion(t, f, "queued", "")
+	b, err := decodeBinding(f.api.checks[len(f.api.checks)-1].ExternalID)
+	if err != nil || b.Run != 0 {
+		t.Fatal("main movement did not replace proof with unbound pending")
 	}
 	for _, write := range f.api.writes {
 		if write["conclusion"] == "success" {
@@ -1908,5 +1933,129 @@ func TestCollisionMetadataRefreshFailureStillPublishesPending(t *testing.T) {
 	}
 	if len(f.api.writes) != 1 || f.api.writes[0]["status"] != "queued" || f.api.writes[0]["method"] != "POST" || f.api.checks[0] != foreign {
 		t.Fatal("refresh failure retained green without an owned barrier")
+	}
+}
+
+func TestExpectedMovementRecoversCurrentBarrierWithoutAuthorizing(t *testing.T) {
+	for _, name := range []string{"new head has prior success", "closed", "keeps moving", "recovery API failure", "recovery write failure", "foreign check"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.api.scopeChecksToHead = true
+			moved := false
+			newHead := strings.Repeat("d", 40)
+			if name == "new head has prior success" {
+				newer := f.pr
+				newer.Head.SHA = newHead
+				old := check{ID: 800, Name: f.c.checkName, HeadSHA: newHead, ExternalID: (snapshot{PR: newer, Run: &f.source}).binding(10).externalID(), Status: "completed", Conclusion: "success"}
+				old.App.ID, old.App.Slug = actionsAppID, "github-actions"
+				f.api.checks = append(f.api.checks, old)
+			}
+			f.api.readHook = func(path string, n int) {
+				if path != f.c.endpoint("pulls/7") {
+					return
+				}
+				if n == 4 {
+					moved = true
+					f.pr.MergeCommitSHA = strings.Repeat("e", 40)
+					if name == "new head has prior success" {
+						f.pr.Head.SHA = newHead
+					}
+					if name == "closed" {
+						f.pr.State = "closed"
+					}
+					f.refresh()
+					if name == "new head has prior success" {
+						f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", newHead))] = map[string]any{"total_count": 0, "workflow_runs": []run{}}
+					}
+				}
+				if n == 5 {
+					switch name {
+					case "recovery API failure":
+						f.api.responses[path] = errors.New("unavailable recovery metadata")
+					case "recovery write failure":
+						f.api.writeErr = errors.New("unavailable blocking publication")
+					case "foreign check":
+						v := check{ID: 850, Name: f.c.checkName, HeadSHA: f.pr.Head.SHA, ExternalID: (snapshot{PR: f.pr}).binding(10).externalID(), Status: "completed", Conclusion: "success"}
+						v.App.ID, v.App.Slug = 66, "foreign"
+						f.api.checks = append(f.api.checks, v)
+					}
+				}
+				if n == 6 && name == "keeps moving" {
+					f.pr.Head.SHA = strings.Repeat("f", 40)
+					f.refresh()
+				}
+			}
+			err := f.execute()
+			if !moved {
+				t.Fatal("movement fixture did not run")
+			}
+			mustFail := name == "keeps moving" || name == "recovery API failure" || name == "recovery write failure" || name == "foreign check"
+			if (err != nil) != mustFail {
+				t.Fatalf("operational error=%v, mustFail=%v", err, mustFail)
+			}
+			for _, w := range f.api.writes {
+				if w["conclusion"] == "success" {
+					t.Fatal("movement authorized success")
+				}
+			}
+			if name == "closed" {
+				if len(f.api.writes) != 1 {
+					t.Fatal("closed PR received a new check")
+				}
+				return
+			}
+			if !mustFail {
+				latest := f.api.checks[len(f.api.checks)-1]
+				b, e := decodeBinding(latest.ExternalID)
+				if e != nil || latest.Status != "queued" || b.Head != newHead || b.Run != 0 || latest.ID <= 800 {
+					t.Fatal("current head prior success was not superseded by an unbound queued barrier")
+				}
+			}
+			if f.api.reads[f.c.endpoint("pulls/7")] > 7 {
+				t.Fatal("movement recovery was not bounded")
+			}
+		})
+	}
+}
+
+func TestMainSweepContinuesAfterExpectedPRMovement(t *testing.T) {
+	f := newFixture(t)
+	f.verifyCode = 75
+	f.source.Status = "queued"
+	f.source.Conclusion = ""
+	f.refresh()
+	second := f.pr
+	second.Number = 8
+	second.Head.SHA = strings.Repeat("d", 40)
+	f.api.responses[f.c.endpoint("pulls/8")] = second
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", second.Head.SHA))] = map[string]any{"total_count": 0, "workflow_runs": []run{}}
+	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, second}
+	f.api.scopeChecksToHead = true
+	moved := false
+	f.api.readHook = func(path string, n int) {
+		if path == f.c.endpoint("pulls/7") && n == 4 {
+			moved = true
+			f.pr.MergeCommitSHA = strings.Repeat("e", 40)
+			f.refresh()
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, second}
+		}
+	}
+	f.event.Ref = "refs/heads/main"
+	if err := f.c.execute(context.Background(), "push", f.event); err != nil {
+		t.Fatal(err)
+	}
+	if !moved {
+		t.Fatal("main sweep did not reproduce first PR movement")
+	}
+	seen := map[int]bool{}
+	for _, v := range f.api.checks {
+		b, e := decodeBinding(v.ExternalID)
+		if e != nil || v.Status != "queued" || v.Conclusion != "" {
+			t.Fatal("sweep published invalid or successful result")
+		}
+		seen[b.PR] = true
+	}
+	if !seen[7] || !seen[8] {
+		t.Fatal("pending PR stopped later PR reconciliation")
 	}
 }

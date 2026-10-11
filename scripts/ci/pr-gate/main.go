@@ -759,7 +759,7 @@ func (c *controller) snapshot(ctx context.Context, number int) (snapshot, error)
 		if other.Number == p.Number {
 			found = true
 			if other.Head != p.Head || other.Base.Ref != p.Base.Ref || other.Base.Repo != p.Base.Repo {
-				return s, errors.New("PR changed during collision scan")
+				return s, &prStateMovement{phase: "collision scan"}
 			}
 		}
 		if other.Number != p.Number && other.Head.SHA == p.Head.SHA {
@@ -1059,7 +1059,65 @@ func sameSnapshot(a, b snapshot, repoID int64) bool {
 	}
 	return b.Run != nil && a.Run.Status == b.Run.Status && a.Run.Conclusion == b.Run.Conclusion && associated(*b.Run, b.PR, true) == associated(*a.Run, a.PR, true)
 }
+
+// prStateMovement identifies only observed authenticated metadata movement.
+// API, malformed identity and immutable proof failures never use this type.
+type prStateMovement struct{ phase string }
+
+func (e *prStateMovement) Error() string { return "PR state changed during " + e.phase }
+
 func (c *controller) reconcile(ctx context.Context, number int, callback *run) error {
+	err := c.reconcileCurrent(ctx, number, callback)
+	var moved *prStateMovement
+	if !errors.As(err, &moved) {
+		return err
+	}
+	// Recover once, without evaluating success or retrying a mutable proof. An
+	// expected transition is operationally healthy only after current PR policy
+	// is blocked; publication/listing failures still fail the controller.
+	return c.blockMovement(ctx, number, moved.phase)
+}
+
+func (c *controller) blockMovement(ctx context.Context, number int, phase string) error {
+	p, err := c.readPRMetadata(ctx, number)
+	if err != nil {
+		return err
+	}
+	if p.State != "open" {
+		return nil
+	}
+	own, err := c.ownedChecks(ctx, p)
+	if err != nil {
+		return err
+	}
+	var selected *check
+	for _, v := range own {
+		if selected == nil || v.ID > selected.ID {
+			copy := v
+			selected = &copy
+		}
+	}
+	// The raw PR base may precede live main. This Run0 barrier carries no
+	// validation authority; a later reconciliation must prove the live candidate.
+	b := (snapshot{PR: p}).binding(c.repo.ID)
+	if err := c.publish(ctx, p, b, selected, pending("PR state changed during "+phase+"; fresh candidate reconciliation is required.")); err != nil {
+		return err
+	}
+	current, err := c.readPRMetadata(ctx, number)
+	if err != nil {
+		return err
+	}
+	if current.State != "open" {
+		return nil
+	}
+	if current.Head != p.Head || current.Base != p.Base {
+		return errors.New("PR changed during pending recovery; current identity could not be confirmed blocked")
+	}
+	_, err = fmt.Fprintf(c.output, "PR #%d: pending after authenticated state movement during %s\n", number, phase)
+	return err
+}
+
+func (c *controller) reconcileCurrent(ctx context.Context, number int, callback *run) error {
 	// Revoke our prior success before querying mutable source/policy APIs. If
 	// those later reads fail, an earlier result must not keep authorizing merge.
 	if err := c.invalidateSuccess(ctx, number); err != nil {
@@ -1078,7 +1136,7 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 			return err
 		}
 		if len(own) > 0 {
-			return c.reconcile(ctx, number, nil)
+			return c.reconcileCurrent(ctx, number, nil)
 		}
 		return nil
 	}
@@ -1123,7 +1181,7 @@ func (c *controller) reconcile(ctx context.Context, number int, callback *run) e
 		return err
 	}
 	if !sameSnapshot(s, final, c.repo.ID) {
-		return errors.New("PR, base, source run or attempt changed before publication")
+		return &prStateMovement{phase: "final publication"}
 	}
 	if result.Conclusion == "success" {
 		proved, err := c.proveIntegration(ctx, *final.Run, final.PR)
@@ -1261,7 +1319,7 @@ func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 			return err
 		}
 		if current.State != "open" || current.Head != p.Head || current.Base != p.Base {
-			return errors.New("PR changed before pending barrier")
+			return &prStateMovement{phase: "initial pending barrier"}
 		}
 		b := (snapshot{PR: p}).binding(c.repo.ID)
 		if err := c.publish(ctx, p, b, latest, pending("Rechecking current policy, validation attempt and integration candidate.")); err != nil {

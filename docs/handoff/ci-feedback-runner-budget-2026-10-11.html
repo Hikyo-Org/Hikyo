@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CI feedback runner budget follow-up</title><style>body{font:16px/1.6 system-ui;max-width:72rem;margin:2rem auto;padding:0 1rem;background:#f5f7fa;color:#1e293b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:white;padding:1.5rem;border:1px solid #cbd5e1;border-radius:8px}</style><main><pre># CI feedback runner budget follow-up
 
-This CI-only extraction targets main `82113c81ef4ac9ed1a4e4653350120728d605a7d`. Its 11 implementation files match the independently reviewed CI state from PR #883 head `91b085944d461e8fd4c74de65f4019a7a5f16b11`, with the three test-only helper names subsequently repaired to Reuse terminology. Auth, API generation, application changes and invitation documentation stay in PR #883.
+This CI-only extraction targets main `82113c81ef4ac9ed1a4e4653350120728d605a7d`. Its 11 implementation files match the independently reviewed CI state from PR #883 head `91b085944d461e8fd4c74de65f4019a7a5f16b11`, with the three test-only helper names subsequently repaired to Reuse terminology. Auth, API generation, application changes and invitation documentation stay in PR #883. The additional controller repair below is also confined to CI.
 
 ## Behavior
 
@@ -19,6 +19,14 @@ Before runner separation, frontend and Go competed on one runner and useful feed
 That head&#x27;s full candidate correctly failed <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38155416851/job/114517566905">isolation shard 0</a>: the registry invariant interpreted three YAML mutation helper names containing Cache as runtime caches. Only those declaration names and callsites changed to Reuse. The focused invariant reproduced all three errors before repair and passed afterward; the registry, invariant and every negative YAML mutation remain unchanged.
 
 Local validation and independent review are tracked in the accompanying PR. The extracted CI files match a frozen review manifest; the frozen coverage baseline and domain registry are unchanged. The extraction is isolated from PR #883&#x27;s application code, so its local and hosted results must be assessed on its own exact head.
+
+## Expected PR state movement does not fail main
+
+The <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38148806421/job/114497705112">main push publisher failure</a> was an authenticated PR #812 snapshot changing before publication, not a failed application test or proof that merely leaving the PR open is an error. Its exact changing field was not recorded. The sweep continued through other PRs and then joined the movement error into a failed workflow. The current PR is behind main and has no full candidate; it correctly remains blocked.
+
+Only explicitly observed authenticated metadata comparisons now use a typed movement result. Reconciliation handles that result once: read fresh PR identity, validate owned checks, publish an unbound queued barrier, and confirm that identity is still current. A closed PR receives no recovery write. Persistent head/base churn, unreadable metadata, foreign check identity, failed publication, malformed data, immutable proof errors and final workflow authority failure still return controller errors. No arbitrary errors are swallowed and no stale success is published. The bounded recovery never retries validation proof.
+
+Regressions reproduce the old failure with a queued PR in a two-PR main sweep and a new head that already has an owned success. The repair supersedes that success with a fresh queued barrier while continuing the sweep. Recovery API/write/foreign-check/churn cases stay red. Existing freshness and authorization assertions remain in place. Focused cache invariant, full CI tooling tests, race checks and vet pass in the isolated checkout.
 
 ## Delivery and merge boundary
 
