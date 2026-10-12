@@ -73,7 +73,13 @@ jobs:
               case "$FULL_CANDIDATE" in
                 true)
                   test "$SOURCE_REVISION" = "$GITHUB_SHA"
-                  test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
+                  test "$GITHUB_REF" = "refs/pull/$PR_NUMBER/merge"
+                  # The labeled event can omit advisory merge metadata while
+                  # GITHUB_SHA already identifies its authenticated merge ref.
+                  if [ -n "$PR_MERGE_SHA" ]; then
+                    [[ "$PR_MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+                    test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
+                  fi
                   [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
                   [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
                   test "$PR_BASE_REF" = "$DEFAULT_BRANCH"
