@@ -12,11 +12,19 @@ import (
 
 type lifecycleAPI struct {
 	api
-	fake   *fakeAPI
-	mutate func(string, string, map[string]any, *check) error
+	fake           *fakeAPI
+	mutate         func(string, string, map[string]any, *check) error
+	beforeRead     func(string)
+	latestResponse func([]check) any
 }
 
 func (a *lifecycleAPI) read(ctx context.Context, path string, result any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.beforeRead != nil {
+		a.beforeRead(path)
+	}
 	if strings.Contains(path, "/check-runs/") && !strings.Contains(path, "?") {
 		for _, v := range a.fake.checks {
 			if strings.HasSuffix(path, fmt.Sprintf("/check-runs/%d", v.ID)) {
@@ -26,19 +34,64 @@ func (a *lifecycleAPI) read(ctx context.Context, path string, result any) error 
 		}
 		return errors.New("unknown canary ID")
 	}
+	if strings.Contains(path, "/check-runs?") && strings.Contains(path, "check_name="+lifecycleName) {
+		var rows []check
+		for _, v := range a.fake.checks {
+			if v.Name == lifecycleName {
+				rows = append(rows, v)
+			}
+		}
+		if rows == nil {
+			rows = []check{}
+		}
+		var response any
+		if strings.Contains(path, "filter=latest") {
+			if a.latestResponse != nil {
+				response = a.latestResponse(rows)
+			} else {
+				var latest *check
+				for i := range rows {
+					if latest == nil || rows[i].ID > latest.ID {
+						latest = &rows[i]
+					}
+				}
+				rows = []check{}
+				if latest != nil {
+					rows = append(rows, *latest)
+				}
+			}
+		}
+		if response == nil {
+			response = map[string]any{"total_count": len(rows), "check_runs": rows}
+		}
+		b, _ := json.Marshal(response)
+		return decode(b, result)
+	}
 	return a.api.read(ctx, path, result)
 }
 func (a *lifecycleAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b, _ := json.Marshal(payload)
-	var m map[string]any
-	if err := decode(b, &m); err != nil {
+	var body map[string]any
+	if err := decode(b, &body); err != nil {
 		return err
 	}
 	if err := a.api.write(ctx, method, path, payload, result); err != nil {
 		return err
 	}
+	v := result.(*check)
+	if v.Status == "completed" && v.CompletedAt == "" {
+		v.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+		for i := range a.fake.checks {
+			if a.fake.checks[i].ID == v.ID {
+				a.fake.checks[i].CompletedAt = v.CompletedAt
+			}
+		}
+	}
 	if a.mutate != nil {
-		return a.mutate(method, path, m, result.(*check))
+		return a.mutate(method, path, body, v)
 	}
 	return nil
 }
@@ -59,41 +112,48 @@ func newLifecycleFixture(t *testing.T) (*fixture, *lifecycleAPI, event) {
 	e.Inputs.PR, e.Inputs.Work = "", ""
 	return f, a, e
 }
-func TestLifecycleProbeUsesExactProductionPayloadAndCleansItsOwnedID(t *testing.T) {
+func TestLifecycleProbeUsesSharedImmutableVerdictsAndCleansAllIDs(t *testing.T) {
 	f, _, e := newLifecycleFixture(t)
 	var receipt lifecycleReceipt
 	if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.ResetAccepted || !receipt.CleanupVerified || receipt.Canary.Name != lifecycleName || receipt.Source.SHA != f.pr.Base.SHA || receipt.Source.RunID != 501 || receipt.Source.Attempt != 1 {
+	if receipt.Version != 2 || receipt.Protocol != lifecycleProtocol || !receipt.LifecycleAccepted || !receipt.CleanupVerified || receipt.Source.SHA != f.pr.Base.SHA || receipt.Source.RunID != 501 || receipt.Source.Attempt != 1 {
 		t.Fatalf("incomplete receipt: %+v", receipt)
 	}
-	if len(f.api.checks) != 1 || len(f.api.writes) != 3 {
-		t.Fatalf("canary did not retain one ID: checks%d writes%d", len(f.api.checks), len(f.api.writes))
+	if len(f.api.checks) != 2 || len(f.api.writes) != 7 || len(receipt.Canaries) != 2 || len(receipt.Cleanups) != 2 || receipt.HistoryAfter != receipt.HistoryBefore+2 {
+		t.Fatalf("unexpected history/counts: %+v writes%d", receipt, len(f.api.writes))
 	}
-	if f.api.checks[0].ID != receipt.Canary.ID || f.api.checks[0].Status != "completed" || f.api.checks[0].Conclusion != "neutral" {
-		t.Fatal("canary not cleaned up neutral")
+	a, b := receipt.Stages.Initial.ID, receipt.Stages.Barrier.ID
+	if a == b || receipt.EffectivePending.ID != b || receipt.Stages.Reuse.ID != b || receipt.Stages.Finalized.ID != b || receipt.Stages.Noop.ID != b {
+		t.Fatal("probe did not retain distinct generations and reuse only the pending ID")
 	}
-	queued := f.api.writes[1]
-	for _, key := range []string{"conclusion", "completed_at"} {
-		if value, present := queued[key]; !present || value != nil {
-			t.Fatalf("reset did not explicitly clear %s", key)
+	want := []lifecycleCounts{{1, 1}, {2, 1}, {2, 2}, {2, 3}, {2, 3}, {2, 5}}
+	got := []lifecycleCounts{receipt.Operations.Initial, receipt.Operations.Barrier, receipt.Operations.Reuse, receipt.Operations.Finalized, receipt.Operations.Noop, receipt.Operations.Cleanup}
+	for i := range want {
+		if want[i] != got[i] {
+			t.Fatalf("stage%d counts%+v want%+v", i, got[i], want[i])
 		}
 	}
-	binding, err := decodeBinding(receipt.Canary.ExternalID)
-	if err != nil {
-		t.Fatal(err)
+	for _, v := range f.api.checks {
+		if v.Status != "completed" || v.Conclusion != "neutral" || v.CompletedAt == "" {
+			t.Fatalf("canary not neutral: %+v", v)
+		}
 	}
-	want, err := f.c.checkResetPayload(binding, pending("Exact production queued reset payload. No prior success supplies authority."))
-	if err != nil {
-		t.Fatal(err)
+	for _, w := range f.api.writes {
+		if w["status"] == "queued" {
+			for _, key := range []string{"conclusion", "completed_at"} {
+				if _, present := w[key]; present {
+					t.Fatalf("pending payload supplied terminal field %s", key)
+				}
+			}
+			if w["method"] == "PATCH" && w["path"] != f.c.endpoint(fmt.Sprintf("check-runs/%d", b)) {
+				t.Fatal("terminal ID was patched back to queued")
+			}
+		}
 	}
-	delete(queued, "method")
-	delete(queued, "path")
-	got, _ := json.Marshal(queued)
-	expected, _ := json.Marshal(want)
-	if string(got) != string(expected) {
-		t.Fatalf("probe payload drift: %s vs %s", got, expected)
+	if f.api.writes[2]["method"] != "POST" || f.api.writes[3]["method"] != "PATCH" || f.api.writes[4]["path"] != f.c.endpoint(fmt.Sprintf("check-runs/%d", b)) {
+		t.Fatal("probe publication path drifted")
 	}
 }
 func TestLifecycleProbeInvalidAuthorityOrJobClockCannotMutate(t *testing.T) {
@@ -141,104 +201,156 @@ func TestLifecycleProbeInvalidAuthorityOrJobClockCannotMutate(t *testing.T) {
 		})
 	}
 }
-func TestLifecycleProbeRefusalsKeepFalseReceiptAndAttemptOwnedCleanup(t *testing.T) {
-	for _, name := range []string{"reset transport", "retained success", "different ID", "foreign initial identity", "cleanup failure", "main movement"} {
+func TestLifecycleProbeFailuresNeverAcceptAndCleanEveryKnownID(t *testing.T) {
+	for _, name := range []string{"fresh transport", "retained success", "retained completion", "wrong fresh ID", "foreign initial App", "finalize transport", "first cleanup failure", "old green changed", "main movement"} {
 		t.Run(name, func(t *testing.T) {
 			f, a, e := newLifecycleFixture(t)
-			a.mutate = func(method, path string, m map[string]any, v *check) error {
-				if method == "POST" && name == "foreign initial identity" {
+			a.mutate = func(method, path string, body map[string]any, v *check) error {
+				if method == "POST" && len(f.api.checks) == 1 && name == "foreign initial App" {
 					v.App.ID++
 					return nil
 				}
-				if method == "PATCH" && m["status"] == "queued" {
+				if method == "POST" && len(f.api.checks) == 2 {
 					switch name {
-					case "reset transport":
-						return errors.New("lost reset receipt")
+					case "fresh transport":
+						return errors.New("lost fresh creation receipt")
 					case "retained success":
 						v.Status = "completed"
 						v.Conclusion = "success"
-					case "different ID":
+					case "retained completion":
+						v.CompletedAt = "2026-10-12T20:48:14Z"
+					case "wrong fresh ID":
 						v.ID++
+					case "old green changed":
+						f.api.checks[0].Conclusion = "failure"
 					case "main movement":
 						f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": strings.Repeat("c", 40)}}
 					}
 				}
-				if method == "PATCH" && m["conclusion"] == "neutral" && name == "cleanup failure" {
-					return errors.New("cleanup unavailable")
+				if method == "PATCH" && len(f.api.checks) == 2 && body["conclusion"] == "success" && name == "finalize transport" {
+					return errors.New("lost finalization receipt")
+				}
+				if method == "PATCH" && body["conclusion"] == "neutral" && len(f.api.checks) > 0 && path == f.c.endpoint(fmt.Sprintf("check-runs/%d", f.api.checks[0].ID)) && name == "first cleanup failure" {
+					return errors.New("first cleanup refused")
 				}
 				return nil
 			}
 			var receipt lifecycleReceipt
-			if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err == nil {
+			if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err == nil || receipt.LifecycleAccepted {
 				t.Fatal("invalid lifecycle passed")
 			}
-			if name == "cleanup failure" {
+			if name == "foreign initial App" {
+				if len(f.api.writes) != 1 || len(receipt.Cleanups) != 0 {
+					t.Fatal("foreign identity was guessed or patched")
+				}
+				return
+			}
+			if name == "wrong fresh ID" || name == "first cleanup failure" {
 				if receipt.CleanupVerified {
-					t.Fatal("cleanup error hidden")
+					t.Fatal("failed cleanup accepted")
 				}
-			} else if receipt.ResetAccepted {
-				t.Fatal("false lifecycle acceptance")
 			}
-			if name == "foreign initial identity" {
-				if len(f.api.writes) != 1 {
-					t.Fatal("foreign created identity was mutated")
+			if name == "first cleanup failure" {
+				if len(receipt.Cleanups) != 1 || receipt.Cleanups[0].ID != f.api.checks[1].ID {
+					t.Fatal("second owned ID cleanup was skipped after first failure")
 				}
-			} else if name != "cleanup failure" && !receipt.CleanupVerified {
-				t.Fatal("known owned canary was not cleaned up")
 			}
-			resets := 0
+			posts := 0
 			for _, w := range f.api.writes {
-				if w["status"] == "queued" {
-					resets++
+				if w["method"] == "POST" {
+					posts++
 				}
 			}
-			if resets > 1 {
-				t.Fatal("uncertain reset mutation retried")
+			if posts > 2 {
+				t.Fatal("uncertain create was retried")
+			}
+			for _, v := range receipt.Cleanups {
+				if v.Status != "completed" || v.Conclusion != "neutral" {
+					t.Fatal("owned ID cleanup not confirmed")
+				}
 			}
 		})
 	}
 }
-
-func TestLifecycleProbeRetainsRejectedResetResponse(t *testing.T) {
-	for _, name := range []string{"retained success", "wrong ID", "wrong App", "wrong head"} {
+func TestLifecycleProbeRequiresProviderLatestPendingNotOnlyHighestID(t *testing.T) {
+	for _, name := range []string{"old green", "missing count", "partial list", "duplicate rows", "foreign latest", "retained timestamp"} {
 		t.Run(name, func(t *testing.T) {
 			f, a, e := newLifecycleFixture(t)
-			var returned check
-			a.mutate = func(method, path string, m map[string]any, v *check) error {
-				if method == "PATCH" && m["status"] == "queued" {
-					switch name {
-					case "retained success":
-						v.Status, v.Conclusion = "completed", "success"
-						v.CompletedAt = "2026-10-12T19:47:17Z"
-					case "wrong ID":
-						v.ID++
-					case "wrong App":
-						v.App.ID++
-					case "wrong head":
-						v.HeadSHA = strings.Repeat("c", 40)
-					}
-					returned = *v
+			a.latestResponse = func(rows []check) any {
+				latest := rows[len(rows)-1]
+				switch name {
+				case "old green":
+					latest = rows[0]
+				case "missing count":
+					return map[string]any{"check_runs": []check{latest}}
+				case "partial list":
+					return map[string]any{"total_count": 2, "check_runs": []check{latest}}
+				case "duplicate rows":
+					return map[string]any{"total_count": 2, "check_runs": []check{latest, latest}}
+				case "foreign latest":
+					latest.App.ID++
+				case "retained timestamp":
+					latest.CompletedAt = "2026-10-12T20:48:14Z"
 				}
-				return nil
+				return map[string]any{"total_count": 1, "check_runs": []check{latest}}
 			}
 			var receipt lifecycleReceipt
-			if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err == nil {
-				t.Fatal("contradictory reset accepted")
-			}
-			observed := receipt.ResetResponse
-			if observed == nil || observed.ID != returned.ID || observed.Name != returned.Name || observed.Head != returned.HeadSHA || observed.AppID != returned.App.ID || observed.AppSlug != returned.App.Slug || observed.lifecycleState != lifecycleResult(returned) || receipt.Reset != lifecycleResult(returned) {
-				t.Fatalf("rejected reset evidence lost: %+v", receipt)
-			}
-			if receipt.ResetAccepted || !receipt.CleanupVerified || len(f.api.writes) != 3 {
-				t.Fatal("diagnostic evidence changed fail-closed acceptance or cleanup")
-			}
-			if f.api.checks[0].ID != receipt.Canary.ID || f.api.checks[0].Conclusion != "neutral" {
-				t.Fatal("cleanup followed contradictory response identity")
-			}
-			encoded, err := json.Marshal(receipt)
-			if err != nil || !strings.Contains(string(encoded), `"reset_response"`) {
-				t.Fatal("artifact does not retain typed reset response")
+			if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err == nil || receipt.LifecycleAccepted || !receipt.CleanupVerified {
+				t.Fatal("unproved provider selection accepted or known cleanup lost")
 			}
 		})
 	}
+}
+func TestLifecycleProbeCancellationUsesFreshCommonCleanupReserve(t *testing.T) {
+	f, a, e := newLifecycleFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a.mutate = func(method, path string, body map[string]any, v *check) error {
+		if method == "POST" && len(f.api.checks) == 2 {
+			cancel()
+		}
+		return nil
+	}
+	var receipt lifecycleReceipt
+	if err := f.c.checkLifecycle(ctx, "workflow_dispatch", e, &receipt); !errors.Is(err, context.Canceled) || receipt.LifecycleAccepted || !receipt.CleanupVerified || len(receipt.Cleanups) != 2 {
+		t.Fatalf("cleanup reserve not independent: %+v err%v", receipt, err)
+	}
+}
+func TestLifecycleProbeForeignHistoryCannotCreateCanaries(t *testing.T) {
+	f, _, e := newLifecycleFixture(t)
+	v := check{ID: 99, Name: lifecycleName, HeadSHA: f.pr.Base.SHA, ExternalID: "native", Status: "completed", Conclusion: "success"}
+	v.App.ID = actionsAppID
+	v.App.Slug = "github-actions"
+	f.api.checks = append(f.api.checks, v)
+	var receipt lifecycleReceipt
+	if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err == nil || len(f.api.writes) != 0 || receipt.LifecycleAccepted {
+		t.Fatal("foreign same-name history was ignored")
+	}
+}
+
+func TestLifecycleProbeReceiptWireContractRejectsOldResetProtocol(t *testing.T) {
+	f, _, e := newLifecycleFixture(t)
+	var receipt lifecycleReceipt
+	if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]json.RawMessage
+	if err := decode(data, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, old := range []string{"canary", "initial", "reset", "reset_response", "reset_accepted", "cleanup"} {
+		if _, present := wire[old]; present {
+			t.Fatalf("historical reset protocol field retained: %s", old)
+		}
+	}
+	for _, required := range []string{"version", "protocol", "repository", "source", "canaries", "stages", "effective_pending", "history_before", "history_after", "operations", "cleanups", "lifecycle_accepted", "cleanup_verified"} {
+		if _, present := wire[required]; !present {
+			t.Fatalf("missing wire contract field: %s", required)
+		}
+	}
+	t.Log(string(data))
 }

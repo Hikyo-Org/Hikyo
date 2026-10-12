@@ -46,15 +46,19 @@ func TestQueueReassessmentAtExistingHistoryBoundaryRemainsUsable(t *testing.T) {
 				p.Head.SHA, p.Base.Ref = r.HeadSHA, r.HeadBranch
 				f.c.expectedHead, count = r.HeadSHA, 100
 			}
-			b := newBinding(p.Base.Repo.ID, p, &r)
+			e := f.event
+			e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":%q}]`, p.Head.SHA, role)
+			if err := f.q.runHead(context.Background(), "workflow_dispatch", e, role); err != nil {
+				t.Fatal(err)
+			}
+			canonical := f.api.checks[len(f.api.checks)-1]
+			f.api.checks = nil
 			for i := 1; i <= count; i++ {
-				v := check{ID: int64(i), Name: queueCheckName, HeadSHA: p.Head.SHA, ExternalID: b.externalID(), Status: "completed", Conclusion: "success"}
-				v.App.ID, v.App.Slug = actionsAppID, "github-actions"
+				v := canonical
+				v.ID = int64(i)
 				f.api.checks = append(f.api.checks, v)
 			}
 			f.api.nextID = int64(count + 1)
-			e := f.event
-			e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":%q}]`, p.Head.SHA, role)
 			if err := f.q.runHead(context.Background(), "workflow_dispatch", e, role); err != nil {
 				t.Fatalf("supported history at boundary became unusable: %v", err)
 			}
@@ -71,13 +75,16 @@ type cancelledResetAPI struct {
 }
 
 func (a *cancelledResetAPI) write(ctx context.Context, method, path string, payload, result any) error {
-	if method == "PATCH" && payload.(map[string]any)["status"] == "queued" {
+	if method == "POST" && payload.(map[string]any)["status"] == "queued" {
+		if err := a.api.write(ctx, method, path, payload, result); err != nil {
+			return err
+		}
 		a.cancel()
-		return fmt.Errorf("ambiguous reset transport failure")
+		return fmt.Errorf("ambiguous queued creation transport failure")
 	}
 	return a.api.write(ctx, method, path, payload, result)
 }
-func TestCancelledUncertainResetUsesIndependentBlockingReserve(t *testing.T) {
+func TestCancelledUncertainCreationUsesIndependentBlockingReserve(t *testing.T) {
 	f := newQueueFixture(t)
 	old := check{ID: 99, Name: queueCheckName, HeadSHA: f.pr.Head.SHA, ExternalID: newBinding(f.pr.Base.Repo.ID, f.pr, &f.feedbackRun).externalID(), Status: "completed", Conclusion: "success"}
 	old.App.ID, old.App.Slug = actionsAppID, "github-actions"
@@ -88,13 +95,13 @@ func TestCancelledUncertainResetUsesIndependentBlockingReserve(t *testing.T) {
 	e := f.event
 	e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":"admission"}]`, f.pr.Head.SHA)
 	if err := f.q.runHead(ctx, "workflow_dispatch", e, "admission"); err == nil {
-		t.Fatal("uncertain reset was treated as success")
+		t.Fatal("uncertain creation was treated as success")
 	}
 	latest := f.api.checks[len(f.api.checks)-1]
 	if latest.Status != "queued" || latest.Conclusion != "" || latest.ID == old.ID {
-		t.Fatalf("prior green survived uncertain reset: %+v", latest)
+		t.Fatalf("prior green survived uncertain creation: %+v", latest)
 	}
 	if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" {
-		t.Fatal("uncertain PATCH was retried or blocking publication missing")
+		t.Fatal("uncertain POST was retried or blocking publication missing")
 	}
 }

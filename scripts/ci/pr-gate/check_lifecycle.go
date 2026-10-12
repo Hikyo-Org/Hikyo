@@ -28,8 +28,17 @@ type lifecycleResponse struct {
 	AppID   int64  `json:"app_id"`
 	AppSlug string `json:"app_slug"`
 }
+
+const lifecycleProtocol = "immutable-verdict"
+
+type lifecycleCounts struct {
+	Creates int `json:"creates"`
+	Patches int `json:"patches"`
+}
+
 type lifecycleReceipt struct {
 	Version    int        `json:"version"`
+	Protocol   string     `json:"protocol"`
 	Repository repository `json:"repository"`
 	Source     struct {
 		SHA        string `json:"sha"`
@@ -40,21 +49,79 @@ type lifecycleReceipt struct {
 		Event      string `json:"event"`
 		Branch     string `json:"branch"`
 	} `json:"source"`
-	Canary struct {
-		Name       string `json:"name"`
-		ID         int64  `json:"id"`
-		Head       string `json:"head_sha"`
-		AppID      int64  `json:"app_id"`
-		AppSlug    string `json:"app_slug"`
-		ExternalID string `json:"external_id"`
-	} `json:"canary"`
-	Initial         lifecycleState     `json:"initial"`
-	Reset           lifecycleState     `json:"reset"`
-	ResetResponse   *lifecycleResponse `json:"reset_response,omitempty"`
-	Cleanup         lifecycleState     `json:"cleanup"`
-	ResetAccepted   bool               `json:"reset_accepted"`
-	CleanupVerified bool               `json:"cleanup_verified"`
-	Error           string             `json:"error,omitempty"`
+	Canaries []lifecycleResponse `json:"canaries"`
+	Stages   struct {
+		Initial   lifecycleResponse `json:"initial"`
+		Barrier   lifecycleResponse `json:"barrier"`
+		Reuse     lifecycleResponse `json:"reuse"`
+		Finalized lifecycleResponse `json:"finalized"`
+		Noop      lifecycleResponse `json:"noop"`
+	} `json:"stages"`
+	EffectivePending lifecycleResponse `json:"effective_pending"`
+	HistoryBefore    int               `json:"history_before"`
+	HistoryAfter     int               `json:"history_after"`
+	Operations       struct {
+		Initial   lifecycleCounts `json:"initial"`
+		Barrier   lifecycleCounts `json:"barrier"`
+		Reuse     lifecycleCounts `json:"reuse"`
+		Finalized lifecycleCounts `json:"finalized"`
+		Noop      lifecycleCounts `json:"noop"`
+		Cleanup   lifecycleCounts `json:"cleanup"`
+	} `json:"operations"`
+	Cleanups          []lifecycleResponse `json:"cleanups"`
+	LifecycleAccepted bool                `json:"lifecycle_accepted"`
+	CleanupVerified   bool                `json:"cleanup_verified"`
+	Error             string              `json:"error,omitempty"`
+}
+
+type lifecycleCountingAPI struct {
+	api
+	Counts lifecycleCounts
+}
+
+func (a *lifecycleCountingAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	switch method {
+	case "POST":
+		a.Counts.Creates++
+	case "PATCH":
+		a.Counts.Patches++
+	default:
+		return errors.New("unsupported lifecycle mutation")
+	}
+	return a.api.write(ctx, method, path, payload, result)
+}
+func lifecycleObservation(v check) lifecycleResponse {
+	return lifecycleResponse{lifecycleState: lifecycleResult(v), ID: v.ID, Name: v.Name, Head: v.HeadSHA, AppID: v.App.ID, AppSlug: v.App.Slug}
+}
+func (c *controller) lifecyclePending(v check, id int64, b binding) bool {
+	return c.lifecycleIdentity(v, id, b) && v.Status == "queued" && v.Conclusion == "" && v.CompletedAt == ""
+}
+func (c *controller) lifecycleEffectivePending(ctx context.Context, b binding, id int64) (check, error) {
+	own, err := c.listOwnedChecks(ctx, b.Head)
+	if err != nil {
+		return check{}, err
+	}
+	var latest *check
+	for i := range own {
+		if latest == nil || own[i].ID > latest.ID {
+			latest = &own[i]
+		}
+	}
+	if latest == nil || !c.lifecyclePending(*latest, id, b) {
+		return check{}, errors.New("new queued canary is not the newest authenticated production record")
+	}
+	var response struct {
+		Total  *int    `json:"total_count"`
+		Checks []check `json:"check_runs"`
+	}
+	path := fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=latest&per_page=100&page=1", b.Head, lifecycleName)
+	if err := c.api.read(ctx, c.endpoint(path), &response); err != nil {
+		return check{}, err
+	}
+	if response.Total == nil || *response.Total != 1 || len(response.Checks) != 1 || !c.lifecyclePending(response.Checks[0], id, b) {
+		return check{}, errors.New("GitHub latest canary context did not confirm the fresh queued record")
+	}
+	return response.Checks[0], nil
 }
 
 func (c *controller) probeMain(ctx context.Context, sha string) error {
@@ -154,7 +221,11 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	if policyErr != nil || !policy.Enabled {
 		return errors.Join(errors.New("canary requires the exact active owning/effective queue policy; its name must not be required"), policyErr)
 	}
-	receipt.Version = 1
+	// This diagnostic shares the production publisher, but is never a required
+	// context. Its source and original job clock have already been authenticated.
+	c.expectedHead = sha
+	receipt.Version = 2
+	receipt.Protocol = lifecycleProtocol
 	receipt.Repository = c.repo
 	receipt.Source.SHA = sha
 	receipt.Source.Path = w.Path
@@ -165,28 +236,26 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	receipt.Source.Branch = c.repo.DefaultBranch
 	p := pull{Number: 1, State: "open", Head: reference{SHA: sha, Repo: c.repo}, Base: reference{SHA: sha, Ref: c.repo.DefaultBranch, Repo: c.repo}}
 	b := (snapshot{PR: p, Run: &r}).binding(c.repo.ID)
-	initial := outcome{Status: "completed", Conclusion: "success", Title: "Non-required lifecycle canary", Summary: "API lifecycle diagnostic only. This is not validation or merge proof."}
-	payload, payloadErr := c.checkPayload(b, initial)
-	if payloadErr != nil {
-		return payloadErr
+
+	originalAPI := c.api
+	counted := &lifecycleCountingAPI{api: originalAPI}
+	c.api = counted
+	defer func() { c.api = originalAPI }()
+	known := make(map[int64]check)
+	var order []int64
+	track := func(v *check) {
+		if v == nil || !c.lifecycleIdentity(*v, 0, b) {
+			return
+		}
+		if _, present := known[v.ID]; !present {
+			order = append(order, v.ID)
+			receipt.Canaries = append(receipt.Canaries, lifecycleObservation(*v))
+		}
+		known[v.ID] = *v
 	}
-	payload["head_sha"] = sha
-	var created check
-	if err = c.api.write(work, "POST", c.endpoint("check-runs"), payload, &created); err != nil {
-		return fmt.Errorf("canary creation not acknowledged; unknown IDs are never guessed or retried: %w", err)
-	}
-	if !c.lifecycleIdentity(created, 0, b) {
-		return errors.New("canary creation returned foreign or ambiguous identity; no guessed-ID cleanup")
-	}
-	receipt.Canary.Name = created.Name
-	receipt.Canary.ID = created.ID
-	receipt.Canary.Head = created.HeadSHA
-	receipt.Canary.AppID = created.App.ID
-	receipt.Canary.AppSlug = created.App.Slug
-	receipt.Canary.ExternalID = created.ExternalID
-	path := c.endpoint(fmt.Sprintf("check-runs/%d", created.ID))
-	// Cleanup has its own short context, never the cancelled work context. It
-	// remains inside the original job clock, leaving 30s for artifact/runner exit.
+	stagesComplete := false
+	// Every acknowledged owned ID is cleaned even when a later stage fails.
+	// One shared independent reserve stays within the original job clock.
 	defer func() {
 		end := time.Now().Add(30 * time.Second)
 		if absolute := started.Add(150 * time.Second); absolute.Before(end) {
@@ -194,57 +263,141 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 		}
 		cleanup, done := context.WithDeadline(context.WithoutCancel(ctx), end)
 		defer done()
-		var current check
-		cleanupErr := c.api.read(cleanup, path, &current)
-		if cleanupErr == nil && !c.lifecycleIdentity(current, created.ID, b) {
-			cleanupErr = errors.New("canary cleanup identity became foreign; refusing its mutation")
-		}
-		if cleanupErr == nil {
-			neutral := outcome{Status: "completed", Conclusion: "neutral", Title: "Non-required lifecycle canary cleaned up", Summary: "Diagnostic finished. This check supplies no merge authority."}
-			var body map[string]any
-			body, cleanupErr = c.checkPayload(b, neutral)
-			if cleanupErr == nil {
-				cleanupErr = c.api.write(cleanup, "PATCH", path, body, &current)
+		var failures []error
+		for _, ownedID := range order {
+			path := c.endpoint(fmt.Sprintf("check-runs/%d", ownedID))
+			var current check
+			cleanupErr := c.api.read(cleanup, path, &current)
+			if cleanupErr == nil && !c.lifecycleIdentity(current, ownedID, b) {
+				cleanupErr = errors.New("canary cleanup identity became foreign; refusing its mutation")
 			}
 			if cleanupErr == nil {
-				cleanupErr = c.api.read(cleanup, path, &current)
+				neutral := outcome{Status: "completed", Conclusion: "neutral", Title: "Non-required lifecycle canary cleaned up", Summary: "Diagnostic finished. This check supplies no merge authority."}
+				var body map[string]any
+				body, cleanupErr = c.checkPayload(b, neutral)
+				if cleanupErr == nil {
+					cleanupErr = c.api.write(cleanup, "PATCH", path, body, &current)
+				}
+				if cleanupErr == nil {
+					cleanupErr = c.api.read(cleanup, path, &current)
+				}
+				if cleanupErr == nil && (!c.lifecycleIdentity(current, ownedID, b) || current.Status != "completed" || current.Conclusion != "neutral" || current.CompletedAt == "") {
+					cleanupErr = errors.New("canary terminal neutral cleanup not confirmed")
+				}
 			}
-			if cleanupErr == nil && (!c.lifecycleIdentity(current, created.ID, b) || current.Status != "completed" || current.Conclusion != "neutral") {
-				cleanupErr = errors.New("canary terminal neutral cleanup not confirmed")
+			if cleanupErr != nil {
+				failures = append(failures, fmt.Errorf("canary %d cleanup failed: %w", ownedID, cleanupErr))
+				continue
 			}
+			receipt.Cleanups = append(receipt.Cleanups, lifecycleObservation(current))
 		}
-		if cleanupErr != nil {
-			err = errors.Join(err, fmt.Errorf("canary cleanup failed: %w", cleanupErr))
-			return
-		}
-		receipt.Cleanup = lifecycleResult(current)
-		receipt.CleanupVerified = true
+		receipt.Operations.Cleanup = counted.Counts
+		receipt.CleanupVerified = len(order) > 0 && len(receipt.Cleanups) == len(order) && len(failures) == 0
+		err = errors.Join(err, errors.Join(failures...))
+		receipt.LifecycleAccepted = stagesComplete && receipt.CleanupVerified && err == nil
 	}()
-	if created.Status != "completed" || created.Conclusion != "success" {
+
+	before, listErr := c.listOwnedChecks(work, sha)
+	if listErr != nil {
+		return listErr
+	}
+	receipt.HistoryBefore = len(before)
+	initial := outcome{Status: "completed", Conclusion: "success", Title: "Non-required lifecycle canary", Summary: "API lifecycle diagnostic only. This is not validation or merge proof."}
+	created, publishErr := c.publishQueueRecord(work, p, b, nil, initial)
+	track(created)
+	if publishErr != nil {
+		return fmt.Errorf("initial canary publication failed without mutation retry: %w", publishErr)
+	}
+	if created == nil || !c.lifecycleIdentity(*created, 0, b) || created.Status != "completed" || created.Conclusion != "success" || created.CompletedAt == "" {
 		return errors.New("initial canary success state not confirmed")
 	}
-	receipt.Initial = lifecycleResult(created)
-	queued := pending("Exact production queued reset payload. No prior success supplies authority.")
-	payload, payloadErr = c.checkResetPayload(b, queued)
-	if payloadErr != nil {
-		return payloadErr
+	receipt.Stages.Initial = lifecycleObservation(*created)
+	receipt.Operations.Initial = counted.Counts
+	if counted.Counts != (lifecycleCounts{Creates: 1, Patches: 1}) {
+		return errors.New("initial canary did not use queued creation and finalization")
 	}
-	var reset check
-	if err = c.api.write(work, "PATCH", path, payload, &reset); err != nil {
-		return fmt.Errorf("canary reset refused without mutation retry: %w", err)
+
+	pendingResult := pending("Reassessment requires a fresh queued record; no prior terminal green supplies current proof.")
+	barrier, publishErr := c.publishQueueRecord(work, p, b, created, pendingResult)
+	track(barrier)
+	if barrier != nil {
+		receipt.Stages.Barrier = lifecycleObservation(*barrier)
 	}
-	// Retain the acknowledged response before validation. Cleanup cannot recover
-	// rejected state afterward, and an observation never establishes acceptance.
-	receipt.Reset = lifecycleResult(reset)
-	receipt.ResetResponse = &lifecycleResponse{lifecycleState: receipt.Reset, ID: reset.ID, Name: reset.Name, Head: reset.HeadSHA, AppID: reset.App.ID, AppSlug: reset.App.Slug}
-	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" || reset.CompletedAt != "" {
-		return errors.New("production queued reset response retained success or contradicted identity")
+	receipt.Operations.Barrier = counted.Counts
+	if publishErr != nil {
+		return fmt.Errorf("fresh canary barrier refused without mutation retry: %w", publishErr)
 	}
-	if err = c.api.read(work, path, &reset); err != nil {
+	if barrier == nil || barrier.ID == created.ID || !c.lifecyclePending(*barrier, barrier.ID, b) || counted.Counts != (lifecycleCounts{Creates: 2, Patches: 1}) {
+		return errors.New("terminal green was not superseded by one distinct queued record")
+	}
+	var unchanged check
+	if err = c.api.read(work, c.endpoint(fmt.Sprintf("check-runs/%d", created.ID)), &unchanged); err != nil {
 		return err
 	}
-	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" || reset.CompletedAt != "" {
-		return errors.New("production queued reset readback not confirmed")
+	if !c.lifecycleIdentity(unchanged, created.ID, b) || lifecycleResult(unchanged) != lifecycleResult(*created) {
+		return errors.New("old terminal green was mutated during fresh barrier creation")
+	}
+	latest, latestErr := c.lifecycleEffectivePending(work, b, barrier.ID)
+	if latestErr != nil {
+		return latestErr
+	}
+	receipt.EffectivePending = lifecycleObservation(latest)
+
+	pendingResult.Summary = "The same authenticated pending record is being updated without another creation."
+	reused, publishErr := c.publishQueueRecord(work, p, b, barrier, pendingResult)
+	track(reused)
+	if reused != nil {
+		receipt.Stages.Reuse = lifecycleObservation(*reused)
+	}
+	receipt.Operations.Reuse = counted.Counts
+	if publishErr != nil {
+		return publishErr
+	}
+	if reused == nil || !c.lifecyclePending(*reused, barrier.ID, b) || counted.Counts != (lifecycleCounts{Creates: 2, Patches: 2}) {
+		return errors.New("pending canary did not reuse the exact owned ID")
+	}
+	if _, err = c.lifecycleEffectivePending(work, b, barrier.ID); err != nil {
+		return err
+	}
+
+	finalized, publishErr := c.publishQueueRecord(work, p, b, reused, initial)
+	track(finalized)
+	if finalized != nil {
+		receipt.Stages.Finalized = lifecycleObservation(*finalized)
+	}
+	receipt.Operations.Finalized = counted.Counts
+	if publishErr != nil {
+		return publishErr
+	}
+	if finalized == nil || !c.lifecycleIdentity(*finalized, barrier.ID, b) || finalized.Status != "completed" || finalized.Conclusion != "success" || finalized.CompletedAt == "" || counted.Counts != (lifecycleCounts{Creates: 2, Patches: 3}) {
+		return errors.New("fresh canary finalization did not update only the pending ID")
+	}
+	var confirmed check
+	if err = c.api.read(work, c.endpoint(fmt.Sprintf("check-runs/%d", barrier.ID)), &confirmed); err != nil {
+		return err
+	}
+	if !c.lifecycleIdentity(confirmed, barrier.ID, b) || lifecycleResult(confirmed) != lifecycleResult(*finalized) || confirmed.Output.Title != initial.Title || confirmed.Output.Summary != initial.Summary {
+		return errors.New("final canary success readback not confirmed")
+	}
+	noop, publishErr := c.publishQueueRecord(work, p, b, &confirmed, initial)
+	track(noop)
+	if noop != nil {
+		receipt.Stages.Noop = lifecycleObservation(*noop)
+	}
+	receipt.Operations.Noop = counted.Counts
+	if publishErr != nil {
+		return publishErr
+	}
+	if noop == nil || !c.lifecycleIdentity(*noop, barrier.ID, b) || lifecycleResult(*noop) != lifecycleResult(confirmed) || counted.Counts != (lifecycleCounts{Creates: 2, Patches: 3}) {
+		return errors.New("identical terminal canary was not a physical no-op")
+	}
+	after, listErr := c.listOwnedChecks(work, sha)
+	if listErr != nil {
+		return listErr
+	}
+	receipt.HistoryAfter = len(after)
+	if receipt.HistoryAfter != receipt.HistoryBefore+2 || len(order) != 2 {
+		return errors.New("canary history changed outside its two authenticated creations")
 	}
 	if err = c.probeMain(work, sha); err != nil {
 		return err
@@ -253,7 +406,6 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	if policyErr != nil || finalPolicy != policy {
 		return errors.Join(errors.New("canary protection changed before lifecycle acceptance"), policyErr)
 	}
-	receipt.Reset = lifecycleResult(reset)
-	receipt.ResetAccepted = true
+	stagesComplete = true
 	return nil
 }
