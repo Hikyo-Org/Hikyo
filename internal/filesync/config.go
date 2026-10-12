@@ -45,6 +45,7 @@ package filesync
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -211,6 +212,10 @@ func ParseConfig(data []byte) (*Config, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("%s: %w", ConfigName, err)
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%s: exactly one YAML document is required", ConfigName)
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", ConfigName, err)

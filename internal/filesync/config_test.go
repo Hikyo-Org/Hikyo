@@ -51,6 +51,41 @@ func TestParseConfigPoll(t *testing.T) {
 	}
 }
 
+func TestParseConfigRefusesMultipleDocuments(t *testing.T) {
+	t.Parallel()
+	for name, document := range map[string]string{
+		"credential":           "token: hik_test_secret\n",
+		"malformed credential": "token: *hik_test_secret\n",
+		"config":               validConfig,
+		"empty":                "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseConfig([]byte(validConfig + "---\n" + document))
+			if err == nil || !strings.Contains(err.Error(), "exactly one YAML document") {
+				t.Fatalf("err = %v, want a multiple-document refusal", err)
+			}
+			if strings.Contains(err.Error(), "hik_test_secret") {
+				t.Fatal("refusal disclosed the trailing credential")
+			}
+		})
+	}
+}
+
+func TestParseConfigRefusesMalformedTrailingDocument(t *testing.T) {
+	t.Parallel()
+	if _, err := ParseConfig([]byte(validConfig + "---\nfiles: [\n")); err == nil {
+		t.Fatal("malformed trailing document was ignored")
+	}
+}
+
+func TestParseConfigAcceptsDocumentEnd(t *testing.T) {
+	t.Parallel()
+	if _, err := ParseConfig([]byte(validConfig + "...\n# end of configuration\n")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseConfigRefusals(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct{ from, to, want string }{

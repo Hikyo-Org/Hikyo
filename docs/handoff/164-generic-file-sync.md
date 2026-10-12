@@ -125,3 +125,77 @@ Regression coverage includes stamp-key replacement, foreign-file preservation,
 report ordering and independent target selections. Cross-provider review was
 skipped by the coordinating agent because quota was unconfirmed; ordinary
 adversarial review was performed locally.
+
+## 2026-10-12 implementation follow-up
+
+Rechecked issue #164 against `main` at
+`868703c75cb5ee65b073f09b1790d874378dc0f0`. The implementation from #830 is
+already present. The current follow-up fixes strict config intake:
+`ParseConfig` previously accepted the first YAML document and silently ignored
+later documents, including one containing a forbidden credential field. It now
+requires end-of-input after the first document and refuses additional or
+malformed trailing documents before any destination is opened.
+
+### Cross-platform evidence
+
+[PR #836](https://github.com/Hikyo-Org/Hikyo/pull/836) merged on 2026-09-29 as
+`6a1f3bf1e362c1d2e461285a9283a2bd0d23ecd9`. Its
+[main push CI run](https://github.com/Hikyo-Org/Hikyo/actions/runs/36527505613)
+succeeded. The
+[macOS job](https://github.com/Hikyo-Org/Hikyo/actions/runs/36527505613/job/109273725306)
+explicitly passed `File synchronization tests`: the filesync package, CLI
+`FileSync` tests and `TestFileSyncCLISQLite`. Linux `test_core` and all three
+SQLite/PostgreSQL isolation shards also passed. This resolves the missing macOS
+CI evidence identified in the issue's 2026-09-28 audit. These are historical
+merged-main results, not CI evidence for this follow-up change.
+
+### Owner ratification
+
+On 2026-10-12, Marc explicitly selected "Ratify with a #164-only review waiver"
+in the implementation conversation. The approved question named the shipped
+design: separate file targets, the `file-sync` CLI, the existing report
+permission and one-shot/poll modes with timer-driven refresh. A resident
+watcher stays out. The deviations listed above remain part of the record.
+
+Amendment 9 in `docs/adr/mvp-boundary.md` and the related banners in
+`deployment-adapter.md` and `permission-model.md` now record that ratification.
+The cross-provider review requirement from the locked-ADR amendment procedure
+is explicitly waived for this amendment only. This is not a general governance
+change and does not claim that cross-provider review ran or passed.
+
+The prior audit's owner and macOS evidence gates are resolved. The authorized
+endpoint for this follow-up is a local commit on the requested branch; merge
+and issue closure remain separate delivery steps.
+
+### Follow-up validation and review
+
+Validated locally on macOS with Go 1.27.2 and an isolated PostgreSQL 18 server:
+
+- Reproduced the ignored second document before the fix. Regression coverage
+  now includes additional config, credential, empty and malformed documents,
+  credential-safe errors and valid explicit document endings.
+- `go build ./...` and `go vet ./internal/filesync ./internal/cli` passed.
+- Final-source `go test -count=1 ./internal/filesync ./internal/cli` passed.
+  The file-sync SQLite end-to-end test also passed in the focused run; the
+  exhaustive isolation runs include both SQLite and PostgreSQL file-sync flows.
+- The broad `go test ./...` run passed every package except `internal/app`
+  and `internal/isolation`, which reached the default ten-minute cumulative
+  package deadline while executing fixtures. One subsequent isolation batch
+  also reached that limit. No assertion failure was reported in those runs.
+  All 173 app test entry points then completed in three successful batches;
+  all 580 isolation entry points completed in five successful batches. The
+  complete inventories were partitioned without dropping tests, and every
+  batch kept the ten-minute limit. External-provider tests retained their
+  normal environment-gated local skips, including the unconfigured AWS
+  Secrets Manager emulator. These are not file-sync acceptance gaps.
+- The documentation status check verified all 35 ledger entries;
+  `git diff --check` passed and the structural graph was refreshed.
+- Standards review: zero remaining findings. Its initial finding, trailing
+  YAML parser errors exposing a credential-like anchor name, was reproduced
+  and fixed with a static refusal and regression coverage.
+- Spec review: zero findings, including the owner-approved ratification and
+  the explicitly scoped review waiver. Cross-provider review was waived,
+  not performed or reported as passing.
+
+No remote CI run, push, merge, release or deployment was performed for this
+follow-up. The historical main-branch evidence above is identified separately.
