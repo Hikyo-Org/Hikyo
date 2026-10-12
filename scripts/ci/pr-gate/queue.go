@@ -380,6 +380,13 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 		if r == nil || selectedRun == nil || r.ID != selectedRun.ID || r.Attempt != selectedRun.Attempt || r.Status != "completed" || r.Conclusion != "success" {
 			return q.queueMovement(ctx, number)
 		}
+		shared, err := q.sharedHead(ctx, final)
+		if err != nil {
+			return err
+		}
+		if shared {
+			result = refused("This head now belongs to multiple open PRs; commit-level admission is ambiguous.")
+		}
 	}
 	// A native or foreign same-name check can arrive during the final source
 	// reads. Repeat the identity barrier immediately before any terminal write.
@@ -431,17 +438,15 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 		}
 		sort.Slice(list.Runs, func(i, j int) bool { return list.Runs[i].ID > list.Runs[j].ID })
 		for _, r := range list.Runs {
-			if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != w.ID || r.Path != feedbackWorkflowPath || r.Event != "pull_request" || r.Repository.ID != q.repo.ID || r.HeadSHA != p.Head.SHA || r.HeadRepository.ID != p.Head.Repo.ID {
+			if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != w.ID || r.Path != feedbackWorkflowPath || r.Event != "pull_request" || r.Repository.ID != q.repo.ID || !strings.EqualFold(r.Repository.FullName, q.repoName) || r.HeadSHA != p.Head.SHA || r.HeadRepository.ID != p.Head.Repo.ID || !strings.EqualFold(r.HeadRepository.FullName, p.Head.Repo.FullName) {
 				return nil, errors.New("invalid exact-head feedback identity")
 			}
-			matches := 0
-			for _, a := range r.Pulls {
-				if a.Number == p.Number && a.Head.SHA == p.Head.SHA && a.Base.Ref == p.Base.Ref {
-					matches++
+			if len(r.Pulls) == 0 {
+				if err := q.sourceBoundForkFeedback(ctx, r, p); err != nil {
+					return nil, err
 				}
-			}
-			if matches != 1 {
-				return nil, errors.New("feedback lacks unambiguous PR association")
+			} else if len(r.Pulls) != 1 || r.Pulls[0].Number != p.Number || r.Pulls[0].Head.SHA != p.Head.SHA || r.Pulls[0].Base.Ref != p.Base.Ref || r.Pulls[0].Head.Repo.ID != p.Head.Repo.ID || r.Pulls[0].Base.Repo.ID != p.Base.Repo.ID {
+				return nil, errors.New("feedback has contradictory or ambiguous PR association")
 			}
 			switch r.Status {
 			case "queued", "in_progress", "completed", "waiting", "pending", "requested":
@@ -493,6 +498,56 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 	return nil, errors.New("feedback pagination limit reached")
 }
 
+func (q *queueController) sourceBoundForkFeedback(ctx context.Context, r run, p pull) error {
+	// GitHub omits associations for some fork runs. Reuse exact source-head
+	// feedback, not a claim about which historical PR triggered it. Current PR
+	// uniqueness/refs, independent authority/vouch/DCO and the full queue-group
+	// proof remain mandatory. Never fall back from contradictory associations.
+	if p.Head.Repo.ID == q.repo.ID || r.HeadBranch == "" || r.HeadBranch != p.Head.Ref || !shaPattern.MatchString(p.MergeCommitSHA) || p.Mergeable == nil || !*p.Mergeable {
+		return errors.New("fork feedback lacks a usable current source binding")
+	}
+	shared, err := q.sharedHead(ctx, p)
+	if err != nil {
+		return err
+	}
+	if shared {
+		return errors.New("fork feedback source belongs to multiple open PRs")
+	}
+	for _, kind := range []string{"head", "merge"} {
+		expected := p.Head.SHA
+		if kind == "merge" {
+			expected = p.MergeCommitSHA
+		}
+		var ref struct {
+			Ref    string `json:"ref"`
+			Object struct {
+				Type string `json:"type"`
+				SHA  string `json:"sha"`
+			} `json:"object"`
+		}
+		path := fmt.Sprintf("pull/%d/%s", p.Number, kind)
+		if err := q.api.read(ctx, q.endpoint("git/ref/"+path), &ref); err != nil {
+			return err
+		}
+		if ref.Ref != "refs/"+path || ref.Object.Type != "commit" || ref.Object.SHA != expected {
+			return errors.New("fork feedback current PR ref mismatch")
+		}
+	}
+	var commit struct {
+		SHA     string `json:"sha"`
+		Parents []struct {
+			SHA string `json:"sha"`
+		} `json:"parents"`
+	}
+	if err := q.api.read(ctx, q.endpoint("git/commits/"+p.MergeCommitSHA), &commit); err != nil {
+		return err
+	}
+	if commit.SHA != p.MergeCommitSHA || len(commit.Parents) != 2 || commit.Parents[0].SHA != p.Base.SHA || commit.Parents[1].SHA != p.Head.SHA {
+		return errors.New("fork feedback current integration identity mismatch")
+	}
+	return nil
+}
+
 // Queue metadata is API data only. Entries are not artifacts and cannot
 // provide executable instructions to the privileged controller.
 type queueEntry struct {
@@ -523,33 +578,76 @@ type queueData struct {
 	Entries struct {
 		Nodes []queueEntry `json:"nodes"`
 		Page  struct {
-			More *bool `json:"hasNextPage"`
+			More *bool   `json:"hasNextPage"`
+			End  *string `json:"endCursor"`
 		} `json:"pageInfo"`
 	} `json:"entries"`
 }
 
 func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
 	parts := strings.Split(q.repoName, "/")
-	query := fmt.Sprintf(`query{repository(owner:%q,name:%q){mergeQueue(branch:%q){id entries(first:100){nodes{id position state headCommit{oid} baseCommit{oid} pullRequest{number headRefOid baseRefName}} pageInfo{hasNextPage}}}}}`, parts[0], parts[1], q.repo.DefaultBranch)
-	var response struct {
-		Errors []json.RawMessage `json:"errors"`
-		Data   struct {
-			Repo struct {
-				Queue *queueData `json:"mergeQueue"`
-			} `json:"repository"`
-		} `json:"data"`
+	live := &queueData{}
+	seenCursors := make(map[string]bool)
+	seenEntries := make(map[string]bool)
+	seenPRs := make(map[int]bool)
+	seenPositions := make(map[int]bool)
+	after := ""
+	// Bound work without treating a truncated queue as an authoritative prefix.
+	// Every group proof and repair uses the same complete snapshot reader.
+	for page := 1; page <= 20; page++ {
+		args := "first:100"
+		if after != "" {
+			args += fmt.Sprintf(",after:%q", after)
+		}
+		query := fmt.Sprintf(`query{repository(owner:%q,name:%q){mergeQueue(branch:%q){id entries(%s){nodes{id position state headCommit{oid} baseCommit{oid} pullRequest{number headRefOid baseRefName}} pageInfo{hasNextPage endCursor}}}}}`, parts[0], parts[1], q.repo.DefaultBranch, args)
+		var response struct {
+			Errors []json.RawMessage `json:"errors"`
+			Data   struct {
+				Repo struct {
+					Queue *queueData `json:"mergeQueue"`
+				} `json:"repository"`
+			} `json:"data"`
+		}
+		if err := q.api.read(ctx, "graphql:"+query, &response); err != nil {
+			return nil, err
+		}
+		if len(response.Errors) != 0 {
+			return nil, errors.New("merge queue GraphQL errors")
+		}
+		part := response.Data.Repo.Queue
+		if part == nil || part.ID == "" || part.Entries.Nodes == nil || part.Entries.Page.More == nil || len(part.Entries.Nodes) > 100 {
+			return nil, errors.New("missing or incomplete authenticated queue membership")
+		}
+		if page == 1 {
+			live.ID = part.ID
+		} else if live.ID != part.ID {
+			return nil, errors.New("merge queue identity changed between pages")
+		}
+		for _, entry := range part.Entries.Nodes {
+			if entry.ID == "" || entry.PR.Number <= 0 || entry.Position <= 0 || seenEntries[entry.ID] || seenPRs[entry.PR.Number] || seenPositions[entry.Position] {
+				return nil, errors.New("duplicate or invalid paginated queue entry")
+			}
+			seenEntries[entry.ID], seenPRs[entry.PR.Number], seenPositions[entry.Position] = true, true, true
+		}
+		live.Entries.Nodes = append(live.Entries.Nodes, part.Entries.Nodes...)
+		if !*part.Entries.Page.More {
+			if live.Entries.Nodes == nil {
+				live.Entries.Nodes = []queueEntry{}
+			}
+			for position := 1; position <= len(live.Entries.Nodes); position++ {
+				if !seenPositions[position] {
+					return nil, errors.New("incomplete paginated queue positions")
+				}
+			}
+			return live, nil
+		}
+		if len(part.Entries.Nodes) == 0 || part.Entries.Page.End == nil || *part.Entries.Page.End == "" || len(*part.Entries.Page.End) > 1024 || seenCursors[*part.Entries.Page.End] {
+			return nil, errors.New("missing or repeated merge queue cursor")
+		}
+		after = *part.Entries.Page.End
+		seenCursors[after] = true
 	}
-	if err := q.api.read(ctx, "graphql:"+query, &response); err != nil {
-		return nil, err
-	}
-	if len(response.Errors) != 0 {
-		return nil, errors.New("merge queue GraphQL errors")
-	}
-	live := response.Data.Repo.Queue
-	if live == nil || live.ID == "" || live.Entries.Nodes == nil || live.Entries.Page.More == nil || *live.Entries.Page.More {
-		return nil, errors.New("missing or incomplete authenticated queue membership")
-	}
-	return live, nil
+	return nil, errors.New("merge queue pagination limit reached")
 }
 func (q *queueController) queue(ctx context.Context, head string) (queueSnapshot, error) {
 	live, err := q.liveQueue(ctx)

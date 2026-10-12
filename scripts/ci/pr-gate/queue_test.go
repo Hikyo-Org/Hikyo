@@ -50,7 +50,7 @@ func newQueueFixture(t *testing.T) *queueFixture {
 	q.entry.PR.Number = 7
 	q.entry.PR.Head = f.pr.Head.SHA
 	q.entry.PR.Base = "main"
-	q.query = `graphql:query{repository(owner:"Hikyo-Org",name:"Hikyo"){mergeQueue(branch:"main"){id entries(first:100){nodes{id position state headCommit{oid} baseCommit{oid} pullRequest{number headRefOid baseRefName}} pageInfo{hasNextPage}}}}}`
+	q.query = `graphql:query{repository(owner:"Hikyo-Org",name:"Hikyo"){mergeQueue(branch:"main"){id entries(first:100){nodes{id position state headCommit{oid} baseCommit{oid} pullRequest{number headRefOid baseRefName}} pageInfo{hasNextPage endCursor}}}}}`
 	q.groupRefresh()
 	return q
 }
@@ -507,4 +507,254 @@ func TestQueueRejectsAmbiguousGroupHeadAndMalformedCompare(t *testing.T) {
 		t.Fatal("malformed compare swallowed as ordinary stale state")
 	}
 	g.assertNoSuccess(t)
+}
+
+func TestQueueAdmissionRefusesHeadSharedDuringFinalFeedback(t *testing.T) {
+	f := newQueueFixture(t)
+	injected := false
+	f.api.readHook = func(path string, n int) {
+		if strings.Contains(path, "actions/runs/101/attempts/1/jobs?") && n == 2 {
+			injected = true
+			other := f.pr
+			other.Number = 8
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, other}
+		}
+	}
+	if err := f.admit(); err != nil {
+		t.Fatal(err)
+	}
+	if !injected {
+		t.Fatal("second PR was not opened during final feedback verification")
+	}
+	f.assertNoSuccess(t)
+	last := f.api.writes[len(f.api.writes)-1]
+	if last["conclusion"] != "failure" {
+		t.Fatalf("shared head did not remain refused: %+v", last)
+	}
+}
+
+func queuePageResponse(id string, entries []queueEntry, more bool, cursor any) map[string]any {
+	return map[string]any{"data": map[string]any{"repository": map[string]any{"mergeQueue": map[string]any{"id": id, "entries": map[string]any{"nodes": entries, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}}}}}
+}
+
+func (f *queueFixture) paginatedQueue() (string, []queueEntry) {
+	entries := []queueEntry{f.entry}
+	for position := 2; position <= 101; position++ {
+		entry := queueEntry{ID: fmt.Sprintf("WAITING%d", position), Position: position, State: "QUEUED"}
+		entry.PR.Number = position + 6
+		entry.PR.Head = fmt.Sprintf("%040x", position)
+		entry.PR.Base = "main"
+		entries = append(entries, entry)
+	}
+	second := strings.Replace(f.query, "entries(first:100)", `entries(first:100,after:"cursor100")`, 1)
+	f.api.responses[f.query] = queuePageResponse("QUEUE_MAIN", entries[:100], true, "cursor100")
+	f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], false, "cursor101")
+	return second, entries
+}
+
+func TestQueueCompletePaginationPublishesAndRepairsLargeQueue(t *testing.T) {
+	for _, mode := range []string{"group", "repair"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newQueueFixture(t)
+			second, _ := f.paginatedQueue()
+			var err error
+			if mode == "group" {
+				err = f.group()
+			} else if err = f.q.init(context.Background()); err == nil {
+				err = f.q.repairGroups(context.Background())
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.api.reads[second] < 2 {
+				t.Fatal("complete membership was not retrieved again before publication")
+			}
+			last := f.api.writes[len(f.api.writes)-1]
+			if last["conclusion"] != "success" || last["head_sha"] != f.groupRun.HeadSHA {
+				t.Fatalf("complete group was not proved: %+v", last)
+			}
+		})
+	}
+}
+
+func TestQueuePaginationRefusesIncompleteOrInconsistentPages(t *testing.T) {
+	for _, name := range []string{"missing cursor", "repeated cursor", "empty continued page", "queue identity changed", "duplicate entry", "duplicate PR", "duplicate position", "missing position", "second page transport", "oversized page", "missing page flag"} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			second, entries := f.paginatedQueue()
+			switch name {
+			case "missing cursor":
+				f.api.responses[f.query] = queuePageResponse("QUEUE_MAIN", entries[:100], true, nil)
+			case "repeated cursor":
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], true, "cursor100")
+			case "empty continued page":
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", []queueEntry{}, true, "cursor101")
+			case "queue identity changed":
+				f.api.responses[second] = queuePageResponse("REPLACED_QUEUE", entries[100:], false, "cursor101")
+			case "duplicate entry":
+				entries[100].ID = entries[0].ID
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], false, "cursor101")
+			case "duplicate PR":
+				entries[100].PR.Number = entries[0].PR.Number
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], false, "cursor101")
+			case "duplicate position":
+				entries[100].Position = entries[0].Position
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], false, "cursor101")
+			case "missing position":
+				entries[100].Position = 102
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], false, "cursor101")
+			case "second page transport":
+				f.api.responses[second] = errors.New("queue transport unavailable")
+			case "oversized page":
+				f.api.responses[f.query] = queuePageResponse("QUEUE_MAIN", entries, false, "cursor101")
+			case "missing page flag":
+				f.api.responses[second] = map[string]any{"data": map[string]any{"repository": map[string]any{"mergeQueue": map[string]any{"id": "QUEUE_MAIN", "entries": map[string]any{"nodes": entries[100:], "pageInfo": map[string]any{"endCursor": "cursor101"}}}}}}
+			}
+			if err := f.group(); err == nil {
+				t.Fatal("incomplete queue membership was accepted")
+			}
+			f.assertNoSuccess(t)
+		})
+	}
+}
+
+func TestQueuePaginationLimitNeverPublishesTruncatedMembership(t *testing.T) {
+	f := newQueueFixture(t)
+	for page := 1; page <= 20; page++ {
+		query := f.query
+		if page > 1 {
+			query = strings.Replace(query, "entries(first:100)", fmt.Sprintf(`entries(first:100,after:"cursor%d")`, page-1), 1)
+		}
+		entry := f.entry
+		entry.ID = fmt.Sprintf("PAGE%d", page)
+		entry.Position = page
+		entry.PR.Number += page - 1
+		entry.Head.OID = fmt.Sprintf("%040x", page)
+		f.api.responses[query] = queuePageResponse("QUEUE_MAIN", []queueEntry{entry}, true, fmt.Sprintf("cursor%d", page))
+	}
+	if err := f.group(); err == nil || !strings.Contains(err.Error(), "pagination limit") {
+		t.Fatalf("unbounded or truncated membership accepted: %v", err)
+	}
+	reads := 0
+	for path, count := range f.api.reads {
+		if strings.HasPrefix(path, "graphql:") {
+			reads += count
+		}
+	}
+	if reads != 20 {
+		t.Fatalf("queue read bound changed: %d", reads)
+	}
+	f.assertNoSuccess(t)
+}
+
+func (f *queueFixture) sourceBoundFork() {
+	f.pr.Head.Repo = repository{ID: 50, FullName: "fork/Hikyo"}
+	f.refresh()
+	f.feedbackRun.HeadRepository = f.pr.Head.Repo
+	f.feedbackRun.HeadBranch = f.pr.Head.Ref
+	f.feedbackRun.Pulls = nil
+	f.feedbackRefresh()
+	for kind, sha := range map[string]string{"head": f.pr.Head.SHA, "merge": f.pr.MergeCommitSHA} {
+		path := fmt.Sprintf("pull/%d/%s", f.pr.Number, kind)
+		f.api.responses[f.c.endpoint("git/ref/"+path)] = map[string]any{"ref": "refs/" + path, "object": map[string]string{"type": "commit", "sha": sha}}
+	}
+}
+
+func TestQueueReusesSourceBoundForkFeedbackWithoutHistoricalAssociation(t *testing.T) {
+	for _, advanced := range []bool{false, true} {
+		t.Run(fmt.Sprintf("main advanced=%t", advanced), func(t *testing.T) {
+			f := newQueueFixture(t)
+			if advanced {
+				f.pr.Base.SHA = strings.Repeat("e", 40)
+				f.pr.MergeCommitSHA = strings.Repeat("f", 40)
+			}
+			f.sourceBoundFork()
+			if err := f.admit(); err != nil {
+				t.Fatal(err)
+			}
+			last := f.api.writes[len(f.api.writes)-1]
+			if last["conclusion"] != "success" {
+				t.Fatalf("vouched exact source feedback was not reusable: %+v", last)
+			}
+			for _, kind := range []string{"head", "merge"} {
+				if f.api.reads[f.c.endpoint("git/ref/pull/7/"+kind)] != 2 {
+					t.Fatal("current PR refs were not reassessed during final admission")
+				}
+			}
+		})
+	}
+}
+
+func TestQueueForkFeedbackRefusesContradictoryOrUnprovedSources(t *testing.T) {
+	for _, name := range []string{"wrong repository", "wrong repository name", "wrong source head", "wrong branch", "missing branch", "wrong head ref", "wrong head type", "wrong merge ref", "wrong merge object", "wrong base parent", "wrong head parent", "missing parent", "unknown mergeability", "ref transport", "contradictory association", "duplicate association", "shared current head", "vouch revoked", "DCO refused"} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.sourceBoundFork()
+			switch name {
+			case "wrong repository":
+				f.feedbackRun.HeadRepository.ID++
+				f.feedbackRefresh()
+			case "wrong repository name":
+				f.feedbackRun.HeadRepository.FullName = "another/Hikyo"
+				f.feedbackRefresh()
+			case "wrong source head":
+				f.feedbackRun.HeadSHA = strings.Repeat("f", 40)
+				f.feedbackRefresh()
+			case "wrong branch":
+				f.feedbackRun.HeadBranch = "different"
+				f.feedbackRefresh()
+			case "missing branch":
+				f.feedbackRun.HeadBranch = ""
+				f.feedbackRefresh()
+			case "wrong head ref":
+				f.api.responses[f.c.endpoint("git/ref/pull/7/head")] = map[string]any{"ref": "refs/pull/8/head", "object": map[string]string{"type": "commit", "sha": f.pr.Head.SHA}}
+			case "wrong head type":
+				f.api.responses[f.c.endpoint("git/ref/pull/7/head")] = map[string]any{"ref": "refs/pull/7/head", "object": map[string]string{"type": "tag", "sha": f.pr.Head.SHA}}
+			case "wrong merge ref":
+				f.api.responses[f.c.endpoint("git/ref/pull/7/merge")] = map[string]any{"ref": "refs/pull/7/merge", "object": map[string]string{"type": "commit", "sha": strings.Repeat("f", 40)}}
+			case "wrong merge object", "wrong base parent", "wrong head parent", "missing parent":
+				sha, base, head := f.pr.MergeCommitSHA, f.pr.Base.SHA, f.pr.Head.SHA
+				if name == "wrong merge object" {
+					sha = strings.Repeat("f", 40)
+				}
+				if name == "wrong base parent" {
+					base = strings.Repeat("f", 40)
+				}
+				if name == "wrong head parent" {
+					head = strings.Repeat("f", 40)
+				}
+				parents := []map[string]string{{"sha": base}, {"sha": head}}
+				if name == "missing parent" {
+					parents = parents[:1]
+				}
+				f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = map[string]any{"sha": sha, "parents": parents}
+			case "unknown mergeability":
+				f.pr.Mergeable = nil
+				f.refresh()
+			case "ref transport":
+				f.api.responses[f.c.endpoint("git/ref/pull/7/head")] = errors.New("PR ref transport unavailable")
+			case "contradictory association":
+				other := f.pr
+				other.Number = 8
+				f.feedbackRun.Pulls = []pull{other}
+				f.feedbackRefresh()
+			case "duplicate association":
+				f.feedbackRun.Pulls = []pull{f.pr, f.pr}
+				f.feedbackRefresh()
+			case "shared current head":
+				other := f.pr
+				other.Number = 8
+				f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, other}
+			case "vouch revoked":
+				f.api.responses[f.c.endpoint("contents/.github/VOUCHED.td?ref=main")] = map[string]string{"type": "file", "path": ".github/VOUCHED.td", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("github:someoneelse"))}
+			case "DCO refused":
+				f.q.dco = func(context.Context, pull) (int, error) { return 1, nil }
+			}
+			err := f.admit()
+			if name == "ref transport" && err == nil {
+				t.Fatal("ref API failure was swallowed")
+			}
+			f.assertNoSuccess(t)
+		})
+	}
 }
