@@ -134,4 +134,24 @@ APT provided `jq` 1.7.1-3ubuntu0.24.04.2. Diagnostics reported zero errors,
 warnings or hints; build, docs/PWA browser checks, PostHog/CSP, OSS mutations,
 live-page and fallback-notification fixtures passed. This local container proof
 does not replace new-head useful feedback or a fresh full queued-group run.
+
+## Linear-history compatibility refusal
+
+Review finding 4247465002 exposed an incompatible preservation fixture: the
+operator path retained `required_linear_history` while adopting the fixed
+`MERGE` queue method. Linear history disallows merge commits; see
+<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets">GitHub&#x27;s rule contract</a>.
+
+Three new source-bound regressions reproduce acceptance on original head
+`69e8ffd92`: direct queue validation and actual operator reconciliation from
+legacy and queue policies containing the rule. Queue-mode validation now
+refuses the combination before any PUT. A valid legacy policy with linear
+history remains accepted as a source; its attempted conversion refuses without
+removing protections or changing the configured merge method. The compatible
+preservation-positive fixture instead retains a branch commit-message rule
+blocking `[skip ci]`, plus its stricter two-review requirement. Existing
+preservation, app-binding, pagination and malformed-policy refusals remain.
+
+This policy-only repair leaves the docs bootstrap and exact-container proof
+unchanged. Fresh useful feedback and full queued-group proof remain required.
 </pre></main></body></html>

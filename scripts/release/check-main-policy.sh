@@ -24,6 +24,8 @@ jq -se --arg mode "$mode" '
 	def one($type): [.rules[] | select(.type == $type)] | if length == 1 then .[0] else error("missing or duplicate " + $type) end;
 	if length != 1 then error("expected exactly one policy document") else .[0] end |
 	if type != "object" or (.rules | type) != "array" then error("expected policy object and rules array") else . end |
+	if $mode == "queue" and any(.rules[]; .type == "required_linear_history")
+	then error("MERGE queue is incompatible with required_linear_history") else . end |
 	all(.rules[]; type == "object" and (.type | type) == "string") and
 	.name == "main requires PR and release CI" and
 	.target == "branch" and .enforcement == "active" and

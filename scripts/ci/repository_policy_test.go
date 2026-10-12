@@ -19,6 +19,7 @@ func TestMainPolicyContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]string{
+		"merge-linear-history": `.rules += [{type:"required_linear_history"}]`,
 		"integration-string":   `(.rules[]|select(.type=="required_status_checks").parameters.required_status_checks[0].integration_id)="15368"`,
 		"integration-negative": `(.rules[]|select(.type=="required_status_checks").parameters.required_status_checks[0].integration_id)=-1`,
 		"integration-fraction": `(.rules[]|select(.type=="required_status_checks").parameters.required_status_checks[0].integration_id)=1.5`,
@@ -103,12 +104,12 @@ func TestMainPolicyContract(t *testing.T) {
 // owning-main reads and one atomic PUT. Any tag/security/release/git route is red.
 func TestMainOnlyConfiguration(t *testing.T) {
 	root := repositoryRoot(t)
-	for _, scenario := range []string{"legacy", "queue", "drift", "redacted", "duplicate", "missing", "put-failure", "multiple-before", "multiple-readback", "malformed-before", "multiple-list", "integration-positive", "integration-zero", "integration-null", "readback-null", "later-page", "duplicate-later-page", "page-limit", "malformed-page", "binding-drift"} {
+	for _, scenario := range []string{"legacy", "queue", "drift", "redacted", "duplicate", "missing", "put-failure", "multiple-before", "multiple-readback", "malformed-before", "multiple-list", "integration-positive", "integration-zero", "integration-null", "readback-null", "later-page", "duplicate-later-page", "page-limit", "malformed-page", "binding-drift", "legacy-linear-history", "queue-linear-history"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()
 			before := filepath.Join(dir, "before.json")
 			policy := "main-ci-gate-legacy.json"
-			if scenario == "queue" {
+			if scenario == "queue" || scenario == "queue-linear-history" {
 				policy = "main-ci-gate.json"
 			}
 			raw, err := os.ReadFile(filepath.Join(root, "release/repository", policy))
@@ -116,12 +117,30 @@ func TestMainOnlyConfiguration(t *testing.T) {
 				t.Fatal(err)
 			}
 			// This stricter unrelated rule and PR parameter must survive unchanged.
-			c := exec.Command("jq", `.rules += [{type:"required_linear_history"}] | (.rules[]|select(.type=="pull_request").parameters.required_approving_review_count)=2`)
+			c := exec.Command("jq", `.rules += [{type:"commit_message_pattern",parameters:{name:"Block CI skip",negate:true,operator:"contains",pattern:"[skip ci]"}}] | (.rules[]|select(.type=="pull_request").parameters.required_approving_review_count)=2`)
 			c.Stdin = strings.NewReader(string(raw))
 			raw, err = c.Output()
 			if err != nil {
 				t.Fatal(err)
 			}
+			if strings.HasSuffix(scenario, "linear-history") {
+				c = exec.Command("jq", `.rules += [{type:"required_linear_history"}]`)
+				c.Stdin = strings.NewReader(string(raw))
+				raw, err = c.Output()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "legacy-linear-history" {
+					control := filepath.Join(dir, "legacy-source.json")
+					if err := os.WriteFile(control, raw, 0600); err != nil {
+						t.Fatal(err)
+					}
+					if out, err := exec.Command(filepath.Join(root, "scripts/release/check-main-policy.sh"), "--legacy", control).CombinedOutput(); err != nil {
+						t.Fatalf("valid legacy linear-history source refused: %v %s", err, out)
+					}
+				}
+			}
+
 			if strings.HasPrefix(scenario, "integration-") || scenario == "binding-drift" {
 				id := "15368"
 				if scenario == "integration-zero" {
@@ -219,7 +238,7 @@ esac
 				check := exec.Command("jq", "-e", "--slurpfile", "before", before, `
 					(.rules[]|select(.type=="required_status_checks").parameters.required_status_checks[0]) as $check |
 					$check == ($before[0].rules[]|select(.type=="required_status_checks").parameters.required_status_checks[0]|.context="ci-queue-required") and
-					(.rules|any(.type=="required_linear_history") and any(.type=="pull_request" and .parameters.required_approving_review_count==2))`)
+					(.rules|any(.type=="commit_message_pattern" and .parameters=={name:"Block CI skip",negate:true,operator:"contains",pattern:"[skip ci]"}) and any(.type=="pull_request" and .parameters.required_approving_review_count==2))`)
 				check.Stdin = strings.NewReader(string(submitted))
 				if out, err := check.CombinedOutput(); err != nil {
 					t.Fatalf("unrelated protection lost: %v %s", err, out)

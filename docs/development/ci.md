@@ -160,7 +160,10 @@ This path refuses absent/duplicate owning rulesets, redacted actors, weakened
 source policy, API errors and readback drift. It preserves unrelated live rules
 and PR parameters, including an explicit required-check `integration_id`.
 Unspecified absent/null bindings compare equivalently on readback; a changed
-or lost concrete binding is refused. Discovery validates every 100-result page
+or lost concrete binding is refused. A live linear-history requirement is
+preserved, but blocks reconciliation to the fixed `MERGE` queue before any PUT.
+The tool does not delete that protection or silently switch merge methods.
+Discovery validates every 100-result page
 and stops without writing if still incomplete after 20 pages. It does not
 configure tags, releases, CodeQL, Actions
 permissions or git refs. The broad command still configures those settings;
