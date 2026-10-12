@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -842,6 +844,66 @@ func TestQueueRepairRetainsMalformedGroupAndDiagnosticErrors(t *testing.T) {
 			}
 			if len(f.api.writes) != 0 {
 				t.Fatal("missing group SHA was replaced by another authorization target")
+			}
+		})
+	}
+}
+
+func TestQueueGraphQLErrorsRetainBoundedDetailAndBlockProof(t *testing.T) {
+	f := newQueueFixture(t)
+	t.Setenv("GH_TOKEN", "fixture-auth-secret")
+	f.api.responses[f.query] = map[string]any{
+		"data":   map[string]any{"repository": map[string]any{"mergeQueue": map[string]any{"id": "UNTRUSTED_PARTIAL_DATA"}}},
+		"errors": []any{map[string]any{"message": "Resource not accessible by integration\nfixture-auth-secret " + strings.Repeat("x", 1000), "type": "FORBIDDEN", "path": []any{"repository", "mergeQueue", "entries", 0}, "extensions": map[string]any{"code": "ACCESS_DENIED", "private": "DO_NOT_LOG_EXTENSION"}, "private": "DO_NOT_LOG_RAW_ERROR"}},
+	}
+	err := f.group()
+	if err == nil {
+		t.Fatal("GraphQL error with partial data authorized group proof")
+	}
+	for _, detail := range []string{"reading merge queue page 1", "Resource not accessible by integration", "FORBIDDEN", "ACCESS_DENIED", "entries", "[REDACTED]", "[truncated]"} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Fatalf("missing diagnostic %q: %v", detail, err)
+		}
+	}
+	for _, secret := range []string{"fixture-auth-secret", "DO_NOT_LOG_EXTENSION", "DO_NOT_LOG_RAW_ERROR", "UNTRUSTED_PARTIAL_DATA", "\n"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("unbounded/raw diagnostic leaked %q", secret)
+		}
+	}
+	if len(err.Error()) > 4096 {
+		t.Fatal("GraphQL diagnostic exceeded output bound")
+	}
+	f.assertNoSuccess(t)
+}
+
+func TestGraphQLNonzeroCLIResponsePreservesRefusalAndDiagnostics(t *testing.T) {
+	for _, tc := range []struct{ name, path, stdout, want string }{
+		{"server errors with partial data", "graphql:query{repository{name}}", `{"data":{"repository":{"name":"DO_NOT_LOG_PARTIAL_DATA"}},"errors":[{"message":"Resource not accessible by integration","path":["repository"],"extensions":{"code":"FORBIDDEN","private":"DO_NOT_LOG_EXTENSION"}}]}`, "Resource not accessible by integration"},
+		{"malformed stdout", "graphql:query{repository{name}}", `{"errors":`, "GitHub read failed"},
+		{"no error detail", "graphql:query{repository{name}}", `{"data":{"repository":{"name":"DO_NOT_LOG_PARTIAL_DATA"}}}`, "GitHub read failed"},
+		{"empty errors", "graphql:query{repository{name}}", `{"data":{"repository":{"name":"DO_NOT_LOG_PARTIAL_DATA"}},"errors":[]}`, "GitHub read failed"},
+		{"malformed error shape", "graphql:query{repository{name}}", `{"errors":[{"message":{"private":"DO_NOT_LOG_EXTENSION"}}]}`, "missing or malformed server error detail"},
+		{"REST is unchanged", "repos/Hikyo-Org/Hikyo", `{"errors":[{"message":"Do not reinterpret REST body"}]}`, "GitHub read failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tools := t.TempDir()
+			body := "#!/bin/sh\nprintf '%s\\n' '" + strings.ReplaceAll(tc.stdout, "'", "'\"'\"'") + "'\nexit 1\n"
+			if err := os.WriteFile(filepath.Join(tools, "gh"), []byte(body), 0755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+			var out map[string]any
+			err := (ghAPI{}).read(context.Background(), tc.path, &out)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("nonzero gh response lost refusal/diagnostic: %v", err)
+			}
+			if out != nil {
+				t.Fatal("failed gh response exposed partial success data")
+			}
+			for _, secret := range []string{"DO_NOT_LOG_PARTIAL_DATA", "DO_NOT_LOG_EXTENSION"} {
+				if strings.Contains(err.Error(), secret) {
+					t.Fatal("CLI diagnostic leaked unknown fields")
+				}
 			}
 		})
 	}

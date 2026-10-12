@@ -371,6 +371,16 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 	}
 	data, err := exec.CommandContext(ctx, "gh", args...).Output()
 	if err != nil {
+		// gh exits nonzero for HTTP-successful GraphQL error responses too.
+		// Preserve bounded server diagnostics without exposing partial data.
+		if strings.HasPrefix(path, "graphql:") {
+			var response struct {
+				Errors []json.RawMessage `json:"errors"`
+			}
+			if decode(data, &response) == nil && len(response.Errors) > 0 {
+				return graphQLDiagnostic(response.Errors)
+			}
+		}
 		return fmt.Errorf("GitHub read failed for %s", path)
 	}
 	return decode(data, result)

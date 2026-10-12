@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -582,6 +583,50 @@ type queueData struct {
 	} `json:"entries"`
 }
 
+func graphQLDiagnostic(raw []json.RawMessage) error {
+	var first struct {
+		Message    string `json:"message"`
+		Type       string `json:"type"`
+		Path       []any  `json:"path"`
+		Extensions struct {
+			Code string `json:"code"`
+		} `json:"extensions"`
+	}
+	if len(raw) == 0 || decode(raw[0], &first) != nil || strings.TrimSpace(first.Message) == "" {
+		return errors.New("merge queue GraphQL errors: missing or malformed server error detail")
+	}
+	// Render only known diagnostic fields, never the response or arbitrary
+	// extensions. Quote controls, bound output, and redact known auth values.
+	field := func(value string, limit int) string {
+		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+			if token := os.Getenv(key); token != "" {
+				value = strings.ReplaceAll(value, token, "[REDACTED]")
+			}
+		}
+		runes := []rune(value)
+		if len(runes) > limit {
+			return string(runes[:limit]) + "...[truncated]"
+		}
+		return value
+	}
+	path := "<absent>"
+	validPath := true
+	for _, component := range first.Path {
+		switch component.(type) {
+		case string, float64:
+		default:
+			validPath = false
+		}
+	}
+	if validPath && first.Path != nil {
+		encoded, _ := json.Marshal(first.Path)
+		path = string(encoded)
+	} else if !validPath {
+		path = "<invalid>"
+	}
+	return fmt.Errorf("merge queue GraphQL errors (%d): message=%q type=%q code=%q path=%q", len(raw), field(first.Message, 256), field(first.Type, 64), field(first.Extensions.Code, 64), field(path, 256))
+}
+
 func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
 	parts := strings.Split(q.repoName, "/")
 	live := &queueData{}
@@ -607,10 +652,10 @@ func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
 			} `json:"data"`
 		}
 		if err := q.api.read(ctx, "graphql:"+query, &response); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading merge queue page %d: %w", page, err)
 		}
 		if len(response.Errors) != 0 {
-			return nil, errors.New("merge queue GraphQL errors")
+			return nil, fmt.Errorf("reading merge queue page %d: %w", page, graphQLDiagnostic(response.Errors))
 		}
 		part := response.Data.Repo.Queue
 		if part == nil || part.ID == "" || part.Entries.Nodes == nil || part.Entries.Page.More == nil || len(part.Entries.Nodes) > 100 {
