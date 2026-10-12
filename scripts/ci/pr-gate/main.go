@@ -68,6 +68,7 @@ type run struct {
 	DisplayTitle   string     `json:"display_title"`
 	Event          string     `json:"event"`
 	HeadSHA        string     `json:"head_sha"`
+	HeadBranch     string     `json:"head_branch"`
 	Status         string     `json:"status"`
 	Conclusion     string     `json:"conclusion"`
 	Repository     repository `json:"repository"`
@@ -364,7 +365,11 @@ func decode(data []byte, result any) error {
 	return nil
 }
 func (ghAPI) read(ctx context.Context, path string, result any) error {
-	data, err := exec.CommandContext(ctx, "gh", "api", path).Output()
+	args := []string{"api", path}
+	if strings.HasPrefix(path, "graphql:") {
+		args = []string{"api", "graphql", "-f", "query=" + strings.TrimPrefix(path, "graphql:")}
+	}
+	data, err := exec.CommandContext(ctx, "gh", args...).Output()
 	if err != nil {
 		return fmt.Errorf("GitHub read failed for %s", path)
 	}
@@ -438,8 +443,8 @@ func (c *controller) init(ctx context.Context) error {
 	if !repoPattern.MatchString(c.repoName) {
 		return errors.New("invalid GH_REPO")
 	}
-	if c.checkName != "ci-required" && c.checkName != "ci-required-next" {
-		return errors.New("PR_GATE_CHECK_NAME must be ci-required or ci-required-next")
+	if c.checkName != "ci-required" && c.checkName != "ci-required-next" && c.checkName != queueCheckName {
+		return errors.New("invalid PR_GATE_CHECK_NAME")
 	}
 	if err := c.api.read(ctx, "repos/"+c.repoName, &c.repo); err != nil {
 		return err
@@ -1487,6 +1492,7 @@ func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 }
 func main() {
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
+	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
@@ -1496,6 +1502,9 @@ func main() {
 	if checkName == "" {
 		checkName = "ci-required-next"
 	}
+	if *queueMode {
+		checkName = queueCheckName
+	}
 	data, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
 	var e event
 	if err == nil {
@@ -1503,7 +1512,15 @@ func main() {
 	}
 	if err == nil {
 		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, dryRun: *dryRun, output: os.Stdout}
-		err = c.execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
+		if *queueMode {
+			err = (&queueController{controller: &c}).execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
+		} else {
+			if checkName == queueCheckName {
+				err = errors.New("queue context requires --queue")
+			} else {
+				err = c.execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
+			}
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "trusted PR gate:", err)

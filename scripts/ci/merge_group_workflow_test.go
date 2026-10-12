@@ -48,9 +48,9 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "" || validation.Needs != "" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(validation.Permissions, readOnly) {
 		t.Fatal("merge-queue validation must unconditionally bind the full CI graph to its event SHA")
 	}
-	gate, exists := workflow.Jobs["ci-required"]
+	gate, exists := workflow.Jobs["merge-group-proof"]
 	if !exists || gate.If != "always() && !cancelled()" || gate.Needs != "validation" || !reflect.DeepEqual(gate.Permissions, readOnly) || len(gate.Steps) != 1 {
-		t.Fatal("the required merge-queue context must independently reject failed or skipped validation")
+		t.Fatal("the merge-group evidence marker must independently reject failed or skipped validation")
 	}
 	proof := gate.Steps[0]
 	if proof.If != "" || proof.Run != `test "$VALIDATION_RESULT" = success` || !reflect.DeepEqual(proof.Env, map[string]string{"VALIDATION_RESULT": "${{ needs.validation.result }}"}) {
