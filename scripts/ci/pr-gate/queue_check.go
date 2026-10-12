@@ -34,6 +34,21 @@ func (c *controller) checkPayload(b binding, result outcome) (map[string]any, er
 	return payload, nil
 }
 
+// This reset candidate is shared with the guarded trusted-main probe. The
+// hosted API must accept and read back cleared terminal fields before rollout.
+// Creation and the separate legacy producer never use this payload.
+func (c *controller) checkResetPayload(b binding, result outcome) (map[string]any, error) {
+	if (c.checkName != queueCheckName && c.checkName != lifecycleName) || result.Status != "queued" || result.Conclusion != "" {
+		return nil, errors.New("reset payload requires a queued queue/probe check")
+	}
+	payload, err := c.checkPayload(b, result)
+	if err != nil {
+		return nil, err
+	}
+	payload["conclusion"], payload["completed_at"] = nil, nil
+	return payload, nil
+}
+
 // A rejected or contradictory reset may leave the old owned green intact.
 // Do not retry that uncertain PATCH. Publish one distinct blocking barrier,
 // with the same held-head guard, then retain the original failure.

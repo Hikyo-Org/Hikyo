@@ -225,7 +225,7 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	}
 	receipt.Initial = lifecycleResult(created)
 	queued := pending("Exact production queued reset payload. No prior success supplies authority.")
-	payload, payloadErr = c.checkPayload(b, queued)
+	payload, payloadErr = c.checkResetPayload(b, queued)
 	if payloadErr != nil {
 		return payloadErr
 	}
@@ -237,13 +237,13 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	// rejected state afterward, and an observation never establishes acceptance.
 	receipt.Reset = lifecycleResult(reset)
 	receipt.ResetResponse = &lifecycleResponse{lifecycleState: receipt.Reset, ID: reset.ID, Name: reset.Name, Head: reset.HeadSHA, AppID: reset.App.ID, AppSlug: reset.App.Slug}
-	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" {
+	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" || reset.CompletedAt != "" {
 		return errors.New("production queued reset response retained success or contradicted identity")
 	}
 	if err = c.api.read(work, path, &reset); err != nil {
 		return err
 	}
-	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" {
+	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" || reset.CompletedAt != "" {
 		return errors.New("production queued reset readback not confirmed")
 	}
 	if err = c.probeMain(work, sha); err != nil {

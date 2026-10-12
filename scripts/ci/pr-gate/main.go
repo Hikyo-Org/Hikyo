@@ -1291,6 +1291,10 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 		}
 	}
 	payload, err := c.checkPayload(b, result)
+	resetQueue := reuseQueue && result.Status == "queued"
+	if resetQueue {
+		payload, err = c.checkResetPayload(b, result)
+	}
 	if err != nil {
 		return err
 	}
@@ -1308,7 +1312,7 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	if err := c.api.write(ctx, method, path, payload, &written); err != nil {
 		return c.blockResetFailure(ctx, p, b, selected, result, err)
 	}
-	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID {
+	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID || resetQueue && written.CompletedAt != "" {
 		return c.blockResetFailure(ctx, p, b, selected, result, errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted"))
 	}
 	return nil

@@ -256,7 +256,7 @@ Normal work ends at job-start plus 120 seconds; cleanup is independently bounded
 inside plus 150 seconds, leaving margin within the three-minute native job.
 
 The single diagnostic ID starts completed/success, receives the same production
-queued payload builder with conclusion/completed_at omitted rather than null,
+queued reset builder with explicit JSON null conclusion/completed_at,
 and must read back as queued with no success conclusion. Its actual timestamps
 are retained in the receipt. The known owned ID is then restored to completed/
 neutral and independently read back. Lost or foreign creation identity is not
@@ -292,4 +292,16 @@ is not hosted latency proof. PR #893 bootstrap copies the planner from its
 immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
 are exercised after landing; a later legitimate full group must establish the
 approximately 35-minute target.
+
+The reset payload is now an experimental explicit-null candidate, scoped to
+PATCHing an existing authenticated queue check and the same fixed canary. CREATE
+requests and the legacy full-only publisher remain unchanged. Actual probe
+38306521236 returned completed/success with all identity fields correct when the
+old reset omitted terminal fields. Its canary 115001958045 was verified neutral
+after cleanup. The official API schema does not document nullable reset fields;
+this proposed payload is not yet proven to work. The next trusted-main probe
+must confirm queued status, empty conclusion and empty completion timestamp,
+then exact same-ID neutral cleanup, before workers can be enabled. Tests model
+both acceptance and HTTP rejection/retained completion, preserving the separate
+blocking uncertainty barrier and no mutation retries.
 </pre></main></body></html>
