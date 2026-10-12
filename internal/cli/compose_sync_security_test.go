@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -20,6 +21,20 @@ func (w syncApplyObserver) Write(p []byte) (int, error) { return w.write(p) }
 func syncSecurityFixture(t *testing.T) (IO, string, string) {
 	t.Helper()
 	runtimeDir := filepath.Join(t.TempDir(), "runtime")
+	if runtime.GOOS == "linux" {
+		// Sync's doctor requires plaintext generations to live on tmpfs.
+		// Ordinary t.TempDir paths may be disk-backed on Linux runners.
+		dir, err := os.MkdirTemp("/dev/shm", "hikyo-cli-sync-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Error(err)
+			}
+		})
+		runtimeDir = filepath.Join(dir, "runtime")
+	}
 	server := deliveryServer(t, deliveryResp([]apigen.DeliveredKey{{
 		KeyId: "key_1", Name: "DATABASE_URL", Classification: apigen.KeyClassificationConfig,
 		Presence: apigen.DeliveredKeyPresenceSet, Value: strPtr("postgres://current"),

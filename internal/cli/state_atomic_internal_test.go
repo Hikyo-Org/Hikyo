@@ -21,7 +21,10 @@ func TestClientStateWritesIgnorePredictableTempSymlinks(t *testing.T) {
 			return (&State{dir: dir}).PutSession(SessionArtifact{Instance: "local", Token: "credential"})
 		}},
 		{"trust", "trust.json", func(dir string) error {
-			return (&TrustStore{dir: dir}).Put(TrustEntry{Name: "local", Origin: "https://example.test"})
+			return (&TrustStore{dir: dir}).Put(TrustEntry{
+				Name: "local", Origin: "https://example.test",
+				SPKIPin: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+			})
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
