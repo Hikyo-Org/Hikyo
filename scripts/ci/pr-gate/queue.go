@@ -298,6 +298,10 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 				}
 				r, err := q.feedback(ctx, p)
 				if err != nil {
+					var computing *forkRecomputationPending
+					if errors.As(err, &computing) {
+						return q.blockMovement(ctx, number, "fork mergeability recomputation")
+					}
 					return err
 				}
 				selectedRun = r
@@ -370,8 +374,12 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 		if code != 0 {
 			result = refused("Canonical DCO sign-off was refused during final admission verification.")
 		}
-		r, err := q.feedback(ctx, p)
+		r, err := q.feedback(ctx, final)
 		if err != nil {
+			var computing *forkRecomputationPending
+			if errors.As(err, &computing) {
+				return q.blockMovement(ctx, number, "fork mergeability recomputation")
+			}
 			return err
 		}
 		if r == nil || selectedRun == nil || r.ID != selectedRun.ID || r.Attempt != selectedRun.Attempt || r.Status != "completed" || r.Conclusion != "success" {
@@ -497,12 +505,26 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 	return nil, errors.New("feedback pagination limit reached")
 }
 
+type forkRecomputationPending struct{}
+
+func (*forkRecomputationPending) Error() string {
+	return "GitHub is recomputing fork mergeability; current candidate source binding is pending"
+}
+
 func (q *queueController) sourceBoundForkFeedback(ctx context.Context, r run, p pull) error {
 	// GitHub omits associations for some fork runs. Reuse exact source-head
 	// feedback, not a claim about which historical PR triggered it. Current PR
 	// uniqueness/refs, independent authority/vouch/DCO and the full queue-group
 	// proof remain mandatory. Never fall back from contradictory associations.
-	if p.Head.Repo.ID == q.repo.ID || r.HeadBranch == "" || r.HeadBranch != p.Head.Ref || !shaPattern.MatchString(p.MergeCommitSHA) || p.Mergeable == nil || !*p.Mergeable {
+	if p.Head.Repo.ID == q.repo.ID || r.HeadBranch == "" || r.HeadBranch != p.Head.Ref || (p.MergeCommitSHA != "" && !shaPattern.MatchString(p.MergeCommitSHA)) {
+		return errors.New("fork feedback lacks a usable current source binding")
+	}
+	// null is GitHub's authenticated background-computation state, not an API
+	// failure. No ref proof can authorize admission until a candidate is ready.
+	if p.Mergeable == nil {
+		return &forkRecomputationPending{}
+	}
+	if p.MergeCommitSHA == "" || !*p.Mergeable {
 		return errors.New("fork feedback lacks a usable current source binding")
 	}
 	shared, err := q.sharedHead(ctx, p)

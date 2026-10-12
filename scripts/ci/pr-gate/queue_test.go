@@ -908,3 +908,89 @@ func TestGraphQLNonzeroCLIResponsePreservesRefusalAndDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueForkRecomputationKeepsPublisherHealthyAndAdmissionPending(t *testing.T) {
+	for _, eventName := range []string{"push", "schedule"} {
+		for _, phase := range []string{"initial unknown", "initial absent candidate", "final transition"} {
+			t.Run(eventName+"/"+phase, func(t *testing.T) {
+				f := newQueueFixture(t)
+				old := check{ID: 100, Name: queueCheckName, HeadSHA: f.pr.Head.SHA, ExternalID: newBinding(f.pr.Base.Repo.ID, f.pr, &f.feedbackRun).externalID(), Status: "completed", Conclusion: "success"}
+				old.App.ID, old.App.Slug = actionsAppID, "github-actions"
+				f.api.checks = []check{old}
+				f.pr.Base.SHA = strings.Repeat("e", 40)
+				f.pr.MergeCommitSHA = strings.Repeat("f", 40)
+				f.sourceBoundFork()
+				f.entry.Head.OID, f.entry.State = "", "QUEUED"
+				f.groupRefresh()
+				observed := phase != "final transition"
+				if phase == "final transition" {
+					f.api.readHook = func(path string, n int) {
+						if strings.Contains(path, "actions/runs/101/attempts/1/jobs?") && n == 1 {
+							observed = true
+							f.pr.Mergeable, f.pr.MergeCommitSHA = nil, ""
+							f.refresh()
+						}
+					}
+				} else {
+					f.pr.Mergeable = nil
+					if phase == "initial absent candidate" {
+						f.pr.MergeCommitSHA = ""
+					}
+					f.refresh()
+				}
+				e := f.event
+				e.Ref = "refs/heads/main"
+				if err := f.q.execute(context.Background(), eventName, e); err != nil {
+					t.Fatalf("expected fork recomputation made publisher fail: %v", err)
+				}
+				if !observed {
+					t.Fatal("final metadata transition was not exercised")
+				}
+				f.assertNoSuccess(t)
+				latest := f.api.checks[len(f.api.checks)-1]
+				if latest.ID <= old.ID || latest.Status != "queued" || latest.Conclusion != "" {
+					t.Fatalf("prior green was not superseded by blocking pending: %+v", latest)
+				}
+				binding, err := decodeBinding(latest.ExternalID)
+				if err != nil || binding.PR != f.pr.Number || binding.Head != f.pr.Head.SHA || binding.Run != 0 || binding.Attempt != 0 {
+					t.Fatalf("pending recovery carried validation authority: %+v %v", binding, err)
+				}
+			})
+		}
+	}
+}
+
+func TestQueueForkRecomputationDoesNotHideActualFailures(t *testing.T) {
+	for _, name := range []string{"malformed candidate during computation", "wrong source during computation", "ready ref transport", "live base transport", "pending barrier failure"} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.sourceBoundFork()
+			f.entry.Head.OID, f.entry.State = "", "QUEUED"
+			f.groupRefresh()
+			switch name {
+			case "malformed candidate during computation":
+				f.pr.Mergeable, f.pr.MergeCommitSHA = nil, "malformed-sha"
+				f.refresh()
+			case "wrong source during computation":
+				f.pr.Mergeable = nil
+				f.refresh()
+				f.feedbackRun.HeadBranch = "unrelated-source"
+				f.feedbackRefresh()
+			case "ready ref transport":
+				f.api.responses[f.c.endpoint("git/ref/pull/7/head")] = errors.New("ref unavailable")
+			case "live base transport":
+				f.api.responses[f.c.endpoint("git/ref/heads/main")] = errors.New("base unavailable")
+			case "pending barrier failure":
+				f.pr.Mergeable = nil
+				f.refresh()
+				f.api.writeErr = errors.New("check publication unavailable")
+			}
+			e := f.event
+			e.Ref = "refs/heads/main"
+			if err := f.q.execute(context.Background(), "push", e); err == nil {
+				t.Fatal("malformed identity, transport or publication failure was hidden as pending")
+			}
+			f.assertNoSuccess(t)
+		})
+	}
+}
