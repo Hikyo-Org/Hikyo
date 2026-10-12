@@ -434,16 +434,24 @@ func TestQueueFinalRefAndForeignIdentityRacesStayBlocked(t *testing.T) {
 	}
 }
 func TestQueueIgnoresActualSkippedMatrixMetadataRun(t *testing.T) {
-	f := newQueueFixture(t)
-	metadata := f.feedbackRun
-	metadata.ID = 103
-	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.feedbackRun}}
-	f.api.responses[f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 1, "jobs": []job{{ID: 301, RunID: 103, Attempt: 1, Name: skippedFeedbackName, Status: "completed", Conclusion: "skipped"}}}
-	if err := f.admit(); err != nil {
-		t.Fatal(err)
-	}
-	if f.api.writes[len(f.api.writes)-1]["conclusion"] != "success" {
-		t.Fatal("metadata skip hid successful useful feedback")
+	for _, name := range []string{
+		skippedFeedbackName,
+		feedbackNameExpression,
+		"${{ (((github.event.action == 'edited') && (github.event.changes.base.ref.from == '') && 'metadata (ignored)') || 'feedback') }} (${{ matrix.lane }})",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			metadata := f.feedbackRun
+			metadata.ID = 103
+			f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.feedbackRun}}
+			f.api.responses[f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": 1, "jobs": []job{{ID: 301, RunID: 103, Attempt: 1, Name: name, Status: "completed", Conclusion: "skipped"}}}
+			if err := f.admit(); err != nil {
+				t.Fatal(err)
+			}
+			if f.api.writes[len(f.api.writes)-1]["conclusion"] != "success" {
+				t.Fatal("metadata skip hid successful useful feedback")
+			}
+		})
 	}
 }
 
