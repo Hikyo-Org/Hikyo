@@ -199,17 +199,18 @@ func TestRequiredJobCannotSkipOnPullRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := yaml.Unmarshal(queueRaw, &observer); err != nil {
+	// The canonical context is now published by direct expected-head jobs and
+	// dispatched head workers. Reuse their actual-source trust contracts instead
+	// of tying merge eligibility to the former unbounded go-run command.
+	if err := queuePublisherContract(queueRaw); err != nil {
+		t.Fatalf("canonical queue context must match trusted direct writers and read-only discovery: %v", err)
+	}
+	workerRaw, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-queue-worker.yml"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	queueFound := false
-	for _, step := range observer.Jobs["publish"].Steps {
-		if step.Run == "go run ./scripts/ci/pr-gate --queue" {
-			queueFound = step.Env["PR_GATE_CHECK_NAME"] == contexts[0]
-		}
-	}
-	if !queueFound {
-		t.Fatal("canonical queue context must match the distinct trusted API publisher")
+	if err := queueWorkerContract(workerRaw); err != nil {
+		t.Fatalf("canonical queue context must match trusted expected-head workers: %v", err)
 	}
 
 	// GitHub required contexts have a name/app identity, not workflow identity.

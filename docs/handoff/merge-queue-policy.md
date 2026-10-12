@@ -4,8 +4,9 @@ This follow-up adopts the protected queue configuration already activated after
 bootstrap PR #891. It changes canonical policy, local policy/configuration
 fixtures and contributor/operator documentation. It also corrects the queue
 publisher's exact recognition of GitHub's observed normalized skipped metadata
-job name. Workflow, application, job-registry and frozen full-suite execution
-remain unchanged.
+job name. Queue publication now also uses bounded per-head writers and complete
+read-only maintenance discovery. Application code, the job registry and the
+frozen full-suite execution remain unchanged.
 
 ## Contract
 
@@ -153,3 +154,74 @@ preservation, app-binding, pagination and malformed-policy refusals remain.
 
 This policy-only repair leaves the docs bootstrap and exact-container proof
 unchanged. Fresh useful feedback and full queued-group proof remain required.
+
+
+## Per-commit deadlines and head ownership
+
+The previous queue publisher allowed ten minutes after a four-minute feedback
+job, and its repository-wide concurrency could hold a new commit behind a
+maintenance sweep. The new targeted publisher job has a one-minute total limit.
+Its first step authenticates the current run attempt and exact named job's
+server `started_at` before checkout, setup and compilation. Controller work ends
+45 seconds after that anchor; an independent reserve ends at the same absolute
+60-second deadline for fresh identity checks and a blocking terminal write.
+Neither setup nor a later callback starts a new clock inside the same invocation.
+Git, policy and GitHub subprocess cancellation kills their process group and
+bounds pipe waits, including a child that retained stdout after its parent died.
+
+PR events and useful-feedback callbacks route directly to a writer using the
+event's head SHA as a lock hint. Full-group callbacks use their group SHA. Every
+writer, including maintenance workers, shares the same repository-ID/head-SHA
+concurrency key with cancellation disabled. The event hint grants no authority:
+current API evidence must authenticate the head, source attempt, policy and role.
+Every check mutation verifies the held head, binding head and selected owned check.
+Fresh initial and final snapshots refuse an ambiguous PR/group role on one SHA.
+Head movement never authorizes a write to the replacement head. Pure stale work
+may end benignly; an error joined with a transport failure remains a failure.
+
+Read-only main/schedule/manual discovery has no check-write permission. It fully
+validates up to 2,000 open PRs and 2,000 queue entries before dispatching any work.
+It coalesces the union into at most 4,000 distinct heads and batches at most 64
+records per fixed default-branch worker invocation. Each POST has a five-second
+bound and a typed authenticated receipt. All batches are attempted once despite
+an earlier failed or ambiguous receipt, with explicit failed head inventories
+and a failing aggregate. An authenticated schedule-time rotation varies the
+starting batch; manual target priority retains the remaining group work. These
+bounds prevent silent truncation; persistent platform errors still prevent
+completion and are reported, without a mutation retry or a fairness guarantee.
+
+Workers can write checks but cannot dispatch workflows. Their fresh head/role
+checks use the same common mutation guard as direct writers. An owned incomplete
+blocking barrier is reused; identical reassessment does not add a second generic
+barrier. Completed proof is never treated as current authority without validation.
+Maintenance and full-group jobs retain their separate ten-minute budgets. No
+selected feedback command, full-suite test, domain, baseline or registry entry
+is removed. Bot review duration is separate from the CI-only eligibility metric.
+
+The four-minute feedback job plus the one-minute targeted publisher allowance
+bounds controlled execution, not all GitHub elapsed time. Runner queues, API
+outages and time waiting for authority can delay eligibility. Setup/compilation
+failure before the controller starts is a native job failure and cannot promise
+an owned terminal check publication. A failed terminal API write remains red;
+there is no timeout-to-green fallback. Old useful feedback can remain valid
+under fresh authority during a later bounded reassessment. Its reported age is
+age at that reconciliation, not proof of push-to-first-eligibility latency.
+
+The integrated publisher package and vet pass locally. Permanent tests exercise
+server timestamp/provenance refusals, cancellation after actual child readiness,
+in-progress feedback expiry, reserve transport failure, head/base/policy/attempt
+movement, foreign checks, barrier reuse, a complete 4,000-head union and partial
+dispatch failures. Independent source tests also reproduce cancellation and the
+real `gh` HTTP/version/structured-payload boundary. The prior pinned-container
+docs proof remains valid for its unchanged bootstrap. These are local proofs;
+fresh hosted feedback, token dispatch, same-head serialization and the complete
+populated queued group still require exact-head acceptance.
+
+All new jobs are disabled until `QUEUE_HEAD_WORKERS_ENABLED` is enabled through
+the reviewed cutover. Drain older compiled unleased publishers before enabling
+the direct and worker paths. No variable, policy or queue operation is performed
+by this source preparation. The legacy full-only publisher remains independent.
+
+- [Direct and discovery publisher](../../.github/workflows/ci-queue-gate.yml)
+- [Fixed head worker](../../.github/workflows/ci-queue-worker.yml)
+- [GitHub concurrency contract](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)

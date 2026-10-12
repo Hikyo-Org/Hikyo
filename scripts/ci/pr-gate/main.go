@@ -18,8 +18,10 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -69,6 +71,7 @@ type run struct {
 	Event          string     `json:"event"`
 	HeadSHA        string     `json:"head_sha"`
 	HeadBranch     string     `json:"head_branch"`
+	CreatedAt      string     `json:"created_at"`
 	Status         string     `json:"status"`
 	Conclusion     string     `json:"conclusion"`
 	Repository     repository `json:"repository"`
@@ -344,7 +347,8 @@ type event struct {
 	Pull       pull       `json:"pull_request"`
 	Run        run        `json:"workflow_run"`
 	Inputs     struct {
-		PR string `json:"pr_number"`
+		PR   string `json:"pr_number"`
+		Work string `json:"work"`
 	} `json:"inputs"`
 }
 type api interface {
@@ -369,7 +373,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 	if strings.HasPrefix(path, "graphql:") {
 		args = []string{"api", "graphql", "-f", "query=" + strings.TrimPrefix(path, "graphql:")}
 	}
-	data, err := exec.CommandContext(ctx, "gh", args...).Output()
+	data, err := gateCommand(ctx, "gh", args...).Output()
 	if err != nil {
 		// gh exits nonzero for HTTP-successful GraphQL error responses too.
 		// Preserve bounded server diagnostics without exposing partial data.
@@ -390,12 +394,23 @@ func (ghAPI) write(ctx context.Context, method, path string, payload, result any
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "gh", "api", "--method", method, path, "--input", "-")
+	args := []string{"api", "--method", method, path, "--input", "-"}
+	dispatch := strings.HasSuffix(path, "/actions/workflows/"+queueWorkerFilename+"/dispatches")
+	if dispatch {
+		args = append(args, "-H", "X-GitHub-Api-Version: 2026-03-10", "--include")
+	}
+	cmd := gateCommand(ctx, "gh", args...)
 	cmd.Stdin = bytes.NewReader(data)
 	response, err := cmd.Output()
 	// A lost response may follow a successful mutation. Never retry writes.
 	if err != nil {
 		return fmt.Errorf("GitHub %s failed for %s; no mutation retry attempted", method, path)
+	}
+	if dispatch {
+		response, err = dispatchResponseBody(response)
+		if err != nil {
+			return err
+		}
 	}
 	return decode(response, result)
 }
@@ -408,7 +423,7 @@ type policyDecision struct {
 type verifier func(context.Context, int, string) (policyDecision, error)
 
 func verifyPolicy(ctx context.Context, pr int, head string) (policyDecision, error) {
-	cmd := exec.CommandContext(ctx, "sh", "scripts/ci/check-fork-validation.sh")
+	cmd := gateCommand(ctx, "sh", "scripts/ci/check-fork-validation.sh")
 	// Override only the controller-owned settings, retaining gh authentication.
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(value, "PR_NUMBER=") && !strings.HasPrefix(value, "HEAD_SHA=") && !strings.HasPrefix(value, "PR_GATE_ONCE=") && !strings.HasPrefix(value, "PR_GATE_POLICY_ONLY=") {
@@ -435,14 +450,15 @@ func verifyPolicy(ctx context.Context, pr int, head string) (policyDecision, err
 }
 
 type controller struct {
-	api       api
-	verify    verifier
-	repoName  string
-	repo      repository
-	workflow  workflow
-	checkName string
-	dryRun    bool
-	output    io.Writer
+	api          api
+	verify       verifier
+	repoName     string
+	repo         repository
+	workflow     workflow
+	checkName    string
+	expectedHead string
+	dryRun       bool
+	output       io.Writer
 }
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
@@ -520,7 +536,7 @@ func (c *controller) openPRs(ctx context.Context) ([]pull, error) {
 		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("pulls?state=open&per_page=100&page=%d", page)), &entries); err != nil {
 			return nil, err
 		}
-		if entries == nil {
+		if entries == nil || len(entries) > 100 || len(pulls)+len(entries) > 2000 {
 			return nil, errors.New("invalid open PR list")
 		}
 		for _, p := range entries {
@@ -692,6 +708,10 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, e
 			err = c.refuseCheckIdentity(ctx, p, err)
 		}
 	}()
+	return c.listOwnedChecks(ctx, p.Head.SHA)
+}
+
+func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check, error) {
 	var own []check
 	listed := 0
 	seen := make(map[int64]bool)
@@ -700,7 +720,7 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, e
 			Total  int     `json:"total_count"`
 			Checks []check `json:"check_runs"`
 		}
-		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", p.Head.SHA, c.checkName, page)), &list); err != nil {
+		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=%d", head, c.checkName, page)), &list); err != nil {
 			return nil, err
 		}
 		if list.Checks == nil || list.Total < 0 || list.Total > 1000 {
@@ -721,18 +741,18 @@ func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, e
 				}
 				continue
 			}
-			if v.ID <= 0 || v.App.ID != actionsAppID || v.App.Slug != "github-actions" || v.HeadSHA != p.Head.SHA {
+			if v.ID <= 0 || v.App.ID != actionsAppID || v.App.Slug != "github-actions" || v.HeadSHA != head {
 				return nil, errors.New("untrusted controller check identity")
 			}
 			b, err := decodeBinding(v.ExternalID)
 			if err != nil {
-				if truncatedLegacyBinding(v.ExternalID, c.repo.ID, p.Head.SHA) {
+				if truncatedLegacyBinding(v.ExternalID, c.repo.ID, head) {
 					own = append(own, v)
 					continue
 				}
 				return nil, err
 			}
-			if b.RepoID != c.repo.ID || b.Head != p.Head.SHA {
+			if b.RepoID != c.repo.ID || b.Head != head {
 				return nil, errors.New("controller check repository/head mismatch")
 			}
 			// Check contexts belong to a commit. Even a closed PR's controller
@@ -1232,6 +1252,17 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.checkName == queueCheckName {
+		if !shaPattern.MatchString(c.expectedHead) {
+			return errors.New("queue writes require an authenticated per-head worker lease")
+		}
+		if p.Head.SHA != c.expectedHead || b.Head != c.expectedHead || selected != nil && selected.HeadSHA != c.expectedHead {
+			return &staleHeadWork{expected: c.expectedHead}
+		}
+	}
 	if !shaPattern.MatchString(b.Head) || !shaPattern.MatchString(b.Base) {
 		return errors.New("refuse invalid publication binding")
 	}
@@ -1503,9 +1534,35 @@ func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 func main() {
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
+	targeted := flag.Bool("targeted", false, "bound only a targeted queue admission invocation")
+	repairOnly := flag.Bool("repair-groups-only", false, "repair queue groups only on authenticated manual dispatch")
+	expectedHead := flag.String("expected-head", "", "exact SHA held by the protected per-head publisher concurrency lease")
+	dispatch := flag.Bool("dispatch-workers", false, "discover complete work and dispatch only fixed default-branch head workers")
+	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
+		os.Exit(1)
+	}
+	if (*targeted || *repairOnly) && !*queueMode || *targeted && *repairOnly {
+		fmt.Fprintln(os.Stderr, "targeted and group-only modes require queue mode and cannot be combined")
+		os.Exit(1)
+	}
+	if (*dispatch || *headWorker != "") && !*queueMode || *dispatch && (*targeted || *repairOnly || *headWorker != "" || *expectedHead != "") || *headWorker != "" && (*targeted || *repairOnly) {
+		fmt.Fprintln(os.Stderr, "discovery/head worker modes require queue mode and cannot mix producer roles")
+		os.Exit(1)
+	}
+	if *headWorker != "" && *headWorker != "admission" && *headWorker != "group" && *headWorker != "ambiguous" {
+		fmt.Fprintln(os.Stderr, "invalid head worker role")
+		os.Exit(1)
+	}
+	if *queueMode && !*dispatch && !shaPattern.MatchString(*expectedHead) {
+		fmt.Fprintln(os.Stderr, "queue writers require a validated expected head; unleased batch publication is disabled")
+		os.Exit(1)
+	}
+	boundedAdmission := *targeted || *headWorker != "" && *headWorker != "group"
+	if boundedAdmission && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		fmt.Fprintln(os.Stderr, "targeted publisher requires supported Unix process-group cancellation")
 		os.Exit(1)
 	}
 	checkName := os.Getenv("PR_GATE_CHECK_NAME")
@@ -1521,9 +1578,28 @@ func main() {
 		err = decode(data, &e)
 	}
 	if err == nil {
-		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, dryRun: *dryRun, output: os.Stdout}
+		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout}
 		if *queueMode {
-			err = (&queueController{controller: &c}).execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
+			q := &queueController{controller: &c, targeted: *targeted, repairOnly: *repairOnly}
+			if *dispatch {
+				err = q.dispatchWorkers(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
+			} else if boundedAdmission {
+				var budget admissionBudget
+				budget, err = parseAdmissionBudget(os.Getenv("PR_GATE_STARTED_AT"), os.Getenv("PR_GATE_DEADLINE"), time.Now())
+				if err == nil {
+					if *headWorker != "" {
+						err = q.withAdmissionBudget(context.Background(), budget, func(ctx context.Context) error { return q.runHead(ctx, os.Getenv("GITHUB_EVENT_NAME"), e, *headWorker) })
+					} else {
+						err = q.executeTargeted(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e, budget)
+					}
+				}
+			} else {
+				if *headWorker != "" {
+					err = q.runHead(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e, *headWorker)
+				} else {
+					err = q.execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
+				}
+			}
 		} else {
 			if checkName == queueCheckName {
 				err = errors.New("queue context requires --queue")
@@ -1533,6 +1609,10 @@ func main() {
 		}
 	}
 	if err != nil {
+		if onlyStaleHeadWork(err) {
+			fmt.Fprintln(os.Stdout, err)
+			return
+		}
 		fmt.Fprintln(os.Stderr, "trusted PR gate:", err)
 		os.Exit(1)
 	}

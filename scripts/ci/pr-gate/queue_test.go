@@ -32,6 +32,7 @@ func newQueueFixture(t *testing.T) *queueFixture {
 	t.Helper()
 	f := newFixture(t)
 	f.c.checkName = queueCheckName
+	f.c.expectedHead = f.pr.Head.SHA
 	f.api.scopeChecksToHead = true
 	q := &queueFixture{fixture: f, q: &queueController{controller: f.c, dco: func(context.Context, pull) (int, error) { return 0, nil }}}
 	q.rules = []rule{encodedRule("deletion", nil), encodedRule("non_fast_forward", nil), encodedRule("required_signatures", nil), encodedRule("pull_request", map[string]bool{"required_review_thread_resolution": true, "dismiss_stale_reviews_on_push": true}), encodedRule("required_status_checks", map[string]any{"strict_required_status_checks_policy": false, "required_status_checks": []map[string]string{{"context": queueCheckName}}}), encodedRule("merge_queue", queueParameters{Build: 1, Minimum: 1, Maximum: 1, Wait: 0, Timeout: 60, Strategy: "ALLGREEN", Method: "MERGE"})}
@@ -89,6 +90,7 @@ func (f *queueFixture) admit() error {
 	return f.q.admit(context.Background(), 7)
 }
 func (f *queueFixture) group() error {
+	f.c.expectedHead = f.groupRun.HeadSHA
 	e := f.event
 	e.Run = f.groupRun
 	return f.q.execute(context.Background(), "workflow_run", e)
@@ -260,7 +262,9 @@ func TestQueueFinalMembershipAndPolicyMovementCannotPublishSuccess(t *testing.T)
 	for name, mutate := range map[string]func(*queueFixture){
 		"queue changes": func(f *queueFixture) {
 			f.api.readHook = func(path string, n int) {
-				if path == f.query && n == 2 {
+				// The first read now checks cross-role ownership. Mutate after
+				// the subsequent initial proof snapshot, during final evidence.
+				if path == f.query && n == 3 {
 					f.entry.ID = "REPLACEMENT"
 					f.groupRefresh()
 				}
@@ -354,6 +358,7 @@ func TestQueueDelayedOldAttemptReconcilesNewestAttempt(t *testing.T) {
 	f.groupRefresh()
 	e := f.event
 	e.Run = old
+	f.c.expectedHead = old.HeadSHA
 	if err := f.q.execute(context.Background(), "workflow_run", e); err != nil {
 		t.Fatal(err)
 	}
@@ -612,6 +617,7 @@ func TestQueueCompletePaginationPublishesAndRepairsLargeQueue(t *testing.T) {
 			if mode == "group" {
 				err = f.group()
 			} else if err = f.q.init(context.Background()); err == nil {
+				f.c.expectedHead = f.groupRun.HeadSHA
 				err = f.q.repairGroups(context.Background())
 			}
 			if err != nil {

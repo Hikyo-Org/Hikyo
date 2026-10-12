@@ -22,18 +22,111 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: queue-gate-publisher
-  cancel-in-progress: false
-  queue: max
-
+# All check writers use the same authenticated head lease. Discovery has no
+# Checks write permission and never holds a repository-global writer lock.
 jobs:
   publish:
+    name: publish-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci-feedback'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    concurrency:
+      group: queue-check-${{ github.repository_id }}-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Capture the authenticated setup-inclusive admission budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          body=$(timeout --kill-after=1s 5s gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100")
+          started=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$GITHUB_SHA" --arg name "publish-$HEAD" '
+            if length != 1 or (.[0] | type) != "object" then error("invalid publisher jobs response") else .[0] end |
+            if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
+            [.[] | select(.name == $name)] |
+            if length != 1 then error("ambiguous publisher job") else .[0] end |
+            if (.id | type) != "number" or .id != (.id | floor) or .id <= 0 or .run_id != $run or .run_attempt != $attempt or .head_sha != $head or .status != "in_progress" or (.started_at | type) != "string" then error("invalid publisher job identity") else .started_at end |
+            fromdateiso8601')
+          now=$(date +%s)
+          test "$started" -gt 0
+          test "$started" -le "$now"
+          test "$now" -lt "$((started + 60))"
+          echo "PR_GATE_STARTED_AT=$started" >> "$GITHUB_ENV"
+          echo "PR_GATE_DEADLINE=$((started + 60))" >> "$GITHUB_ENV"
+      - name: Check out trusted default-branch tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Compile trusted publisher inside the remaining work budget
+        run: |
+          set -euo pipefail
+          remaining=$((PR_GATE_DEADLINE - 15 - $(date +%s)))
+          test "$remaining" -gt 0
+          timeout --kill-after=1s "${remaining}s" go build -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate
+      - name: Reconcile targeted admission with a terminal publication reserve
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-queue-required
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+        run: |
+          test -x "$RUNNER_TEMP/queue-publisher"
+          "$RUNNER_TEMP/queue-publisher" --queue --targeted --expected-head "$HEAD"
+
+  group:
+    name: group-${{ github.event.workflow_run.head_sha }}
+    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && github.event_name == 'workflow_run' && github.event.workflow_run.name == 'trusted-merge-ci'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
       checks: write
+      contents: read
+      pull-requests: read
+    concurrency:
+      group: queue-check-${{ github.repository_id }}-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Check out trusted default-branch tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Reconcile complete group proof under its head lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-queue-required
+          HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          go run ./scripts/ci/pr-gate --queue --expected-head "$HEAD"
+
+  dispatch:
+    if: vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
       contents: read
       pull-requests: read
     steps:
@@ -46,9 +139,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Reconcile protected queue check
+      - name: Discover complete work and dispatch trusted head workers
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_GATE_CHECK_NAME: ci-queue-required
-        run: go run ./scripts/ci/pr-gate --queue
+        run: go run ./scripts/ci/pr-gate --queue --dispatch-workers

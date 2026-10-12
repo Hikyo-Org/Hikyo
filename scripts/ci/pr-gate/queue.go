@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const queueCheckName = "ci-queue-required"
@@ -52,7 +53,10 @@ func (q *queueController) contents(ctx context.Context, path, revision string) (
 
 type queueController struct {
 	*controller
-	dco queueDCOVerifier
+	dco        queueDCOVerifier
+	targeted   bool
+	repairOnly bool
+	admissions map[int]*admissionTrace
 }
 type rule struct {
 	Type       string          `json:"type"`
@@ -189,6 +193,15 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {
 		return errors.New("queue event repository identity mismatch")
 	}
+	if q.repairOnly {
+		if name != "workflow_dispatch" {
+			return errors.New("group-only queue repair requires authenticated manual dispatch")
+		}
+		return q.repairGroups(ctx)
+	}
+	if q.targeted && (name != "pull_request_target" && name != "workflow_dispatch" && (name != "workflow_run" || e.Run.Event != "pull_request")) {
+		return errors.New("targeted admission cannot execute a group or batch repair")
+	}
 	if name == "workflow_run" && e.Run.Event == "merge_group" {
 		return q.group(ctx, e.Run)
 	}
@@ -237,10 +250,12 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 	var failures []error
 	for _, n := range numbers {
 		if err := q.admit(ctx, n); err != nil {
-			failures = append(failures, fmt.Errorf("queue PR #%d: %w", n, err))
+			if !onlyStaleHeadWork(err) {
+				failures = append(failures, fmt.Errorf("queue PR #%d: %w", n, err))
+			}
 		}
 	}
-	if name == "schedule" || name == "push" || name == "workflow_dispatch" {
+	if !q.targeted && (name == "schedule" || name == "push" || name == "workflow_dispatch") {
 		if err := q.repairGroups(ctx); err != nil {
 			failures = append(failures, err)
 		}
@@ -259,11 +274,44 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 	if p.State != "open" {
 		return nil
 	}
+	if p.Head.SHA != q.expectedHead {
+		return &staleHeadWork{expected: q.expectedHead}
+	}
+	var trace *admissionTrace
+	if q.targeted {
+		if q.admissions == nil {
+			q.admissions = make(map[int]*admissionTrace)
+		}
+		trace = &admissionTrace{PR: p}
+		q.admissions[number] = trace
+	}
 	b := newBinding(q.repo.ID, p, nil)
 	result := pending("Merge queue is not active; the legacy full-candidate check remains required.")
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
+	}
+	var earlyFeedback *run
+	if trace != nil && policy.Enabled {
+		trace.Policy = &policy
+		earlyFeedback, err = q.feedback(ctx, p)
+		if err != nil {
+			var computing *forkRecomputationPending
+			if errors.As(err, &computing) {
+				return q.blockMovement(ctx, number, "fork mergeability recomputation")
+			}
+			return err
+		}
+		trace.Run = earlyFeedback
+	}
+	if policy.Enabled {
+		roles, err := q.roles(ctx, p.Head.SHA)
+		if err != nil {
+			return err
+		}
+		if roles.Group && len(roles.Pulls) > 0 {
+			return q.roleCollision(ctx, roles)
+		}
 	}
 	var selectedRun *run
 	if policy.Enabled {
@@ -298,7 +346,10 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 					result = refused("This head belongs to multiple open PRs; commit-level admission is ambiguous.")
 					break
 				}
-				r, err := q.feedback(ctx, p)
+				r := earlyFeedback
+				if trace == nil {
+					r, err = q.feedback(ctx, p)
+				}
 				if err != nil {
 					var computing *forkRecomputationPending
 					if errors.As(err, &computing) {
@@ -395,6 +446,30 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 			result = refused("This head now belongs to multiple open PRs; commit-level admission is ambiguous.")
 		}
 	}
+	if result.Conclusion == "success" {
+		roles, err := q.roles(ctx, p.Head.SHA)
+		if err != nil {
+			return err
+		}
+		if roles.Group && len(roles.Pulls) > 0 {
+			return q.roleCollision(ctx, roles)
+		}
+		present := false
+		for _, current := range roles.Pulls {
+			if current.Number == p.Number {
+				if !sameRolePull(current, final) {
+					return &staleHeadWork{expected: q.expectedHead}
+				}
+				present = true
+			}
+		}
+		if !present {
+			return &staleHeadWork{expected: q.expectedHead}
+		}
+		if len(roles.Pulls) != 1 {
+			result = refused("This head now belongs to multiple open PRs; final role admission is ambiguous.")
+		}
+	}
 	// A native or foreign same-name check can arrive during the final source
 	// reads. Repeat the identity barrier immediately before any terminal write.
 	own, err = q.ownedChecks(ctx, final)
@@ -405,6 +480,14 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 	for i := range own {
 		if selected == nil || own[i].ID > selected.ID {
 			selected = &own[i]
+		}
+	}
+	if trace != nil && selectedRun != nil {
+		created, parseErr := time.Parse(time.RFC3339, selectedRun.CreatedAt)
+		if parseErr == nil && !created.After(time.Now()) {
+			fmt.Fprintf(q.output, "Admission timing: PR #%d head=%s feedback_run=%d attempt=%d source_event_elapsed_seconds=%.0f (diagnostic age at this reconciliation, includes any authority wait; not a push timestamp or first-eligibility proof).\n", number, p.Head.SHA, selectedRun.ID, selectedRun.Attempt, time.Since(created).Seconds())
+		} else {
+			fmt.Fprintln(q.output, "Admission timing: authenticated useful source creation time unavailable; no event-to-eligibility claim.")
 		}
 	}
 	return q.publish(ctx, p, b, selected, result)
@@ -721,6 +804,10 @@ func (q *queueController) queue(ctx context.Context, head string) (queueSnapshot
 	if err != nil {
 		return queueSnapshot{}, err
 	}
+	return q.snapshotQueue(live, head)
+}
+
+func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnapshot, error) {
 	sort.Slice(live.Entries.Nodes, func(i, j int) bool { return live.Entries.Nodes[i].Position < live.Entries.Nodes[j].Position })
 	snap := queueSnapshot{ID: live.ID}
 	seen := make(map[string]bool)
@@ -779,6 +866,9 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 	if hint.ID <= 0 || hint.Attempt <= 0 || hint.Event != "merge_group" || hint.Path != queueWorkflowPath || hint.Repository.ID != q.repo.ID || !shaPattern.MatchString(hint.HeadSHA) || !strings.HasPrefix(hint.HeadBranch, "gh-readonly-queue/"+q.repo.DefaultBranch+"/") {
 		return errors.New("invalid merge group callback")
 	}
+	if hint.HeadSHA != q.expectedHead {
+		return &staleHeadWork{expected: q.expectedHead}
+	}
 	// A valid callback can revoke a prior green before any mutable source read.
 	// The temporary binding is blocking only; final proof adds queue membership.
 	p := pull{Number: 1, State: "open", Head: reference{SHA: hint.HeadSHA, Repo: q.repo}, Base: reference{SHA: hint.HeadSHA, Ref: hint.HeadBranch, Repo: q.repo}}
@@ -792,6 +882,13 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 	}
 	if !policy.Enabled {
 		return nil
+	}
+	roles, err := q.roles(ctx, hint.HeadSHA)
+	if err != nil {
+		return err
+	}
+	if roles.Group && len(roles.Pulls) > 0 {
+		return q.roleCollision(ctx, roles)
 	}
 	current, err := q.latestGroup(ctx, hint.HeadSHA)
 	if err != nil {
@@ -908,6 +1005,22 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 	}
 	if last == nil || !sameSourceEvent(r, *last) || last.HeadBranch != r.HeadBranch || last.Status != r.Status || last.Conclusion != r.Conclusion {
 		return errors.New("merge group attempt changed before publication")
+	}
+	roles, err = q.roles(ctx, r.HeadSHA)
+	if err != nil {
+		return err
+	}
+	if roles.Group && len(roles.Pulls) > 0 {
+		return q.roleCollision(ctx, roles)
+	}
+	if roles.Snapshot == nil || roles.Snapshot.Digest != final.Digest {
+		return &staleQueueGroup{reason: "final role snapshot no longer contains the exact tested group membership"}
+	}
+	for _, member := range finalMembers {
+		current, present := roles.AllPulls[member.Number]
+		if !present || !sameRolePull(current, member) {
+			return &staleQueueGroup{reason: "current member changed in final role snapshot"}
+		}
 	}
 	if err := q.groupBarrier(ctx, p, b); err != nil {
 		return err

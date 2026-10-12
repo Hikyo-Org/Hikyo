@@ -52,13 +52,13 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 21 YAML workflow files. GitHub's sidebar also contains
+The source contains 22 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
-| Trusted gates | `ci-queue-gate.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
+| Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
@@ -224,3 +224,28 @@ explain why the group is a different SHA and why main movement or reordering can
 require rebuilds. The trusted publisher retains lifecycle/completion callbacks
 and scheduled repair; metadata movement of unrelated open PRs remains pending
 rather than making main publication fail.
+
+
+## Queue publisher head leases
+
+The direct PR/feedback publisher and full-group callbacks share a
+repository-ID/head-SHA concurrency key with the fixed maintenance worker.
+The head is a routing hint; fresh current metadata and expected-head guards
+remain required before every owned check write. Read-only main/schedule/manual
+discovery dispatches complete validated head batches and has no check-write
+permission. Workers have no workflow-dispatch permission.
+
+Targeted publisher execution is limited to one minute from the authenticated
+current job start, including checkout, setup and compilation. Controller work
+uses 45 seconds and reserves the remaining absolute budget for a fresh blocking
+terminal publication. Feedback retains its four-minute job limit; maintenance
+and full-group jobs retain ten minutes. These active execution limits do not
+guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
+Startup or terminal transport failure remains a failure, never a green fallback.
+
+All new jobs remain disabled unless `QUEUE_HEAD_WORKERS_ENABLED` is enabled.
+Before enabling it, drain old unleased compiled publishers using the reviewed
+cutover evidence. Preserve mandatory queue protection throughout; enabling a
+variable does not replace hosted token-dispatch and full-group acceptance.
+See the [policy handoff](../handoff/merge-queue-policy.md) for local evidence and
+remaining hosted checks.
