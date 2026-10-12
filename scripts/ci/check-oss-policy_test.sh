@@ -130,7 +130,7 @@ switch (process.argv[2]) {
   case "old-context": status.required_status_checks[0].context = "ci-required"; break;
   case "feedback-context": status.required_status_checks[0].context = "feedback"; break;
   case "extra-context": status.required_status_checks.push({context:"ci-required"}); break;
-  case "loose-status": status.strict_required_status_checks_policy = false; break;
+  case "loose-status": status.strict_required_status_checks_policy = true; break;
   case "disabled": gate.enforcement = "disabled"; break;
   case "signatures": gate.rules = gate.rules.filter((rule) => rule.type !== "required_signatures"); break;
   case "unresolved-threads": gate.rules.find((rule) => rule.type === "pull_request").parameters.required_review_thread_resolution = false; break;
@@ -179,14 +179,14 @@ fi
 
 cp "$repo_root/.github/ISSUE_TEMPLATE/config.yml" \
 	"$fixture_dir/.github/ISSUE_TEMPLATE/config.yml"
-sed 's/ci-required/removed-required-context/' \
+sed 's/ci-queue-required/removed-required-context/' \
 	"$fixture_dir/release/repository/main-ci-gate.json" \
 	>"$fixture_dir/main-ci-gate-missing-aggregate.json"
 mv "$fixture_dir/main-ci-gate-missing-aggregate.json" \
 	"$fixture_dir/release/repository/main-ci-gate.json"
 
 if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >/dev/null 2>&1; then
-	printf 'OSS policy fixture failed: missing ci-required-next context was accepted\n' >&2
+	printf 'OSS policy fixture failed: missing ci-queue-required context was accepted\n' >&2
 	exit 1
 fi
 

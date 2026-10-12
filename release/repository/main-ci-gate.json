@@ -5,33 +5,66 @@
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/main"],
-      "exclude": []
+      "exclude": [],
+      "include": [
+        "refs/heads/main"
+      ]
     }
   },
   "rules": [
-    {"type": "deletion"},
-    {"type": "non_fast_forward"},
     {
-      "type": "pull_request",
-      "parameters": {
-        "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_approving_review_count": 0,
-        "required_review_thread_resolution": true
-      }
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
     },
     {
       "type": "required_status_checks",
       "parameters": {
+        "strict_required_status_checks_policy": false,
         "do_not_enforce_on_create": false,
-        "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          {"context": "ci-required-next"}
+          {
+            "context": "ci-queue-required"
+          }
         ]
       }
     },
-    {"type": "required_signatures"}
+    {
+      "type": "required_signatures"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": true,
+        "required_reviewers": [],
+        "require_code_owner_review": false,
+        "dismissal_restriction": {
+          "enabled": false,
+          "allowed_actors": []
+        },
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true,
+        "require_extra_approval_for_unattributed_changes": true,
+        "allowed_merge_methods": [
+          "merge",
+          "squash",
+          "rebase"
+        ]
+      }
+    },
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "check_response_timeout_minutes": 60,
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 1,
+        "max_entries_to_merge": 1,
+        "merge_method": "MERGE",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 0
+      }
+    }
   ]
 }

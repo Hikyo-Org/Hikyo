@@ -32,6 +32,7 @@ func newQueueFixture(t *testing.T) *queueFixture {
 	t.Helper()
 	f := newFixture(t)
 	f.c.checkName = queueCheckName
+	f.c.expectedHead = f.pr.Head.SHA
 	f.api.scopeChecksToHead = true
 	q := &queueFixture{fixture: f, q: &queueController{controller: f.c, dco: func(context.Context, pull) (int, error) { return 0, nil }}}
 	q.rules = []rule{encodedRule("deletion", nil), encodedRule("non_fast_forward", nil), encodedRule("required_signatures", nil), encodedRule("pull_request", map[string]bool{"required_review_thread_resolution": true, "dismiss_stale_reviews_on_push": true}), encodedRule("required_status_checks", map[string]any{"strict_required_status_checks_policy": false, "required_status_checks": []map[string]string{{"context": queueCheckName}}}), encodedRule("merge_queue", queueParameters{Build: 1, Minimum: 1, Maximum: 1, Wait: 0, Timeout: 60, Strategy: "ALLGREEN", Method: "MERGE"})}
@@ -89,6 +90,7 @@ func (f *queueFixture) admit() error {
 	return f.q.admit(context.Background(), 7)
 }
 func (f *queueFixture) group() error {
+	f.c.expectedHead = f.groupRun.HeadSHA
 	e := f.event
 	e.Run = f.groupRun
 	return f.q.execute(context.Background(), "workflow_run", e)
@@ -214,7 +216,7 @@ func TestQueueFullGroupProofAndNegativeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := f.api.writes[len(f.api.writes)-1]
-	if last["conclusion"] != "success" || last["head_sha"] != f.groupRun.HeadSHA {
+	if last["conclusion"] != "success" || f.api.checks[len(f.api.checks)-1].HeadSHA != f.groupRun.HeadSHA {
 		t.Fatalf("group proof: %+v", last)
 	}
 	decoded, err := decodeBinding(last["external_id"].(string))
@@ -260,7 +262,9 @@ func TestQueueFinalMembershipAndPolicyMovementCannotPublishSuccess(t *testing.T)
 	for name, mutate := range map[string]func(*queueFixture){
 		"queue changes": func(f *queueFixture) {
 			f.api.readHook = func(path string, n int) {
-				if path == f.query && n == 2 {
+				// The first read now checks cross-role ownership. Mutate after
+				// the subsequent initial proof snapshot, during final evidence.
+				if path == f.query && n == 3 {
 					f.entry.ID = "REPLACEMENT"
 					f.groupRefresh()
 				}
@@ -354,6 +358,7 @@ func TestQueueDelayedOldAttemptReconcilesNewestAttempt(t *testing.T) {
 	f.groupRefresh()
 	e := f.event
 	e.Run = old
+	f.c.expectedHead = old.HeadSHA
 	if err := f.q.execute(context.Background(), "workflow_run", e); err != nil {
 		t.Fatal(err)
 	}
@@ -450,6 +455,55 @@ func TestQueueIgnoresActualSkippedMatrixMetadataRun(t *testing.T) {
 			}
 			if f.api.writes[len(f.api.writes)-1]["conclusion"] != "success" {
 				t.Fatal("metadata skip hid successful useful feedback")
+			}
+		})
+	}
+}
+
+func TestQueueGitHubNormalizedSkippedMetadataJob(t *testing.T) {
+	// Recorded from the actual skipped matrix job 114758591719 in run
+	// 38233557251. GitHub can normalize the unevaluated expression's spelling.
+	const recordedName = "${{ (((github.event.action == 'edited') && (github.event.changes.base.ref.from == '') && 'metadata (ignored)') || 'feedback') }} (${{ matrix.lane }})"
+	for name, mutate := range map[string]func(*[]job){
+		"recorded skipped job": func(*[]job) {},
+		"unknown skipped name": func(jobs *[]job) { (*jobs)[0].Name = "unknown metadata" },
+		"different event expression": func(jobs *[]job) {
+			(*jobs)[0].Name = strings.Replace(recordedName, "'edited'", "'synchronize'", 1)
+		},
+		"unfinished canonical job": func(jobs *[]job) {
+			(*jobs)[0].Status, (*jobs)[0].Conclusion = "queued", ""
+		},
+		"failed canonical job":     func(jobs *[]job) { (*jobs)[0].Conclusion = "failure" },
+		"successful canonical job": func(jobs *[]job) { (*jobs)[0].Conclusion = "success" },
+		"duplicate skipped jobs": func(jobs *[]job) {
+			duplicate := (*jobs)[0]
+			duplicate.ID++
+			*jobs = append(*jobs, duplicate)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			metadata := f.feedbackRun
+			metadata.ID, metadata.Conclusion = 103, "skipped"
+			f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.feedbackRun}}
+			jobs := []job{{ID: 301, RunID: 103, Attempt: 1, HeadSHA: metadata.HeadSHA, Name: recordedName, Status: "completed", Conclusion: "skipped"}}
+			mutate(&jobs)
+			f.api.responses[f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": len(jobs), "jobs": jobs}
+			err := f.admit()
+			if name != "recorded skipped job" {
+				if err == nil {
+					t.Fatal("noncanonical or non-skipped metadata was ignored")
+				}
+				f.assertNoSuccess(t)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			last := f.api.writes[len(f.api.writes)-1]
+			bound, err := decodeBinding(last["external_id"].(string))
+			if err != nil || last["conclusion"] != "success" || bound.Run != f.feedbackRun.ID || bound.Attempt != f.feedbackRun.Attempt {
+				t.Fatalf("metadata skip did not reuse the successful useful run: %+v, %v", last, err)
 			}
 		})
 	}
@@ -571,6 +625,7 @@ func TestQueueCompletePaginationPublishesAndRepairsLargeQueue(t *testing.T) {
 			if mode == "group" {
 				err = f.group()
 			} else if err = f.q.init(context.Background()); err == nil {
+				f.c.expectedHead = f.groupRun.HeadSHA
 				err = f.q.repairGroups(context.Background())
 			}
 			if err != nil {
@@ -580,7 +635,7 @@ func TestQueueCompletePaginationPublishesAndRepairsLargeQueue(t *testing.T) {
 				t.Fatal("complete membership was not retrieved again before publication")
 			}
 			last := f.api.writes[len(f.api.writes)-1]
-			if last["conclusion"] != "success" || last["head_sha"] != f.groupRun.HeadSHA {
+			if last["conclusion"] != "success" || f.api.checks[len(f.api.checks)-1].HeadSHA != f.groupRun.HeadSHA {
 				t.Fatalf("complete group was not proved: %+v", last)
 			}
 		})
@@ -956,7 +1011,7 @@ func TestQueueForkRecomputationKeepsPublisherHealthyAndAdmissionPending(t *testi
 				}
 				f.assertNoSuccess(t)
 				latest := f.api.checks[len(f.api.checks)-1]
-				if latest.ID <= old.ID || latest.Status != "queued" || latest.Conclusion != "" {
+				if latest.ID != old.ID || latest.HeadSHA != f.pr.Head.SHA || latest.Status != "queued" || latest.Conclusion != "" {
 					t.Fatalf("prior green was not superseded by blocking pending: %+v", latest)
 				}
 				binding, err := decodeBinding(latest.ExternalID)

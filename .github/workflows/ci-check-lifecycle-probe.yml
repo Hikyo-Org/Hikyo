@@ -1,0 +1,49 @@
+# This diagnostic never supplies a required check or grants merge authority.
+# It is executable only from trusted main, before head-worker enablement.
+name: check-lifecycle-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-lifecycle-probe-${{ github.repository_id }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  lifecycle-probe:
+    name: lifecycle-probe
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+    steps:
+      - name: Check out the exact trusted main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify the non-required check lifecycle and terminal cleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_PROBE_RECEIPT: ${{ runner.temp }}/check-lifecycle-probe.json
+        run: go run ./scripts/ci/pr-gate --check-lifecycle-probe
+      - name: Preserve the exact run-attempt lifecycle receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: check-lifecycle-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/check-lifecycle-probe.json
+          if-no-files-found: error
+          retention-days: 7

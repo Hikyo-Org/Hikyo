@@ -3,6 +3,25 @@ set -eu
 
 CDPATH=
 repo_root=$(cd -- "$(dirname "$0")/../.." && pwd)
+# This shared bootstrap owns tools for both docs CI and Pages. The pinned
+# Ubuntu container omits jq; policy validation itself must stay read-only.
+if ! command -v jq >/dev/null 2>&1; then
+	if [ "${GITHUB_ACTIONS:-}" = true ] && [ "${CI:-}" = true ] &&
+		[ -f /.dockerenv ] && [ "$(id -u)" = 0 ] &&
+		grep -qx 'ID=ubuntu' /etc/os-release &&
+		grep -qx 'VERSION_ID="24.04"' /etc/os-release; then
+		apt-get update
+		apt-get install --yes --no-install-recommends jq
+	else
+		printf 'docs verification: jq is required; install jq locally before verify-docs.sh or pnpm docs verification\n' >&2
+		exit 1
+	fi
+fi
+command -v jq >/dev/null 2>&1 || {
+	printf 'docs verification: jq provisioning did not provide jq\n' >&2
+	exit 1
+}
+
 package_manager=$(node -p 'require(process.argv[1]).packageManager' \
 	"$repo_root/docs/site/package.json")
 

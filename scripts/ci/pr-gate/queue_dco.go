@@ -37,12 +37,12 @@ func verifyQueueDCO(ctx context.Context, repoName string, p pull) (int, error) {
 	}
 	defer os.RemoveAll(dir)
 	repo := filepath.Join(dir, "metadata.git")
-	init := exec.CommandContext(ctx, "git", "-c", "core.hooksPath=/dev/null", "init", "--bare", "--quiet", "--template=", repo)
+	init := gateCommand(ctx, "git", "-c", "core.hooksPath=/dev/null", "init", "--bare", "--quiet", "--template=", repo)
 	init.Env = queueDCOEnvironment()
 	if err := init.Run(); err != nil {
 		return 0, errors.New("cannot initialize queue DCO metadata repository")
 	}
-	cmd := exec.CommandContext(ctx, "git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=30", "-C", repo, "fetch", "--quiet", "--no-tags", "--filter=blob:none", "https://github.com/"+repoName+".git", p.Base.SHA, p.Head.SHA)
+	cmd := gateCommand(ctx, "git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=30", "-C", repo, "fetch", "--quiet", "--no-tags", "--filter=blob:none", "https://github.com/"+repoName+".git", p.Base.SHA, p.Head.SHA)
 	cmd.Env = queueDCOEnvironment()
 	if err := cmd.Run(); err != nil {
 		return 0, errors.New("cannot fetch immutable queue DCO Git metadata")
@@ -53,7 +53,7 @@ func checkQueueDCO(ctx context.Context, p pull, repo string) (int, error) {
 	if p.User.ID <= 0 || p.User.Login == "" {
 		return 0, errors.New("missing authenticated PR actor for DCO policy")
 	}
-	cmd := exec.CommandContext(ctx, "sh", "scripts/ci/check-dco.sh", p.Base.SHA, p.Head.SHA, repo)
+	cmd := gateCommand(ctx, "sh", "scripts/ci/check-dco.sh", p.Base.SHA, p.Head.SHA, repo)
 	cmd.Env = queueDCOEnvironment()
 	if p.User.Login == "dependabot[bot]" {
 		cmd.Env = append(cmd.Env, "DCO_EXEMPT_AUTHOR=dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>")

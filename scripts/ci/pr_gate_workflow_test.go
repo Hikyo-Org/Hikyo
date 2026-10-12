@@ -159,8 +159,8 @@ func TestRequiredJobCannotSkipOnPullRequests(t *testing.T) {
 			}
 		}
 	}
-	if !slices.Equal(contexts, []string{"ci-required-next"}) {
-		t.Fatal("canonical policy must require the complete candidate producer")
+	if !slices.Equal(contexts, []string{"ci-queue-required"}) {
+		t.Fatal("canonical policy must require the trusted queue producer")
 	}
 	var observer struct {
 		Jobs map[string]struct {
@@ -186,15 +186,33 @@ func TestRequiredJobCannotSkipOnPullRequests(t *testing.T) {
 	found := false
 	for _, step := range job.Steps {
 		if step.Run == "go run ./scripts/ci/pr-gate" {
-			found = step.Env["PR_GATE_CHECK_NAME"] == contexts[0]
+			found = step.Env["PR_GATE_CHECK_NAME"] == "ci-required-next"
 		}
 	}
 	if !found {
-		t.Fatal("required policy context must match trusted API publisher")
+		t.Fatal("legacy rollback context must retain its full-only trusted API publisher")
 	}
 	if strings.Contains(string(raw), "uses: ./.github/workflows/ci.yml") {
 		t.Fatal("credentialed publisher must never execute the untrusted validation graph")
 	}
+	queueRaw, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-queue-gate.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The canonical context is now published by direct expected-head jobs and
+	// dispatched head workers. Reuse their actual-source trust contracts instead
+	// of tying merge eligibility to the former unbounded go-run command.
+	if err := queuePublisherContract(queueRaw); err != nil {
+		t.Fatalf("canonical queue context must match trusted direct writers and read-only discovery: %v", err)
+	}
+	workerRaw, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-queue-worker.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queueWorkerContract(workerRaw); err != nil {
+		t.Fatalf("canonical queue context must match trusted expected-head workers: %v", err)
+	}
+
 	// GitHub required contexts have a name/app identity, not workflow identity.
 	// This prevents accidental native collisions; actual hostile collisions are
 	// refused with owned pending barriers by the controller's runtime tests.
@@ -219,7 +237,7 @@ func TestRequiredJobCannotSkipOnPullRequests(t *testing.T) {
 			t.Fatal(err)
 		}
 		for id, j := range w.Jobs {
-			if id == contexts[0] || j.Name == contexts[0] {
+			if id == contexts[0] || j.Name == contexts[0] || id == "ci-required-next" || j.Name == "ci-required-next" {
 				t.Fatalf("native workflow %s must not publish the required PR context", entry.Name())
 			}
 		}

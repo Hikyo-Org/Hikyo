@@ -3,8 +3,14 @@ set -eu
 
 : "${GH_BIN:=gh}"
 
+main_only=false
+if [ "${1:-}" = --main-only ]; then
+	main_only=true
+	shift
+fi
+
 if [ "$#" -ne 1 ]; then
-	printf 'usage: %s OWNER/REPO\n' "$0" >&2
+	printf 'usage: %s [--main-only] OWNER/REPO\n' "$0" >&2
 	exit 2
 fi
 
@@ -29,10 +35,86 @@ upsert_ruleset() {
 	fi
 }
 
+configure_main() {
+	policy="$repo_root/release/repository/main-ci-gate.json"
+	"$repo_root/scripts/release/check-main-policy.sh" "$policy"
+	main_tmp=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-main-policy.XXXXXX")
+	trap 'rm -rf "$main_tmp"' EXIT HUP INT TERM
+	printf '[]\n' >"$main_tmp/list.json"
+	page=1
+	while :; do
+		$GH_BIN api "repos/$repository/rulesets?per_page=100&page=$page" >"$main_tmp/page.json"
+		page_count=$(jq -ser '
+			if length != 1 or (.[0] | type) != "array" then error("invalid ruleset page") else .[0] end |
+			if length > 100 or any(.[]; type != "object" or (.name | type) != "string" or
+				(.id | type) != "number" or .id <= 0 or (.id | floor) != .id)
+			then error("invalid ruleset entry") else length end' "$main_tmp/page.json")
+		jq -s '.[0] + .[1]' "$main_tmp/list.json" "$main_tmp/page.json" >"$main_tmp/combined.json"
+		mv "$main_tmp/combined.json" "$main_tmp/list.json"
+		[ "$page_count" -eq 100 ] || break
+		[ "$page" -lt 20 ] || {
+			printf 'repository policy: incomplete ruleset discovery after 20 pages\n' >&2
+			exit 1
+		}
+		page=$((page + 1))
+	done
+	count=$(jq -ser 'if length != 1 or (.[0] | type) != "array" then error("invalid ruleset list") else .[0] end | [.[] | select(.name == "main requires PR and release CI")] | length' "$main_tmp/list.json")
+	if [ "$count" = 0 ] && [ "$main_only" = false ]; then
+		# Preserve initial repository setup; the narrow migration never creates
+		# a second ruleset or changes any unrelated repository setting.
+		cp "$policy" "$main_tmp/proposed.json"
+		$GH_BIN api --method POST "repos/$repository/rulesets" --input "$main_tmp/proposed.json" >"$main_tmp/created.json"
+		id=$(jq -er '.id | select(type == "number")' "$main_tmp/created.json")
+	else
+		id=$(jq -er '[.[] | select(.name == "main requires PR and release CI")] |
+			if length == 1 then .[0].id | select(type == "number" and . > 0 and floor == .) else error("main ruleset must exist uniquely") end' "$main_tmp/list.json")
+		$GH_BIN api "repos/$repository/rulesets/$id" >"$main_tmp/before.json"
+		# Preserve all unrelated live parameters, rules, conditions and actor policy.
+		# Refuse a weakened/redacted source rather than overwriting it with defaults.
+		if ! "$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/before.json" 2>/dev/null; then
+			"$repo_root/scripts/release/check-main-policy.sh" --legacy "$main_tmp/before.json"
+		fi
+		jq --slurpfile desired "$policy" '
+			(.rules[] | select(.type == "required_status_checks").parameters.required_status_checks[0]) as $existing |
+			{name,target,enforcement,bypass_actors,conditions,rules} |
+			.rules = ([.rules[] | select(.type != "required_status_checks" and .type != "merge_queue")] +
+				[$desired[0].rules[] | select(.type == "required_status_checks" or .type == "merge_queue") |
+					if .type == "required_status_checks" then
+						.parameters.required_status_checks[0] = ($existing | .context = "ci-queue-required")
+					else . end])
+		' "$main_tmp/before.json" >"$main_tmp/proposed.json"
+		"$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/proposed.json"
+		$GH_BIN api --method PUT "repos/$repository/rulesets/$id" --input "$main_tmp/proposed.json" >/dev/null
+	fi
+	"$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/proposed.json"
+	$GH_BIN api "repos/$repository/rulesets/$id" >"$main_tmp/after.json"
+	"$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/after.json"
+	jq -e --slurpfile expected "$main_tmp/proposed.json" '
+		# GitHub may represent an unspecified integration as absent or null.
+		# Every concrete binding (including explicit zero) must remain exact.
+		def writable: {name,target,enforcement,bypass_actors,conditions,rules} |
+			(.rules[] | select(.type == "required_status_checks").parameters.required_status_checks[]) |=
+				(if .integration_id == null then del(.integration_id) else . end) |
+			.rules |= sort_by(.type);
+		writable == ($expected[0] | writable)
+	' "$main_tmp/after.json" >/dev/null || {
+		printf 'repository policy: main readback differs from submitted protection\n' >&2
+		exit 1
+	}
+	rm -rf "$main_tmp"
+	trap - EXIT HUP INT TERM
+	printf 'repository policy: mandatory queue main policy verified\n'
+}
+
+if [ "$main_only" = true ]; then
+	configure_main
+	exit 0
+fi
+
 upsert_ruleset "$repo_root/release/repository/release-tag-immutability.json"
 upsert_ruleset "$repo_root/release/repository/release-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
-upsert_ruleset "$repo_root/release/repository/main-ci-gate.json"
+configure_main
 
 $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
 # CodeQL runs as GitHub's default setup (a repository setting, not workflow
