@@ -1046,6 +1046,9 @@ func (q *queueController) repairGroups(ctx context.Context) error {
 	var failures []error
 	for _, entry := range live.Entries.Nodes {
 		if entry.Head.OID == "" && entry.State == "QUEUED" {
+			if _, err := fmt.Fprintf(q.output, "PR #%d queue entry %q (position %d, QUEUED): waiting for GitHub to create a merge-group commit; no group proof can be published yet.\n", entry.PR.Number, entry.ID, entry.Position); err != nil {
+				return err
+			}
 			continue
 		}
 		if !shaPattern.MatchString(entry.Head.OID) || seen[entry.Head.OID] {

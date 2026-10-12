@@ -783,3 +783,66 @@ func TestQueueAdmissionCompletesNewestOwnedPendingCheck(t *testing.T) {
 	}
 	t.Fatal("newest owned check disappeared")
 }
+
+func TestQueueRepairReportsUnmaterializedEntryWithoutPublishingProof(t *testing.T) {
+	f := newQueueFixture(t)
+	f.entry.Head.OID = ""
+	f.entry.State = "QUEUED"
+	f.groupRefresh()
+	if err := f.q.init(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	f.q.output = &output
+	if err := f.q.repairGroups(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := `PR #7 queue entry "ENTRY7" (position 1, QUEUED): waiting for GitHub to create a merge-group commit; no group proof can be published yet.`
+	if !strings.Contains(output.String(), want) {
+		t.Fatalf("unmaterialized group was silently skipped: %s", output.String())
+	}
+	if len(f.api.writes) != 0 {
+		t.Fatal("unmaterialized group wrote a check without a tested group SHA")
+	}
+	for path := range f.api.reads {
+		if strings.Contains(path, "actions/workflows/ci-merge-group.yml/runs?") {
+			t.Fatal("unmaterialized entry was treated as an executable group")
+		}
+	}
+}
+
+type queueDiagnosticWriter struct{}
+
+func (queueDiagnosticWriter) Write(data []byte) (int, error) {
+	if bytes.Contains(data, []byte("waiting for GitHub")) {
+		return 0, errors.New("queue diagnostic unavailable")
+	}
+	return len(data), nil
+}
+
+func TestQueueRepairRetainsMalformedGroupAndDiagnosticErrors(t *testing.T) {
+	for _, state := range []string{"AWAITING_CHECKS", "MERGEABLE", "UNMERGEABLE", "LOCKED", "QUEUED"} {
+		t.Run(state, func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.entry.Head.OID = ""
+			f.entry.State = state
+			f.groupRefresh()
+			if err := f.q.init(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if state == "QUEUED" {
+				f.q.output = queueDiagnosticWriter{}
+			}
+			err := f.q.repairGroups(context.Background())
+			if err == nil {
+				t.Fatal("malformed group identity or diagnostic failure was hidden")
+			}
+			if state == "QUEUED" && err.Error() != "queue diagnostic unavailable" {
+				t.Fatalf("diagnostic error was not preserved: %v", err)
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("missing group SHA was replaced by another authorization target")
+			}
+		})
+	}
+}
