@@ -144,7 +144,11 @@ scripts/release/configure-repository.sh --main-only Hikyo-Org/Hikyo
 Expected result: `repository policy: mandatory queue main policy verified`.
 This path refuses absent/duplicate owning rulesets, redacted actors, weakened
 source policy, API errors and readback drift. It preserves unrelated live rules
-and PR parameters. It does not configure tags, releases, CodeQL, Actions
+and PR parameters, including an explicit required-check `integration_id`.
+Unspecified absent/null bindings compare equivalently on readback; a changed
+or lost concrete binding is refused. Discovery validates every 100-result page
+and stops without writing if still incomplete after 20 pages. It does not
+configure tags, releases, CodeQL, Actions
 permissions or git refs. The broad command still configures those settings;
 do not use it for an isolated queue transition. Neither command proves hosted
 queue acceptance or replaces the actual-token capability staging.
@@ -181,7 +185,10 @@ gh api --method PUT repos/Hikyo-Org/Hikyo/rulesets/20539346 --input main-policy-
 gh api repos/Hikyo-Org/Hikyo/rulesets/20539346 > main-policy-after.json
 scripts/release/check-main-policy.sh --legacy main-policy-after.json
 jq -e --slurpfile expected main-policy-before.json '
-  def writable: {name,target,enforcement,bypass_actors,conditions,rules} | .rules |= sort_by(.type);
+  def writable: {name,target,enforcement,bypass_actors,conditions,rules} |
+    (.rules[] | select(.type == "required_status_checks").parameters.required_status_checks[]) |=
+      (if .integration_id == null then del(.integration_id) else . end) |
+    .rules |= sort_by(.type);
   writable == ($expected[0] | writable)
 ' main-policy-after.json
 )

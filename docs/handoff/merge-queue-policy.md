@@ -2,8 +2,10 @@
 
 This follow-up adopts the protected queue configuration already activated after
 bootstrap PR #891. It changes canonical policy, local policy/configuration
-fixtures and contributor/operator documentation. It adds no controller,
-workflow, application, job-registry or frozen full-suite execution changes.
+fixtures and contributor/operator documentation. It also corrects the queue
+publisher's exact recognition of GitHub's observed normalized skipped metadata
+job name. Workflow, application, job-registry and frozen full-suite execution
+remain unchanged.
 
 ## Contract
 
@@ -26,7 +28,10 @@ Run `scripts/release/configure-repository.sh --main-only Hikyo-Org/Hikyo` only
 with operator authorization and administrator access. It reads the unique
 existing main ruleset, validates its queue or legacy contract, preserves every
 unrelated live rule/PR parameter, atomically replaces only the queue/status-check
-rules, and verifies exact writable readback. It refuses missing or redacted
+rules, and verifies writable readback, treating absent/null unspecified integration
+bindings equivalently while retaining every explicit integer binding. Discovery
+validates each 100-result page and refuses before any PUT if still incomplete
+after 20 pages. It refuses missing or redacted
 actor policy, duplicate/absent owning rulesets, malformed JSON, weakened policy,
 API errors and readback drift. It never changes tag/release settings, CodeQL,
 Actions permissions or git refs. Broad initial configuration retains those
@@ -38,8 +43,9 @@ The CI guide contains the validated capture, restore and equality commands.
 
 ## Local validation
 
-The complete CI tooling Go package passes (25.338 seconds), including 28 actual
-queue-policy mutations, five malformed legacy-policy cases and 11 mocked
+The initial complete CI tooling Go package passed (25.338 seconds). The expanded
+policy/configuration regression check passes (4.875 seconds), including 32 actual
+queue-policy mutations, five malformed legacy-policy cases and 20 mocked
 main-only API scenarios. Vet and ShellCheck pass. The existing CodeQL setup and
 nightly/release preservation fixtures pass. Pinned documentation diagnostics
 report zero errors, warnings or hints; the site builds successfully and the
@@ -48,6 +54,22 @@ actual OSS policy fixture passes its positive controls and refusals.
 These checks validate the local follow-up, not hosted populated-group acceptance.
 No application-wide suite was repeated locally, and no policy mutation or CI
 run was dispatched by this follow-up preparation.
+
+## Review follow-up
+
+Five new source-bound checks fail on original head `3423e328c`: a valid positive,
+zero or null integration binding, GitHub's nullable readback representation,
+and a later-page main owner. They pass after preserving the binding and fully
+validating bounded discovery. Cross-page duplicates, malformed/incomplete pages
+and changed concrete bindings remain refused. The API fixture now asserts the
+ordered list-page(s), owning GET, atomic PUT and final GET sequence.
+
+Main publication also encountered GitHub's normalized spelling of a single
+completed/skipped metadata-only matrix job. Architecture reproduced that exact
+job name from run 38233557251, then added only its exact canonical spelling to
+the existing ignore list. The regression still refuses unknown names, different
+events, unfinished/failed/successful jobs and duplicate metadata jobs; useful
+feedback and full group proof remain necessary. Its race test passes (6.087s).
 
 ## Evidence and remaining hosted acceptance
 

@@ -19,10 +19,12 @@ const queueWorkflowPath = ".github/workflows/ci-merge-group.yml"
 const queueRulesetID = 20539346
 const feedbackWorkflowPath = ".github/workflows/ci-feedback.yml"
 
-// GitHub can skip a job before expanding its matrix/name expression. Match
-// only this canonical ignored job, never an arbitrary successful/skipped run.
+// GitHub can skip a job before expanding its matrix/name expression, and may
+// normalize its parentheses. Match only observed canonical spellings of this
+// ignored job, never an arbitrary successful/skipped run.
 const feedbackNameExpression = "${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }} (${{ matrix.lane }})"
 const skippedFeedbackName = "github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback'"
+const normalizedSkippedFeedbackName = "${{ (((github.event.action == 'edited') && (github.event.changes.base.ref.from == '') && 'metadata (ignored)') || 'feedback') }} (${{ matrix.lane }})"
 
 func newBinding(repoID int64, p pull, r *run) binding {
 	return (snapshot{PR: p, Run: r}).binding(repoID)
@@ -467,7 +469,7 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			if err != nil {
 				return nil, err
 			}
-			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
+			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedSkippedFeedbackName) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
 				continue
 			}
 			admitted, ignored := 0, 0

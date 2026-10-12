@@ -13,6 +13,10 @@ fi
 # Queue and rollback share every protection. Only their coupled completion
 # context, strictness and queue rule differ; admission never becomes rollback.
 jq -se --arg mode "$mode" '
+	def check($context):
+		type == "object" and .context == $context and
+		(keys - ["context", "integration_id"] == []) and
+		(.integration_id == null or (.integration_id | type == "number" and . >= 0 and floor == .));
 	def one($type): [.rules[] | select(.type == $type)] | if length == 1 then .[0] else error("missing or duplicate " + $type) end;
 	if length != 1 then error("expected exactly one policy document") else .[0] end |
 	if type != "object" or (.rules | type) != "array" then error("expected policy object and rules array") else . end |
@@ -29,7 +33,8 @@ jq -se --arg mode "$mode" '
 	(one("required_status_checks").parameters |
 		.do_not_enforce_on_create == false and
 		.strict_required_status_checks_policy == ($mode == "legacy") and
-		.required_status_checks == [{context:(if $mode == "legacy" then "ci-required-next" else "ci-queue-required" end)}]) and
+		(.required_status_checks | type == "array" and length == 1 and
+			(.[0] | check(if $mode == "legacy" then "ci-required-next" else "ci-queue-required" end)))) and
 	(if $mode == "legacy" then [.rules[] | select(.type == "merge_queue")] == []
 	 else one("merge_queue").parameters == {
 		check_response_timeout_minutes:60, grouping_strategy:"ALLGREEN",

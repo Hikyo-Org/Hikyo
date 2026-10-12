@@ -447,6 +447,55 @@ func TestQueueIgnoresActualSkippedMatrixMetadataRun(t *testing.T) {
 	}
 }
 
+func TestQueueGitHubNormalizedSkippedMetadataJob(t *testing.T) {
+	// Recorded from the actual skipped matrix job 114758591719 in run
+	// 38233557251. GitHub can normalize the unevaluated expression's spelling.
+	const recordedName = "${{ (((github.event.action == 'edited') && (github.event.changes.base.ref.from == '') && 'metadata (ignored)') || 'feedback') }} (${{ matrix.lane }})"
+	for name, mutate := range map[string]func(*[]job){
+		"recorded skipped job": func(*[]job) {},
+		"unknown skipped name": func(jobs *[]job) { (*jobs)[0].Name = "unknown metadata" },
+		"different event expression": func(jobs *[]job) {
+			(*jobs)[0].Name = strings.Replace(recordedName, "'edited'", "'synchronize'", 1)
+		},
+		"unfinished canonical job": func(jobs *[]job) {
+			(*jobs)[0].Status, (*jobs)[0].Conclusion = "queued", ""
+		},
+		"failed canonical job": func(jobs *[]job) { (*jobs)[0].Conclusion = "failure" },
+		"successful canonical job": func(jobs *[]job) { (*jobs)[0].Conclusion = "success" },
+		"duplicate skipped jobs": func(jobs *[]job) {
+			duplicate := (*jobs)[0]
+			duplicate.ID++
+			*jobs = append(*jobs, duplicate)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			metadata := f.feedbackRun
+			metadata.ID, metadata.Conclusion = 103, "skipped"
+			f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.feedbackRun}}
+			jobs := []job{{ID: 301, RunID: 103, Attempt: 1, HeadSHA: metadata.HeadSHA, Name: recordedName, Status: "completed", Conclusion: "skipped"}}
+			mutate(&jobs)
+			f.api.responses[f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")] = map[string]any{"total_count": len(jobs), "jobs": jobs}
+			err := f.admit()
+			if name != "recorded skipped job" {
+				if err == nil {
+					t.Fatal("noncanonical or non-skipped metadata was ignored")
+				}
+				f.assertNoSuccess(t)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			last := f.api.writes[len(f.api.writes)-1]
+			bound, err := decodeBinding(last["external_id"].(string))
+			if err != nil || last["conclusion"] != "success" || bound.Run != f.feedbackRun.ID || bound.Attempt != f.feedbackRun.Attempt {
+				t.Fatalf("metadata skip did not reuse the successful useful run: %+v, %v", last, err)
+			}
+		})
+	}
+}
+
 type failedQueueRead struct {
 	api
 	contains string
