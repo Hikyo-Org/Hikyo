@@ -115,6 +115,20 @@ validation remains manual and a nightly prerequisite. Stable releases keep their
 existing exact-commit validation ceremony. Preserve pins, signatures, cache
 ownership, native runners, budget admission, and protected publication.
 
+## Documentation prerequisites
+
+Local documentation verification and the main-policy validator require `jq` in
+addition to the pinned Node/pnpm toolchain. Install `jq` with your system package
+manager before direct `pnpm --dir docs/site run verify` or local policy commands.
+For example, macOS uses `brew install jq`; Ubuntu uses its `jq` package.
+
+The shared `scripts/ci/verify-docs.sh` bootstrap is used by both full CI and
+Pages. It provisions missing `jq` through Ubuntu APT only in the recognized
+root GitHub Actions Ubuntu 24.04 container, before Corepack or verification.
+Outside that context it fails with the local prerequisite instead of escalating
+privileges. Installation failure stops verification. Policy validation never
+installs packages, accesses the network or changes system settings.
+
 ## Queue policy and protected recovery
 
 The canonical [main policy](../../release/repository/main-ci-gate.json) requires

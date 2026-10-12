@@ -102,3 +102,34 @@ rebuilds can still cost time.
 - [Legacy reference policy](../../release/repository/main-ci-gate-legacy.json)
 - [Historical bootstrap handoff](trusted-merge-queue.md)
 - [GitHub merge queue semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+
+## First full group: documentation dependency repair
+
+The first actual queued group `334453f5cc3bfc407116b43794c5cf1bb090323c`
+ran in [38239116880](https://github.com/Hikyo-Org/Hikyo/actions/runs/38239116880).
+Its docs job failed because the new shared policy validator required `jq`,
+which is absent from the pinned Playwright container. The PR was dequeued and
+the superseded group cancelled; this is a real dependency failure, not full
+suite success. Protections stayed active and no tests were removed.
+
+Both full CI and Pages already call `scripts/ci/verify-docs.sh`. That explicit
+bootstrap now provisions missing `jq` through Ubuntu APT only in the recognized
+root GitHub Actions Ubuntu 24.04 container, before Corepack and verification.
+Local, unprivileged or unsupported setups must install `jq` first and otherwise
+fail with the prerequisite. The policy validator remains pure: no package
+installation, network access or system changes occur during policy checking.
+
+Twelve permanent source-bound bootstrap cases pass (4.401s). They exercise
+preinstalled local tools, recognized provisioning, independent CI/GitHub flags,
+root/container/distro boundaries, APT update/install failure, missing install
+result, and the pure validator's no-install behavior. Independent mutations
+reject removal of the root/container guards and swallowed update failure.
+
+The complete `verify-docs.sh` invocation then passed in a clean container with
+exact Playwright digest
+`sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e`,
+official checksum-verified Node 26.7.0 and the actual public docs configuration.
+APT provided `jq` 1.7.1-3ubuntu0.24.04.2. Diagnostics reported zero errors,
+warnings or hints; build, docs/PWA browser checks, PostHog/CSP, OSS mutations,
+live-page and fallback-notification fixtures passed. This local container proof
+does not replace new-head useful feedback or a fresh full queued-group run.

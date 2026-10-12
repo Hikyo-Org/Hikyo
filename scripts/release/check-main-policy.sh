@@ -10,6 +10,10 @@ if [ "$#" -ne 1 ]; then
 	printf 'usage: %s [--legacy] POLICY_JSON\n' "$0" >&2
 	exit 2
 fi
+command -v jq >/dev/null 2>&1 || {
+	printf 'main policy: jq is required; install jq before local policy/docs validation (docs CI uses verify-docs.sh setup)\n' >&2
+	exit 1
+}
 # Queue and rollback share every protection. Only their coupled completion
 # context, strictness and queue rule differ; admission never becomes rollback.
 jq -se --arg mode "$mode" '
