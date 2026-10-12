@@ -7,10 +7,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 type queueDCOVerifier func(context.Context, pull) (int, error)
+
+func queueDCOEnvironment() []string {
+	// Preserve only host tool lookup and temporary-directory selection. No PR
+	// input sets these, but ambient Git selectors/configuration and credentials
+	// must not redirect immutable metadata reads or alter canonical DCO policy.
+	env := []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_COUNT=0", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
+	for _, key := range []string{"HOME", "TMPDIR"} {
+		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
+	}
+	return env
+}
 
 // Read immutable Git metadata in a bare temporary repository. Neither PR
 // files, hooks nor Git configuration are checked out or executed. The actual
@@ -25,11 +37,13 @@ func verifyQueueDCO(ctx context.Context, repoName string, p pull) (int, error) {
 	}
 	defer os.RemoveAll(dir)
 	repo := filepath.Join(dir, "metadata.git")
-	if err := exec.CommandContext(ctx, "git", "-c", "core.hooksPath=/dev/null", "init", "--bare", "--quiet", repo).Run(); err != nil {
+	init := exec.CommandContext(ctx, "git", "-c", "core.hooksPath=/dev/null", "init", "--bare", "--quiet", "--template=", repo)
+	init.Env = queueDCOEnvironment()
+	if err := init.Run(); err != nil {
 		return 0, errors.New("cannot initialize queue DCO metadata repository")
 	}
 	cmd := exec.CommandContext(ctx, "git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=30", "-C", repo, "fetch", "--quiet", "--no-tags", "--filter=blob:none", "https://github.com/"+repoName+".git", p.Base.SHA, p.Head.SHA)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = queueDCOEnvironment()
 	if err := cmd.Run(); err != nil {
 		return 0, errors.New("cannot fetch immutable queue DCO Git metadata")
 	}
@@ -40,11 +54,7 @@ func checkQueueDCO(ctx context.Context, p pull, repo string) (int, error) {
 		return 0, errors.New("missing authenticated PR actor for DCO policy")
 	}
 	cmd := exec.CommandContext(ctx, "sh", "scripts/ci/check-dco.sh", p.Base.SHA, p.Head.SHA, repo)
-	for _, v := range os.Environ() {
-		if !strings.HasPrefix(v, "DCO_EXEMPT_AUTHOR=") {
-			cmd.Env = append(cmd.Env, v)
-		}
-	}
+	cmd.Env = queueDCOEnvironment()
 	if p.User.Login == "dependabot[bot]" {
 		cmd.Env = append(cmd.Env, "DCO_EXEMPT_AUTHOR=dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>")
 	}

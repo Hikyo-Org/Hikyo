@@ -2,11 +2,87 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestQueueDCOIsolatesEveryGitSubprocessFromAmbientConfiguration(t *testing.T) {
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := t.TempDir()
+	if out, err := exec.Command(git, "init", "--bare", "--quiet", metadata).CombinedOutput(); err != nil {
+		t.Fatalf("init fixture: %v %s", err, out)
+	}
+	object := func(kind, body string) string {
+		t.Helper()
+		cmd := exec.Command(git, "-C", metadata, "hash-object", "-w", "-t", kind, "--stdin")
+		cmd.Stdin = strings.NewReader(body)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	tree := object("tree", "")
+	base := object("commit", "tree "+tree+"\nauthor Fixture <fixture@example.test> 1700000000 +0000\ncommitter Fixture <fixture@example.test> 1700000000 +0000\n\nFixture base\n")
+	head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor Fixture <fixture@example.test> 1700000001 +0000\ncommitter Fixture <fixture@example.test> 1700000001 +0000\n\nFixture edit\n\nSigned-off-by: Fixture <fixture@example.test>\n")
+	tools := t.TempDir()
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
+	// Fetch is an offline transport seam only. Init and all canonical Git
+	// reads execute the real Git binary; every subprocess must share the safe
+	// environment. No external request or untrusted code executes in this test.
+	wrapper := fmt.Sprintf(`#!/bin/sh
+set -eu
+for key in $(env | sed -n 's/^\(GIT_[^=]*\)=.*/\1/p'); do
+  case "$key" in GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_CONFIG_NOSYSTEM|GIT_CONFIG_COUNT|GIT_TERMINAL_PROMPT) ;; *) exit 91 ;; esac
+done
+test "${GIT_CONFIG_GLOBAL:-}" = /dev/null
+test "${GIT_CONFIG_SYSTEM:-}" = /dev/null
+test "${GIT_CONFIG_NOSYSTEM:-}" = 1
+test "${GIT_CONFIG_COUNT:-}" = 0
+test "${GIT_TERMINAL_PROMPT:-}" = 0
+test "${GH_TOKEN+x}" != x
+test "${DCO_EXEMPT_AUTHOR+x}" != x
+fetch=false
+target=
+previous=
+for argument in "$@"; do
+  if [ "$previous" = -C ]; then target=$argument; fi
+  if [ "$argument" = fetch ]; then fetch=true; fi
+  previous=$argument
+done
+if $fetch; then
+  test -n "$target"
+  cp -R %s/. "$target/"
+  exit 0
+fi
+exec %s "$@"
+`, quote(metadata), quote(git))
+	if err := os.WriteFile(filepath.Join(tools, "git"), []byte(wrapper), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for key, value := range map[string]string{"GIT_DIR": "/missing.git", "GIT_WORK_TREE": "/missing", "GIT_INDEX_FILE": "/missing.index", "GIT_OBJECT_DIRECTORY": "/missing.objects", "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/missing.alternates", "GIT_CONFIG_GLOBAL": "/missing.config", "GIT_CONFIG_SYSTEM": "/missing.system", "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "url.http://127.0.0.1:1/.insteadOf", "GIT_CONFIG_VALUE_0": "https://github.com/", "GIT_TEMPLATE_DIR": "/missing.templates", "GIT_SSH_COMMAND": "false", "DCO_EXEMPT_AUTHOR": "Fixture <fixture@example.test>", "GH_TOKEN": "fixture-secret-must-not-be-inherited"} {
+		t.Setenv(key, value)
+	}
+	p := pull{Base: reference{SHA: base}, Head: reference{SHA: head}}
+	p.User.ID, p.User.Login = 12, "contributor"
+	code, err := verifyQueueDCO(context.Background(), "Hikyo-Org/Hikyo", p)
+	if err != nil || code != 0 {
+		t.Fatalf("ambient configuration influenced immutable DCO reads: %d %v", code, err)
+	}
+}
 
 func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 	root, err := filepath.Abs("../../..")
