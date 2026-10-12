@@ -94,15 +94,26 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 		}
 	}
 	guard := ci.Jobs["changes"].Steps[0]
-	for _, mutation := range []string{"valid", "head-only", "wrong-merge", "missing-base", "invalid-mode", "wrong-repository", "nondefault-target"} {
+	for _, mutation := range []string{"valid", "missing-merge-metadata", "head-only", "missing-metadata-head-only", "wrong-merge", "malformed-merge", "wrong-ref", "wrong-number-ref", "missing-base", "invalid-mode", "wrong-repository", "nondefault-target"} {
 		t.Run(mutation, func(t *testing.T) {
 			head, merge, base := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
 			env := map[string]string{"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": merge, "FULL_CANDIDATE": "true", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "1", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "PR_BASE_SHA": base, "PR_BASE_REF": "main", "DEFAULT_BRANCH": "main", "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10"}
 			switch mutation {
+			case "missing-merge-metadata":
+				env["PR_MERGE_SHA"] = ""
 			case "head-only":
+				env["SOURCE_REVISION"] = head
+			case "missing-metadata-head-only":
+				env["PR_MERGE_SHA"] = ""
 				env["SOURCE_REVISION"] = head
 			case "wrong-merge":
 				env["PR_MERGE_SHA"] = base
+			case "malformed-merge":
+				env["PR_MERGE_SHA"] = "not-a-commit"
+			case "wrong-ref":
+				env["GITHUB_REF"] = "refs/heads/main"
+			case "wrong-number-ref":
+				env["GITHUB_REF"] = "refs/pull/2/merge"
 			case "missing-base":
 				env["PR_BASE_SHA"] = ""
 			case "invalid-mode":
@@ -118,7 +129,7 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 				command.Env = append(command.Env, name+"="+value)
 			}
 			output, err := command.CombinedOutput()
-			if (err == nil) != (mutation == "valid") {
+			if (err == nil) != (mutation == "valid" || mutation == "missing-merge-metadata") {
 				t.Fatalf("candidate source allowed=%v: %v %s", err == nil, err, output)
 			}
 		})

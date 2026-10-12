@@ -20,6 +20,14 @@ type lifecycleState struct {
 	ExternalID  string `json:"external_id"`
 	CompletedAt string `json:"completed_at"`
 }
+type lifecycleResponse struct {
+	lifecycleState
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Head    string `json:"head_sha"`
+	AppID   int64  `json:"app_id"`
+	AppSlug string `json:"app_slug"`
+}
 type lifecycleReceipt struct {
 	Version    int        `json:"version"`
 	Repository repository `json:"repository"`
@@ -40,12 +48,13 @@ type lifecycleReceipt struct {
 		AppSlug    string `json:"app_slug"`
 		ExternalID string `json:"external_id"`
 	} `json:"canary"`
-	Initial         lifecycleState `json:"initial"`
-	Reset           lifecycleState `json:"reset"`
-	Cleanup         lifecycleState `json:"cleanup"`
-	ResetAccepted   bool           `json:"reset_accepted"`
-	CleanupVerified bool           `json:"cleanup_verified"`
-	Error           string         `json:"error,omitempty"`
+	Initial         lifecycleState     `json:"initial"`
+	Reset           lifecycleState     `json:"reset"`
+	ResetResponse   *lifecycleResponse `json:"reset_response,omitempty"`
+	Cleanup         lifecycleState     `json:"cleanup"`
+	ResetAccepted   bool               `json:"reset_accepted"`
+	CleanupVerified bool               `json:"cleanup_verified"`
+	Error           string             `json:"error,omitempty"`
 }
 
 func (c *controller) probeMain(ctx context.Context, sha string) error {
@@ -224,6 +233,10 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	if err = c.api.write(work, "PATCH", path, payload, &reset); err != nil {
 		return fmt.Errorf("canary reset refused without mutation retry: %w", err)
 	}
+	// Retain the acknowledged response before validation. Cleanup cannot recover
+	// rejected state afterward, and an observation never establishes acceptance.
+	receipt.Reset = lifecycleResult(reset)
+	receipt.ResetResponse = &lifecycleResponse{lifecycleState: receipt.Reset, ID: reset.ID, Name: reset.Name, Head: reset.HeadSHA, AppID: reset.App.ID, AppSlug: reset.App.Slug}
 	if !c.lifecycleIdentity(reset, created.ID, b) || reset.Status != "queued" || reset.Conclusion != "" {
 		return errors.New("production queued reset response retained success or contradicted identity")
 	}

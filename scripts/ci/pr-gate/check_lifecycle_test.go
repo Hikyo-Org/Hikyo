@@ -199,3 +199,47 @@ func TestLifecycleProbeRefusalsKeepFalseReceiptAndAttemptOwnedCleanup(t *testing
 		})
 	}
 }
+
+func TestLifecycleProbeRetainsRejectedResetResponse(t *testing.T) {
+	for _, name := range []string{"retained success", "wrong ID", "wrong App", "wrong head"} {
+		t.Run(name, func(t *testing.T) {
+			f, a, e := newLifecycleFixture(t)
+			var returned check
+			a.mutate = func(method, path string, m map[string]any, v *check) error {
+				if method == "PATCH" && m["status"] == "queued" {
+					switch name {
+					case "retained success":
+						v.Status, v.Conclusion = "completed", "success"
+						v.CompletedAt = "2026-10-12T19:47:17Z"
+					case "wrong ID":
+						v.ID++
+					case "wrong App":
+						v.App.ID++
+					case "wrong head":
+						v.HeadSHA = strings.Repeat("c", 40)
+					}
+					returned = *v
+				}
+				return nil
+			}
+			var receipt lifecycleReceipt
+			if err := f.c.checkLifecycle(context.Background(), "workflow_dispatch", e, &receipt); err == nil {
+				t.Fatal("contradictory reset accepted")
+			}
+			observed := receipt.ResetResponse
+			if observed == nil || observed.ID != returned.ID || observed.Name != returned.Name || observed.Head != returned.HeadSHA || observed.AppID != returned.App.ID || observed.AppSlug != returned.App.Slug || observed.lifecycleState != lifecycleResult(returned) || receipt.Reset != lifecycleResult(returned) {
+				t.Fatalf("rejected reset evidence lost: %+v", receipt)
+			}
+			if receipt.ResetAccepted || !receipt.CleanupVerified || len(f.api.writes) != 3 {
+				t.Fatal("diagnostic evidence changed fail-closed acceptance or cleanup")
+			}
+			if f.api.checks[0].ID != receipt.Canary.ID || f.api.checks[0].Conclusion != "neutral" {
+				t.Fatal("cleanup followed contradictory response identity")
+			}
+			encoded, err := json.Marshal(receipt)
+			if err != nil || !strings.Contains(string(encoded), `"reset_response"`) {
+				t.Fatal("artifact does not retain typed reset response")
+			}
+		})
+	}
+}
