@@ -758,3 +758,28 @@ func TestQueueForkFeedbackRefusesContradictoryOrUnprovedSources(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueAdmissionCompletesNewestOwnedPendingCheck(t *testing.T) {
+	f := newQueueFixture(t)
+	old := check{ID: 100, Name: queueCheckName, HeadSHA: f.pr.Head.SHA, ExternalID: newBinding(f.pr.Base.Repo.ID, f.pr, &f.feedbackRun).externalID(), Status: "completed", Conclusion: "success"}
+	old.App.ID, old.App.Slug = actionsAppID, "github-actions"
+	latest := old
+	latest.ID, latest.Status, latest.Conclusion = 101, "queued", ""
+	latest.ExternalID = newBinding(f.pr.Base.Repo.ID, f.pr, nil).externalID()
+	f.api.checks = []check{old, latest}
+	if err := f.admit(); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range f.api.checks {
+		if v.ID == latest.ID {
+			if v.Status != "completed" || v.Conclusion != "success" || v.ExternalID != old.ExternalID {
+				t.Fatalf("newest owned pending check survived successful admission: %+v", v)
+			}
+			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "PATCH" || f.api.writes[0]["path"] != f.c.endpoint("check-runs/101") {
+				t.Fatal("admission did not complete the latest owned placeholder in place")
+			}
+			return
+		}
+	}
+	t.Fatal("newest owned check disappeared")
+}

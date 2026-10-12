@@ -331,10 +331,6 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 	if err != nil {
 		return err
 	}
-	var selected *check
-	if len(own) > 0 {
-		selected = &own[0]
-	}
 	final, err := q.readPR(ctx, number)
 	if err != nil {
 		return err
@@ -394,9 +390,11 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 	if err != nil {
 		return err
 	}
-	selected = nil
-	if len(own) > 0 {
-		selected = &own[0]
+	var selected *check
+	for i := range own {
+		if selected == nil || own[i].ID > selected.ID {
+			selected = &own[i]
+		}
 	}
 	return q.publish(ctx, p, b, selected, result)
 }
