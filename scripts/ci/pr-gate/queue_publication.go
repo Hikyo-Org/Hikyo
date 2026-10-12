@@ -14,6 +14,10 @@ func (c *controller) authenticatedQueueCheck(v *check, head string) bool {
 	return err == nil && b.RepoID == c.repo.ID && b.Head == head
 }
 
+func (c *controller) recognizedTruncatedQueueCheck(v *check, head string) bool {
+	return v != nil && v.ID > 0 && v.Name == c.checkName && v.HeadSHA == head && v.App.ID == actionsAppID && v.App.Slug == "github-actions" && truncatedLegacyBinding(v.ExternalID, c.repo.ID, head)
+}
+
 func blockingQueueCheck(v *check) bool {
 	if v == nil {
 		return false
@@ -47,6 +51,20 @@ func (c *controller) publishQueueRecord(ctx context.Context, p pull, b binding, 
 	decoded, err := decodeBinding(b.externalID())
 	if err != nil || decoded != b {
 		return nil, errors.New("noncanonical queue publication binding")
+	}
+	if c.recognizedTruncatedQueueCheck(selected, b.Head) {
+		// Prefix authentication is deliberately insufficient for PATCH/no-op.
+		// Reauthenticate complete history before superseding its newest record
+		// with a fully canonical current binding, including pending recovery.
+		own, err := c.listOwnedChecks(ctx, b.Head)
+		if err != nil {
+			return nil, err
+		}
+		latest := newestQueueCheck(own)
+		if latest == nil || latest.ID != selected.ID || latest.ExternalID != selected.ExternalID || !c.recognizedTruncatedQueueCheck(latest, b.Head) {
+			return nil, errors.New("legacy migration selection changed before creation")
+		}
+		selected = nil
 	}
 	if selected != nil && !c.authenticatedQueueCheck(selected, b.Head) {
 		return nil, errors.New("foreign queue publication record")

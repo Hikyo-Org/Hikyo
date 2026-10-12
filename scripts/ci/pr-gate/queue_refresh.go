@@ -50,7 +50,10 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 	} else {
 		err = readErr
 	}
-	if q.dryRun || err == nil && state.verifiedTerminal {
+	if q.dryRun {
+		return err
+	}
+	if err == nil && state.verifiedTerminal {
 		return nil
 	}
 	// Cancellation may have interrupted mutable authority or an uncertain write.
@@ -71,15 +74,28 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 
 func (q *queueController) ensureBlocking(ctx context.Context, state *queueReassessment, cause error) error {
 	own, scanErr := q.listOwnedChecks(ctx, q.expectedHead)
+	if scanErr != nil {
+		return scanErr
+	} // Unknown history cannot authorize another creation.
 	latest := newestQueueCheck(own)
-	if scanErr == nil && blockingQueueCheck(latest) {
+	if blockingQueueCheck(latest) {
 		return nil
 	}
 	p := pull{Number: 1, State: "open", Head: reference{SHA: q.expectedHead, Repo: q.repo}, Base: reference{SHA: q.expectedHead, Ref: q.repo.DefaultBranch, Repo: q.repo}}
 	b := newBinding(q.repo.ID, p, nil)
 	if latest != nil {
-		b, _ = decodeBinding(latest.ExternalID)
-		p.Number, p.Base.SHA = b.PR, b.Base
+		existing, decodeErr := decodeBinding(latest.ExternalID)
+		if decodeErr == nil {
+			b = existing
+			p.Number, p.Base.SHA = b.PR, b.Base
+		} else if q.recognizedTruncatedQueueCheck(latest, q.expectedHead) {
+			// Complete history authenticated its limited legacy identity, but
+			// lost base/run fields cannot authorize an update. Use only the
+			// canonical held-head Run0 placeholder for a distinct CREATE.
+			latest = nil
+		} else {
+			return decodeErr
+		}
 	}
 	// A lost POST receipt is not retried. A complete fresh scan can establish its
 	// actual blocking record; otherwise only a captured, still-newest owned ID
@@ -143,7 +159,7 @@ func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b bindin
 // A changed authenticated source binding is an event transition, rather than a
 // periodic refresh. Establish its pending generation promptly, before proof.
 func (q *queueController) changedBinding(ctx context.Context, p pull, b binding) error {
-	if q.queueRefresh == nil || q.queueRefresh.latest == nil || q.queueRefresh.latest.ExternalID == b.externalID() || blockingQueueCheck(q.queueRefresh.latest) {
+	if q.queueRefresh == nil || q.queueRefresh.latest == nil || q.queueRefresh.latest.ExternalID == b.externalID() || blockingQueueCheck(q.queueRefresh.latest) && q.authenticatedQueueCheck(q.queueRefresh.latest, b.Head) {
 		return nil
 	}
 	_, err := q.publishQueueRecord(ctx, p, b, q.queueRefresh.latest, pending("A new current source binding requires fresh validation."))
