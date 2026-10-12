@@ -343,6 +343,7 @@ exit "$POLICY_FIXTURE_EXIT"
 
 type fakeAPI struct {
 	scopeChecksToHead bool
+	acceptNullReset   bool
 	responses         map[string]any
 	readHook          func(string, int)
 	reads             map[string]int
@@ -431,7 +432,11 @@ func (f *fakeAPI) write(_ context.Context, method, path string, payload, result 
 	mutation["method"], mutation["path"] = method, path
 	for _, key := range []string{"conclusion", "completed_at"} {
 		if value, exists := mutation[key]; exists && value == nil {
-			return fmt.Errorf("Checks API field %s is not nullable", key)
+			_, hasConclusion := mutation["conclusion"]
+			_, hasCompletion := mutation["completed_at"]
+			if !f.acceptNullReset || method != "PATCH" || mutation["status"] != "queued" || !hasConclusion || !hasCompletion || mutation["conclusion"] != nil || mutation["completed_at"] != nil {
+				return fmt.Errorf("Checks API field %s is not nullable", key)
+			}
 		}
 	}
 	f.writes = append(f.writes, mutation)

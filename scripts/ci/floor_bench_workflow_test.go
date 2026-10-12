@@ -179,7 +179,7 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 	}
 	// Exercise the floor guard itself: the main validation guard is a separate
 	// script and cannot prove that this benchmark refuses a head-only candidate.
-	for _, mutation := range []string{"valid", "same-repository", "head-only", "wrong-event-sha", "wrong-merge", "nondefault-target", "invalid-mode"} {
+	for _, mutation := range []string{"valid", "same-repository", "missing-merge-metadata", "head-only", "missing-metadata-head-only", "wrong-event-sha", "wrong-merge", "malformed-merge", "wrong-ref", "wrong-number-ref", "nondefault-target", "invalid-mode"} {
 		t.Run("full-candidate/"+mutation, func(t *testing.T) {
 			head, merge := strings.Repeat("a", 40), strings.Repeat("b", 40)
 			env := map[string]string{
@@ -193,14 +193,25 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 				"PR_BASE_REPOSITORY_ID": "10",
 			}
 			switch mutation {
+			case "missing-merge-metadata":
+				env["PR_MERGE_SHA"] = ""
 			case "same-repository":
 				env["PR_HEAD_REPOSITORY"], env["PR_HEAD_REPOSITORY_ID"] = "Hikyo-Org/Hikyo", "10"
 			case "head-only":
+				env["SOURCE_REVISION"] = head
+			case "missing-metadata-head-only":
+				env["PR_MERGE_SHA"] = ""
 				env["SOURCE_REVISION"] = head
 			case "wrong-event-sha":
 				env["GITHUB_SHA"] = head
 			case "wrong-merge":
 				env["PR_MERGE_SHA"] = head
+			case "malformed-merge":
+				env["PR_MERGE_SHA"] = "not-a-commit"
+			case "wrong-ref":
+				env["GITHUB_REF"] = "refs/heads/main"
+			case "wrong-number-ref":
+				env["GITHUB_REF"] = "refs/pull/883/merge"
 			case "nondefault-target":
 				env["PR_BASE_REF"] = "release"
 			case "invalid-mode":
@@ -212,7 +223,7 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 				cmd.Env = append(cmd.Env, key+"="+value)
 			}
 			output, err := cmd.CombinedOutput()
-			if (err == nil) != (mutation == "valid" || mutation == "same-repository") {
+			if (err == nil) != (mutation == "valid" || mutation == "same-repository" || mutation == "missing-merge-metadata") {
 				t.Fatalf("floor candidate allowed=%v: %v %s", err == nil, err, output)
 			}
 		})

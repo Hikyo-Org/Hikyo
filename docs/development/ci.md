@@ -253,7 +253,8 @@ remaining hosted checks.
 The fixed `check-lifecycle-probe` manual workflow has no caller inputs and must
 run from current trusted main before enabling the new publishers. It creates
 only the non-required `ci-check-lifecycle-probe` check, tests the exact production
-completed-to-queued payload with omitted conclusion/completion fields, and must
+completed-to-queued reset candidate with explicit JSON null conclusion and
+completion fields, and must
 verify same-ID terminal neutral cleanup. Its authenticated receipt is data, not
 a success flag: the operator also verifies exact workflow/run/attempt/source,
 current main/policy and the actual owned cleanup check. Failure, lost identity
@@ -273,3 +274,10 @@ is not hosted latency proof. PR #893 bootstrap copies the planner from its
 immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
 are exercised after landing; a later legitimate full group must establish the
 approximately 35-minute target.
+
+The explicit-null reset is an experimental compatibility candidate. The API
+schema does not document null acceptance, and two trusted-main probes showed
+that omitting terminal fields retains completed/success. Unit tests model both
+acceptance and rejection; only a new exact-main probe with queued, empty-conclusion
+and empty-completion readbacks can satisfy the activation gate. Queue CREATE
+payloads and the legacy full-only publisher retain their existing behavior.

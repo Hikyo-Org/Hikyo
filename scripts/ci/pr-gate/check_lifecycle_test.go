@@ -75,17 +75,16 @@ func TestLifecycleProbeUsesExactProductionPayloadAndCleansItsOwnedID(t *testing.
 		t.Fatal("canary not cleaned up neutral")
 	}
 	queued := f.api.writes[1]
-	if _, ok := queued["conclusion"]; ok {
-		t.Fatal("reset supplied conclusion instead of omitting it")
-	}
-	if _, ok := queued["completed_at"]; ok {
-		t.Fatal("reset supplied completion timestamp")
+	for _, key := range []string{"conclusion", "completed_at"} {
+		if value, present := queued[key]; !present || value != nil {
+			t.Fatalf("reset did not explicitly clear %s", key)
+		}
 	}
 	binding, err := decodeBinding(receipt.Canary.ExternalID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := f.c.checkPayload(binding, pending("Exact production queued reset payload. No prior success supplies authority."))
+	want, err := f.c.checkResetPayload(binding, pending("Exact production queued reset payload. No prior success supplies authority."))
 	if err != nil {
 		t.Fatal(err)
 	}

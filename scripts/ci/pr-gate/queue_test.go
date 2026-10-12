@@ -34,6 +34,8 @@ func newQueueFixture(t *testing.T) *queueFixture {
 	f.c.checkName = queueCheckName
 	f.c.expectedHead = f.pr.Head.SHA
 	f.api.scopeChecksToHead = true
+	// Model candidate acceptance separately from the guarded live API proof.
+	f.api.acceptNullReset = true
 	q := &queueFixture{fixture: f, q: &queueController{controller: f.c, dco: func(context.Context, pull) (int, error) { return 0, nil }}}
 	q.rules = []rule{encodedRule("deletion", nil), encodedRule("non_fast_forward", nil), encodedRule("required_signatures", nil), encodedRule("pull_request", map[string]bool{"required_review_thread_resolution": true, "dismiss_stale_reviews_on_push": true}), encodedRule("required_status_checks", map[string]any{"strict_required_status_checks_policy": false, "required_status_checks": []map[string]string{{"context": queueCheckName}}}), encodedRule("merge_queue", queueParameters{Build: 1, Minimum: 1, Maximum: 1, Wait: 0, Timeout: 60, Strategy: "ALLGREEN", Method: "MERGE"})}
 	q.owner = map[string]any{"id": queueRulesetID, "target": "branch", "enforcement": "active", "bypass_actors": []any{}, "conditions": map[string]any{"ref_name": map[string]any{"include": []string{"refs/heads/main"}, "exclude": []string{}}}, "rules": q.rules}
