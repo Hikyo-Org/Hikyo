@@ -201,8 +201,8 @@ func (q *queueController) headBarrier(ctx context.Context) error {
 	if selected != nil {
 		if existing, err := decodeBinding(selected.ExternalID); err == nil {
 			// Keep its authenticated identity while making the result blocking.
-			// Completed checks require one fresh barrier by the Checks API;
-			// an incomplete barrier is patched and can receive the fresh proof.
+			// The guarded queue path reopens this owned record without
+			// carrying its old success into the fresh proof.
 			b = existing
 			placeholder.Number = existing.PR
 			placeholder.Base.SHA = existing.Base

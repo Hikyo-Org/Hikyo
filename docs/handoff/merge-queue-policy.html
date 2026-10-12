@@ -7,7 +7,7 @@ fixtures and contributor/operator documentation. It also corrects the queue
 publisher&#x27;s exact recognition of GitHub&#x27;s observed normalized skipped metadata
 job name. Queue publication now also uses bounded per-head writers and complete
 read-only maintenance discovery. Application code, the job registry and the
-frozen full-suite execution remain unchanged.
+frozen full-suite coverage remain unchanged.
 
 ## Contract
 
@@ -156,7 +156,6 @@ preservation, app-binding, pagination and malformed-policy refusals remain.
 This policy-only repair leaves the docs bootstrap and exact-container proof
 unchanged. Fresh useful feedback and full queued-group proof remain required.
 
-
 ## Per-commit deadlines and head ownership
 
 The previous queue publisher allowed ten minutes after a four-minute feedback
@@ -226,4 +225,61 @@ by this source preparation. The legacy full-only publisher remains independent.
 - <a href="../../.github/workflows/ci-queue-gate.yml">Direct and discovery publisher</a>
 - <a href="../../.github/workflows/ci-queue-worker.yml">Fixed head worker</a>
 - <a href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency">GitHub concurrency contract</a>
+
+## Recurring check history and guarded API lifecycle proof
+
+Review finding 4250549208 reproduces recurring history growth: unchanged PR
+reassessment adds a check, group reassessment adds four, and supported histories
+at 1,000 PR checks or 100 group checks fail on the next pass. The guarded queue
+path now reuses the newest authenticated owned ID for a pending barrier and its
+freshly re-proved result. Complete `filter=all` ownership and collision scans,
+their existing bounds, head leases and final source/member barriers remain.
+Older native same-name collisions remain blocking. Unknown or already excessive
+history is refused rather than silently skipped. No check is deleted and no
+history limit is increased. The separate legacy producer retains its lifecycle.
+
+Local permanent tests pass more than 1,100 unchanged reassessments for each role
+with constant check count, including the existing history boundaries. Pending
+feedback and transient fork geometry remain pending. An uncertain reset never
+retries its PATCH; a short independent reserve, capped by the original targeted
+deadline, attempts one distinct blocking pending barrier and retains the error.
+The callback cannot turn cancellation into a green result.
+
+The actual GitHub completed-to-queued reset remains unproved. An authorized
+uniquely named non-required local canary request was refused with HTTP 403 because
+that token was not a GitHub App; it created no check and proves no lifecycle
+constraint. The new fixed <a href="../../.github/workflows/ci-check-lifecycle-probe.yml">trusted-main lifecycle workflow</a>
+uses the actual workflow App token, no caller inputs, and current immutable main.
+Its CLI authenticates run/attempt, native job start, main and owning/effective
+policy before mutation, including that its fixed canary name is not required.
+Normal work ends at job-start plus 120 seconds; cleanup is independently bounded
+inside plus 150 seconds, leaving margin within the three-minute native job.
+
+The single diagnostic ID starts completed/success, receives the same production
+queued payload builder with conclusion/completed_at omitted rather than null,
+and must read back as queued with no success conclusion. Its actual timestamps
+are retained in the receipt. The known owned ID is then restored to completed/
+neutral and independently read back. Lost or foreign creation identity is not
+guessed; uncertain reset writes are not retried. Any reset or cleanup refusal
+leaves the hosted acceptance unmet. This non-required canary supplies no test,
+admission or merge proof. See the <a href="https://docs.github.com/en/rest/checks/runs#update-a-check-run">GitHub Checks API</a>.
+
+Landing is deliberately staged. `QUEUE_HEAD_WORKERS_ENABLED` remains unset/false
+until a successful exact-main lifecycle run, its trusted run-attempt artifact,
+and actual same-ID neutral cleanup are verified. Old workflow definitions loading
+new code lack an expected-head lease and refuse before API writes; already
+compiled old code has no new reset behavior. All new production queue jobs are
+skipped while disabled, and the legacy full-only publisher cannot invoke queue
+reuse. The temporary publication hold is accepted, with queue protection active
+and no parallel legacy queue writer. Drain/empty-queue and current-source checks
+remain necessary before enabling. Source tests cannot substitute for this proof.
+
+The whole publisher package passed in 3.348 seconds and vet locally. Independent adversarial
+source tests cover canceled reset transport, actual workflow naming, required
+canary refusal and historical native collisions. Fresh hosted feedback, all 16
+full-group domains, lifecycle acceptance, head-worker activation and timing still
+require verification. Observed feedback for earlier c95 passed in 82 seconds,
+while its old deployed global publisher took 6m 59s to finish admission. A separate
+actual full group ran 40m 39s, exceeding the approximately 35-minute target. Neither
+measurement proves the new disabled pipeline meets the requested timing goals.
 </pre></main></body></html>

@@ -93,13 +93,14 @@ type job struct {
 	Conclusion string `json:"conclusion"`
 }
 type check struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	HeadSHA    string `json:"head_sha"`
-	ExternalID string `json:"external_id"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	App        struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	HeadSHA     string `json:"head_sha"`
+	ExternalID  string `json:"external_id"`
+	Status      string `json:"status"`
+	Conclusion  string `json:"conclusion"`
+	CompletedAt string `json:"completed_at"`
+	App         struct {
 		ID   int64  `json:"id"`
 		Slug string `json:"slug"`
 	} `json:"app"`
@@ -450,15 +451,16 @@ func verifyPolicy(ctx context.Context, pr int, head string) (policyDecision, err
 }
 
 type controller struct {
-	api          api
-	verify       verifier
-	repoName     string
-	repo         repository
-	workflow     workflow
-	checkName    string
-	expectedHead string
-	dryRun       bool
-	output       io.Writer
+	api           api
+	verify        verifier
+	repoName      string
+	repo          repository
+	workflow      workflow
+	checkName     string
+	expectedHead  string
+	queueDeadline time.Time
+	dryRun        bool
+	output        io.Writer
 }
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
@@ -1274,9 +1276,11 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	if decoded != b {
 		return errors.New("refuse invalid publication binding")
 	}
-	// GitHub's Checks schema does not accept null conclusions/completed_at.
-	// Reruns supersede completed checks by creating a fresh queued check.
-	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
+	// Queue writers reset only a fully authenticated owned ID. Its previous
+	// binding grants no current authority; every terminal result is re-proved.
+	// This route remains disabled until the trusted-main lifecycle probe passes.
+	reuseQueue := c.checkName == queueCheckName && reusableQueueCheck(selected, b)
+	if selected != nil && !reuseQueue && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
 		// The pre-ref-read barrier carries PR metadata, whose base SHA can be
 		// stale. Only an incomplete, unbound barrier for this same identity may
@@ -1286,18 +1290,9 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 			selected = nil
 		}
 	}
-	payload := map[string]any{"name": c.checkName, "external_id": externalID, "status": result.Status, "output": map[string]string{"title": result.Title, "summary": result.Summary}}
-	if id := os.Getenv("GITHUB_RUN_ID"); id != "" {
-		runID, err := strconv.ParseInt(id, 10, 64)
-		if err != nil || runID <= 0 {
-			return errors.New("invalid controller GITHUB_RUN_ID")
-		}
-		payload["details_url"] = fmt.Sprintf("https://github.com/%s/actions/runs/%d", c.repoName, runID)
-	} else if b.Run > 0 {
-		payload["details_url"] = fmt.Sprintf("https://github.com/%s/actions/runs/%d", c.repoName, b.Run)
-	}
-	if result.Status == "completed" {
-		payload["conclusion"] = result.Conclusion
+	payload, err := c.checkPayload(b, result)
+	if err != nil {
+		return err
 	}
 	method, path := "POST", c.endpoint("check-runs")
 	if selected != nil {
@@ -1311,10 +1306,10 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	}
 	var written check
 	if err := c.api.write(ctx, method, path, payload, &written); err != nil {
-		return err
+		return c.blockResetFailure(ctx, p, b, selected, result, err)
 	}
-	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion {
-		return errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted")
+	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID {
+		return c.blockResetFailure(ctx, p, b, selected, result, errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted"))
 	}
 	return nil
 }
@@ -1532,6 +1527,7 @@ func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 	return nil
 }
 func main() {
+	lifecycleProbe := flag.Bool("check-lifecycle-probe", false, "verify only the fixed non-required check lifecycle on trusted main")
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
 	targeted := flag.Bool("targeted", false, "bound only a targeted queue admission invocation")
@@ -1542,6 +1538,10 @@ func main() {
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
+		os.Exit(1)
+	}
+	if *lifecycleProbe && (*dryRun || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
+		fmt.Fprintln(os.Stderr, "lifecycle probe cannot mix publication roles or caller-selected heads")
 		os.Exit(1)
 	}
 	if (*targeted || *repairOnly) && !*queueMode || *targeted && *repairOnly {
@@ -1579,7 +1579,23 @@ func main() {
 	}
 	if err == nil {
 		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout}
-		if *queueMode {
+		if *lifecycleProbe {
+			receipt := lifecycleReceipt{Version: 1}
+			path := os.Getenv("PR_GATE_PROBE_RECEIPT")
+			if path == "" {
+				err = errors.New("lifecycle probe receipt path is required before mutation")
+			} else {
+				err = c.checkLifecycle(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e, &receipt)
+				if err != nil {
+					receipt.Error = err.Error()
+				}
+				body, encodeErr := json.MarshalIndent(receipt, "", "  ")
+				if encodeErr == nil {
+					encodeErr = os.WriteFile(path, append(body, '\n'), 0600)
+				}
+				err = errors.Join(err, encodeErr)
+			}
+		} else if *queueMode {
 			q := &queueController{controller: &c, targeted: *targeted, repairOnly: *repairOnly}
 			if *dispatch {
 				err = q.dispatchWorkers(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)

@@ -216,7 +216,7 @@ func TestQueueFullGroupProofAndNegativeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := f.api.writes[len(f.api.writes)-1]
-	if last["conclusion"] != "success" || last["head_sha"] != f.groupRun.HeadSHA {
+	if last["conclusion"] != "success" || f.api.checks[len(f.api.checks)-1].HeadSHA != f.groupRun.HeadSHA {
 		t.Fatalf("group proof: %+v", last)
 	}
 	decoded, err := decodeBinding(last["external_id"].(string))
@@ -635,7 +635,7 @@ func TestQueueCompletePaginationPublishesAndRepairsLargeQueue(t *testing.T) {
 				t.Fatal("complete membership was not retrieved again before publication")
 			}
 			last := f.api.writes[len(f.api.writes)-1]
-			if last["conclusion"] != "success" || last["head_sha"] != f.groupRun.HeadSHA {
+			if last["conclusion"] != "success" || f.api.checks[len(f.api.checks)-1].HeadSHA != f.groupRun.HeadSHA {
 				t.Fatalf("complete group was not proved: %+v", last)
 			}
 		})
@@ -1011,7 +1011,7 @@ func TestQueueForkRecomputationKeepsPublisherHealthyAndAdmissionPending(t *testi
 				}
 				f.assertNoSuccess(t)
 				latest := f.api.checks[len(f.api.checks)-1]
-				if latest.ID <= old.ID || latest.Status != "queued" || latest.Conclusion != "" {
+				if latest.ID != old.ID || latest.HeadSHA != f.pr.Head.SHA || latest.Status != "queued" || latest.Conclusion != "" {
 					t.Fatalf("prior green was not superseded by blocking pending: %+v", latest)
 				}
 				binding, err := decodeBinding(latest.ExternalID)

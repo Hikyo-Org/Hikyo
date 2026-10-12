@@ -876,7 +876,7 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 	// The temporary binding is blocking only; final proof adds queue membership.
 	p := pull{Number: 1, State: "open", Head: reference{SHA: hint.HeadSHA, Repo: q.repo}, Base: reference{SHA: hint.HeadSHA, Ref: hint.HeadBranch, Repo: q.repo}}
 	b := newBinding(q.repo.ID, p, nil)
-	if err := q.groupBarrier(ctx, p, b); err != nil {
+	if _, err := q.groupBarrier(ctx, p, b); err != nil {
 		return err
 	}
 	policy, err := q.policy(ctx)
@@ -1025,45 +1025,59 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 			return &staleQueueGroup{reason: "current member changed in final role snapshot"}
 		}
 	}
-	if err := q.groupBarrier(ctx, p, b); err != nil {
+	selected, err := q.groupBarrier(ctx, p, b)
+	if err != nil {
 		return err
 	}
-	return q.publish(ctx, p, b, nil, result)
+	return q.publish(ctx, p, b, selected, result)
 }
 
-func (q *queueController) groupBarrier(ctx context.Context, p pull, b binding) error {
-	// Do not use PR-specific collision recovery for a group SHA. Publish our own
-	// queued result and leave any native/foreign producer untouched.
-	if err := q.publish(ctx, p, b, nil, pending("Merge-group proof is being reassessed; no runner waits for validation.")); err != nil {
-		return err
+func (q *queueController) groupBarrier(ctx context.Context, p pull, b binding) (*check, error) {
+	// Retain the complete historical identity check and its existing bound.
+	// A foreign check is never patched, and ambiguous history remains blocked.
+	own, err := q.groupChecks(ctx, p)
+	if err != nil {
+		writeErr := q.publish(ctx, p, b, nil, pending("Group check identity could not be verified; proof remains blocked."))
+		return nil, errors.Join(err, writeErr)
 	}
+	var selected *check
+	for i := range own {
+		if selected == nil || own[i].ID > selected.ID {
+			selected = &own[i]
+		}
+	}
+	if err := q.publish(ctx, p, b, selected, pending("Merge-group proof is being reassessed; no runner waits for validation.")); err != nil {
+		return nil, err
+	}
+	if selected != nil {
+		// publish verified the actual PATCH ID and returned identity. This
+		// pending record can receive only the independently re-proved result.
+		selected.ExternalID, selected.Status, selected.Conclusion = b.externalID(), "queued", ""
+	}
+	return selected, nil
+}
+
+func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, error) {
 	var all struct {
 		Checks []check `json:"check_runs"`
 		Total  int     `json:"total_count"`
 	}
 	path := q.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=1", p.Head.SHA, q.checkName))
 	if err := q.api.read(ctx, path, &all); err != nil {
-		return err
+		return nil, err
 	}
 	if all.Checks == nil || all.Total < 0 || all.Total > 100 || len(all.Checks) != all.Total {
-		return errors.New("incomplete group check identities")
+		return nil, errors.New("incomplete group check identities")
 	}
-	var collision bool
 	seen := make(map[int64]bool)
 	for _, v := range all.Checks {
 		decoded, err := decodeBinding(v.ExternalID)
 		if err != nil || v.ID <= 0 || seen[v.ID] || v.HeadSHA != p.Head.SHA || v.App.ID != actionsAppID || v.App.Slug != "github-actions" || decoded.RepoID != q.repo.ID || decoded.Head != p.Head.SHA || v.Name != q.checkName {
-			collision = true
+			return nil, errors.New("foreign merge-group required-check identity")
 		}
 		seen[v.ID] = true
 	}
-	if collision {
-		if err := q.publish(ctx, p, b, nil, pending("Foreign required-check identity refused; the controller leaves it untouched.")); err != nil {
-			return err
-		}
-		return errors.New("foreign merge-group required-check identity")
-	}
-	return nil
+	return all.Checks, nil
 }
 func (q *queueController) groupMembers(ctx context.Context, s queueSnapshot) ([]pull, bool, error) {
 	var members []pull

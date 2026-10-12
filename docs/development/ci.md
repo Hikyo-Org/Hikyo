@@ -52,13 +52,14 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 22 YAML workflow files. GitHub's sidebar also contains
+The source contains 23 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
+| Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token reset/neutral-cleanup proof on trusted main, before enabling new queue writers. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
@@ -225,7 +226,6 @@ require rebuilds. The trusted publisher retains lifecycle/completion callbacks
 and scheduled repair; metadata movement of unrelated open PRs remains pending
 rather than making main publication fail.
 
-
 ## Queue publisher head leases
 
 The direct PR/feedback publisher and full-group callbacks share a
@@ -249,3 +249,17 @@ cutover evidence. Preserve mandatory queue protection throughout; enabling a
 variable does not replace hosted token-dispatch and full-group acceptance.
 See the [policy handoff](../handoff/merge-queue-policy.md) for local evidence and
 remaining hosted checks.
+
+The fixed `check-lifecycle-probe` manual workflow has no caller inputs and must
+run from current trusted main before enabling the new publishers. It creates
+only the non-required `ci-check-lifecycle-probe` check, tests the exact production
+completed-to-queued payload with omitted conclusion/completion fields, and must
+verify same-ID terminal neutral cleanup. Its authenticated receipt is data, not
+a success flag: the operator also verifies exact workflow/run/attempt/source,
+current main/policy and the actual owned cleanup check. Failure, lost identity
+or incomplete cleanup leaves `QUEUE_HEAD_WORKERS_ENABLED` disabled. The staged
+publication hold preserves mandatory queue protection; no parallel legacy queue
+writer is introduced. Old unleased templates refuse before publication, and
+all new production writers remain skipped while the variable is unset/false.
+The [policy handoff](../handoff/merge-queue-policy.md) records local evidence and
+the separate actual API/activation/timing acceptance still required.

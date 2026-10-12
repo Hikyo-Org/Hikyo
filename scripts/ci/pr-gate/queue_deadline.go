@@ -43,6 +43,9 @@ func (q *queueController) executeTargeted(ctx context.Context, name string, e ev
 
 func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBudget, invoke func(context.Context) error) error {
 	q.targeted = true
+	oldDeadline := q.queueDeadline
+	q.queueDeadline = b.Deadline
+	defer func() { q.queueDeadline = oldDeadline }()
 	q.admissions = make(map[int]*admissionTrace)
 	work, cancel := context.WithDeadline(ctx, b.Deadline.Add(-admissionReserve))
 	err := invoke(work)
