@@ -263,3 +263,13 @@ writer is introduced. Old unleased templates refuse before publication, and
 all new production writers remain skipped while the variable is unset/false.
 The [policy handoff](../handoff/merge-queue-policy.md) records local evidence and
 the separate actual API/activation/timing acceptance still required.
+
+Race weights are recalibrated from all twelve JSON timing artifacts of successful
+full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
+discovery and database serialization are unchanged. The source snapshot contains
+800 planner units, including whole-package units; this is not a test count.
+The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
+is not hosted latency proof. PR #893 bootstrap copies the planner from its
+immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
+are exercised after landing; a later legitimate full group must establish the
+approximately 35-minute target.

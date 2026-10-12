@@ -282,4 +282,14 @@ require verification. Observed feedback for earlier c95 passed in 82 seconds,
 while its old deployed global publisher took 6m 59s to finish admission. A separate
 actual full group ran 40m 39s, exceeding the approximately 35-minute target. Neither
 measurement proves the new disabled pipeline meets the requested timing goals.
+
+Race weights are recalibrated from all twelve JSON timing artifacts of successful
+full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
+discovery and database serialization are unchanged. The source snapshot contains
+800 planner units, including whole-package units; this is not a test count.
+The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
+is not hosted latency proof. PR #893 bootstrap copies the planner from its
+immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
+are exercised after landing; a later legitimate full group must establish the
+approximately 35-minute target.
 </pre></main></body></html>
