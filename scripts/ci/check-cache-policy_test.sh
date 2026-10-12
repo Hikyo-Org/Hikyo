@@ -200,6 +200,16 @@ for file in "$@"; do
 					index(block, build_hash) == 0 ||
 					index(block, "restore-keys:") == 0) bad = 1
 			}
+            if (index(block, "path: .ci-cache/go-feedback") > 0) {
+                build_hash = "hashFiles(\047source/go.mod\047, \047source/go.sum\047, \047source/scripts/ci/go-tool-modules.txt\047)"
+                mode = "lookup-only: true"
+                if (feedback_cache == "true") {
+                    build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047, \047feedback-tools/scripts/ci/go-tool-modules.txt\047)"
+                    mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+                }
+                if (index(block, "key: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-") == 0 ||
+                    index(block, build_hash) == 0 || index(block, mode) == 0) bad = 1
+            }
 		}
 		/^[[:space:]]+- name:/ { validate(); block = "" }
 		{ block = block $0 "\n" }

@@ -13,6 +13,24 @@ const docsPage = await readFile(resolve(dist, 'docs/index.html'), 'utf8');
 // substring is not a reliable gate.
 const postHogBuilt = /data-posthog-host=/.test(landingPage);
 
+const demoLinks = Array.from(landingPage.matchAll(/<a\b[^>]*data-posthog-event="demo_cta_clicked"[^>]*>/g), (match) => match[0]);
+assert.equal(demoLinks.length, 2, 'hero and final demo CTAs must both emit conversion events');
+// The home link is emitted from Astro's configured BASE_URL, independently of
+// the demo destination. Preserve deployments beneath a path as well as `/`.
+const homeLink = landingPage.match(/<a\b[^>]*aria-label="Hikyo home"[^>]*>/)?.[0];
+const siteBase = homeLink?.match(/\shref="([^"]+)"/)?.[1];
+assert.ok(siteBase?.startsWith('/') && siteBase.endsWith('/'), 'configured site base is missing');
+for (const link of demoLinks) {
+  assert.equal(link.match(/\shref="([^"]+)"/)?.[1], `${siteBase}demo/`, 'demo CTA must open the configured demo destination');
+}
+for (const placement of ['hero', 'final']) {
+  assert.equal(
+    demoLinks.filter((link) => link.includes(`data-posthog-placement="${placement}"`)).length,
+    1,
+    `${placement} demo CTA must identify its placement`,
+  );
+}
+
 if (!postHogBuilt) {
   assert.notEqual(process.env.POSTHOG_REQUIRED, 'true', 'required PostHog build omitted analytics');
   assert.doesNotMatch(landingPage, /\/static\/array\.js/, 'disabled analytics still ships the PostHog bootstrap');

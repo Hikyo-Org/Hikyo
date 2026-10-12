@@ -22,6 +22,7 @@
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
   --sans: 'Instrument Sans', sans-serif;
   --max-width: 70rem;
+  --control: 2.75rem;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* Separators over open ground: a plain hairline vanishes into the pattern. */
   --rule-open: color-mix(in oklab, var(--accent) 55%, var(--line));
@@ -309,7 +310,7 @@ body::before {
 
 .button {
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: var(--control);
   align-items: center;
   justify-content: center;
   gap: 0.5rem;

@@ -16,6 +16,7 @@ activation or replace hosted full-suite proof.
 | What you need | Actions workflow | What it does |
 | --- | --- | --- |
 | Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. |
+| Refresh the bounded feedback compiler cache | `ci-feedback-cache` | Daily or manual, trusted main only. Compiles the CLI/CI dependency seed in a fresh dedicated directory, checks its size and file count, then publishes it for read-only feedback reuse. |
 | Prove the final PR candidate | `pr-candidate` | A maintainer adds `ci:full`. The complete graph tests the immutable current-main merge, including benchmark smoke and every mandatory domain. |
 | Validate all of main | `ci-main` | Manual full graph, including development snapshot artifacts. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
@@ -47,7 +48,7 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The final source contains 19 YAML workflow files. GitHub's sidebar also contains
+The final source contains 20 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
@@ -57,6 +58,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
+| Feedback compiler seed | `ci-feedback-cache.yml` | Trusted-main-only producer for bounded, dedicated Go build entries; PR feedback only reads them. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
 | Publication | `nightly.yml`, `release.yml`, `docs.yml` | Nightly, stable tags, and Pages retain separate credentials and gates. |
 

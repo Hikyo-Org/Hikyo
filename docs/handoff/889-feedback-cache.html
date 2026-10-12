@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PR 889 feedback cache handoff</title><style>body{max-width:900px;margin:40px auto;padding:0 24px;background:#fafafa;color:#182126;font:16px/1.6 system-ui}pre{white-space:pre-wrap;font:inherit}</style><body><pre># PR #889: bounded Go feedback cache
+
+## Problem and verified cause
+
+PR #890 feedback runs 38176335854 and 38177651896 failed at their one-minute Go cache restore step. Both restored the same 2,558,248,988-byte compressed go-test-v2 archive and timed out while extracting it. The actual feedback checks were skipped. Both unchanged commits passed on attempt 2. GitHub sent failure emails for the first attempts.
+
+## Change
+
+PR feedback now restores a separate go-feedback-v1 compiler seed into a dedicated GOCACHE directory. There is no fallback to the full-suite go-test-v2 cache. It still compiles the exact selected PR packages after restore, and the 220-second cumulative budget and four-minute job timeout are unchanged.
+
+A separate ci-feedback-cache workflow publishes seeds only from an immutable trusted-main commit, daily or by manual dispatch. It starts with an empty directory and compiles CLI/CI package dependencies, including test package exports, plus the pinned actionlint tool. It does not execute tests. A checked size helper refuses empty directories, symlinks, special files, more than 1.5 GiB of file contents, or more than 12,000 files before any upload.
+
+Keys include OS, architecture, runner image, dependency/tool manifests and the main source SHA. A compatible OS/architecture/image fallback permits reuse across main updates; Go independently validates build entries. PR jobs only restore. Existing full candidate validation, notification channels and test failure behavior remain unchanged.
+
+## Evidence and limits
+
+The complete local seed measured 1,153,546,222 bytes of file contents, 238,314,919 bytes zstd compressed (about 227 MiB), and 8,531 files. This was built on macOS targeting Linux/amd64 with CGO disabled; native Ubuntu compilation with CGO enabled can differ. These are local size observations, not hosted restore timings or a universal feedback deadline guarantee. Packages outside the seed may still need cold compilation. The producer enforces expanded bytes and file count; compressed size is measured, not a separate enforced limit.
+
+Local workflow/helper checks and adversarial review accompany this PR. Required full-candidate CI must validate the final head plus current main. The new cache namespace is initially empty until the trusted-main producer succeeds; a cold PR run still performs actual checks and must not be presented as warm-cache performance proof.
+
+## First publication after merge
+
+After the workflow reaches main, run from an authenticated contributor checkout:
+
+    gh workflow run ci-feedback-cache.yml --repo Hikyo-Org/Hikyo --ref main
+
+Verify that the producer passes its size check and publishes a cache. Then inspect a real Go feedback run for the dedicated namespace, cache hit, archive size, restore duration and completed checks. A dispatch alone is not delivery proof. No cache deletion or notification-setting change is necessary.
+
+## Rollback
+
+Reverting restores the previous cache reader and removes the dedicated producer. It does not change application data. The landing-page demo links in this PR are independent of the CI repair.
+</pre></body></html>
