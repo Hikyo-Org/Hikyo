@@ -22,6 +22,9 @@ const feedbackWorkflowPath = ".github/workflows/ci-feedback.yml"
 // GitHub can skip a job before expanding its matrix/name expression. Match
 // only this canonical ignored job, never an arbitrary successful/skipped run.
 const feedbackNameExpression = "${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback' }} (${{ matrix.lane }})"
+
+// The Actions API also returns this parenthesized serialization before matrix expansion.
+const normalizedFeedbackNameExpression = "${{ (((github.event.action == 'edited') && (github.event.changes.base.ref.from == '') && 'metadata (ignored)') || 'feedback') }} (${{ matrix.lane }})"
 const skippedFeedbackName = "github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'feedback'"
 
 func newBinding(repoID int64, p pull, r *run) binding {
@@ -467,7 +470,7 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			if err != nil {
 				return nil, err
 			}
-			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
+			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedFeedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
 				continue
 			}
 			admitted, ignored := 0, 0
