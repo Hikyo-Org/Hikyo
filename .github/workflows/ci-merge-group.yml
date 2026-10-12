@@ -24,9 +24,9 @@ jobs:
       actions: read
       contents: read
 
-  # Preserve the permanent required context for the merge queue. A failed or
-  # skipped validation must reach this proof and cannot satisfy mergeability.
-  ci-required:
+  # This read-only marker is evidence, never the required check producer.
+  # Trusted default-branch queue-gate independently verifies the current group.
+  merge-group-proof:
     if: always() && !cancelled()
     needs: validation
     runs-on: ubuntu-latest

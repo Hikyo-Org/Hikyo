@@ -1,0 +1,54 @@
+# The queue context is separate from the legacy full-candidate context so an
+# atomic policy rollback cannot accept an earlier admission-only green.
+name: queue-gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, closed]
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [ci-feedback, trusted-merge-ci]
+    types: [requested, in_progress, completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request to reassess against current GitHub state
+        required: true
+        type: string
+  schedule:
+    - cron: '10,25,40,55 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queue-gate-publisher
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Reconcile protected queue check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-queue-required
+        run: go run ./scripts/ci/pr-gate --queue
