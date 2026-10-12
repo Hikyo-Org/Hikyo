@@ -163,9 +163,10 @@ The cross-provider review requirement from the locked-ADR amendment procedure
 is explicitly waived for this amendment only. This is not a general governance
 change and does not claim that cross-provider review ran or passed.
 
-The prior audit's owner and macOS evidence gates are resolved. The authorized
-endpoint for this follow-up is a local commit on the requested branch; merge
-and issue closure remain separate delivery steps.
+The prior audit's owner and macOS evidence gates are resolved. The initial
+local-commit phase is complete. On 2026-10-12, Marc extended authorization to
+push and open a PR, wait for PR #891 to merge, then rebase and merge this
+follow-up after the required checks pass. Issue closure follows that merge.
 
 ### Follow-up validation and review
 
@@ -197,5 +198,7 @@ Validated locally on macOS with Go 1.27.2 and an isolated PostgreSQL 18 server:
   the explicitly scoped review waiver. Cross-provider review was waived,
   not performed or reported as passing.
 
-No remote CI run, push, merge, release or deployment was performed for this
-follow-up. The historical main-branch evidence above is identified separately.
+At the end of local validation, no remote CI run, push or merge had been
+performed for this follow-up. Remote delivery evidence belongs to the PR;
+the historical main-branch evidence above is identified separately. Release
+and deployment remain outside this follow-up.
