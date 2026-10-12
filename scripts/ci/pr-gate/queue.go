@@ -1253,6 +1253,11 @@ func (q *queueController) repairGroups(ctx context.Context) error {
 			return errors.New("invalid group repair identity")
 		}
 		seen[entry.Head.OID] = true
+		// Complete queue identity still validates above. A held-head writer
+		// cannot repair another head; discovery routes that work separately.
+		if entry.Head.OID != q.expectedHead {
+			continue
+		}
 		r, err := q.latestGroup(ctx, entry.Head.OID)
 		if err != nil {
 			failures = append(failures, err)
