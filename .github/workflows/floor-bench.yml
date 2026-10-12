@@ -60,7 +60,13 @@ jobs:
               case "$FULL_CANDIDATE" in
                 true)
                   test "$SOURCE_REVISION" = "$GITHUB_SHA"
-                  test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
+                  test "$GITHUB_REF" = "refs/pull/$PR_NUMBER/merge"
+                  # Labeled events may omit this advisory hint; the caller's
+                  # authenticated merge SHA and checked parents remain required.
+                  if [ -n "$PR_MERGE_SHA" ]; then
+                    [[ "$PR_MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+                    test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
+                  fi
                   test "$PR_BASE_REF" = "$DEFAULT_BRANCH"
                   ;;
                 false) test "$SOURCE_REVISION" = "$PR_HEAD_SHA" ;;
