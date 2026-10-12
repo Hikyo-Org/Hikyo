@@ -460,7 +460,7 @@ func TestQueueGitHubNormalizedSkippedMetadataJob(t *testing.T) {
 		"unfinished canonical job": func(jobs *[]job) {
 			(*jobs)[0].Status, (*jobs)[0].Conclusion = "queued", ""
 		},
-		"failed canonical job": func(jobs *[]job) { (*jobs)[0].Conclusion = "failure" },
+		"failed canonical job":     func(jobs *[]job) { (*jobs)[0].Conclusion = "failure" },
 		"successful canonical job": func(jobs *[]job) { (*jobs)[0].Conclusion = "success" },
 		"duplicate skipped jobs": func(jobs *[]job) {
 			duplicate := (*jobs)[0]
