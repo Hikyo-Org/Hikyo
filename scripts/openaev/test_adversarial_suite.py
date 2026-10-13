@@ -384,8 +384,8 @@ class RunnerBoundaryTests(unittest.TestCase):
 
         def sample() -> dict[str, object]:
             return {
-                "production": {},
-                "lab_pods": {},
+                "environment": {"scope": "isolated runner test"},
+                "lab_pods": {f"lab/pod-{index}": {} for index in range(7)},
                 "memory_provider": "kubelet-summary",
                 "memory": {
                     "lab/server": {

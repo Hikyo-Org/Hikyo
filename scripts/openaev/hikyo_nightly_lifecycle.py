@@ -21,6 +21,8 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from hikyo_nightly_release import SHA, TAG
+
 KUBE = (
     "kubectl",
     "--kubeconfig",
@@ -550,10 +552,8 @@ class EphemeralHikyo:
     ) -> dict[str, object]:
         if (
             SERVER_IMAGE.fullmatch(image_ref) is None
-            or not re.fullmatch(r"[a-f0-9]{40}", source_commit)
-            or not re.fullmatch(
-                r"0\.0\.1-nightly\.[0-9]{8}\.[0-9]+\.g[a-f0-9]+", expected_version
-            )
+            or SHA.fullmatch(source_commit) is None
+            or TAG.fullmatch("v" + expected_version) is None
         ):
             raise LifecycleError("invalid_verified_candidate_identity")
         if (

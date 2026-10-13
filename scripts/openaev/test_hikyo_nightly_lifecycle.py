@@ -225,6 +225,49 @@ class Native:
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_all_verified_release_channels_start_with_exact_identity(self) -> None:
+        for version in ("1.2.3", "1.2.3-rc.1", "0.1.0", VERSION):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as root:
+                path = Path(root)
+                directory, digest = bundle(path)
+                native = Native()
+                target = lifecycle.EphemeralHikyo(RUN, path / "state", command=native)
+                target.prepare(directory, digest)
+                started = target.start(
+                    template(), IMAGE, expected_version=version, source_commit=COMMIT
+                )
+                self.assertEqual(started["expected_version"], version)
+                self.assertEqual(started["source_commit"], COMMIT)
+                self.assertEqual(started["image_ref"], IMAGE)
+                deployed = native.objects[("Deployment", "hikyo")]
+                self.assertEqual(deployed["spec"]["template"]["spec"]["containers"][0]["image"], IMAGE)
+                self.assertTrue(target.cleanup()["verified"])
+                self.assertEqual(native.objects, {})
+
+    def test_hostile_candidate_identity_never_reaches_cluster_mutation(self) -> None:
+        invalid = [
+            (version, COMMIT, IMAGE)
+            for version in (
+                "v1.2.3", "1.2", "01.2.3", "1.02.3", "1.2.03", "1.2.3-",
+                "1.2.3/rc.1", "1.2.3\n", "1.2.3;false", "$(false)", "",
+            )
+        ] + [
+            ("1.2.3", COMMIT[:-1], IMAGE),
+            ("1.2.3", COMMIT.upper(), IMAGE),
+            ("1.2.3", COMMIT + "\n", IMAGE),
+            ("1.2.3", COMMIT, "ghcr.io/hikyo-org/hikyo:v1.2.3"),
+            ("1.2.3", COMMIT, IMAGE + "\n"),
+        ]
+        for version, commit, image in invalid:
+            with self.subTest(version=version, commit=commit, image=image), tempfile.TemporaryDirectory() as root:
+                native = Native()
+                target = lifecycle.EphemeralHikyo(RUN, Path(root) / "state", command=native)
+                with self.assertRaisesRegex(
+                    lifecycle.LifecycleError, "invalid_verified_candidate_identity"
+                ):
+                    target.start(template(), image, expected_version=version, source_commit=commit)
+                self.assertEqual(native.commands, [])
+
     def test_full_lifecycle_fresh_pvc_helper_then_server_then_reclaim(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root)

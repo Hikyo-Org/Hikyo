@@ -12,11 +12,13 @@ Nightly `v0.0.1-nightly.20261012.75.g868703c7` failed the infrastructure guard a
 
 The existing assertion suite is now repository-owned under `scripts/openaev/`: authorization, adversarial requests, bounded traffic, resource guards, isolated lifecycle, and native audit/alert/inbox detection. Loopback origins, Kubernetes context and custody paths are supplied by the environment. The fresh-hosted-runner guard records ephemeral runner identity and live resource evidence.
 
+The isolated lifecycle now uses the existing release identity grammar for stable, RC, early core prerelease, and nightly versions. Complete prepare/start/cleanup regressions preserve the exact candidate version, full source SHA, and pinned image; hostile identity strings fail before cluster mutation. Native preparation and image binary equality remain the independent authentication gates in the runner layer.
+
 This layer adds no release mutation or lab provisioning. Its read-only pull-request and main-push workflow checks the harness with pinned tooling. The coordinator layer extends the same check entry point to its additional files.
 
 ## Verified evidence
 
-All 256 combined core and suite unit tests pass, with Ruff and mypy. These tests are distinct from the 313 runtime assertions. Complete hosted 313/313 proof is tracked in PR #903 and was still pending when this foundation was prepared. The entire suite and its tests remain intact; the three-layer split avoids both GitHub&#x27;s 20,000-line diff limit and the review service&#x27;s 200,000-token limit.
+All 263 combined core and suite unit tests pass, with Ruff and mypy. These tests are distinct from the 313 runtime assertions. Complete hosted 313/313 proof is tracked in PR #903 and was still pending when this foundation was prepared. The entire suite and its tests remain intact; the three-layer split avoids both GitHub&#x27;s 20,000-line diff limit and the review service&#x27;s 200,000-token limit.
 
 ## Repeat checks
 
@@ -28,7 +30,7 @@ python3 -m venv /tmp/hikyo-openaev-checks
 PATH=/tmp/hikyo-openaev-checks/bin:$PATH scripts/openaev/check.sh
 ```
 
-Expected result: Ruff and mypy pass, followed by 256 passing unit tests. No lab credentials are needed. GitHub runs the same entry point for changes to this scope.
+Expected result: Ruff and mypy pass, followed by 263 passing unit tests. No lab credentials are needed. GitHub runs the same entry point for changes to this scope.
 
 ## Operational state
 
