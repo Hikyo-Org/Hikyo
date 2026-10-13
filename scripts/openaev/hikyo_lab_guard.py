@@ -400,14 +400,9 @@ class BackgroundGuard:
                 self.max_collection_duration_s = max(
                     self.max_collection_duration_s, time.monotonic() - began
                 )
-        except (
-            OSError,
-            ValueError,
-            TypeError,
-            LookupError,
-            RuntimeError,
-            subprocess.SubprocessError,
-        ) as error:
+        except Exception as error:
+            # Collector callbacks are a failure boundary: every ordinary crash
+            # must remain fatal even if a later native collection succeeds.
             failure = (
                 error
                 if isinstance(error, GuardError)

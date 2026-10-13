@@ -395,6 +395,38 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(guard.GuardError, "background_collection_stale"):
             background.finish()
 
+    def test_any_ordinary_collector_crash_is_sticky_after_two_good_samples(self) -> None:
+        for exception_type in (RuntimeError, ArithmeticError, AssertionError):
+            baseline = self.collect()
+            failed = threading.Event()
+            calls = 0
+
+            def collector() -> dict[str, object]:
+                nonlocal calls
+                calls += 1
+                if calls == 3:
+                    failed.set()
+                    raise exception_type("raw-private-collector-detail")
+                return self.collect()
+
+            verifier = guard.LabGuard(baseline)
+            background = guard.BackgroundGuard(verifier, collect_sample=collector, cadence_s=0.01)
+            with self.subTest(exception=exception_type), patch.object(threading, "excepthook") as unhandled:
+                background.start()
+                self.assertTrue(failed.wait(1.0), "collector did not reach third sample")
+                self.assertIsNotNone(background._thread)
+                background._thread.join(1.0)
+                self.assertFalse(background._thread.is_alive())
+                self.assertEqual(verifier.checks, 2)
+                with self.assertRaisesRegex(guard.GuardError, "^background_collection_failed$"):
+                    background()
+                with self.assertRaisesRegex(guard.GuardError, "^background_collection_failed$"):
+                    background.finish()
+                self.assertEqual(calls, 4, "final healthy read must not clear prior crash")
+                self.assertEqual(background.evidence()["failure"], "background_collection_failed")
+                self.assertTrue(background.evidence()["worker_stopped"])
+                unhandled.assert_not_called()
+
     def test_background_native_failure_is_sticky_and_cached_checks_fail_immediately(
         self,
     ) -> None:

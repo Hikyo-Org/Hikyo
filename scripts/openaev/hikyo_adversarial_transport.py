@@ -131,6 +131,8 @@ class WorkloadTransport:
                 if size > 1_048_576:
                     raise TransportError("response_too_large")
                 chunks.append(chunk)
+            if time.monotonic() >= end:
+                raise TimeoutError()
             if response.length not in (None, 0):
                 raise TransportError("response_incomplete")
             decoded: object = json.loads(b"".join(chunks))
