@@ -267,7 +267,7 @@ func TestAdmissionDCOFreshActorReadCannotBorrowBotExemption(t *testing.T) {
 	}
 }
 
-func TestAdmissionDCOCanonicalRefusalIsNotReplacedByCachedVerdict(t *testing.T) {
+func TestAdmissionDCOCanonicalRefusalIsAlwaysRechecked(t *testing.T) {
 	f := newAdmissionDCOFixture(t, true)
 	f.p.User.Login = "contributor"
 	verify, close := admissionDCOVerifier("Hikyo-Org/Hikyo")
