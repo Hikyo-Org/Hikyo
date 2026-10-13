@@ -1,0 +1,41 @@
+# OpenAEV assertion foundation, PR #904
+
+## Contract and stack
+
+The requested endpoint is a post-release OpenAEV job on a GitHub-hosted runner. It must be independent of release and prerelease publication, and must add nothing to release notes on failure. PR #905 is the reusable core; PR #904 adds the complete assertion suite; PR #903 adds the hosted stack, trusted native candidate preparation, coordinator and PASS-only publisher. Merge #905, then #904, then #903.
+
+## Original failure
+
+Nightly `v0.0.1-nightly.20261012.75.g868703c7` failed the infrastructure guard at `pod_not_ready`. All 313 assertions were skipped. The Pi RabbitMQ pod rejected the persisted Erlang cookie with mode `0660`. The original failure evidence and historical release are retained.
+
+## This layer
+
+The existing assertion suite is now repository-owned under `scripts/openaev/`: authorization, adversarial requests, bounded traffic, resource guards, isolated lifecycle, and native audit/alert/inbox detection. Loopback origins, Kubernetes context and custody paths are supplied by the environment. The fresh-hosted-runner guard records ephemeral runner identity and live resource evidence.
+
+This layer adds no release mutation or lab provisioning. Its read-only pull-request and main-push workflow checks the harness with pinned tooling. The coordinator layer extends the same check entry point to its additional files.
+
+## Verified evidence
+
+All 256 combined core and suite unit tests pass, with Ruff and mypy. These tests are distinct from the 313 runtime assertions. Complete hosted 313/313 proof is tracked in PR #903 and was still pending when this foundation was prepared. The entire suite and its tests remain intact; the three-layer split avoids both GitHub's 20,000-line diff limit and the review service's 200,000-token limit.
+
+## Repeat checks
+
+From the repository root, with Python 3 and network access:
+
+```sh
+python3 -m venv /tmp/hikyo-openaev-checks
+/tmp/hikyo-openaev-checks/bin/python -m pip install -r scripts/openaev/requirements-check.lock
+PATH=/tmp/hikyo-openaev-checks/bin:$PATH scripts/openaev/check.sh
+```
+
+Expected result: Ruff and mypy pass, followed by 256 passing unit tests. No lab credentials are needed. GitHub runs the same entry point for changes to this scope.
+
+## Operational state
+
+The obsolete Mac nightly scheduler was unloaded and disabled as part of the approved migration so it cannot append failure notes. The persistent Pi lab and its evidence were retained. Automated hosted validation starts after both layers merge and a subsequent release or prerelease is published. There is no retroactive modification of nightly 75.
+
+## Delivery gates
+
+Cryptographic signatures and DCO sign-offs are required on every commit. Current-head GitHub CI, bot review and the human merge gate remain separate from local tests. Cross-provider review is skipped because the Anthropic subscription is unavailable. This document does not assert merge readiness or hosted PASS.
+
+The monitor accepts the native runner-owned Docker socket or a root-owned Linux socket with runner group access, rejecting foreign owners, remote endpoints and permissions for other users. This handles GitHub-hosted Linux without weakening the Docker ownership boundary.

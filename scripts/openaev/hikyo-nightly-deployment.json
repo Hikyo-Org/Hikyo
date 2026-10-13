@@ -1,0 +1,381 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "hikyo",
+    "namespace": "hikyo-lab"
+  },
+  "spec": {
+    "replicas": 1,
+    "strategy": {
+      "type": "Recreate"
+    },
+    "selector": {
+      "matchLabels": {
+        "app": "hikyo-lab"
+      }
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "app": "hikyo-lab",
+          "app.kubernetes.io/part-of": "openaev-lab"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "priorityClassName": "openaev-lab",
+        "nodeSelector": {
+          "kubernetes.io/arch": "arm64"
+        },
+        "securityContext": {
+          "runAsNonRoot": true,
+          "runAsUser": 65532,
+          "runAsGroup": 65532,
+          "fsGroup": 65532,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "initContainers": [
+          {
+            "name": "custody-and-evidence-init",
+            "image": "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e",
+            "command": [
+              "/bin/sh",
+              "-ec"
+            ],
+            "args": [
+              "umask 077\nfor directory in /var/lib/hikyo/data /var/lib/hikyo/data/custody; do\n  if [ ! -e \"$directory\" ]; then mkdir -m 0700 \"$directory\"; fi\n  [ ! -L \"$directory\" ] && [ \"$(stat -c '%u:%g:%a' \"$directory\")\" = 65532:65532:700 ] || exit 1\ndone\nif [ ! -f /var/lib/hikyo/data/bundle/index.json ]; then\n  # Recover an interrupted public-evidence copy only before a database exists.\n  [ ! -e /var/lib/hikyo/data/hikyo.db ] || exit 1\n  pending=/var/lib/hikyo/data/bundle-preparing\n  [ ! -L \"$pending\" ] || exit 1\n  mkdir -p \"$pending\"\n  cp -a /evidence/. \"$pending\"/\n  cmp /evidence/index.json \"$pending\"/index.json\n  if [ -e /var/lib/hikyo/data/bundle ]; then\n    [ ! -e /var/lib/hikyo/data/bundle-incomplete-firstboot ] || exit 1\n    mv /var/lib/hikyo/data/bundle /var/lib/hikyo/data/bundle-incomplete-firstboot\n  fi\n  mv \"$pending\" /var/lib/hikyo/data/bundle\nfi\ncmp /evidence/index.json /var/lib/hikyo/data/bundle/index.json\n\n# ConfigMap leaves are symlinks; the native upgrade gate requires a regular file.\ncp /run/lab-config-source/operator.pub /run/lab-config/operator.pub\nchmod 0444 /run/lab-config/operator.pub\n"
+            ],
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "resources": {
+              "requests": {
+                "cpu": "10m",
+                "memory": "16Mi"
+              },
+              "limits": {
+                "cpu": "100m",
+                "memory": "64Mi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "data",
+                "mountPath": "/var/lib/hikyo"
+              },
+              {
+                "name": "config-source",
+                "mountPath": "/run/lab-config-source",
+                "readOnly": true
+              },
+              {
+                "name": "config",
+                "mountPath": "/run/lab-config"
+              }
+            ]
+          },
+          {
+            "name": "root-key-stage",
+            "image": "ghcr.io/hikyo-org/hikyo@sha256:ddb706551c8228257a2dac54f3375d74e8066bf56818da3f9616829a1fdb0198",
+            "args": [
+              "__hikyo-stage-root-key"
+            ],
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "resources": {
+              "requests": {
+                "cpu": "10m",
+                "memory": "16Mi"
+              },
+              "limits": {
+                "cpu": "100m",
+                "memory": "32Mi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "root-source",
+                "mountPath": "/run/hikyo-root-key-source",
+                "readOnly": true
+              },
+              {
+                "name": "root",
+                "mountPath": "/run/hikyo-root-key"
+              }
+            ]
+          },
+          {
+            "name": "tls-stage",
+            "image": "ghcr.io/hikyo-org/hikyo@sha256:ddb706551c8228257a2dac54f3375d74e8066bf56818da3f9616829a1fdb0198",
+            "args": [
+              "__hikyo-stage-tls",
+              "--once"
+            ],
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "resources": {
+              "requests": {
+                "cpu": "10m",
+                "memory": "16Mi"
+              },
+              "limits": {
+                "cpu": "100m",
+                "memory": "32Mi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "tls-source",
+                "mountPath": "/run/hikyo-tls-source",
+                "readOnly": true
+              },
+              {
+                "name": "tls",
+                "mountPath": "/run/hikyo-tls"
+              }
+            ]
+          }
+        ],
+        "containers": [
+          {
+            "name": "server",
+            "image": "ghcr.io/hikyo-org/hikyo@sha256:ddb706551c8228257a2dac54f3375d74e8066bf56818da3f9616829a1fdb0198",
+            "args": [
+              "server",
+              "--listen=0.0.0.0:8443",
+              "--operational-listen=0.0.0.0:8081",
+              "--root-key-file=/run/hikyo-root-key/root-key",
+              "--tls-cert-file=/run/hikyo-tls/tls.crt",
+              "--tls-key-file=/run/hikyo-tls/tls.key"
+            ],
+            "env": [
+              {
+                "name": "HIKYO_ROOT_KEY_FILE",
+                "value": "/run/hikyo-root-key/root-key"
+              },
+              {
+                "name": "HIKYO_LISTEN",
+                "value": "0.0.0.0:8443"
+              },
+              {
+                "name": "HIKYO_OPERATIONAL_LISTEN",
+                "value": "0.0.0.0:8081"
+              },
+              {
+                "name": "HIKYO_TLS_CERT_FILE",
+                "value": "/run/hikyo-tls/tls.crt"
+              },
+              {
+                "name": "HIKYO_TLS_KEY_FILE",
+                "value": "/run/hikyo-tls/tls.key"
+              },
+              {
+                "name": "HIKYO_DB",
+                "value": "sqlite:/var/lib/hikyo/data/hikyo.db"
+              },
+              {
+                "name": "HIKYO_EXTERNAL_ORIGIN",
+                "value": "https://127.0.0.1:18081"
+              },
+              {
+                "name": "HIKYO_UPGRADE_BUNDLE",
+                "value": "/var/lib/hikyo/data/bundle"
+              },
+              {
+                "name": "HIKYO_UPGRADE_STATE_DIR",
+                "value": "/var/lib/hikyo/data/custody"
+              },
+              {
+                "name": "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY",
+                "value": "/run/lab-config/operator.pub"
+              },
+              {
+                "name": "HIKYO_UPDATE_CHANNEL",
+                "value": "off"
+              },
+              {
+                "name": "GOMEMLIMIT",
+                "value": "224MiB"
+              },
+              {
+                "name": "GOGC",
+                "value": "50"
+              }
+            ],
+            "ports": [
+              {
+                "name": "https",
+                "containerPort": 8443
+              },
+              {
+                "name": "ops",
+                "containerPort": 8081
+              }
+            ],
+            "startupProbe": {
+              "httpGet": {
+                "path": "/readyz",
+                "port": "ops"
+              },
+              "periodSeconds": 5,
+              "failureThreshold": 30
+            },
+            "readinessProbe": {
+              "httpGet": {
+                "path": "/readyz",
+                "port": "ops"
+              },
+              "periodSeconds": 5
+            },
+            "livenessProbe": {
+              "httpGet": {
+                "path": "/healthz",
+                "port": "ops"
+              },
+              "periodSeconds": 10
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "resources": {
+              "requests": {
+                "cpu": "100m",
+                "memory": "384Mi"
+              },
+              "limits": {
+                "cpu": "500m",
+                "memory": "384Mi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "data",
+                "mountPath": "/var/lib/hikyo"
+              },
+              {
+                "name": "root",
+                "mountPath": "/run/hikyo-root-key",
+                "readOnly": true
+              },
+              {
+                "name": "tls",
+                "mountPath": "/run/hikyo-tls",
+                "readOnly": true
+              },
+              {
+                "name": "config",
+                "mountPath": "/run/lab-config",
+                "readOnly": true
+              },
+              {
+                "name": "tmp",
+                "mountPath": "/tmp"
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "name": "data",
+            "persistentVolumeClaim": {
+              "claimName": "hikyo-lab-data"
+            }
+          },
+          {
+            "name": "root-source",
+            "secret": {
+              "secretName": "hikyo-lab-custody",
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "root-key",
+                  "path": "root-key"
+                }
+              ]
+            }
+          },
+          {
+            "name": "root",
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "64Ki"
+            }
+          },
+          {
+            "name": "tls-source",
+            "secret": {
+              "secretName": "hikyo-lab-custody",
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "tls.crt",
+                  "path": "tls.crt"
+                },
+                {
+                  "key": "tls.key",
+                  "path": "tls.key"
+                }
+              ]
+            }
+          },
+          {
+            "name": "tls",
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "1Mi"
+            }
+          },
+          {
+            "name": "config",
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "64Ki"
+            }
+          },
+          {
+            "name": "tmp",
+            "emptyDir": {
+              "sizeLimit": "32Mi"
+            }
+          },
+          {
+            "name": "config-source",
+            "configMap": {
+              "name": "hikyo-lab-config"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
