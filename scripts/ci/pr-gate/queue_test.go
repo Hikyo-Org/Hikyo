@@ -1071,6 +1071,7 @@ func TestQueueGroupPendingAuthorityKeepsTerminalValidationTruth(t *testing.T) {
 		{"both pending", 75, 75, false, false, "queued"},
 		{"failed full run remains failed", 75, 75, true, false, "failure"},
 		{"failed aggregate remains failed", 75, 75, true, true, "failure"},
+		{"failed aggregate with successful run remains failed", 75, 75, false, true, "failure"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newQueueFixture(t)
