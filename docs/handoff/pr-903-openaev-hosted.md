@@ -60,4 +60,8 @@ The idle Mac LaunchAgent com.went.hikyo-openaev-nightly was unloaded and disable
 
 ## Remaining gates
 
-The core review threads are resolved with verified corrections or evidence-backed dispositions. Core required queue admission passed; each updated head still requires current-head CI and review. The middle and top PR queue checks reject their non-default stacked bases by design. After each parent merges, retarget the next layer to main and obtain fresh protected-branch validation; do not weaken or bypass those gates. Cross-provider subscription review is unavailable and is not labeled CLEAN. Human merge approval is still required. The temporary feature-branch rehearsal workflow will be removed before the final PR handoff.
+The core review threads are resolved with verified corrections or evidence-backed dispositions. Core required queue admission passed; each updated head still requires current-head CI and review. The middle and top PR queue checks reject their non-default stacked bases by design. After each parent merges, retarget the next layer to main and obtain fresh protected-branch validation; do not weaken or bypass those gates. Cross-provider subscription review is unavailable and is not labeled CLEAN. Human merge approval is still required. The temporary feature-branch rehearsal workflow has been removed and its GitHub registration disabled.
+
+## Paused migration and retired rehearsal
+
+The user paused the migration on 2026-10-13; PRs #903, #904 and #905 remain drafts and unwatched. The retired OpenAEV hosted rehearsal workflow (GitHub ID 383455583) is disabled and its file removed. Its former configuration test now checks that the retired workflow is absent. The unfinished partition work remains preserved locally and was not included in this cleanup. Full hosted 313/313 proof remains unproven.

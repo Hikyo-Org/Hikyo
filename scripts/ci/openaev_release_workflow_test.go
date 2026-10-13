@@ -231,26 +231,9 @@ cosign() { printf '%s\n' "$*" >"$CAPTURE"; }
 	}
 }
 
-func TestOpenAEVRehearsalDeniesCacheCapabilities(t *testing.T) {
-	raw, err := os.ReadFile("../../.github/workflows/openaev-rehearsal.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var workflow struct {
-		CacheMode string `yaml:"cache-mode"`
-		Jobs      map[string]struct {
-			CacheMode string `yaml:"cache-mode"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(raw, &workflow); err != nil {
-		t.Fatal(err)
-	}
-	if workflow.CacheMode != "none" {
-		t.Fatal("rehearsal must deny GitHub cache capabilities")
-	}
-	for name, job := range workflow.Jobs {
-		if job.CacheMode != "" && job.CacheMode != "none" {
-			t.Fatalf("%s overrides cache deny", name)
-		}
+func TestOpenAEVLegacyRehearsalRemoved(t *testing.T) {
+	_, err := os.Lstat("../../.github/workflows/openaev-rehearsal.yml")
+	if !os.IsNotExist(err) {
+		t.Fatalf("retired feature-branch rehearsal workflow must be absent: %v", err)
 	}
 }
