@@ -6,6 +6,7 @@ import copy
 import threading
 import time
 import unittest
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -117,9 +118,16 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(sample["provider"], "kubelet-summary")
             self.assertIsInstance(sample["metrics_timestamp"], str)
         self.assertEqual(self.calls.count(self.summary_query), 2)
-        self.assertFalse(
-            any("metrics.k8s.io" in arg for args in self.calls for arg in args)
-        )
+        expected_queries = [
+            ("get", "namespace", "kube-system", "-o", "json"),
+            ("get", "nodes", "-o", "json"),
+            ("get", "pods", "-n", "openaev-lab", "-o", "json"),
+            ("get", "pods", "-n", "hikyo-lab", "-o", "json"),
+            self.summary_query,
+        ]
+        # Exact query identity and multiplicity forbid any fallback API,
+        # including a second provider or additional unguarded resource read.
+        self.assertEqual(Counter(self.calls), Counter(expected_queries * 2))
 
     def test_x86_or_missing_node_architecture_cannot_claim_native_arm64(self) -> None:
         query = ("get", "nodes", "-o", "json")
