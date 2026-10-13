@@ -48,8 +48,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          case "$GITHUB_EVENT_NAME" in
+            pull_request_target) JOB_HEAD="$HEAD" ;;
+            workflow_run) JOB_HEAD="$GITHUB_SHA" ;;
+            *) exit 1 ;;
+          esac
+          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
           body=$(timeout --kill-after=1s 5s gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100")
-          started=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$GITHUB_SHA" --arg name "publish-$HEAD" '
+          started=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$JOB_HEAD" --arg name "publish-$HEAD" '
             if length != 1 or (.[0] | type) != "object" then error("invalid publisher jobs response") else .[0] end |
             if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
             [.[] | select(.name == $name)] |

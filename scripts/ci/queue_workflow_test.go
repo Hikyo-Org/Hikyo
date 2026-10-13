@@ -163,7 +163,7 @@ func queuePublisherContract(raw []byte) error {
 			if len(j.Steps) != 5 || j.Steps[4].If != "always()" {
 				return fmt.Errorf("targeted setup/compile/terminal reserve is required")
 			}
-			if err := queueBootstrapContract(j.Steps[0].Run); err != nil {
+			if err := queueBootstrapContract(j.Steps[0].Run, true); err != nil {
 				return err
 			}
 			if !reflect.DeepEqual(j.Steps[0].Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEAD": head}) {
@@ -237,8 +237,12 @@ func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int) error 
 	}
 	return nil
 }
-func queueBootstrapContract(run string) error {
-	if fmt.Sprintf("%x", sha256.Sum256([]byte(run))) != "75f5129b80b9b521cfa3c538118d1972b6dcc76702ed6f83494a824993c0057e" {
+func queueBootstrapContract(run string, targeted bool) error {
+	want := "75f5129b80b9b521cfa3c538118d1972b6dcc76702ed6f83494a824993c0057e"
+	if targeted {
+		want = "f7b205f43d6fd0d468b1456d42e19bc994bb8453dc31213c492a51e30ba3835e"
+	}
+	if fmt.Sprintf("%x", sha256.Sum256([]byte(run))) != want {
 		return fmt.Errorf("current-attempt exacthead clock bootstrap changed")
 	}
 	return nil
@@ -285,7 +289,7 @@ func queueWorkerContract(raw []byte) error {
 	if !reflect.DeepEqual(strategy, map[string]any{"fail-fast": false, "matrix": map[string]any{"work": "${{ fromJSON(inputs.work) }}"}}) {
 		return fmt.Errorf("complete worker batch must expand exactlyonce withfailfastfalse")
 	}
-	if err := queueBootstrapContract(j.Steps[0].Run); err != nil {
+	if err := queueBootstrapContract(j.Steps[0].Run, false); err != nil {
 		return err
 	}
 	if j.Steps[0].If != "matrix.work.kind != 'group'" || !reflect.DeepEqual(j.Steps[0].Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEAD": head}) {
@@ -572,7 +576,8 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := workflow.Jobs["publish"].Steps[0].Run
-	head := strings.Repeat("a", 40)
+	head := "8d0fe8559114c4a0d8eb95c17443ef2be1c78071"
+	source := "f1022b9c6a6b95c98a59ac98cb2865b36d4438bb"
 	groupDisplay := strings.ReplaceAll(workflow.Jobs["group"].Name, "${{ github.event.workflow_run.head_sha }}", head)
 	base := map[string]any{"id": 123, "run_id": 456, "run_attempt": 2, "head_sha": head, "name": "publish-" + head, "status": "in_progress", "started_at": time.Now().Add(-5 * time.Second).UTC().Format(time.RFC3339)}
 	cases := map[string]func(map[string]any) any{
@@ -602,65 +607,92 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 		"invalid jobs shape":     func(j map[string]any) any { return map[string]any{"total_count": 1, "jobs": j} },
 		"empty response":         func(j map[string]any) any { return "" },
 		"JSON stream":            func(j map[string]any) any { return "{}\n{}" },
+		"missing lease":          func(j map[string]any) any { return nil },
+		"malformed lease":        func(j map[string]any) any { return nil },
+		"missing source":         func(j map[string]any) any { return nil },
+		"malformed source":       func(j map[string]any) any { return nil },
+		"unsupported event":      func(j map[string]any) any { return nil },
 	}
-	for name, mutate := range cases {
-		t.Run(name, func(t *testing.T) {
-			j := make(map[string]any, len(base))
-			for k, v := range base {
-				j[k] = v
-			}
-			response := mutate(j)
-			if response == nil {
-				response = map[string]any{"total_count": 1, "jobs": []any{j}}
-			}
-			body, err := json.Marshal(response)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if text, ok := response.(string); ok {
-				body = []byte(text)
-			}
-			dir := t.TempDir()
-			responsePath := filepath.Join(dir, "response.json")
-			envPath := filepath.Join(dir, "environment")
-			if err := os.WriteFile(responsePath, body, 0600); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(envPath, nil, 0600); err != nil {
-				t.Fatal(err)
-			}
-			shim := "#!/bin/sh\nset -eu\ntest \"$#\" = 2\ntest \"$1\" = api\ntest \"$2\" = 'repos/Hikyo-Org/Hikyo/actions/runs/456/attempts/2/jobs?per_page=100'\ncat \"$RESPONSE_FILE\"\n"
-			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(shim), 0700); err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, "bash", "-c", script)
-			cmd.WaitDelay = time.Second
-			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_REPO=Hikyo-Org/Hikyo", "GITHUB_RUN_ID=456", "GITHUB_RUN_ATTEMPT=2", "GITHUB_SHA="+head, "HEAD="+head, "GITHUB_ENV="+envPath, "RESPONSE_FILE="+responsePath)
-			output, runErr := cmd.CombinedOutput()
-			written, err := os.ReadFile(envPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.HasPrefix(name, "valid") {
-				if runErr == nil || len(written) != 0 {
-					t.Fatalf("invalid server clock reached setup: %v %s %s", runErr, output, written)
+	// These are the distinct source/job identities observed on PR 899. The
+	// target job belongs to the PR head; a feedback callback belongs to main,
+	// while both use the PR head for the same publication lease.
+	for _, route := range []struct{ event, jobHead string }{
+		{"pull_request_target", head},
+		{"workflow_run", source},
+	} {
+		for name, mutate := range cases {
+			t.Run(route.event+"/"+name, func(t *testing.T) {
+				j := make(map[string]any, len(base))
+				for k, v := range base {
+					j[k] = v
 				}
-				return
-			}
-			if runErr != nil {
-				t.Fatalf("valid authentic setup clock refused: %v %s", runErr, output)
-			}
-			started, err := time.Parse(time.RFC3339, j["started_at"].(string))
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := "PR_GATE_STARTED_AT=" + strconv.FormatInt(started.Unix(), 10) + "\nPR_GATE_DEADLINE=" + strconv.FormatInt(started.Unix()+60, 10) + "\n"
-			if string(written) != want {
-				t.Fatalf("setup clock was reset: %s", written)
-			}
-		})
+				j["head_sha"] = route.jobHead
+				response := mutate(j)
+				if response == nil {
+					response = map[string]any{"total_count": 1, "jobs": []any{j}}
+				}
+				body, err := json.Marshal(response)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if text, ok := response.(string); ok {
+					body = []byte(text)
+				}
+				dir := t.TempDir()
+				responsePath := filepath.Join(dir, "response.json")
+				envPath := filepath.Join(dir, "environment")
+				if err := os.WriteFile(responsePath, body, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(envPath, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				shim := "#!/bin/sh\nset -eu\ntest \"$#\" = 2\ntest \"$1\" = api\ntest \"$2\" = 'repos/Hikyo-Org/Hikyo/actions/runs/456/attempts/2/jobs?per_page=100'\ncat \"$RESPONSE_FILE\"\n"
+				if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(shim), 0700); err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, "bash", "-c", script)
+				cmd.WaitDelay = time.Second
+				lease, sourceSHA, event := head, source, route.event
+				switch name {
+				case "missing lease":
+					lease = ""
+				case "malformed lease":
+					lease = "not-a-sha"
+				case "missing source":
+					sourceSHA = ""
+				case "malformed source":
+					sourceSHA = "not-a-sha"
+				case "unsupported event":
+					event = "workflow_dispatch"
+				}
+				cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_REPO=Hikyo-Org/Hikyo", "GITHUB_RUN_ID=456", "GITHUB_RUN_ATTEMPT=2", "GITHUB_EVENT_NAME="+event, "GITHUB_SHA="+sourceSHA, "HEAD="+lease, "GITHUB_ENV="+envPath, "RESPONSE_FILE="+responsePath)
+				output, runErr := cmd.CombinedOutput()
+				written, err := os.ReadFile(envPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasPrefix(name, "valid") && !(route.event == "pull_request_target" && (name == "missing source" || name == "malformed source")) {
+					if runErr == nil || len(written) != 0 {
+						t.Fatalf("invalid server clock reached setup: %v %s %s", runErr, output, written)
+					}
+					return
+				}
+				if runErr != nil {
+					t.Fatalf("valid authentic setup clock refused: %v %s", runErr, output)
+				}
+				started, err := time.Parse(time.RFC3339, j["started_at"].(string))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := "PR_GATE_STARTED_AT=" + strconv.FormatInt(started.Unix(), 10) + "\nPR_GATE_DEADLINE=" + strconv.FormatInt(started.Unix()+60, 10) + "\n"
+				if string(written) != want {
+					t.Fatalf("setup clock was reset: %s", written)
+				}
+			})
+		}
 	}
 }
 
