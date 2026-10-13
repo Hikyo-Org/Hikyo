@@ -243,12 +243,20 @@ and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
 
-All new jobs remain disabled unless `QUEUE_HEAD_WORKERS_ENABLED` is enabled.
-Before enabling it, drain old unleased compiled publishers using the reviewed
-cutover evidence. Preserve mandatory queue protection throughout; enabling a
-variable does not replace hosted token-dispatch and full-group acceptance.
-See the [policy handoff](../handoff/merge-queue-policy.md) for local evidence and
-remaining hosted checks.
+Queue jobs run only when `QUEUE_HEAD_WORKERS_ENABLED` is enabled. Before a
+new source generation is enabled, drain old unleased compiled publishers and
+verify its actual trusted-main lifecycle using the reviewed cutover. Preserve
+mandatory queue protection throughout; enabling a variable does not replace
+hosted admission and full-group acceptance.
+
+PR [#898](https://github.com/Hikyo-Org/Hikyo/pull/898) landed as `f1022b9c` after
+all 16 domains passed in 24m 51s. Trusted-main version-2 probe
+[38371444282](https://github.com/Hikyo-Org/Hikyo/actions/runs/38371444282) passed
+independent receipt and both-canary neutral-cleanup verification. Guarded
+activation enabled workers at 08:51:48 UTC on 13 October 2026; exact source and
+mandatory queue protection were unchanged. Ordinary deployed PR admission
+within five minutes and a new complete queued group still require measurement.
+See the [policy handoff](../handoff/merge-queue-policy.md) for evidence and limits.
 
 The fixed `check-lifecycle-probe` manual workflow has no caller inputs and must
 run from current trusted main before enabling the new publishers. It creates
@@ -268,11 +276,14 @@ A complete fresh reconciliation repeats current policy, workflow authority,
 fork vouch, DCO, source attempt, role/member and historical collision checks.
 Only then may an identical terminal binding and outcome require no mutation.
 Changed bindings or verdicts create one new queued generation; authenticated
-nonterminal generations can be reused. Incomplete observations and errors must
-verify an effective owned blocking record before exit, using an independent
-reserve within the existing deadline. An uncertain creation is not retried;
-when safe creation fails, a freshly authenticated effective owned record may
-receive a genuine failure. This fallback is for an error, never routine pending.
+nonterminal generations can be reused. A failed initial owned-history scan
+remains an error, but a separate successful recovery scan can authenticate the
+current owned record and authorize publication. The original error is retained;
+recovery must verify the effective blocking state within the existing reserve.
+If that recovery scan also fails, it authorizes no new queue mutation and cannot
+establish an effective blocker. An uncertain creation is not retried. When safe creation
+fails, a freshly authenticated effective owned record may receive a genuine
+failure. This fallback is for an error, never routine pending.
 No terminal check is reset, foreign checks are not patched, and complete
 historical scans and their existing bounds remain. These final mutable reads
 are not an atomic GitHub authority transaction.
@@ -290,6 +301,24 @@ approximately 35-minute target.
 Trusted-main probes demonstrated that omitting terminal reset fields retains
 completed/success and that the explicit-null candidate is rejected. Those
 canaries were cleaned up to neutral; neither protocol authorized activation.
-The immutable-verdict protocol instead uses supported creation and nonterminal
-updates, but its actual workflow-token lifecycle acceptance remains a hard gate
-before enabling workers. The separate legacy full-only lifecycle is unchanged.
+The immutable-verdict protocol instead uses creation and nonterminal updates;
+its actual workflow-token acceptance was independently verified before activation.
+The separate legacy full-only lifecycle is unchanged.
+
+## Reading historical check results
+
+PR-head checks, the tested merge group and the landed main commit are different
+identities. A merged PR can retain an old non-required `ci-required-next` queued
+placeholder because closed legacy reconciliation does not retire those rows.
+It is a synthetic verdict record, not an allocated runner or a running test.
+Compare the exact SHA, context, App and source binding with actual job steps and
+runner assignment before diagnosing capacity or test failure.
+
+Historical third-party review and optional performance-measurement results
+remain separate evidence from the required all-16 suite. Required benchmark
+smoke and floor enforcement still run; an optional paid measurement's skip or
+failure does not remove them. Likewise, failed non-required lifecycle probes
+record diagnostic failures, even after product validation passes. A green main
+summary or a neutral canary does not erase an earlier failed result, and a stale
+merged-head placeholder does not authorize a later merge. Inspect the current
+required proof and resolve actual failures without deleting or bypassing checks.
