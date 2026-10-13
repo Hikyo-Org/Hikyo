@@ -100,9 +100,9 @@ test.describe('organisation settings', () => {
       `/api/v1/orgs/${seed.org}/retention`,
       zRetentionPolicy,
     );
-    await page.goto(`/orgs/${seed.org}/settings`);
+    await page.goto(`/orgs/${seed.org}/settings?tab=retention`);
     await expect(
-      page.getByRole('heading', { name: /Organisation settings ·/, level: 1 }),
+      page.getByRole('heading', { name: /^Organisation settings\s*·?\s*/, level: 1 }),
     ).toBeVisible();
 
     const retention = page.locator('#org-retention');
@@ -173,16 +173,18 @@ test.describe('organisation settings', () => {
       await route.continue();
     });
     try {
-      await page.goto(`/orgs/${drillOrg}/settings`);
+      await page.goto(`/orgs/${drillOrg}/settings?tab=danger`);
       const danger = page.locator('#org-danger');
       await danger.getByLabel('Delete this organisation').fill(drillName);
       await expect(danger.getByRole('button', { name: 'Delete organisation' })).toBeEnabled();
 
+      // Keeps the Danger zone tab selected across the route identity swap
+      // below, so the pending/resolved checks on it stay on a visible tab.
       await page.evaluate((path) => {
         history.pushState(null, '', path);
         dispatchEvent(new PopStateEvent('popstate'));
-      }, `/orgs/${target.id}/settings`);
-      await expect(page).toHaveURL(new RegExp(`${target.id}/settings$`));
+      }, `/orgs/${target.id}/settings?tab=danger`);
+      await expect(page).toHaveURL(new RegExp(`${target.id}/settings\\?tab=danger$`));
       await expect(page.getByLabel('Name', { exact: true })).toHaveValue('');
       const pendingDanger = page.locator('#org-danger');
       await expect(pendingDanger.getByLabel('Delete this organisation')).toHaveValue('');
@@ -207,7 +209,7 @@ test.describe('organisation settings', () => {
   });
 
   test('deletes the organisation only behind the typed name', async () => {
-    await page.goto(`/orgs/${drillOrg}/settings`);
+    await page.goto(`/orgs/${drillOrg}/settings?tab=danger`);
     const danger = page.locator('#org-danger');
     const remove = danger.getByRole('button', { name: 'Delete organisation' });
     await expect(remove).toBeDisabled();
@@ -301,7 +303,7 @@ test.describe('project settings', () => {
   });
 
   test('definitions bundle exports, checks, plans and applies without the CLI', async ({}, testInfo) => {
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('link', { name: 'Download definitions bundle', exact: true }).click();
     const download = await downloadPromise;
@@ -336,6 +338,7 @@ test.describe('project settings', () => {
     await page.getByRole('dialog', { name: 'Apply definitions and publish' }).getByRole('button', { name: 'Apply and publish' }).click();
     await expect(dialog.getByRole('status').filter({ hasText: 'Definitions applied at revision' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('tab', { name: 'Environments' }).click();
     await expect(page.locator('#project-environments').getByText('bundle-preview', { exact: true })).toBeVisible();
     const environments = await browserApi(page, 'GET', `${base()}/environments`, zEnvironmentList);
     const created = environments.items.find((environment) => environment.name === 'bundle-preview');
@@ -345,7 +348,7 @@ test.describe('project settings', () => {
 
   test('definitions bundle shows stale-base, Git governance and publish refusals', async () => {
     const makeFile = (baseRevision?: number) => ({ name: 'definitions.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format_version: 1, base_revision: baseRevision, environments: [], key_groups: [], keys: [] })) });
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
     await page.getByRole('button', { name: 'Check a bundle', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Definitions bundle', exact: true });
     const upload = dialog.getByLabel('Definitions bundle file (JSON, up to 1 MiB)');
@@ -377,9 +380,9 @@ test.describe('project settings', () => {
   });
 
   test('renames the project and leaves the identifier alone', async () => {
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=metadata`);
     await expect(
-      page.getByRole('heading', { name: `Project settings · ${drillName}`, level: 1 }),
+      page.getByRole('heading', { name: new RegExp(`^Project settings\\s*·?\\s*${drillName}$`), level: 1 }),
     ).toBeVisible();
     const before = page.url();
 
@@ -395,7 +398,7 @@ test.describe('project settings', () => {
     // "Manage" disclosure, against the real server (#623 restores this surface).
     // Every environment here is created and destroyed within the test, so the
     // shared `staging` drill environment the other tests depend on is untouched.
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=environments`);
     const panel = page.locator('#project-environments');
     const created = 'lifecycle';
     const renamed = 'lifecycle-renamed';
@@ -463,7 +466,7 @@ test.describe('project settings', () => {
     // The project-scoped half of remote cryptographic maintenance (#503),
     // against the real server. Both jobs are content-invisible: they re-wrap
     // this project's ciphertext without touching its plaintext.
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=keys`);
     const keys = page.locator('#project-keys');
 
     await keys.getByRole('button', { name: 'Rotate the project DEK' }).click();
@@ -501,7 +504,7 @@ test.describe('project settings', () => {
       },
     );
     try {
-      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
       const policy = page.locator('#project-policy');
       const environment = policy.getByRole('button', { name: 'staging' });
       await expect(environment).toHaveAttribute('aria-pressed', 'false');
@@ -534,7 +537,7 @@ test.describe('project settings', () => {
       await browserApi(page, 'PUT', `${base()}/definitions/settings`, zDefinitionsSettings, {
         definitions_source: 'db',
       });
-      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
       const policy = page.locator('#project-policy');
       const source = policy.getByLabel('Definitions source');
       await expect(source).toHaveValue('db');
@@ -561,7 +564,7 @@ test.describe('project settings', () => {
       await expect(persistedNotice).toBeVisible();
 
       const heading = page.getByRole('heading', {
-        name: `Project settings · ${drillName}`,
+        name: new RegExp(`^Project settings\\s*·?\\s*${drillName}$`),
         level: 1,
       });
       await expectPinnedAssertionSet(page, {
@@ -583,7 +586,10 @@ test.describe('project settings', () => {
           [persistedPolicy, 'borderTopColor', '--panel-line'],
         ],
         hairlines: [persistedPolicy],
-        density: [[page.locator('#project-metadata input').first(), '--control']],
+        // The Name control lives on the Metadata tab, hidden while Policy is
+        // selected; the Definitions-source select is on this tab and the same
+        // control density, so it stands in.
+        density: [[persistedSource, '--control']],
       });
 
       // project-settings remains capable of changing its own governance mode.
@@ -616,7 +622,7 @@ test.describe('project settings', () => {
       await route.continue();
     });
     try {
-      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
       const policy = page.locator('#project-policy');
       await expect(policy.getByText("This environment's policy could not be read.")).toBeVisible();
       await expect(policy.getByRole('button', { name: 'staging' })).toBeDisabled();
@@ -643,7 +649,7 @@ test.describe('project settings', () => {
         await route.continue();
       });
       try {
-        await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+        await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
         const policy = page.locator('#project-policy');
         await expect(policy.getByRole('alert').filter({ hasText: refusal.text })).toBeVisible();
         await expect(policy.getByRole('button', { name: 'staging' })).toBeDisabled();
@@ -664,7 +670,7 @@ test.describe('project settings', () => {
     await page.route(environmentsRead, (route) => route.fulfill(fault));
     await page.route(orgRetentionRead, (route) => route.fulfill(fault));
     try {
-      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
       await expect(
         page.locator('#project-policy').getByRole('alert').filter({
           hasText: 'environments could not be read',
@@ -687,7 +693,7 @@ test.describe('project settings', () => {
     const retentionPath = `${base()}/retention`;
     const original = await browserApi(page, 'GET', retentionPath, zProjectRetentionPolicy);
     try {
-      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=policy`);
       const retention = page.locator('#project-retention');
       const mode = retention.getByLabel('Retention mode');
       await mode.selectOption('custom');
@@ -712,13 +718,16 @@ test.describe('project settings', () => {
   });
 
   test('disarms typed-name deletion when route identity changes', async () => {
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=metadata`);
     await expect(page.getByLabel('Name', { exact: true })).toHaveValue(drillName);
+    await page.getByRole('tab', { name: 'Danger zone' }).click();
     const danger = page.locator('#project-danger');
     await danger.getByLabel('Delete this project').fill(drillName);
     await expect(danger.getByRole('button', { name: 'Delete project' })).toBeEnabled();
 
-    const target = `/orgs/${seed.org}/projects/${seed.project}/settings`;
+    // Metadata, not Danger zone: the route identity swap below is checked
+    // against the Name field, which lives on the Metadata tab.
+    const target = `/orgs/${seed.org}/projects/${seed.project}/settings?tab=metadata`;
     const projectRead = new RegExp(
       `/api/v1/orgs/${seed.org}/projects/${seed.project}$`,
     );
@@ -734,7 +743,7 @@ test.describe('project settings', () => {
         history.pushState(null, '', path);
         dispatchEvent(new PopStateEvent('popstate'));
       }, target);
-      await expect(page).toHaveURL(new RegExp(`${seed.project}/settings$`));
+      await expect(page).toHaveURL(new RegExp(`${seed.project}/settings`));
       await expect(page.getByLabel('Name', { exact: true })).toHaveValue('');
       await expect(page.getByLabel('Name', { exact: true })).toBeDisabled();
       // Unknown permission hides the destructive surface entirely.
@@ -758,13 +767,14 @@ test.describe('project settings', () => {
       { name: drillName },
     );
     try {
-      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+      await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=danger`);
       const danger = page.locator('#project-danger');
       await danger.getByLabel('Delete this project').fill(drillName);
       await expect(danger.getByRole('button', { name: 'Delete project' })).toBeEnabled();
 
-      await page.goto(`/orgs/${otherOrg.id}/projects/${otherProject.id}/settings`);
+      await page.goto(`/orgs/${otherOrg.id}/projects/${otherProject.id}/settings?tab=metadata`);
       await expect(page.getByLabel('Name', { exact: true })).toHaveValue(drillName);
+      await page.getByRole('tab', { name: 'Danger zone' }).click();
       const switched = page.locator('#project-danger');
       await expect(switched.getByLabel('Delete this project')).toHaveValue('');
       await expect(switched.getByRole('button', { name: 'Delete project' })).toBeDisabled();
@@ -783,7 +793,7 @@ test.describe('project settings', () => {
   });
 
   test('refuses to delete a project while it still contains an environment', async () => {
-    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings`);
+    await page.goto(`/orgs/${seed.org}/projects/${drillProject}/settings?tab=danger`);
     const danger = page.locator('#project-danger');
     await danger.getByLabel('Delete this project').fill(drillName);
     await danger.getByRole('button', { name: 'Delete project' }).click();
@@ -803,14 +813,17 @@ test.describe('settings flow visual contract', () => {
         await page.emulateMedia({ colorScheme: scheme });
         try {
           const path = generatePath(surface.path, { org: seed.org, project: seed.project });
-          await page.goto(path);
+          // Project settings' Name control lives on the Metadata tab, not the
+          // default Identity tab; org settings' equivalent is on its default.
+          await page.goto(surface.id === 'project-settings' ? `${path}?tab=metadata` : path);
           const heading = page.getByRole('heading', {
             name: surface.id === 'org-settings'
-              ? /^Organisation settings · /
-              : /^Project settings · /,
+              ? /^Organisation settings\s*·?\s*/
+              : /^Project settings\s*·?\s*/,
             level: 1,
           });
-          const well = page.locator('.panel').first();
+          // Hidden tab panels stay mounted: measure the visible one.
+          const well = page.locator('.tabpanel__section:not([hidden]) .panel').first();
           const control = surface.id === 'org-settings'
             ? page.locator('#org-identity input:not([type="range"]):not([type="file"])')
             : page.locator('#project-metadata input').first();

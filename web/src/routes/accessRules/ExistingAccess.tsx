@@ -2,6 +2,8 @@ import { scopeOf, type membershipRows, type Names } from '../../api/access.ts';
 import { Badge } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Disclosure } from '../../ui/Disclosure.tsx';
+import { Sep } from '../../ui/Sep.tsx';
+import { CapabilityTag } from '../capabilityTags.tsx';
 import { PERMS, permOf } from './model.ts';
 import { Lock, PermBadge } from './parts.tsx';
 
@@ -33,13 +35,13 @@ export function ExistingAccessCard({ access, names, protectedScope, onEdit, revo
           {permissions.map((grant) => {
             const id = permOf(grant.capability);
             return id === undefined
-              ? <Badge key={grant.id} mono>{grant.capability}</Badge>
+              ? <CapabilityTag key={grant.id} id={grant.capability} />
               : <PermBadge key={grant.id} id={id} />;
           })}
         </div>
         <p className="access-where">
           {scope.kind === 'instance' ? (
-            <span className="access-where__part">This instance · every organisation</span>
+            <span className="access-where__part">This instance<Sep />every organisation</span>
           ) : (
             <span className="access-where__part">
               <span className="access-where__label">Projects</span>
@@ -67,9 +69,9 @@ export function ExistingAccessCard({ access, names, protectedScope, onEdit, revo
           <ul className="capabilities">
             {access.grants.map((grant) => (
               <li className="capability" key={grant.id}>
-                <span className="capability__name mono">{grant.capability}</span>
+                <CapabilityTag id={grant.capability} />
                 {grant.origins.map((origin) => (
-                  <Badge key={`${origin.kind}:${origin.subject}`}>{origin.kind}: {origin.subject}</Badge>
+                  <Badge mono key={`${origin.kind}:${origin.subject}`}>{origin.kind}: {origin.subject}</Badge>
                 ))}
               </li>
             ))}

@@ -1,0 +1,86 @@
+/* The side panel (ui/SidePanel): a fixed sheet from the right edge over a
+   scrim. The scrim covers the content area and stops at the app's side menu,
+   which stays in view (`--chrome-menu`); the panel starts a gutter further
+   right (`--side-panel-gutter`, one sidebar width), or at the menu when the
+   gutter would leave it narrower than `--width-side-panel-min`. The chrome
+   sets both: zero on a phone, where the menu is a drawer, and outside the
+   chrome. The panel is a column whose head keeps its height and whose body is
+   the only scroller. */
+.side-panel__scrim {
+  position: fixed;
+  inset: 0 0 0 var(--chrome-menu, 0px);
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  animation: side-panel-fade var(--dur) var(--ease);
+}
+
+.side-panel {
+  /* A step, because a media query cannot read these properties: any excess
+     of 0px or more, plus 1px, times 1000 overshoots the gutter. */
+  --side-panel-edge: calc(
+    var(--chrome-menu, 0px)
+      + clamp(
+        0px,
+        (100vw - var(--chrome-menu, 0px) - var(--side-panel-gutter, 0px) - var(--width-side-panel-min) + 1px) * 1000,
+        var(--side-panel-gutter, 0px)
+      )
+  );
+  position: fixed;
+  inset: 0 0 0 var(--side-panel-edge);
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--tx);
+  box-shadow: var(--overlay-shadow);
+  animation: side-panel-in var(--dur) var(--ease);
+}
+
+.side-panel__head {
+  flex: none;
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.side-panel__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Doubled class: the panel may sit inside a card whose own heading rules
+   would otherwise win. */
+.side-panel__title.side-panel__title > h2 {
+  min-width: 0;
+  font-size: var(--fs-lg);
+  margin: 0 auto 0 0;
+  overflow-wrap: anywhere;
+}
+
+.side-panel__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+/* A badge in the body column keeps its own width rather than stretching. */
+.side-panel__body > .badge {
+  align-self: flex-start;
+}
+
+@keyframes side-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes side-panel-fade {
+  from {
+    opacity: 0;
+  }
+}

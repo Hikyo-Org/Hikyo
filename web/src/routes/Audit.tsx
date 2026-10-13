@@ -1,5 +1,5 @@
 import { isDemo } from '../demo/config.ts';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -17,32 +17,27 @@ import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { Alert } from '../ui/Alert.tsx';
-import { Badge } from '../ui/Badge.tsx';
+import { Badge, type BadgeTone } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
-import { Glyph } from '../ui/Glyph.tsx';
-import { JumpIndex, Panel } from './Sections.tsx';
+import type { GlyphName } from '../ui/Glyph.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
+import { Panel } from './Sections.tsx';
 
-/** The glyph before an outcome word, so the state is never colour-only. */
-function outcomeGlyph(outcome: AuditEvent['outcome']): ReactNode {
-  switch (outcome) {
-    case 'failure':
-      return <><Glyph name="cross" /> </>;
-    case 'denied':
-      return '⊘ ';
-    case 'disconnected':
-      return '⇅ ';
-    default:
-      return null;
-  }
-}
+/** The tag each outcome wears, in the events list and the filter alike. */
+const OUTCOME_TAG: Record<AuditEvent['outcome'], { tone: BadgeTone; icon: GlyphName }> = {
+  intent: { tone: 'neutral', icon: 'arrow-right' },
+  success: { tone: 'ok', icon: 'check' },
+  denied: { tone: 'danger', icon: 'denied' },
+  failure: { tone: 'danger', icon: 'alert' },
+  unknown: { tone: 'neutral', icon: 'question' },
+  disconnected: { tone: 'danger', icon: 'disconnected' },
+};
 
 function Outcome({ outcome }: { readonly outcome: AuditEvent['outcome'] }) {
-  const glyph = outcomeGlyph(outcome);
   return (
-    <Badge className={`audit__outcome audit__outcome--${outcome}`}>
-      {glyph === null ? null : <span aria-hidden="true">{glyph}</span>}
+    <Badge className="audit__outcome" {...OUTCOME_TAG[outcome]}>
       {outcome}
     </Badge>
   );
@@ -91,7 +86,7 @@ export function Audit() {
   return <AuditTrail key={`${org}/${project}`} org={org} project={project} />;
 }
 
-/** The text filter fields — every field but the `outcomes` set, which has its own toggle. */
+/** The text filter fields: every field but the `outcomes` set, which has its own toggle. */
 type AuditTextField = Exclude<keyof AuditFilter, 'outcomes'>;
 
 function AuditTrail({ org, project }: { readonly org: string; readonly project: string }) {
@@ -151,14 +146,6 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           : 'Every recorded event in this project, oldest first, or one environment of it. Reading the trail is itself audited.'}
       </p>
 
-      <JumpIndex
-        sections={[
-          { id: 'audit-filter', label: 'Filter' },
-          { id: 'audit-events', label: 'Events' },
-          { id: 'audit-detail', label: 'Detail' },
-        ]}
-      />
-
       <Panel id="audit-filter" title="Filter">
       <form className="audit__filter" onSubmit={onSubmit} aria-label="Filter the audit trail">
         <div className="audit__filter-grid">
@@ -197,7 +184,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           <label className="field">
             <span className="field__label">Principal</span>
             {/* An exact principal id. "Self" fills it with the current session's
-                own id — no server lookup, just the id whoami already returned. */}
+                own id, no server lookup, just the id whoami already returned. */}
             <div className="field__inline">
               <input
                 value={draft.actor}
@@ -223,7 +210,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <input
               value={draft.actorName}
               onChange={(event) => set('actorName', event.target.value)}
-              placeholder="Ada* — name, * wildcards"
+              placeholder="Ada* (name, * wildcards)"
             />
           </label>
           <label className="field">
@@ -231,17 +218,17 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <input
               value={draft.operation}
               onChange={(event) => set('operation', event.target.value)}
-              placeholder="value.* — * wildcards"
+              placeholder="value.* (* wildcards)"
             />
           </label>
           {/* A set: check several to match any of them; none checked means any
               outcome. Checkboxes, not a multi-select: three values read
               cleaner and stay keyboard-reachable. */}
-          <ChoiceGroup legend="Outcomes">
+          <ChoiceGroup legend="Outcomes" layout="wrap" className="audit__outcomes">
             {AUDIT_OUTCOMES.map((outcome) => (
               <Checkbox
                 key={outcome}
-                label={outcome}
+                label={<Outcome outcome={outcome} />}
                 checked={draft.outcomes.includes(outcome)}
                 onChange={(event) => toggleOutcome(outcome, event.target.checked)}
               />
@@ -252,7 +239,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <input
               value={draft.objectType}
               onChange={(event) => set('objectType', event.target.value)}
-              placeholder="key — * wildcards"
+              placeholder="key (* wildcards)"
             />
           </label>
           <label className="field">
@@ -271,7 +258,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             />
           </label>
         </div>
-        <div className="audit__filter-actions">
+        <div className="actions">
           <Button type="submit" variant="primary">
             Apply filter
           </Button>
@@ -290,125 +277,110 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
       </form>
       </Panel>
 
-      <div className="audit__panes">
-        <Panel id="audit-events" title="Events">
-          {trail.isPending ? <p role="status">Loading events…</p> : null}
-          {trail.isError ? (
-            <Alert>{refusalText(trail.error, scope)}</Alert>
-          ) : emptyResult ? (
-            <div className="audit__empty" role="status">
-              <p>
-                {scannedEnd
-                  ? 'No events match this filter.'
-                  : 'No matches in the pages scanned so far. Keep scanning for more.'}
-              </p>
-              {clearButton}
-            </div>
-          ) : (
-            <ol className="audit__list" aria-label="Audit events, oldest first">
-              {events.map((event) => (
-                <li key={String(event.seq)}>
-                  <button
-                    type="button"
-                    className="audit__row"
-                    aria-pressed={selected?.seq === event.seq}
-                    onClick={() => setSelected(event)}
-                  >
-                    <span className="audit__row-op mono">{event.type}</span>
-                    <Outcome outcome={event.outcome} />
-                    <span className="audit__row-actor">{event.actor_name ?? event.actor_id ?? event.actor_class}</span>
-                    <span className="audit__row-when">{formatWhen(event.recorded_at)}</span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          )}
-
-          {!scannedEnd && !trail.isError ? (
-            <Button
-              type="button"
-              className="audit__more"
-              onClick={() => void trail.fetchNextPage()}
-              disabled={trail.isFetchingNextPage}
-            >
-              {trail.isFetchingNextPage ? 'Scanning…' : 'Load more'}
-            </Button>
-          ) : events.length > 0 ? (
-            <p className="audit__end" role="status">
-              End of the trail.
+      <Panel id="audit-events" title="Events">
+        {trail.isPending ? <p role="status">Loading events…</p> : null}
+        {trail.isError ? (
+          <Alert>{refusalText(trail.error, scope)}</Alert>
+        ) : emptyResult ? (
+          <div className="audit__empty" role="status">
+            <p>
+              {scannedEnd
+                ? 'No events match this filter.'
+                : 'No matches in the pages scanned so far. Keep scanning for more.'}
             </p>
-          ) : null}
-        </Panel>
-
-        {/* The detail stays an aside (a complementary landmark beside the
-            list) rather than a Panel; the id and tabIndex give the jump index
-            the same focus landing a Panel has. */}
-        {selected === null ? (
-          <aside className="audit__detail card panel" id="audit-detail" tabIndex={-1} aria-label="Event detail">
-            <h2>Event detail</h2>
-            <p role="status">Select an event to see its detail.</p>
-          </aside>
+            {clearButton}
+          </div>
         ) : (
-          <aside className="audit__detail card panel" id="audit-detail" tabIndex={-1} aria-label="Event detail">
-            <div className="audit__detail-head">
-              <h2 className="mono">{selected.type}</h2>
-              <Button
-                type="button"
-                variant="quiet"
-                className="audit__detail-close"
-                onClick={() => setSelected(null)}
-              >
-                Close
-              </Button>
+          <ol className="audit__list" aria-label="Audit events, oldest first">
+            {events.map((event) => (
+              <li key={String(event.seq)}>
+                <button
+                  type="button"
+                  className="audit__row"
+                  aria-pressed={selected?.seq === event.seq}
+                  onClick={() => setSelected(event)}
+                >
+                  <span className="audit__row-op mono">{event.type}</span>
+                  <Outcome outcome={event.outcome} />
+                  <span className="audit__row-actor">{event.actor_name ?? event.actor_id ?? event.actor_class}</span>
+                  <span className="audit__row-when">{formatWhen(event.recorded_at)}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {!scannedEnd && !trail.isError ? (
+          <Button
+            type="button"
+            className="audit__more"
+            onClick={() => void trail.fetchNextPage()}
+            disabled={trail.isFetchingNextPage}
+          >
+            {trail.isFetchingNextPage ? 'Scanning…' : 'Load more'}
+          </Button>
+        ) : events.length > 0 ? (
+          <p className="audit__end" role="status">
+            End of the trail.
+          </p>
+        ) : null}
+      </Panel>
+
+      {/* An event's detail opens in the side panel over the page; applying a
+          filter (Show correlated events included) closes it. */}
+      {selected === null ? null : (
+        <SidePanel
+          label="Event detail"
+          title={<span className="mono">{selected.type}</span>}
+          onClose={() => setSelected(null)}
+        >
+          <dl className="audit__facts">
+            <AuditFact label="Sequence" value={String(selected.seq)} />
+            <AuditFact label="Event id" value={selected.id} />
+            <div className="audit__fact">
+              <dt>Outcome</dt>
+              <dd>
+                <Outcome outcome={selected.outcome} />
+              </dd>
             </div>
-            <dl className="audit__facts">
-              <AuditFact label="Sequence" value={String(selected.seq)} />
-              <AuditFact label="Event id" value={selected.id} />
+            <AuditFact label="Recorded" value={formatWhen(selected.recorded_at)} />
+            <AuditFact label="Occurred" value={formatWhen(selected.occurred_at)} />
+            <AuditFact label="Principal" value={selected.actor_name ?? selected.actor_id ?? 'absent'} />
+            {selected.actor_name !== undefined ? <AuditFact label="Principal ID" value={selected.actor_id ?? 'absent'} /> : null}
+            <AuditFact label="Actor class" value={selected.actor_class} />
+            <AuditFact label="Scope" value={selected.scope_class} />
+            <AuditScopeFacts event={selected} />
+            {selected.object_type !== undefined ? (
+              <AuditFact label="Resource type" value={selected.object_type} />
+            ) : null}
+            {selected.object_id !== undefined ? (
+              <AuditFact label="Resource id" value={selected.object_id} />
+            ) : null}
+            {selected.correlation_id !== undefined ? (
               <div className="audit__fact">
-                <dt>Outcome</dt>
+                <dt>Correlation</dt>
                 <dd>
-                  <Outcome outcome={selected.outcome} />
+                  <span className="audit__fact-value">{selected.correlation_id}</span>{' '}
+                  {/* Following the correlation id is how INTENT and its OUTCOME are
+                      read together: it filters to exactly the events of one act. */}
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    className="audit__correlate"
+                    onClick={() =>
+                      apply({ ...emptyAuditFilter, correlationId: selected.correlation_id ?? '' })
+                    }
+                  >
+                    Show correlated events
+                  </Button>
                 </dd>
               </div>
-              <AuditFact label="Recorded" value={formatWhen(selected.recorded_at)} />
-              <AuditFact label="Occurred" value={formatWhen(selected.occurred_at)} />
-              <AuditFact label="Principal" value={selected.actor_name ?? selected.actor_id ?? 'absent'} />
-              {selected.actor_name !== undefined ? <AuditFact label="Principal ID" value={selected.actor_id ?? 'absent'} /> : null}
-              <AuditFact label="Actor class" value={selected.actor_class} />
-              <AuditFact label="Scope" value={selected.scope_class} />
-              <AuditScopeFacts event={selected} />
-              {selected.object_type !== undefined ? (
-                <AuditFact label="Resource type" value={selected.object_type} />
-              ) : null}
-              {selected.object_id !== undefined ? (
-                <AuditFact label="Resource id" value={selected.object_id} />
-              ) : null}
-              {selected.correlation_id !== undefined ? (
-                <div className="audit__fact">
-                  <dt>Correlation</dt>
-                  <dd>
-                    <span className="audit__fact-value">{selected.correlation_id}</span>{' '}
-                    {/* Following the correlation id is how INTENT and its OUTCOME are
-                        read together: it filters to exactly the events of one act. */}
-                    <Button
-                      type="button"
-                      variant="quiet"
-                      className="audit__correlate"
-                      onClick={() =>
-                        apply({ ...emptyAuditFilter, correlationId: selected.correlation_id ?? '' })
-                      }
-                    >
-                      Show correlated events
-                    </Button>
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-            <h3 className="audit__payload-title">Payload</h3>
-            <pre className="audit__payload">{JSON.stringify(selected.payload, null, 2)}</pre>
-          </aside>
-        )}
-      </div>
+            ) : null}
+          </dl>
+          <h3 className="audit__payload-title">Payload</h3>
+          <pre className="audit__payload">{JSON.stringify(selected.payload, null, 2)}</pre>
+        </SidePanel>
+      )}
     </div>
   );
 }

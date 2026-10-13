@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
 import { recordPinnedRun } from '../registry.ts';
@@ -724,4 +724,20 @@ export async function expectPinnedAssertionSet(page: Page, surface: PinnedSurfac
     await expectDensity(page, target, token);
   }
   await expectNoStrayPills(page);
+}
+
+/**
+ * Opens a key's declaration detail from its matrix key name. A phone's
+ * icon-only key column takes two taps: the first only shows the name.
+ */
+export async function openKeyDeclaration(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const link = page.getByRole('link', { name: `Declaration of ${name}` });
+  if (testInfo.project.name !== 'mobile') {
+    await link.click();
+    return;
+  }
+  await link.tap();
+  await expect(page.locator('.matrix__key-tip').filter({ hasText: name })).toBeVisible();
+  await expect(page).toHaveURL(/\/matrix$/);
+  await link.tap();
 }

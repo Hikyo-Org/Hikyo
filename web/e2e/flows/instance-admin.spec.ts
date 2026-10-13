@@ -269,6 +269,7 @@ test.describe('instance administration', () => {
   });
 
   test('enumerates the organisations on the instance', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Organisations' }).click();
     const orgs = page.locator('#instance-orgs');
     // Setup creates the protected configuration root; the fixture adds its
     // tenant and a second empty organisation.
@@ -292,6 +293,7 @@ test.describe('instance administration', () => {
   });
 
   test('states the pruner health and where else the same fact lives', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Retention health' }).click();
     const health = page.locator('#instance-retention');
     await expectStatusIsTextAndAria(page, health.getByRole('status'));
     await expect(health).toContainText('Payload pruning');
@@ -301,6 +303,7 @@ test.describe('instance administration', () => {
   test('warns before rotating the change-token key, and does not rotate on cancel', async ({
     page,
   }) => {
+    await page.getByRole('tab', { name: 'Keys & crypto' }).click();
     const keys = page.locator('#instance-keys');
     // The genuinely host-only set is named as absent, not drawn as disabled
     // buttons: init, migrate, restore reconciliation and break-glass have no
@@ -322,6 +325,7 @@ test.describe('instance administration', () => {
   test('names the consequences of the master-key and root-key jobs before running', async ({
     page,
   }) => {
+    await page.getByRole('tab', { name: 'Keys & crypto' }).click();
     const keys = page.locator('#instance-keys');
 
     await keys.getByRole('button', { name: 'Rotate the master key' }).click();
@@ -343,6 +347,7 @@ test.describe('instance administration', () => {
   });
 
   test('rotates the instance DEK and re-encrypts, resuming across a reload', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Keys & crypto' }).click();
     const keys = page.locator('#instance-keys');
 
     // Rotate the instance DEK for real. It appends a version and is
@@ -376,6 +381,7 @@ test.describe('instance administration', () => {
   });
 
   test('reads and saves the machine-credential ceiling', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Policy' }).click();
     const settings = page.locator('#instance-settings');
     await settings.getByRole('button', { name: 'edit' }).last().click();
     const lifetime = settings.getByLabel('Maximum finite lifetime (seconds)');
@@ -427,6 +433,7 @@ test.describe('instance administration', () => {
       });
     });
 
+    await page.getByRole('tab', { name: 'Policy' }).click();
     const settings = page.locator('#instance-settings');
     await settings.getByRole('button', { name: 'edit' }).last().click();
     const lifetime = settings.getByLabel('Maximum finite lifetime (seconds)');
@@ -696,6 +703,7 @@ test.describe('instance administration', () => {
 
   test('creates an organisation, grants its creator admin access, and requires a fresh login', async ({ passkeyPage: page }, testInfo) => {
     const name = `Instance drill ${testInfo.project.name}`;
+      await page.getByRole('tab', { name: 'Organisations' }).click();
       await page.getByRole('button', { name: 'Open create organisation form' }).click();
       await page.getByLabel('New organisation name').fill(name);
       const responsePromise = page.waitForResponse(
@@ -716,7 +724,7 @@ test.describe('instance administration', () => {
       await establishSession(page);
       await page.goto(`/orgs/${created.id}/settings`);
       await expect(
-        page.getByRole('heading', { name: `Organisation settings · ${name}`, level: 1 }),
+        page.getByRole('heading', { name: new RegExp(`^Organisation settings\\s*·?\\s*${name}$`), level: 1 }),
       ).toBeVisible();
       await expect(page.getByLabel('Name')).toHaveValue(name);
   });
@@ -728,6 +736,7 @@ test.describe('instance administration', () => {
     testInfo.setTimeout(90_000);
     const slug = `saml-admin-${testInfo.project.name}`;
     const entityId = `https://idp.example/${slug}`;
+    await page.getByRole('tab', { name: 'SAML' }).click();
     const providersPanel = page.locator('#instance-saml-providers');
     const spPanel = page.locator('#instance-saml-sp-keys');
 
@@ -882,15 +891,17 @@ test.describe('instance administration', () => {
       await operatorPage.goto('/instance');
 
       const panels = [
-        ['#instance-orgs', 'needs a second factor', 'organisations on this instance'],
-        ['#instance-retention', 'requires a second factor', 'Payload pruning'],
-        ['#instance-settings', 'requires a second factor', 'Maximum finite lifetime'],
-        ['#instance-oidc', 'needs a second factor', '+ add identity provider'],
-        ['#instance-saml-providers', 'needs a second factor', 'No SAML providers are configured'],
-        ['#instance-saml-sp-keys', 'needs a second factor', 'signs every AuthnRequest'],
-        ['#instance-federation', 'needs a second factor', 'Configure issuer'],
+        ['#instance-orgs', 'Organisations', 'needs a second factor', 'organisations on this instance'],
+        ['#instance-retention', 'Retention health', 'requires a second factor', 'Payload pruning'],
+        ['#instance-settings', 'Policy', 'requires a second factor', 'Maximum finite lifetime'],
+        ['#instance-oidc', 'Identity providers', 'needs a second factor', 'add identity provider'],
+        ['#instance-saml-providers', 'SAML', 'needs a second factor', 'No SAML providers are configured'],
+        ['#instance-saml-sp-keys', 'SAML', 'needs a second factor', 'signs every AuthnRequest'],
+        ['#instance-federation', 'Federation', 'needs a second factor', 'Configure issuer'],
       ] as const;
-      for (const [selector, refusalText, forbiddenText] of panels) {
+      for (const [selector, tabLabel, refusalText, forbiddenText] of panels) {
+        // Each row lives on its own tab; select it before reading the panel.
+        await operatorPage.getByRole('tab', { name: tabLabel }).click();
         const panel = operatorPage.locator(selector);
         await expect(panel.getByRole('alert')).toContainText(refusalText);
         await expect(panel).not.toContainText(forbiddenText);
@@ -933,6 +944,7 @@ test.describe('instance administration', () => {
   }, testInfo) => {
     testInfo.setTimeout(60_000);
     try {
+    await page.getByRole('tab', { name: 'Identity providers' }).click();
     const panel = page.locator('#instance-oidc');
     await expect(panel.getByRole('heading', { name: 'Identity providers' })).toBeVisible();
     // The fixture's linked provider is listed alongside any this flow adds.
@@ -940,8 +952,8 @@ test.describe('instance administration', () => {
 
     // Configure a new provider entirely through the browser. Its issuer is the
     // second fixture IdP, so discovery succeeds server-side at create time.
-    await panel.getByRole('button', { name: '+ add identity provider' }).click();
-    const editor = panel.locator('.oidc-editor');
+    await panel.getByRole('button', { name: 'add identity provider' }).click();
+    const editor = panel.getByRole('complementary', { name: 'New identity provider' });
     await editor.getByLabel('Slug').fill(WEBUI_OIDC.slug);
     await editor.getByLabel('Display name').fill(WEBUI_OIDC.displayName);
     await editor.getByLabel('Issuer URL').fill(WEBUI_OIDC.issuer);
@@ -966,7 +978,7 @@ test.describe('instance administration', () => {
     // Disable it: a reconfigure with the write-only secret re-entered and the
     // Enabled box cleared. The secret is required even to disable.
     await row.getByRole('button', { name: `Reconfigure ${WEBUI_OIDC.displayName}` }).click();
-    const reconfigure = panel.locator('.oidc-editor');
+    const reconfigure = panel.getByRole('complementary', { name: `Reconfigure ${WEBUI_OIDC.displayName}` });
     await reconfigure.getByLabel('Enabled (advertised on the sign-in page)').uncheck();
     await expect(reconfigure.getByRole('alert')).toContainText(
       'Local password and second-factor sign-in is unaffected',
@@ -1019,6 +1031,7 @@ test.describe('instance administration', () => {
   test('keeps the issuer immutable and refuses a secretless reconfigure before any request', async ({
     page,
   }) => {
+    await page.getByRole('tab', { name: 'Identity providers' }).click();
     const panel = page.locator('#instance-oidc');
     let putSent = false;
     await page.route('**/api/v1/instance/oidc-providers/**', async (route) => {
@@ -1033,7 +1046,7 @@ test.describe('instance administration', () => {
       .filter({ hasText: OIDC_PROVIDER.displayName })
       .getByRole('button', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` })
       .click();
-    const editor = panel.locator('.oidc-editor');
+    const editor = panel.getByRole('complementary', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` });
     // The issuer field is disabled on reconfigure, so a changed issuer is not
     // even expressible in the UI, the field-error path for it is unit-tested.
     // Here the blank-secret guard refuses the save with no request reaching the
@@ -1046,6 +1059,7 @@ test.describe('instance administration', () => {
   });
 
   test('surfaces a stale-state conflict as a reload prompt', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Identity providers' }).click();
     const panel = page.locator('#instance-oidc');
     await page.route('**/api/v1/instance/oidc-providers/**', async (route) => {
       if (route.request().method() !== 'PUT') {
@@ -1064,7 +1078,7 @@ test.describe('instance administration', () => {
       .filter({ hasText: OIDC_PROVIDER.displayName })
       .getByRole('button', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` })
       .click();
-    const editor = panel.locator('.oidc-editor');
+    const editor = panel.getByRole('complementary', { name: `Reconfigure ${OIDC_PROVIDER.displayName}` });
     await editor.getByLabel('Client secret').fill('whatever-secret');
     await editor.getByRole('button', { name: 'Save provider' }).click();
     await expect(panel.getByRole('alert')).toContainText('changed underneath you');
@@ -1073,6 +1087,7 @@ test.describe('instance administration', () => {
   test('configures, edits and deletes a federation issuer, and fails closed while one is bound', async ({
     page,
   }) => {
+    await page.getByRole('tab', { name: 'Federation' }).click();
     const federation = page.locator('#instance-federation');
 
     // The seeded issuer is listed with the census that fails a delete closed:
@@ -1087,9 +1102,7 @@ test.describe('instance administration', () => {
     // runs never name the same issuer.
     const newIssuer = `https://e2e-federation-${test.info().project.name}.example.org`;
     await federation.getByRole('button', { name: 'Configure issuer' }).click();
-    const createForm = federation.locator('fieldset', {
-      hasText: 'Configure a federation issuer',
-    });
+    const createForm = federation.getByRole('complementary', { name: 'Configure a federation issuer' });
     await createForm.getByLabel('Issuer (https URL, matched byte-for-byte)').fill(newIssuer);
     await createForm.getByLabel('Platform type').selectOption('github-actions');
     await createForm.getByLabel('Refused audiences, one per line').fill('example-owner');
@@ -1102,7 +1115,7 @@ test.describe('instance administration', () => {
     // Edit the mutable half: the issuer string and platform type are shown
     // read-only, and only the refused audiences move.
     await newRow.getByRole('button', { name: 'Edit' }).click();
-    const editForm = federation.locator('fieldset', { hasText: `Edit ${newIssuer}` });
+    const editForm = federation.getByRole('complementary', { name: `Edit ${newIssuer}` });
     await expect(editForm.getByRole('textbox', { name: 'Issuer' })).toHaveCount(0);
     await editForm.getByLabel('Refused audiences, one per line').fill('example-owner\nsecond-owner');
     await editForm.getByRole('button', { name: 'Save issuer' }).click();
@@ -1131,20 +1144,25 @@ test.describe('instance administration', () => {
     }) => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
+        // The create-organisation button lives on the Organisations tab, not
+        // the default Hikyo configuration one.
+        await page.getByRole('tab', { name: 'Organisations' }).click();
         const heading = page.getByRole('heading', {
           name: 'Instance settings',
           level: 1,
         });
-        const well = page.locator('.panel').first();
+        // Hidden tab panels stay mounted: measure the visible one.
+        const visible = page.locator('.tabpanel__section:not([hidden])');
+        const well = visible.locator('.panel').first();
         const create = page.getByRole('button', { name: 'Open create organisation form' });
-        const tag = page.locator('.badge').first();
+        const tag = visible.locator('.badge').first();
         const cli = page.locator('.instance-cli').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'instance-admin',
           surface: 'instance-admin',
           theme: scheme,
-          text: [heading, page.locator('.settings-row__detail').first(), page.locator('.page__lede')],
+          text: [heading, visible.locator('.settings-row__detail').first(), page.locator('.page__lede')],
           radii: [
             [well, 'container'],
             [create, 'control'],
@@ -1214,9 +1232,9 @@ test.describe('instance administration', () => {
       try {
         await page.goto('/instance/members');
         const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
-        const heading = page.getByRole('heading', { name: 'Members · Instance', level: 1 });
+        const heading = page.getByRole('heading', { name: /^Members\s*·?\s*Instance$/, level: 1 });
         const well = page.locator('.panel').first();
-        const jump = page.getByRole('link', { name: 'Who can…?' });
+        const whoCanTab = page.getByRole('tab', { name: 'Who can…?' });
         const chip = page.locator('#members-list .access-rule__perms .badge').first();
         await page.locator('#members-list').getByRole('button', { name: 'Permission origins', exact: true }).first().click();
         const newGrant = page.getByRole('button', { name: 'Add access' });
@@ -1243,7 +1261,8 @@ test.describe('instance administration', () => {
           hairlines: [well],
           density: [
             [newGrant, rowDensity],
-            [jump, rowDensity],
+            // Tabs are --control tall, not the row height the removed jump link had.
+            [whoCanTab, '--control'],
           ],
         });
       } finally {
@@ -1286,10 +1305,11 @@ test.describe('open registration at instance scope', () => {
     await page.goto('/instance/members');
     await closeInstancePolicy(page, operator);
     await page.reload();
+    await page.getByRole('tab', { name: 'Open registration' }).click();
     const panel = page.locator('#members-registration');
     try {
       await expect(panel).toContainText('No one can sign up on this instance without an invitation.');
-      await panel.getByRole('button', { name: 'Open registration…' }).click();
+      await panel.getByRole('button', { name: 'Open registration', exact: true }).click();
       const editor = page.getByRole('dialog');
       await expect(editor.getByRole('heading', { level: 2 })).toHaveText('Instance · open registration');
       // Instance scope has no organisation to land in: none or a fresh org.

@@ -226,9 +226,11 @@ describe('Matrix per-environment degradation (#451)', () => {
     await act(async () => close?.click());
     expect(container.querySelector('#matrix-publish')).toBeNull();
     expect(document.activeElement).toBe(drafts);
-    // Group header: count class, colgroup scope, and the linked-keys marker's
-    // accessible text with the group name.
-    expect(container.querySelector('.matrix__group-row th')?.getAttribute('scope')).toBe('colgroup');
+    // Group header: count class, row scope (the label `th` is a single
+    // column now, since sticky positioning does not reach a colSpan-ed cell, with
+    // a trailing filler `td` carrying the rest of the row), and the
+    // linked-keys marker's accessible text with the group name.
+    expect(container.querySelector('.matrix__group-row th')?.getAttribute('scope')).toBe('row');
     expect(container.querySelector('.matrix__group-count')?.textContent).toBe('1');
     const linked = container.querySelector('.matrix__linked-keys');
     expect(linked?.querySelector('.visually-hidden')?.textContent).toBe('Linked keys: Database credentials');

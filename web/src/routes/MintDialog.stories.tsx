@@ -65,6 +65,8 @@ export const Reviewing: Story = {
     await expect(canvas.getByRole('dialog', { name: 'Mint credential · api-gateway' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Use a passkey and mint' })).toBeEnabled();
     await expect(canvas.getByText(/decrypts production \(current plaintext\), staging \(current plaintext\)/)).toBeVisible();
+    const stepUp = canvas.getByText(/Confirm it.s you/).closest('.ceremony__stepup');
+    await expect(stepUp?.querySelector('svg')?.getAttribute('data-glyph')).toBe('passkey');
   },
 };
 

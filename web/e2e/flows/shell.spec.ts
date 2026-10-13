@@ -461,12 +461,14 @@ test.describe('app chrome', () => {
         const account = page.getByRole('button', { name: /^Account:/ });
         const theme = page.getByRole('button', { name: /theme/i });
         const heading = page.getByRole('heading', { name: surface.label, level: 1 });
-        // Both shell surfaces use the settings anatomy (h1, lede, jump index,
-        // panels), so the well is the first panel and its boundary is the
-        // dense panel line, not the card hairline.
+        // Both shell surfaces use the settings anatomy (h1, lede, panels; the
+        // jump row was removed with no replacement on these two surfaces, no
+        // tabs), so the well is the first panel and its boundary is the dense
+        // panel line, not the card hairline.
         const well = page.locator('.card.panel').first();
         const crumbs = page.getByLabel('Breadcrumb');
-        // The sidebar row, not the jump-index chip that may share the label.
+        // The sidebar row: the on-page jump nav that could once share this
+        // label is gone.
         const active = page
           .getByRole('navigation', { name: 'Sections' })
           .getByRole('link', { name: surface.label, exact: true });

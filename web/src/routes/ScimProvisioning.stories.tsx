@@ -8,13 +8,15 @@ import {
   zScimDirectoryUserList,
   zScimMappingList,
 } from '@hikyo/zod';
-import { expect } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 import type { z } from 'zod';
 
+import { openTab } from '../../.storybook/openTab.ts';
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG } from '../testkit/ids.ts';
 import { ScimProvisioningPage } from './ScimProvisioning.tsx';
 
+import { expectLeftAlignedPage } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The page behind the system-scope gate (the gate's own answers are storied in
@@ -212,19 +214,35 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// One binding selected: mappings (a live row with origins and an inert one),
-// credentials in every lifecycle state, and a directory with active,
-// deprovisioned, and deprovisioned-with-manual-grants users.
+// One binding selected: its sections are tabs. Mappings (a live row
+// with origins and an inert one), credentials in every lifecycle state, and a
+// directory with active, deprovisioned, and deprovisioned-with-manual-grants
+// users.
 export const Administering: Story = {
-  parameters: { app: at(`?binding=${BINDING}`, administering) },
+  parameters: { app: at(`?binding=${BINDING}&tab=mappings`, administering) },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByRole('button', { name: 'Administering' })).toBeVisible();
+    await expect(await canvas.findByRole('tab', { name: 'Mappings' })).toHaveAttribute('aria-selected', 'true');
     await expect(await canvas.findByRole('heading', { name: 'Engineering' })).toBeVisible();
     await expect(canvas.getByText('inert')).toBeVisible();
+    await openTab(canvas, 'Provisioning credentials');
     await expect(await canvas.findByText('revoked')).toBeVisible();
     await expect(canvas.getByText('expired')).toBeVisible();
+    await openTab(canvas, 'Directory');
     await expect(await canvas.findByText('deprovisioned, manual grants remain')).toBeVisible();
     await expect(canvas.getByText('in no groups')).toBeVisible();
+    await openTab(canvas, 'Bindings');
+    await expect(await canvas.findByRole('button', { name: 'Administering' })).toBeVisible();
+    await expectLeftAlignedPage(canvas.getByRole('heading', { level: 1 }));
+  },
+};
+
+// Administer opens the binding's first section, the Mappings tab that appears.
+export const AdministerOpensMappings: Story = {
+  parameters: { app: at('', administering) },
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByRole('tablist')).toBeNull();
+    await userEvent.click((await canvas.findAllByRole('button', { name: 'Administer' }))[0] as HTMLElement);
+    await expect(await canvas.findByRole('tab', { name: 'Mappings' })).toHaveAttribute('aria-selected', 'true');
   },
 };
 
@@ -245,7 +263,61 @@ export const Empty: Story = {
   parameters: { app: at('', [{ url: BINDINGS_URL, body: { count: 0, items: [] } }]) },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/no bindings yet/i)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Create binding' })).toBeDisabled();
+    await expect(canvas.queryByRole('button', { name: 'Create binding' })).toBeNull();
+    // The create form opens in the side panel; its provider kinds sit side by side.
+    await userEvent.click(canvas.getByRole('button', { name: 'Create a binding' }));
+    const panel = within(canvas.getByRole('complementary', { name: 'Create a binding' }));
+    await expect(panel.getByRole('button', { name: 'Create binding' })).toBeDisabled();
+    const [oidc, saml] = [panel.getByRole('radio', { name: 'OIDC' }), panel.getByRole('radio', { name: 'SAML' })];
+    await expect(Math.abs(oidc.getBoundingClientRect().top - saml.getBoundingClientRect().top)).toBeLessThan(2);
+  },
+};
+
+// Every input of an administered binding opens from a button into the side
+// panel: mapping a group, retargeting a row, minting, deleting the binding.
+export const AdministeringPanels: Story = {
+  parameters: Administering.parameters,
+  play: async ({ canvas }) => {
+    for (const [tab, opener, panel, field] of [
+      ['Mappings', 'Map a group', 'Map a group', 'Provisioned group'],
+      ['Provisioning credentials', 'Mint a credential', 'Mint a credential', 'Reauthentication proof'],
+      ['Bindings', 'Delete this binding', 'Delete okta', 'Confirm by typing the provider slug'],
+      ['Mappings', 'Retarget Engineering', 'Retarget Engineering', 'Retarget template'],
+    ] as const) {
+      await openTab(canvas, tab);
+      await userEvent.click(await canvas.findByRole('button', { name: opener }));
+      const sheet = within(canvas.getByRole('complementary', { name: panel }));
+      await expect(sheet.getByLabelText(field)).toBeVisible();
+      await userEvent.keyboard('{Escape}');
+      await expect(canvas.queryByRole('complementary', { name: panel })).toBeNull();
+    }
+  },
+};
+
+// The binding cards are a plain stack: no list marker before each.
+export const CardsWithoutMarkers: Story = {
+  play: async ({ canvas }) => {
+    const card = (await canvas.findByText('okta')).closest('li');
+    if (card === null) throw new Error('binding card missing');
+    await expect(getComputedStyle(card.parentElement ?? card).listStyleType).toBe('none');
+  },
+};
+
+// Stacked binding cards are spaced by the list's gap, never flush,
+// and each card header keeps the name and kind at the start and its action at
+// the end of the same row.
+export const CardSpacingAndHeader: Story = {
+  play: async ({ canvas }) => {
+    const [first, second] = (await canvas.findAllByRole('button', { name: 'Administer' })).map(
+      (button) => button.closest('li') as HTMLElement,
+    );
+    if (first === undefined || second === undefined) throw new Error('two binding cards expected');
+    await expect(second.getBoundingClientRect().top - first.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(8);
+    const head = first.querySelector<HTMLElement>('.scim-binding__head');
+    const action = head?.querySelector<HTMLElement>('.btn');
+    if (head === null || head === undefined || action === null || action === undefined) throw new Error('card head missing');
+    const headRight = head.getBoundingClientRect().right;
+    await expect(Math.abs(action.getBoundingClientRect().right - headRight)).toBeLessThan(2);
   },
 };
 

@@ -16,6 +16,7 @@ import {
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
   expectTouchTargets,
+  openKeyDeclaration,
 } from '../fixtures/assertions.ts';
 import {
   browserApi as api,
@@ -215,22 +216,11 @@ async function expectNoFixtureSecret(surface: Locator): Promise<void> {
   }
 }
 
-/**
- * Selects one revision, on either viewport.
- *
- * Below 800px the drawer shows ONE pane at a time, so the revision list is not
- * on screen while a detail is open, and an element that is not rendered is not
- * in the accessibility tree, which is a click that waits forever rather than a
- * click that fails. The back affordance is `display: none` on a desktop, so this
- * is a no-op there.
- */
+/** Selects one revision through the detail heading's selector, on either viewport. */
 async function openRevision(page: Page, revision: number): Promise<void> {
-  const back = page.locator('#history-detail-back');
-  if (await back.isVisible()) {
-    await back.click();
-  }
-  await page.locator(`[data-history-revision="${String(revision)}"]`).click();
-  await expect(page.locator('#history-detail-title')).toContainText(`r${String(revision)}`);
+  const selector = page.locator('#history-revision');
+  await selector.selectOption(String(revision));
+  await expect(selector).toHaveValue(String(revision));
   await expectNoFixtureSecret(page.getByRole('complementary', { name: 'Revision history' }));
 }
 
@@ -253,9 +243,9 @@ test.describe('revision history', () => {
 
         const drawer = page.locator('.history');
         const heading = page.getByRole('heading', { name: 'Revision history' });
-        const row = page.locator('.history__row').first();
+        const row = page.locator('#history-revision');
         const retention = page.locator('.history__retention');
-        const tab = page.locator('.history__tab').first();
+        const tab = drawer.getByRole('tab').first();
 
         await expect(heading).toBeVisible();
         await expectNoFixtureSecret(drawer);
@@ -285,7 +275,7 @@ test.describe('revision history', () => {
           ],
           fonts: [
             [heading, 'ui'],
-            [row.locator('.mono').first(), 'mono'],
+            [row, 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],
@@ -318,13 +308,13 @@ test.describe('revision history', () => {
     await expect(drawer.getByRole('heading', { name: 'Revision history' })).toBeVisible();
     await expect(drawer).toContainText(`current r${String(facts.current)}`);
 
-    // Three revisions of lineage, newest first.
-    const list = drawer.getByRole('list', { name: 'Revisions, newest first' });
-    await expect(list.getByRole('button')).toHaveCount(facts.devRevisions);
-    await expect(list.getByRole('button').first()).toContainText(
-      `r${String(facts.current)}`,
+    // Three revisions of lineage, newest first, as the options of the
+    // detail heading's selector.
+    const list = drawer.getByRole('combobox', { name: 'Revision' });
+    await expect(list.locator('option')).toHaveCount(facts.devRevisions);
+    await expect(list.locator('option').first()).toHaveText(
+      new RegExp(`^r${String(facts.current)} · current`),
     );
-    await expect(list.getByRole('button').first()).toContainText('current');
 
     // The read-only retention line: effective window, inheritance, and a
     // pointer at the surface that owns the knob. No editing here: the only
@@ -333,18 +323,18 @@ test.describe('revision history', () => {
     await expect(retention).toContainText('values kept:');
     await expect(retention).toContainText('plus pinned');
     await expect(retention).toContainText('inherits org');
-    await expect(retention).toContainText('→ change it in project settings › Policy');
+    await expect(retention).toContainText('change it in project settings › Policy');
     const retentionControls = retention.locator(INTERACTIVE_ELEMENT_SELECTOR);
     await expect(retentionControls).toHaveCount(1);
-    await expect(retentionControls.first()).toHaveAttribute('href', /\/settings#project-policy$/);
+    await expect(retentionControls.first()).toHaveAttribute('href', /\/settings\?tab=policy$/);
 
     // Environment tabs: a second environment with its own, shorter history.
-    await drawer.getByRole('button', { name: 'staging' }).click();
+    await drawer.getByRole('tab', { name: 'staging' }).click();
     await expect(page).toHaveURL(new RegExp(`env=${seed.history.staging}`));
-    await expect(list.getByRole('button')).toHaveCount(facts.stagingRevisions);
+    await expect(list.locator('option')).toHaveCount(facts.stagingRevisions);
     await expectNoFixtureSecret(drawer);
-    await drawer.getByRole('button', { name: 'development' }).click();
-    await expect(list.getByRole('button')).toHaveCount(facts.devRevisions);
+    await drawer.getByRole('tab', { name: 'development' }).click();
+    await expect(list.locator('option')).toHaveCount(facts.devRevisions);
     await expectNoFixtureSecret(drawer);
   });
 
@@ -375,13 +365,11 @@ test.describe('revision history', () => {
     await expectNoFixtureSecret(drawer);
   });
 
-  test('filters the timeline to one key, by click and by URL', async ({ page }) => {
-    // Entry 1: the matrix KEY NAME now opens that key's DECLARATION DETAIL
-    // (#491, superseding the older name→history); per-key history is one gesture
-    // deeper, from the detail's own "revision history" link. Any cell is still
-    // the editor.
+  test('filters the timeline to one key, by click and by URL', async ({ page }, testInfo) => {
+    // Entry 1: the matrix key name opens the key's declaration detail; per-key
+    // history is the detail's own "revision history" link.
     await page.goto(MATRIX_PATH);
-    await page.getByRole('link', { name: `Declaration of ${seed.history.configKey}` }).click();
+    await openKeyDeclaration(page, testInfo, seed.history.configKey);
     await page.getByRole('link', { name: /revision history/i }).click();
     const drawer = page.getByRole('complementary', { name: 'Revision history' });
     await expect(drawer.locator('.history__filter')).toContainText(
@@ -395,7 +383,7 @@ test.describe('revision history', () => {
     // Entry 2: a changed-key row inside a revision's detail pane.
     await page.goto(DEV_HISTORY);
     await expectNoFixtureSecret(drawer);
-    const list = drawer.getByRole('list', { name: 'Revisions, newest first' });
+    const list = drawer.getByRole('combobox', { name: 'Revision' });
 
     // The config edit's own revision; clicking its changed key filters to it.
     await openRevision(page, facts.configEdit);
@@ -405,7 +393,7 @@ test.describe('revision history', () => {
     await expectStatusIsTextAndAria(page, filter);
     await expect(filter).toContainText(`filter active: history of ${seed.history.configKey}`);
     // LOG_LEVEL moved exactly twice: added, then edited.
-    await expect(list.getByRole('button')).toHaveCount(facts.configKeyRevisions);
+    await expect(list.locator('option')).toHaveCount(facts.configKeyRevisions);
     await expectNoFixtureSecret(drawer);
     await expect(page).toHaveURL(
       new RegExp(`key=${encodeURIComponent(seed.history.configKeyId)}`),
@@ -417,11 +405,11 @@ test.describe('revision history', () => {
     await expect(drawer.locator('.history__filter')).toContainText(
       `history of ${seed.history.secretKey}`,
     );
-    await expect(list.getByRole('button')).toHaveCount(facts.secretKeyRevisions);
+    await expect(list.locator('option')).toHaveCount(facts.secretKeyRevisions);
     await expectNoFixtureSecret(drawer);
 
     await drawer.getByRole('button', { name: 'show every revision' }).click();
-    await expect(list.getByRole('button')).toHaveCount(facts.devRevisions);
+    await expect(list.locator('option')).toHaveCount(facts.devRevisions);
     await expectNoFixtureSecret(drawer);
   });
 
@@ -468,7 +456,7 @@ test.describe('revision history', () => {
       await expectNoFixtureSecret(drawer);
 
       await drawer
-        .getByRole('button', { name: `Restore r${String(facts.secretEdit)}…` })
+        .getByRole('button', { name: `Restore to r${String(facts.secretEdit)}` })
         .click();
       const sheet = page.getByRole('dialog');
       await expectNoFixtureSecret(sheet);
@@ -526,7 +514,7 @@ test.describe('revision history', () => {
     await expectNoFixtureSecret(drawer);
     await openRevision(page, facts.configEdit);
 
-    await drawer.getByRole('button', { name: `Restore ${seed.history.configKey}…` }).click();
+    await drawer.getByRole('button', { name: new RegExp(`^Restore ${seed.history.configKey} to r\\d+$`) }).click();
     const sheet = page.getByRole('dialog');
     await expectNoFixtureSecret(sheet);
     await expect(sheet).toContainText(`Restore ${seed.history.configKey} from r`);
@@ -575,7 +563,7 @@ test.describe('revision history', () => {
     const drawer = page.getByRole('complementary', { name: 'Revision history' });
     await expectNoFixtureSecret(drawer);
     await openRevision(page, facts.configEdit);
-    await drawer.getByRole('button', { name: `Restore ${seed.history.configKey}…` }).click();
+    await drawer.getByRole('button', { name: new RegExp(`^Restore ${seed.history.configKey} to r\\d+$`) }).click();
     const restoreSheet = page.getByRole('dialog');
     await expectNoFixtureSecret(restoreSheet);
     await restoreSheet.getByRole('button', { name: /^Stage the restore from r/ }).click();
@@ -615,7 +603,7 @@ test.describe('revision history', () => {
     await page.getByRole('link', { name: /rev \d+ · history/ }).first().click();
     await expectNoFixtureSecret(drawer);
     await openRevision(page, facts.configEdit);
-    await drawer.getByRole('button', { name: `Restore ${seed.history.configKey}…` }).click();
+    await drawer.getByRole('button', { name: new RegExp(`^Restore ${seed.history.configKey} to r\\d+$`) }).click();
     const restagedSheet = page.getByRole('dialog');
     await expectNoFixtureSecret(restagedSheet);
     const rollbackResponse = page.waitForResponse(
@@ -645,7 +633,7 @@ test.describe('revision history', () => {
       const drawer = page.getByRole('complementary', { name: 'Revision history' });
       await expectNoFixtureSecret(drawer);
       await openRevision(page, facts.tightened);
-      await drawer.getByRole('button', { name: `Restore ${seed.history.secretKey}…` }).click();
+      await drawer.getByRole('button', { name: new RegExp(`^Restore ${seed.history.secretKey} to r\\d+$`) }).click();
       const sheet = page.getByRole('dialog');
       await expectNoFixtureSecret(sheet);
       const rollbackResponse = page.waitForResponse(
@@ -698,7 +686,7 @@ test.describe('revision history', () => {
 
     // Only WORKERS is staged, so the failed publish leaves exactly the invalid
     // draft the next viewport's drift repair is specified to supersede.
-    await drawer.getByRole('button', { name: `Restore ${seed.history.tightenedKey}…` }).click();
+    await drawer.getByRole('button', { name: new RegExp(`^Restore ${seed.history.tightenedKey} to r\\d+$`) }).click();
     const sheet = page.getByRole('dialog');
     await expectNoFixtureSecret(sheet);
     const rollbackResponse = page.waitForResponse(
@@ -817,7 +805,7 @@ test.describe('revision history', () => {
       const drawer = page.getByRole('complementary', { name: 'Revision history' });
       await expectNoFixtureSecret(drawer);
       await openRevision(page, facts.configEdit);
-      await drawer.getByRole('button', { name: `Pin r${String(facts.configEdit)}…` }).click();
+      await drawer.getByRole('button', { name: `Pin workload to r${String(facts.configEdit)}` }).click();
       const moveSheet = page.getByRole('dialog');
       await expectNoFixtureSecret(moveSheet);
       await moveSheet.getByLabel('Workload').selectOption({
@@ -843,7 +831,7 @@ test.describe('revision history', () => {
       // Same purpose-bound session now owns a live window. Comparison may read
       // config plaintext, while secret output remains lineage-only.
       await openRevision(page, facts.configEdit);
-      await drawer.getByRole('button', { name: `Pin r${String(facts.configEdit)}…` }).click();
+      await drawer.getByRole('button', { name: `Pin workload to r${String(facts.configEdit)}` }).click();
       const compareSheet = page.getByRole('dialog');
       await compareSheet.getByLabel('Workload').selectOption({
         label: `${seed.history.spareWorkload}: follows latest`,
@@ -892,20 +880,20 @@ test.describe('revision history', () => {
       });
   });
 
-  test('keeps the mobile matrix inert and restores drawer focus', async ({ page }, testInfo) => {
+  test('focuses the drawer on mobile and keeps the revision selector focused', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile', 'mobile-only focus contract');
     await page.goto(DEV_HISTORY);
     const drawer = page.getByRole('complementary', { name: 'Revision history' });
     await expectNoFixtureSecret(drawer);
-    await expect(page.locator('.matrix[inert]')).toBeVisible();
     await expect(page.locator('#history-title')).toBeFocused();
 
-    const selectedRow = page.locator(`[data-history-revision="${String(facts.current)}"]`);
-    await selectedRow.click();
-    await expect(page.locator('#history-detail-title')).toBeFocused();
-    await expectNoFixtureSecret(drawer);
-    await page.locator('#history-detail-back').click();
-    await expect(selectedRow).toBeFocused();
+    // One pane at every width: the selector is the way to every revision and
+    // keeps focus while it moves `rev`.
+    const selector = page.locator('#history-revision');
+    await selector.focus();
+    await selector.selectOption(String(facts.secretEdit));
+    await expect(page).toHaveURL(new RegExp(`rev=${String(facts.secretEdit)}(&|$)`));
+    await expect(selector).toBeFocused();
     await expectNoFixtureSecret(drawer);
   });
 
@@ -918,7 +906,7 @@ test.describe('revision history', () => {
       await expectNoFixtureSecret(drawer);
       await openRevision(page, latest);
 
-      await drawer.getByRole('button', { name: `Pin r${String(latest)}…` }).click();
+      await drawer.getByRole('button', { name: `Pin workload to r${String(latest)}` }).click();
       const pinSheet = page.getByRole('dialog');
       await expectNoFixtureSecret(pinSheet);
       await pinSheet.getByLabel('Workload').selectOption({
@@ -948,7 +936,7 @@ test.describe('revision history', () => {
       await expect(drawer.locator('.notice')).toContainText('resumes latest');
 
       await openRevision(page, facts.tightened);
-      await drawer.getByRole('button', { name: `Pin r${String(facts.tightened)}…` }).click();
+      await drawer.getByRole('button', { name: `Pin workload to r${String(facts.tightened)}` }).click();
       const overrideSheet = page.getByRole('dialog');
       await expectNoFixtureSecret(overrideSheet);
       await overrideSheet.getByLabel('Workload').selectOption({

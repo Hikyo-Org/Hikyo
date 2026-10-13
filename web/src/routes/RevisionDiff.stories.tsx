@@ -8,6 +8,7 @@ import { ORG, PRJ } from '../testkit/ids.ts';
 import { RevisionDiffDialog } from './RevisionDiff.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { dottedText } from '../testkit/dottedText.ts';
 
 // The revision diff, opened from the history drawer's detail pane. On mount it
 // POSTs the comparison; config rows arrive in the clear, secret rows as
@@ -115,7 +116,7 @@ export const Populated: Story = {
     await waitFor(() => expect(canvas.getByRole('heading', { name: 'Diff r3 → r7 · production' })).toBeVisible());
     await waitFor(() => expect(canvas.getByText('info → warn')).toBeVisible());
     await expect(canvas.getByText('absent → 300')).toBeVisible();
-    await expect(canvas.getAllByText('masked · write-presence only')).toHaveLength(4);
+    await expect(canvas.getAllByText(dottedText(/^masked\s*·\s*write-presence only$/))).toHaveLength(4);
     await expect(canvas.getByRole('button', { name: 'Reveal DATABASE_URL in diff' })).toBeVisible();
   },
 };
@@ -136,7 +137,7 @@ export const Revealed: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL in diff' }));
     await expect(await canvas.findByText(/postgres:\/\/app:hunter2@db-old\.internal:5432\/app → postgres/)).toBeVisible();
-    await expect(canvas.getByText(/^Re-masks in \d+s\. Switching away masks immediately\.$/)).toBeVisible();
+    await expect(canvas.getByText(/^Re-masks in \d+ seconds?\. Switching away masks immediately\.$/)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Mask DATABASE_URL' })).toBeVisible();
   },
 };

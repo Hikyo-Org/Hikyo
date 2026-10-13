@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect } from 'storybook/test';
 
 import { Alert } from './Alert.tsx';
 import { Button } from './Button.tsx';
@@ -57,4 +58,20 @@ export const AllStates: Story = {
       </Alert>
     </div>
   ),
+  // Each tone leads with its own decorative glyph, and only a failure is
+  // announced assertively.
+  play: async ({ canvasElement }) => {
+    const rows = [...canvasElement.querySelectorAll('.alert, .notice')];
+    const seen = rows.map((row) => [row.getAttribute('role'), row.querySelector('svg.alert__glyph')?.getAttribute('data-glyph')]);
+    await expect(seen).toEqual([
+      ['alert', 'alert'],
+      ['status', 'check'],
+      ['status', 'warn'],
+      ['status', 'info'],
+      ['alert', 'alert'],
+    ]);
+    for (const glyph of canvasElement.querySelectorAll('svg.alert__glyph')) {
+      await expect(glyph).toHaveAttribute('aria-hidden', 'true');
+    }
+  },
 };

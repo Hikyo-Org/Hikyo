@@ -13,31 +13,33 @@ const base = {
   activeProjectName: '',
 };
 
+const orgCrumb = { label: 'acme', to: '/projects' };
+
 describe('breadcrumbs', () => {
-  it('ends every trail with the surface label from the navigation table', () => {
+  it('ends every trail with the surface label from the navigation table, the organisation linking to its projects', () => {
     expect(breadcrumbs({ ...base, surface: surfaceById('members') })).toEqual([
-      'hikyo',
-      'acme',
-      'Members',
+      { label: 'Hikyo' },
+      orgCrumb,
+      { label: 'Members' },
     ]);
     expect(breadcrumbs({ ...base, surface: surfaceById('org-settings') })).toEqual([
-      'hikyo',
-      'acme',
-      'Organisation settings',
+      { label: 'Hikyo' },
+      orgCrumb,
+      { label: 'Organisation settings' },
     ]);
     expect(breadcrumbs({ ...base, surface: surfaceById('settings') })).toEqual([
-      'hikyo',
-      'acme',
-      'Account & security',
+      { label: 'Hikyo' },
+      orgCrumb,
+      { label: 'Account & security' },
     ]);
     expect(breadcrumbs({ ...base, surface: surfaceById('projects') })).toEqual([
-      'hikyo',
-      'acme',
-      'Projects',
+      { label: 'Hikyo' },
+      orgCrumb,
+      { label: 'Projects' },
     ]);
   });
 
-  it('appends the surface after the project on project-scoped routes', () => {
+  it('appends the surface after the project on project-scoped routes, the project linking to its matrix', () => {
     expect(
       breadcrumbs({
         ...base,
@@ -45,26 +47,31 @@ describe('breadcrumbs', () => {
         routeProjectId: 'prj_1',
         activeProjectName: 'demo',
       }),
-    ).toEqual(['hikyo', 'acme', 'demo', 'Environment matrix']);
+    ).toEqual([
+      { label: 'Hikyo' },
+      orgCrumb,
+      { label: 'demo', to: '/orgs/org_1/projects/prj_1/matrix' },
+      { label: 'Environment matrix' },
+    ]);
   });
 
   it('roots instance surfaces under Instance and never under an organisation', () => {
     expect(breadcrumbs({ ...base, surface: surfaceById('instance-admin') })).toEqual([
-      'hikyo',
-      'Instance',
-      'Instance settings',
+      { label: 'Hikyo' },
+      { label: 'Instance' },
+      { label: 'Instance settings' },
     ]);
     expect(breadcrumbs({ ...base, surface: surfaceById('instance-members') })).toEqual([
-      'hikyo',
-      'Instance',
-      'Instance members',
+      { label: 'Hikyo' },
+      { label: 'Instance' },
+      { label: 'Instance members' },
     ]);
   });
 
   it('names an unmatched route honestly', () => {
     expect(breadcrumbs({ ...base, activeOrgId: '', surface: undefined })).toEqual([
-      'hikyo',
-      'Not found',
+      { label: 'Hikyo' },
+      { label: 'Not found' },
     ]);
   });
 });
@@ -113,6 +120,7 @@ describe('ProjectContext', () => {
     expect(problems?.querySelector('.matrix__count .count__glyph')?.getAttribute('aria-hidden')).toBe(
       'true',
     );
-    expect(problems?.querySelector('.matrix__count')?.textContent).toBe('!2');
+    expect(problems?.querySelector('.matrix__count')?.textContent).toBe('2');
+    expect(problems?.querySelector('.matrix__count .count__glyph')?.getAttribute('data-glyph')).toBe('warn');
   });
 });

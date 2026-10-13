@@ -8,6 +8,7 @@ import { ORG, PRJ, PROD as ENV, STAGING } from '../testkit/ids.ts';
 import { Values } from './Values.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { dottedText } from '../testkit/dottedText.ts';
 
 // The reveal / copy / write-only-edit surface for ONE environment. On mount it
 // reads three things: the masked value list, the project's environments (the
@@ -100,7 +101,7 @@ type Story = StoryObj<typeof meta>;
 export const Populated: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeVisible();
-    await expect(canvas.getByText('Locked · a passkey per disclosure')).toBeVisible();
+    await expect(canvas.getByText(dottedText(/^Locked\s*·\s*a passkey per disclosure$/))).toBeVisible();
     await expect(canvas.getByText('info')).toBeVisible();
     await expect(canvas.getAllByText('absent')).toHaveLength(2);
   },
@@ -116,7 +117,7 @@ export const WindowLive: Story = {
     },
   ),
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText(/^Reveal window · \d+s$/)).toBeVisible();
+    await expect(await canvas.findByText(dottedText(/^Reveal window\s*·\s*\d+ seconds?$/))).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Reveal every secret' })).toBeEnabled();
   },
 };
@@ -128,7 +129,7 @@ export const ProtectedLocked: Story = {
     { url: WINDOW_URL, body: { ...locked, protected: true, effective_window_seconds: 0 } },
   ),
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText('Protected · a passkey per disclosure')).toBeVisible();
+    await expect(await canvas.findByText(dottedText(/^Protected\s*·\s*a passkey per disclosure$/))).toBeVisible();
   },
 };
 
@@ -156,7 +157,7 @@ export const WriteOnly: Story = {
 export const Empty: Story = {
   parameters: rows({ url: VALUES_URL, body: { count: 0, items: [] } satisfies ValueList }),
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText('Locked · a passkey per disclosure')).toBeVisible();
+    await expect(await canvas.findByText(dottedText(/^Locked\s*·\s*a passkey per disclosure$/))).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Reveal every secret' })).toBeDisabled();
     await expect(canvas.queryByRole('row', { name: /DATABASE_URL/ })).not.toBeInTheDocument();
   },

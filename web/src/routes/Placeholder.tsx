@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { Link, useOutletContext } from 'react-router';
+import { generatePath, Link, Navigate, useOutletContext } from 'react-router';
 
 import { useProjects } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
@@ -37,6 +37,14 @@ export function Overview() {
   const { activeOrgId } = useOutletContext<{ readonly activeOrgId: string }>();
   const projects = useProjects(activeOrgId);
   const items = projects.data?.items ?? [];
+  // One project leaves nothing to choose between, so the landing (and the
+  // return after sign-in, which lands here) opens that project's matrix.
+  const only = items.length === 1 ? items[0] : undefined;
+  if (only !== undefined) {
+    return (
+      <Navigate replace to={generatePath(surfaceById('matrix').path, { org: activeOrgId, project: only.id })} />
+    );
+  }
   return (
     <Placeholder
       title="Overview"

@@ -72,25 +72,39 @@ test('admin publishes, browses new history, reveals fake secrets and switches to
 test('settings and members are read-only, remote connections stay disabled, and deep links reload', async ({ page }) => {
   const project = `/orgs/${DEMO_IDS.org}/projects/${DEMO_IDS.project}`;
   await page.goto(`./?account=admin#${project}/settings`);
-  await expect(page.getByRole('heading', { name: 'Project settings · Payments', exact: true })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Read-only demo settings' })).toHaveAttribute('disabled', '');
+  await expect(page.getByRole('heading', { name: /^Project settings\s*·?\s*Payments$/ })).toBeVisible();
+  // These surfaces use the `actions` read-only mode (not a disabled `fieldset`):
+  // tabs and other navigation stay clickable; mutating controls disable
+  // individually, the same way `ui/Button` and the raw controls beside it do.
+  await expect(page.getByText(/^Read-only sample data\./)).toBeVisible();
+  await page.getByRole('tab', { name: 'Metadata' }).click();
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeDisabled();
+  await page.getByRole('tab', { name: 'Policy' }).click();
   await expect(page.getByRole('button', { name: 'Download definitions bundle', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Download portable bundle', exact: true })).toBeDisabled();
   for (const control of await page.locator('#project-policy input, #project-policy select, #project-policy textarea, #project-policy button').all()) {
     await expect(control).toBeDisabled();
   }
-  // A disabled fieldset does not disable anchors. Downloads must not navigate
-  // around the fetch adapter to a nonexistent API on the static host.
+  await page.getByRole('tab', { name: 'Identity' }).click();
+  await expect(page.getByRole('heading', { name: 'Identity', exact: true })).toBeVisible();
+  // Downloads must not navigate around the fetch adapter to a nonexistent API
+  // on the static host.
   await expect(page.locator('a[href*="/api/"]')).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Project settings · Payments', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Project settings\s*·?\s*Payments$/ })).toBeVisible();
+
   await page.goto(`./?account=admin#/orgs/${DEMO_IDS.org}/members`);
-  await expect(page.getByRole('group', { name: 'Read-only demo settings' })).toHaveAttribute('disabled', '');
+  await expect(page.getByText(/^Read-only sample data\./)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add access', exact: true })).toBeDisabled();
   await expect(page.getByText('Sam Rivera').first()).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Find a member' }).fill('no-such-member');
+  await expect(page.getByText(/No member matches/)).toBeVisible();
+
   await page.goto('./?account=admin#/remotes');
   await expect(page.getByRole('heading', { name: 'Remotes', exact: true })).toBeVisible();
-  await expect(page.getByText(/^Read-only in this demo\./)).toBeVisible();
+  await expect(page.getByText(/^Read-only sample data\./)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add a remote', exact: true })).toBeDisabled();
+
   await page.goto(`./?account=admin#${DEMO_MATRIX_PATH}?remote=other-instance`);
   await expect(page.getByRole('heading', { name: 'Not available in this demo' })).toBeVisible();
   await page.getByRole('link', { name: 'Back to the environment matrix' }).click();
@@ -106,7 +120,7 @@ type SurfaceCheck = {
   [Id in SurfaceId]: { mode: (typeof DEMO_SURFACE_POLICIES)[Id]['mode'] } & (
     (typeof DEMO_SURFACE_POLICIES)[Id]['mode'] extends 'excluded'
       ? { result: 'matrix' | 'unavailable' }
-      : { heading: string; sample: string; environment?: string; level?: number }
+      : { heading: string | RegExp; sample: string; environment?: string; level?: number }
   );
 };
 const surfaceChecks = {
@@ -117,8 +131,8 @@ const surfaceChecks = {
   overview: { mode: 'excluded', result: 'matrix' },
   projects: { mode: 'interactive', heading: 'Projects', level: 1, sample: 'Payments' },
   remotes: { mode: 'read-only', heading: 'Remotes', sample: 'European production (sample)' },
-  members: { mode: 'read-only', heading: 'Members · Acme', sample: 'Sam Rivera' },
-  'org-settings': { mode: 'read-only', heading: 'Organisation settings · Acme', sample: 'Payments' },
+  members: { mode: 'read-only', heading: /^Members\s*·?\s*Acme$/, sample: 'Sam Rivera' },
+  'org-settings': { mode: 'read-only', heading: /^Organisation settings\s*·?\s*Acme$/, sample: 'Payments' },
   scim: { mode: 'read-only', heading: 'SCIM provisioning', sample: 'acme-sso' },
   audit: { mode: 'read-only', heading: 'Audit', sample: 'revision.published' },
   'instance-admin': { mode: 'excluded', result: 'unavailable' },
@@ -134,7 +148,7 @@ const surfaceChecks = {
   'temporary-access': { mode: 'read-only', heading: 'Temporary access', sample: 'Sample request: investigate a checkout error.', environment: DEMO_IDS.staging },
   adapters: { mode: 'read-only', heading: 'Deployment adapters', sample: 'acme/payments' },
   'project-audit': { mode: 'read-only', heading: 'Project audit', sample: 'revision.published' },
-  'project-settings': { mode: 'read-only', heading: 'Project settings · Payments', sample: 'Identity' },
+  'project-settings': { mode: 'read-only', heading: /^Project settings\s*·?\s*Payments$/, sample: 'Identity' },
   'cli-reauth': { mode: 'excluded', result: 'unavailable' },
   'workspace-approve': { mode: 'excluded', result: 'unavailable' },
   'workspace-callback': { mode: 'excluded', result: 'unavailable' },
@@ -208,7 +222,10 @@ test('read-only details and filters work while management actions stay disabled'
   await page.goto(`./?account=admin#${orgPath}/scim`);
   await page.getByRole('button', { name: 'Administer', exact: true }).click();
   await expect(page.getByText('Payments engineering').first()).toBeVisible();
+  // The mapping form opens in the side panel for reading; its submit stays off.
+  await page.getByRole('button', { name: 'Map a group', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Add mapping', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Filter users by name' }).fill('Sam');
   await expect(page.getByRole('main').getByText('Sam Rivera', { exact: true })).toBeVisible();
   await expect(page.getByRole('main').getByText('Dana Chen', { exact: true })).toHaveCount(0);

@@ -10,9 +10,12 @@ import {
 import { expect, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
+import { phone } from '../../.storybook/layout.ts';
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { DemoSurface } from '../demo/DemoSurface.tsx';
 import { AccountSecurity } from './AccountSecurity.tsx';
 
+import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The page fans out into six reads under the real AuthProvider: the profile
@@ -154,11 +157,61 @@ type Story = StoryObj<typeof meta>;
 // a session.
 export const Populated: Story = {
   play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
+    await openTab(canvas, 'Sign-in factors');
     await expect(await canvas.findByText(/YubiKey 5C/)).toBeVisible();
     await expect(canvas.getByText(/disabled after clone signal/)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Remove the authenticator' })).toBeVisible();
+    await expect(await canvas.findByRole('button', { name: 'Remove the authenticator' })).toBeVisible();
+    await openTab(canvas, 'Identities');
     await expect(await canvas.findByRole('button', { name: 'Link Corporate IdP' })).toBeVisible();
+    await openTab(canvas, 'Sessions');
     await expect(await canvas.findByRole('button', { name: /revoke the workspace session/i })).toBeVisible();
+  },
+};
+
+// The sections are tabs in a fixed order; an old `#account-sessions` link
+// opens the Sessions tab.
+export const TabFromLegacyAnchor: Story = {
+  parameters: { app: { auth: true, path: '/settings#account-sessions', routePath: '/settings', responses: populated } },
+  play: async ({ canvas }) => {
+    await expect((await canvas.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([
+      'Profile', 'Sign-in factors', 'Recovery', 'Sessions', 'Identities', 'Preferences',
+    ]);
+    await expect(canvas.getByRole('tab', { name: 'Sessions' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('heading', { name: 'Active sessions', level: 2 })).toBeVisible();
+  },
+};
+
+// The provider buttons are one action row; at a phone width it is an
+// equal-width two-column grid rather than ragged wrapping.
+export const LinkActionsPhone: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await openTab(canvas, 'Identities');
+    const corp = await canvas.findByRole('button', { name: 'Link Corporate IdP' });
+    const saml = canvas.getByRole('button', { name: 'Link SAML SSO' });
+    const actions = corp.closest<HTMLElement>('.actions');
+    await expect(actions).not.toBeNull();
+    await expect(saml.closest('.actions')).toBe(actions);
+    if (phone()) {
+      await expect(getComputedStyle(actions as HTMLElement).display).toBe('grid');
+      await expect(Math.round(corp.getBoundingClientRect().width)).toBe(Math.round(saml.getBoundingClientRect().width));
+    }
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth);
+  },
+};
+
+// The public demo mounts this page read-only via `ReadOnlyContext` ('actions'
+// mode, owner decision M7, 2026-10-13), not a disabling `<fieldset>`: its tabs
+// stay native buttons, so switching sections works, while every mutating
+// button (Button itself reads the context) stays disabled.
+export const DemoReadOnly: Story = {
+  decorators: [(Story) => <DemoSurface id="settings"><Story /></DemoSurface>],
+  play: async ({ canvas, canvasElement }) => {
+    await waitFor(() => expect(canvas.getByText(/^Read-only sample data\./)).toBeVisible());
+    await expect(canvasElement.querySelector('fieldset[disabled]')).toBeNull();
+    await openTab(canvas, 'Identities');
+    await expect(await canvas.findByRole('button', { name: 'Link Corporate IdP' })).toBeDisabled();
   },
 };
 
@@ -182,10 +235,13 @@ export const Empty: Story = {
     },
   },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Sign-in factors');
     await expect(await canvas.findByText(/no passkey is enrolled/i)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'enrol' })).toBeVisible();
+    await expect(await canvas.findByRole('button', { name: 'enrol' })).toBeVisible();
+    await openTab(canvas, 'Identities');
     await expect(await canvas.findByText(/no external identity is linked/i)).toBeVisible();
     await expect(await canvas.findByText(/this instance has none enabled/i)).toBeVisible();
+    await openTab(canvas, 'Sessions');
     await expect(await canvas.findByText(/no active sessions/i)).toBeVisible();
   },
 };
@@ -194,9 +250,11 @@ export const Empty: Story = {
 export const Loading: Story = {
   parameters: { app: { auth: true, path: '/settings', responses: everyRead({ pending: true }) } },
   play: async ({ canvas }) => {
+    await waitFor(() => expect(canvas.getByText(/loading your profile/i)).toBeVisible());
+    await openTab(canvas, 'Sign-in factors');
     await waitFor(() => expect(canvas.getByText(/loading passkeys/i)).toBeVisible());
-    await expect(canvas.getByText(/loading configured identity providers/i)).toBeVisible();
-    await expect(canvas.getByText(/loading your profile/i)).toBeVisible();
+    await openTab(canvas, 'Identities');
+    await waitFor(() => expect(canvas.getByText(/loading configured identity providers/i)).toBeVisible());
   },
 };
 
@@ -210,9 +268,12 @@ export const Failed: Story = {
     },
   },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Sign-in factors');
     await expect(await canvas.findByText(/your passkeys could not be listed/i)).toBeVisible();
     await expect(await canvas.findByText(/your authenticator state could not be read/i)).toBeVisible();
+    await openTab(canvas, 'Sessions');
     await expect(await canvas.findByText(/your sessions could not be loaded/i)).toBeVisible();
+    await openTab(canvas, 'Identities');
     await expect(await canvas.findByText(/your linked identities could not be listed/i)).toBeVisible();
     await expect(await canvas.findByText(/configured identity providers could not be loaded/i)).toBeVisible();
   },
@@ -226,6 +287,7 @@ export const ProofDialog: Story = {
     // remounts the page once whoami answers, and a dialog opened before that
     // is lost with it. The factor row is the read that settles last, so it is
     // the signal the page is stable enough to hold state.
+    await openTab(canvas, 'Sign-in factors');
     await expect(await canvas.findByRole('button', { name: 'Remove the authenticator' })).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Add a passkey' }));
     const dialog = await canvas.findByRole('dialog', { name: 'Confirm it is you' });

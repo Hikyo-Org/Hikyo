@@ -41,12 +41,15 @@ import { isDemo } from '../demo/config.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
-import { Glyph } from '../ui/Glyph.tsx';
+import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
+import { TabPanel, Tabs } from '../ui/Tabs.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
   historyKeyDisplay,
-  impactHeading,
+  impactStep,
   pinAction,
   pinCeremonyUnit,
   pinExpiry,
@@ -102,10 +105,12 @@ const zPinComparisonValues = zExportedValues.superRefine((values, context) => {
 /**
  * The revision-history drawer (#59, locked prototype `revision-history/6`).
  *
- * The shape is iteration 2's verdict **b**: a slim revision list beside a
- * detail pane, rendered over the matrix rather than instead of it. Below the
- * chrome's 800px breakpoint the two panes become one, list, then detail, with
- * a back affordance, because a 440px drawer split in two is neither.
+ * One revision at a time, over the matrix rather than instead of it: the
+ * detail takes the full panel width and it is headed by the revision selector
+ * (replacing a list beside the detail, whose lone row looked stranded when
+ * an environment had one revision). A
+ * native select keeps every revision reachable by keyboard and screen reader
+ * at every width, so there is no phone drill-in either.
  *
  * Three properties are the surface's whole point and none of them is decoration:
  *
@@ -182,12 +187,7 @@ export function HistoryDrawer({
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [outcome, setOutcome] = useState<ReactNode>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
-  // A deep link with `rev` lands on the detail pane on a phone, not on the list.
-  const [mobileDetail, setMobileDetail] = useState(() => params.get('rev') !== null);
-  const drawer = useRef<HTMLElement>(null);
   const drawerHeading = useRef<HTMLHeadingElement>(null);
-  const detailHeading = useRef<HTMLHeadingElement>(null);
-  const selectedRow = useRef<HTMLButtonElement>(null);
   const currentEnvironment = useRef(environmentId);
   useEffect(() => {
     currentEnvironment.current = environmentId;
@@ -247,8 +247,8 @@ export function HistoryDrawer({
     generatePath(surfaceById('matrix').path, refData),
     workspace?.remote ?? '',
   );
-  // The retention knob lives on the project-settings Policy panel (`#project-policy`).
-  const policyPath = `${generatePath(surfaceById('project-settings').path, refData)}#project-policy`;
+  // The retention knob lives on the project-settings Policy tab.
+  const policyPath = `${generatePath(surfaceById('project-settings').path, refData)}?tab=policy`;
   const environmentNames = new Map(environments.map((candidate) => [candidate.id, candidate.name]));
 
   useResetOnChange(`${environmentId} ${keyFilter}`, () => {
@@ -256,52 +256,6 @@ export function HistoryDrawer({
     setOutcome(null);
     setRefusal(null);
   });
-
-  useEffect(() => {
-    // Snapshot the opener at MOUNT: the matrix stays interactive behind a desktop
-    // drawer, so a later click can re-point the shared ref, and close must return
-    // focus to the element that actually opened this drawer, not the last one
-    // touched. The current-environment link is the fallback when that element
-    // is gone (an environment hidden, a re-render that replaced the header).
-    const opener = openerRef.current;
-    drawerHeading.current?.focus();
-    return () => {
-      requestAnimationFrame(() => {
-        if (opener?.isConnected === true) {
-          opener.focus();
-          return;
-        }
-        Array.from(document.querySelectorAll<HTMLAnchorElement>('.matrix__history-link'))
-          .find((link) => link.dataset['historyEnvironment'] === currentEnvironment.current)
-          ?.focus();
-      });
-    };
-  }, [openerRef]);
-
-  useEffect(() => {
-    if (mobileDetail) {
-      detailHeading.current?.focus();
-    }
-  }, [mobileDetail, selected?.revision]);
-
-  // A pointer-down outside the drawer closes it back to the matrix, the same way
-  // the Close link and Escape do. Guarded on an open dialog: the restore/pin/
-  // release sheets are native `<dialog>`s rendered as SIBLINGS of the drawer, so
-  // a click inside one lands outside the aside, and the guard keeps that from also
-  // collapsing the drawer, leaving each sheet its own dismissal.
-  useEffect(() => {
-    const closeOutside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        drawer.current?.contains(event.target) !== true &&
-        document.querySelector('dialog[open]') === null
-      ) {
-        void navigate(matrixPath);
-      }
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    return () => document.removeEventListener('pointerdown', closeOutside);
-  }, [navigate, matrixPath]);
 
   if (environment === undefined) {
     return null;
@@ -535,99 +489,92 @@ export function HistoryDrawer({
 
   return (
     <>
-      <aside
-        ref={drawer}
-        className={`history${mobileDetail ? ' history--detail' : ''}`}
-        aria-label="Revision history"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && sheet === null) {
-            event.preventDefault();
-            void navigate(matrixPath);
-          }
-        }}
+      {/* Focus returns to the link that opened the drawer, snapshotted at
+          mount: the shared ref can be re-pointed while the drawer is open. The
+          current environment's link is the fallback when that element is gone
+          (an environment hidden, a re-render that replaced the header). */}
+      <SidePanel
+        label="Revision history"
+        className="history"
+        onClose={() => void navigate(matrixPath)}
+        initialFocus={drawerHeading}
+        opener={openerRef}
+        fallbackFocus={() =>
+          Array.from(document.querySelectorAll<HTMLAnchorElement>('.matrix__history-link'))
+            .find((link) => link.dataset['historyEnvironment'] === currentEnvironment.current)
+        }
+        header={(
+          <div className="history__head">
+            <div className="history__title">
+              <h2 id="history-title" ref={drawerHeading} tabIndex={-1}>
+                <Glyph name="history" /> Revision history
+              </h2>
+              <Badge icon="own-draft">current <span className="mono">{`r${String(currentRevision)}`}</span></Badge>
+              {protectedEnvironmentIds.includes(environment.id) ? (
+                <Badge tone="danger" icon="lock">protected</Badge>
+              ) : null}
+              <Link id="history-close" className="btn history__close btn--icon-phone" to={matrixPath} aria-label="Close revision history">
+                <Glyph name="cross" /><span className="btn__label"> Close</span>
+              </Link>
+            </div>
+
+            {/* The environment is a tab like every other section switch;
+                it rewrites `?env=` and drops `rev`, the panel below is the
+                selected environment's history. */}
+            <Tabs
+              label="Environments"
+              idPrefix="history-env"
+              tabs={environments.map((candidate) => ({ id: candidate.id, label: candidate.name }))}
+              selected={environment.id}
+              onSelect={(id) => {
+                const next = new URLSearchParams(params);
+                next.set('env', id);
+                next.delete('rev');
+                setParams(next, { replace: true });
+              }}
+            />
+
+            {stagedByMe === 0 && stagedByOthers === 0 ? null : (
+              <p className="history__pending" role="status">
+                {stagedByMe === 0
+                  ? ''
+                  : `${String(stagedByMe)} staged by you (unpublished)`}
+                {stagedByMe > 0 && stagedByOthers > 0 ? <Sep /> : null}
+                {/* The pending signal is a boolean per cell (`pending_by_others`), so
+                    no actor names reach this surface. */}
+                {stagedByOthers === 0
+                  ? ''
+                  : `${String(stagedByOthers)} change${stagedByOthers === 1 ? '' : 's'} pending by others`}
+              </p>
+            )}
+
+            {line === null ? null : (
+              <p className="history__retention">
+                <span>{line.window}</span>
+                <Badge icon={line.badge === 'custom' ? 'edit' : 'arrow-right'} title={line.badgeTitle}>
+                  {line.badge}
+                </Badge>
+                <WorkspaceSettingsLink className="history__settings-pointer" path={policyPath}>
+                  <Glyph name="arrow-right" /> change it in project settings › Policy
+                </WorkspaceSettingsLink>
+              </p>
+            )}
+
+            {keyFilter === null ? null : (
+              <p className="history__filter" role="status">
+                <span>
+                  <Glyph name="warn" />{' '}
+                  {`filter active: history of ${keyDisplay?.label ?? keyFilter}, showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}
+                </span>
+                <Button type="button" onClick={() => setParam('key', null)}>
+                  <Glyph name="cross" /> show every revision
+                </Button>
+              </p>
+            )}
+          </div>
+        )}
       >
-        <div className="history__head">
-          <div className="history__title">
-            <h2 id="history-title" ref={drawerHeading} tabIndex={-1}>
-              <span aria-hidden="true">↺ </span>
-              Revision history
-            </h2>
-            <Badge>{`current r${String(currentRevision)}`}</Badge>
-            {protectedEnvironmentIds.includes(environment.id) ? (
-              <span className="history__protected">PROTECTED</span>
-            ) : null}
-            <Link id="history-close" className="btn history__close" to={matrixPath} aria-label="Close revision history">
-              <Glyph name="cross" /> Close
-            </Link>
-          </div>
-
-          {/*
-            Plain toggle buttons, deliberately NOT `role="tab"`. These do not
-            switch a panel inside the page: they rewrite the URL the whole
-            surface is addressed by, and a tab role would promise keyboard
-            semantics (arrow-key roving, an owned tabpanel) that a set of links
-            to different states does not have.
-          */}
-          <div className="history__tabs">
-            {environments.map((candidate) => (
-              <Button
-                key={candidate.id}
-                type="button"
-                className="history__tab"
-                aria-pressed={candidate.id === environment.id}
-                onClick={() => {
-                  const next = new URLSearchParams(params);
-                  next.set('env', candidate.id);
-                  next.delete('rev');
-                  setParams(next, { replace: true });
-                  setMobileDetail(false);
-                }}
-              >
-                {candidate.name}
-              </Button>
-            ))}
-          </div>
-
-          {stagedByMe === 0 && stagedByOthers === 0 ? null : (
-            <p className="history__pending" role="status">
-              {stagedByMe === 0
-                ? ''
-                : `${String(stagedByMe)} staged by you (unpublished)`}
-              {stagedByMe > 0 && stagedByOthers > 0 ? ' · ' : ''}
-              {/* The pending signal is a boolean per cell (`pending_by_others`), so
-                  no actor names reach this surface. */}
-              {stagedByOthers === 0
-                ? ''
-                : `${String(stagedByOthers)} change${stagedByOthers === 1 ? '' : 's'} pending by others`}
-            </p>
-          )}
-
-          {line === null ? null : (
-            <p className="history__retention">
-              <span>{line.window}</span>
-              <span className="history__badge" title={line.badgeTitle}>
-                {line.badge}
-              </span>
-              <WorkspaceSettingsLink className="history__settings-pointer" path={policyPath}>
-                <span aria-hidden="true">→ </span>
-                change it in project settings › Policy
-              </WorkspaceSettingsLink>
-            </p>
-          )}
-
-          {keyFilter === null ? null : (
-            <p className="history__filter" role="status">
-              <span>
-                <span aria-hidden="true">⚠ </span>
-                {`filter active: history of ${keyDisplay?.label ?? keyFilter}, showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}
-              </span>
-              <Button type="button" onClick={() => setParam('key', null)}>
-                <Glyph name="cross" /> show every revision
-              </Button>
-            </p>
-          )}
-        </div>
-
+        <TabPanel idPrefix="history-env" selected={environment.id}>
         {outcome === null ? null : (
           <Alert tone="done">{outcome}</Alert>
         )}
@@ -649,62 +596,15 @@ export function HistoryDrawer({
               : `No revision has moved ${keyDisplay?.label ?? keyFilter} in this environment.`}
           </p>
         ) : (
-          <div className="history__panes">
-            <ol className="history__list" aria-label="Revisions, newest first">
-              {filtered.map((entry) => {
-                const pinnedHere = pinRows.filter((pin) => pin.revision === entry.revision);
-                return (
-                  <li key={String(entry.revision)}>
-                    <Button
-                      data-history-revision={String(entry.revision)}
-                      ref={entry.revision === selected?.revision ? selectedRow : undefined}
-                      type="button"
-                      className="history__row"
-                      aria-current={entry.revision === selected?.revision}
-                      onClick={() => {
-                        setParam('rev', String(entry.revision));
-                        setMobileDetail(true);
-                      }}
-                    >
-                      <span className="mono">{`r${String(entry.revision)}`}</span>
-                      {entry.revision === currentRevision ? (
-                        <span className="history__tag">current</span>
-                      ) : null}
-                      {pinnedHere.length === 0 ? null : (
-                        <span className="history__tag" title={`pinned by ${String(pinnedHere.length)} workload(s)`}>
-                          <span aria-hidden="true">⚲ </span>
-                          pinned
-                        </span>
-                      )}
-                      {entry.payloadPresent ? null : (
-                        <span className="history__tag history__tag--collected">payload collected</span>
-                      )}
-                      <span className="history__age">{relativeAge(entry.publishedAt, now)}</span>
-                    </Button>
-                  </li>
-                );
-              })}
-            </ol>
-
-            <div className="history__detail">
-              <Button
-                id="history-detail-back"
-                type="button"
-                className="history__back"
-                onClick={() => {
-                  setMobileDetail(false);
-                  requestAnimationFrame(() => selectedRow.current?.focus());
-                }}
-              >
-                ← All revisions
-              </Button>
+          <div className="history__detail">
               {selected === undefined || selectedGate === null ? null : (
                 <RevisionDetail
                   environmentName={environment.name}
                   env={env}
                   revision={selected}
                   revisions={revisions}
-                  headingRef={detailHeading}
+                  revisionOptions={filtered}
+                  onSelectRevision={(revision) => setParam('rev', revision)}
                   gate={selectedGate}
                   currentRevision={currentRevision}
                   pins={pinRows}
@@ -712,14 +612,7 @@ export function HistoryDrawer({
                   secretByKeyId={secretByKeyId}
                   now={now}
                   keyFilter={keyFilter}
-                  onFilterKey={(keyId) => {
-                    setParam('key', keyId);
-                    // "Show me this key's history" answers with a LIST, so the
-                    // phone's single pane goes back to it. On a desktop both
-                    // panes are on screen and this changes nothing.
-                    setMobileDetail(false);
-                    requestAnimationFrame(() => selectedRow.current?.focus());
-                  }}
+                  onFilterKey={(keyId) => setParam('key', keyId)}
                   onRestore={(revisionKeys, keyId) => {
                     setRefusal(null);
                     let keyName: string | null = null;
@@ -765,10 +658,10 @@ export function HistoryDrawer({
                   }}
                 />
               )}
-            </div>
           </div>
         )}
-      </aside>
+        </TabPanel>
+      </SidePanel>
 
       {sheet?.kind === 'restore' ? (
         <RestoreSheet
@@ -923,6 +816,9 @@ type RestoreSheetResult = {
   };
 };
 
+/** The icon on each changed-key kind tag. */
+const CHANGE_ICON: Record<'added' | 'edited' | 'removed', GlyphName> = { added: 'plus', edited: 'edit', removed: 'minus' };
+
 function sheetRevisionKeys(sheet: Sheet | null): readonly HistorySnapshotKey[] {
   return sheet !== null && sheet.kind !== 'release' ? sheet.keys : [];
 }
@@ -940,7 +836,8 @@ function RevisionDetail({
   env,
   revision,
   revisions,
-  headingRef,
+  revisionOptions,
+  onSelectRevision,
   gate,
   currentRevision,
   pins,
@@ -957,7 +854,9 @@ function RevisionDetail({
   environmentName: string;
   revision: HistoryRevision;
   revisions: readonly HistoryRevision[];
-  headingRef: RefObject<HTMLHeadingElement | null>;
+  /** The selectable revisions, newest first (the key filter applied). */
+  revisionOptions: readonly HistoryRevision[];
+  onSelectRevision: (revision: string) => void;
   gate: RevisionActionGate;
   currentRevision: bigint;
   pins: readonly HistoryPin[];
@@ -983,13 +882,24 @@ function RevisionDetail({
 
   return (
     <section aria-labelledby="history-detail-title">
-      <h3 id="history-detail-title" className="mono" ref={headingRef} tabIndex={-1}>
-        {`r${String(revision.revision)}`}
-        {revision.revision === currentRevision ? <span className="history__tag">current</span> : null}
-        {revision.payloadPresent ? null : (
-          <span className="history__tag history__tag--collected">payload collected</span>
-        )}
-      </h3>
+      {/* The revision selector heads the detail: "r3 · current · 2 days ago",
+          every revision one option away, by keyboard and screen reader alike.
+          The heading keeps the outline (h2, h3, then the h4 subheads) and
+          names the section; the select carries its own label. */}
+      <h3 id="history-detail-title" className="visually-hidden">Selected revision</h3>
+      <select
+        id="history-revision"
+        aria-label="Revision"
+        className="history__revision mono"
+        value={String(revision.revision)}
+        onChange={(event) => onSelectRevision(event.target.value)}
+      >
+        {revisionOptions.map((entry) => (
+          <option key={String(entry.revision)} value={String(entry.revision)} data-history-revision={String(entry.revision)}>
+            {revisionOptionLabel(entry, currentRevision, pins, now)}
+          </option>
+        ))}
+      </select>
       <dl className="history__meta">
         <div>
           <dt>Published by</dt>
@@ -1013,7 +923,7 @@ function RevisionDetail({
 
       {pinnedHere.length === 0 ? null : (
         <p className="history__consumers">
-          <span aria-hidden="true">⚲ </span>
+          <Glyph name="pin" />{' '}
           {`${pinnedHere
             .map((pin) => workloadLabel(pin.workloadPrincipalId, workloadNames))
             .join(', ')} receive${pinnedHere.length === 1 ? 's' : ''} this revision's values`}
@@ -1044,16 +954,21 @@ function RevisionDetail({
                 onClick={() => onFilterKey(changed.keyId)}
               >
                 {secret ? <><Glyph name="lock" /> </> : null}
-                {changed.name}
+                <span className="history__change-name" title={changed.name}>{changed.name}</span>
               </Button>
-              <span className="history__kind">{changed.change}</span>
-              {secret ? <span className="history__presence">write-presence only</span> : null}
+              <Badge className="history__kind" tone="changed" icon={CHANGE_ICON[changed.change]}>{changed.change}</Badge>
+              {secret ? <Badge className="history__presence" icon="lock">write-presence only</Badge> : null}
+              {/* The key is already named at the row start, so the label is
+                  "Restore" on every row and the action column stays one width;
+                  the accessible name keeps the key and the target revision. */}
               <Button
                 type="button"
+                className="history__change-restore"
+                aria-label={`Restore ${changed.name} to r${String(revision.revision)}`}
                 disabled={isDemo || !gate.restore || !detail.isSuccess}
                 onClick={() => onRestore(revisionKeys, changed.keyId)}
               >
-                {`Restore ${changed.name}…`}
+                <Glyph name="restore" /> Restore
               </Button>
             </li>
           );
@@ -1061,7 +976,7 @@ function RevisionDetail({
       </ul>
 
       {isDemo ? <p className="hint-wrap">History is read-only in the demo. Restore and revision pinning are available in the full app.</p> : null}
-      <div className="history__actions">
+      <div className="actions history__actions">
         <Button
           type="button"
           variant="primary"
@@ -1069,7 +984,7 @@ function RevisionDetail({
           title={gate.restore ? undefined : gate.reason ?? undefined}
           onClick={() => onRestore(revisionKeys, null)}
         >
-          {`Restore r${String(revision.revision)}…`}
+          <Glyph name="restore" /> {`Restore to r${String(revision.revision)}`}
         </Button>
         <Button
           type="button"
@@ -1077,13 +992,10 @@ function RevisionDetail({
           title={gate.pin ? undefined : gate.reason ?? undefined}
           onClick={() => onPin(revisionKeys)}
         >
-          {`Pin r${String(revision.revision)}…`}
+          <Glyph name="pin" /> {`Pin workload to r${String(revision.revision)}`}
         </Button>
-      </div>
-
-      <div className="history__actions">
-        <Button type="button" disabled={isDemo || !revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</Button>
-        <Button type="button" disabled={isDemo || !revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</Button>
+        <Button type="button" disabled={isDemo || !revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}><Glyph name="compare" /> Diff vs previous</Button>
+        <Button type="button" disabled={isDemo || !revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}><Glyph name="compare" /> Diff vs current</Button>
       </div>
       {diffTarget !== null ? <RevisionDiffDialog key={`${env.environment}:${String(revision.revision)}:${String(diffTarget)}`} env={env} environmentName={environmentName} left={diffTarget < revision.revision ? diffTarget : revision.revision} right={diffTarget < revision.revision ? revision.revision : diffTarget} onClose={() => setDiffTarget(null)} /> : null}
 
@@ -1108,8 +1020,7 @@ function RevisionDetail({
             return (
               <li key={pin.id} className="history__pin">
                 <span className="mono">
-                  <span aria-hidden="true">⚲ </span>
-                  {`r${String(pin.revision)}`}
+                  <Glyph name="pin" /> {`r${String(pin.revision)}`}
                 </span>
                 <span className="mono" title={pin.workloadPrincipalId}>
                   {workload}
@@ -1121,18 +1032,17 @@ function RevisionDetail({
                 </span>
                 <span className="history__pin-gap">{gap}</span>
                 {pin.schemaOverride ? (
-                  <span className="history__drift" title="Pinned despite a current-schema failure, recorded as an explicit override. Pinned delivery is verbatim.">
-                    <Glyph name="delta" /> schema drift
-                  </span>
+                  <Badge className="history__drift" tone="changed" icon="warn" title="Pinned despite a current-schema failure, recorded as an explicit override. Pinned delivery is verbatim.">
+                    schema drift
+                  </Badge>
                 ) : null}
                 {/* The server's preview: this pin is the only thing holding the
                     payload past its policy window (ADR revision-model § Retention). */}
                 {pin.releaseRetentionConsequence === 'collection_eligible' ? (
                   <>
-                    <span className="history__warn">
-                      <span aria-hidden="true">⚠ </span>
+                    <Badge className="history__warn" tone="danger" icon="warn">
                       sole keeper
-                    </span>
+                    </Badge>
                     <span className="history__pin-gap">
                       {`r${String(pin.revision)} is past normal retention: its values survive only because of this pin.`}
                     </span>
@@ -1152,6 +1062,28 @@ function RevisionDetail({
       )}
     </section>
   );
+}
+
+/**
+ * One revision as the selector names it: "r3 · current · pinned · 2 days
+ * ago". A native `<option>` holds text only, so the separator is a plain
+ * " · " rather than the `Sep` element.
+ */
+function revisionOptionLabel(
+  entry: HistoryRevision,
+  currentRevision: bigint,
+  pins: readonly HistoryPin[],
+  now: Date,
+): string {
+  return [
+    `r${String(entry.revision)}`,
+    entry.revision === currentRevision ? 'current' : null,
+    pins.some((pin) => pin.revision === entry.revision) ? 'pinned' : null,
+    entry.payloadPresent ? null : 'payload collected',
+    relativeAge(entry.publishedAt, now),
+  ]
+    .filter((part) => part !== null)
+    .join(' · ');
 }
 
 /**
@@ -1257,8 +1189,8 @@ function RestoreSheet({
           {groups.map((group) => (
             <section key={group.environmentId} className="history__impact-group">
               <h3 className="history__impact-heading">
-                {impactHeading(group)}
-                {group.protected ? <span className="history__protected">PROTECTED</span> : null}
+                {group.name}<Sep />{impactStep(group)}
+                {group.protected ? <Badge tone="danger" icon="lock">protected</Badge> : null}
               </h3>
               <ul className="history__impact">
                 {group.changes.map((change) => (
@@ -1267,7 +1199,7 @@ function RestoreSheet({
                       {change.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
                       {change.name}
                     </span>
-                    <span className="history__kind">{change.operation === 'set' ? 'set' : 'clear'}</span>
+                    <Badge className="history__kind" tone="changed" icon={change.operation === 'set' ? 'edit' : 'minus'}>{change.operation === 'set' ? 'set' : 'clear'}</Badge>
                     <span className="mono history__impact-values">
                       {change.classification === 'secret' ? (
                         `secret: ${change.status}, write-presence only`

@@ -305,7 +305,7 @@ export function Ceremony({
             // Stated, never a disabled control. "Protected" and "the window is
             // set to 0" are different sentences and the human is owed whichever
             // one is true.
-            <CeremonyNotice glyph="⚿">
+            <CeremonyNotice glyph="passkey">
               {request.window.protected
                 ? 'This environment is protected, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'
                 : 'This environment allows no reauthentication window, so every disclosure takes its own passkey ceremony. A code cannot authorise it.'}

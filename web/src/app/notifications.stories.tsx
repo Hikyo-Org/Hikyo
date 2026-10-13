@@ -40,9 +40,27 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // Not `Error` — that shadows the global constructor (a bug an earlier pass hit).
-export const Failure: Story = { render: () => <Emit kind="error" /> };
-export const Success: Story = { render: () => <Emit kind="success" /> };
-export const Info: Story = { render: () => <Emit kind="info" /> };
+/** The tone's icon is the shared glyph, not a typed character, and so is the dismiss cross. */
+const expectGlyphs = (canvasElement: HTMLElement, tone: string) => async () => {
+  const toast = canvasElement.querySelector('.toast');
+  await expect(toast?.querySelector('svg.alert__glyph')).toHaveAttribute('data-glyph', tone);
+  const dismiss = toast?.querySelector('button[aria-label="Dismiss notification"]');
+  await expect(dismiss?.querySelector('svg')).toHaveAttribute('data-glyph', 'cross');
+  await expect(dismiss?.textContent?.trim()).toBe('');
+};
+
+export const Failure: Story = {
+  render: () => <Emit kind="error" />,
+  play: async ({ canvasElement }) => waitFor(expectGlyphs(canvasElement, 'alert')),
+};
+export const Success: Story = {
+  render: () => <Emit kind="success" />,
+  play: async ({ canvasElement }) => waitFor(expectGlyphs(canvasElement, 'check')),
+};
+export const Info: Story = {
+  render: () => <Emit kind="info" />,
+  play: async ({ canvasElement }) => waitFor(expectGlyphs(canvasElement, 'arrow-up')),
+};
 
 export const Dismisses: Story = {
   render: () => <Emit kind="success" />,

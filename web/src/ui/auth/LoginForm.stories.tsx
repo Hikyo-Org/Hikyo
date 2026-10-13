@@ -78,13 +78,17 @@ export const LastUsedProvider: Story = {
     const row = canvas.getByRole('button', { name: /continue with github/i });
     await expect(row).toHaveTextContent('Last used');
     await expect(canvas.getAllByText('Last used')).toHaveLength(1);
+    // The tag carries the history icon, per the badge vocabulary.
+    await expect(row.querySelector('.badge svg')?.getAttribute('data-glyph')).toBe('history');
   },
 };
 
 export const LastUsedPassword: Story = {
   args: { lastUsed: { kind: 'password' } },
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('button', { name: /^password/i })).toHaveTextContent('Last used');
+    const row = canvas.getByRole('button', { name: /^password/i });
+    await expect(row).toHaveTextContent('Last used');
+    await expect(row.querySelector('.login__last-used [data-glyph="history"]')).not.toBeNull();
   },
 };
 
@@ -105,7 +109,11 @@ export const PasswordStep: Story = {
     await expect(heading).toHaveFocus();
     await expect(canvas.getByLabelText('Username')).toBeVisible();
     await expect(canvas.getByLabelText('Password')).toBeVisible();
-    await expect(canvas.getByRole('button', { name: /other ways to sign in/i })).toBeVisible();
+    const back = canvas.getByRole('button', { name: /other ways to sign in/i });
+    await expect(back).toBeVisible();
+    // The way back leads with the arrow glyph, not a "‹" in its name.
+    await expect(back).toHaveAccessibleName(/^other ways to sign in$/i);
+    await expect(back.querySelector('svg')?.getAttribute('data-glyph')).toBe('arrow-left');
   },
 };
 
@@ -206,7 +214,11 @@ export const SignUpBackLinks: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Create an account' }));
     await userEvent.click(canvas.getByRole('button', { name: 'Sign up with Google' }));
-    await userEvent.click(canvas.getByRole('button', { name: /other ways to create an account/i }));
+    const back = canvas.getByRole('button', { name: /other ways to create an account/i });
+    // A back link leads with the arrow icon, not a typed "‹".
+    await expect(back.querySelector('[data-glyph="arrow-left"]')).not.toBeNull();
+    await expect(back).not.toHaveTextContent('‹');
+    await userEvent.click(back);
     await expect(canvas.getByRole('heading', { name: 'Create an account' })).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: /sign in instead/i }));
     await expect(canvas.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();

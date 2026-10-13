@@ -55,7 +55,7 @@ export function BindingCard({
     <div className="bindrow" data-credential={credential.id}>
       <p className="bindrow__head">
         <code className="mono">{account.name}</code>
-        <Badge>federated</Badge>
+        <Badge icon="link">federated</Badge>
         <ExpiryBadge credential={credential} now={now} />
         <span className="cred__meta">
           matched byte-for-byte, no wildcards, no case folding; renewal is a mint
@@ -82,7 +82,7 @@ export function BindingCard({
       {credential.reactivated_at === undefined ? null : (
         <Alert tone="warn">{`Quarantined since the restore on ${isoDay(credential.reactivated_at)}: this binding permanently refuses any token issued at or before that instant plus the accepted clock skew.`}</Alert>
       )}
-      <div className="machine__actions">
+      <div className="actions actions--stack">
         <Button
           type="button"
           disabled={!ready}

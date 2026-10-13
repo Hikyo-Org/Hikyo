@@ -1,15 +1,27 @@
 import { useId, type ComponentProps, type ReactNode } from 'react';
 
 import { cx } from './cx.ts';
+import { Glyph } from './Glyph.tsx';
 
 export type FieldProps = {
-  label: string;
+  /** A string label has its trailing "(...)" note rendered in tertiary ink; a non-string label renders as given. */
+  label: ReactNode;
   /** Guidance under the control; secondary ink, same size as the label. */
-  hint?: string;
+  hint?: ReactNode;
   /** A refusal for THIS control: announced, glyph-carried, and the control is marked invalid. */
   error?: string;
   className?: string;
 };
+
+/**
+ * A label's trailing parenthetical ("Kind (immutable)", "SPKI pin
+ * (optional)") is a note, not the name: split it off so it can render in
+ * tertiary ink while the accessible name stays the full, unchanged text.
+ */
+function splitLabelNote(label: string): { main: string; note: string | null } {
+  const match = /^(.*\S)\s+(\([^()]*\))$/.exec(label);
+  return { main: match?.[1] ?? label, note: match?.[2] ?? null };
+}
 
 /**
  * The caller's own accessibility wiring, merged rather than replaced: an
@@ -60,9 +72,16 @@ export function Field({
   const describedBy = [describedByProp, hint !== undefined ? hintId : undefined, error !== undefined ? errorId : undefined]
     .filter((part): part is string => part !== undefined && part !== '')
     .join(' ');
+  const { main, note } = typeof label === 'string' ? splitLabelNote(label) : { main: null, note: null };
   return (
     <div className={cx('field', className)}>
-      <label htmlFor={controlId}>{label}</label>
+      <label htmlFor={controlId}>
+        {note === null ? label : (
+          <>
+            {main} <span className="field__label-note">{note}</span>
+          </>
+        )}
+      </label>
       {children({
         id: controlId,
         'aria-describedby': describedBy === '' ? undefined : describedBy,
@@ -75,9 +94,7 @@ export function Field({
       ) : null}
       {error !== undefined ? (
         <p className="field__error" id={errorId} role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
+          <Glyph name="alert" className="alert__glyph" />
           <span>{error}</span>
         </p>
       ) : null}

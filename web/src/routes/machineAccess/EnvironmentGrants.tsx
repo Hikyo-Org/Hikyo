@@ -23,6 +23,8 @@ import { Alert } from '../../ui/Alert.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
+import { Glyph } from '../../ui/Glyph.tsx';
+import { Sep } from '../../ui/Sep.tsx';
 
 /**
  * GrantDialog is the grant-mutation warning.
@@ -355,9 +357,7 @@ function GrantBody({
       </CeremonyNotice>
 
       <p className="ceremony__stepup">
-        <span className="alert__glyph" aria-hidden="true">
-          ⚿
-        </span>
+        <Glyph name="passkey" className="alert__glyph" />
         <span>
           <strong>The formula.</strong>{' '}
           {reporting ? (
@@ -407,7 +407,7 @@ function GrantBody({
             >
               {reachable.map((key) => (
                 <li className="mono" key={key.id}>
-                  {`${key.name} · ${key.classification}`}
+                  {key.name}<Sep />{key.classification}
                 </li>
               ))}
             </ul>

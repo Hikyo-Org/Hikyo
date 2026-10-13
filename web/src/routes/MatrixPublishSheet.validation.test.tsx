@@ -32,7 +32,8 @@ it('shows deferred template validation before publishing', async () => {
     const badge = view.container.querySelector('.badge');
     expect(badge?.textContent).toBe('ready');
     expect(badge?.classList.contains('badge--ok')).toBe(true);
-    expect(badge?.querySelector('svg.glyph')).toBeNull();
+    // The tag's icon echoes the word for sighted readers only.
+    expect(badge?.querySelector('svg.glyph')?.getAttribute('aria-hidden')).toBe('true');
   } finally {
     await view.unmount();
   }

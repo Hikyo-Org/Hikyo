@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zOidcProviderList } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -103,11 +103,29 @@ export const Failed: Story = {
 export const Reconfiguring: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Reconfigure Okta' }));
-    await expect(canvas.getByRole('heading', { name: 'Reconfigure Okta' })).toBeVisible();
-    await expect(canvas.getByLabelText('Issuer URL')).toBeDisabled();
-    await expect(canvas.getByLabelText('Client secret')).toHaveValue('');
-    await userEvent.click(canvas.getByRole('checkbox', { name: /enabled/i }));
-    await expect(canvas.getByRole('alert')).toHaveTextContent(/disabling removes/i);
+    const panel = within(await canvas.findByRole('complementary', { name: 'Reconfigure Okta' }));
+    await expect(panel.getByLabelText('Issuer URL')).toBeDisabled();
+    await expect(panel.getByLabelText('Client secret')).toHaveValue('');
+    await userEvent.click(panel.getByRole('checkbox', { name: /enabled/i }));
+    await expect(panel.getByRole('alert')).toHaveTextContent(/disabling removes/i);
+    // The primary act leads the row, Cancel follows.
+    await expect(panel.getByRole('button', { name: 'Save provider' }).nextElementSibling).toBe(
+      panel.getByRole('button', { name: 'Cancel' }),
+    );
+  },
+};
+
+// Adding a provider opens the empty form in the side panel; Cancel closes it.
+export const Adding: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: /add identity provider/i }));
+    const panel = within(await canvas.findByRole('complementary', { name: 'New identity provider' }));
+    await expect(panel.getByLabelText('Slug')).toBeEnabled();
+    await expect(panel.getByRole('button', { name: 'Configure provider' }).nextElementSibling).toBe(
+      panel.getByRole('button', { name: 'Cancel' }),
+    );
+    await userEvent.click(panel.getByRole('button', { name: 'Cancel' }));
+    await expect(canvas.queryByRole('complementary')).toBeNull();
   },
 };
 

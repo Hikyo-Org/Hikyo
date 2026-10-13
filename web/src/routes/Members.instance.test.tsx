@@ -130,7 +130,7 @@ describe('Members at instance scope', () => {
 
   it('lists instance grants under an instance heading and offers only the instance scope', async () => {
     const view = await renderInstanceMembers();
-    expect(text(view.container, 'h1')).toBe('Members · Instance');
+    expect(text(view.container, 'h1')).toMatch(/^Members\s*·\s*Instance$/);
     expect(view.container.querySelector('#members-list')?.textContent).toContain('instance-config');
     expect(view.container.querySelector('#members-list')?.textContent).toContain('break-glass: host');
     expect(text(view.container, '#members-list')).toContain('inherit downward into every organisation');

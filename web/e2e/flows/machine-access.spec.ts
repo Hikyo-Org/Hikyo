@@ -60,8 +60,8 @@ function accountRow(page: Page, name: string) {
  * then revoke.
  */
 async function revokeMinted(page: Page) {
-  const expansion = page.locator('.machine__sub');
-  const buttons = expansion.getByRole('button', { name: /^Revoke hik_1_wl_/ });
+  const panel = page.locator('.machine__sub');
+  const buttons = panel.getByRole('button', { name: /^Revoke hik_1_wl_/ });
   // Every caller minted first, and the mint's listing refetch can still be in
   // flight when this runs. A bare count() taken before the minted row renders
   // returned zero, skipped the loop, and the final assertion then met the real
@@ -69,9 +69,9 @@ async function revokeMinted(page: Page) {
   await expect(buttons.first()).toBeVisible();
   for (let remaining = await buttons.count(); remaining > 0; remaining--) {
     await buttons.first().click();
-    await expect(expansion.locator('.cred')).toHaveCount(remaining - 1);
+    await expect(panel.locator('.cred')).toHaveCount(remaining - 1);
   }
-  await expect(expansion.locator('.cred')).toHaveCount(0);
+  await expect(panel.locator('.cred')).toHaveCount(0);
 }
 
 test.describe('machine access', () => {
@@ -89,14 +89,19 @@ test.describe('machine access', () => {
   test('the inventory has seven tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
     await expect(tabs).toHaveCount(7);
-    await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
-    await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
-    await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
-    await expect(tabs.nth(3)).toHaveText(/Providers \(0\)/);
-    await expect(tabs.nth(4)).toHaveText(/Leases \(0\)/);
+    // The count is a `.tab__count` badge beside the label; the comma only
+    // exists in the ACCESSIBLE NAME (a visually-hidden ", "), so the visible
+    // text concatenates as "Service accounts3" while the name reads
+    // "Service accounts, 3" rather than "Service accounts (3)".
+    await expect(tabs.nth(0)).toHaveAccessibleName(/Service accounts, 3/);
+    await expect(tabs.nth(1)).toHaveAccessibleName(/Federation, 1/);
+    await expect(tabs.nth(2)).toHaveAccessibleName(/Kubernetes targets, 0/);
+    await expect(tabs.nth(3)).toHaveAccessibleName(/Providers, 0/);
+    await expect(tabs.nth(4)).toHaveAccessibleName(/Leases, 0/);
     // SSH objects are per environment, so the tab carries no project count.
     await expect(tabs.nth(5)).toHaveText('SSH certificates');
-    await expect(tabs.nth(6)).toHaveText(/Certificates \(0\)/);
+    await expect(tabs.nth(6)).toHaveAccessibleName(/Certificates, 0/);
+    await expect(tabs.nth(0).locator('.tab__count')).toHaveText('3');
 
     // The policy strip: the per-project opt-in is stated, not offered as a
     // control whose only outcome would be a refusal.
@@ -269,20 +274,19 @@ test.describe('machine access', () => {
 
   test('expanding a row shows credentials, bindings, targets and the journey below', async ({}, testInfo) => {
     const toggle = accountRow(page, seed.machine.workload);
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const panel = page.locator('.machine__sub');
+    await expect(panel).toHaveCount(0);
     await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-    const expansion = page.locator('.machine__sub');
-    await expect(expansion.getByRole('heading', { name: 'Credentials' })).toBeVisible();
-    await expect(expansion.getByRole('heading', { name: 'Federated bindings' })).toBeVisible();
-    await expect(expansion.getByRole('heading', { name: 'Delivery targets' })).toBeVisible();
-    await expect(expansion.getByRole('heading', { name: 'Setup journey' })).toBeVisible();
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Credentials' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Federated bindings' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Delivery targets' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Setup journey' })).toBeVisible();
 
     // The journey is five steps. With the project's machine-reveal opt-in off
     // (the seeded default) step 4 is the next act and step 5 says the grant
     // API refuses until it is on, in words rather than a dead control.
-    const steps = expansion.locator('.journey__step');
+    const steps = panel.locator('.journey__step');
     await expect(steps).toHaveCount(5);
     await expect(steps.nth(1)).toContainText(`read granted: development`);
     await expect(steps.nth(3)).toContainText('Enable the project machine-reveal opt-in');
@@ -291,8 +295,8 @@ test.describe('machine access', () => {
     await expect(steps.nth(4).locator('.journey__state')).toHaveText('blocked');
     await expect(steps.nth(2)).toContainText('Read grant permits configuration delivery');
     await expect(steps.nth(2)).toContainText('a successful fetch has not been verified here');
-    await expect(expansion).not.toContainText('not in this build');
-    const overflowingClaimNames = await expansion.locator('.kv dt').evaluateAll((terms) =>
+    await expect(panel).not.toContainText('not in this build');
+    const overflowingClaimNames = await panel.locator('.kv dt').evaluateAll((terms) =>
       terms.filter((term) => term.scrollWidth > term.clientWidth).map((term) => term.textContent),
     );
     expect(overflowingClaimNames, 'federation claim names must not overlap their values').toEqual([]);
@@ -302,13 +306,14 @@ test.describe('machine access', () => {
         localStorage.setItem('hikyo.theme', theme);
         window.dispatchEvent(new StorageEvent('storage', { key: 'hikyo.theme' }));
       }, colorScheme);
-      await expansion.locator('.journey').scrollIntoViewIfNeeded();
+      await panel.locator('.journey').scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`machine-journey-${colorScheme}.png`) });
     }
 
     // An automation principal has no journey at all: it never delivers to a
-    // workload.
-    await toggle.click();
+    // workload. The detail is a side panel over the inventory: close it first.
+    await panel.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(panel).toHaveCount(0);
     await accountRow(page, seed.machine.automation).click();
     await expect(page.locator('.machine__sub')).toContainText('has no setup journey');
     await expect(page.locator('.journey__step')).toHaveCount(0);
@@ -353,21 +358,21 @@ test.describe('machine access', () => {
     // And it is gone: nothing on this page can return it, which is the whole
     // point of display-once. The row shows the PREFIX HINT instead.
     await expect(page.getByText(value)).toHaveCount(0);
-    const expansion = page.locator('.machine__sub');
-    await expect(expansion.locator('.cred')).toHaveCount(1);
-    await expect(expansion.locator('.cred code')).toHaveText(/^hik_1_wl_.*…$/);
-    await expect(expansion.locator('.cred')).toContainText('expires in');
-    await expect(expansion.locator('.cred')).toContainText('never used');
+    const panel = page.locator('.machine__sub');
+    await expect(panel.locator('.cred')).toHaveCount(1);
+    await expect(panel.locator('.cred code')).toHaveText(/^hik_1_wl_.*…$/);
+    await expect(panel.locator('.cred')).toContainText('expires in');
+    await expect(panel.locator('.cred')).toContainText('never used');
     // The row shows a PREFIX, not the value: what is on screen is a strict,
     // short prefix of what was minted and nothing more.
-    const hint = ((await expansion.locator('.cred code').textContent()) ?? '').replace('…', '');
+    const hint = ((await panel.locator('.cred code').textContent()) ?? '').replace('…', '');
     expect(value.startsWith(hint), 'the row shows a prefix of the minted value').toBe(true);
     expect(hint.length, 'the hint is far shorter than the value').toBeLessThan(value.length / 2);
 
     // Reopening creates a fresh reviewing lifecycle. The disclosed component
     // above was unmounted, and its old plaintext cannot be revived by the new
     // review before another credential is deliberately submitted.
-    await expansion
+    await panel
       .getByRole('button', { name: `Mint credential for ${seed.machine.mintable}` })
       .click();
     const freshDialog = page.getByRole('dialog');
@@ -723,7 +728,7 @@ test.describe('machine access', () => {
       try {
         await page.reload();
         await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
-        // Expanded, because the expansion is most of this surface: the
+        // Opened, because the panel is most of this surface: the
         // credential rows, the binding card and the journey rail are all only
         // reachable through it.
         await accountRow(page, seed.machine.workload).click();
@@ -790,12 +795,12 @@ test.describe('machine access', () => {
     const row = accountRow(page, name);
     await expect(row).toBeVisible();
     await row.click();
-    const expansion = page.locator('.machine__sub');
+    const panel = page.locator('.machine__sub');
 
     // MINT. A fresh account reaches no plaintext, so the mint is the
     // no-passkey branch: the button reads "Mint credential", not "Use a passkey
     // and mint".
-    await expansion.getByRole('button', { name: `Mint credential for ${name}` }).click();
+    await panel.getByRole('button', { name: `Mint credential for ${name}` }).click();
     const mintDialog = page.getByRole('dialog');
     await expect(mintDialog).toContainText('reaches no plaintext');
     await mintDialog.getByRole('button', { name: 'Mint credential' }).click();
@@ -808,11 +813,11 @@ test.describe('machine access', () => {
     await mintDialog.getByRole('checkbox').check();
     await mintDialog.getByRole('button', { name: 'Done' }).click();
     await expect(mintDialog).toBeHidden();
-    await expect(expansion.locator('.cred')).toHaveCount(1);
+    await expect(panel.locator('.cred')).toHaveCount(1);
 
     // REVOKE. It bites at the next request, and the account survives it.
-    await expansion.getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
-    await expect(expansion.locator('.cred')).toHaveCount(0);
+    await panel.getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
+    await expect(panel.locator('.cred')).toHaveCount(0);
     await expect(
       page.getByRole('status').filter({ hasText: 'stops authenticating at the next request' }),
     ).toBeVisible();
@@ -820,7 +825,7 @@ test.describe('machine access', () => {
     // DELETE, behind a typed-name confirmation. The dialog states the cascade , 
     // the credentials revoked and the grants released, never a refusal, because
     // the server delete is atomic and does not refuse on dependency.
-    await expansion.getByRole('button', { name: `Delete ${name}` }).click();
+    await panel.getByRole('button', { name: `Delete ${name}` }).click();
     const deleteDialog = page.getByRole('dialog');
     await expect(deleteDialog.getByRole('heading', { level: 2 })).toHaveText(
       `Delete service account · ${name}`,
@@ -959,7 +964,7 @@ test.describe('deployment adapters', () => {
     // with one ticked key. The save opens the adapter-purpose ceremony over
     // exactly the target's environment; the code authorises it.
     await page.getByRole('button', { name: 'Add adapter' }).click();
-    const form = page.getByRole('region', { name: 'New adapter' });
+    const form = page.getByRole('complementary', { name: 'New adapter' });
     await form.getByLabel('Origin').fill(ADAPTER_ORIGIN);
     await form.getByLabel('Credential').fill('e2e-provider-token');
     await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
@@ -1020,7 +1025,7 @@ test.describe('deployment adapters', () => {
   test('keeps the GHES API base URL and requires explicit environment-create consent', async () => {
     const origin = 'https://ghes-e2e.example/api/v3';
     await page.getByRole('button', { name: 'Add adapter' }).click();
-    const form = page.getByRole('region', { name: 'New adapter' });
+    const form = page.getByRole('complementary', { name: 'New adapter' });
     await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('github-actions');
     await form.getByLabel('GitHub API base URL').fill(origin);
     await form.getByLabel('Credential').fill('e2e-github-provider-token');
@@ -1055,7 +1060,7 @@ test.describe('deployment adapters', () => {
       const key = finding === 'possible_capture' ? ADAPTER_KEY : seed.config;
       const prefix = finding === 'possible_capture' ? 'CAPTURE_' : 'MISSING_';
       await page.getByRole('button', { name: 'Add adapter' }).click();
-      const form = page.getByRole('region', { name: 'New adapter' });
+      const form = page.getByRole('complementary', { name: 'New adapter' });
       await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('github-actions');
       await form.getByLabel('GitHub API base URL').fill(origin);
       await form.getByLabel('Credential').fill(`e2e-${finding.replace('_', '-')}`);
@@ -1086,9 +1091,9 @@ test.describe('deployment adapters', () => {
         await expect(findings).toContainText(finding === 'possible_capture'
           ? 'Explicit adoption is required.'
           : 'Ownership is retained for recreation.');
-        // Reload reads the durable completed effect through the API again.
+        // Reload reads the durable completed effect through the API again;
+        // the target id is in the URL, so the side panel reopens on its own.
         await page.reload();
-        await panel.locator('.adapters__target').first().click();
         await expect(page.getByRole('list', { name: 'Sync findings' })).toContainText(finding);
       } finally {
         // Retain is the explicit safe cleanup for conflicted ownership. Each
@@ -1192,7 +1197,9 @@ test.describe('deployment adapters', () => {
     await expect(page.getByText('e2e-provider-token')).toHaveCount(0);
 
     // REPLACE the credential behind the credential-set ceremony. It is
-    // write-only: the form empties and the panel still says only "set".
+    // write-only: the form empties and the panel still says only "set". The
+    // target detail is a side panel over the page, so it closes first.
+    await detail.getByRole('button', { name: 'Close' }).click();
     await panel.getByRole('button', { name: 'Replace credential' }).click();
     const credentialForm = page.getByRole('form', { name: 'Replace credential' });
     await credentialForm.getByLabel('Credential').fill('e2e-provider-token-2');
@@ -1454,6 +1461,7 @@ test.describe('browser-only lifecycle', () => {
       await establishSession(page);
       await page.goto('/instance');
       await expect(page.getByRole('heading', { name: 'Instance settings', level: 1 })).toBeVisible();
+      await page.getByRole('tab', { name: 'Organisations' }).click();
       await page.getByRole('button', { name: 'Open create organisation form' }).click();
       await page.getByLabel('New organisation name').fill(orgName);
       const org = await captureCreated(page, '/api/v1/orgs', zOrg, async () => {
@@ -1489,7 +1497,7 @@ test.describe('browser-only lifecycle', () => {
       // 3. ENVIRONMENTS, from project settings.
       const base = `/orgs/${org.id}/projects/${project.id}`;
       const api = `/api/v1/orgs/${org.id}/projects/${project.id}`;
-      await page.goto(`${base}/settings`);
+      await page.goto(`${base}/settings?tab=environments`);
       const environments: Record<string, string> = {};
       for (const name of ['development', 'production']) {
         await page.getByLabel('New environment name').fill(name);
@@ -1508,7 +1516,7 @@ test.describe('browser-only lifecycle', () => {
       await page.goto(`${base}/matrix`);
       await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
       const declare = async (name: string, value: string, secret: boolean) => {
-        await page.getByRole('button', { name: '+ New key' }).click();
+        await page.getByRole('button', { name: 'New key' }).click();
         const modal = page.getByRole('dialog');
         await modal.getByLabel('Group').fill('app');
         await modal.getByLabel('Key name').fill(name);
@@ -1585,9 +1593,9 @@ test.describe('browser-only lifecycle', () => {
       await expect(createDialog).toBeHidden();
       const row = accountRow(page, accountName);
       await row.click();
-      const expansion = page.locator('.machine__sub');
+      const accountPanel = page.locator('.machine__sub');
       const mint = async (): Promise<string> => {
-        await expansion.getByRole('button', { name: `Mint credential for ${accountName}` }).click();
+        await accountPanel.getByRole('button', { name: `Mint credential for ${accountName}` }).click();
         const dialog = page.getByRole('dialog');
         await dialog.getByRole('button', { name: /Mint credential|Use a passkey and mint/ }).click();
         await expect(dialog.locator('.machine__token')).toHaveText(/^hik_1_wl_/);
@@ -1598,7 +1606,7 @@ test.describe('browser-only lifecycle', () => {
         return token;
       };
       const firstToken = await mint();
-      await expansion.getByRole('button', { name: `Add environment grant to ${accountName}` }).click();
+      await accountPanel.getByRole('button', { name: `Add environment grant to ${accountName}` }).click();
       const grant = page.getByRole('dialog');
       await expect(grant).toContainText('1 live credential');
       await grant.locator('#grant-environment').selectOption(dev);
@@ -1673,7 +1681,7 @@ test.describe('browser-only lifecycle', () => {
       // to Healthy against the --dev fake provider; health is read in place.
       await page.goto(`${base}/adapters`);
       await page.getByRole('button', { name: 'Add adapter' }).click();
-      const adapterForm = page.getByRole('region', { name: 'New adapter' });
+      const adapterForm = page.getByRole('complementary', { name: 'New adapter' });
       const origin = `https://forgejo-lifecycle-${tag}.example`;
       await adapterForm.getByLabel('Origin').fill(origin);
       await adapterForm.getByLabel('Credential').fill('lifecycle-provider-token');
@@ -1707,8 +1715,8 @@ test.describe('browser-only lifecycle', () => {
       // refused at the very next fetch; the new one delivers.
       await page.goto(`${base}/machine-access`);
       await accountRow(page, accountName).click();
-      await expansion.getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
-      await expect(expansion.locator('.cred')).toHaveCount(0);
+      await accountPanel.getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
+      await expect(accountPanel.locator('.cred')).toHaveCount(0);
       expect((await fetchAs(firstToken)).status()).toBe(401);
       const secondToken = await mint();
       expect(secondToken === firstToken, 'the re-mint returned the revoked value').toBe(false);
@@ -1731,20 +1739,16 @@ test.describe('browser-only lifecycle', () => {
       await expect(drawer).toBeVisible();
       // The drawer opens while the revision list is still loading, and
       // evaluateAll does not wait: read the rows only once the list renders.
-      await expect(drawer.getByRole('list', { name: 'Revisions, newest first' })).toBeVisible();
+      await expect(drawer.getByRole('combobox', { name: 'Revision' })).toBeVisible();
       const revisions = await drawer.locator('[data-history-revision]').evaluateAll((nodes) =>
         nodes.map((node) => Number(node.getAttribute('data-history-revision'))),
       );
       // The earliest revision that changed LOG_LEVEL is the one that set it to
       // `info`; an environment may open with an empty revision before it.
-      const restoreKey = drawer.getByRole('button', { name: 'Restore LOG_LEVEL…' });
+      const restoreKey = drawer.getByRole('button', { name: /^Restore LOG_LEVEL to r\d+$/ });
       for (const revision of [...revisions].sort((a, b) => a - b)) {
-        const back = page.locator('#history-detail-back');
-        if (await back.isVisible()) {
-          await back.click();
-        }
-        await drawer.locator(`[data-history-revision="${String(revision)}"]`).click();
-        await expect(page.locator('#history-detail-title')).toContainText(`r${String(revision)}`);
+        await page.locator('#history-revision').selectOption(String(revision));
+        await expect(page.locator('#history-revision')).toHaveValue(String(revision));
         if ((await restoreKey.count()) > 0) {
           break;
         }

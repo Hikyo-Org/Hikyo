@@ -23,8 +23,13 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
+import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyRequest } from './Ceremony.tsx';
-import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
+import { duration } from '../app/duration.ts';
+import { Sep } from '../ui/Sep.tsx';
 
 /**
  * Temporary access (#152): approval-mediated, time-bound access to one
@@ -38,13 +43,6 @@ import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 function when(value: string | undefined): string {
   if (value === undefined) return '-';
   return formatWhen(value);
-}
-
-/** A duration in seconds as the largest whole unit a human reads. */
-export function duration(seconds: number): string {
-  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
-  if (seconds % 60 === 0) return `${seconds / 60}m`;
-  return `${seconds}s`;
 }
 
 /** Returns a caller-safe refusal message for known API statuses, or a generic failure message. */
@@ -283,333 +281,356 @@ function ScopedTemporaryAccess({ org, project }: { org: string; project: string 
         every session and device, and can be revoked earlier.
       </p>
 
-      <JumpIndex
+      <SectionTabs
+        label="Temporary access sections"
+        idPrefix="ta"
         sections={[
-          { id: 'ta-requests', label: 'Requests' },
-          { id: 'ta-policies', label: 'Policies' },
+          { id: 'ta-requests', label: 'Requests', content: (
+            <Panel id="ta-requests" title="Requests">
+              <label htmlFor="ta-env">Environment</label>
+              <select
+                id="ta-env"
+                value={selectedEnv}
+                disabled={checkingWindow || action.isPending || ceremony !== null}
+                onChange={(event) => {
+                  setCeremony(null);
+                  setSelectedEnv(event.target.value);
+                }}
+              >
+                <option value="">Choose an environment</option>
+                {envItems.map((env) => (
+                  <option key={env.id} value={env.id}>
+                    {env.name}
+                  </option>
+                ))}
+              </select>
+
+              {actionError === null ? null : <Alert>{actionError}</Alert>}
+              {notice === null ? null : <p role="status">{notice}</p>}
+
+              {selectedEnv === '' ? <p role="status">Choose an environment to request access or review requests.</p> : null}
+              {selectedEnv !== '' && queue.isPending ? <p role="status">Loading requests…</p> : null}
+              {selectedEnv !== '' && queue.isError ? <Alert>{refusal(queue.error)}</Alert> : null}
+
+              {selectedEnv !== '' && queue.isSuccess && offer === undefined ? (
+                <p role="status">No access policy covers this environment, so nothing can be requested here.</p>
+              ) : null}
+              {offer !== undefined && !offer.enabled ? (
+                <p role="status">The access policy for this environment is disabled. New requests are refused.</p>
+              ) : null}
+
+              {offer !== undefined && offer.enabled ? (
+                <form
+                  className="temporary-access__form panel"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitRequest();
+                  }}
+                >
+                  <h3>Request access to {envName}</h3>
+                  <ChoiceGroup legend="Capabilities" layout="wrap">
+                    {offer.capabilities.map((capability) => (
+                      <Checkbox
+                        key={capability}
+                        label={<CapabilityTag id={capability} />}
+                        checked={requested.includes(capability)}
+                        onChange={(event) => setRequested(toggle(requested, capability, event.target.checked))}
+                      />
+                    ))}
+                  </ChoiceGroup>
+                  <label htmlFor="ta-hours">Duration (hours, at most {duration(offer.max_duration_seconds)})</label>
+                  <input
+                    id="ta-hours"
+                    type="number"
+                    min={0.25}
+                    step={0.25}
+                    max={offer.max_duration_seconds / 3600}
+                    value={requestHours}
+                    onChange={(event) => setRequestHours(Number(event.target.value))}
+                  />
+                  <label htmlFor="ta-reason">Reason</label>
+                  <textarea id="ta-reason" rows={2} maxLength={512} value={reason} onChange={(event) => setReason(event.target.value)} />
+                  <p className="field__hint">
+                    {offer.min_approvals === 1 ? 'One approval is' : `${offer.min_approvals} approvals are`} required.
+                    The request cannot be changed once submitted.
+                  </p>
+                  <div className="actions">
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      disabled={action.isPending || offered.length === 0 || reason.trim() === '' || !(requestHours > 0)}
+                    >
+                      Request access
+                    </Button>
+                  </div>
+                  {offer.caller_may_bypass ? (
+                    <div className="temporary-access__emergency">
+                      <label htmlFor="ta-emergency-reason">Emergency reason</label>
+                      <input
+                        id="ta-emergency-reason"
+                        type="text"
+                        maxLength={512}
+                        value={emergencyReason}
+                        onChange={(event) => setEmergencyReason(event.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="danger"
+                        disabled={
+                          action.isPending || checkingWindow || ceremony !== null || offered.length === 0 || emergencyReason.trim() === ''
+                        }
+                        onClick={() => void takeEmergency()}
+                      >
+                        Take emergency access
+                      </Button>
+                      <p className="field__hint">
+                        Emergency access skips the approvals, requires you to re-authenticate, lasts at most one
+                        hour by default, and is recorded as a high-signal audit event.
+                      </p>
+                    </div>
+                  ) : null}
+                </form>
+              ) : null}
+
+              {selectedEnv !== '' && queue.isSuccess && queue.data.items.length === 0 ? (
+                <p role="status">No access requests in this environment.</p>
+              ) : null}
+              {selectedEnv !== '' && queue.isSuccess && queue.data.items.length > 0 ? (
+                <ul className="temporary-access__requests" aria-label="Access requests">
+                  {queue.data.items.map((request) => (
+                    <AccessRequestRow
+                      key={request.id}
+                      request={request}
+                      mine={request.requester === me}
+                      busy={action.isPending}
+                      onAct={(kind) => {
+                        start();
+                        const messages = {
+                          approve: 'Vote recorded.',
+                          reject: 'Request rejected.',
+                          cancel: 'Request withdrawn.',
+                          revoke: 'Access revoked. It ended immediately.',
+                        };
+                        action.mutate({ kind, request: request.id }, done(messages[kind]));
+                      }}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+            </Panel>
+          ) },
+
+          { id: 'ta-policies', label: 'Policies', content: (
+            <Panel id="ta-policies" title="Policies">
+              {policies.isPending ? <p role="status">Loading policies…</p> : null}
+              {policies.isError ? (
+                <p role="status">Access policies are administered by project member managers.</p>
+              ) : null}
+              {isManager ? (
+                <div className="temporary-access__section-head">
+                  <Button type="button" onClick={() => openEditor(null)}>
+                    New access policy
+                  </Button>
+                </div>
+              ) : null}
+              {isManager && policies.data.items.length === 0 ? (
+                <p>No access policies. Nothing is requestable in this project yet.</p>
+              ) : null}
+              {isManager && policies.data.items.length > 0 ? (
+                <div className="table-scroll">
+                <table className="temporary-access__policies">
+                  <thead>
+                    <tr>
+                      <th>Environment</th>
+                      <th>Capabilities</th>
+                      <th>Longest</th>
+                      <th>Approvals</th>
+                      <th>State</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {policies.data.items.map((policy) => (
+                      <tr key={policy.id}>
+                        <td>
+                          {policy.environment_id === ''
+                            ? 'All environments'
+                            : envItems.find((e) => e.id === policy.environment_id)?.name ?? policy.environment_id}
+                        </td>
+                        <td>
+                          <span className="capability-tags">
+                            {policy.capabilities.map((capability) => (
+                              <CapabilityTag key={capability} id={capability} />
+                            ))}
+                          </span>
+                        </td>
+                        <td>{duration(policy.max_duration_seconds)}</td>
+                        <td>{policy.min_approvals}</td>
+                        <td>{policy.enabled ? 'enabled' : 'disabled'}</td>
+                        <td>
+                          <div className="actions">
+                            <Button type="button" onClick={() => openEditor(policy)}>
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              disabled={deletePolicy.isPending}
+                              onClick={() => {
+                                setActionError(null);
+                                setDeletingPolicy({
+                                  id: policy.id,
+                                  name: policy.environment_id === ''
+                                    ? 'All environments'
+                                    : envItems.find((environment) => environment.id === policy.environment_id)?.name ?? policy.environment_id,
+                                });
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              ) : null}
+
+              {deletingPolicy === null ? null : (
+                <SidePanel
+                  title="Delete access policy"
+                  onClose={() => setDeletingPolicy(null)}
+                >
+                  {actionError === null ? null : <Alert>{actionError}</Alert>}
+                  <TypedNameConfirm
+                    key={deletingPolicy.id}
+                    label="Confirm the policy scope"
+                    expect={deletingPolicy.name}
+                    action="Delete policy"
+                    busy={deletePolicy.isPending}
+                    hint={
+                      <>
+                        Delete the access policy for {deletingPolicy.name}. Open requests will no longer be approvable;
+                        already granted access keeps its expiry. Type {deletingPolicy.name} to confirm.
+                      </>
+                    }
+                    onConfirm={() => {
+                      setActionError(null);
+                      deletePolicy.mutate(deletingPolicy.id, {
+                        onSuccess: () => setDeletingPolicy(null),
+                        onError: (error) => setActionError(refusal(error)),
+                      });
+                    }}
+                  />
+                  <div className="actions">
+                    <Button type="button" disabled={deletePolicy.isPending} onClick={() => setDeletingPolicy(null)}>
+                      Cancel deletion
+                    </Button>
+                  </div>
+                </SidePanel>
+              )}
+              {formOpen ? (
+                <SidePanel
+                  title={editingId === null ? 'New access policy' : 'Edit access policy'}
+                  onClose={() => setFormOpen(false)}
+                >
+                  {actionError === null ? null : <Alert>{actionError}</Alert>}
+                  <form
+                    className="form"
+                    aria-label={editingId === null ? 'New access policy' : 'Edit access policy'}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submitPolicy();
+                    }}
+                  >
+                    <label htmlFor="ta-policy-env">Environment</label>
+                    <select
+                      id="ta-policy-env"
+                      value={draft.environmentId}
+                      disabled={editingId !== null}
+                      onChange={(event) => setDraft({ ...draft, environmentId: event.target.value })}
+                    >
+                      <option value="">All environments in the project</option>
+                      {envItems.map((env) => (
+                        <option key={env.id} value={env.id}>
+                          {env.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChoiceGroup legend="Requestable capabilities" layout="wrap">
+                      {ACCESS_CAPABILITIES.map((capability) => (
+                        <Checkbox
+                          key={capability}
+                          label={<CapabilityTag id={capability} />}
+                          checked={draft.capabilities.includes(capability)}
+                          onChange={(event) =>
+                            setDraft({ ...draft, capabilities: toggle(draft.capabilities, capability, event.target.checked) })
+                          }
+                        />
+                      ))}
+                    </ChoiceGroup>
+                    <label htmlFor="ta-max">Longest access (hours)</label>
+                    <input
+                      id="ta-max"
+                      type="number"
+                      min={1}
+                      value={Math.round(draft.maxDurationSeconds / 3600)}
+                      onChange={(event) =>
+                        setDraft({ ...draft, maxDurationSeconds: Math.max(1, Number(event.target.value)) * 3600 })
+                      }
+                    />
+                    <label htmlFor="ta-min">Approvals required</label>
+                    <input
+                      id="ta-min"
+                      type="number"
+                      min={1}
+                      value={draft.minApprovals}
+                      onChange={(event) => setDraft({ ...draft, minApprovals: Number(event.target.value) })}
+                    />
+                    <label htmlFor="ta-ttl">Review window (hours)</label>
+                    <input
+                      id="ta-ttl"
+                      type="number"
+                      min={1}
+                      value={Math.round(draft.requestTtlSeconds / 3600)}
+                      onChange={(event) =>
+                        setDraft({ ...draft, requestTtlSeconds: Math.max(1, Number(event.target.value)) * 3600 })
+                      }
+                    />
+                    <Checkbox
+                      label="Allow the requester to approve their own request"
+                      checked={draft.allowSelfApproval}
+                      onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
+                    />
+                    <Checkbox
+                      label="Enabled"
+                      checked={draft.enabled}
+                      onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+                    />
+                    <label htmlFor="ta-approvers">Approver IDs (one per line, or group:groupId:bindingId)</label>
+                    <textarea id="ta-approvers" rows={3} value={approversText} onChange={(event) => setApproversText(event.target.value)} />
+                    <label htmlFor="ta-bypassers">Emergency-access principal IDs (one per line)</label>
+                    <textarea id="ta-bypassers" rows={2} value={bypassersText} onChange={(event) => setBypassersText(event.target.value)} />
+                    <p className="field__hint">
+                      An approver can approve only capabilities they could grant themselves. This page cannot search
+                      the user directory; enter exact principal IDs.
+                    </p>
+                    <div className="actions">
+                      <Button type="submit" variant="primary" disabled={savePolicy.isPending}>
+                        {savePolicy.isPending ? 'Saving…' : 'Save policy'}
+                      </Button>
+                      <Button type="button" onClick={() => setFormOpen(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </SidePanel>
+              ) : null}
+            </Panel>
+          ) },
         ]}
       />
-
-      <Panel id="ta-requests" title="Requests">
-        <label htmlFor="ta-env">Environment</label>
-        <select
-          id="ta-env"
-          value={selectedEnv}
-          disabled={checkingWindow || action.isPending || ceremony !== null}
-          onChange={(event) => {
-            setCeremony(null);
-            setSelectedEnv(event.target.value);
-          }}
-        >
-          <option value="">Choose an environment</option>
-          {envItems.map((env) => (
-            <option key={env.id} value={env.id}>
-              {env.name}
-            </option>
-          ))}
-        </select>
-
-        {actionError === null ? null : <Alert>{actionError}</Alert>}
-        {notice === null ? null : <p role="status">{notice}</p>}
-
-        {selectedEnv === '' ? <p role="status">Choose an environment to request access or review requests.</p> : null}
-        {selectedEnv !== '' && queue.isPending ? <p role="status">Loading requests…</p> : null}
-        {selectedEnv !== '' && queue.isError ? <Alert>{refusal(queue.error)}</Alert> : null}
-
-        {selectedEnv !== '' && queue.isSuccess && offer === undefined ? (
-          <p role="status">No access policy covers this environment, so nothing can be requested here.</p>
-        ) : null}
-        {offer !== undefined && !offer.enabled ? (
-          <p role="status">The access policy for this environment is disabled. New requests are refused.</p>
-        ) : null}
-
-        {offer !== undefined && offer.enabled ? (
-          <form
-            className="temporary-access__form panel"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitRequest();
-            }}
-          >
-            <h3>Request access to {envName}</h3>
-            <fieldset>
-              <legend>Capabilities</legend>
-              {offer.capabilities.map((capability) => (
-                <Checkbox
-                  key={capability}
-                  label={capability}
-                  checked={requested.includes(capability)}
-                  onChange={(event) => setRequested(toggle(requested, capability, event.target.checked))}
-                />
-              ))}
-            </fieldset>
-            <label htmlFor="ta-hours">Duration (hours, at most {duration(offer.max_duration_seconds)})</label>
-            <input
-              id="ta-hours"
-              type="number"
-              min={0.25}
-              step={0.25}
-              max={offer.max_duration_seconds / 3600}
-              value={requestHours}
-              onChange={(event) => setRequestHours(Number(event.target.value))}
-            />
-            <label htmlFor="ta-reason">Reason</label>
-            <textarea id="ta-reason" rows={2} maxLength={512} value={reason} onChange={(event) => setReason(event.target.value)} />
-            <p className="field__hint">
-              {offer.min_approvals === 1 ? 'One approval is' : `${offer.min_approvals} approvals are`} required.
-              The request cannot be changed once submitted.
-            </p>
-            <div className="temporary-access__form-actions">
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={action.isPending || offered.length === 0 || reason.trim() === '' || !(requestHours > 0)}
-              >
-                Request access
-              </Button>
-            </div>
-            {offer.caller_may_bypass ? (
-              <div className="temporary-access__emergency">
-                <label htmlFor="ta-emergency-reason">Emergency reason</label>
-                <input
-                  id="ta-emergency-reason"
-                  type="text"
-                  maxLength={512}
-                  value={emergencyReason}
-                  onChange={(event) => setEmergencyReason(event.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="danger"
-                  disabled={
-                    action.isPending || checkingWindow || ceremony !== null || offered.length === 0 || emergencyReason.trim() === ''
-                  }
-                  onClick={() => void takeEmergency()}
-                >
-                  Take emergency access
-                </Button>
-                <p className="field__hint">
-                  Emergency access skips the approvals, requires you to re-authenticate, lasts at most one
-                  hour by default, and is recorded as a high-signal audit event.
-                </p>
-              </div>
-            ) : null}
-          </form>
-        ) : null}
-
-        {selectedEnv !== '' && queue.isSuccess && queue.data.items.length === 0 ? (
-          <p role="status">No access requests in this environment.</p>
-        ) : null}
-        {selectedEnv !== '' && queue.isSuccess && queue.data.items.length > 0 ? (
-          <ul className="temporary-access__requests" aria-label="Access requests">
-            {queue.data.items.map((request) => (
-              <AccessRequestRow
-                key={request.id}
-                request={request}
-                mine={request.requester === me}
-                busy={action.isPending}
-                onAct={(kind) => {
-                  start();
-                  const messages = {
-                    approve: 'Vote recorded.',
-                    reject: 'Request rejected.',
-                    cancel: 'Request withdrawn.',
-                    revoke: 'Access revoked. It ended immediately.',
-                  };
-                  action.mutate({ kind, request: request.id }, done(messages[kind]));
-                }}
-              />
-            ))}
-          </ul>
-        ) : null}
-      </Panel>
-
-      <Panel id="ta-policies" title="Policies">
-        {policies.isPending ? <p role="status">Loading policies…</p> : null}
-        {policies.isError ? (
-          <p role="status">Access policies are administered by project member managers.</p>
-        ) : null}
-        {isManager ? (
-          <div className="temporary-access__section-head">
-            <Button type="button" onClick={() => openEditor(null)}>
-              New access policy
-            </Button>
-          </div>
-        ) : null}
-        {isManager && policies.data.items.length === 0 ? (
-          <p>No access policies. Nothing is requestable in this project yet.</p>
-        ) : null}
-        {isManager && policies.data.items.length > 0 ? (
-          <table className="temporary-access__policies">
-            <thead>
-              <tr>
-                <th>Environment</th>
-                <th>Capabilities</th>
-                <th>Longest</th>
-                <th>Approvals</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {policies.data.items.map((policy) => (
-                <tr key={policy.id}>
-                  <td>
-                    {policy.environment_id === ''
-                      ? 'All environments'
-                      : envItems.find((e) => e.id === policy.environment_id)?.name ?? policy.environment_id}
-                  </td>
-                  <td>{policy.capabilities.join(', ')}</td>
-                  <td>{duration(policy.max_duration_seconds)}</td>
-                  <td>{policy.min_approvals}</td>
-                  <td>{policy.enabled ? 'enabled' : 'disabled'}</td>
-                  <td>
-                    <Button type="button" onClick={() => openEditor(policy)}>
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      disabled={deletePolicy.isPending}
-                      onClick={() => {
-                        setActionError(null);
-                        setDeletingPolicy({
-                          id: policy.id,
-                          name: policy.environment_id === ''
-                            ? 'All environments'
-                            : envItems.find((environment) => environment.id === policy.environment_id)?.name ?? policy.environment_id,
-                        });
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null}
-
-        {deletingPolicy === null ? null : (
-          <div>
-            <TypedNameConfirm
-              key={deletingPolicy.id}
-              label="Confirm the policy scope"
-              expect={deletingPolicy.name}
-              action="Delete policy"
-              busy={deletePolicy.isPending}
-              hint={
-                <>
-                  Delete the access policy for {deletingPolicy.name}. Open requests will no longer be approvable;
-                  already granted access keeps its expiry. Type {deletingPolicy.name} to confirm.
-                </>
-              }
-              onConfirm={() => {
-                setActionError(null);
-                deletePolicy.mutate(deletingPolicy.id, {
-                  onSuccess: () => setDeletingPolicy(null),
-                  onError: (error) => setActionError(refusal(error)),
-                });
-              }}
-            />
-            <Button type="button" disabled={deletePolicy.isPending} onClick={() => setDeletingPolicy(null)}>
-              Cancel deletion
-            </Button>
-          </div>
-        )}
-        {formOpen ? (
-          <form
-            className="temporary-access__form panel"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitPolicy();
-            }}
-          >
-            <h3>{editingId === null ? 'New access policy' : 'Edit access policy'}</h3>
-            <label htmlFor="ta-policy-env">Environment</label>
-            <select
-              id="ta-policy-env"
-              value={draft.environmentId}
-              disabled={editingId !== null}
-              onChange={(event) => setDraft({ ...draft, environmentId: event.target.value })}
-            >
-              <option value="">All environments in the project</option>
-              {envItems.map((env) => (
-                <option key={env.id} value={env.id}>
-                  {env.name}
-                </option>
-              ))}
-            </select>
-            <fieldset>
-              <legend>Requestable capabilities</legend>
-              {ACCESS_CAPABILITIES.map((capability) => (
-                <Checkbox
-                  key={capability}
-                  label={capability}
-                  checked={draft.capabilities.includes(capability)}
-                  onChange={(event) =>
-                    setDraft({ ...draft, capabilities: toggle(draft.capabilities, capability, event.target.checked) })
-                  }
-                />
-              ))}
-            </fieldset>
-            <label htmlFor="ta-max">Longest access (hours)</label>
-            <input
-              id="ta-max"
-              type="number"
-              min={1}
-              value={Math.round(draft.maxDurationSeconds / 3600)}
-              onChange={(event) =>
-                setDraft({ ...draft, maxDurationSeconds: Math.max(1, Number(event.target.value)) * 3600 })
-              }
-            />
-            <label htmlFor="ta-min">Approvals required</label>
-            <input
-              id="ta-min"
-              type="number"
-              min={1}
-              value={draft.minApprovals}
-              onChange={(event) => setDraft({ ...draft, minApprovals: Number(event.target.value) })}
-            />
-            <label htmlFor="ta-ttl">Review window (hours)</label>
-            <input
-              id="ta-ttl"
-              type="number"
-              min={1}
-              value={Math.round(draft.requestTtlSeconds / 3600)}
-              onChange={(event) =>
-                setDraft({ ...draft, requestTtlSeconds: Math.max(1, Number(event.target.value)) * 3600 })
-              }
-            />
-            <Checkbox
-              label="Allow the requester to approve their own request"
-              checked={draft.allowSelfApproval}
-              onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
-            />
-            <Checkbox
-              label="Enabled"
-              checked={draft.enabled}
-              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-            />
-            <label htmlFor="ta-approvers">Approver IDs (one per line, or group:groupId:bindingId)</label>
-            <textarea id="ta-approvers" rows={3} value={approversText} onChange={(event) => setApproversText(event.target.value)} />
-            <label htmlFor="ta-bypassers">Emergency-access principal IDs (one per line)</label>
-            <textarea id="ta-bypassers" rows={2} value={bypassersText} onChange={(event) => setBypassersText(event.target.value)} />
-            <p className="field__hint">
-              An approver can approve only capabilities they could grant themselves. This page cannot search
-              the user directory; enter exact principal IDs.
-            </p>
-            <div className="temporary-access__form-actions">
-              <Button type="submit" variant="primary" disabled={savePolicy.isPending}>
-                {savePolicy.isPending ? 'Saving…' : 'Save policy'}
-              </Button>
-              <Button type="button" onClick={() => setFormOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </Panel>
 
       {ceremony === null ? null : (
         <Ceremony
@@ -649,7 +670,7 @@ function AccessRequestRow({
         <span className="mono">{request.id}</span>
         <span className="temporary-access__request-state">
           {state}
-          {request.state === 'open' ? ` · ${request.approvals}/${request.min_approvals} approvals` : ''}
+          {request.state === 'open' ? <><Sep />{`${request.approvals}/${request.min_approvals} approvals`}</> : null}
         </span>
       </div>
       <dl className="temporary-access__request-meta">
@@ -659,7 +680,13 @@ function AccessRequestRow({
         </div>
         <div>
           <dt>Capabilities</dt>
-          <dd>{request.capabilities.join(', ')}</dd>
+          <dd>
+            <span className="capability-tags">
+              {request.capabilities.map((capability) => (
+                <CapabilityTag key={capability} id={capability} />
+              ))}
+            </span>
+          </dd>
         </div>
         <div>
           <dt>Duration</dt>
@@ -692,7 +719,7 @@ function AccessRequestRow({
         </ul>
       ) : null}
       {request.state === 'open' || request.state === 'granted' ? (
-        <div className="temporary-access__request-actions">
+        <div className="actions">
           {request.state === 'open' && request.can_approve === true ? (
             <Button type="button" disabled={busy} onClick={() => onAct('approve')}>
               Approve

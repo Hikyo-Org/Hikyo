@@ -60,6 +60,7 @@ async function allowOrigin(page: Page): Promise<void> {
   await expect(allowed.or(empty)).toBeVisible();
   if (await allowed.isVisible()) return;
 
+  await page.getByRole('button', { name: 'Allow an origin' }).click();
   await page.getByRole('textbox', { name: 'Origin' }).fill(VIEWING_ORIGIN);
   await page.getByRole('button', { name: 'Allow origin' }).click();
   await expect(allowed).toBeVisible();
@@ -218,6 +219,7 @@ test.describe('multi-instance', () => {
     const peer = await playwright.request.newContext();
     const directory = `${BASE_URL_B}/api/v1/instance/directory`;
     try {
+      await section.getByRole('button', { name: 'Mint a credential' }).click();
       await section.getByLabel('Label').fill(label);
       await section.getByRole('button', { name: 'Mint credential' }).click();
 
@@ -427,7 +429,7 @@ test.describe('multi-instance', () => {
 
     // The workspace session appears in the REMOTE'S own list as its own
     // artifact type, carrying the origin it was issued to, criterion 5.
-    await onB(b, '/settings');
+    await onB(b, '/settings?tab=sessions');
     const workspaceRow = b.locator('.session').filter({ hasText: 'workspace' });
     await expect(workspaceRow).toBeVisible();
     await expect(workspaceRow).toContainText(VIEWING_ORIGIN);

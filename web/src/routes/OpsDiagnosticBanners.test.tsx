@@ -42,10 +42,10 @@ describe('OpsDiagnosticBanners', () => {
       'warn',
       'error',
     ]);
-    expect(alerts.map((alert) => alert.querySelector('.alert__glyph')?.textContent)).toEqual([
-      '?',
-      '!',
-      '!',
+    expect(alerts.map((alert) => alert.querySelector('.alert__glyph')?.getAttribute('data-glyph'))).toEqual([
+      'question',
+      'warn',
+      'warn',
     ]);
     expect(alerts[0]?.textContent).toContain('Unmeasured: Check storage on the remote database host.');
     expect(alerts[1]?.textContent).toContain('Warning: Verify <current> root escrow.');

@@ -36,6 +36,9 @@ it('clears refused SCIM proof and retries once with freshly entered input', asyn
   mocks.mint.mockRejectedValue(new ApiError(400, 'bad_request'));
   const view = await renderForm(<MemoryRouter initialEntries={['/?binding=binding']}><ScimProvisioning /></MemoryRouter>);
   try {
+    // The mint form opens in the side panel from its button.
+    const open = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Mint a credential');
+    await act(async () => open?.click());
     const proof = view.container.querySelector<HTMLInputElement>('#scim-proof');
     if (proof === null) throw new Error('SCIM proof input missing');
     const form = proof.closest('form');

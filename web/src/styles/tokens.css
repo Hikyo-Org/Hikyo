@@ -41,6 +41,15 @@
   --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
   --danger-soft: color-mix(in oklch, var(--danger) 14%, transparent);
   --changed-soft: color-mix(in oklch, var(--changed) 14%, transparent);
+  /* The neutral tag's fill: the dim ink washed the same way, so a neutral tag
+     is still a filled shape on any surface, a hovered row included. */
+  --neutral-soft: color-mix(in oklch, var(--tx-dim) 14%, transparent);
+
+  /* The secondary and quiet button: boundary and label pulled toward the
+     accent, so a button never reads as one more bordered row or card. Both
+     move away from the paper in either theme, so contrast only rises. */
+  --btn-line: color-mix(in oklch, var(--line), var(--accent) 45%);
+  --btn-tx: color-mix(in oklch, var(--tx), var(--accent) 25%);
 
   /* Shape, radius carries a role (DESIGN.md, app-chrome iteration 8). */
   --radius-container: 6px;
@@ -61,7 +70,8 @@
   /* Control height, ONE token for every button (quiet included), input,
      select, tab, menu row, summary, chip and control-shaped link: no surface
      and no variant overrides it (decided 2026-09-16). The touch floor on a
-     coarse pointer, below. */
+     coarse pointer, below. The compact button (matrix column header only) is
+     `--hit-min` tall on a fine pointer (DESIGN.md, Buttons). */
   --control: 36px;
   /* Badges and chips-as-labels: the one height under the compact tier. */
   --badge-height: 20px;
@@ -82,6 +92,8 @@
   --fs-lg: 16px;
   --fs-xl: 20px;
   --fs-mono: 13px;
+  /* The inline separator dot (ui/Sep): relative, so it scales with its text. */
+  --sep-scale: 1.25em;
   --tracking-eyebrow: 0.06em;
 
   /* Spacing scale, 4-based. Gaps and paddings are one of these, never a
@@ -96,10 +108,17 @@
   /* Measures: dialog widths and the prose line length. */
   --width-dialog: 520px;
   --width-dialog-wide: 760px;
+  /* The narrowest the side panel may get before it gives up its gutter. */
+  --width-side-panel-min: 640px;
   --measure: 68ch;
+  /* An identifier chip (a mono origin badge) before it ellipsises, so a row
+     of them never drives a table wider than the page column. */
+  --chip-id-max: 17ch;
 
-  /* Shadows only on modal overlays (DESIGN.md). */
+  /* Shadows only on surfaces floating over the page (DESIGN.md). */
   --overlay-shadow: 0 14px 42px oklch(0 0 0 / 45%);
+  /* The dim layer under a modal surface: a dialog backdrop, the side panel and the phone drawer. */
+  --scrim: oklch(0 0 0 / 55%);
 
   /* Focus: one ring on every control, never removed; the OS repaints it
      under forced colours. Disabled: one opacity, named in the cursor too. */
@@ -116,6 +135,9 @@
   /* Icon box: glyphs are one em of the text they sit in; a standalone icon
      control draws at this size inside its control box. */
   --icon: 16px;
+  /* An icon-only button's glyph, about half its own square: ~18px in the
+     36px control, ~22px in the 44px touch floor, tracking `--control`. */
+  --icon-in-button: calc(var(--control) * 0.5);
 
   /* Layers, named so no surface invents a z-index: chrome (rail, sidebar,
      sticky headers), sticky in-content bars, drawers, and the top-layer
@@ -124,10 +146,27 @@
   --z-sticky: 20;
   --z-drawer: 30;
   --z-overlay: 40;
+  /* Behind the shell's content: the sand and the main column's veil. */
+  --z-backdrop: -1;
 
   /* Motion: ease-out-quart. */
   --ease: cubic-bezier(0.25, 1, 0.5, 1);
   --dur: 180ms;
+
+  /* Raked sand behind the shell, ported from the site's atmosphere
+     (docs/site/src/styles/landing.css). Groove colour: the logo navy, lifted. */
+  --rake: oklch(0.48 0.05 258);
+  /* Sub-pixel ramp per groove edge: gradients get no supersampling. */
+  --rake-aa: 0.75px;
+  /* Softer than the site's 0.4: the strokes read as a texture, not lines. */
+  --rake-opacity: 0.28;
+  /* The main column's veil over the sand: a translucent page wash plus a
+     blur, so grooves soften behind text instead of crossing it. */
+  --veil: color-mix(in oklch, var(--bg) 50%, transparent);
+  --veil-blur: 2px;
+  /* How far the veil reaches past the content column's box. The well clips
+     it at the header and the sidebar, so it starts flush under the header. */
+  --veil-gutter: calc(2 * var(--space-5));
 }
 
 /* Light is fully supported and switchable; `prefers-color-scheme` decides
@@ -151,6 +190,8 @@
     --accent-soft: color-mix(in oklch, var(--accent) 10%, transparent);
     --danger-soft: color-mix(in oklch, var(--danger) 10%, transparent);
     --changed-soft: color-mix(in oklch, var(--changed) 12%, transparent);
+    --neutral-soft: color-mix(in oklch, var(--tx-dim) 10%, transparent);
+    --rake: oklch(0.7 0.05 258);
   }
 }
 
@@ -173,6 +214,9 @@
   --accent-soft: color-mix(in oklch, var(--accent) 10%, transparent);
   --danger-soft: color-mix(in oklch, var(--danger) 10%, transparent);
   --changed-soft: color-mix(in oklch, var(--changed) 12%, transparent);
+  --neutral-soft: color-mix(in oklch, var(--tx-dim) 10%, transparent);
+  /* Same navy on paper. */
+  --rake: oklch(0.7 0.05 258);
 }
 
 :root[data-theme='dark'] {

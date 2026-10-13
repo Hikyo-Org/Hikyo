@@ -28,6 +28,9 @@ import { Button } from "../ui/Button.tsx";
 import { Ceremony, type CeremonyPurpose } from "./Ceremony.tsx";
 import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } from "./useRemaskOnFocusLoss.ts";
 import { useCeremonyTask, type CeremonyTask } from "./useCeremonyTask.ts";
+import { plural } from '../app/duration.ts';
+import { Sep } from '../ui/Sep.tsx';
+import { dotted } from './dotted.tsx';
 
 /**
  * The reveal / copy / write-only-edit surface (#58, locked prototype #21).
@@ -610,6 +613,7 @@ function ValuesSurface({
         </Button>
       </div>
 
+      <div className="table-scroll">
       <table className="values__table">
         <caption className="visually-hidden">
           Values in this environment. Secret values are masked until disclosed.
@@ -667,7 +671,7 @@ function ValuesSurface({
                     <span className="mono values__plain">
                       {live.value}
                       <span className="values__countdown" aria-hidden="true">
-                        {`re-masks in ${remaining}s`}
+                        {`re-masks in ${plural(remaining, 'second')}`}
                       </span>
                     </span>
                   ) : secret ? (
@@ -683,29 +687,31 @@ function ValuesSurface({
                     </span>
                   )}
                 </td>
-                <td className="values__actions">
-                  {secret && cell.set && !writeOnly ? (
-                    <Button
-                      type="button"
-                      onClick={() => doRevealOne(cell)}
-                      aria-label={`Reveal ${cell.name}`}
-                    >
-                      Reveal
-                    </Button>
-                  ) : null}
-                  {cell.set && (!secret || canReveal) ? (
-                    <Button
-                      type="button"
-                      onClick={() => doCopy(cell)}
-                      aria-label={
-                        secret
-                          ? `Copy ${cell.name} (audited disclosure)`
-                          : `Copy ${cell.name}`
-                      }
-                    >
-                      Copy
-                    </Button>
-                  ) : null}
+                <td>
+                  <div className="actions">
+                    {secret && cell.set && !writeOnly ? (
+                      <Button
+                        type="button"
+                        onClick={() => doRevealOne(cell)}
+                        aria-label={`Reveal ${cell.name}`}
+                      >
+                        Reveal
+                      </Button>
+                    ) : null}
+                    {cell.set && (!secret || canReveal) ? (
+                      <Button
+                        type="button"
+                        onClick={() => doCopy(cell)}
+                        aria-label={
+                          secret
+                            ? `Copy ${cell.name} (audited disclosure)`
+                            : `Copy ${cell.name}`
+                        }
+                      >
+                        Copy
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
                 {editing === cell.name ? (
                   <td className="values__editor">
@@ -722,6 +728,7 @@ function ValuesSurface({
           })}
         </tbody>
       </table>
+      </div>
 
       <section className="values__audit" aria-label="Disclosure records">
         <h2>Recorded this session</h2>
@@ -736,7 +743,7 @@ function ValuesSurface({
           // registry's own assertions, are concerned.
           <ul aria-live="polite">
             {audit.map((line, i) => (
-              <li key={`${line}-${String(i)}`}>{line}</li>
+              <li key={`${line}-${String(i)}`}>{dotted(line)}</li>
             ))}
           </ul>
         )}
@@ -765,12 +772,12 @@ function ValuesSurface({
 function windowChip(state: RevealWindow, now: number) {
   if (!state.live) {
     return (
-      <Badge role="status">
+      <Badge role="status" icon="lock">
         {state.totp_offered
-          ? "Locked · each disclosure asks first"
+          ? <>Locked<Sep />each disclosure asks first</>
           : state.protected
-            ? "Protected · a passkey per disclosure"
-            : "Locked · a passkey per disclosure"}
+            ? <>Protected<Sep />a passkey per disclosure</>
+            : <>Locked<Sep />a passkey per disclosure</>}
       </Badge>
     );
   }
@@ -789,8 +796,8 @@ function windowChip(state: RevealWindow, now: number) {
           Math.ceil((new Date(state.expires_at).getTime() - now) / 1000),
         );
   return (
-    <Badge tone="ok" role="status">
-      {`Reveal window · ${String(seconds)}s`}
+    <Badge tone="ok" icon="reveal" role="status">
+      Reveal window<Sep />{plural(seconds, 'second')}
     </Badge>
   );
 }

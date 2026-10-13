@@ -152,9 +152,9 @@ test.describe('members and grants', () => {
 
     await expect(page).toHaveURL(PROJECT_PATH);
     if (isMobile) await menu.click();
-    await expect(page.getByRole('heading', { name: 'Project · payments' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^Project\s*·?\s*payments$/ })).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Members · payments', level: 1 }),
+      page.getByRole('heading', { name: /^Members\s*·?\s*payments$/, level: 1 }),
     ).toBeVisible();
     await expect(projectNav.getByRole('link', { name: 'Members' })).toHaveAttribute(
       'aria-current',
@@ -185,6 +185,7 @@ test.describe('members and grants', () => {
   test('answers "who can…?" by inspection, counting the grants above the scope', async ({
     page,
   }) => {
+    await page.getByRole('tab', { name: 'Who can…?' }).click();
     await page.getByLabel('Capability').selectOption('read');
     // By VALUE: the seed holds two projects with a `development` environment
     // (#59's history project), so a label is ambiguous.
@@ -201,6 +202,9 @@ test.describe('members and grants', () => {
   });
 
   test('does not answer Nobody before the grant listing succeeds', async ({ page }) => {
+    // Selected before the reload below, so the reload lands back on the Who
+    // can…? tab where the loading status is checked.
+    await page.getByRole('tab', { name: 'Who can…?' }).click();
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -463,7 +467,7 @@ test.describe('members and grants', () => {
     });
     await page.reload();
     const rules = page.locator('#members-rules');
-    await rules.getByRole('button', { name: `+ Add rule for ${username}` }).click();
+    await rules.getByRole('button', { name: `Add rule for ${username}` }).click();
     const dialog = page.getByRole('dialog', { name: `New rule · ${username}` });
     await dialog.getByRole('button', { name: /^payments/ }).first().click();
     const envs = dialog.getByRole('group', { name: 'Environments' });
@@ -478,6 +482,7 @@ test.describe('members and grants', () => {
     await expect(page.locator('.notice').filter({ hasText: `Added a rule for ${username}` })).toBeVisible();
     await expect(rules.getByRole('button', { name: `Edit rule 1 of ${username}` })).toBeVisible();
 
+    await page.getByRole('button', { name: 'Who can reach one key?' }).click();
     const ask = page.locator('#members-whocan');
     await ask.getByLabel('Permission').selectOption('publish');
     await ask.getByLabel('Project').selectOption(seed.project);
@@ -489,6 +494,8 @@ test.describe('members and grants', () => {
     await ask.getByLabel('Key', { exact: true }).selectOption({ label: `${key} (secret)` });
     await ask.getByLabel('Environment').selectOption(seed.prod);
     await expect(ask.getByRole('rowheader', { name: username })).toHaveCount(0);
+    // The answer is a side panel over the page; close it to reach the rules.
+    await page.keyboard.press('Escape');
 
     await rules.getByRole('button', { name: `Edit rule 1 of ${username}` }).click();
     const edit = page.getByRole('dialog', { name: `Edit rule · ${username}` });
@@ -498,10 +505,15 @@ test.describe('members and grants', () => {
     await editKeys.getByRole('button', { name: new RegExp(sibling) }).click();
     await edit.getByRole('button', { name: 'Save' }).click();
     await expect(page.locator('.notice').filter({ hasText: `Saved the rule of ${username}` })).toBeVisible();
+    // Reopened, the panel keeps the question and answers it over the saved rule.
+    await page.getByRole('button', { name: 'Who can reach one key?' }).click();
+    await expect(ask.getByLabel('Permission')).toHaveValue('publish');
+    await expect(ask.getByLabel('Environment')).toHaveValue(seed.prod);
     await ask.getByLabel('Environment').selectOption(seed.dev);
     await expect(ask.getByRole('rowheader', { name: username })).toHaveCount(0);
     await ask.getByLabel('Key', { exact: true }).selectOption({ label: `${sibling} (secret)` });
     await expect(ask.getByRole('rowheader', { name: username })).toBeVisible();
+    await page.keyboard.press('Escape');
     await rules.getByRole('button', { name: `Edit rule 1 of ${username}` }).click();
     await page.getByRole('dialog', { name: `Edit rule · ${username}` }).getByRole('button', { name: 'Remove rule' }).click();
     await expect(page.locator('.notice').filter({ hasText: `Removed the rule from ${username}` })).toBeVisible();
@@ -580,7 +592,7 @@ test.describe('members and grants', () => {
 
       // A real viewer can read project metadata without being offered manager
       // policy mutations or typed-name deletion. The signal comes from the API.
-      await invitee.goto(`/orgs/${seed.org}/projects/${seed.project}/settings`);
+      await invitee.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=metadata`);
       await expect(invitee.getByRole('heading', { name: /^Project settings/ })).toBeVisible();
       await expect(invitee.locator('#project-metadata')).toBeVisible();
       await expect(invitee.locator('#project-policy')).toHaveCount(0);
@@ -707,7 +719,7 @@ test.describe('members and grants', () => {
         const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
         const heading = page.getByRole('heading', { name: 'Members', level: 1 });
         const well = page.locator('.panel').first();
-        const jump = page.getByRole('link', { name: 'Who can…?' });
+        const whoCanTab = page.getByRole('tab', { name: 'Who can…?' });
         const chip = page.locator('#members-list .access-rule__perms .badge').first();
         await page.locator('#members-list').getByRole('button', { name: 'Permission origins', exact: true }).first().click();
         const newGrant = page.getByRole('button', { name: 'Add access' });
@@ -736,7 +748,8 @@ test.describe('members and grants', () => {
           hairlines: [well],
           density: [
             [newGrant, rowDensity],
-            [jump, rowDensity],
+            // Tabs are --control tall, not the row height the removed jump link had.
+            [whoCanTab, '--control'],
           ],
         });
       } finally {
@@ -894,13 +907,19 @@ test.describe('scim provisioning', () => {
     await expect(page.getByRole('heading', { name: 'SCIM provisioning', level: 1 })).toBeVisible();
 
     // Bind the fixture's OIDC provider. Subject source defaults to externalId.
+    await page.getByRole('button', { name: 'Create a binding' }).click();
     await page.getByLabel('Provider slug').fill(SCIM_PROVIDER_SLUG);
     await page.getByRole('button', { name: 'Create binding' }).click();
     await expect(page.getByText(new RegExp(`Bound ${SCIM_PROVIDER_SLUG}`))).toBeVisible();
+    // The form is a side panel over the page; close it to reach the list.
+    await page.getByRole('complementary', { name: 'Create a binding' }).getByRole('button', { name: 'Close' }).click();
 
     // Administer it, the binding id lands in the query string as route data.
+    // Administering opens the Mappings tab; switch to Provisioning credentials
+    // for the mint below.
     const card = page.locator('.scim-binding', { hasText: SCIM_PROVIDER_SLUG });
     await card.getByRole('button', { name: 'Administer' }).click();
+    await page.getByRole('tab', { name: 'Provisioning credentials' }).click();
     await expect(page.getByRole('heading', { name: 'Provisioning credentials' })).toBeVisible();
     const bindingId = new URL(page.url()).searchParams.get('binding') ?? '';
     expect(bindingId).not.toBe('');
@@ -908,6 +927,7 @@ test.describe('scim provisioning', () => {
     // Mint a credential with a fresh reauthentication proof, and capture the
     // display-once token from the dialog. The token is read here (it is in the
     // dialog by design) and used as the wire bearer below.
+    await page.getByRole('button', { name: 'Mint a credential' }).click();
     await page.getByLabel('Reauthentication proof').fill(await nextTotpCode());
     await page.getByRole('button', { name: 'Mint credential' }).click();
     const mintDialog = page.getByRole('dialog', { name: /shown exactly once/ });
@@ -970,6 +990,7 @@ test.describe('scim provisioning', () => {
     // A reload re-reads the directory the wire just populated; the binding stays
     // selected because it is in the URL.
     await page.reload();
+    await page.getByRole('tab', { name: 'Directory' }).click();
     await expect(page.getByRole('heading', { name: 'Directory' })).toBeVisible();
     await expect(page.locator('.scim-directory-group', { hasText: 'E2E Engineers' })).toBeVisible();
     await expect(
@@ -979,12 +1000,15 @@ test.describe('scim provisioning', () => {
     // Map the provisioned group to a template at organisation scope, the widest
     // reach, so the server's consequence language is returned and rendered. The
     // one member is granted immediately, so the applied count is nonzero.
+    await page.getByRole('tab', { name: 'Mappings' }).click();
+    await page.getByRole('button', { name: 'Map a group' }).click();
     await page.getByLabel('Provisioned group').selectOption(group.id);
     await page.getByLabel('Template').selectOption('viewer');
     await page.getByRole('button', { name: 'Add mapping' }).click();
     await expect(page.getByText(/Applied to 1 member/)).toBeVisible();
     await expect(page.getByText(/[1-9]\d* grants created/)).toBeVisible();
     await expect(page.locator('.scim-warnings')).toBeVisible();
+    await page.getByRole('complementary', { name: 'Map a group' }).getByRole('button', { name: 'Close' }).click();
     const mappingRow = page.locator('.scim-mapping', { hasText: 'E2E Engineers' });
     await expect(mappingRow).toBeVisible();
     const capabilityLines = mappingRow.locator('.capability');
@@ -1001,6 +1025,7 @@ test.describe('scim provisioning', () => {
     await expect(page.getByText(/Deleted\. [1-9]\d* origins released/)).toBeVisible();
 
     // Revoke the credential; it bites at the wire's very next request.
+    await page.getByRole('tab', { name: 'Provisioning credentials' }).click();
     const credentialRow = page.locator('.scim-credential').first();
     await credentialRow.getByRole('button', { name: /Revoke credential/ }).click();
     await expect(credentialRow.locator('.badge', { hasText: 'revoked' })).toBeVisible();
@@ -1009,8 +1034,10 @@ test.describe('scim provisioning', () => {
 
     // Delete the binding through its typed-name gate; the teardown runs and the
     // card is gone.
+    await page.getByRole('tab', { name: 'Bindings' }).click();
+    await card.getByRole('button', { name: 'Delete this binding' }).click();
     await card.getByLabel('Confirm by typing the provider slug').fill(SCIM_PROVIDER_SLUG);
-    await card.getByRole('button', { name: 'Delete binding' }).click();
+    await card.getByRole('button', { name: 'Delete binding', exact: true }).click();
     await expect(page.locator('.scim-binding', { hasText: SCIM_PROVIDER_SLUG })).toHaveCount(0);
   });
 
@@ -1273,11 +1300,12 @@ test.describe('open registration at organisation scope', () => {
       }),
     );
     await page.reload();
+    await page.getByRole('tab', { name: 'Open registration' }).click();
     const panel = page.locator('#members-registration');
     await expect(panel.getByText('closed', { exact: true })).toBeVisible();
     await expect(panel).toContainText('without an invitation');
 
-    await panel.getByRole('button', { name: 'Open registration…' }).click();
+    await panel.getByRole('button', { name: 'Open registration', exact: true }).click();
     const editor = page.getByRole('dialog');
     await expect(editor.getByRole('heading', { level: 2 })).toContainText('open registration');
     // A write-time precondition the server alone knows: this provider row
@@ -1341,15 +1369,16 @@ test.describe('open registration at organisation scope', () => {
     });
     const panel = page.locator('#members-registration');
     await page.reload();
+    await page.getByRole('tab', { name: 'Open registration' }).click();
     await expect(panel.getByText('active', { exact: true })).toBeVisible();
-    await expect(panel).toContainText(`${username} · re-checked`);
+    await expect(panel).toContainText(new RegExp(`${username}\\s*·\\s*re-checked`));
 
     // The shared administrator revokes the authority's manage-members: the
     // standing delegation no longer holds, on the very next read.
     const query = `principal=${encodeURIComponent(second.principal)}&capability=manage-members`;
     await withSharedAdmin(browser, (admin) => browserApi(admin, 'DELETE', `/api/v1/orgs/${seed.org}/grants?${query}`, z.null()));
     await page.reload();
-    await expect(panel.getByText('inactive · authority-lost')).toBeVisible();
+    await expect(panel.getByText(/^inactive\s*·\s*authority-lost$/)).toBeVisible();
     await expect(panel.getByRole('alert')).toContainText(`${username} no longer holds the grant this policy hands out`);
     const paused = await publicDoor(page);
     expect(paused.signup_open).toBe(false);
@@ -1370,8 +1399,9 @@ test.describe('open registration at organisation scope', () => {
     test(`meets the pinned assertion set on the registration editor and its proof step (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
+        await page.getByRole('tab', { name: 'Open registration' }).click();
         const panel = page.locator('#members-registration');
-        await panel.getByRole('button', { name: 'Open registration…' }).click();
+        await panel.getByRole('button', { name: 'Open registration', exact: true }).click();
         const editor = page.getByRole('dialog');
         await editor.getByLabel(OIDC_PROVIDER.displayName).check();
         const save = editor.getByRole('button', { name: 'Save' });

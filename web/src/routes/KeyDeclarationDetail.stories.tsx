@@ -161,13 +161,55 @@ export const ReclassifyConfirm: Story = {
 };
 
 // A Git-managed project: declarations read-only behind the notice and the
-// last-applied provenance labels.
+// last-applied provenance labels, each fact after the actor joined by the
+// real `<Sep/>` separator (" · "), not three bare dots concatenated by hand.
 export const GitReadOnly: Story = {
   parameters: app({ definitions: { body: git } }),
   play: async ({ canvas }) => {
     await expect(await canvas.findByRole('heading', { name: 'Declarations are read-only' })).toBeVisible();
-    await expect(canvas.getByText(/Last applied by/)).toBeVisible();
+    const provenance = canvas.getByText(/Last applied by/);
+    await expect(provenance).toBeVisible();
+    await expect(provenance.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Last applied by prn_123e4567-e89b-12d3-a456-426614174000 · actor ci@example.com · commit abc1234 · ref refs/heads/main',
+    );
+    await expect(provenance.querySelectorAll('.sep')).toHaveLength(3);
     await expect(canvas.queryByRole('heading', { name: 'Rename key' })).not.toBeInTheDocument();
+  },
+};
+
+// The panel is the shared SidePanel now: Escape and an outside press both
+// close it the same way the Close link does, by navigating back to the
+// matrix. The story's harness mounts only this route, so the close surfaces
+// as the panel leaving the document.
+export const ClosesToMatrix: Story = {
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('heading', { name: 'DATABASE_URL' })).toBeVisible();
+    await expect(canvas.getByRole('complementary', { name: 'Key declaration' })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(canvas.queryByRole('complementary', { name: 'Key declaration' })).not.toBeInTheDocument());
+  },
+};
+
+export const ClosesOnOutsidePress: Story = {
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('heading', { name: 'DATABASE_URL' })).toBeVisible();
+    await userEvent.click(document.body);
+    await waitFor(() => expect(canvas.queryByRole('complementary', { name: 'Key declaration' })).not.toBeInTheDocument());
+  },
+};
+
+// At a phone width the Close action collapses to an icon-only square button
+// (SidePanel's `btn--icon-phone`), keeping "Close key declaration" as its
+// accessible name.
+export const ClosePhone: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas }) => {
+    const close = await canvas.findByRole('link', { name: 'Close key declaration' });
+    const label = close.querySelector('.btn__label');
+    if (!(label instanceof HTMLElement)) throw new Error('close label missing');
+    await expect(label.getBoundingClientRect().width).toBeLessThanOrEqual(1);
+    const box = close.getBoundingClientRect();
+    await expect(Math.round(box.width)).toBe(Math.round(box.height));
   },
 };
 

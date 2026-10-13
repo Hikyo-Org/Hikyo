@@ -101,9 +101,9 @@ async function click(name: string) {
   await settle();
 }
 async function tab(name: string) {
-  const node = Array.from(view?.container.querySelectorAll('button[role="tab"]') ?? [])
+  const node = Array.from(view?.container.querySelectorAll('[role="tab"]') ?? [])
     .find((candidate) => candidate.textContent?.startsWith(name));
-  if (!(node instanceof HTMLButtonElement)) throw new Error(`No tab ${name}`);
+  if (!(node instanceof HTMLElement)) throw new Error(`No tab ${name}`);
   await act(async () => node.click());
 }
 async function boundary(kind: 'org' | 'project' | 'session') {
@@ -121,7 +121,7 @@ function assertSecretAbsent(secret: string) {
   expect(JSON.stringify(view?.client.getMutationCache().getAll())).not.toContain(secret);
 }
 async function openCredential() {
-  await click(`▸ ${serviceAccount.name}`);
+  await click(serviceAccount.name);
   await click(`Mint credential for ${serviceAccount.name}`);
 }
 
@@ -145,9 +145,9 @@ it.each([
 
 const dialogCases = [
   { name: 'create account', open: () => click('Create service account') },
-  { name: 'binding', open: async () => { await click(`▸ ${serviceAccount.name}`); await click(`Add federated binding to ${serviceAccount.name}`); } },
-  { name: 'grant', open: async () => { await click(`▸ ${serviceAccount.name}`); await click(`Add environment grant to ${serviceAccount.name}`); } },
-  { name: 'delete account', open: async () => { await click(`▸ ${serviceAccount.name}`); await click(`Delete ${serviceAccount.name}`); } },
+  { name: 'binding', open: async () => { await click(serviceAccount.name); await click(`Add federated binding to ${serviceAccount.name}`); } },
+  { name: 'grant', open: async () => { await click(serviceAccount.name); await click(`Add environment grant to ${serviceAccount.name}`); } },
+  { name: 'delete account', open: async () => { await click(serviceAccount.name); await click(`Delete ${serviceAccount.name}`); } },
   { name: 'create provider', open: async () => { await tab('Providers'); await click('Configure provider'); } },
   { name: 'replace provider credential', open: async () => { await tab('Providers'); await click('Replace credential'); } },
   { name: 'revoke provider credential', open: async () => { await tab('Providers'); await click('Revoke credential'); } },

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zSamlProviderList } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -182,9 +182,39 @@ export const Creating: Story = {
   parameters: { app: { responses: [list({ body: { providers: [] } })] } },
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: /configure a new saml provider/i }));
-    await expect(canvas.getByRole('heading', { name: /configure a saml provider/i })).toBeVisible();
-    await expect(canvas.getByLabelText('Metadata XML')).toBeVisible();
-    await expect(canvas.getByRole('button', { name: /preview and configure/i })).toBeVisible();
+    const panel = within(await canvas.findByRole('complementary', { name: 'Configure a SAML provider' }));
+    await expect(panel.getByLabelText('Metadata XML')).toBeVisible();
+    const preview = panel.getByRole('button', { name: /preview and configure/i });
+    await expect(preview).toBeVisible();
+    // The primary act leads the row, Cancel follows.
+    await expect(preview.nextElementSibling).toBe(panel.getByRole('button', { name: 'Cancel' }));
+  },
+};
+
+// A provider's policy editor opens in the side panel, Save before Cancel,
+// and Cancel closes it.
+export const EditingPolicy: Story = {
+  play: async ({ canvas }) => {
+    const row = (await canvas.findByText('Acme ADFS')).closest('[data-saml-provider]');
+    if (!(row instanceof HTMLElement)) throw new Error('Acme ADFS row missing');
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit policy' }));
+    const panel = within(await canvas.findByRole('complementary', { name: 'Edit policy of acme-adfs' }));
+    const save = panel.getByRole('button', { name: 'Save policy' });
+    await expect(save.nextElementSibling).toBe(panel.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(panel.getByRole('button', { name: 'Cancel' }));
+    await expect(canvas.queryByRole('complementary')).toBeNull();
+  },
+};
+
+// Removing a provider asks for its slug in the side panel, not inline.
+export const Removing: Story = {
+  play: async ({ canvas }) => {
+    const row = (await canvas.findByText('Okta')).closest('[data-saml-provider]');
+    if (!(row instanceof HTMLElement)) throw new Error('Okta row missing');
+    await userEvent.click(within(row).getByRole('button', { name: 'Remove' }));
+    const panel = await canvas.findByRole('complementary', { name: 'Remove okta-saml' });
+    await expect(panel).toHaveTextContent(/deletes every session authenticated through it/);
+    await expect(within(panel).getByRole('heading', { name: 'Remove okta-saml' })).toBeVisible();
   },
 };
 
@@ -199,7 +229,8 @@ export const MetadataDiff: Story = {
     const refresh = buttons.find((button) => button.textContent === 'Refresh metadata');
     if (refresh === undefined) throw new Error('Refresh metadata button missing');
     await userEvent.click(refresh);
-    await userEvent.click(canvas.getByRole('button', { name: /fetch and preview metadata/i }));
+    const panel = within(await canvas.findByRole('complementary', { name: 'Refresh metadata of okta-saml' }));
+    await userEvent.click(panel.getByRole('button', { name: /fetch and preview metadata/i }));
     await expect(await canvas.findByText(/this metadata changes trust state/i)).toBeVisible();
     await expect(canvas.getByText('sha256:c0ff…ee00')).toBeVisible();
     await expect(

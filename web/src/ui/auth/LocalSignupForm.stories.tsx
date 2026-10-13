@@ -17,7 +17,14 @@ const meta = {
 } satisfies Meta<typeof LocalSignupForm>;
 export default meta;
 type Story = StoryObj<typeof meta>;
-export const Entry: Story = {};
+// The way back leads with the arrow glyph; its name is the words alone.
+export const Entry: Story = {
+  play: async ({ canvas }) => {
+    const back = canvas.getByRole('button', { name: 'Other ways to create an account' });
+    await expect(back).toBeVisible();
+    await expect(back.querySelector('svg')?.getAttribute('data-glyph')).toBe('arrow-left');
+  },
+};
 export const NoOrganisation: Story = { args: { landing: null, org: undefined } };
 export const RequestAndResend: Story = {
   play: async ({ canvas, step }) => {

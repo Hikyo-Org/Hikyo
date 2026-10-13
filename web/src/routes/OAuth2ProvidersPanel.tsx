@@ -16,6 +16,8 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
 
 export function OAuth2ProvidersPanel() {
@@ -56,37 +58,38 @@ export function OAuth2ProvidersPanel() {
             <p role="status">No GitHub provider configured.</p>
           ) : null}
           {query.data.providers.map((p) => (
-            <div className="settings-row" key={p.slug}>
+            <div className="settings-row settings-row--stacked" key={p.slug}>
               <div className="settings-row__copy">
                 <span className="settings-row__title">{p.display_name}</span>
                 <span className="settings-row__detail mono">
-                  {p.slug} · {p.profile}
+                  {p.slug}<Sep />{p.profile}
                 </span>
               </div>
-              <span className="settings-row__spacer" />
-              <Badge>{p.enabled ? 'enabled' : 'disabled'}</Badge>
-              <Button
-                type="button"
-                onClick={() => {
-                  setMessage('');
-                  setEditing(p);
-                }}
-              >
-                Reconfigure {p.display_name}
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                onClick={() => {
-                  remove.reset();
-                  setDeleting(p);
-                }}
-              >
-                Delete {p.display_name}
-              </Button>
+              <Badge icon={p.enabled ? 'check' : 'minus'}>{p.enabled ? 'enabled' : 'disabled'}</Badge>
+              <div className="actions">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setMessage('');
+                    setEditing(p);
+                  }}
+                >
+                  Reconfigure {p.display_name}
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => {
+                    remove.reset();
+                    setDeleting(p);
+                  }}
+                >
+                  Delete {p.display_name}
+                </Button>
+              </div>
             </div>
           ))}
-          {editing === null ? (
+          <div className="actions">
             <Button
               type="button"
               onClick={() => {
@@ -96,7 +99,8 @@ export function OAuth2ProvidersPanel() {
             >
               Add GitHub provider
             </Button>
-          ) : (
+          </div>
+          {editing === null ? null : (
             <OAuth2Editor
               key={editing === 'create' ? 'create' : editing.slug}
               provider={editing === 'create' ? null : editing}
@@ -174,15 +178,23 @@ function OAuth2Editor({
     onSuccess: onSaved,
     onSettled: () => setSecret(''),
   });
+  const title = provider === null ? 'Add GitHub provider' : `Reconfigure ${provider.display_name}`;
   return (
+    <SidePanel
+      title={title}
+      onClose={() => {
+        if (!save.isPending) onCancel();
+      }}
+    >
     <form
+      className="form"
       onSubmit={(event) => {
         event.preventDefault();
         save.mutate(secret);
         setSecret('');
       }}
     >
-      <p>Profile: GitHub · Origin: https://github.com</p>
+      <p>Profile: GitHub<Sep />Origin: https://github.com</p>
       <Input
         id="oauth2-slug"
         label="Provider slug"
@@ -231,12 +243,15 @@ function OAuth2Editor({
           retrying.
         </Alert>
       ) : null}
-      <Button variant="primary" type="submit" disabled={save.isPending}>
-        {save.isPending ? 'Saving…' : 'Save provider'}
-      </Button>
-      <Button type="button" disabled={save.isPending} onClick={onCancel}>
-        Cancel
-      </Button>
+      <div className="actions">
+        <Button variant="primary" type="submit" disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : 'Save provider'}
+        </Button>
+        <Button type="button" disabled={save.isPending} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </form>
+    </SidePanel>
   );
 }

@@ -133,7 +133,11 @@ export const Pending: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByText('Apply pending')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Apply selected revision' })).toBeDisabled();
-    await expect(canvas.getByText(/last apply: job-prepared · preparing/i)).toBeVisible();
+    // The dot between job id and state is now the decorative <Sep/> glyph
+    // (aria-hidden, spaced by CSS), not literal text, so the id and state
+    // land in separate text nodes: match the same meaning without the old
+    // literal " · ".
+    await expect(canvas.getByText(/last apply: job-prepared.*preparing/i)).toBeVisible();
   },
 };
 

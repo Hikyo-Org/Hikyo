@@ -8,6 +8,7 @@ import type { DefinitionsSettings } from '../api/definitions.ts';
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 
+import { expectStackedRow } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The definitions-bundle settings row and its dialog. The dialog's later
@@ -134,11 +135,35 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The settings row: both bundle downloads and the way into the dialog.
+/** The row's three buttons, in order, in ONE action row under its copy. */
+const bundleRow = async (canvas: Canvas) => {
+  const row = (canvas.getByText('Definitions bundle') as HTMLElement).closest('.settings-row');
+  if (row === null) throw new Error('bundle row missing');
+  await expectStackedRow(row, 3);
+  await expect([...row.querySelectorAll('.actions .btn')].map((button) => button.textContent?.trim())).toEqual([
+    'Download definitions bundle',
+    'Download portable bundle',
+    'Check a bundle',
+  ]);
+};
+
+// The settings row: both bundle downloads and the way into the dialog, all
+// three in one action row under the copy (on one line at desktop width).
 export const Row: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('link', { name: 'Download definitions bundle' })).toBeVisible();
     await expect(canvas.getByRole('link', { name: 'Download portable bundle' })).toBeVisible();
+    await bundleRow(canvas);
+  },
+};
+
+// At a phone width the same action row is the equal-width two-column grid,
+// not ragged wrapping, and nothing overflows the page.
+export const RowPhone: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await bundleRow(canvas);
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth);
   },
 };
 

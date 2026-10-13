@@ -1,53 +1,119 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useLocation, useSearchParams } from 'react-router';
 
-import { isDemo } from '../demo/config.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Field } from '../ui/Field.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
+import { TabPanel, Tabs } from '../ui/Tabs.tsx';
 
 /**
  * The sectioned-surface parts every chrome settings surface is built from
  * (#60, locked prototype app-chrome iteration 15).
  *
- * Iteration 9 made the sticky jump index the pattern for EVERY sectioned
- * surface rather than only for account & security, so it lives here once. The
- * index is plain anchors: the browser already scrolls to a fragment, moves
- * focus there and puts the section in the history, and every line of script
- * that reimplements that is a line that can get focus wrong.
+ * A sectioned surface is tabs: one `ui/Tabs` row, the selected section in `?tab=` like
+ * machine access, and an old `#section` link opening the tab that holds it.
  */
 
-type SectionRef = { readonly id: string; readonly label: string };
+type TabSection = {
+  /** The panel's element id, e.g. `project-identity`; the tab is the id without the page prefix. */
+  readonly id: string;
+  readonly label: string;
+  /** Element ids inside this section that older `#fragment` links point at. */
+  readonly anchors?: readonly string[];
+  readonly content: ReactNode;
+};
 
-export function JumpIndex({ sections }: { sections: readonly SectionRef[] }) {
+/**
+ * useTabParam keeps the selected tab in `?tab=` so a reload or a shared link
+ * keeps it. The first tab is the default and leaves no param; an unknown value
+ * is the first tab; `fromHash` maps an older `#fragment` link to its tab.
+ */
+export function useTabParam<Id extends string>(
+  ids: readonly Id[],
+  fromHash?: (hash: string) => Id | undefined,
+): [Id, (next: Id) => void] {
+  const [search, setSearch] = useSearchParams();
+  const { hash } = useLocation();
+  const first = ids[0] as Id;
+  const requested = search.get('tab');
+  const tab =
+    ids.find((id) => id === requested) ??
+    (hash.length > 1 ? fromHash?.(decodeURIComponent(hash.slice(1))) : undefined) ??
+    first;
+  const setTab = (next: Id) =>
+    setSearch(
+      (current) => {
+        const params = new URLSearchParams(current);
+        if (next === first) params.delete('tab');
+        else params.set('tab', next);
+        return params;
+      },
+      { replace: true },
+    );
+  return [tab, setTab];
+}
+
+/**
+ * SectionTabs renders a sectioned page body: a tab per section, or the lone
+ * section bare (one section has nothing to switch to). Every section stays
+ * mounted and the others are `hidden`, so a half-filled form survives a tab
+ * switch and an anchored element still exists to scroll to.
+ */
+export function SectionTabs({
+  label,
+  idPrefix,
+  sections,
+}: {
+  label: string;
+  /** The page prefix shared by the section ids (`project` for `project-identity`). */
+  idPrefix: string;
+  sections: readonly (TabSection | false | null | undefined)[];
+}) {
+  const shown = sections.filter((section): section is TabSection => Boolean(section));
+  const key = (id: string) => (id.startsWith(`${idPrefix}-`) ? id.slice(idPrefix.length + 1) : id);
+  const [tab, setTab] = useTabParam(
+    shown.map((section) => key(section.id)),
+    (hash) => {
+      const owner = shown.find((section) => section.id === hash || section.anchors?.includes(hash));
+      return owner === undefined ? undefined : key(owner.id);
+    },
+  );
+  const { hash } = useLocation();
+  // The browser's own fragment scroll ran before the tab was shown; redo it.
+  useEffect(() => {
+    if (hash.length > 1) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView({ block: 'start' });
+  }, [hash]);
+
+  if (shown.length < 2) return <>{shown[0]?.content}</>;
   return (
-    <nav className="jump" aria-label="Sections on this page">
-      <ul>
-        {sections.map((section) => (
-          <li key={section.id}>
-            <a className="jump__link" href={`#${section.id}`}
-              onClick={isDemo ? (event) => {
-                event.preventDefault();
-                const target = document.getElementById(section.id);
-                target?.focus({ preventScroll: true });
-                target?.scrollIntoView({ block: 'start' });
-              } : undefined}
-            >
-              {section.label}
-            </a>
-          </li>
+    <>
+      <Tabs
+        label={label}
+        idPrefix={idPrefix}
+        tabs={shown.map((section) => ({ id: key(section.id), label: section.label }))}
+        selected={tab}
+        onSelect={setTab}
+      />
+      <TabPanel idPrefix={idPrefix} selected={tab}>
+        {shown.map((section) => (
+          <div key={section.id} className="tabpanel__section" hidden={key(section.id) !== tab}>
+            {section.content}
+          </div>
         ))}
-      </ul>
-    </nav>
+      </TabPanel>
+    </>
   );
 }
 
 /**
- * Panel is one section: a card with an h2 that the jump index points at.
+ * Panel is one section: a card with an h2, the body of one tab.
  *
- * `tabIndex={-1}` so the fragment jump moves FOCUS to the section and not only
- * the viewport, without it a keyboard user's next Tab continues from wherever
- * they were, which on a long settings page is the wrong end of the document.
+ * `tabIndex={-1}` so a fragment link or an error can move FOCUS to the section
+ * and not only the viewport.
  */
 export function Panel({
   id,
@@ -77,6 +143,43 @@ export function Panel({
       <h2>{title}</h2>
       {children}
     </section>
+  );
+}
+
+/**
+ * PanelForm is a button that opens its form in the side panel. By default the
+ * opener stays usable in the read-only demo, so a visitor can read the form;
+ * its submit is still disabled there.
+ */
+export function PanelForm({
+  opener,
+  title = opener,
+  variant = 'secondary',
+  readOnlySafe = true,
+  children,
+}: {
+  opener: string;
+  title?: string;
+  variant?: 'primary' | 'secondary' | 'danger';
+  readOnlySafe?: boolean;
+  /** The form, or a render function handed the panel's close. */
+  children: ReactNode | ((close: () => void) => ReactNode);
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  return (
+    <>
+      <div className="actions">
+        <Button type="button" variant={variant} readOnlySafe={readOnlySafe} onClick={() => setOpen(true)}>
+          {opener}
+        </Button>
+      </div>
+      {open ? (
+        <SidePanel title={title} onClose={close}>
+          {typeof children === 'function' ? children(close) : children}
+        </SidePanel>
+      ) : null}
+    </>
   );
 }
 
@@ -111,20 +214,19 @@ export function TypedNameConfirm({
 
   return (
     <div className="danger-zone">
-      <div className="field">
-        <label htmlFor={id}>{label}</label>
-        <p className="danger-zone__hint">{hint}</p>
-        <input
-          id={id}
-          value={typed}
-          disabled={expect === null}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={expect === null ? undefined : expect}
-          aria-describedby={`${id}-state`}
-          onChange={(event) => setTyped(event.target.value)}
-        />
-      </div>
+      <Field id={id} label={label} hint={hint} aria-describedby={`${id}-state`}>
+        {(control) => (
+          <input
+            {...control}
+            value={typed}
+            disabled={expect === null}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={expect === null ? undefined : expect}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+        )}
+      </Field>
       {/* The armed state is TEXT, not only a disabled attribute and a colour:
           "why is this button dead" must be answerable without seeing it. */}
       <p className="danger-zone__state mono" id={`${id}-state`} role="status">
@@ -219,7 +321,7 @@ export function Explain({ label, text }: { label: string; text: string }) {
         aria-label={`Explain ${label}`}
         title={text}
       >
-        ?
+        <Glyph name="question" />
       </summary>
       <p className="explain__text">{text}</p>
     </details>
@@ -237,7 +339,7 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
 
   return (
     <>
-      <div className="panel__actions">
+      <div className="actions">
         <Button
           type="button"
           onClick={async () => {
@@ -254,9 +356,7 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
       </div>
       {status === null ? null : (
         <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
-          <span className="alert__glyph" aria-hidden="true">
-            ⧉
-          </span>
+          <Glyph name="copy" className="alert__glyph" />
           <span>{status}</span>
         </p>
       )}

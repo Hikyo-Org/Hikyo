@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zFederationIssuerList } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -115,15 +115,21 @@ export const Failed: Story = {
   },
 };
 
-// The create form in static JWKS mode: issuer, platform type, and the
-// write-only key set document that every read omits.
+// The create form, in the side panel, in static JWKS mode: issuer, platform
+// type, and the write-only key set document that every read omits. The
+// primary act leads its row, Cancel follows.
 export const Creating: Story = {
   parameters: { app: { responses: [list({ body: { count: 0, items: [] } })] } },
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: 'Configure issuer' }));
-    await userEvent.selectOptions(canvas.getByLabelText('JWKS source'), 'static');
-    await expect(canvas.getByLabelText('JWKS document')).toBeVisible();
-    await expect(canvas.getByLabelText(/refused audiences/i)).toBeVisible();
+    const panel = within(await canvas.findByRole('complementary', { name: 'Configure a federation issuer' }));
+    await userEvent.selectOptions(panel.getByLabelText('JWKS source'), 'static');
+    await expect(panel.getByLabelText('JWKS document')).toBeVisible();
+    await expect(panel.getByLabelText(/refused audiences/i)).toBeVisible();
+    const submit = panel.getByRole('button', { name: 'Configure issuer' });
+    await expect(submit.nextElementSibling).toBe(panel.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(panel.getByRole('button', { name: 'Cancel' }));
+    await expect(canvas.queryByRole('complementary')).toBeNull();
   },
 };
 
@@ -135,9 +141,24 @@ export const Editing: Story = {
     const [, , edit] = canvas.getAllByRole('button', { name: 'Edit' });
     if (edit === undefined) throw new Error('third Edit button missing');
     await userEvent.click(edit);
-    await expect(canvas.getByText('Edit https://git.acme.example')).toBeVisible();
-    await expect(canvas.getByText(/immutable: changing the issuer/i)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Save issuer' })).toBeVisible();
+    const panel = within(await canvas.findByRole('complementary', { name: 'Edit https://git.acme.example' }));
+    await expect(panel.getByText(/immutable: changing the issuer/i)).toBeVisible();
+    const save = panel.getByRole('button', { name: 'Save issuer' });
+    await expect(save).toBeVisible();
+    await expect(save.nextElementSibling).toBe(panel.getByRole('button', { name: 'Cancel' }));
+  },
+};
+
+// Delete asked of an issuer no binding names: the destructive act leads the
+// row and Cancel follows it.
+export const DeleteConfirm: Story = {
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText('https://token.actions.githubusercontent.com')).toBeVisible();
+    const [remove] = canvas.getAllByRole('button', { name: 'Delete' });
+    if (remove === undefined) throw new Error('first Delete button missing');
+    await userEvent.click(remove);
+    const confirm = canvas.getByRole('button', { name: 'Delete issuer' });
+    await expect(confirm.nextElementSibling).toBe(canvas.getByRole('button', { name: 'Cancel' }));
   },
 };
 

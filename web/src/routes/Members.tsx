@@ -65,7 +65,7 @@ import {
 } from './accessRules/model.ts';
 import { RuleEditorDialog } from './accessRules/RuleEditorDialog.tsx';
 import { RulesPanel } from './accessRules/RulesPanel.tsx';
-import { WhoCan } from './accessRules/WhoCan.tsx';
+import { WhoCan, type Question } from './accessRules/WhoCan.tsx';
 
 /**
  * wideningEnvironment reads the environment a reauth-required grant refusal
@@ -92,8 +92,12 @@ import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { OpenRegistrationPanel } from './OpenRegistration.tsx';
-import { Explain, JumpIndex, Panel } from './Sections.tsx';
+import { CapabilityTag } from './capabilityTags.tsx';
+import { Explain, Panel, SectionTabs } from './Sections.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { useFeedback } from './useFeedback.ts';
+import { Sep } from '../ui/Sep.tsx';
+import { dotted } from './dotted.tsx';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 const prototypeDefaultPrincipal = 'prn_44444444-4444-4444-8444-444444444444';
@@ -186,6 +190,11 @@ export function Members({ scope }: { scope: MembersScope }) {
       : memberProjects.filter((p) => p.id === projectId).map((p) => p.id);
   const catalogues = useKeyCatalogues(org, askable);
   const [find, setFind] = useState('');
+  // The two reference tools open in the side panel from the row above the
+  // tabs, so the page itself is the member list.
+  const [aside, setAside] = useState<'whocan' | 'glossary' | null>(null);
+  // Kept here, not in the panel: closing it to edit a rule keeps the question.
+  const [whoCanAsked, setWhoCanAsked] = useState<Partial<Question>>({ perm: 'reveal' });
   const [editing, setEditing] = useState<{ readonly before: Rule | null; readonly draft: Rule } | null>(null);
   if (rules.isError && editing !== null) setEditing(null);
   const [existingAccessKey, setExistingAccessKey] = useState<string | null>(null);
@@ -393,25 +402,22 @@ export function Members({ scope }: { scope: MembersScope }) {
 
   return (
     <div className="page page--chrome page--members">
-      <h1>{`Members\u00a0·\u00a0${scopeName}`}</h1>
+      <h1>Members<Sep />{scopeName}</h1>
       <p className="page__lede">
         Each card gives a member permissions on projects, environments and keys. Access adds up
         across cards; an except narrows only its own rule.
       </p>
 
-      <JumpIndex
-        sections={[
-          { id: 'members-list', label: 'Members' },
-          { id: 'members-inspect', label: 'Who can…?' },
-          ...(rulesPanelVisible ? [{ id: 'members-whocan', label: 'Who can reach one key?' }] : []),
-          ...(registrationVisible ? [{ id: 'members-registration', label: 'Open registration' }] : []),
-          ...(rulesPanelVisible
-            ? [
-                { id: 'members-glossary', label: 'Glossary' },
-              ]
-            : []),
-        ]}
-      />
+      {rulesPanelVisible ? (
+        <div className="actions">
+          <Button type="button" readOnlySafe onClick={() => setAside('whocan')}>
+            Who can reach one key?
+          </Button>
+          <Button type="button" readOnlySafe onClick={() => setAside('glossary')}>
+            Glossary
+          </Button>
+        </div>
+      ) : null}
 
       {secondFactorRefused ? (
         <Alert>
@@ -435,193 +441,207 @@ export function Members({ scope }: { scope: MembersScope }) {
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
-      <div className="access-filter">
-        <Input
-          label="Find a member"
-          type="search"
-          hint="By name or id."
-          value={find}
-          onChange={(event) => setFind(event.target.value)}
-        />
-      </div>
+      <SectionTabs
+        label="Members sections"
+        idPrefix="members"
+        sections={[
+          { id: 'members-list', label: 'Members', anchors: ['members-rules'], content: (
+            <>
+              <div className="access-filter">
+                <Input
+                  label="Find a member"
+                  type="search"
+                  hint="By name or id."
+                  value={find}
+                  onChange={(event) => setFind(event.target.value)}
+                />
+              </div>
+              <Panel id="members-list" title="Members">
+                {selectorTopologyOnly ? <p role="status">Project and environment IDs come from the disclosed rules. Names and protection settings are unavailable without See; existing selectors can still be edited.</p> : null}
+                {instance ? (
+                  <p>
+                    Every grant written at instance scope. These inherit downward into every organisation;
+                    each origin and its subject remain visible so incident provenance is not reduced to a
+                    colour.
+                  </p>
+                ) : null}
+                {!instance && projectId === '' ? (
+                  <p className="visually-hidden">
+                    Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
+                    by inheritance and are deliberately absent: this page has no authority over an instance
+                    operator, so it does not offer to revoke one.
+                  </p>
+                ) : null}
 
-      <Panel id="members-list" title="Members">
-        {selectorTopologyOnly ? <p role="status">Project and environment IDs come from the disclosed rules. Names and protection settings are unavailable without See; existing selectors can still be edited.</p> : null}
-        {instance ? (
-          <p>
-            Every grant written at instance scope. These inherit downward into every organisation;
-            each origin and its subject remain visible so incident provenance is not reduced to a
-            colour.
-          </p>
-        ) : null}
-        {!instance && projectId === '' ? (
-          <p className="visually-hidden">
-            Every grant line scoped inside {orgName}. Instance-scope grants reach this organisation
-            by inheritance and are deliberately absent: this page has no authority over an instance
-            operator, so it does not offer to revoke one.
-          </p>
-        ) : null}
-
-        {noManageMembers || !grants.isSuccess || grants.isFetching ? null : (
-        <div className="panel__actions">
-          {topologyPending ? (
-            <p role="status">Loading the complete organisation topology before a new grant can open…</p>
-          ) : topologyError ? (
-            <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
-          ) : null}
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!topologyReady}
-            onClick={() => {
-              feedback.clear();
-              setDraft(freshDraft(
-                grantOptions,
-                projectId !== '' && prototypeMode ? prototypeDefaultPrincipal : '',
-              ));
-              setModal('grant');
-            }}
-          >
-            Add access
-          </Button>
-          {/* Invite (#568) lives at organisation and instance scope only: a
-              project has no accounts of its own, and the org page is one
-              click up from the project projection. */}
-          {projectId === '' ? (
-            <Button
-              type="button"
-              onClick={() => {
-                feedback.clear();
-                setModal('invite');
-              }}
-            >
-              Invite
-            </Button>
-          ) : null}
-        </div>
-        )}
-
-        {grants.isPending ? <p role="status">Loading members…</p> : null}
-
-        {grants.isSuccess || rulesPanelVisible ? (
-          <div id="members-rules">
-            {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error)}</Alert> : null}
-            {rulesPanelVisible && !rules.isSuccess && !rules.isError ? <p role="status">Loading access rules…</p> : null}
-            {rulePeople.length === 0 ? (
-              grants.isSuccess || rules.isSuccess ? <p role="status">{needle === '' ? scopedRulesOnly ? 'No delegable rules are disclosed here.' : 'No members with access here yet.' : `No member matches “${find.trim()}”.`}</p> : null
-            ) : (
-              <RulesPanel
-                world={world}
-                people={rulePeople}
-                you={me}
-                canEdit={canEditRules}
-                showReach={!selectorTopologyOnly}
-                onEdit={(rule) => openEditor(rule)}
-                onAdd={(person) => openEditor(null, person)}
-                existingAccess={(person) => rows.filter((row) => row.principal === person).map((row) => (
-                  <ExistingAccessCard
-                    key={row.key}
-                    access={row}
-                    names={names}
-                    revoking={revoke.isPending && row.grants.some((grant) => grant.id === revoke.variables?.grant.id)
-                      ? revoke.variables?.grant.capability : undefined}
-                    protectedScope={row.grants.some((grant) => {
-                      const scope = scopeOf(grant);
-                      return scope.kind === 'environment' && memberProjects.some((p) => p.environments.some(
-                        (env) => env.id === scope.environment && env.isProtected === true,
+                {noManageMembers || !grants.isSuccess || grants.isFetching ? null : (
+                <div className="actions">
+                  {topologyPending ? (
+                    <p role="status">Loading the complete organisation topology before a new grant can open…</p>
+                  ) : topologyError ? (
+                    <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    disabled={!topologyReady}
+                    onClick={() => {
+                      feedback.clear();
+                      setDraft(freshDraft(
+                        grantOptions,
+                        projectId !== '' && prototypeMode ? prototypeDefaultPrincipal : '',
                       ));
-                    })}
-                    onEdit={grants.isFetching || revoke.isPending ? undefined : () => {
-                      feedback.clear();
-                      setExistingAccessKey(row.key);
-                    }}
-                  />
-                ))}
-                personActions={!grants.isSuccess || grants.isFetching ? undefined : (person) => (
-                  <>
-                    {!compactPresentation && person.kind === 'person' && person.id !== me ? (
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        disabled={resetPending !== null}
-                        aria-busy={resetPending === person.id ? true : undefined}
-                        aria-label={`Reset credential for ${person.name}`}
-                        onClick={() => void onReset(person.id)}
-                      >
-                        {resetPending === person.id ? 'Resetting…' : 'Reset credential'}
-                      </Button>
-                    ) : null}
-                    <Button type="button" variant="quiet" disabled={!topologyReady || grants.isFetching} onClick={() => {
-                      feedback.clear();
-                      setDraft(freshDraft(grantOptions, person.id));
                       setModal('grant');
-                    }}>
-                      Add scope-wide access<span className="visually-hidden"> for {person.name}</span>
+                    }}
+                  >
+                    Add access
+                  </Button>
+                  {/* Invite (#568) lives at organisation and instance scope only: a
+                      project has no accounts of its own, and the org page is one
+                      click up from the project projection. */}
+                  {projectId === '' ? (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        feedback.clear();
+                        setModal('invite');
+                      }}
+                    >
+                      Invite
                     </Button>
-                  </>
+                  ) : null}
+                </div>
                 )}
+
+                {grants.isPending ? <p role="status">Loading members…</p> : null}
+
+                {grants.isSuccess || rulesPanelVisible ? (
+                  <div id="members-rules">
+                    {rulesPanelVisible && rules.isError ? <Alert>{rulesListingText(rules.error)}</Alert> : null}
+                    {rulesPanelVisible && !rules.isSuccess && !rules.isError ? <p role="status">Loading access rules…</p> : null}
+                    {rulePeople.length === 0 ? (
+                      grants.isSuccess || rules.isSuccess ? <p role="status">{needle === '' ? scopedRulesOnly ? 'No delegable rules are disclosed here.' : 'No members with access here yet.' : `No member matches “${find.trim()}”.`}</p> : null
+                    ) : (
+                      <RulesPanel
+                        world={world}
+                        people={rulePeople}
+                        you={me}
+                        canEdit={canEditRules}
+                        showReach={!selectorTopologyOnly}
+                        onEdit={(rule) => openEditor(rule)}
+                        onAdd={(person) => openEditor(null, person)}
+                        existingAccess={(person) => rows.filter((row) => row.principal === person).map((row) => (
+                          <ExistingAccessCard
+                            key={row.key}
+                            access={row}
+                            names={names}
+                            revoking={revoke.isPending && row.grants.some((grant) => grant.id === revoke.variables?.grant.id)
+                              ? revoke.variables?.grant.capability : undefined}
+                            protectedScope={row.grants.some((grant) => {
+                              const scope = scopeOf(grant);
+                              return scope.kind === 'environment' && memberProjects.some((p) => p.environments.some(
+                                (env) => env.id === scope.environment && env.isProtected === true,
+                              ));
+                            })}
+                            onEdit={grants.isFetching || revoke.isPending ? undefined : () => {
+                              feedback.clear();
+                              setExistingAccessKey(row.key);
+                            }}
+                          />
+                        ))}
+                        personActions={!grants.isSuccess || grants.isFetching ? undefined : (person) => (
+                          <>
+                            {/* The grant first, the credential reset under it. */}
+                            <Button type="button" variant="quiet" disabled={!topologyReady || grants.isFetching} onClick={() => {
+                              feedback.clear();
+                              setDraft(freshDraft(grantOptions, person.id));
+                              setModal('grant');
+                            }}>
+                              Add scope-wide access<span className="visually-hidden"> for {person.name}</span>
+                            </Button>
+                            {!compactPresentation && person.kind === 'person' && person.id !== me ? (
+                              <Button
+                                type="button"
+                                variant="quiet"
+                                disabled={resetPending !== null}
+                                aria-busy={resetPending === person.id ? true : undefined}
+                                aria-label={`Reset credential for ${person.name}`}
+                                onClick={() => void onReset(person.id)}
+                              >
+                                {resetPending === person.id ? 'Resetting…' : 'Reset credential'}
+                              </Button>
+                            ) : null}
+                          </>
+                        )}
+                      />
+                    )}
+                  </div>
+                ) : null}
+
+
+              </Panel>
+            </>
+          ) },
+          { id: 'members-inspect', label: 'Who can…?', content: (
+            <Inspect
+              options={inspectOptions}
+              grants={lines}
+              names={names}
+              grantsPending={grants.isPending}
+              grantsSucceeded={grants.isSuccess}
+              projectContext={compactPresentation}
+              level={instance ? 'instance' : 'org'}
+              ruleHolders={(capability, option) => ruleHolders(world, capability, option)}
+            />
+          ) },
+          /* Open registration (#606, #579 d10): beside invite, at organisation
+             and instance scope only (a project has no sign-up of its own), and
+             only for a caller the membership listing admitted. */
+          registrationVisible && { id: 'members-registration', label: 'Open registration', content: (
+            <OpenRegistrationPanel
+              scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
+              scopeName={scopeName}
+              origin={window.location.origin}
+              authorityName={(principal) =>
+                principal === '' ? 'no one' : principal === me ? 'you' : principalLabel(principal, lines)}
+              onChanged={(text) => {
+                feedback.clear();
+                feedback.ok(text);
+              }}
+            />
+          ) },
+        ]}
+      />
+
+      {rulesPanelVisible && aside === 'whocan' ? (
+        <SidePanel title="Who can reach one key?" onClose={() => setAside(null)}>
+          <div id="members-whocan" className="members__aside">
+            <p>
+              Answered over the grants and the access rules on this page. Grants reach every key of
+              their scope; a rule can leave keys, folders or environments out.
+            </p>
+            {scopedRulesOnly ? (
+              <p role="status">This list contains only rules inside your delegated access. Scope-wide grants and other rules are not disclosed, so it cannot answer who has access across the project.</p>
+            ) : rules.isError ? (
+              <Alert>{rulesListingText(rules.error)}</Alert>
+            ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
+              <p role="status">Loading the grants, rules, topology and key names before answering…</p>
+            ) : (
+              <WhoCan
+                world={world}
+                projects={askable}
+                asked={whoCanAsked}
+                onAsk={setWhoCanAsked}
+                onEditRule={canEditRules ? (rule) => openEditor(rule) : undefined}
               />
             )}
           </div>
-        ) : null}
-
-
-      </Panel>
-
-      <Inspect
-        options={inspectOptions}
-        grants={lines}
-        names={names}
-        grantsPending={grants.isPending}
-        grantsSucceeded={grants.isSuccess}
-        projectContext={compactPresentation}
-        level={instance ? 'instance' : 'org'}
-        ruleHolders={(capability, option) => ruleHolders(world, capability, option)}
-      />
-
-      {rulesPanelVisible ? (
-        <Panel id="members-whocan" title="Who can reach one key?">
-          <p>
-            Answered over the grants and the access rules on this page. Grants reach every key of
-            their scope; a rule can leave keys, folders or environments out.
-          </p>
-          {scopedRulesOnly ? (
-            <p role="status">This list contains only rules inside your delegated access. Scope-wide grants and other rules are not disclosed, so it cannot answer who has access across the project.</p>
-          ) : rules.isError ? (
-            <Alert>{rulesListingText(rules.error)}</Alert>
-          ) : !rules.isSuccess || !topologyReady || catalogues.isPending ? (
-            <p role="status">Loading the grants, rules, topology and key names before answering…</p>
-          ) : (
-            <WhoCan
-              world={world}
-              projects={askable}
-              onEditRule={canEditRules ? (rule) => openEditor(rule) : undefined}
-            />
-          )}
-        </Panel>
+        </SidePanel>
       ) : null}
 
-      {/* Open registration (#606, #579 d10): beside invite, at organisation
-          and instance scope only (a project has no sign-up of its own), and
-          only for a caller the membership listing admitted. */}
-      {registrationVisible ? (
-        <OpenRegistrationPanel
-          scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
-          scopeName={scopeName}
-          origin={window.location.origin}
-          authorityName={(principal) =>
-            principal === '' ? 'no one' : principal === me ? 'you' : principalLabel(principal, lines)}
-          onChanged={(text) => {
-            feedback.clear();
-            feedback.ok(text);
-          }}
-        />
-      ) : null}
-
-      {rulesPanelVisible ? (
-        <Panel id="members-glossary" title="Glossary">
+      {rulesPanelVisible && aside === 'glossary' ? (
+        <SidePanel title="Glossary" onClose={() => setAside(null)}>
           <AccessGlossary />
-        </Panel>
+        </SidePanel>
       ) : null}
 
       {existingAccess === null || !grants.isSuccess || grants.isFetching ? null : (
@@ -645,9 +665,9 @@ export function Members({ scope }: { scope: MembersScope }) {
           <ul className="capabilities">
             {existingAccess.grants.map((grant) => (
               <li key={grant.id} className="capability">
-                <span className="capability__name mono">{grant.capability}</span>
+                <CapabilityTag id={grant.capability} />
                 {grant.origins.map((origin) => (
-                  <Badge key={`${origin.kind}:${origin.subject}`}>{origin.kind}: {origin.subject}</Badge>
+                  <Badge mono key={`${origin.kind}:${origin.subject}`}>{origin.kind}: {origin.subject}</Badge>
                 ))}
                 <Button type="button" variant="quiet" disabled={revoke.isPending}
                   aria-label={`Revoke ${grant.capability} on ${existingAccess.scopeLabel} for ${memberName(existingAccess.principal)}`}
@@ -862,13 +882,13 @@ function Inspect({
           ) : projectContext && answer.length !== 0 ? (
             <>
               <strong className="mono">{capability}</strong> on{' '}
-              <strong className="mono">{compactScopeLabel(chosen)}</strong> →{' '}
+              <strong className="mono">{dotted(compactScopeLabel(chosen))}</strong> →{' '}
               {answer.map((grant, index) => (
                 <span key={grant.id}>
                   {index === 0 ? null : ', '}
                   <strong>{principalLabel(grant.principal_id, grants)}</strong>{' '}
                   <span className="chrome-meta">
-                    (via {compactGrantScopeLabel([grant], grantScopeLabel(grant, names), names)})
+                    (via {dotted(compactGrantScopeLabel([grant], grantScopeLabel(grant, names), names))})
                   </span>
                 </span>
               ))}
@@ -876,7 +896,7 @@ function Inspect({
           ) : projectContext ? (
             <>
               <strong className="mono">{capability}</strong> on{' '}
-              <strong className="mono">{compactScopeLabel(chosen)}</strong> →{' '}
+              <strong className="mono">{dotted(compactScopeLabel(chosen))}</strong> →{' '}
               <strong>nobody</strong>
             </>
           ) : answer.length === 0 && level === 'instance' ? (
@@ -1410,8 +1430,7 @@ export function GrantModal({
           {atoms.map((atom) => (
             <li className="capitem" key={atom.id}>
               <Checkbox
-                mono
-                label={atom.id}
+                label={<CapabilityTag id={atom.id} />}
                 disabled={mutationPending}
                 checked={draft.capabilities.includes(atom.id)}
                 onChange={(event) =>

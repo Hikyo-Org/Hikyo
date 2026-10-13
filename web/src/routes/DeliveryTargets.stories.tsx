@@ -100,7 +100,10 @@ export const QuotaRefused: Story = {
 export const Unknown: Story = {
   args: { view: viewOf(listing({})) },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText('? unknown')).toBeVisible();
+    // The question mark is the tag's icon now, not a character in the word.
+    const unknown = canvas.getByText('unknown');
+    await expect(unknown).toBeVisible();
+    await expect(unknown.querySelector('svg')?.getAttribute('data-glyph')).toBe('question');
     await expect(canvas.getByText('no report received')).toBeVisible();
   },
 };

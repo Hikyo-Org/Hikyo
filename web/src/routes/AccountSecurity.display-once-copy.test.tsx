@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act, useState } from 'react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
@@ -136,7 +137,7 @@ describe('display-once account secrets', () => {
     );
     mocks.writeClipboard.mockResolvedValue('ok');
 
-    const { container } = await renderForm(<AccountSecurity />);
+    const { container } = await renderForm(<MemoryRouter><AccountSecurity /></MemoryRouter>);
     await act(async () => buttonNamed(container, 'Replace recovery codes').click());
     await submitProof(container);
     await act(async () => buttonNamed(container, 'Copy').click());
@@ -155,7 +156,7 @@ describe('display-once account secrets', () => {
     );
     mocks.writeClipboard.mockResolvedValue('refused');
 
-    const { container } = await renderForm(<AccountSecurity />);
+    const { container } = await renderForm(<MemoryRouter><AccountSecurity /></MemoryRouter>);
     await act(async () => buttonNamed(container, 'Replace recovery codes').click());
     await submitProof(container);
     await act(async () => buttonNamed(container, 'Copy').click());
@@ -180,7 +181,7 @@ describe('display-once account secrets', () => {
     );
     mocks.writeClipboard.mockResolvedValue('ok');
 
-    const { container } = await renderForm(<AccountSecurity />);
+    const { container } = await renderForm(<MemoryRouter><AccountSecurity /></MemoryRouter>);
     await act(async () => buttonNamed(container, 'enrol').click());
     await submitProof(container);
     await act(async () => buttonNamed(container, 'Copy').click());

@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import { Badge } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import type { Person, Rule, World } from './model.ts';
-import { RuleSummary } from './parts.tsx';
+import { MachineBadge, RuleSummary } from './parts.tsx';
+import { Glyph } from '../../ui/Glyph.tsx';
 
 /**
  * The people of a Members page with their access rules: one card per rule
@@ -46,11 +47,11 @@ export function RulesPanel({
           <li key={person.id} className="access-person">
             <div className="access-person__who">
               <strong>
-                <span className="member-name" title={person.id}>{person.name}</span> {person.id === you ? <Badge>you</Badge> : null}
+                <span className="member-name" title={person.id}>{person.name}</span> {person.id === you ? <Badge icon="draft">you</Badge> : null}
               </strong>
               <span className="mono">{person.id}</span>
-              {person.kind === 'machine' ? <Badge>machine</Badge> : null}
-              {personActions?.(person)}
+              {person.kind === 'machine' ? <MachineBadge /> : null}
+              {personActions === undefined ? null : <div className="actions">{personActions(person)}</div>}
             </div>
             <div className="access-person__rules">
               {rules.length > 0 || existingAccess !== undefined ? (
@@ -74,7 +75,7 @@ export function RulesPanel({
               )}
               {canEdit && person.kind === 'person' ? (
                 <Button type="button" variant="quiet" className="access-person__action" data-rule-action onClick={() => onAdd(person.id)}>
-                  + Add rule<span className="visually-hidden"> for {person.name}</span>
+                  <Glyph name="plus" /> Add rule<span className="visually-hidden"> for {person.name}</span>
                 </Button>
               ) : null}
             </div>

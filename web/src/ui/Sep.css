@@ -1,0 +1,8 @@
+/* Bigger than the surrounding text and clear of it on both sides. */
+.sep {
+  display: inline-block;
+  font-size: var(--sep-scale);
+  line-height: 1;
+  vertical-align: middle;
+  margin: 0 var(--space-2);
+}

@@ -6,16 +6,22 @@
   gap: var(--space-2);
   min-height: var(--control);
   padding: 0 var(--space-4);
-  border: 1px solid var(--line);
+  border: 1px solid var(--btn-line);
   border-radius: var(--radius-control);
   background: var(--bg-panel);
-  color: var(--tx);
+  color: var(--btn-tx);
   cursor: pointer;
   transition: background var(--dur) var(--ease);
   font-size: var(--fs-md);
   /* A button is one line: a label that wraps grows the control past the token
      (the members table's "Reset credential" at 41px). */
   white-space: nowrap;
+}
+
+/* A link in the button skin is a button to look at: never underlined, in any
+   state. */
+a.btn {
+  text-decoration: none;
 }
 
 .btn:hover {
@@ -33,15 +39,33 @@
   background: color-mix(in oklch, var(--accent), black 10%);
 }
 
-.btn[disabled] {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
 .btn--icon {
   width: var(--control);
   min-width: var(--control);
   padding: 0;
+}
+
+/* A standalone icon fills about half its square, not the smaller standalone
+   `--icon` box meant for an icon beside text. */
+.btn--icon > .glyph {
+  font-size: var(--icon-in-button);
+}
+
+/* A labelled button (icon + word, e.g. Close) that collapses to icon-only at
+ * the phone breakpoint, same square size as .btn--icon. Its `.btn__label` is
+ * hidden by the `.visually-hidden-phone` rule (app.css), so the accessible
+ * name never changes with width.
+ */
+@media (max-width: 700px) {
+  .btn--icon-phone {
+    width: var(--control);
+    min-width: var(--control);
+    padding: 0;
+  }
+
+  .btn--icon-phone > .glyph {
+    font-size: var(--icon-in-button);
+  }
 }
 
 .btn--danger {
@@ -51,10 +75,97 @@
   font-weight: 500;
 }
 
+/* Quiet recedes by fill only: same height, padding and type as every button,
+   so "Clear" beside "Apply filter" is never the smaller one. */
 .btn--quiet {
-  /* A short label ("Self") must still be a square's worth of target. */
-  min-width: var(--control);
-  min-height: var(--control);
+  background: transparent;
+}
+
+/* The compact class, only for the matrix column header's `rev N · history`
+   anchor and environment picker summary. Its height is the WCAG hit floor on a
+   fine pointer; a coarse pointer keeps the touch control. */
+.btn--compact {
   padding: 0 var(--space-2);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
+}
+
+@media (pointer: fine) {
+  .btn--compact {
+    min-height: var(--hit-min);
+  }
+}
+
+/* A `<summary>` in the button skin (DESIGN.md, Disclosure): no native
+   marker; its leading chevron turns to point down, instantly, when open. */
+summary.btn {
+  list-style: none;
+}
+
+summary.btn::-webkit-details-marker {
+  display: none;
+}
+
+details[open] > summary.btn > .glyph[data-glyph='chevron'] {
+  transform: rotate(90deg);
+}
+
+/* Action row: the one container for a run of buttons. Buttons sit
+   `--space-2` apart and start-aligned with the content; the row keeps no
+   margin of its own, its parent's gap separates it from the content around
+   it. A dialog footer is the same row at the trailing edge. Primary sits at
+   the row's outer edge: first in a start-aligned row, last in a footer. */
+.actions,
+.dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dialog__actions {
+  justify-content: flex-end;
+}
+
+.actions:empty {
+  display: none;
+}
+
+/* Mobile: an actions row of 2+ buttons becomes an equal-
+   width 2-column grid instead of ragged wrapping; a single-button row is
+   left alone, and `.dialog__actions` keeps its own right-aligned rule above. */
+@media (max-width: 700px) {
+  .actions:has(> .btn ~ .btn) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actions:has(> .btn ~ .btn) > .btn {
+    width: 100%;
+    white-space: normal;
+  }
+
+  /* `.actions--stack`: for a row whose buttons carry long labels, one
+     full-width column with each label kept to its one line. */
+  .actions--stack:has(> .btn ~ .btn) {
+    grid-template-columns: 1fr;
+  }
+
+  .actions--stack:has(> .btn ~ .btn) > .btn {
+    white-space: nowrap;
+  }
+}
+
+/* Unavailable, every variant alike: a flat neutral tint,
+   no border and a faint label, so it reads as "not now" rather than as an empty
+   or a secondary button. No opacity (that washed the label out to blank) and no
+   hover change. The label clears 3:1 in both themes although WCAG exempts it.
+   Last in this file so it outranks the variants and their hovers. app.css is
+   imported after it, so a rule there that restyles a `.btn` state (pressed,
+   the unbranded sign-in button) must exclude the disabled states itself. */
+.btn:is(:disabled, [disabled], [aria-disabled='true']),
+.btn:is(:disabled, [disabled], [aria-disabled='true']):hover {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--tx) 8%, transparent);
+  color: var(--tx-faint);
+  cursor: not-allowed;
 }

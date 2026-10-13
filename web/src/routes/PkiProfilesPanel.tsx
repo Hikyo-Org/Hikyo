@@ -17,8 +17,11 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
+import { duration } from '../app/duration.ts';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 
@@ -57,6 +60,8 @@ export function PkiProfilesPanel() {
   const [name, setName] = useState('');
   const [draft, setDraft] = useState(TEMPLATE);
   const [draftError, setDraftError] = useState<string | null>(null);
+  // One side panel at a time: the create form, or one profile's form.
+  const [open, setOpen] = useState<'create' | { id: string; mode: RowMode } | null>(null);
   const report = (error: unknown, action: string) => setFeedback({ failure: pkiAdminRefusalText(error, action), done: null });
   const ok = (message: string) => setFeedback({ failure: null, done: message });
   const clear = () => setFeedback({ failure: null, done: null });
@@ -78,19 +83,47 @@ export function PkiProfilesPanel() {
       {profiles.isError && !secondFactor(profiles.error) ? (
         <Alert>{pkiAdminRefusalText(profiles.error, 'list the certificate profiles')}</Alert>
       ) : null}
-      {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
+      {open === null && feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
       {profiles.isSuccess && profiles.data.profiles.length === 0 ? (
         <p role="status">No certificate profiles yet. Create one below.</p>
       ) : null}
       {profiles.isSuccess
         ? profiles.data.profiles.map((profile) => (
-            <ProfileRow key={profile.id} profile={profile} onDone={ok} onFailure={report} onBusy={clear} />
+            <ProfileRow
+              key={profile.id}
+              profile={profile}
+              mode={open !== null && open !== 'create' && open.id === profile.id ? open.mode : 'idle'}
+              setMode={(mode) => setOpen(mode === 'idle' ? null : { id: profile.id, mode })}
+              failure={feedback.failure}
+              onDone={ok}
+              onFailure={report}
+              onBusy={clear}
+            />
           ))
         : null}
 
+      <div className="actions">
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => {
+            clear();
+            setOpen('create');
+          }}
+        >
+          Create a certificate profile
+        </Button>
+      </div>
+      {open === 'create' ? (
+      <SidePanel
+        title="Create a certificate profile"
+        onClose={() => {
+          if (!create.isPending) setOpen(null);
+        }}
+      >
+      {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       <fieldset className="machine__lock" disabled={create.isPending}>
-        <legend className="machine__subhead">Create a certificate profile</legend>
         <Input label="Name" mono value={name} placeholder="web" onChange={(event) => setName(event.target.value)} />
         <Textarea
           label="Policy (JSON)"
@@ -103,7 +136,7 @@ export function PkiProfilesPanel() {
             setDraftError(null);
           }}
         />
-        <div className="panel__actions">
+        <div className="actions">
           <Button
             type="button"
             variant="primary"
@@ -120,6 +153,7 @@ export function PkiProfilesPanel() {
                 {
                   onSuccess: (profile) => {
                     setName('');
+                    setOpen(null);
                     ok(`Created profile ${profile.name}. Bind it to a project to use it.`);
                   },
                   onError: (error) => report(error, 'create the profile'),
@@ -131,24 +165,34 @@ export function PkiProfilesPanel() {
           </Button>
         </div>
       </fieldset>
+      </SidePanel>
+      ) : null}
     </Panel>
   );
 }
 
 /** Edits policy against the version captured when editing starts, manages
  * bindings, and requires the profile name before deletion. */
+type RowMode = 'edit' | 'bind' | 'delete';
+
 function ProfileRow({
   profile,
+  mode,
+  setMode,
+  failure,
   onDone,
   onFailure,
   onBusy,
 }: {
   profile: PkiProfile;
+  mode: 'idle' | RowMode;
+  setMode: (mode: 'idle' | RowMode) => void;
+  /** The page's refusal sentence, shown inside this row's open panel. */
+  failure: string | null;
   onDone: (message: string) => void;
   onFailure: (error: unknown, action: string) => void;
   onBusy: () => void;
 }) {
-  const [mode, setMode] = useState<'idle' | 'edit' | 'bind' | 'delete'>('idle');
   const [draft, setDraft] = useState(() => policyText(profile.policy));
   // The row version the draft was seeded from: saving sends it, so an edit
   // made against a policy that changed underneath is refused as a conflict.
@@ -160,14 +204,16 @@ function ProfileRow({
   const bind = useBindPkiProfile();
   const unbind = useUnbindPkiProfile();
   const policy = profile.policy;
-  const toggle = (next: typeof mode) => {
+  const failureAlert = failure !== null ? <Alert>{failure}</Alert> : null;
+  // The open panel is modal, so a row button only ever runs from idle.
+  const show = (next: RowMode) => {
     onBusy();
-    if (next === 'edit' && mode !== 'edit') {
+    if (next === 'edit') {
       setDraft(policyText(profile.policy));
       setEditedVersion(Number(profile.row_version));
       setDraftError(null);
     }
-    setMode((current) => (current === next ? 'idle' : next));
+    setMode(next);
   };
 
   return (
@@ -175,7 +221,7 @@ function ProfileRow({
       <div className="settings-row__copy">
         <span className="settings-row__title mono">{profile.name}</span>
         <span className="settings-row__detail">
-          issuers {policy.allowed_issuers.join(', ')} · max {String(Number(policy.max_ttl_seconds) / 3600)}h ·{' '}
+          issuers {policy.allowed_issuers.join(', ')}<Sep />max {duration(Number(policy.max_ttl_seconds))}<Sep />
           {[...policy.dns_patterns, ...policy.ip_ranges, ...policy.uri_patterns].join(', ')}
         </span>
         {profile.bindings.map((binding) => (
@@ -203,19 +249,26 @@ function ProfileRow({
         ))}
       </div>
       <span className="settings-row__spacer" />
-      {policy.machine_issuance ? <Badge>machines</Badge> : null}
-      <div className="panel__actions">
-        <Button type="button" onClick={() => toggle('edit')}>
+      {policy.machine_issuance ? <Badge icon="workload">machines</Badge> : null}
+      <div className="actions">
+        <Button type="button" onClick={() => show('edit')}>
           Narrow
         </Button>
-        <Button type="button" onClick={() => toggle('bind')}>
+        <Button type="button" onClick={() => show('bind')}>
           Bind
         </Button>
-        <Button type="button" variant="danger" onClick={() => toggle('delete')}>
+        <Button type="button" variant="danger" onClick={() => show('delete')}>
           Delete
         </Button>
       </div>
       {mode === 'edit' ? (
+        <SidePanel
+          title={`Narrow ${profile.name}`}
+          onClose={() => {
+            if (!update.isPending) setMode('idle');
+          }}
+        >
+        {failureAlert}
         <fieldset className="machine__lock" disabled={update.isPending}>
           <Textarea
             label={`Policy of ${profile.name} (JSON)`}
@@ -229,7 +282,7 @@ function ProfileRow({
               setDraftError(null);
             }}
           />
-          <div className="panel__actions">
+          <div className="actions">
             <Button
               type="button"
               variant="primary"
@@ -255,8 +308,16 @@ function ProfileRow({
             </Button>
           </div>
         </fieldset>
+        </SidePanel>
       ) : null}
       {mode === 'bind' ? (
+        <SidePanel
+          title={`Bind ${profile.name}`}
+          onClose={() => {
+            if (!bind.isPending) setMode('idle');
+          }}
+        >
+        {failureAlert}
         <fieldset className="machine__lock" disabled={bind.isPending}>
           <Input label="Organization id" mono value={target.org} onChange={(event) => setTarget({ ...target, org: event.target.value })} />
           <Input label="Project id" mono value={target.project} onChange={(event) => setTarget({ ...target, project: event.target.value })} />
@@ -267,7 +328,7 @@ function ProfileRow({
             hint="Leave empty to bind every environment of the project."
             onChange={(event) => setTarget({ ...target, environment: event.target.value })}
           />
-          <div className="panel__actions">
+          <div className="actions">
             <Button
               type="button"
               variant="primary"
@@ -289,8 +350,16 @@ function ProfileRow({
             </Button>
           </div>
         </fieldset>
+        </SidePanel>
       ) : null}
       {mode === 'delete' ? (
+        <SidePanel
+          title={`Delete ${profile.name}`}
+          onClose={() => {
+            if (!remove.isPending) setMode('idle');
+          }}
+        >
+        {failureAlert}
         <TypedNameConfirm
           label="Delete this profile"
           expect={profile.name}
@@ -313,6 +382,7 @@ function ProfileRow({
             })
           }
         />
+        </SidePanel>
       ) : null}
     </div>
   );

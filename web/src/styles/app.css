@@ -1,4 +1,6 @@
 @import "../ui/Button.css";
+@import "../ui/SidePanel.css";
+@import "../ui/Sep.css";
 
 /*
  * The chrome skeleton: org rail, sidebar, header, content well, and the login
@@ -51,6 +53,14 @@ kbd,
   outline: var(--ring-width) solid var(--ring-color);
   outline-offset: var(--ring-offset);
   border-radius: var(--radius-control);
+}
+
+/* Except on a focus TARGET that is not a control: a heading or section given
+   `tabIndex={-1}` so a panel, a fragment jump or an error can move the screen
+   reader there. It is not reachable by Tab and does nothing on Enter, so a
+   ring around it read as a stray button (the side panel titles on open). */
+:is(h1, h2, h3, h4, section, aside, form, div)[tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 /* --- Type scale (DESIGN.md 4b, decided 2026-09-16) -------------------------
@@ -119,11 +129,12 @@ select {
 
 /* --- Controls ------------------------------------------------------------ */
 
-/* The shared control skin lives beside Button; native links use it too. */
+/* The shared control skin lives beside Button; native links use it too. One
+   gap governs both label-to-control and control-to-hint/error. */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 /* Captions: field labels, legends, ledes, hints. 13px, secondary ink, 400. */
@@ -138,6 +149,12 @@ select {
   color: var(--tx-dim);
   text-transform: none;
   letter-spacing: normal;
+}
+
+/* A label's trailing "(...)" is a note, not the name: tertiary ink sets it
+   apart from the label text beside it. */
+.field__label-note {
+  color: var(--tx-faint);
 }
 
 /* EVERY text-like input, select and textarea, wherever it sits: one control
@@ -187,6 +204,51 @@ textarea {
 .field :is(input, select, textarea)[aria-invalid='true']:focus-visible {
   border-color: var(--danger);
   outline-color: var(--danger);
+}
+
+/* `date`/`time`/`datetime-local` already take the shared control box above
+   (height, padding, border, radius, background): they are not excluded from
+   that selector. Left to the browser they still look foreign: squared-off
+   digits, a blue system accent and a bare system glyph. `color-scheme` is
+   inherited from `:root` already (tokens.css), so the native popup already
+   follows the theme; everything else here is local. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  font-variant-numeric: tabular-nums;
+  accent-color: var(--accent);
+  /* Unset segments read as a placeholder; `:placeholder-shown` (supported by
+     these three types) flips to full ink once every segment is filled. */
+  color: var(--tx-faint);
+}
+
+input[type='date']:not(:placeholder-shown),
+input[type='time']:not(:placeholder-shown),
+input[type='datetime-local']:not(:placeholder-shown) {
+  color: var(--tx);
+}
+
+/* The browser's own calendar glyph, replaced by drawn geometry (never a
+   fetched image: production serves `img-src 'self'`, csp.test.ts, the same
+   reason the checkbox tick below is a rotated border, not a mask). A
+   bordered box with a thicker top band reads as a calendar at this size
+   without a real SVG. */
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  width: var(--icon);
+  height: var(--icon);
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--tx-dim);
+  border-top: 4px solid var(--tx-dim);
+  border-radius: var(--radius-badge);
+  cursor: pointer;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator:hover,
+input[type='datetime-local']::-webkit-calendar-picker-indicator:hover {
+  border-color: var(--tx);
 }
 
 /* A read-only field must not read as an editable one that simply hasn't been
@@ -275,31 +337,45 @@ fieldset.field > legend {
 
 /* --- Badges: one vocabulary --------------------------------------------------
  *
- * One treatment for every status badge (ui/Badge). It replaced the three the
+ * One treatment for every status tag (ui/Badge). It replaced the three the
  * routes hand-wrote, `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag`
  * (32px, 10px uppercase bold); the `.count` pill (numeric counts) is the
  * DESIGN.md exception and is left alone. Tones follow the DESIGN.md state
- * vocabulary: danger for a violation or refusal, changed (slate) for pending or
- * drafted, `ok` on the accent hairline. */
+ * vocabulary: each is a soft fill of its colour with that colour as the
+ * ink, and a border of the ink at 40%, so one rule draws every tone. The word
+ * is capitals, bold and tracked by CSS only; the source keeps its case. */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   min-height: var(--badge-height);
-  padding: 1px var(--space-2);
-  border: 1px solid var(--line);
+  padding: 0 var(--space-2);
+  border: 1px solid color-mix(in oklch, currentColor 40%, transparent);
   border-radius: var(--radius-badge);
-  background: transparent;
+  background: var(--neutral-soft);
   color: var(--tx-dim);
   font-size: var(--fs-xs);
-  font-weight: 500;
+  font-weight: 700;
   line-height: var(--lh-heading);
-  letter-spacing: normal;
-  text-transform: none;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
-.badge.mono {
+/* The icon is a caption-size glyph, a touch larger than the capitals. */
+.badge > .glyph {
+  font-size: var(--fs-sm);
+}
+
+/* An identifier, not a tag: the value face in its exact case. An identifier
+   inside a tag ("current r4") keeps its case the same way. */
+.badge.mono,
+.badge .mono {
   font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 /* The Members scope badge takes the settings hairline rather than the control
@@ -310,22 +386,7 @@ fieldset.field > legend {
 }
 
 /* Badge tiers ride beside the word that names the state; colour only echoes. */
-.badge--danger {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.badge--changed {
-  border-color: var(--changed);
-  color: var(--changed);
-}
-
-.badge--ok,
-.badge[data-state='ok'] {
-  border-color: var(--accent);
-  color: var(--tx);
-}
-
+.badge--danger,
 .badge[data-state='unreachable'],
 .badge[data-state='credential-rejected'],
 .badge[data-state='pin-mismatch'],
@@ -333,15 +394,27 @@ fieldset.field > legend {
 .badge[data-state='self-connected'],
 .badge[data-state='redirect-refused'],
 .badge[data-state='inactive'] {
-  border-color: var(--danger);
+  background: var(--danger-soft);
   color: var(--danger);
 }
 
-/* Delivery-target states (#790): stale is a warning, neutral hairline on a
-   slate tint; unknown is unmeasured, a dashed hairline. Reported keeps the
-   neutral badge: a controller's assertion is not a measured-good condition. */
+.badge--changed {
+  background: var(--changed-soft);
+  color: var(--changed);
+}
+
+.badge--ok,
+.badge[data-state='ok'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Delivery-target states (#790): stale is a warning, the changed tone;
+   unknown is unmeasured, a dashed border. Reported keeps the neutral badge: a
+   controller's assertion is not a measured-good condition. */
 .badge[data-state='stale'] {
   background: var(--changed-soft);
+  color: var(--changed);
 }
 
 .badge[data-state='unknown'] {
@@ -367,173 +440,6 @@ fieldset.field > legend {
 .avatar[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-/* --- Polymorphing theme icon (author: Marc Went) ------------------------- *
- *
- * The sun↔moon morph the header toggle wears. The markup is in Shell.tsx with
- * the sun path baked as an attribute; everything animated lives here because
- * the CSP forbids an inline <style>. The colours are icon-local so they do not
- * leak into the teal palette the token sweep pins, and the whole thing degrades
- * to a static shape under `prefers-reduced-motion` and forced-colors.
- */
-.theme-icon {
-  --sun: #ca8a04;
-  --moon: #60a5fa;
-  --moon-shine: #dbeafe;
-  overflow: visible;
-}
-
-.theme-icon__shape {
-  d: path(
-    'M70 49.5C70 60.8218 60.8218 70 49.5 70C38.1782 70 29 60.8218 29 49.5C29 38.1782 38.1782 29 49.5 29C60 29 69.5 38 70 49.5Z'
-  );
-  fill: var(--sun);
-  stroke: var(--sun);
-  fill-opacity: 0.35;
-  stroke-width: 4;
-  stroke-linecap: round;
-  transform-origin: 50px 50px;
-  transition:
-    d 0.6s ease,
-    fill 0.6s ease,
-    stroke 0.6s ease,
-    rotate 0.8s ease,
-    scale 0.8s ease;
-}
-
-.theme-icon--dark .theme-icon__shape {
-  d: path(
-    'M70 49.5C70 60.8218 60.8218 70 49.5 70C38.1782 70 29 60.8218 29 49.5C29 38.1782 38.1782 29 49.5 29C39 45 49.5 59.5 70 49.5Z'
-  );
-  fill: var(--moon);
-  stroke: var(--moon);
-  rotate: -360deg;
-  scale: 2;
-}
-
-.theme-icon__rays {
-  fill: none;
-  stroke: var(--sun);
-  stroke-width: 4;
-  stroke-linecap: round;
-}
-
-.theme-icon__rays path {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  opacity: 0;
-}
-
-@keyframes theme-icon-ray-in {
-  to {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
-}
-
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path {
-  animation: theme-icon-ray-in 0.3s ease-out forwards;
-}
-
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(1) {
-  animation-delay: 0s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(2) {
-  animation-delay: 0.05s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(3) {
-  animation-delay: 0.1s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(4) {
-  animation-delay: 0.15s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(5) {
-  animation-delay: 0.2s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(6) {
-  animation-delay: 0.25s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(7) {
-  animation-delay: 0.3s;
-}
-.theme-icon:not(.theme-icon--dark) .theme-icon__rays path:nth-child(8) {
-  animation-delay: 0.35s;
-}
-
-.theme-icon__shine {
-  d: path(
-    'M70 49.5C70 60.8218 60.8218 70 49.5 70C38.1782 70 29 60.8218 29 49.5C29 38.1782 38.1782 29 49.5 29C39 45 49.5 59.5 70 49.5Z'
-  );
-  fill: none;
-  stroke: var(--moon-shine);
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-dasharray: 20 1000;
-  scale: 2;
-  transform-origin: 50px 50px;
-  opacity: 0;
-}
-
-@keyframes theme-icon-shine {
-  0% {
-    opacity: 0;
-    stroke-dashoffset: 0;
-    filter: blur(0);
-  }
-  20% {
-    opacity: 1;
-    filter: blur(2px);
-  }
-  100% {
-    opacity: 0;
-    stroke-dashoffset: -100;
-    filter: blur(0);
-  }
-}
-
-.theme-icon--dark .theme-icon__shine {
-  animation: theme-icon-shine 0.75s linear forwards;
-}
-
-/* A hover flourish on the control, motion-gated below. */
-.btn:hover .theme-icon {
-  animation: theme-icon-wiggle 0.5s ease-in-out;
-}
-
-@keyframes theme-icon-wiggle {
-  0%,
-  100% {
-    rotate: 0deg;
-  }
-  20% {
-    rotate: -12deg;
-  }
-  40% {
-    rotate: 10deg;
-  }
-  60% {
-    rotate: -6deg;
-  }
-  80% {
-    rotate: 4deg;
-  }
-}
-
-/* Motion off: the shape still MORPHS (state must survive), but instantly, and
-   the sun keeps its rays without the draw-in that would otherwise leave them
-   at their animated-from opacity of 0. */
-@media (prefers-reduced-motion: reduce) {
-  .theme-icon,
-  .theme-icon * {
-    transition: none !important;
-    animation: none !important;
-  }
-
-  .theme-icon:not(.theme-icon--dark) .theme-icon__rays path {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
 }
 
 /* --- Login --------------------------------------------------------------- */
@@ -662,6 +568,7 @@ fieldset.field > legend {
   place-items: center;
   min-width: var(--control);
   min-height: var(--control);
+  padding: 0;
   margin: -6px -6px 0 0;
   border: 0;
   border-radius: var(--radius-control);
@@ -677,8 +584,14 @@ fieldset.field > legend {
 /* --- Chrome -------------------------------------------------------------- */
 
 .chrome {
+  /* The persistent side menu: the org rail plus the sidebar. A side panel
+     opens beside it (`--chrome-menu`), so the menu stays in view. */
+  --sidebar: 218px;
+  --chrome-menu: calc(var(--rail) + var(--sidebar));
+  /* The side panel takes one more sidebar width of gutter past the menu. */
+  --side-panel-gutter: var(--sidebar);
   display: grid;
-  grid-template-columns: var(--rail) 218px 1fr;
+  grid-template-columns: var(--rail) var(--sidebar) 1fr;
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
@@ -787,6 +700,10 @@ fieldset.field > legend {
   text-decoration: none;
 }
 
+.rail__action > .glyph {
+  font-size: var(--icon);
+}
+
 .rail__action:hover,
 .rail__action[aria-current='page'] {
   border-color: var(--accent);
@@ -826,6 +743,14 @@ fieldset.field > legend {
   pointer-events: none;
 }
 
+/* The sidebar's own metrics: the link inset and the gap between sections.
+   The context block also sets them, because it renders on its own too. */
+.sidebar,
+.context-sidebar {
+  --sidebar-inset: 15px;
+  --sidebar-section-gap: 30px;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -840,7 +765,7 @@ fieldset.field > legend {
 
 .sidebar > .sidebar__section + .sidebar__section,
 .sidebar__mobile-projects {
-  margin-top: 30px;
+  margin-top: var(--sidebar-section-gap);
 }
 
 /* The organisation block sits flush at the top of the sidebar, and 30px below
@@ -850,7 +775,7 @@ fieldset.field > legend {
 }
 
 .context-sidebar + .sidebar__section--organisation h2 {
-  padding-top: 30px;
+  padding-top: var(--sidebar-section-gap);
 }
 
 .sidebar__empty {
@@ -888,24 +813,18 @@ fieldset.field > legend {
   display: flex;
   flex-direction: column;
   margin: 0;
-  width: calc(100% - 19px);
-  margin-left: 19px;
   padding: 0;
   list-style: none;
 }
 
-/* Sidebar treatment e (app-chrome iteration 18): sub-items hang off a hairline,
-   and the rule belongs to the ROWS, not to the list around them. That is what
-   lets the current row own its own segment of the line and turn it accent, a
-   rule on the container plus a second accent line inside the row draws two
-   lines where the design has one. */
+/* Rows run flush to the sidebar's left border with no guide line; the text
+   keeps the section labels' 16px inset. Only the current row draws its accent edge, so the border is transparent at rest.
+   All four sides, because these rows are <a> and <button> alike and a button
+   brings its own border. */
 .sidebar__link,
 .context-sidebar .context-sidebar__group {
-  /* All four sides, because these rows are <a> and <button> alike and a button
-     brings its own border. Setting only `border-left` left the switcher rows
-     resetting it back to zero from their own `border: 0`. */
   border: 0;
-  border-left: 1px solid var(--chrome-line);
+  border-left: 1px solid transparent;
 }
 
 .sidebar__link {
@@ -913,7 +832,7 @@ fieldset.field > legend {
   align-items: center;
   min-height: var(--control);
   width: 100%;
-  padding: 0 13px;
+  padding: 0 var(--sidebar-inset);
   border-radius: 0;
   color: var(--tx-dim);
   font-size: var(--fs-sm);
@@ -950,6 +869,13 @@ fieldset.field > legend {
 .sidebar__switcher-check {
   margin-left: auto;
   color: var(--accent);
+}
+
+/* The project back-link: a `.sidebar__link` with a
+   leading glyph, for the pages that have no project context block and no
+   org-page project list to fall back to (account settings today). */
+.sidebar__back {
+  gap: var(--space-2);
 }
 
 .sidebar__link:hover {
@@ -1027,12 +953,6 @@ fieldset.field > legend {
 .context-sidebar > nav {
   display: flex;
   flex-direction: column;
-  width: calc(100% - 19px);
-  margin-left: 19px;
-}
-
-.context-sidebar > nav > .sidebar__link {
-  padding-left: 13px;
 }
 
 .context-sidebar__groups {
@@ -1047,7 +967,7 @@ fieldset.field > legend {
   display: flex;
   align-items: center;
   min-height: var(--control);
-  padding: 0 13px 0 28px;
+  padding: 0 var(--sidebar-inset) 0 calc(2 * var(--sidebar-inset));
   border-radius: 0;
   font-size: var(--fs-sm);
   line-height: 20px;
@@ -1073,6 +993,105 @@ fieldset.field > legend {
   overflow: hidden;
 }
 
+/* --- Atmosphere: raked sand (experiment, ported from the site) ------------ */
+
+/* Registered so it can be animated; unregistered properties jump, not ease. */
+@property --rake-gap {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 28px;
+}
+
+/* One stone off the top-right, arcs across the viewport behind the shell.
+   Fixed rather than page-length: the app scrolls inside `.content`. Opaque
+   chrome (rail, sidebar, header) and every card-style surface cover it.
+   `.sand` is the shell (and Storybook's app decorator when its toggle is on). */
+.sand::before {
+  --stone: 94% -2%;
+  --rake-gap: 28px;
+
+  position: fixed;
+  z-index: var(--z-backdrop);
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  opacity: var(--rake-opacity);
+  background: repeating-radial-gradient(
+    circle at var(--stone),
+    transparent 0 calc(var(--rake-gap) - var(--rake-aa)),
+    var(--rake) var(--rake-gap),
+    var(--rake) calc(var(--rake-gap) + 1px),
+    transparent calc(var(--rake-gap) + 1px + var(--rake-aa))
+  );
+
+  /* Shape only; strength is on opacity so the two tune independently. */
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 3%, #000 95%, transparent 100%);
+}
+
+/* Gaps open and close; scaling instead would thicken the strokes with them.
+   Smooth, as on the site: the registered property repaints the layer every
+   frame (measured in the experiment's report; the owner chose smoothness). */
+@media (prefers-reduced-motion: no-preference) {
+  .sand::before {
+    animation: rake-breathe 300s cubic-bezier(0.37, 0, 0.63, 1) -75s infinite alternate;
+  }
+}
+
+/* Phones and touch tablets keep the sand still: the 700px phone layout
+   (BREAKPOINTS in ui/tokens.ts) or a coarse pointer at any width. */
+@media (max-width: 700px), (pointer: coarse) {
+  .sand::before {
+    animation-name: none;
+  }
+}
+
+/* sandMotion.ts: no GPU, no motion; hidden or unfocused, paused in place. */
+:root.sand-static .sand::before {
+  animation-name: none;
+}
+
+:root.sand-paused .sand::before {
+  animation-play-state: paused;
+}
+
+@keyframes rake-breathe {
+  to {
+    --rake-gap: 52px;
+  }
+}
+
+/* The veil sits behind each page root in `.veil` (the content well), so it
+   covers the content column's box plus a gutter and the open area to its
+   right shows the sand unblurred; a full-width root (the matrix) is veiled
+   across. A pseudo-element, because `backdrop-filter` on the root itself
+   would make it the containing block of a fixed side panel inside it. The
+   side panel, its scrim, dialogs and popovers are overlays, not page roots.
+   Up and left the well clips the gutter (it starts flush under the header);
+   right and down an absolute box would grow the well's scroll area, so there
+   it stops at the well's padding (`--veil-room`, `--veil-room-end`): the
+   container width (100cqw) less the root's (100%) is the room it has. */
+.veil {
+  container-type: inline-size;
+}
+
+.veil > :not(.side-panel, .side-panel__scrim, dialog, [popover]) {
+  position: relative;
+}
+
+.veil > :not(.side-panel, .side-panel__scrim, dialog, [popover])::before {
+  position: absolute;
+  z-index: var(--z-backdrop);
+  inset: calc(-1 * var(--veil-gutter));
+  /* 100% is the root's padding box: less a bordered root's two hairlines. */
+  right: calc(-1 * min(var(--veil-gutter), 100cqw - 100% - 2px + var(--veil-room, 0px)));
+  bottom: calc(-1 * min(var(--veil-gutter), var(--veil-room-end, 0px)));
+  content: '';
+  pointer-events: none;
+  border-radius: var(--radius-container);
+  background: var(--veil);
+  backdrop-filter: blur(var(--veil-blur));
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -1084,6 +1103,8 @@ fieldset.field > legend {
      darker in light, an inconsistency the prototype does not have, because it
      has one hairline value for all three. */
   border-bottom: 1px solid var(--chrome-line);
+  /* Opaque: the sand stops at the chrome. */
+  background: var(--bg);
 }
 
 .header__crumbs {
@@ -1114,10 +1135,23 @@ fieldset.field > legend {
   min-width: 0;
 }
 
-.header__crumbs li span:last-child {
+.header__crumbs li > :last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A scope crumb (organisation, project) is a real link to its level, the
+   same target the rail and sidebar use; it reads as breadcrumb text, not as
+   a stray blue link. */
+.header__crumb-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.header__crumb-link:hover,
+.header__crumb-link:focus-visible {
+  text-decoration: underline;
 }
 
 .header__spacer {
@@ -1258,17 +1292,40 @@ fieldset.field > legend {
 }
 
 .content {
+  /* The well's side and bottom padding, named because the veil (Atmosphere,
+     above) may reach into it but no further. */
+  --veil-room: var(--space-4);
+  --veil-room-end: var(--space-5);
   flex: 1;
-  /* No top padding on the scroll container: a sticky child (the jump index)
+  /* No top padding on the scroll container: a sticky child
      pins BELOW the container's top padding, leaving a band under the header
      through which scrolled content shows. The surface's top breathing room is
      a margin on the scrolled child instead, so the pin sits flush. */
-  padding: 0 var(--space-4) var(--space-5);
+  padding: 0 var(--veil-room) var(--veil-room-end);
   overflow: auto;
+  /* The containing block for absolutely positioned descendants, so the
+     scroller clips them. Without it a `.visually-hidden` label low on a long
+     page was placed against the viewport instead, outside this scroller, and
+     stretched the document: the page scrolled past its end into blank space. */
+  position: relative;
 }
 
 .content > * {
   margin-top: var(--space-5);
+}
+
+/* A side panel is rendered in the well but fixed to the viewport: the flow
+   margin above would push it, and its scrim, down off the top edge. */
+.content > :is(.side-panel, .side-panel__scrim) {
+  margin-top: 0;
+}
+
+/* A `.card` used as the page root (Remotes, Values) carries its own
+   `--space-4` top padding before its h1, on top of the well's margin. Only
+   the first card needs less margin to land its h1 at the same offset as
+   `.page--chrome`'s (no padding) h1; later sibling cards keep the full gap. */
+.content > .card:first-child {
+  margin-top: var(--space-2);
 }
 
 .card {
@@ -1389,6 +1446,8 @@ fieldset.field > legend {
 
 @media (max-width: 700px) {
   .chrome {
+    --chrome-menu: 0px;
+    --side-panel-gutter: 0px;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
   }
@@ -1426,19 +1485,28 @@ fieldset.field > legend {
     padding: var(--space-2) var(--space-3);
   }
 
+  /* The drawer slides in from the left and back out. Hidden by visibility,
+     not display, so the slide out can finish before it leaves the tab order;
+     `--dur` is zero under reduced motion, which makes both instant. */
   .sidebar {
-    display: none;
     position: fixed;
     z-index: var(--z-overlay);
     inset: 0 auto 0 0;
     width: min(300px, 80vw);
     height: 100dvh;
     border-right: 1px solid var(--chrome-line);
-    box-shadow: 12px 0 36px oklch(0 0 0 / 0.32);
+    box-shadow: var(--overlay-shadow);
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition:
+      transform var(--dur) var(--ease),
+      visibility 0s linear var(--dur);
   }
 
   .sidebar[data-open='true'] {
-    display: flex;
+    visibility: visible;
+    transform: none;
+    transition: transform var(--dur) var(--ease);
   }
 
   .sidebar__mobile-only {
@@ -1466,12 +1534,20 @@ fieldset.field > legend {
     width: auto;
     height: 100%;
     border: 0;
-    background: oklch(0 0 0 / 0.42);
+    background: var(--scrim);
     cursor: pointer;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    transition:
+      opacity var(--dur) var(--ease),
+      visibility 0s linear var(--dur);
   }
 
   .chrome[data-nav='open'] .nav-scrim {
-    display: block;
+    visibility: visible;
+    opacity: 1;
+    transition: opacity var(--dur) var(--ease);
   }
 
   .nav-toggle {
@@ -1483,12 +1559,66 @@ fieldset.field > legend {
     display: none;
   }
 
+  /* Small and quiet, same tertiary ink everywhere: the current page no
+     longer stands out in full ink, every segment reads at one low volume.
+     The trail stays on one line and ellipsises instead of wrapping: earlier
+     segments give up room first (higher flex-shrink) so the current page
+     keeps the most space. `--fs-xs` is already the smallest size token; the
+     hit target for a scope link is the link's own min-width/min-height
+     below, not extra gap here, so shrinking this spacing does not shrink
+     the touch area. */
   .header__crumbs {
-    gap: 5px;
+    gap: var(--space-1);
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    color: var(--tx-faint);
   }
 
   .header__crumbs li {
-    gap: 5px;
+    gap: var(--space-1);
+    flex-shrink: 3;
+  }
+
+  .header__crumbs li[data-crumb='surface'] {
+    flex-shrink: 1;
+  }
+
+  .header__crumb-separator {
+    flex-shrink: 0;
+  }
+
+  .header__crumbs li:last-child {
+    color: var(--tx-faint);
+  }
+
+  /* No `display: flex` here on purpose: the link is already a flex item of
+     its `li` (base rule), which blockifies it and centres it on the cross
+     axis via the li's own `align-items: center`. Making the link itself a
+     flex container as well put its own text in a flex formatting context,
+     where Chromium's ellipsis truncation renders the lead character cut
+     instead of clipping at the end. */
+  .header__crumb-link {
+    /* `--control` is already the hit floor: 36px on a fine pointer, the
+       44px touch floor on a coarse one (tokens.css). `line-height` (not flex
+       centring) centres the one line of text inside that height, matching
+       the separator beside it. No `min-width` here: it would grow a short
+       name's box past its text, opening a gap before the next separator.
+       The width floor instead rides on an
+       invisible `::after`, centred over the link and never narrower than
+       `--control`, so a short crumb keeps its tap target without widening
+       the visible trail. */
+    position: relative;
+    min-height: var(--control);
+    line-height: var(--control);
+  }
+
+  .header__crumb-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    left: 50%;
+    width: max(100%, var(--control));
+    transform: translateX(-50%);
   }
 
   /* On a phone the fixed account avatar at the header's right edge already
@@ -1604,6 +1734,14 @@ fieldset.field > legend {
   flex-wrap: wrap;
 }
 
+/* The title's own box stays anchored to the row's top instead of
+   centring against the taller toolbar controls beside it, so its top lands
+   at the same offset as a bare `page--chrome` h1. The controls keep
+   `align-items: center` above, centred on the title's line as before. */
+.matrix__head h1 {
+  align-self: flex-start;
+}
+
 .matrix__head h1,
 .matrix__head p,
 .matrix__publish h2,
@@ -1621,24 +1759,16 @@ fieldset.field > legend {
   flex: 1;
 }
 
-/* Legend reduces to a `?` icon (env-matrix 31); square it off like the app's
-   other icon buttons rather than the wide text button it replaced. */
-.matrix__legend-toggle.btn {
-  min-width: var(--control);
-  padding: 0;
-  font-size: var(--fs-md);
-}
-
 /* Drafts surface as a pill in the accent-for-change hue, and only once there is
    something to publish, the disabled "No unpublished drafts" button is gone. */
 .matrix__drafts {
-  padding: 6px 12px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--changed);
   /* Rounded rect, not a full pill (DESIGN.md; expectNoStrayPills). */
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--changed);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -1931,14 +2061,6 @@ fieldset.field > legend {
   flex: none;
 }
 
-.matrix__environment-picker summary {
-  list-style: none;
-}
-
-.matrix__environment-picker summary::-webkit-details-marker {
-  display: none;
-}
-
 .matrix__environment-picker fieldset {
   position: absolute;
   top: calc(100% + 6px);
@@ -1999,6 +2121,8 @@ fieldset.field > legend {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  /* The key column sizes against this width (100cqi, .matrix__table). */
+  container-type: inline-size;
 }
 
 .matrix__virtual-spacer td {
@@ -2008,18 +2132,72 @@ fieldset.field > legend {
 }
 
 .matrix__table {
+  /* The sticky key column: full width while the environments fit beside it,
+     compact once they would not (a phone, or 3+ environments on a laptop), so
+     more value columns show. `--env-count` is set by the matrix; an environment
+     column is budgeted at 260px for this choice; the floor holds the
+     header's Key label and environment chooser. The name ellipsises, the
+     full name stays in the row's title and the link's accessible name. */
+  --matrix-key-max: 236px;
+  --matrix-key-min: 160px;
+  --matrix-env-max: 260px;
+  --matrix-key: clamp(
+    var(--matrix-key-min),
+    100cqi - var(--env-count, 0) * var(--matrix-env-max),
+    var(--matrix-key-max)
+  );
+  /* The row's glyphs (lock, linked keys, cell marks, group chevron) are 40%
+     of the row height. One knob: the factor. */
+  --matrix-row: var(--row);
+  --matrix-icon: calc(var(--matrix-row) * 0.4);
+  /* A cell's horizontal padding and border, and the gap beside each glyph. */
+  --matrix-cell-inset: 42px;
+  --matrix-icon-gap: 6px;
+  /* Icon slots a column reserves: pencil and one mark (one on a phone). */
+  --matrix-mark-slots: 2;
+  /* The alternate key row's stripe. */
+  --row-stripe: color-mix(in oklch, var(--bg), var(--bg-raise) 42%);
+  /* The full page width: environment columns keep their content width and the
+     trailing filler column takes the rest. */
   width: 100%;
-  min-width: max-content;
   border-collapse: separate;
   border-spacing: 0;
+  /* Opaque: the sand never shows through the grid. */
+  background: var(--bg);
 }
 
+/* No hairline between ordinary key rows: the header keeps its rule and each
+   group row carries one above it, so lines only mark a new section. */
 .matrix__table th,
 .matrix__table td {
   padding: 0 10px;
-  border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
+}
+
+/* An environment column is never narrower than its one-line header. */
+.matrix__table thead th:not(:first-child) {
+  white-space: nowrap;
+}
+
+/* An environment column is exactly its content: the longest cell text (`--chars`,
+   counted from the data since the table is virtualised) plus the cell's padding,
+   border and `--matrix-mark-slots` icon slots. A specified width still
+   shrinks toward the header's width when the page is short, then the table
+   scrolls. The filler column after them takes any spare width.
+   ponytail: 0.6em is IBM Plex Mono's advance width; a fallback mono face can be
+   a pixel or two off per ten characters. One mark slot fits the common case. */
+.matrix__table thead th:not(:first-child, .matrix__filler) {
+  width: calc(var(--chars, 0) * 0.6 * var(--fs-mono) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
+}
+
+.matrix__table .matrix__filler {
+  width: auto;
+  padding: 0;
+}
+
+.matrix__table thead .matrix__degraded {
+  white-space: normal;
 }
 
 /* The row token measures the row itself, not a padding sum that drifts. */
@@ -2032,26 +2210,54 @@ fieldset.field > legend {
   position: sticky;
   top: 0;
   z-index: 4;
-  min-width: 190px;
   height: var(--row);
+  border-bottom: 1px solid var(--line);
   background: var(--bg);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
   font-weight: 500;
 }
 
+/* The column headings read as eyebrows, same tag/eyebrow treatment as
+   elsewhere (`--tracking-eyebrow`): caps, bold, source text unchanged.
+   `white-space: nowrap` above already keeps the column no narrower than
+   this text, so the wider capitals still fit. The envs picker label beside
+   them takes the same treatment, so "envs 3/3" reads as one more column
+   eyebrow rather than a plain button label. */
+.matrix__table thead th:not(:first-child, .matrix__filler) > span:first-child,
+.matrix__key-heading > span,
+.matrix__environment-picker summary {
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+}
+
 .matrix__table thead th:first-child,
-.matrix__table tbody > tr:not(.matrix__group-row) > th {
+.matrix__table tbody > tr > th:first-child {
   position: sticky;
   left: 0;
   z-index: 5;
-  /* Table cells ignore max-width, so the column is pinned: wide enough for a
-     20-character key with its lock, narrow enough that four environments still
-     fit beside it at 1280px (the locked reference sits at 190px). */
-  width: 236px;
-  min-width: 236px;
-  max-width: 236px;
-  background: var(--bg);
+  /* Table cells ignore max-width, so the column is pinned to --matrix-key
+     (full: a 20-character key with its lock; compact under overflow). */
+  width: var(--matrix-key);
+  min-width: var(--matrix-key);
+  max-width: var(--matrix-key);
+  /* Opaque at every width the column is sticky (desktop and phone): a
+     scrolled environment column must never show through its left edge.
+     --sticky-bg is redeclared (not `background` itself) by the alt-row and
+     group-row rules below, so this one box-shadow stays the only place that
+     reads it. The box-shadow, not a wider `background`, is what actually
+     closes the seam: on a fractional device-pixel ratio Chrome can round the
+     sticky cell's own edge up to a device pixel short of the scroll
+     container's edge, and a scrolled sibling cell's background shows
+     through that hairline while scrolling (confirmed by pixel-diffing a
+     scrolled vs. unscrolled capture: a single seam column, alt-row tinted,
+     everywhere alt rows exist). A box-shadow paints from the already-snapped
+     final box rather than being re-rounded against the scrollport, so a
+     single extra pixel of it reliably covers the gap regardless of DPR. */
+  --sticky-bg: var(--bg);
+  background: var(--sticky-bg);
+  box-shadow: -1px 0 0 0 var(--sticky-bg);
 }
 
 /* The environment chooser opens out of the sticky key header. Keep that
@@ -2060,9 +2266,18 @@ fieldset.field > legend {
   z-index: 10;
 }
 
-.matrix__key-row--alt > td,
-.matrix__key-row--alt > th {
-  background: color-mix(in oklch, var(--bg), var(--bg-raise) 42%);
+/* `td` only: the sticky rule above already matches the striped `th` at
+   higher specificity (two classes + three tags vs. one class + one tag), so
+   without a same-shape override here the stripe never reached the sticky
+   key cell: only its `td` siblings got it, leaving the key column one flat
+   shade down a striped row. */
+.matrix__key-row--alt > td {
+  background: var(--row-stripe);
+}
+
+.matrix__table tbody > tr.matrix__key-row--alt > th {
+  --sticky-bg: var(--row-stripe);
+  background: var(--sticky-bg);
 }
 
 /* The group row sticks under the header, so it has to know how tall the header
@@ -2070,13 +2285,34 @@ fieldset.field > legend {
    getBoundingClientRect) rather than assumed to be `--row`: the header is a
    minimum of one row, not exactly one row, and once the webfont loads a rounded
    guess leaves either a seam or an overlap. The `- 1px` sits the row on the header's
-   own bottom hairline instead of below it. */
-.matrix__group-row th {
+   own bottom hairline instead of below it.
+
+   `left: 0` (from the key-column rule above, which this `th:first-child`
+   now also matches; see the Matrix.tsx comment by `matrix__group-row-fill`
+   for why the row is no longer one colSpan-ed cell) keeps the label
+   (chevron, folder name, count, problem badge, "+ Key") readable at the
+   viewport's left edge on a horizontal scroll, the same way it already
+   keeps the key column itself in place. `tr.matrix__group-row` matches that
+   rule's own specificity so this still wins on `background`/`top`/`z-index`
+   by source order rather than losing to it. */
+.matrix__table tbody > tr.matrix__group-row > th {
   position: sticky;
   top: calc(var(--gh, var(--row)) - 1px);
   z-index: 3;
+}
+
+/* The label `th` and the filler cell beside it read as one continuous bar
+   while only the label is pinned. At the top of the grid the header's own
+   rule already sits above it. */
+.matrix__table tbody > tr.matrix__group-row > :is(th, .matrix__group-row-fill) {
   padding: 0;
-  background: var(--bg-panel);
+  border-top: 1px solid var(--line);
+  --sticky-bg: var(--bg-panel);
+  background: var(--sticky-bg);
+}
+
+.matrix__table tbody > tr.matrix__group-row:first-child > :is(th, .matrix__group-row-fill) {
+  border-top-color: transparent;
 }
 
 /* The group heading's own control. Selected by its class, not by `button`:
@@ -2099,7 +2335,7 @@ fieldset.field > legend {
   width: auto;
   min-width: 0;
   min-height: var(--control);
-  padding: 7px 12px;
+  padding: 0 var(--space-3);
   border: 0;
   background: transparent;
   color: var(--accent);
@@ -2114,7 +2350,14 @@ fieldset.field > legend {
 .matrix__group-row-inner {
   display: flex;
   align-items: center;
-  width: 100%;
+  /* The label `th` is now pinned to the key column's own width (as narrow
+     as the touch target on phone), but the row has no cells beside it to
+     protect, so the label overflows that width rather than wrapping or
+     clipping: `max-content` lets it grow past 100% when the content needs
+     to, `min-width: 100%` keeps it filling the cell when it does not. */
+  width: max-content;
+  min-width: 100%;
+  white-space: nowrap;
   padding-right: var(--space-3);
 }
 
@@ -2130,7 +2373,8 @@ fieldset.field > legend {
 
 .matrix__group-chevron {
   color: var(--tx-faint);
-  font-size: var(--fs-xs);
+  font-size: var(--matrix-icon);
+  line-height: 1;
   transition: transform var(--dur) var(--ease);
 }
 
@@ -2138,8 +2382,7 @@ fieldset.field > legend {
   transform: rotate(-90deg);
 }
 
-/* The toggle is sentence case now, so the summary no longer has to undo a
-   transform or a tracking; it only steps the weight and ink down. */
+/* The collapsed group's key list: one step down in weight and ink. */
 .matrix__group-summary {
   min-width: 0;
   overflow: hidden;
@@ -2152,8 +2395,8 @@ fieldset.field > legend {
 .matrix__key {
   display: inline-block;
   max-width: 100%;
-  min-height: 24px;
-  padding: 6px 0;
+  min-height: var(--hit-min);
+  padding: 0;
   overflow: hidden;
   border: 0;
   background: transparent;
@@ -2171,6 +2414,32 @@ fieldset.field > legend {
   text-decoration: underline;
 }
 
+.matrix__key .glyph,
+.matrix__key-heading .glyph {
+  font-size: var(--matrix-icon);
+  vertical-align: middle;
+}
+
+/* The name preview popover, positioned in the top layer at the icon's
+   own screen position (`--tip-x`/`--tip-y`, set in JS before it opens) so it
+   is never clipped by the matrix's scrolling well. Decorative: the full name
+   is already the link's accessible name, so this is `aria-hidden`. */
+.matrix__key-tip {
+  position: fixed;
+  top: var(--tip-y, 0);
+  left: var(--tip-x, 0);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg-panel);
+  color: var(--tx);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  box-shadow: var(--overlay-shadow);
+}
+
 .matrix__required {
   display: inline;
   margin-left: 6px;
@@ -2184,7 +2453,11 @@ fieldset.field > legend {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 240px;
+  /* Fills its cell so the trailing pencil (margin-left: auto) lands on the
+     column's end in every row. Inline-size containment leaves the column's
+     width to the header's sizer; the value ellipsises when it is narrower. */
+  width: 100%;
+  contain: inline-size;
   min-height: var(--row);
   padding: 0 10px;
   border: 1px solid transparent;
@@ -2201,22 +2474,24 @@ fieldset.field > legend {
 }
 
 /* The editable-slot affordance (env-matrix iteration 22): every slot you can
-   edit carries a faint trailing pencil, accent on hover. A pseudo-element
-   rather than a span because it is decoration, it is not in the accessibility
-   tree, cannot be selected, and can never become the click target inside a
-   button that is already one.
+   edit carries a faint trailing pencil, accent on hover. An aria-hidden glyph
+   (the CSP's `img-src 'self'` rules out a data-URI mask on a pseudo-element)
+   that ignores the pointer, so the button stays the only click target.
    The two problem states are deliberately excluded: they already carry a
    glyph and a colour saying what to do, and a third mark beside them is noise
    on the one cell that most needs to be read quickly. */
-.matrix-cell:not(.matrix-cell--problem)::after {
-  content: '✎';
-  margin-left: -1px;
-  color: var(--tx-faint);
-  font-size: var(--fs-xs);
+.matrix-cell__edit {
+  margin-left: auto;
+  /* Tertiary ink, muted below --tx-faint: 70/30 against
+     the page still clears 3:1 for a non-text glyph on every row background in
+     both themes (3.4:1 at the lowest, light on --bg). */
+  color: color-mix(in oklch, var(--tx-faint), var(--bg) 30%);
+  font-size: var(--matrix-icon);
+  pointer-events: none;
 }
 
-.matrix-cell:not(.matrix-cell--problem):hover::after {
-  color: var(--accent);
+.matrix-cell:is(:hover, :focus-visible) .matrix-cell__edit {
+  color: var(--tx-dim);
 }
 
 .matrix-cell__value {
@@ -2226,28 +2501,23 @@ fieldset.field > legend {
   white-space: nowrap;
 }
 
-/* env-matrix 31 marks: a `Δ` glyph for changed-since-publish and a filled dot
-   for an unpublished draft, the words move to the tooltip and aria-label. */
-.matrix-cell__delta {
-  color: var(--changed);
-  font-size: var(--fs-xs);
-  font-weight: 700;
+/* env-matrix 31 marks: the history glyph for changed-since-publish (it leads
+   to the revision history) and a dotted circle for an unpublished draft, the words move to the tooltip and
+   aria-label. */
+.matrix-cell__delta,
+.matrix-cell__draft,
+.matrix-cell__other {
+  display: inline-flex;
+  font-size: var(--matrix-icon);
 }
 
-.matrix-cell__draft-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  /* Half of the 6px box: a full circle at the badge radius, so it is not read
-     as a reserved "pill" shape (DESIGN.md; expectNoStrayPills). */
-  border-radius: var(--radius-badge);
-  background: var(--changed);
-  flex: none;
+.matrix-cell__delta,
+.matrix-cell__draft {
+  color: var(--changed);
 }
 
 .matrix-cell__other {
   color: var(--tx-dim);
-  font-size: var(--fs-xs);
 }
 
 .matrix-cell--absent,
@@ -2338,13 +2608,8 @@ fieldset.field > legend {
   padding: 9px 0;
 }
 
-.matrix-editor__schema summary {
-  display: flex;
-  align-items: center;
-  min-height: var(--control);
-  color: var(--tx-dim);
-  cursor: pointer;
-  font-size: var(--fs-sm);
+.matrix-editor__raw {
+  margin-top: var(--space-2);
 }
 
 .matrix-editor__schema pre {
@@ -2543,13 +2808,6 @@ fieldset.field > legend {
   min-width: 130px;
 }
 
-.matrix__empty-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: var(--space-1) 0;
-}
-
 .matrix-row-editor__row-head {
   display: flex;
   align-items: center;
@@ -2662,11 +2920,13 @@ fieldset.field > legend {
   color: var(--tx-dim);
 }
 
-@media (max-width: 800px) {
+@media (max-width: 700px) {
   .content {
     /* Keep the scroller's top padding at 0 (see the base rule) so the sticky
-       jump index pins flush; the top breathing room stays a child margin. */
-    padding: 0 10px 16px;
+       children pin flush; the top breathing room stays a child margin. */
+    --veil-room: 10px;
+    --veil-room-end: var(--space-4);
+    padding: 0 var(--veil-room) var(--veil-room-end);
   }
 
   .content > * {
@@ -2677,9 +2937,12 @@ fieldset.field > legend {
     padding-top: var(--space-4);
   }
 
-  .panel {
-    /* The index wraps to more rows at a phone's width (~165px). */
-    scroll-margin-top: 176px;
+  /* Mirrors the desktop `.content > .card:first-child` compensation
+     (above) at the mobile breakpoint, where the generic child margin above
+     is `--space-4` instead of `--space-5`; the card's own `--space-4`
+     padding alone now supplies the gap to its h1. */
+  .content > .card:first-child {
+    margin-top: 0;
   }
 
   .matrix__layout {
@@ -2699,16 +2962,20 @@ fieldset.field > legend {
   }
 
   .matrix-cell {
-    /* Taller for the thumb, narrower for the viewport: at 375px a 240px cell
-       plus the sticky key column is most of the screen spent on one
-       environment. */
+    /* Taller for the thumb. */
     min-height: var(--touch);
-    max-width: 170px;
   }
 
   .matrix__key-row > th,
   .matrix__key-row > td {
     height: var(--touch);
+  }
+
+  .matrix__table {
+    --matrix-row: var(--touch);
+    --matrix-mark-slots: 1;
+    /* A phone budgets 190px per environment column. */
+    --matrix-env-max: 190px;
   }
 
   .matrix__key {
@@ -2718,12 +2985,8 @@ fieldset.field > legend {
     line-height: var(--touch);
   }
 
-  /* The wide dialog's phone treatment. `.dialog--wide` shares the shell's
-     declarations rather than restating them: same metrics, and no second
-     literal against the adherence budget. It is doubled to `.dialog.dialog--wide`
-     because this block sits ABOVE the base `.dialog` rules and a media query
-     adds no specificity, so a single class would lose the cascade to them.
-     Narrow dialogs never had a phone override, so `.dialog` stays out of it. */
+  /* The wide dialog's phone inset. Doubled to `.dialog.dialog--wide` because
+     this block sits above the base `.dialog` rules. */
   .dialog.dialog--wide {
     width: calc(100% - 20px);
     max-width: 760px;
@@ -2744,6 +3007,86 @@ fieldset.field > legend {
 
   .dialog--wide .dialog__actions > * {
     flex: 1 1 140px;
+  }
+
+  /* The sticky key column drops to the touch target, one
+     glyph per key (lock / config, MatrixKeyLink in Matrix.tsx); the name moves
+     into the tap/hover popover above (.matrix__key-tip) and the envs picker
+     moves out of the now icon-only header into the head row (`phoneMatrix` in
+     Matrix.tsx places the one `environmentPicker` element). Equal min and max
+     collapse the clamp() in .matrix__table to a fixed width regardless of
+     `--env-count`. */
+  .matrix__table {
+    --matrix-key-min: var(--touch);
+    --matrix-key-max: var(--touch);
+  }
+
+  /* The header row leaves room around the touch-tall `rev N · history`
+     button; `--gh` (measured in Matrix.tsx) reads this height for the
+     sticky group rows. */
+  .matrix__table thead th {
+    height: calc(var(--touch) + var(--space-2) * 2);
+  }
+
+  /* The sticky column's own horizontal padding (`0 10px`, the general cell
+     rule) leaves `.matrix__key` below only 24px to centre in, while it is
+     forced to the full 44px touch width for its hit target: left-aligned in
+     that narrower box, it overflowed the cell's right edge, pulling every
+     icon (and the header's) off true-centre toward it. Zero padding here
+     instead, so the 44px icon box and the 44px cell box coincide exactly and
+     `text-align: center` on `.matrix__key` centres against the same edges
+     the header's `justify-content: center` already uses. */
+  .matrix__table thead th:first-child,
+  .matrix__table tbody > tr > th:first-child {
+    padding: 0;
+  }
+
+  .matrix__key-cell > .matrix__linked-keys,
+  .matrix__key-cell > .matrix__required {
+    display: none;
+  }
+
+  .matrix__key {
+    width: var(--touch);
+    min-width: var(--touch);
+    max-width: var(--touch);
+    text-align: center;
+  }
+
+  /* The pencil costs a tap target's worth of width on every value cell, and
+     the column sizer below reserves that width on every environment column.
+     A phone is tight on horizontal room and the cell is already the whole
+     button (tapping it opens the editor without the glyph), so the pencil is
+     dropped and the sizer reserves room for one mark only (`--matrix-mark-slots`). */
+  /* `.glyph` (app.css, shared by every icon) sets its own `display` at equal
+     specificity and later in the file, so a bare `.matrix-cell__edit` here
+     would lose to it; the descendant selector outweighs it instead. */
+  .matrix-cell .matrix-cell__edit {
+    display: none;
+  }
+
+  /* The tinted right border reads as "the sticky column's own edge" only
+     once the column is icon-only and butts straight up against the first
+     scrolled value: at desktop width it is a stray line through the header
+     and group-row label, which still carry the full-width key column rather
+     than an edge to mark. Key rows only, this width only. */
+  .matrix__table tbody > tr.matrix__key-row > th:first-child {
+    border-right: 1px solid color-mix(in oklch, var(--line), var(--accent) 25%);
+  }
+
+  /* With the text clipped out of flow, the heading's one remaining visible
+     child is its Glyph; centre it the same way a key row centres its own. */
+  .matrix__key-heading {
+    justify-content: center;
+  }
+
+  /* `.btn--icon-phone` already pins width to `--control`; `.btn--compact`'s
+     own fine-pointer rule pins height to the smaller `--hit-min` instead,
+     which left the icon-only button wider than it was tall. Match height
+     to the same `--control` token so it is square regardless of pointer type. */
+  .matrix__history-link {
+    height: var(--control);
+    min-height: var(--control);
   }
 }
 
@@ -2802,15 +3145,14 @@ fieldset.field > legend {
 
 /* --- Glyph -------------------------------------------------------------------
  *
- * The state vocabulary as monochrome inline SVG (ui/Glyph.tsx): one em, current
- * colour, sits on the text baseline. Replaces the colour emoji the routes used
- * for the lock and link marks. */
+ * Every icon (ui/Glyph.tsx, Rune Icons outline): one em, stroked in the
+ * current colour, sits on the text baseline. */
 .glyph {
   display: inline-block;
+  flex: none;
   width: 1em;
   height: 1em;
   vertical-align: -0.125em;
-  fill: currentColor;
 }
 
 .visually-hidden {
@@ -2824,6 +3166,23 @@ fieldset.field > legend {
   white-space: nowrap;
 }
 
+/* Visually hidden at the phone width only, still in the accessibility tree:
+   the label of a `btn--icon-phone` button, the matrix key heading's word and
+   each key name (the key column is icons there). */
+@media (max-width: 700px) {
+  .visually-hidden-phone,
+  .btn--icon-phone > .btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 .values__head {
   display: flex;
   align-items: center;
@@ -2831,10 +3190,16 @@ fieldset.field > legend {
   flex-wrap: wrap;
 }
 
+/* Same reasoning as `.matrix__head h1`: anchor the title to the row's
+   top instead of centring against the chip beside it. */
+.values__head h1 {
+  align-self: flex-start;
+}
+
 .values__bar {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex-wrap: wrap;
   margin: var(--space-4) 0;
 }
@@ -2854,6 +3219,38 @@ fieldset.field > legend {
   padding: 6px 8px;
   text-align: left;
   vertical-align: middle;
+}
+
+/* The one wrapper for a scrollable table: every data
+   table except the matrix (which owns its own compact handling) sits inside
+   this, so the table scrolls sideways on its own and the page never does.
+   `.access-table` already gives `.grants` the same behaviour, so it is not
+   repeated here. Positioned, so a visually-hidden span inside a cell stays
+   in the scroll box instead of widening the page. */
+.table-scroll {
+  position: relative;
+  overflow-x: auto;
+}
+
+/* Mobile: every data table (not the environment matrix, which owns its own
+   compact handling) fills its scrolling container, drops to the dense type
+   size and tighter cell padding, one shared rule instead of a per-page
+   override. Children that carry their own larger size (identifiers, mono
+   values) are pulled down to match; badges are already `--fs-xs`, the
+   smallest token the type scale defines, so they need no override here. */
+@media (max-width: 700px) {
+  .table-scroll > table {
+    width: 100%;
+    font-size: var(--fs-xs);
+  }
+
+  .table-scroll > table :is(th, td) {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .table-scroll > table :is(.mono, code, kbd) {
+    font-size: var(--fs-xs);
+  }
 }
 
 .values__table thead th {
@@ -2904,11 +3301,6 @@ fieldset.field > legend {
   padding: 1px 6px;
   color: var(--tx);
   font-size: var(--fs-sm);
-}
-
-.values__actions {
-  display: flex;
-  gap: var(--space-2);
 }
 
 .values__editor {
@@ -2987,10 +3379,7 @@ fieldset.field > legend {
 }
 /* --- Dialog -------------------------------------------------------------------
  *
- * One modal anatomy (ui/Dialog.tsx). It folded `.ceremony__title` (20px),
- * `.matrix-editor__head h2` (15px), the ledes and the two action rows (12px and
- * 8px gaps); both legacy shells are gone and every route dialog is this one.
- * DESIGN.md reserves shadows for modal overlays, so it gets one. */
+ * One modal anatomy (ui/Dialog.tsx) for every route dialog. */
 .dialog {
   width: min(var(--width-dialog), calc(100% - var(--space-6)));
   max-height: min(90vh, var(--width-dialog-wide));
@@ -3015,7 +3404,7 @@ fieldset.field > legend {
 }
 
 .dialog::backdrop {
-  background: oklch(0 0 0 / 55%);
+  background: var(--scrim);
 }
 
 .dialog__title {
@@ -3030,14 +3419,6 @@ fieldset.field > legend {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
   max-width: var(--measure);
-}
-
-/* Action rows: 8px everywhere, page and dialog alike; primary last. */
-.dialog__actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  align-items: center;
 }
 
 /* Pinned actions (Dialog `pinActions`): the dialog stops scrolling as a whole
@@ -3073,21 +3454,23 @@ fieldset.field > legend {
  * keeps the surface readable under forced-colors.
  */
 
-.card--wide {
-  max-width: none;
-}
-
+/* One row wider than a phone, scrolling sideways when it overflows, with a
+   thin scrollbar as the cue; a phone wraps it into pills (below). */
 .tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin: var(--space-4) 0;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .tab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
   min-height: var(--control);
-  padding: 0 14px;
+  padding: 0 var(--space-2);
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: var(--radius-control) var(--radius-control) 0 0;
@@ -3100,16 +3483,134 @@ fieldset.field > legend {
   color: var(--tx);
 }
 
+/* A tab's content, and one section of a sectioned page (routes/Sections.tsx
+   SectionTabs), is a stack of cards (and, for SSH, the intro above them),
+   spaced by the gap, never by their own margins. The page grid's one column
+   sizes to its widest item; the panel must not be that item, or a wide
+   table widens the page past a phone screen. Hidden sections stay mounted
+   but out of the layout. */
+.tabpanel,
+.tabpanel__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.tabpanel__section[hidden] {
+  display: none;
+}
+
+/* SSH's intro heading sits in the panel's gap, above its cards. */
+.machine > .tabpanel > h2 {
+  margin: 0;
+}
+
+/* One machine-access module: the title and tabs are page chrome, each tab's
+   module is a card under them. Its title, lede, action row, table and
+   footnote are spaced by the gap, never by their own margins. */
+.machine__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: none;
+  /* The table's own `.table-scroll` wrapper scrolls sideways;
+     the card itself only needs to let that wrapper shrink, not scroll too,
+     so the title and action row above the table never ride along with it. */
+  min-width: 0;
+}
+
+.card.machine__card :is(h2, h3) {
+  margin: 0;
+}
+
+.machine__grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.machine__grid .machine__subhead,
+.machine__grid .machine__none,
+.machine__sub .side-panel__body > :is(.machine__subhead, .machine__none) {
+  margin: 0;
+}
+
+/* Selected is ink and the accent underline only: no weight change, so
+   no tab changes width and the row never shifts. The underline is the
+   bottom border every tab already carries, transparent until selected. */
 .tab[aria-selected='true'] {
   color: var(--tx);
-  font-weight: 500;
   border-bottom-color: var(--accent);
+}
+
+/* A tab's count is a count badge after its label: the pill DESIGN.md
+   reserves for counts. Zero is muted, any other count in the accent tint, and
+   the selected tab's count takes the selected accent. */
+.tab__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--badge-height);
+  height: var(--badge-height);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab__count[data-zero] {
+  background: color-mix(in oklch, var(--tx) 8%, transparent);
+  color: var(--tx-faint);
+}
+
+.tab[aria-selected='true'] .tab__count:not([data-zero]) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* At the phone breakpoint a sideways-scrolling single row is hard to
+   reach with a thumb, so tabs wrap onto their own rows as pills instead.
+   Same box rule as a toggle chip (badge radius, chip padding, touch height).
+   Every pill (selected or not) carries the same 1px border and the same bold
+   weight, so neither ever changes on selection: only the border and text
+   colour (and the fill) move to the accent, which is why no box resizes when
+   the selection moves. */
+@media (max-width: 700px) {
+  .tabs {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    border-bottom: 0;
+    overflow-x: visible;
+  }
+
+  .tab {
+    /* Pills share each row's leftover space (equal flex-grow), so the
+       row's first and last pills reach the bar's edges. */
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: var(--touch);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-badge);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+  }
+
+  .tab[aria-selected='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
 }
 
 .machine__policy,
 .machine__lede,
 .machine__footnote {
-  margin: var(--space-3) 0;
+  margin: 0;
 }
 
 .machine__lede,
@@ -3149,8 +3650,13 @@ fieldset.field > legend {
 /* The binding form's in-flight latch: a bare <fieldset> used only for its
    native disabled propagation, stripped of every default it draws. The
    min-inline-size reset matters, fieldset's UA min-content default breaks
-   narrow dialogs. */
+   narrow dialogs. Flex column + gap (the same treatment as `.dialog > form`)
+   because its direct children are a stack of sibling `.field`s and
+   `Checkbox`es that the ancestor's gap does not reach. */
 .machine__lock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   border: 0;
   margin: 0;
   padding: 0;
@@ -3168,9 +3674,40 @@ fieldset.field > legend {
   vertical-align: top;
 }
 
-.machine__sub > td {
-  background: var(--bg);
-  padding: var(--space-3) var(--space-2) var(--space-4);
+/* Every row lays out the same at the page's width: the name button never
+   wraps (the chevron keeps one place), dates and badges stay on one line, and
+   a long identifier ellipsises with its full text in the title. */
+.machine__table .values__keyname {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding-left: 0;
+  white-space: nowrap;
+}
+
+/* One measure for an identifier cell before it ellipsises. */
+.machine__name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An origin chip: `--chip-id-max` keeps one `kind: subject` id short so a
+   row of them never drives the table past the page column; the full id
+   stays in `title`. */
+.machine__origin {
+  display: inline-block;
+  max-width: var(--chip-id-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine__table td.col-secondary,
+.machine__table .badge {
+  white-space: nowrap;
 }
 
 .machine__grid {
@@ -3219,21 +3756,8 @@ fieldset.field > legend {
   padding: 0;
 }
 
-.machine__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-}
-
 .machine__presets {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.machine__row-actions {
-  display: inline-flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
@@ -3243,13 +3767,16 @@ fieldset.field > legend {
   font-size: var(--fs-sm);
 }
 
-.btn[aria-pressed='true'] {
+.btn[aria-pressed='true']:not(:disabled, [aria-disabled='true']) {
   border-color: var(--accent);
   color: var(--tx);
   background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
 }
 
 .bindrow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -3261,7 +3788,7 @@ fieldset.field > legend {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 var(--space-2);
+  margin: 0;
 }
 
 .kv {
@@ -3617,7 +4144,7 @@ label.chk:has(input:disabled) {
   color: var(--tx);
 }
 
-@media (max-width: 800px) {
+@media (max-width: 700px) {
   /* The two columns the expansion repeats in detail drop off the summary row
      on a phone; the expansion still carries them. */
   .col-secondary {
@@ -3629,8 +4156,7 @@ label.chk:has(input:disabled) {
   .kv__pair {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  }
+}
 
 /* --- Multi-instance (#71): remote directory cards, origin allowlist, and the
    active-session list. Same vocabulary as the rest of the shell: hairline
@@ -3640,7 +4166,15 @@ label.chk:has(input:disabled) {
 .origins,
 .sessions,
 .connections,
-.remote__orgs {
+.remote__orgs,
+.scim-bindings,
+.scim-mappings,
+.scim-mapping__caps,
+.scim-credentials,
+.scim-attention,
+.scim-warnings,
+.scim-directory-users,
+.scim-directory-groups {
   list-style: none;
   margin: var(--space-3) 0 0;
   padding: 0;
@@ -3668,9 +4202,33 @@ label.chk:has(input:disabled) {
 }
 
 .remote__head,
-.connection__head {
+.connection__head,
+.scim-binding__head,
+.scim-binding__slug,
+.scim-mapping__head,
+.scim-mapping__group,
+.scim-credential__head {
   display: flex;
   align-items: center;
+  gap: var(--space-2);
+}
+
+.scim-binding__slug,
+.scim-mapping__group {
+  margin: 0;
+}
+
+/* A card header is the title (and its badges) at the start and the card's
+   action at the end of the same row: the action never trails the name. */
+:is(.remote__head, .connection__head, .scim-binding__head, .scim-mapping__head, .scim-credential__head)
+  > :is(.btn, .actions):last-child {
+  margin-left: auto;
+}
+
+.scim-binding,
+.scim-mapping {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
 }
 
@@ -3694,20 +4252,20 @@ label.chk:has(input:disabled) {
 }
 
 .remote__facts,
-.connection__facts {
+.connection__facts,
+.scim-binding__facts,
+.scim-credential__facts {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 2px 12px;
   margin: 0 0 var(--space-2);
 }
 
-.remote__facts dt,
-.connection__facts dt {
+:is(.remote__facts, .connection__facts, .scim-binding__facts, .scim-credential__facts) dt {
   color: var(--tx-dim);
 }
 
-.remote__facts dd,
-.connection__facts dd {
+:is(.remote__facts, .connection__facts, .scim-binding__facts, .scim-credential__facts) dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -3738,8 +4296,6 @@ label.chk:has(input:disabled) {
   margin-bottom: 0;
 }
 
-.remote__actions,
-.connection__actions,
 .origin,
 .session__head {
   display: flex;
@@ -3778,35 +4334,38 @@ label.chk:has(input:disabled) {
   max-width: 520px;
 }
 
-.form--inline {
-  max-width: none;
+/* A bare fieldset in a form groups without the browser's frame. */
+.form > fieldset {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* A form's own buttons keep their width; the column does not stretch them. */
+.form > .btn,
+.danger-zone > .btn {
+  align-self: flex-start;
+}
+
+.scim-binding__danger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.scim-binding__danger > p {
+  margin: 0;
 }
 
 /* --- Revision history drawer (#59) ---------------------------------------- */
 
 /*
- * The locked prototype's list + detail panes, rendered OVER the matrix rather
- * than instead of it: the matrix stays addressable behind the drawer, which is
- * what makes "rev N · history" feel like opening a drawer rather than leaving
- * the surface. Below the chrome's own 800px breakpoint the two panes become one
- * list, then detail, with a back affordance, because a split 440px drawer is
- * neither pane.
+ * Revision history in the shared side panel over the matrix: the matrix stays
+ * addressable behind the drawer, which is what makes "rev N · history" feel
+ * like opening a drawer rather than leaving the surface. One revision at a
+ * time, full width; its heading is the revision selector.
  */
-.history {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: var(--z-overlay);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  width: min(640px, 100%);
-  padding: var(--space-4);
-  border-left: 1px solid var(--line);
-  background: var(--bg-panel);
-  color: var(--tx);
-  overflow-y: auto;
-}
-
 .history__head {
   display: flex;
   flex-direction: column;
@@ -3826,21 +4385,6 @@ label.chk:has(input:disabled) {
 
 .history__close {
   margin-left: auto;
-}
-
-.history__protected {
-  padding: 2px 7px;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-badge);
-  color: var(--danger);
-  font-size: var(--fs-xs);
-  letter-spacing: 0.04em;
-}
-
-.history__tabs {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .history__pending,
@@ -3868,66 +4412,8 @@ label.chk:has(input:disabled) {
   background: var(--bg);
 }
 
-.history__badge {
-  padding: 2px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-badge);
-  color: var(--tx);
-  font-size: var(--fs-xs);
-}
-
 .history__settings-pointer {
   color: var(--tx-dim);
-}
-
-.history__panes {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: var(--space-3);
-  min-height: 0;
-}
-
-.history__list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.history__row {
-  justify-content: flex-start;
-  width: 100%;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 0 10px;
-  text-align: left;
-  font-size: var(--fs-sm);
-}
-
-.history__row[aria-current='true'] {
-  border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-hover), var(--accent) 12%);
-}
-
-.history__age {
-  margin-left: auto;
-  color: var(--tx-dim);
-  font-size: var(--fs-xs);
-}
-
-.history__tag {
-  padding: 2px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-badge);
-  color: var(--tx-dim);
-  font-size: var(--fs-xs);
-}
-
-.history__tag--collected {
-  border-color: var(--line);
-  color: var(--tx-faint);
 }
 
 .history__detail {
@@ -3938,11 +4424,20 @@ label.chk:has(input:disabled) {
 }
 
 .history__detail h3 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
   margin: 0;
+}
+
+/* The revision selector is the detail heading: the heading's weight in the
+   value face, in the control box every select has. */
+.history__revision {
+  max-width: 100%;
+  font-weight: 700;
+}
+
+/* The retention line wraps instead of running out of the header. */
+.history__retention > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .history__detail h4 {
@@ -4002,14 +4497,70 @@ label.chk:has(input:disabled) {
 
 .history__change {
   justify-content: flex-start;
+  min-width: 0;
   padding: 0 10px;
 }
 
-.history__kind,
-.history__presence,
-.history__expiry,
-.history__warn,
-.history__drift {
+/* Every changed-key row is one line laid out the same way: key, badges, and
+   the restore action at the row end. A long name ellipsises (full name in its
+   title) instead of pushing the action onto a second line. */
+.history__changes li {
+  flex-wrap: nowrap;
+}
+
+.history__change-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history__changes .history__kind,
+.history__changes .history__presence {
+  flex: none;
+}
+
+.history__change-restore {
+  flex: none;
+  margin-left: auto;
+}
+
+/* Narrow (a phone, or a squeezed drawer): the same two lines on every row,
+   the key with the action at the end, then its badges. The 480px container
+   width is the choice-grid collapse (BREAKPOINTS). */
+.history__changes {
+  container-type: inline-size;
+}
+
+@container (max-width: 480px) {
+  .history__changes li {
+    display: grid;
+    grid-template-areas:
+      'key key action'
+      'kind presence presence';
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .history__change {
+    grid-area: key;
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  .history__changes .history__kind {
+    grid-area: kind;
+  }
+
+  .history__changes .history__presence {
+    grid-area: presence;
+    justify-self: start;
+  }
+
+  .history__change-restore {
+    grid-area: action;
+  }
+}
+
+.history__expiry {
   padding: 2px 7px;
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
@@ -4027,22 +4578,9 @@ label.chk:has(input:disabled) {
 .history__expiry--month,
 .history__expiry--week,
 .history__expiry--day,
-.history__expiry--expired,
-.history__warn {
+.history__expiry--expired {
   border-color: var(--danger);
   color: var(--danger);
-}
-
-/* Schema drift is a pending change, not a violation: slate, never red. */
-.history__drift {
-  color: var(--changed);
-  background: var(--changed-soft);
-}
-
-.history__actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .history__impact-values {
@@ -4122,25 +4660,8 @@ label.chk:has(input:disabled) {
 
 /* --- Key declaration detail (#491) --------------------------------------- */
 
-/* The catalogue detail is a routed panel layered over the matrix, exactly like
-   the revision-history drawer: a fixed right-hand panel on a desktop, the full
-   surface on a phone. It reuses the panel's palette and hairline so it reads as
-   the same overlay family. */
-.key-detail {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: var(--z-overlay);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: min(640px, 100%);
-  padding: var(--space-4);
-  border-left: 1px solid var(--line);
-  background: var(--bg-panel);
-  color: var(--tx);
-  overflow-y: auto;
-}
-
+/* The catalogue detail is a routed side panel over the matrix, like the
+   revision-history drawer. */
 .key-detail__head {
   display: flex;
   align-items: center;
@@ -4249,35 +4770,23 @@ label.chk:has(input:disabled) {
   border-color: var(--accent);
 }
 
-/* The opener is `btn btn--quiet` now, so the quiet variant owns the box and
-   the type size and `.btn` the nowrap. Only the weight is the link's own: the
-   column's headings are bold and a link in that column is not a heading. */
+/* The column header's history opener, a compact quiet button: it keeps clear
+   of the environment name and is 400, since the header is bold and the
+   opener is not a heading. */
 .matrix__history-link {
+  margin-left: var(--space-3);
   font-weight: 400;
 }
 
-@media (min-width: 801px) {
-  /* Both panes are on screen, so the back affordance has nothing to go back to. */
-  .history__back {
+/* `.btn--icon-phone` hides the label at 700px and below; the glyph it
+   adds is the phone-only replacement, so it stays out of the desktop button
+   it would otherwise sit beside. */
+@media (min-width: 701px) {
+  .matrix__history-link .glyph {
     display: none;
   }
 }
 
-@media (max-width: 800px) {
-  .history {
-    width: 100%;
-    border-left: none;
-  }
-
-  .history__panes {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .history:not(.history--detail) .history__detail,
-  .history--detail .history__list {
-    display: none;
-  }
-}
 
 /* --- Chrome surfaces: members, settings, account, instance (#60) ---------- */
 
@@ -4300,52 +4809,11 @@ label.chk:has(input:disabled) {
   max-width: 68ch;
 }
 
-/* The sticky jump index: the pattern for every sectioned surface since
-   app-chrome iteration 9. Plain anchors, the browser already scrolls to a
-   fragment and moves focus there. */
-.jump {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: var(--space-2) 0;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
-}
-
-.jump ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.jump__link {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  color: var(--tx);
-  text-decoration: none;
-  min-height: var(--control);
-}
-
-.jump__link:hover {
-  border-color: var(--accent);
-}
-
 .panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   max-width: none;
-  /* A jump-index anchor lands the panel at the scroller's top, where the
-     pinned index sits, so offset the landing clear of it. Sized to the index
-     wrapped at the page's fixed 72ch measure (~113px; taller once it wraps on
-     a phone, raised in the mobile block). */
-  scroll-margin-top: 124px;
 }
 
 .panel h2 {
@@ -4374,13 +4842,14 @@ label.chk:has(input:disabled) {
    boundary and no fill so it never reads as one of the settled cards. */
 .panel--question {
   border-style: dashed;
-  background: transparent;
+  /* No panel fill, but opaque: the page colour, not the sand behind it. */
+  background: var(--bg);
 }
 
-.panel__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+/* Containers space their children with gap; the few that are not flex give an
+   action row the same `--space-3` from the content above it. */
+:is(.card:not(.panel), .remote) > .actions:not(:first-child) {
+  margin-top: var(--space-3);
 }
 
 .field__hint {
@@ -4388,44 +4857,27 @@ label.chk:has(input:disabled) {
   max-width: var(--measure);
 }
 
-/* Finalized app-chrome settings measure and card treatment. */
+/* Finalized app-chrome settings measure and card treatment. The column keeps
+   its measure but starts at the well's left edge, like every other surface
+   (Remotes, the matrix): centred, it floated in the middle of a wide window. */
 .page--chrome {
   display: grid;
   width: 100%;
   max-width: 860px;
-  margin-right: auto;
-  margin-left: auto;
-  gap: 18px;
-}
-
-.content > .page--chrome {
-  margin-top: var(--space-6);
 }
 
 .page--chrome h1 {
   font-size: var(--fs-xl);
 }
 
+/* One h1 -> lede gap app-wide: tight, independent of the container's
+   own child-to-child gap (`.page`'s `--space-4`, inherited here). `.card`'s
+   heading uses the same `--space-2` bottom margin (below), so every idiom's
+   title sits the same distance above its lede. */
 .page--chrome .page__lede {
   max-width: 64ch;
-  margin-top: -12px;
+  margin-top: calc(var(--space-2) - var(--space-4));
   line-height: 1.55;
-}
-
-.page--chrome .jump {
-  margin: -10px 0;
-  padding: 10px 0;
-  border-bottom: 0;
-}
-
-.page--chrome .jump ul {
-  gap: 6px;
-}
-
-.page--chrome .jump__link {
-  padding: 0 14px;
-  border-color: var(--chrome-line);
-  color: var(--tx-dim);
 }
 
 .page--chrome .panel {
@@ -4453,7 +4905,7 @@ label.chk:has(input:disabled) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-2);
   padding: 10px 0;
   border-top: 1px solid var(--panel-line);
 }
@@ -4465,6 +4917,13 @@ label.chk:has(input:disabled) {
 .settings-row--stacked {
   flex-direction: column;
   align-items: stretch;
+}
+
+/* A row with two or more buttons: the copy, then its badges at
+   their own width, then one `.actions` row, never buttons split around the
+   copy's line. */
+.settings-row--stacked > .badge {
+  align-self: flex-start;
 }
 
 .settings-row:first-of-type {
@@ -4597,7 +5056,7 @@ label.chk:has(input:disabled) {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+  gap: var(--space-3);
 }
 
 .account-profile__fields {
@@ -4716,16 +5175,8 @@ label.chk:has(input:disabled) {
   gap: var(--space-3);
 }
 
-/* Keep the native disclosure marker: `display: flex`/`block` on a summary drops
-   it in most browsers, so leave the default list-item display; the line height
-   is the control height, which centres a one-line label in the control box
-   without vertical padding. */
 .environment-lifecycle > summary {
-  min-height: var(--control);
-  line-height: var(--control);
-  padding: 0;
-  cursor: pointer;
-  font-weight: 500;
+  align-self: flex-start;
 }
 
 .page--chrome .factor__meta {
@@ -4737,7 +5188,7 @@ label.chk:has(input:disabled) {
 /* --- members ------------------------------------------------------------- */
 
 /* Members carries `page--chrome` too, so the settings measure, card treatment
-   and jump index come from the one place that defines them. Only the genuine
+   and tabs come from the one place that defines them. Only the genuine
    difference lives here: the lede is narrower because it sits beside the
    inspector rather than running the full column. */
 .page--members .page__lede {
@@ -4813,6 +5264,16 @@ label.chk:has(input:disabled) {
   color: var(--tx);
 }
 
+/* A row of capability tags (CapabilityTag), wherever capabilities are listed
+   together: a policy's capabilities column, a request's capabilities, a
+   grant's capability. */
+.capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
 .inspect {
   display: flex;
   flex-wrap: wrap;
@@ -4820,13 +5281,11 @@ label.chk:has(input:disabled) {
 }
 
 .page--members .inspect {
-  gap: 10px;
   margin-bottom: 2px;
 }
 
 .page--members .inspect .field {
   min-width: 0;
-  gap: 5px;
 }
 
 .page--members .inspect label {
@@ -4866,11 +5325,6 @@ label.chk:has(input:disabled) {
   line-height: 15.5px;
 }
 
-.page--members #members-list {
-  margin-top: 1px;
-  gap: 10.5px;
-}
-
 .page--members .chrome-meta {
   color: var(--tx-dim);
   font-family: var(--font-mono);
@@ -4898,10 +5352,6 @@ label.chk:has(input:disabled) {
 .page--members .capability__origin {
   border-color: var(--danger);
   color: var(--danger);
-}
-
-.page--members .panel__actions {
-  margin-top: 2px;
 }
 
 /* --- the grant modal ----------------------------------------------------- */
@@ -5028,7 +5478,7 @@ label.chk:has(input:disabled) {
 .danger-zone {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .danger-zone__hint {
@@ -5063,7 +5513,7 @@ label.chk:has(input:disabled) {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
@@ -5130,12 +5580,6 @@ label.chk:has(input:disabled) {
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
   background: color-mix(in oklch, var(--bg), var(--danger) 8%);
-}
-
-.projects__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 /* The choice controls take the floor through `--chk-box` in tokens.css, not
@@ -5230,7 +5674,6 @@ label.chk:has(input:disabled) {
 
 .login__methods .login__method,
 .login__methods .login__brand {
-  min-height: var(--touch);
   width: 100%;
 }
 
@@ -5336,7 +5779,8 @@ label.chk:has(input:disabled) {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-3);
-  padding: 0 var(--space-3);
+  min-height: var(--control);
+  padding: 0 var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   font: inherit;
@@ -5385,7 +5829,9 @@ label.chk:has(input:disabled) {
   filter: brightness(1.08);
 }
 
-.login__brand[disabled] {
+/* A brand button only: the unbranded one is a `.btn` and takes its flat
+   disabled skin, which an extra opacity would wash out. */
+.login__brand:not(.btn)[disabled] {
   opacity: var(--opacity-disabled);
   cursor: not-allowed;
   filter: none;
@@ -5489,7 +5935,7 @@ label.chk:has(input:disabled) {
   border-color: var(--changed);
 }
 
-@media (max-width: 40rem) {
+@media (max-width: 700px) {
   .registration__facts {
     grid-template-columns: 1fr;
   }
@@ -5801,14 +6247,12 @@ label.chk:has(input:disabled) {
    chip, field) inherits its colour, radius, font and density from the reused
    base classes, so the pinned assertion set holds without a second source of
    truth for the tokens. */
-/* The two audit panels take the container hairline and radius explicitly:
-   `.page--chrome .panel` supplies their fill, border colour and padding, but a
-   bare `.panel` carries no border width or radius of its own (each surface
-   states its panels' shape), so DESIGN.md's 6px container is set here. */
-.audit__filter,
-.audit__detail {
-  border: 1px solid var(--panel-line);
-  border-radius: var(--radius-container);
+/* The filter form sits straight on its Filter panel: no card of its own
+   inside the card. */
+.members__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .audit__filter {
@@ -5820,35 +6264,35 @@ label.chk:has(input:disabled) {
 .audit__filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
 }
 
-.audit__filter-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
+/* The outcome set is one row across the whole grid at desktop width:
+   each option is its box and the outcome's tag, so the steps between them
+   tighten; a phone wraps. */
+.audit__outcomes {
+  grid-column: 1 / -1;
+}
+
+.audit__outcomes .choice-group__options {
+  column-gap: var(--space-3);
+}
+
+.audit__outcomes .chk {
+  gap: var(--space-1);
 }
 
 /* The principal id input and its "Self" shortcut sit on one row; the input
    takes the slack so the button stays its intrinsic width. */
 .field__inline {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .field__inline input {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.audit__panes {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: start;
-  min-height: 0;
 }
 
 .audit__list-pane {
@@ -5868,13 +6312,16 @@ label.chk:has(input:disabled) {
 }
 
 /* A hairline row, not a button: the list's rule separates events, and only the
-   hovered or selected row takes a fill. */
+   hovered or selected row takes a fill. Every row is the same four columns
+   (operation, outcome, principal, time) with a real gap between them, so the
+   outcome badges and the times line up down the list. */
 .audit__row {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) 7rem minmax(0, 2fr) max-content;
+  align-items: center;
+  column-gap: var(--space-4);
   width: 100%;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  padding: 0 10px;
+  padding: var(--space-1) var(--space-3);
   border: 0;
   border-top: 1px solid var(--line);
   border-radius: 0;
@@ -5892,8 +6339,19 @@ label.chk:has(input:disabled) {
   background: var(--bg-hover);
 }
 
+.audit__row-op,
+.audit__row-actor {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .audit__row-op {
   font-family: var(--font-mono);
+}
+
+.audit__row > .audit__outcome {
+  justify-self: start;
 }
 
 .audit__row-actor {
@@ -5903,17 +6361,19 @@ label.chk:has(input:disabled) {
 }
 
 .audit__row-when {
-  margin-left: auto;
   color: var(--tx-dim);
   font-size: var(--fs-xs);
+  white-space: nowrap;
 }
 
-/* Negative outcomes tint the badge boundary only; the text stays --tx so the
-   chip clears contrast on every surface in both themes. */
-.audit__outcome--failure,
-.audit__outcome--denied,
-.audit__outcome--disconnected {
-  border-color: var(--danger);
+/* A phone stacks each row into two lines: operation and outcome, then
+   principal and time. */
+@media (max-width: 700px) {
+  .audit__row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: var(--space-1);
+    padding-block: var(--space-2);
+  }
 }
 
 .audit__empty,
@@ -5924,25 +6384,6 @@ label.chk:has(input:disabled) {
 
 .audit__more {
   align-self: flex-start;
-}
-
-.audit__detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.audit__detail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.audit__detail-head h2 {
-  margin: 0;
-  font-family: var(--font-mono);
 }
 
 .audit__facts {
@@ -5992,21 +6433,11 @@ label.chk:has(input:disabled) {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 760px) {
-  .audit__panes {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* Secret-change approvals (#151). Layout only; interactive elements inherit the
-   design system's controls (the control token, focus rings, state-by-text). */
-.change-approvals {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--page-pad, 16px);
-}
-
+   design system's controls (the control token, focus rings, state-by-text).
+   The page's own grid/gap/margin come from `.page--chrome` (this used to
+   override them with a one-off flex layout and padding, pushing the title
+   down 16px further than every other chrome page). */
 .change-approvals__section-head {
   display: flex;
   flex-wrap: wrap;
@@ -6026,20 +6457,6 @@ label.chk:has(input:disabled) {
   padding: var(--space-2);
   border-bottom: 1px solid var(--panel-line);
   vertical-align: top;
-}
-
-.change-approvals__form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: var(--space-4);
-  padding: var(--space-4);
-}
-
-.change-approvals__form-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 .change-approvals__requests {
@@ -6088,13 +6505,6 @@ label.chk:has(input:disabled) {
   margin: 0;
 }
 
-.change-approvals__request-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-}
-
 .change-approvals__bypass {
   display: flex;
   flex-wrap: wrap;
@@ -6109,18 +6519,14 @@ label.chk:has(input:disabled) {
   min-height: var(--control);
 }
 
-/* Temporary access (#152). Same layout vocabulary as change approvals; the
-   request state is always spelled out in text, never colour alone. */
-.temporary-access {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--page-pad, 16px);
+.change-approvals__advanced > summary {
+  align-self: flex-start;
 }
 
+/* Temporary access (#152). Same layout vocabulary as change approvals; the
+   request state is always spelled out in text, never colour alone. Its own
+   grid/gap/margin come from `.page--chrome` (see change-approvals). */
 .temporary-access__section-head,
-.temporary-access__form-actions,
-.temporary-access__request-actions,
 .temporary-access__emergency {
   display: flex;
   flex-wrap: wrap;
@@ -6209,32 +6615,23 @@ label.chk:has(input:disabled) {
    attempt facts and the control verbs, and the retain-or-prune dialog. Dark
    default, tokens only, 44px targets on touch.
    ------------------------------------------------------------------------ */
-.adapters__panes {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+/* The adapter cards and the "Add adapter" row under them: a stack like the
+   panes around it, so the row never sits flush under the last card. */
+.adapters__list {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  align-items: start;
 }
 
-@media (min-width: 960px) {
-  .adapters__panes--split {
-    grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
-  }
-}
-
-.adapters__adapter,
-.adapters__detail {
+.adapters__adapter {
   /* A .panel on a chrome page gets its colour and padding from
      `.page--chrome .panel`, but the hairline width and the container radius
      are the component's own, exactly as the audit filter panel sets them. */
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-container);
-}
-
-.adapters__adapter {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .adapters__adapter-head {
@@ -6299,44 +6696,6 @@ label.chk:has(input:disabled) {
   overflow-wrap: anywhere;
 }
 
-/* The chip carries its state as text; the colour is an echo, never the
-   only signal, so every state reads under a monochrome or assistive read. */
-.adapters__health {
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.adapters__health-glyph {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--tx-dim);
-}
-
-.adapters__health--converged .adapters__health-glyph {
-  background: var(--ok, var(--accent));
-}
-
-.adapters__health--pending .adapters__health-glyph,
-.adapters__health--converging .adapters__health-glyph {
-  background: var(--accent);
-}
-
-.adapters__health--degraded .adapters__health-glyph,
-.adapters__health--failed .adapters__health-glyph {
-  background: var(--danger);
-}
-
-.adapters__health--paused .adapters__health-glyph {
-  background: var(--warn, var(--tx-dim));
-}
-
-.adapters__health--degraded,
-.adapters__health--failed {
-  border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
-}
-
 .adapters__facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -6395,7 +6754,7 @@ label.chk:has(input:disabled) {
   gap: var(--space-3);
 }
 
-@media (min-width: 720px) {
+@media (min-width: 701px) {
   .adapters__form--two {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6430,7 +6789,7 @@ label.chk:has(input:disabled) {
   color: var(--tx-dim);
 }
 
-@media (pointer: coarse), (max-width: 719px) {
+@media (pointer: coarse), (max-width: 700px) {
   .adapters__target {
     min-height: 48px;
   }
@@ -6447,10 +6806,10 @@ label.chk:has(input:disabled) {
 /* The link glyph rides inline after the key; the sentence it stands for is a
    visually-hidden span in the markup. */
 .matrix__linked-keys {
-  display: inline;
+  display: inline-flex;
   margin-left: 6px;
   color: var(--tx-faint);
-  font-size: var(--fs-xs);
+  font-size: var(--matrix-icon);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -6497,6 +6856,14 @@ label.chk:has(input:disabled) {
 .matrix__key-cell > .matrix__required {
   flex: none;
   margin-left: 0;
+}
+
+/* In a compact key column the required label gives way too, after the name. */
+.matrix__key-cell > .matrix__required {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .matrix-cell__absent {
@@ -6595,20 +6962,11 @@ label.chk:has(input:disabled) {
   margin-top: 6px;
 }
 
-.badge[data-state='duplicate-identity'] {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
 .audit__empty {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-}
-
-.audit__outcome > [aria-hidden] {
-  margin-right: 2px;
 }
 
 .adapters__failures {
@@ -6739,7 +7097,7 @@ label.chk:has(input:disabled) {
 .self-config-notice strong { color: var(--tx); }
 .self-config-preview { margin-block-start: 20px; padding-block-start: 16px; border-top: 1px solid var(--panel-line); }
 .self-config-preview code, #configuration-owner code, #configuration-instances .settings-row__detail { overflow-wrap: anywhere; }
-@media (max-width: 640px) {
+@media (max-width: 700px) {
   .self-config-controls { align-items: stretch; }
   #configuration-instances .settings-row { align-items: stretch; flex-wrap: wrap; }
 }
@@ -6930,6 +7288,21 @@ label.chk:has(input:disabled) {
   font-size: var(--fs-sm);
 }
 
+/* The rule list and the person's actions are content plus their action row:
+   `--space-3` apart, like every action row. */
+.access-person__rules {
+  gap: var(--space-3);
+}
+
+/* A person's actions are a stack at every width: the grant first, the
+   credential reset under it. The name and id stack at --space-1; the margin
+   tops the row up to the one --space-3 an action row keeps from content. */
+.access-person__who > .actions {
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: var(--space-2);
+}
+
 .access-person__who strong {
   display: flex;
   flex-wrap: wrap;
@@ -6956,7 +7329,9 @@ label.chk:has(input:disabled) {
 .access-rule__main {
   flex: 1;
   min-width: 0;
-  gap: var(--space-1);
+  /* One gap for the card's parts: permissions, Where, the "includes ... created
+     later" note and the disclosure each a step apart. */
+  gap: var(--space-2);
 }
 
 .access-rule__perms,
@@ -6970,18 +7345,29 @@ label.chk:has(input:disabled) {
   gap: var(--space-1) var(--space-2);
 }
 
+/* Where is three fixed columns: the same tracks in every card, so
+   Projects, Environments and Keys line up from card to card. A long value
+   ellipsises with its full text in the title. On a phone each part is one
+   row, the labels one shared column. */
 .access-where {
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-1) var(--space-4);
-  overflow-wrap: anywhere;
+  margin: 0;
 }
 
 .access-where__part {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--space-2);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+}
+
+.access-where__value {
+  /* The value in the accent ink stands apart from its tertiary label. */
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .access-where__label {
@@ -7127,15 +7513,6 @@ label.chk:has(input:disabled) {
   color: var(--tx);
 }
 
-@media (max-width: 800px) {
-  .access-person,
-  .access-gloss > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-1);
-  }
-
-}
-
 .access-summary h3 {
   margin: 0;
 }
@@ -7155,12 +7532,6 @@ label.chk:has(input:disabled) {
 .access-ask select {
   width: 100%;
   min-width: 0;
-}
-
-@media (max-width: 800px) {
-  .access-ask {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .access-answer__question {
@@ -7208,4 +7579,44 @@ label.chk:has(input:disabled) {
   margin-top: var(--space-1);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
+}
+
+/* Access rules on a phone: the Where row, people, glossary and the Who can
+   fields stack in one column; the answer table fills its side panel instead
+   of holding the desktop reading width, and the member name cell drops out of
+   its larger override, same compact treatment as every other data table. */
+@media (max-width: 700px) {
+  .access-where {
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+  }
+
+  .access-where__part {
+    display: contents;
+  }
+
+  .access-person,
+  .access-gloss > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .access-ask {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .access-table .grants {
+    width: 100%;
+    min-width: 0;
+    font-size: var(--fs-xs);
+  }
+
+  .access-table .grants :is(th, td) {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .access-table .grants :is(.mono, code, kbd),
+  .access-table .grants th[scope='row'] {
+    font-size: var(--fs-xs);
+  }
 }

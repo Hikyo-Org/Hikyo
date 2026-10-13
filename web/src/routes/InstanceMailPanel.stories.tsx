@@ -13,8 +13,16 @@ const meta = {
 } satisfies Meta<typeof InstanceMailPanel>;
 export default meta;
 type Story = StoryObj<typeof meta>;
-export const Configured: Story = { play: async ({ canvas }) => { await expect(await canvas.findByText('configured', { exact: true })).toBeVisible(); } };
-export const Unconfigured: Story = { parameters: { app: { responses: [{ url, body: { configured: false } }] } }, play: async ({ canvas }) => { await expect(await canvas.findByRole('button', { name: 'Send test…' })).toBeDisabled(); } };
+export const Configured: Story = { play: async ({ canvas }) => {
+  const tag = await canvas.findByText('configured', { exact: true });
+  await expect(tag).toBeVisible();
+  await expect(tag.closest('.badge')?.querySelector('svg')?.getAttribute('data-glyph')).toBe('check');
+} };
+export const Unconfigured: Story = { parameters: { app: { responses: [{ url, body: { configured: false } }] } }, play: async ({ canvas }) => {
+  await expect(await canvas.findByRole('button', { name: 'Send test…' })).toBeDisabled();
+  const tag = canvas.getByText('not configured', { exact: true });
+  await expect(tag.closest('.badge')?.querySelector('svg')?.getAttribute('data-glyph')).toBe('cross');
+} };
 export const Loading: Story = { parameters: { app: { responses: [{ url, pending: true }] } }, play: async ({ canvas }) => { await waitFor(() => expect(canvas.getByText('Loading mailer status…')).toBeVisible()); } };
 export const SecondFactorRequired: Story = { parameters: { app: { responses: [{ url, status: 403, body: { error: { code: 'forbidden', message: 'Forbidden' } } }] } }, play: async ({ canvas }) => { await expect(await canvas.findByRole('alert')).toHaveTextContent('second factor'); } };
 export const Failed: Story = { parameters: { app: { responses: [{ url, status: 500, body: { error: { code: 'internal', message: 'Internal' } } }] } }, play: async ({ canvas }) => { await expect(await canvas.findByRole('alert')).toHaveTextContent('server error 500'); } };

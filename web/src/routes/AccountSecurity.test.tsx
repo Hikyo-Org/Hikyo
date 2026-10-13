@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearNotification, notifyFailure, ToastViewport } from '../app/notifications.tsx';
@@ -114,10 +115,10 @@ afterEach(async () => {
 describe('AccountSecurity mutation feedback', () => {
   it('keeps a failed security mutation visible inline when a later toast replaces its toast', async () => {
     const rendered = await renderForm(
-      <>
+      <MemoryRouter>
         <AccountSecurity />
         <ToastViewport />
-      </>,
+      </MemoryRouter>,
     );
     unmount = rendered.unmount;
 
@@ -153,7 +154,7 @@ it('preserves unknown provider kinds without starting an unsupported link flow',
     { kind: 'future-kind', slug: 'future', display_name: 'Future provider' },
     { kind: 'oidc', slug: 'known', display_name: 'Known provider' },
   );
-  const rendered = await renderForm(<AccountSecurity />);
+  const rendered = await renderForm(<MemoryRouter><AccountSecurity /></MemoryRouter>);
   unmount = rendered.unmount;
   const buttons = [...rendered.container.querySelectorAll('button')];
   const future = buttons.find((button) => button.textContent?.trim() === 'Link Future provider');
@@ -171,7 +172,7 @@ it('preserves unknown provider kinds without starting an unsupported link flow',
  */
 describe('passkey proof selection', () => {
   async function submitProof(open: string, value: string) {
-    const rendered = await renderForm(<AccountSecurity />);
+    const rendered = await renderForm(<MemoryRouter><AccountSecurity /></MemoryRouter>);
     unmount = rendered.unmount;
     const trigger = rendered.container.querySelector(`button[aria-label="${open}"]`);
     if (!(trigger instanceof HTMLButtonElement)) {

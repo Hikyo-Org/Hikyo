@@ -71,7 +71,7 @@ export function SamlSpKeysPanel() {
           ))
         : null}
 
-      <div className="panel__actions">
+      <div className="actions">
         <Button
           type="button"
           variant="primary"
@@ -129,8 +129,8 @@ function SpKeyRow({
         <span className="settings-row__detail mono">created {new Date(spKey.created_at).toLocaleString()}</span>
       </div>
       <span className="settings-row__spacer" />
-      <Badge tone={active ? 'neutral' : 'danger'}>{spKey.state}</Badge>
-      <div className="panel__actions">
+      <Badge tone={active ? 'neutral' : 'danger'} icon={active ? 'check' : 'alert'}>{spKey.state}</Badge>
+      <div className="actions">
         {active ? (
           <Button
             type="button"

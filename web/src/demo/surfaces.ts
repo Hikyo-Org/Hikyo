@@ -2,7 +2,7 @@ import type { SurfaceId } from '../app/navigation.ts';
 
 export type DemoSurfacePolicy =
   | { readonly mode: 'interactive' }
-  | { readonly mode: 'read-only'; readonly controls: 'fieldset' | 'actions' | 'audit' }
+  | { readonly mode: 'read-only'; readonly audit?: true }
   | { readonly mode: 'excluded'; readonly reason: string; readonly redirect?: 'matrix' };
 
 /** Every application route needs an explicit demo decision when the registry grows. */
@@ -13,25 +13,25 @@ export const DEMO_SURFACE_POLICIES = {
   'establish-credential': { mode: 'excluded', reason: 'Creating real account credentials requires a full Hikyo installation.' },
   overview: { mode: 'excluded', reason: 'The demo opens directly in the sample matrix.', redirect: 'matrix' },
   projects: { mode: 'interactive' },
-  remotes: { mode: 'read-only', controls: 'fieldset' },
-  members: { mode: 'read-only', controls: 'fieldset' },
-  'org-settings': { mode: 'read-only', controls: 'fieldset' },
-  scim: { mode: 'read-only', controls: 'actions' },
-  audit: { mode: 'read-only', controls: 'audit' },
+  remotes: { mode: 'read-only' },
+  members: { mode: 'read-only' },
+  'org-settings': { mode: 'read-only' },
+  scim: { mode: 'read-only' },
+  audit: { mode: 'read-only', audit: true },
   'instance-admin': { mode: 'excluded', reason: 'Instance administration requires a full Hikyo installation.' },
   'instance-config': { mode: 'excluded', reason: 'Server configuration requires a full Hikyo installation.' },
   'instance-members': { mode: 'excluded', reason: 'Instance membership administration requires a full Hikyo installation.' },
-  settings: { mode: 'read-only', controls: 'fieldset' },
+  settings: { mode: 'read-only' },
   matrix: { mode: 'interactive' },
   history: { mode: 'interactive' },
   'key-detail': { mode: 'interactive' },
   values: { mode: 'interactive' },
-  'machine-access': { mode: 'read-only', controls: 'actions' },
-  'change-approvals': { mode: 'read-only', controls: 'actions' },
-  'temporary-access': { mode: 'read-only', controls: 'actions' },
-  adapters: { mode: 'read-only', controls: 'actions' },
-  'project-audit': { mode: 'read-only', controls: 'audit' },
-  'project-settings': { mode: 'read-only', controls: 'fieldset' },
+  'machine-access': { mode: 'read-only' },
+  'change-approvals': { mode: 'read-only' },
+  'temporary-access': { mode: 'read-only' },
+  adapters: { mode: 'read-only' },
+  'project-audit': { mode: 'read-only', audit: true },
+  'project-settings': { mode: 'read-only' },
   'cli-reauth': { mode: 'excluded', reason: 'Authenticating a CLI requires a full Hikyo installation.' },
   'workspace-approve': { mode: 'excluded', reason: 'Connecting remote instances requires a full Hikyo installation.' },
   'workspace-callback': { mode: 'excluded', reason: 'Connecting remote instances requires a full Hikyo installation.' },

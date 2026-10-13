@@ -48,7 +48,7 @@ const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: cls('matrix-editor'), atom: 'ui/Dialog' },
   { pattern: cls('settings-tag'), atom: 'ui/Button variant="quiet"' },
   { pattern: cls('chip'), atom: 'ui/Badge or ui/ChoiceGroup' },
-  { pattern: /[🔒🔗✓✕Δ◌⋯]/u, atom: 'ui/Glyph' },
+  { pattern: /[🔒🔗🔑✓✕✗×Δ◌⋯⚠⚙⚲⚿⧉⊘⇅◆▾▸↺✎ℹ]/u, atom: 'ui/Glyph' },
 ];
 
 const MARKER = /markup-check:/;

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useContext, useId, useState } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import { useOrgGrants } from '../api/access.ts';
@@ -21,9 +21,12 @@ import { notifySuccess } from '../app/notifications.tsx';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
+import { Glyph } from '../ui/Glyph.tsx';
+import { Sep } from '../ui/Sep.tsx';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 
@@ -64,20 +67,11 @@ export function OrgSettings() {
 
   return (
     <div className="page page--chrome">
-      <h1>Organisation settings · {current?.name ?? 'organisation'}</h1>
+      <h1>Organisation settings<Sep />{current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
         Rename this organisation, set its retention policy, or delete it; grants are edited on
         the members surface.
       </p>
-
-      <JumpIndex
-        sections={[
-          { id: 'org-identity', label: 'Identity' },
-          { id: 'org-retention', label: 'Policy' },
-          { id: 'org-members', label: 'Members' },
-          { id: 'org-danger', label: 'Danger zone' },
-        ]}
-      />
 
       {orgQuery.isError ? (
         <Alert>
@@ -88,104 +82,118 @@ export function OrgSettings() {
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
-      <Panel id="org-identity" title="Identity">
-        <ChromeIdentityControls
-          identityId={current?.id ?? org}
-          name={current?.name ?? 'organisation'}
-          kind="org"
-        >
-          <div className="field identity-name">
-            <label htmlFor={nameId}>Name</label>
-            {current === undefined ? (
-              <input id={nameId} disabled />
-            ) : (
-              // Remount on org switch: a half-typed draft never carries into
-              // another organisation, and a refetch of the same org no longer
-              // clobbers what is being typed.
-              <NameEditor
-                key={org}
-                id={nameId}
+      <SectionTabs
+        label="Organisation settings sections"
+        idPrefix="org"
+        sections={[
+          { id: 'org-identity', label: 'Identity', content: (
+            <Panel id="org-identity" title="Identity">
+              <ChromeIdentityControls
+                identityId={current?.id ?? org}
+                name={current?.name ?? 'organisation'}
+                kind="org"
+              >
+                <div className="field identity-name">
+                  <label htmlFor={nameId}>Name</label>
+                  {current === undefined ? (
+                    <input id={nameId} disabled />
+                  ) : (
+                    // Remount on org switch: a half-typed draft never carries into
+                    // another organisation, and a refetch of the same org no longer
+                    // clobbers what is being typed.
+                    <NameEditor
+                      key={org}
+                      id={nameId}
+                      org={org}
+                      current={current}
+                      rename={rename}
+                      onRenamed={(renamed) => feedback.ok(`Renamed to ${renamed}.`)}
+                      onFail={(error) => report('rename-org', error)}
+                    />
+                  )}
+                </div>
+              </ChromeIdentityControls>
+            </Panel>
+          ) },
+
+          { id: 'org-retention', label: 'Policy', content: (
+            <Panel id="org-retention" title="Policy">
+              {retention.isPending ? <p role="status">Loading the retention policy…</p> : null}
+              {retention.isError ? (
+                <Alert>The retention policy could not be read for this organisation.</Alert>
+              ) : null}
+              {retention.data === undefined ? null : (
+                <CompactOrgRetention
+                  policy={retention.data}
+                  busy={setRetention.isPending}
+                  onSave={(next) =>
+                    setRetention.mutate(next, {
+                      onSuccess: (saved) => feedback.ok(`Retention saved. ${retentionSentence(saved)}`),
+                      onError: (error) => report('set-org-retention', error),
+                    })
+                  }
+                />
+              )}
+              <ProjectRetentionList
                 org={org}
-                current={current}
-                rename={rename}
-                onRenamed={(renamed) => feedback.ok(`Renamed to ${renamed}.`)}
-                onFail={(error) => report('rename-org', error)}
+                projects={projects}
+                policies={projectPolicies}
+                cap={retention.data?.last_revisions}
               />
-            )}
-          </div>
-        </ChromeIdentityControls>
-      </Panel>
+            </Panel>
+          ) },
 
-      <Panel id="org-retention" title="Policy">
-        {retention.isPending ? <p role="status">Loading the retention policy…</p> : null}
-        {retention.isError ? (
-          <Alert>The retention policy could not be read for this organisation.</Alert>
-        ) : null}
-        {retention.data === undefined ? null : (
-          <CompactOrgRetention
-            policy={retention.data}
-            busy={setRetention.isPending}
-            onSave={(next) =>
-              setRetention.mutate(next, {
-                onSuccess: (saved) => feedback.ok(`Retention saved. ${retentionSentence(saved)}`),
-                onError: (error) => report('set-org-retention', error),
-              })
-            }
-          />
-        )}
-        <ProjectRetentionList
-          org={org}
-          projects={projects}
-          policies={projectPolicies}
-          cap={retention.data?.last_revisions}
-        />
-      </Panel>
+          { id: 'org-members', label: 'Members', content: (
+            <Panel id="org-members" title="Members">
+              <div className="settings-row">
+                <div className="settings-row__copy">
+                  <span className="settings-row__title">Members</span>
+                  <span className="settings-row__detail">
+                    {prototypeMode
+                      ? '4 org-scoped grant lines'
+                      : grants.isSuccess
+                      ? `${String(grants.data.count)} org-scoped grant lines`
+                      : 'membership listing unavailable'}
+                  </span>
+                </div>
+                <span className="settings-row__spacer" />
+                <Link className="btn" to={generatePath(surfaceById('members').path, { org })}>
+                  open members <Glyph name="arrow-right" />
+                </Link>
+              </div>
+              <p className="settings-note">
+                Entry point only: granting, revoking and inspection live on the members surface.
+              </p>
+            </Panel>
+          ) },
 
-      <Panel id="org-members" title="Members">
-        <div className="settings-row">
-          <div className="settings-row__copy">
-            <span className="settings-row__title">Members</span>
-            <span className="settings-row__detail">
-              {prototypeMode
-                ? '4 org-scoped grant lines'
-                : grants.isSuccess
-                ? `${String(grants.data.count)} org-scoped grant lines`
-                : 'membership listing unavailable'}
-            </span>
-          </div>
-          <span className="settings-row__spacer" />
-          <Link className="btn" to={generatePath(surfaceById('members').path, { org })}>
-            open members →
-          </Link>
-        </div>
-        <p className="settings-note">
-          Entry point only: granting, revoking and inspection live on the members surface.
-        </p>
-      </Panel>
-
-      <Panel id="org-danger" title="Danger zone" danger>
-        <TypedNameConfirm
-          key={current === undefined ? `pending-${org}` : current.id}
-          label="Delete this organisation"
-          expect={current === undefined ? null : current.name}
-          action="Delete organisation"
-          busy={remove.isPending}
-          hint={
-            <>
-              Deletion never cascades into projects or their contents. Authority scoped inside an
-              otherwise empty organisation is removed with it, and affected sessions are revoked.
-            </>
-          }
-          onConfirm={() =>
-            remove.mutate(
-              { org },
-              {
-                onError: (error) => report('delete-org', error),
-              },
-            )
-          }
-        />
-      </Panel>
+          { id: 'org-danger', label: 'Danger zone', content: (
+            <Panel id="org-danger" title="Danger zone" danger>
+              <TypedNameConfirm
+                key={current === undefined ? `pending-${org}` : current.id}
+                label="Delete this organisation"
+                expect={current === undefined ? null : current.name}
+                action="Delete organisation"
+                busy={remove.isPending}
+                hint={
+                  <>
+                    Deletion never cascades into projects or their contents. Authority scoped inside an
+                    otherwise empty organisation is removed with it, and affected sessions are revoked.
+                  </>
+                }
+                onConfirm={() =>
+                  remove.mutate(
+                    { org },
+                    {
+                      onError: (error) => report('delete-org', error),
+                    },
+                  )
+                }
+              />
+            </Panel>
+          ) },
+        ]}
+      />
     </div>
   );
 }
@@ -211,15 +219,17 @@ function NameEditor({
   onRenamed: (name: string) => void;
   onFail: (error: unknown) => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const name = draft ?? current.name;
   return (
     <input
       id={id}
       value={name}
+      disabled={readOnly}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => {
-        if (name === '' || name === current.name) return;
+        if (readOnly || name === '' || name === current.name) return;
         rename.mutate(
           { org, name },
           {
@@ -288,8 +298,9 @@ function ProjectRetentionList({
                     : policy.inherited
                       ? `inherits → ${String(revisions ?? cap ?? 'unlimited')}`
                       : capped
-                        ? `custom ${String(revisions)}, capped to ${String(cap)} by org ⚠`
+                        ? `custom ${String(revisions)}, capped to ${String(cap)} by org `
                         : `custom ${String(revisions ?? 'unlimited')}`}
+                  {policy !== undefined && !policy.inherited && capped ? <Glyph name="warn" /> : null}
                 </Link>
               </div>
             );
@@ -313,6 +324,7 @@ export function CompactOrgRetention({
   busy: boolean;
   onSave: (next: RetentionPolicy) => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   const inputId = useId();
   const [count, setCount] = useState(String(policy.last_revisions ?? 6));
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -360,10 +372,11 @@ export function CompactOrgRetention({
         min="1"
         max="99"
         value={count}
-        disabled={busy}
+        disabled={busy || readOnly}
         aria-label="Org default revisions kept"
         onChange={(event) => setCount(event.currentTarget.value)}
         onBlur={() => {
+          if (readOnly) return;
           const revisions = Number(count);
           // A refused value is said and reset, never swallowed: a field that
           // silently keeps "0" looks saved.

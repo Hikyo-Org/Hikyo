@@ -50,7 +50,8 @@ it('shows a loading status, then the empty state carrying the one Clear button',
   const { container, release, unmount } = await renderAudit([]);
   try {
     expect(container.querySelector('#audit-events [role="status"]')?.textContent).toBe('Loading events…');
-    expect(container.querySelector('nav.jump')).not.toBeNull();
+    // Filter and Events stay on one page, no tabs and no jump row.
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
     await act(async () => release());
     await settleTask();
     const empty = container.querySelector('.audit__empty');
@@ -71,12 +72,11 @@ it('renders rows as audit__row buttons with an aria-hidden outcome glyph', async
     await settleTask();
     const row = container.querySelector('button.audit__row');
     expect(row?.querySelector('.audit__row-op')?.classList.contains('mono')).toBe(true);
-    const glyph = row?.querySelector('.audit__outcome [aria-hidden="true"]');
-    expect(glyph?.textContent).toBe('⊘ ');
-    expect(row?.querySelector('.audit__outcome')?.textContent).toBe('⊘ denied');
-    expect(container.querySelector('#audit-detail [role="status"]')?.textContent).toBe(
-      'Select an event to see its detail.',
-    );
+    const glyph = row?.querySelector('.audit__outcome svg[aria-hidden="true"]');
+    expect(glyph?.getAttribute('data-glyph')).toBe('denied');
+    expect(row?.querySelector('.audit__outcome')?.textContent).toBe('denied');
+    // No detail until an event is picked: it opens in the side panel.
+    expect(container.querySelector('aside[aria-label="Event detail"]')).toBeNull();
   } finally {
     await unmount();
   }
@@ -93,7 +93,7 @@ it('shows the actor name in the row while retaining its ID in event details', as
     expect(row?.querySelector('.audit__row-actor')?.textContent).toBe('Dana Jacobs');
     expect(row?.textContent).not.toContain('prn_dana');
     await act(async () => row?.click());
-    expect(container.querySelector('#audit-detail')?.textContent).toContain('Principal IDprn_dana');
+    expect(container.querySelector('aside[aria-label="Event detail"]')?.textContent).toContain('Principal IDprn_dana');
   } finally { await unmount(); }
 });
 

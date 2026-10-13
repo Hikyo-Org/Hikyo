@@ -349,7 +349,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
       },
     }, twoRows);
     const schema = view.container.querySelector('.matrix-editor__schema');
-    expect(schema?.querySelector('p')?.textContent).toBe('string · pattern · range · required in production');
+    expect(schema?.querySelector('p')?.textContent).toMatch(/^string\s*·\s*pattern\s*·\s*range\s*·\s*required in production$/);
     expect(schema?.querySelector(':scope > details > summary')?.textContent).toBe('Raw declaration');
     expect([...view.container.querySelectorAll('a')].some((a) => a.textContent === 'Edit declaration')).toBe(true);
     await view.unmount();

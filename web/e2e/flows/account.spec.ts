@@ -56,6 +56,7 @@ test.describe('account and security', () => {
     // Passkeys are listable, so they are listed. The authenticator factor is
     // now readable too: this suite's administrator has a confirmed one, and the
     // panel reports it rather than disclaiming knowledge.
+    await page.getByRole('tab', { name: 'Sign-in factors' }).click();
     const factors = page.locator('#account-factors');
     await expect(factors.getByRole('button', { name: 'Add a passkey' })).toBeVisible();
     await expect(factors.getByRole('button', { name: 'Remove the authenticator' })).toContainText(
@@ -64,6 +65,7 @@ test.describe('account and security', () => {
     await expect(factors.locator('.account-passkey').first()).toContainText('added');
 
     // The kill switch, absorbed from #71: this session is in the list.
+    await page.getByRole('tab', { name: 'Sessions' }).click();
     const sessions = page.locator('#account-sessions');
     await expect(sessions.getByRole('listitem').first()).toContainText('browser');
     await expect(
@@ -73,6 +75,7 @@ test.describe('account and security', () => {
     // The OIDC disclosure fixture configures and links one real provider. The
     // account surface must report that live state and retain the link affordance
     // for the configured provider instead of rendering the old empty claim.
+    await page.getByRole('tab', { name: 'Identities' }).click();
     const identities = page.locator('#account-identities');
     await expect(identities.getByRole('listitem').first()).toContainText('subject user');
     await expect(
@@ -117,9 +120,11 @@ test.describe('account and security', () => {
       );
     }
     await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Sign-in factors' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Loading passkeys' })).toBeVisible();
-    await expect(page.getByRole('status').filter({ hasText: 'Loading configured identity providers' })).toBeVisible();
     await expect(page.locator('#account-factors')).not.toContainText('No passkey is enrolled');
+    await page.getByRole('tab', { name: 'Identities' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Loading configured identity providers' })).toBeVisible();
     await expect(page.locator('#account-identities')).not.toContainText('none enabled');
     if (release === undefined) {
       throw new Error('the account-factor gate was not installed');
@@ -129,6 +134,7 @@ test.describe('account and security', () => {
   });
 
   test('asks for the credential you already have before an account change', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Sign-in factors' }).click();
     await page.getByRole('button', { name: 'Add a passkey' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'Confirm it is you' })).toBeVisible();
@@ -143,6 +149,7 @@ test.describe('account and security', () => {
     // One attempt, against the real server: removing the authenticator is
     // proved by the PASSWORD, never by the code, so a wrong password is
     // refused and the factor stands. There is no per-account lockout to trip.
+    await page.getByRole('tab', { name: 'Sign-in factors' }).click();
     await page.getByRole('button', { name: 'Remove the authenticator' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Password').fill(`${ADMIN.password}-wrong`);
@@ -169,6 +176,7 @@ test.describe('account and security', () => {
   });
 
   test('keeps the theme choice explicit and local', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Preferences' }).click();
     const theme = page.locator('#account-preferences').getByLabel('Theme');
     const headerToggle = page.getByRole('button', { name: /theme/i });
     await theme.selectOption('light');
@@ -186,6 +194,9 @@ test.describe('account and security', () => {
   });
 
   test('revokes a second browser session without killing the current one', async ({ browser, page }) => {
+    // Selected before the reload below, so the reload lands back on the
+    // Sessions tab where the fresh row is checked.
+    await page.getByRole('tab', { name: 'Sessions' }).click();
     const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     try {
       // The second browser session is the shared administrator's too, minted
@@ -223,16 +234,21 @@ test.describe('account and security', () => {
     test(`meets the pinned assertion set on account & security (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
+        // Add a passkey lives on the Sign-in factors tab, not the default
+        // Profile one.
+        await page.getByRole('tab', { name: 'Sign-in factors' }).click();
         const heading = page.getByRole('heading', { name: 'Account & security', level: 1 });
-        const well = page.locator('.panel').first();
+        // Hidden tab panels stay mounted: measure the visible one.
+        const visible = page.locator('.tabpanel__section:not([hidden])');
+        const well = visible.locator('.panel').first();
         const add = page.getByRole('button', { name: 'Add a passkey' });
-        const badge = page.locator('.badge').first();
+        const badge = visible.locator('.badge').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'account',
           surface: 'settings',
           theme: scheme,
-          text: [heading, page.locator('.factor__meta').first(), page.locator('.page__lede')],
+          text: [heading, visible.locator('.factor__meta').first(), page.locator('.page__lede')],
           radii: [
             [well, 'container'],
             [add, 'control'],
@@ -273,7 +289,7 @@ test.describe('account and security', () => {
       test.slow();
       const account = await enrolledAccount(browser, 'passkey-drill', 'org');
       await signInAs(page, account);
-      await page.goto('/settings');
+      await page.goto('/settings?tab=factors');
       await expect(page.getByRole('heading', { name: 'Account & security', level: 1 })).toBeVisible();
       // The factor state is readable: the account has a confirmed
       // authenticator, and the panel reports it rather than disclaiming
@@ -323,6 +339,7 @@ test.describe('account and security', () => {
    * that file.
    */
   test('replaces the recovery codes and shows them exactly once', async ({ passkeyPage: page }) => {
+      await page.getByRole('tab', { name: 'Recovery' }).click();
       await page.getByRole('button', { name: 'Replace recovery codes' }).click();
       const proof = page.getByRole('dialog');
       await expect(proof).toContainText('never authorise their own regeneration');

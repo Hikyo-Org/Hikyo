@@ -1,13 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { MemoryRouter, useLocation } from 'react-router';
 import { expect, fn } from 'storybook/test';
 
+import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import {
   ConsequencesDialog,
   DisplayOnceCopy,
   Explain,
-  JumpIndex,
   Panel,
+  SectionTabs,
   TypedNameConfirm,
 } from './Sections.tsx';
 
@@ -36,16 +38,71 @@ export const QuestionPanel: Story = { args: { question: true, title: 'Open quest
 
 export const TightPanel: Story = { args: { tight: true, title: 'Profile' } };
 
-export const Jump: Story = {
+const tabSections = [
+  { id: 'demo-profile', label: 'Profile', content: <Panel id="demo-profile" title="Profile">Name and avatar.</Panel> },
+  {
+    id: 'demo-sessions',
+    label: 'Sessions',
+    anchors: ['demo-revoke'],
+    content: (
+      <Panel id="demo-sessions" title="Sessions">
+        <p id="demo-revoke">Every device with an active session.</p>
+      </Panel>
+    ),
+  },
+  { id: 'demo-danger', label: 'Danger zone', content: <Panel id="demo-danger" title="Danger zone" danger>Delete.</Panel> },
+];
+
+function Search() {
+  return <output data-testid="search">{useLocation().search}</output>;
+}
+
+/** A sectioned page body: tabs over its panels, the selection kept in `?tab=`. */
+export const Tabbed: Story = {
   render: () => (
-    <JumpIndex
-      sections={[
-        { id: 'profile', label: 'Profile' },
-        { id: 'sessions', label: 'Sessions' },
-        { id: 'danger', label: 'Danger zone' },
-      ]}
-    />
+    <MemoryRouter>
+      <SectionTabs label="Demo sections" idPrefix="demo" sections={tabSections} />
+      <Search />
+    </MemoryRouter>
   ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('heading', { name: 'Profile' })).toBeVisible();
+    // The other sections stay mounted but hidden, so a half-filled form survives.
+    await expect(canvas.queryByRole('heading', { name: 'Sessions' })).toBeNull();
+    await openTab(canvas, 'Sessions');
+    await expect(canvas.getByRole('heading', { name: 'Sessions' })).toBeVisible();
+    await expect(canvas.getByTestId('search')).toHaveTextContent('?tab=sessions');
+    // The first tab is the default and leaves no param.
+    await openTab(canvas, 'Profile');
+    await expect(canvas.getByTestId('search')).toBeEmptyDOMElement();
+  },
+};
+
+/** An old `#fragment` link, here to an element inside Sessions, opens that tab. */
+export const TabbedFromAnchor: Story = {
+  render: () => (
+    <MemoryRouter initialEntries={['/#demo-revoke']}>
+      <SectionTabs label="Demo sections" idPrefix="demo" sections={tabSections} />
+    </MemoryRouter>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('tab', { name: 'Sessions' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('tabpanel', { name: 'Sessions' })).toBeVisible();
+  },
+};
+
+/** One section has nothing to switch to: no tab bar, the section bare. */
+export const TabbedSingleSection: Story = {
+  render: () => (
+    <MemoryRouter>
+      <SectionTabs label="Demo sections" idPrefix="demo" sections={[tabSections[0], false]} />
+    </MemoryRouter>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByRole('tablist')).toBeNull();
+    await expect(canvas.getByRole('heading', { name: 'Profile' })).toBeVisible();
+  },
 };
 
 export const Disclosure: Story = {

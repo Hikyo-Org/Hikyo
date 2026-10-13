@@ -157,7 +157,7 @@ function render() {
 }
 
 function hasButton(container: HTMLElement, text: string): boolean {
-  return [...container.querySelectorAll('button')].some((button) => button.textContent === text);
+  return [...container.querySelectorAll('button')].some((button) => button.textContent?.trim() === text);
 }
 
 describe('Matrix declaration availability by definitions source', () => {
@@ -166,7 +166,7 @@ describe('Matrix declaration availability by definitions source', () => {
     mocks.initialize.mockResolvedValueOnce({ findings: [{ rule_id: 'test-rule', locator: 'NEW_KEY', acknowledgement: 'keep-token' }] });
     mocks.initialize.mockResolvedValue({ findings: [] });
     const view = await render();
-    const open = [...view.container.querySelectorAll('button')].find((button) => button.textContent === '+ New key');
+    const open = [...view.container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'New key');
     if (open === undefined) throw new Error('New key action missing');
     await act(async () => open.click());
     const folder = view.container.querySelector<HTMLInputElement>('#matrix-create-folder');
@@ -202,8 +202,8 @@ describe('Matrix declaration availability by definitions source', () => {
   it('offers the declare actions when definitions live in the database', async () => {
     mocks.source = 'db';
     const view = await render();
-    expect(hasButton(view.container, '+ New key')).toBe(true);
-    expect(hasButton(view.container, '+ Key')).toBe(true);
+    expect(hasButton(view.container, 'New key')).toBe(true);
+    expect(hasButton(view.container, 'Key')).toBe(true);
     expect(view.container.textContent ?? '').not.toContain('managed in Git');
     await view.unmount();
   });
@@ -230,8 +230,8 @@ describe('Matrix declaration availability by definitions source', () => {
     mocks.canEdit = false;
     mocks.folder = '';
     const view = await render();
-    expect(hasButton(view.container, '+ New key')).toBe(false);
-    expect(hasButton(view.container, '+ Key')).toBe(false);
+    expect(hasButton(view.container, 'New key')).toBe(false);
+    expect(hasButton(view.container, 'Key')).toBe(false);
     expect(hasButton(view.container, 'Cleanup')).toBe(false);
     // Not a Git project, so the Git explanation would be a lie.
     expect(view.container.textContent ?? '').not.toContain('managed in Git');
@@ -242,7 +242,7 @@ describe('Matrix declaration availability by definitions source', () => {
     mocks.canDeclare = false;
     mocks.folder = '';
     const view = await render();
-    expect(hasButton(view.container, '+ New key')).toBe(false);
+    expect(hasButton(view.container, 'New key')).toBe(false);
     expect(hasButton(view.container, 'Cleanup')).toBe(true);
     await view.unmount();
   });
@@ -250,11 +250,11 @@ describe('Matrix declaration availability by definitions source', () => {
   it('withdraws every declare action and explains why when git-managed', async () => {
     mocks.source = 'git';
     const view = await render();
-    expect(hasButton(view.container, '+ New key')).toBe(false);
-    expect(hasButton(view.container, '+ Key')).toBe(false);
+    expect(hasButton(view.container, 'New key')).toBe(false);
+    expect(hasButton(view.container, 'Key')).toBe(false);
     expect(view.container.textContent ?? '').toContain('managed in Git');
     // Value actions stay live: the cell is still an open control.
-    expect(hasButton(view.container, '+ New key')).toBe(false);
+    expect(hasButton(view.container, 'New key')).toBe(false);
     expect(
       [...view.container.querySelectorAll('button')].some((button) =>
         (button.getAttribute('aria-label') ?? '').startsWith('LOG_LEVEL in development'),

@@ -22,7 +22,7 @@ function control(container: HTMLElement, label: string): HTMLInputElement {
 }
 
 async function click(container: HTMLElement, name: string): Promise<void> {
-  const button = [...container.querySelectorAll('button')].find((b) => b.textContent === name);
+  const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name);
   if (button === undefined) throw new Error(`no button "${name}"`);
   await act(async () => button.dispatchEvent(new MouseEvent('click', { bubbles: true })));
   await settleTask();
@@ -47,7 +47,7 @@ it('replaces a shown server refusal with the field error on an invalid re-submit
   cleanups.push(unmount);
   await settleTask();
 
-  await click(container, '+ add identity provider');
+  await click(container, 'add identity provider');
   await act(async () => {
     typeInto(control(container, 'Slug'), 'example');
     typeInto(control(container, 'Display name'), 'Example');

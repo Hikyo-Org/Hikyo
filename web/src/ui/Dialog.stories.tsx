@@ -185,3 +185,27 @@ export const MonoTitle: Story = {
     await expect(dialog).not.toHaveClass('mono');
   },
 };
+
+/**
+ * An in-flight form: every field and both actions disabled at once, in a body
+ * taller than the viewport. The dialog itself is the scroller, and with nothing
+ * else focusable it is the tab stop, so a keyboard user can still scroll it
+ * (axe's scrollable-region-focusable, run on every story, enforces the same).
+ */
+export const InFlightScrollerReachable: Story = {
+  args: {
+    title: 'Saving rule',
+    children: <fieldset disabled style={{ border: 0, margin: 0, padding: 0 }}>{longBody}</fieldset>,
+    actions: (
+      <>
+        <Button type="button" disabled>Cancel</Button>
+        <Button variant="primary" type="button" disabled>Save</Button>
+      </>
+    ),
+  },
+  play: async ({ canvas }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Saving rule' });
+    await expect(dialog.scrollHeight).toBeGreaterThan(dialog.clientHeight);
+    await expect(dialog.tabIndex).toBe(0);
+  },
+};

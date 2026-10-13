@@ -57,13 +57,17 @@ import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { LIFETIME_TAG } from './lifetimeTag.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
+import { PanelForm } from './Sections.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
+import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 
 /**
  * The multi-instance surface (registry surface `remotes`).
@@ -82,6 +86,18 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  * an `Authorization` header, and weakening SSE authentication to close the gap
  * is forbidden by name.
  */
+/** The icon on each remote state's tag; the tone comes from its data-state. */
+const REMOTE_ICON: Record<RemoteState, GlyphName> = {
+  ok: 'check',
+  unreachable: 'disconnected',
+  'credential-rejected': 'denied',
+  'pin-mismatch': 'alert',
+  'redirect-refused': 'denied',
+  'identity-conflict': 'alert',
+  'self-connected': 'info',
+  'duplicate-identity': 'alert',
+};
+
 export function Remotes() {
   const remotes = useRemotes();
   const duplicates = duplicateIdentities(remotes.data?.items ?? []);
@@ -125,7 +141,7 @@ export function Remotes() {
       </section>
 
       <ThisInstance />
-      <AddRemote />
+      <AddRemoteCard />
       <ConnectionCredentials />
       <OriginAllowlist />
     </>
@@ -185,6 +201,7 @@ export function RemoteCard({
   const workspaces = useWorkspaces();
   const [failure, setFailure] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const origin = safeOriginOf(remote.url);
   const live = workspaces.find((w) => w.origin === origin);
   const handoff = useWorkspaceHandoff(origin, {
@@ -251,7 +268,7 @@ export function RemoteCard({
         <h2 className="remote__name">{remote.name}</h2>
         {/* The state is TEXT first. The badge's colour is decoration on top of
             a sentence that already says everything. */}
-        <Badge data-state={state}>
+        <Badge data-state={state} icon={REMOTE_ICON[state]}>
           {remoteStateText(state)}
         </Badge>
       </div>
@@ -357,7 +374,7 @@ export function RemoteCard({
         </div>
       ) : null}
 
-      <div className="remote__actions">
+      <div className="actions remote__actions">
         {live === undefined ? (
           <Button
             variant="primary"
@@ -373,7 +390,7 @@ export function RemoteCard({
             {/* A duplicate is not served even while a bearer is still held:
                 the open badge and picker go, Close stays so it can be dropped. */}
             {duplicateIdentity ? null : (
-              <Badge role="status">
+              <Badge role="status" icon="check">
                 Workspace open
               </Badge>
             )}
@@ -382,15 +399,7 @@ export function RemoteCard({
             </Button>
           </>
         )}
-        <Button
-          type="button"
-          onClick={() => {
-            const next = globalThis.prompt('New display name', remote.name);
-            if (next !== null && next !== '' && next !== remote.name) {
-              rename.mutate({ remote: remote.name, name: next });
-            }
-          }}
-        >
+        <Button type="button" onClick={() => setRenaming(true)}>
           Rename
         </Button>
         <Button type="button" onClick={() => remove.mutate(remote.name)}>
@@ -400,6 +409,9 @@ export function RemoteCard({
       {live === undefined || duplicateIdentity ? null : (
         <WorkspacePicker origin={origin} remoteName={remote.name} />
       )}
+      {renaming ? (
+        <RenameRemotePanel remote={remote} rename={rename} onClose={() => setRenaming(false)} />
+      ) : null}
       {remove.isSuccess ? (
         <p role="status">
           Removed here. That does <strong>not</strong> revoke the credential. Revoke it in the
@@ -455,7 +467,71 @@ function Absent() {
   return <span className="values__absent">absent</span>;
 }
 
-export function AddRemote() {
+/** RenameRemotePanel changes a remote's display name here; the remote itself is untouched. */
+function RenameRemotePanel({
+  remote,
+  rename,
+  onClose,
+}: {
+  remote: Remote;
+  rename: ReturnType<typeof useRenameRemote>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(remote.name);
+  // The same request the browser prompt made: the name as typed.
+  const unchanged = name === '' || name === remote.name;
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (unchanged) return;
+    rename.mutate({ remote: remote.name, name }, { onSuccess: onClose });
+  };
+  return (
+    <SidePanel title="Rename remote" onClose={onClose}>
+      <p className="mono remote__url">{remote.url}</p>
+      <form className="form" onSubmit={onSubmit} aria-label="Rename remote" noValidate>
+        {rename.isError ? <Alert>The remote could not be renamed. Try again.</Alert> : null}
+        <Input
+          id="remote-rename"
+          label="Display name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          hint="How this instance lists the remote. It changes nothing on the remote."
+          required
+        />
+        <div className="actions">
+          <Button variant="primary" type="submit" disabled={rename.isPending || unchanged}>
+            {rename.isPending ? 'Saving…' : 'Save name'}
+          </Button>
+          <Button type="button" variant="quiet" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </SidePanel>
+  );
+}
+
+/** The "Add a remote" card: what a remote needs, and the button that opens the form. */
+function AddRemoteCard() {
+  const identity = useInstanceIdentity();
+  return (
+    <section className="card" aria-labelledby="add-remote-title">
+      <h2 id="add-remote-title">Add a remote</h2>
+      <p>
+        The URL must be <span className="mono">https</span> and the fingerprint is checked on every
+        connection. It replaces the certificate authority as the trust root, which is what makes a
+        self-signed instance on your own network safe to point at.
+      </p>
+      {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
+      <PanelForm opener="Add a remote" variant="primary" readOnlySafe={false}>
+        {(close) => <AddRemote onAdded={close} />}
+      </PanelForm>
+    </section>
+  );
+}
+
+/** AddRemote is the add form itself: it opens in the side panel. */
+export function AddRemote({ onAdded }: { onAdded?: () => void } = {}) {
   const identity = useInstanceIdentity();
   const add = useAddRemote();
   const remotes = useRemotes();
@@ -501,6 +577,7 @@ export function AddRemote() {
           setUrl('');
           setPin('');
           setCredential('');
+          onAdded?.();
         },
       },
     );
@@ -508,15 +585,9 @@ export function AddRemote() {
   };
 
   return (
-    <section className="card" aria-labelledby="add-remote-title">
-      <h2 id="add-remote-title">Add a remote</h2>
-      <p>
-        The URL must be <span className="mono">https</span> and the fingerprint is checked on every
-        connection. It replaces the certificate authority as the trust root, which is what makes a
-        self-signed instance on your own network safe to point at.
-      </p>
-      {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
-      <form className="form" onSubmit={onSubmit} noValidate>
+    <>
+      {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. A URL that reaches it is refused.</p>}
+      <form className="form" onSubmit={onSubmit} aria-label="Add a remote" noValidate>
         {/* Whole-form refusals only: a refusal that names the URL is rendered
             under the URL control as its error. */}
         {add.isError ? <Alert>{addFailureText(add.error)}</Alert> : null}
@@ -557,7 +628,7 @@ export function AddRemote() {
           {add.isPending ? 'Verifying…' : 'Add remote'}
         </Button>
       </form>
-    </section>
+    </>
   );
 }
 
@@ -574,9 +645,14 @@ function OriginAllowlist() {
   const remove = useRemoveWorkspaceOrigin();
   const [origin, setOrigin] = useState('');
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = (event: FormEvent<HTMLFormElement>, close: () => void) => {
     event.preventDefault();
-    add.mutate(origin, { onSuccess: () => setOrigin('') });
+    add.mutate(origin, {
+      onSuccess: () => {
+        setOrigin('');
+        close();
+      },
+    });
   };
 
   return (
@@ -622,24 +698,34 @@ function OriginAllowlist() {
         </p>
       ) : null}
 
-      <form className="form form--inline" onSubmit={onSubmit} noValidate>
-        {add.isError ? (
-          <Alert>That origin was refused. It must be a bare scheme, host and port.</Alert>
-        ) : null}
-        <div className="field">
-          <label htmlFor="origin">Origin</label>
-          <input
-            id="origin"
-            value={origin}
-            onChange={(e) => setOrigin(e.target.value)}
-            placeholder="https://shell.example"
-            required
-          />
-        </div>
-        <Button variant="primary" type="submit" disabled={add.isPending}>
-          Allow origin
-        </Button>
-      </form>
+      <PanelForm opener="Allow an origin" readOnlySafe={false}>
+        {(close) => (
+          <>
+          <p>
+            A browser at this origin may then operate <strong>this</strong> instance. Exact origin
+            only: a bare scheme, host and port.
+          </p>
+          <form className="form" onSubmit={(event) => onSubmit(event, close)} aria-label="Allow an origin" noValidate>
+            {add.isError ? (
+              <Alert>That origin was refused. It must be a bare scheme, host and port.</Alert>
+            ) : null}
+            <div className="field">
+              <label htmlFor="origin">Origin</label>
+              <input
+                id="origin"
+                value={origin}
+                onChange={(e) => setOrigin(e.target.value)}
+                placeholder="https://shell.example"
+                required
+              />
+            </div>
+            <Button variant="primary" type="submit" disabled={add.isPending}>
+              Allow origin
+            </Button>
+          </form>
+          </>
+        )}
+      </PanelForm>
     </section>
   );
 }
@@ -700,7 +786,17 @@ export function ConnectionCredentials() {
         ))}
       </ul>
 
-      <MintConnectionForm mint={mint} onMinted={setDisclosed} />
+      <PanelForm opener="Mint a credential" readOnlySafe={false}>
+        {(close) => (
+          <MintConnectionForm
+            mint={mint}
+            onMinted={(minted) => {
+              close();
+              setDisclosed(minted);
+            }}
+          />
+        )}
+      </PanelForm>
 
       {disclosed === null ? null : (
         <ConnectionMintDialog minted={disclosed} onClose={() => setDisclosed(null)} />
@@ -728,7 +824,7 @@ export function ConnectionRow({
       <div className="connection__head">
         <h3 className="connection__label">{connection.label}</h3>
         {/* State as text first; the badge colour is decoration on a word. */}
-        <Badge data-state={state}>
+        <Badge data-state={state} {...LIFETIME_TAG[state]}>
           {state}
         </Badge>
       </div>
@@ -758,7 +854,7 @@ export function ConnectionRow({
         )}
       </dl>
       {revoked ? null : (
-        <div className="connection__actions">
+        <div className="actions">
           <Button
             type="button"
             aria-label={`Revoke ${connection.label}`}
@@ -823,8 +919,7 @@ export function MintConnectionForm({
   };
 
   return (
-    <form className="form" onSubmit={onSubmit} noValidate>
-      <h3>Mint a credential</h3>
+    <form className="form" onSubmit={onSubmit} aria-label="Mint a credential" noValidate>
       <p>
         The label names the peer for the audit trail. It is descriptive, not enforced; this
         instance cannot verify who holds the value.
@@ -964,9 +1059,7 @@ export function ConnectionMintDialog({
       </Button>
       {copyStatus === null ? null : (
         <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
-          <span className="alert__glyph" aria-hidden="true">
-            ⧉
-          </span>
+          <Glyph name="copy" className="alert__glyph" />
           <span>{copyStatus}</span>
         </p>
       )}

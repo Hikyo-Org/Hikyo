@@ -203,7 +203,7 @@ test.describe('reveal ceremonies', () => {
 
     // The value is on screen, and the remask countdown is visible.
     await expect(page.getByText('hunter2-development')).toBeVisible();
-    await expect(page.getByText(/re-masks in \d+s/)).toBeVisible();
+    await expect(page.getByText(/re-masks in \d+ seconds?/)).toBeVisible();
 
     // One audit line, for one key. Never "revealed N secrets".
     await expect(auditLines(page)).toHaveCount(1);
@@ -240,7 +240,7 @@ test.describe('reveal ceremonies', () => {
     await expect(page.getByRole('dialog')).toBeHidden();
 
     // The chip is the window made visible, and it counts down.
-    const chip = page.getByText(/Reveal window · \d+s/);
+    const chip = page.getByText(/Reveal window\s*·\s*\d+ seconds?/);
     await expect(chip).toBeVisible();
     await expectStatusIsTextAndAria(page, chip);
 
@@ -288,7 +288,7 @@ test.describe('reveal ceremonies', () => {
     await page.getByRole('button', { name: `Reveal ${secret}` }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Use a passkey' }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
-    await expect(page.getByText(/Reveal window · \d+s/)).toBeVisible();
+    await expect(page.getByText(/Reveal window\s*·\s*\d+ seconds?/)).toBeVisible();
 
     await page.getByLabel('Publish into').selectOption(seed.prod);
     await page.getByRole('button', { name: 'Publish into environment' }).click();
@@ -363,7 +363,7 @@ test.describe('reveal ceremonies', () => {
     await expect(page.getByText('hunter2-development')).toBeVisible();
     // A code opens a SLIDING window, so the chip counts down rather than
     // announcing a single decision.
-    await expect(page.getByText(/Reveal window · \d+s/)).toBeVisible();
+    await expect(page.getByText(/Reveal window\s*·\s*\d+ seconds?/)).toBeVisible();
     expect(countDisclosureEvents() - trailBefore, 'server-side disclosure rows').toBe(1);
   });
 
@@ -442,7 +442,7 @@ test.describe('reveal ceremonies', () => {
     await page.getByRole('button', { name: `Reveal ${secret}` }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Use a passkey' }).click();
     await expect(auditLines(page).first()).toBeVisible();
-    await expect(page.getByText(/re-masks in \d+s/).first()).toBeVisible();
+    await expect(page.getByText(/re-masks in \d+ seconds?/).first()).toBeVisible();
     // Keep the disclosure state present while the full accessibility and
     // contrast set runs. The separate remask test advances this same clock
     // to prove that disclosure still expires after ten seconds.
@@ -453,7 +453,7 @@ test.describe('reveal ceremonies', () => {
       flow: 'reveal',
       surface: 'values',
       theme: 'dark',
-      text: [auditLines(page).first(), page.getByText(/re-masks in \d+s/).first()],
+      text: [auditLines(page).first(), page.getByText(/re-masks in \d+ seconds?/).first()],
       radii: [[field, 'control']],
       fonts: [[field, 'mono']],
       colours: [],
@@ -478,7 +478,7 @@ test.describe('reveal ceremonies', () => {
     await page.goto(PROD_PATH);
 
     // The chip states the cap in words, before anything is attempted.
-    const chip = page.getByText(/Protected · a passkey per disclosure/);
+    const chip = page.getByText(/Protected\s*·\s*a passkey per disclosure/);
     await expect(chip).toBeVisible();
     await expectStatusIsTextAndAria(page, chip);
 
@@ -517,10 +517,10 @@ test.describe('reveal ceremonies', () => {
     // material here is whatever the last authorised copy put there, which is
     // the honest state of a real environment and not something a flow should
     // pin.
-    await expect(page.getByText(/re-masks in \d+s/).first()).toBeVisible();
+    await expect(page.getByText(/re-masks in \d+ seconds?/).first()).toBeVisible();
     await expect(auditLines(page)).toHaveCount(seed.secrets.length);
     // No standing countdown: a single decision is not a window.
-    await expect(page.getByText(/Reveal window · \d+s/)).toHaveCount(0);
+    await expect(page.getByText(/Reveal window\s*·\s*\d+ seconds?/)).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Reveal every secret' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();

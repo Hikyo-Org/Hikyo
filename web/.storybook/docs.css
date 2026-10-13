@@ -5,3 +5,21 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* The toolbar's Sand toggle (preview.tsx): off hides the app's raked-sand
+ * layer behind route screens. The veil over plain paper is invisible. */
+:root[data-sand='off'] .sand::before {
+  content: none;
+}
+
+/* The vitest run (vite.config.ts) keeps the sand and the veil's wash but
+ * stops the animation and the blur: headless Chromium composites
+ * `backdrop-filter` in software, and across parallel frames that starved a
+ * lazy route past its 1s wait. */
+:root[data-sand='still'] .sand::before {
+  animation-name: none;
+}
+
+:root[data-sand='still'] .veil > ::before {
+  backdrop-filter: none;
+}

@@ -243,7 +243,7 @@ describe('writeExpiringClipboard', () => {
 
     const confirmation = await writeExpiringClipboard('secret', true);
     expect(confirmation).toContain('recorded as a disclosure');
-    expect(confirmation).toContain('Attempts to clear after 45s');
+    expect(confirmation).toContain('Attempts to clear after 45 seconds');
     expect(confirmation).toContain('If unfocused, retries once on return within 2 minutes.');
     expect(confirmation).not.toContain('Cleared in 45s');
     expect(confirmation).toContain('Clipboard managers may keep this browser copy.');

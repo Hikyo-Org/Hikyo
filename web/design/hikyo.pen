@@ -460,6 +460,10 @@
       "type": "number",
       "value": 13
     },
+    "--sep-scale": {
+      "type": "string",
+      "value": "1.25em"
+    },
     "--tracking-eyebrow": {
       "type": "string",
       "value": "0.06em"
@@ -496,13 +500,35 @@
       "type": "number",
       "value": 760
     },
+    "--width-side-panel-min": {
+      "type": "number",
+      "value": 640
+    },
     "--measure": {
       "type": "string",
       "value": "68ch"
     },
+    "--chip-id-max": {
+      "type": "string",
+      "value": "17ch"
+    },
     "--overlay-shadow": {
       "type": "string",
       "value": "0 14px 42px oklch(0 0 0 / 45%)"
+    },
+    "--scrim": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#000000"
+        },
+        {
+          "value": "#000000",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
     },
     "--ring-width": {
       "type": "number",
@@ -536,6 +562,10 @@
       "type": "number",
       "value": 16
     },
+    "--icon-in-button": {
+      "type": "string",
+      "value": "calc(var(--control) * 0.5)"
+    },
     "--z-chrome": {
       "type": "string",
       "value": "10"
@@ -551,6 +581,40 @@
     "--z-overlay": {
       "type": "string",
       "value": "40"
+    },
+    "--z-backdrop": {
+      "type": "string",
+      "value": "-1"
+    },
+    "--rake": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#4c5f7a"
+        },
+        {
+          "value": "#8ba0be",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--rake-aa": {
+      "type": "number",
+      "value": 0.75
+    },
+    "--rake-opacity": {
+      "type": "string",
+      "value": "0.28"
+    },
+    "--veil-blur": {
+      "type": "number",
+      "value": 2
+    },
+    "--veil-gutter": {
+      "type": "string",
+      "value": "calc(2 * var(--space-5))"
     }
   }
 }

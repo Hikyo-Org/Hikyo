@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { templatesAt } from "../api/access.ts";
@@ -29,6 +29,7 @@ import { Button } from "../ui/Button.tsx";
 import { Checkbox } from "../ui/Checkbox.tsx";
 import { Dialog } from "../ui/Dialog.tsx";
 import { Input } from "../ui/Input.tsx";
+import { Sep } from "../ui/Sep.tsx";
 import { Radio } from "../ui/Radio.tsx";
 import { Select } from "../ui/Select.tsx";
 import { Panel } from "./Sections.tsx";
@@ -107,7 +108,7 @@ function ScopedOpenRegistrationPanel({
       {policy.isSuccess && current === null ? (
         <div className="registration">
           <p className="registration__status">
-            <Badge>closed</Badge>{" "}
+            <Badge icon="lock">closed</Badge>{" "}
             {scope.kind === "instance"
               ? "No one can sign up on this instance without an invitation."
               : `No one can sign up into ${scopeName} without an invitation.`}
@@ -117,9 +118,9 @@ function ScopedOpenRegistrationPanel({
             reauth-gated change; the policy is a standing delegation re-checked
             against your grants at every sign-up.
           </p>
-          <div className="panel__actions">
+          <div className="actions">
             <Button type="button" onClick={() => setEditing(true)}>
-              Open registration…
+              Open registration
             </Button>
           </div>
         </div>
@@ -201,18 +202,23 @@ function ScopedOpenRegistrationPanel({
   );
 }
 
-function landingText(policy: PolicyView, scopeName: string): string {
+function landingText(policy: PolicyView, scopeName: string): ReactNode {
   const landing = policy.landing;
   switch (landing.kind) {
     case "org-template":
-      return `${scopeName} · ${landing.template} template`;
+      return <>{scopeName}<Sep />{landing.template} template</>;
     case "none":
-      return "no organisation · zero grants until an administrator grants access";
+      return <>no organisation<Sep />zero grants until an administrator grants access</>;
     case "fresh-org": {
       if (policy.mintedOrgs === null)
         throw new Error("a fresh-org policy arrived without its org count");
       const count = policy.mintedOrgs;
-      return `a new organisation per sign-up · ${String(count)} / ${String(landing.cap)} minted${count >= landing.cap ? " · cap reached, sign-ups refused" : ""}`;
+      return (
+        <>
+          a new organisation per sign-up<Sep />{String(count)} / {String(landing.cap)} minted
+          {count >= landing.cap ? <><Sep />cap reached, sign-ups refused</> : null}
+        </>
+      );
     }
   }
 }
@@ -252,7 +258,7 @@ function PolicySummary({
     <div className="registration">
       <p className="registration__status">
         {state.state === "inactive" ? (
-          <Badge tone="danger">{`inactive · ${state.inactive_cause}`}</Badge>
+          <Badge tone="danger">inactive<Sep />{state.inactive_cause}</Badge>
         ) : (
           <Badge tone="ok">active</Badge>
         )}
@@ -298,8 +304,8 @@ function PolicySummary({
         <dd>{landingText(policy, scopeName)}</dd>
         <dt>Authority</dt>
         <dd>
-          {authority} · re-checked against their current grants at every sign-up
-          · any edit makes the editor the authority
+          {authority}<Sep />re-checked against their current grants at every sign-up<Sep />any edit
+          makes the editor the authority
         </dd>
         {link === null ? null : (
           <>
@@ -311,7 +317,7 @@ function PolicySummary({
         )}
       </dl>
       {copied === null ? null : <p role="status">{copied}</p>}
-      <div className="panel__actions">
+      <div className="actions">
         {link === null ? null : (
           <Button type="button" onClick={() => onCopy(link)}>
             Copy sign-up link

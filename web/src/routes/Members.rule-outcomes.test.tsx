@@ -125,7 +125,7 @@ for (const failure of createFailures) {
     const view = await renderMembers();
     try {
       await settleTask();
-      await click(view.container, '+ Add rule');
+      await click(view.container, 'Add rule');
       await click(view.container, 'Application');
       const reveal = [...view.container.querySelectorAll<HTMLLabelElement>('dialog label')].find((label) => label.textContent === 'Reveal');
       if (reveal === undefined) throw new Error('No Reveal permission.');
@@ -195,7 +195,7 @@ for (const change of successfulChanges) {
         expect(rows).toEqual([]);
         expect(deleted).toEqual(ruleIDs);
       } else {
-        await click(view.container, '+ Add rule');
+        await click(view.container, 'Add rule');
         await click(view.container, 'Application');
         await click(view.container, 'Save');
         expect(rows).toHaveLength(1);
@@ -213,7 +213,7 @@ it('closes a committed-create editor when the post-write session refresh cannot 
   const view = await renderMembers();
   try {
     await settleTask();
-    await click(view.container, '+ Add rule');
+    await click(view.container, 'Add rule');
     await click(view.container, 'Application');
     await click(view.container, 'Save');
     expect(createCount).toBe(1);
@@ -254,7 +254,7 @@ it('keeps rule actions unavailable when the authoritative post-write listing is 
   const view = await renderMembers();
   try {
     await settleTask();
-    await click(view.container, '+ Add rule');
+    await click(view.container, 'Add rule');
     await click(view.container, 'Application');
     listingRefused = true;
     await click(view.container, 'Save');

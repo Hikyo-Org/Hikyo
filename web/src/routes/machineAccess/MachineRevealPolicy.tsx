@@ -5,6 +5,7 @@ import { Alert } from '../../ui/Alert.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
+import { Glyph } from '../../ui/Glyph.tsx';
 
 /**
  * PolicyStrip is the per-project machine-reveal opt-in (source-of-truth ADR:
@@ -28,9 +29,7 @@ export function PolicyStrip({ project }: { project: ProjectRef }) {
   if (query.isPending) {
     return (
       <p className="notice machine__policy" role="status">{/* markup-check: machine__policy skin */}
-        <span className="alert__glyph" aria-hidden="true">
-          ◆
-        </span>
+        <Glyph name="reveal" className="alert__glyph" />
         <span>Reading the project&apos;s machine-reveal opt-in…</span>
       </p>
     );
@@ -38,9 +37,7 @@ export function PolicyStrip({ project }: { project: ProjectRef }) {
   if (query.isError) {
     return (
       <p className="alert machine__policy" role="alert">{/* markup-check: machine__policy skin */}
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
+        <Glyph name="alert" className="alert__glyph" />
         <span>
           The project&apos;s machine-reveal opt-in could not be read: {identityRefusalText(query.error)}
         </span>
@@ -58,9 +55,7 @@ export function PolicyStrip({ project }: { project: ProjectRef }) {
   return (
     <>
       <p className="notice machine__policy" role="status">{/* markup-check: machine__policy skin */}
-        <span className="alert__glyph" aria-hidden="true">
-          ◆
-        </span>
+        <Glyph name="reveal" className="alert__glyph" />
         <span>
           <strong>
             Machine secret delivery (per-project opt-in): {enabled ? 'on' : 'off'}.

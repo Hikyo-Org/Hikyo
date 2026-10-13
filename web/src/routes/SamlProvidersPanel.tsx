@@ -17,7 +17,10 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -49,7 +52,9 @@ export function SamlProvidersPanel() {
     setFeedback({ failure: samlFailureText(error, action), done: null });
   const ok = (message: string) => setFeedback({ failure: null, done: message });
   const clear = () => setFeedback({ failure: null, done: null });
-  const [creating, setCreating] = useState(false);
+  // One side panel at a time: the create form, or one provider's form.
+  const [open, setOpen] = useState<OpenForm | null>(null);
+  const failure = feedback.failure;
 
   return (
     <Panel id="instance-saml-providers" title="SAML providers">
@@ -77,7 +82,7 @@ export function SamlProvidersPanel() {
         <p role="status">No SAML providers are configured.</p>
       ) : null}
 
-      {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
+      {open === null && failure !== null ? <Alert>{failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       {providers.isSuccess
@@ -85,6 +90,9 @@ export function SamlProvidersPanel() {
             <ProviderRow
               key={provider.slug}
               provider={provider}
+              mode={open !== null && open !== 'create' && open.slug === provider.slug ? open.mode : 'idle'}
+              setMode={(mode) => setOpen(mode === 'idle' ? null : { slug: provider.slug, mode })}
+              failure={failure}
               onDone={ok}
               onFailure={report}
               onBusy={clear}
@@ -92,31 +100,31 @@ export function SamlProvidersPanel() {
           ))
         : null}
 
-      {creating ? (
+      {open === 'create' ? (
         <ProviderCreateForm
-          onCancel={() => setCreating(false)}
+          failure={failure}
+          onCancel={() => setOpen(null)}
           onCreated={(slug) => {
-            setCreating(false);
+            setOpen(null);
             ok(`Configured SAML provider ${slug}. It is now listed above.`);
           }}
           onFailure={report}
         />
-      ) : (
-        <div className="instance-create-row">
+      ) : null}
+      <div className="instance-create-row">
           <Button
             type="button"
             variant="primary"
             aria-label="Configure a new SAML provider"
             onClick={() => {
               clear();
-              setCreating(true);
+              setOpen('create');
             }}
           >
-            + configure SAML provider
+            <Glyph name="plus" /> configure SAML provider
           </Button>
           <code className="instance-cli">$ hikyo provider saml add</code>
         </div>
-      )}
     </Panel>
   );
 }
@@ -125,23 +133,32 @@ function severityTone(severity: 'warning' | 'error'): 'danger' | 'changed' {
   return severity === 'error' ? 'danger' : 'changed';
 }
 
+type RowMode = 'policy' | 'refresh' | 'remove';
+type OpenForm = 'create' | { slug: string; mode: RowMode };
+
 function ProviderRow({
   provider,
+  mode,
+  setMode,
+  failure,
   onDone,
   onFailure,
   onBusy,
 }: {
   provider: SamlProvider;
+  mode: 'idle' | RowMode;
+  setMode: (mode: 'idle' | RowMode) => void;
+  /** The page's refusal sentence, shown inside this row's open panel. */
+  failure: string | null;
   onDone: (message: string) => void;
   onFailure: ReportFailure;
   onBusy: () => void;
 }) {
-  const [mode, setMode] = useState<'idle' | 'policy' | 'refresh' | 'remove'>('idle');
   const remove = useDeleteSamlProvider();
   const validUntil = provider.metadata_valid_until;
-  const toggle = (next: 'policy' | 'refresh' | 'remove') => {
+  const toggle = (next: RowMode) => {
     onBusy();
-    setMode((current) => (current === next ? 'idle' : next));
+    setMode(mode === next ? 'idle' : next);
   };
 
   return (
@@ -153,17 +170,17 @@ function ProviderRow({
         <span className="settings-row__detail mono">ACS: {provider.acs_url}</span>
         <span className="settings-row__detail mono">
           metadata: {provider.metadata_source}
-          {provider.metadata_url ? ` · ${provider.metadata_url}` : ''} ·{' '}
+          {provider.metadata_url ? <><Sep />{provider.metadata_url}</> : null}<Sep />
           {provider.metadata_signed ? 'signed' : 'unsigned'}
-          {validUntil ? ` · valid until ${new Date(validUntil).toLocaleString()}` : ''}
+          {validUntil ? <><Sep />valid until {new Date(validUntil).toLocaleString()}</> : null}
         </span>
         <span className="settings-row__detail mono">
           {provider.signing_certificate_fingerprints.length} signing certificate
-          {provider.signing_certificate_fingerprints.length === 1 ? '' : 's'} ·{' '}
+          {provider.signing_certificate_fingerprints.length === 1 ? '' : 's'}<Sep />
           {provider.assurance_policy && provider.assurance_policy.length > 0
             ? `assurance: ${provider.assurance_policy.join(', ')}`
-            : 'single-factor'}{' '}
-          · {provider.allow_email_nameid ? 'email NameID allowed' : 'opaque NameID only'} ·{' '}
+            : 'single-factor'}
+          <Sep />{provider.allow_email_nameid ? 'email NameID allowed' : 'opaque NameID only'}<Sep />
           {provider.force_sign_requests ? 'signed AuthnRequests' : 'metadata-driven signing'}
         </span>
         {provider.metadata_signing_fingerprint ? (
@@ -177,15 +194,15 @@ function ProviderRow({
             role={warning.severity === 'error' ? 'alert' : 'status'}
             key={`${warning.code}:${warning.fingerprint ?? ''}`}
           >
-            <Badge tone={severityTone(warning.severity)}>{warning.severity}</Badge> {warning.message}
+            <Badge tone={severityTone(warning.severity)} icon="warn">{warning.severity}</Badge> {warning.message}
           </span>
         ))}
       </div>
       <span className="settings-row__spacer" />
-      <Badge tone={provider.enabled ? 'neutral' : 'danger'}>
+      <Badge tone={provider.enabled ? 'neutral' : 'danger'} icon={provider.enabled ? 'check' : 'minus'}>
         {provider.enabled ? 'enabled' : 'disabled'}
       </Badge>
-      <div className="panel__actions">
+      <div className="actions">
         <Button type="button" onClick={() => toggle('policy')}>Edit policy</Button>
         <Button type="button" onClick={() => toggle('refresh')}>Refresh metadata</Button>
         <Button type="button" variant="danger" onClick={() => toggle('remove')}>Remove</Button>
@@ -194,6 +211,7 @@ function ProviderRow({
       {mode === 'policy' ? (
         <ProviderPolicyForm
           provider={provider}
+          failure={failure}
           onCancel={() => setMode('idle')}
           onSaved={(message) => {
             setMode('idle');
@@ -206,6 +224,7 @@ function ProviderRow({
       {mode === 'refresh' ? (
         <RefreshMetadataForm
           provider={provider}
+          failure={failure}
           onCancel={() => setMode('idle')}
           onApplied={() => {
             setMode('idle');
@@ -216,6 +235,13 @@ function ProviderRow({
       ) : null}
 
       {mode === 'remove' ? (
+        <SidePanel
+          title={`Remove ${provider.slug}`}
+          onClose={() => {
+            if (!remove.isPending) setMode('idle');
+          }}
+        >
+        {failure !== null ? <Alert>{failure}</Alert> : null}
         <div className="danger-zone">
           <p className="danger-zone__hint">
             Removing {provider.slug} deletes every session authenticated through it and
@@ -240,6 +266,7 @@ function ProviderRow({
             }
           />
         </div>
+        </SidePanel>
       ) : null}
     </div>
   );
@@ -247,11 +274,13 @@ function ProviderRow({
 
 function ProviderPolicyForm({
   provider,
+  failure,
   onCancel,
   onSaved,
   onFailure,
 }: {
   provider: SamlProvider;
+  failure: string | null;
   onCancel: () => void;
   onSaved: (message: string) => void;
   onFailure: ReportFailure;
@@ -296,7 +325,13 @@ function ProviderPolicyForm({
   };
 
   return (
-    <div className="saml-editor">
+    <SidePanel
+      title={`Edit policy of ${provider.slug}`}
+      onClose={() => {
+        if (!patch.isPending) onCancel();
+      }}
+    >
+      {failure !== null ? <Alert>{failure}</Alert> : null}
       <p className="field__hint">
         Policy and disable ride PATCH: the entity ID and pinned metadata are not
         touched, so no unreadable XML is required to disable a provider.
@@ -312,11 +347,11 @@ function ProviderPolicyForm({
       <Checkbox label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
       <Checkbox label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
       <Checkbox label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-      <div className="panel__actions">
-        <Button type="button" onClick={onCancel}>Cancel</Button>
+      <div className="actions">
         <Button type="button" variant="primary" disabled={patch.isPending} onClick={submit}>Save policy</Button>
+        <Button type="button" onClick={onCancel}>Cancel</Button>
       </div>
-    </div>
+    </SidePanel>
   );
 }
 
@@ -363,11 +398,13 @@ type PendingDiff = {
 
 function RefreshMetadataForm({
   provider,
+  failure,
   onCancel,
   onApplied,
   onFailure,
 }: {
   provider: SamlProvider;
+  failure: string | null;
   onCancel: () => void;
   onApplied: () => void;
   onFailure: ReportFailure;
@@ -431,7 +468,13 @@ function RefreshMetadataForm({
   };
 
   return (
-    <div className="saml-editor">
+    <SidePanel
+      title={`Refresh metadata of ${provider.slug}`}
+      onClose={() => {
+        if (!refresh.isPending) cancel();
+      }}
+    >
+      {failure !== null ? <Alert>{failure}</Alert> : null}
       <p className="field__hint">
         {fileBacked
           ? 'File-backed provider: paste the replacement metadata document.'
@@ -453,11 +496,10 @@ function RefreshMetadataForm({
         </div>
       ) : null}
       {pending ? <MetadataDiff diff={pending.diff.diff} /> : null}
-      <div className="panel__actions">
+      <div className="actions">
         {/* Disabled while a request is in flight: cancel resets the mutation,
             and resetting a still-pending request would leave it to settle later
             with the document in cache. */}
-        <Button type="button" disabled={refresh.isPending} onClick={cancel}>Cancel</Button>
         {pending ? (
           <Button type="button" variant="danger" disabled={refresh.isPending} onClick={confirm}>
             Confirm and apply the trust change
@@ -467,16 +509,19 @@ function RefreshMetadataForm({
             {fileBacked ? 'Preview metadata change' : 'Fetch and preview metadata'}
           </Button>
         )}
+        <Button type="button" disabled={refresh.isPending} onClick={cancel}>Cancel</Button>
       </div>
-    </div>
+    </SidePanel>
   );
 }
 
 function ProviderCreateForm({
+  failure,
   onCancel,
   onCreated,
   onFailure,
 }: {
+  failure: string | null;
   onCancel: () => void;
   onCreated: (slug: string) => void;
   onFailure: ReportFailure;
@@ -591,8 +636,13 @@ function ProviderCreateForm({
   };
 
   return (
-    <div className="saml-editor" data-saml-create>
-      <h3>Configure a SAML provider</h3>
+    <SidePanel
+      title="Configure a SAML provider"
+      onClose={() => {
+        if (!put.isPending) cancel();
+      }}
+    >
+      {failure !== null ? <Alert>{failure}</Alert> : null}
       <div className="field">
         <label htmlFor={ids.slug}>Slug (immutable; addresses this provider)</label>
         <input id={ids.slug} disabled={put.isPending} className="mono" value={slug} onChange={(event) => { clearPending(); setSlug(event.target.value); }} />
@@ -632,9 +682,8 @@ function ProviderCreateForm({
       <Checkbox disabled={put.isPending} label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => { clearPending(); setEnabled(event.target.checked); }} />
       {clientErrors.length > 0 ? <Alert>{clientErrors.join(' ')}</Alert> : null}
       {pending ? <MetadataDiff diff={pending.diff.diff} /> : null}
-      <div className="panel__actions">
+      <div className="actions">
         {/* Disabled while a request is in flight: see RefreshMetadataForm. */}
-        <Button type="button" disabled={put.isPending} onClick={cancel}>Cancel</Button>
         {pending ? (
           <Button type="button" variant="danger" disabled={put.isPending} onClick={confirm}>
             Confirm trust and configure provider
@@ -644,7 +693,8 @@ function ProviderCreateForm({
             Preview and configure
           </Button>
         )}
+        <Button type="button" disabled={put.isPending} onClick={cancel}>Cancel</Button>
       </div>
-    </div>
+    </SidePanel>
   );
 }

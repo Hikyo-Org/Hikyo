@@ -43,14 +43,17 @@ import { writeClipboard } from '../app/clipboard.ts';
 import { useNavigationGuard } from '../app/useNavigationGuard.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { LIFETIME_TAG } from './lifetimeTag.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Radio } from '../ui/Radio.tsx';
-import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Explain, Panel, PanelForm, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 
 /**
  * SCIM provisioning administration (registry surface `scim`, #501; #73,
@@ -84,23 +87,15 @@ export function ScimProvisioningPage() {
   const items = bindings.data?.items ?? [];
   const active = items.find((binding) => binding.id === selected) ?? null;
 
-  const sections = [
-    { id: 'scim-bindings', label: 'Bindings' },
-    ...(active === null
-      ? []
-      : [
-          { id: 'scim-mappings', label: 'Mappings' },
-          { id: 'scim-credentials', label: 'Provisioning credentials' },
-          { id: 'scim-directory', label: 'Directory' },
-        ]),
-  ];
-
   const select = (binding: string) => {
     const next = new URLSearchParams(search);
     if (binding === '') {
       next.delete('binding');
+      next.delete('tab');
     } else {
       next.set('binding', binding);
+      // Administering a binding opens its first section, the tab that appeared.
+      next.set('tab', 'mappings');
     }
     setSearch(next, { replace: true });
   };
@@ -114,33 +109,34 @@ export function ScimProvisioningPage() {
         management and a second factor.
       </p>
 
-      <JumpIndex sections={sections} />
-
-      <Panel id="scim-bindings" title="Bindings">
-        <BindingsSection
-          org={org}
-          bindings={items}
-          isError={bindings.isError}
-          error={bindings.error}
-          isSuccess={bindings.isSuccess}
-          selected={selected}
-          onSelect={select}
-        />
-      </Panel>
-
-      {active === null ? null : (
-        // Keyed by binding id so switching the administered binding REMOUNTS
-        // these sections: an in-flight mint or an open display-once dialog can
-        // never carry one binding's token into another binding's panel. A mint
-        // still committing when the operator switches loses the dialog, but the
-        // credentials list was already invalidated, so the new credential shows
-        // as revocable metadata rather than a wrong-panel disclosure.
-        <div key={active.id}>
-          <MappingsSection org={org} binding={active} />
-          <CredentialsSection org={org} binding={active} />
-          <DirectorySection org={org} binding={active} />
-        </div>
-      )}
+      <SectionTabs
+        label="SCIM provisioning sections"
+        idPrefix="scim"
+        sections={[
+          { id: 'scim-bindings', label: 'Bindings', content: (
+            <Panel id="scim-bindings" title="Bindings">
+              <BindingsSection
+                org={org}
+                bindings={items}
+                isError={bindings.isError}
+                error={bindings.error}
+                isSuccess={bindings.isSuccess}
+                selected={selected}
+                onSelect={select}
+              />
+            </Panel>
+          ) },
+          // Keyed by binding id so switching the administered binding REMOUNTS
+          // these sections: an in-flight mint or an open display-once dialog can
+          // never carry one binding's token into another binding's panel. A mint
+          // still committing when the operator switches loses the dialog, but the
+          // credentials list was already invalidated, so the new credential shows
+          // as revocable metadata rather than a wrong-panel disclosure.
+          active !== null && { id: 'scim-mappings', label: 'Mappings', content: <MappingsSection key={active.id} org={org} binding={active} /> },
+          active !== null && { id: 'scim-credentials', label: 'Provisioning credentials', content: <CredentialsSection key={active.id} org={org} binding={active} /> },
+          active !== null && { id: 'scim-directory', label: 'Directory', content: <DirectorySection key={active.id} org={org} binding={active} /> },
+        ]}
+      />
     </div>
   );
 }
@@ -175,7 +171,7 @@ function BindingsSection({
 
       {isSuccess && bindings.length === 0 ? (
         <p role="status">
-          No bindings yet. Create one below to begin provisioning from an identity provider.
+          No bindings yet. Create one to begin provisioning from an identity provider.
         </p>
       ) : null}
 
@@ -191,7 +187,9 @@ function BindingsSection({
         ))}
       </ul>
 
-      <CreateBindingForm org={org} />
+      <PanelForm opener="Create a binding">
+        <CreateBindingForm org={org} />
+      </PanelForm>
     </>
   );
 }
@@ -212,7 +210,7 @@ function BindingCard({
       <div className="scim-binding__head">
         <h3 className="scim-binding__slug">
           <span className="mono">{binding.provider_slug}</span>
-          <Badge data-state={binding.provider_kind}>
+          <Badge data-state={binding.provider_kind} icon="link">
             {binding.provider_kind}
           </Badge>
         </h3>
@@ -239,7 +237,11 @@ function BindingCard({
         </dd>
       </dl>
       <AttentionList attention={binding.attention} subjectPrefix="" />
-      {selected ? <DeleteBinding org={org} binding={binding} /> : null}
+      {selected ? (
+        <PanelForm opener="Delete this binding" title={`Delete ${binding.provider_slug}`} variant="danger">
+          <DeleteBinding org={org} binding={binding} />
+        </PanelForm>
+      ) : null}
     </li>
   );
 }
@@ -259,7 +261,7 @@ function AttentionList({
     <ul className="scim-attention" aria-label={`${subjectPrefix}attention states`}>
       {attention.map((state, index) => (
         <li key={`${state.state}-${state.subject_ref}-${index}`} className="scim-attention__row">
-          <Badge data-state={state.state}>
+          <Badge data-state={state.state} icon="warn">
             {state.state.replace(/_/g, ' ')}
           </Badge>
           <span className="scim-attention__fix">{state.remediation}</span>
@@ -274,7 +276,6 @@ function DeleteBinding({ org, binding }: { org: string; binding: ScimBinding }) 
   const feedback = useFeedback(scimMutationFailureText);
   return (
     <div className="scim-binding__danger">
-      <h4>Delete this binding</h4>
       <p>
         One transaction, in order: every credential is revoked so no new sync can begin; every SCIM
         origin is released (lockout conversion included); the provisioning connection and its grant
@@ -323,7 +324,7 @@ function CreateBindingForm({ org }: { org: string }) {
       { providerKind, providerSlug: slug, subjectSource: source },
       {
         onSuccess: (binding) => {
-          feedback.ok(`Bound ${binding.provider_slug}. Select it above to map groups and mint credentials.`);
+          feedback.ok(`Bound ${binding.provider_slug}. Administer it from the bindings list to map groups and mint credentials.`);
           setProviderSlug('');
           setSubjectSource('externalId');
         },
@@ -333,11 +334,10 @@ function CreateBindingForm({ org }: { org: string }) {
   };
 
   return (
-    <form className="form" onSubmit={onSubmit} noValidate>
-      <h3>Create a binding</h3>
+    <form className="form" onSubmit={onSubmit} aria-label="Create a binding" noValidate>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
-      <ChoiceGroup legend="Provider kind">
+      <ChoiceGroup legend="Provider kind" layout="wrap">
         <Radio
           name="scim-kind"
           label="OIDC"
@@ -424,7 +424,7 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
       {deleteOutcome === null ? null : <Alert tone="done">{deleteOutcome}</Alert>}
 
       {mappings.isSuccess && rows.length === 0 ? (
-        <p role="status">No mappings yet. Map a provisioned group to a template below.</p>
+        <p role="status">No mappings yet. Map a provisioned group to a template.</p>
       ) : null}
 
       <ul className="scim-mappings">
@@ -442,7 +442,9 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
         ))}
       </ul>
 
-      <CreateMappingForm org={org} binding={binding.id} />
+      <PanelForm opener="Map a group">
+        <CreateMappingForm org={org} binding={binding.id} />
+      </PanelForm>
     </Panel>
   );
 }
@@ -544,7 +546,7 @@ export function MappingRow({
         <h3 className="scim-mapping__group">
           {groupName}
           {row.inert ? (
-            <Badge data-state="inert">
+            <Badge data-state="inert" icon="pause">
               inert
             </Badge>
           ) : null}
@@ -571,61 +573,71 @@ export function MappingRow({
         ))}
       </ul>
 
-      {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
+      {/* While the retarget panel is open its refusal shows there instead. */}
+      {editing || feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
       {result === null ? null : <MappingWarnings warnings={result.warnings} />}
 
       {editing ? (
-        <form className="form scim-mapping__edit" onSubmit={onRetarget} noValidate>
-          <div className="field">
-            <label htmlFor={`retarget-${row.id}`}>Retarget template</label>
-            <select
-              id={`retarget-${row.id}`}
-              value={template}
-              onChange={(event) => setTemplate(event.target.value)}
-            >
-              {templates.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="scim-mapping__actions">
-            <Button variant="primary" type="submit" disabled={update.isPending}>
-              {update.isPending ? 'Retargeting…' : 'Save template'}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setEditing(false);
-                setTemplate(row.template);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <div className="scim-mapping__actions">
-          <Button
-            type="button"
-            onClick={() => setEditing(true)}
-            aria-label={`Retarget ${groupName}`}
-          >
-            Retarget
-          </Button>
-          <Button
-            variant="danger"
-            type="button"
-            disabled={remove.isPending}
-            aria-label={`Delete mapping for ${groupName}`}
-            onClick={onDelete}
-          >
-            {remove.isPending ? 'Deleting…' : 'Delete'}
-          </Button>
-        </div>
-      )}
+        <SidePanel
+          title={`Retarget ${groupName}`}
+          onClose={() => {
+            setEditing(false);
+            setTemplate(row.template);
+          }}
+        >
+          <form className="form scim-mapping__edit" onSubmit={onRetarget} aria-label={`Retarget ${groupName}`} noValidate>
+            {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
+            <div className="field">
+              <label htmlFor={`retarget-${row.id}`}>Retarget template</label>
+              <select
+                id={`retarget-${row.id}`}
+                value={template}
+                onChange={(event) => setTemplate(event.target.value)}
+              >
+                {templates.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="actions">
+              <Button variant="primary" type="submit" disabled={update.isPending}>
+                {update.isPending ? 'Retargeting…' : 'Save template'}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setEditing(false);
+                  setTemplate(row.template);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </SidePanel>
+      ) : null}
+      <div className="actions">
+        <Button
+          type="button"
+          readOnlySafe
+          onClick={() => setEditing(true)}
+          aria-label={`Retarget ${groupName}`}
+        >
+          Retarget
+        </Button>
+        <Button
+          variant="danger"
+          type="button"
+          disabled={remove.isPending}
+          aria-label={`Delete mapping for ${groupName}`}
+          onClick={onDelete}
+        >
+          {remove.isPending ? 'Deleting…' : 'Delete'}
+        </Button>
+      </div>
     </li>
   );
 }
@@ -652,9 +664,7 @@ function MappingWarnings({ warnings }: { warnings: readonly ScimBlastWarning[] }
           className={warning.severity === 'critical' ? 'alert' : 'notice'}
           role={warning.severity === 'critical' ? 'alert' : 'status'}
         >{/* markup-check: list item, atom renders a div */}
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
+          <Glyph name={warning.severity === 'critical' ? 'alert' : 'warn'} className="alert__glyph" />
           <span>{warning.message}</span>
         </li>
       ))}
@@ -707,8 +717,7 @@ function CreateMappingForm({ org, binding }: { org: string; binding: string }) {
   };
 
   return (
-    <form className="form" onSubmit={onSubmit} noValidate>
-      <h3>Map a group to a template</h3>
+    <form className="form" onSubmit={onSubmit} aria-label="Map a group to a template" noValidate>
       <p>
         Absent scope means organisation, the widest a binding reaches. Nothing preselects a scope
         for you.
@@ -819,7 +828,7 @@ function CredentialsSection({ org, binding }: { org: string; binding: ScimBindin
       {credentials.isError ? <Alert>{scimReadFailureText(credentials.error)}</Alert> : null}
 
       {credentials.isSuccess && items.length === 0 ? (
-        <p role="status">None minted. Mint one below and configure it at the identity provider.</p>
+        <p role="status">None minted. Mint one and configure it at the identity provider.</p>
       ) : null}
 
       <ul className="scim-credentials">
@@ -828,7 +837,17 @@ function CredentialsSection({ org, binding }: { org: string; binding: ScimBindin
         ))}
       </ul>
 
-      <MintCredentialForm mint={mint} onMinted={setDisclosed} />
+      <PanelForm opener="Mint a credential">
+        {(close) => (
+          <MintCredentialForm
+            mint={mint}
+            onMinted={(minted) => {
+              close();
+              setDisclosed(minted);
+            }}
+          />
+        )}
+      </PanelForm>
 
       {disclosed === null ? null : (
         <MintDialog minted={disclosed} onClose={() => setDisclosed(null)} />
@@ -854,7 +873,7 @@ function CredentialRow({
     <li className="scim-credential">
       <div className="scim-credential__head">
         <span className="mono scim-credential__id">{credential.id}</span>
-        <Badge data-state={state}>
+        <Badge data-state={state} {...LIFETIME_TAG[state]}>
           {state}
         </Badge>
       </div>
@@ -874,7 +893,7 @@ function CredentialRow({
       </dl>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       {revoked ? null : (
-        <div className="scim-credential__actions">
+        <div className="actions">
           <Button
             variant="danger"
             type="button"
@@ -925,8 +944,7 @@ function MintCredentialForm({
   };
 
   return (
-    <form className="form" onSubmit={onSubmit} noValidate>
-      <h3>Mint a credential</h3>
+    <form className="form" onSubmit={onSubmit} aria-label="Mint a credential" noValidate>
       <p>
         Minting reauthenticates: present a current authenticator code, or your account password if
         you have no factor enrolled. It is never stored and never appears again.
@@ -1028,9 +1046,7 @@ function MintDialog({
       </Button>
       {copyStatus === null ? null : (
         <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
-          <span className="alert__glyph" aria-hidden="true">
-            ⧉
-          </span>
+          <Glyph name="copy" className="alert__glyph" />
           <span>{copyStatus}</span>
         </p>
       )}
@@ -1127,15 +1143,15 @@ export function DirectoryUserRow({ user }: { user: ScimDirectoryUser }) {
       <div className="scim-directory-user__head">
         <span className="scim-directory-user__name">{user.user_name}</span>
         {user.active ? (
-          <Badge data-state="active">
+          <Badge data-state="active" tone="ok">
             active
           </Badge>
         ) : user.attention.some((item) => item.state === 'manual_grants_remain') ? (
-          <Badge data-state="inactive">
-            <span aria-hidden="true">! </span>deprovisioned, manual grants remain
+          <Badge data-state="inactive" icon="warn">
+            deprovisioned, manual grants remain
           </Badge>
         ) : (
-          <Badge data-state="inactive">
+          <Badge data-state="inactive" icon="minus">
             deprovisioned
           </Badge>
         )}

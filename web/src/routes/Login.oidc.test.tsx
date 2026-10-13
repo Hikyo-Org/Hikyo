@@ -176,7 +176,7 @@ it('opens the password form from its row, and comes back to the rows', async () 
   await act(async () => buttonNamed(container, 'Passwordusername')?.click());
   expect(container.querySelectorAll('input').length).toBe(2);
   expect(container.querySelector('h1')?.textContent).toBe('Sign in with a password');
-  await act(async () => buttonNamed(container, '‹ Other ways to sign in')?.click());
+  await act(async () => buttonNamed(container, 'Other ways to sign in')?.click());
   expect(container.querySelector('form')).toBeNull();
   await unmount();
 });
@@ -395,7 +395,7 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
 });
 
 const buttonNamed = (container: HTMLElement, text: string) =>
-  [...container.querySelectorAll('button')].find((button) => button.textContent === text);
+  [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === text);
 
 it.each(['password', 'passkey', 'code', 'challenge-passkey'])('refreshes the document after completed %s login, retaining consent continuation', async (leg) => {
   const assign = vi.fn();
@@ -510,12 +510,12 @@ it('shows the password form only after the password row is chosen, and goes back
   expect(container.textContent).toContain('Sign in with a password');
   // Each step change moves focus to the new step's heading.
   expect(document.activeElement?.textContent).toBe('Sign in with a password');
-  await act(async () => buttonNamed(container, '‹ Other ways to sign in')?.click());
+  await act(async () => buttonNamed(container, 'Other ways to sign in')?.click());
   expect(container.querySelector('input')).toBeNull();
   expect(document.activeElement?.textContent).toBe('Sign in to Hikyo');
   // The back glyph is decorative: the control is named by its words.
   await openPassword(container);
-  expect(container.querySelector('.login__back [aria-hidden="true"]')?.textContent).toBe('‹ ');
+  expect(container.querySelector('.login__back [aria-hidden="true"]')?.getAttribute('data-glyph')).toBe('arrow-left');
   await unmount();
   container.remove();
 });

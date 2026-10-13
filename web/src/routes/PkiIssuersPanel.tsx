@@ -19,6 +19,8 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
 import { selectOption } from './selectOption.ts';
@@ -45,6 +47,8 @@ export function PkiIssuersPanel() {
   const report = (error: unknown, action: string) => setFeedback({ failure: pkiAdminRefusalText(error, action), done: null });
   const ok = (message: string) => setFeedback({ failure: null, done: message });
   const clear = () => setFeedback({ failure: null, done: null });
+  // One side panel at a time: the create form, or one version's form.
+  const [open, setOpen] = useState<'create' | { id: string; mode: RowMode } | null>(null);
   const rows = issuers.isSuccess ? issuers.data.issuers : [];
   const names = [...new Set(rows.map((issuer) => issuer.name))];
 
@@ -66,7 +70,7 @@ export function PkiIssuersPanel() {
       {issuers.isError && !secondFactor(issuers.error) ? (
         <Alert>{pkiAdminRefusalText(issuers.error, 'list the certificate authorities')}</Alert>
       ) : null}
-      {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
+      {open === null && feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       {issuers.isSuccess && rows.length === 0 ? (
@@ -77,6 +81,9 @@ export function PkiIssuersPanel() {
           key={issuer.id}
           issuer={issuer}
           newest={rows.filter((row) => row.name === issuer.name).every((row) => Number(row.version) <= Number(issuer.version))}
+          mode={open !== null && open !== 'create' && open.id === issuer.id ? open.mode : 'idle'}
+          setMode={(mode) => setOpen(mode === 'idle' ? null : { id: issuer.id, mode })}
+          failure={feedback.failure}
           onDone={ok}
           onFailure={report}
           onBusy={clear}
@@ -95,7 +102,31 @@ export function PkiIssuersPanel() {
         />
       ) : null}
 
-      <CreateIssuerForm names={names} onDone={ok} onFailure={report} onBusy={clear} />
+      <div className="actions">
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => {
+            clear();
+            setOpen('create');
+          }}
+        >
+          Create a certificate authority
+        </Button>
+      </div>
+      {open === 'create' ? (
+        <CreateIssuerForm
+          names={names}
+          failure={feedback.failure}
+          onClose={() => setOpen(null)}
+          onDone={(message) => {
+            setOpen(null);
+            ok(message);
+          }}
+          onFailure={report}
+          onBusy={clear}
+        />
+      ) : null}
       <code className="instance-cli">$ hikyo pki issuer import &lt;issuer&gt; --key-file &lt;path&gt; --cert-file &lt;path&gt;</code>
     </Panel>
   );
@@ -108,9 +139,14 @@ function stateTone(state: PkiIssuer['state']): 'neutral' | 'danger' {
 /** Shows one issuer version with actions allowed by its displayed state.
  * The newest flag controls rotation; retirement and revocation require name
  * confirmation, while CRL retrieval reports public PEM through onCrl. */
+type RowMode = 'retire' | 'revoke' | 'install';
+
 function IssuerRow({
   issuer,
   newest,
+  mode,
+  setMode,
+  failure,
   onDone,
   onFailure,
   onBusy,
@@ -118,12 +154,15 @@ function IssuerRow({
 }: {
   issuer: PkiIssuer;
   newest: boolean;
+  mode: 'idle' | RowMode;
+  setMode: (mode: 'idle' | RowMode) => void;
+  /** The page's refusal sentence, shown inside this row's open panel. */
+  failure: string | null;
   onDone: (message: string) => void;
   onFailure: (error: unknown, action: string) => void;
   onBusy: () => void;
   onCrl: (label: string, pem: string) => void;
 }) {
-  const [mode, setMode] = useState<'idle' | 'retire' | 'revoke' | 'install'>('idle');
   const [certificatePem, setCertificatePem] = useState('');
   const [chainPem, setChainPem] = useState('');
   const rotate = useRotatePkiIssuer();
@@ -135,17 +174,19 @@ function IssuerRow({
   const version = Number(issuer.version);
   const label = `${issuer.name} v${String(version)}`;
   const signing = issuer.state === 'active' || issuer.state === 'retiring';
-  const toggle = (next: typeof mode) => {
+  // The open panel is modal, so a row button only ever runs from idle.
+  const show = (next: RowMode) => {
     onBusy();
-    setMode((current) => (current === next ? 'idle' : next));
+    setMode(next);
   };
+  const failureAlert = failure !== null ? <Alert>{failure}</Alert> : null;
 
   return (
     <div className="settings-row settings-row--stacked" data-pki-issuer={label}>
       <div className="settings-row__copy">
         <span className="settings-row__title mono">{label}</span>
         <span className="settings-row__detail">
-          {issuer.kind} · {issuer.origin} · {issuer.key_algorithm} · {issuer.subject_cn}
+          {issuer.kind}<Sep />{issuer.origin}<Sep />{issuer.key_algorithm}<Sep />{issuer.subject_cn}
         </span>
         <span className="settings-row__detail mono">{issuer.key_fingerprint}</span>
         {issuer.not_after == null ? null : (
@@ -161,7 +202,7 @@ function IssuerRow({
       <span className="settings-row__spacer" />
       <Badge tone={stateTone(issuer.state)}>{issuer.state}</Badge>
       {issuer.restore_hold ? <Badge tone="danger">held</Badge> : null}
-      <div className="panel__actions">
+      <div className="actions">
         {newest && issuer.state !== 'pending' && issuer.state !== 'revoked' ? (
           <Button
             type="button"
@@ -183,7 +224,7 @@ function IssuerRow({
           </Button>
         ) : null}
         {issuer.state === 'pending' ? (
-          <Button type="button" variant="primary" onClick={() => toggle('install')}>
+          <Button type="button" variant="primary" onClick={() => show('install')}>
             Install certificate
           </Button>
         ) : null}
@@ -217,7 +258,7 @@ function IssuerRow({
             >
               View CRL
             </Button>
-            <Button type="button" onClick={() => toggle('retire')}>
+            <Button type="button" onClick={() => show('retire')}>
               Retire
             </Button>
           </>
@@ -238,7 +279,7 @@ function IssuerRow({
           </Button>
         ) : null}
         {issuer.state !== 'retired' && issuer.state !== 'revoked' ? (
-          <Button type="button" variant="danger" onClick={() => toggle('revoke')}>
+          <Button type="button" variant="danger" onClick={() => show('revoke')}>
             Revoke (compromise)
           </Button>
         ) : null}
@@ -254,6 +295,13 @@ function IssuerRow({
         />
       )}
       {mode === 'install' ? (
+        <SidePanel
+          title={`Install certificate of ${label}`}
+          onClose={() => {
+            if (!install.isPending) setMode('idle');
+          }}
+        >
+        {failureAlert}
         <fieldset className="machine__lock" disabled={install.isPending}>
           <Textarea
             label="Signed CA certificate (PEM)"
@@ -269,7 +317,7 @@ function IssuerRow({
             value={chainPem}
             onChange={(event) => setChainPem(event.target.value)}
           />
-          <div className="panel__actions">
+          <div className="actions">
             <Button
               type="button"
               variant="primary"
@@ -291,8 +339,16 @@ function IssuerRow({
             </Button>
           </div>
         </fieldset>
+        </SidePanel>
       ) : null}
       {mode === 'retire' ? (
+        <SidePanel
+          title={`Retire ${label}`}
+          onClose={() => {
+            if (!retire.isPending) setMode('idle');
+          }}
+        >
+        {failureAlert}
         <TypedNameConfirm
           label="Retire this version"
           expect={issuer.name}
@@ -317,8 +373,16 @@ function IssuerRow({
             )
           }
         />
+        </SidePanel>
       ) : null}
       {mode === 'revoke' ? (
+        <SidePanel
+          title={`Revoke ${label}`}
+          onClose={() => {
+            if (!revoke.isPending) setMode('idle');
+          }}
+        >
+        {failureAlert}
         <TypedNameConfirm
           label="Revoke this version as compromised"
           expect={issuer.name}
@@ -344,6 +408,7 @@ function IssuerRow({
             )
           }
         />
+        </SidePanel>
       ) : null}
     </div>
   );
@@ -353,11 +418,15 @@ function IssuerRow({
  * offline signing. names supplies the selectable online parents. */
 function CreateIssuerForm({
   names,
+  failure,
+  onClose,
   onDone,
   onFailure,
   onBusy,
 }: {
   names: readonly string[];
+  failure: string | null;
+  onClose: () => void;
   onDone: (message: string) => void;
   onFailure: (error: unknown, action: string) => void;
   onBusy: () => void;
@@ -380,8 +449,14 @@ function CreateIssuerForm({
   const ready = draft.name.trim() !== '' && draft.commonName.trim() !== '' && draft.ttlDays >= 1;
 
   return (
+    <SidePanel
+      title="Create a certificate authority"
+      onClose={() => {
+        if (!create.isPending) onClose();
+      }}
+    >
+    {failure !== null ? <Alert>{failure}</Alert> : null}
     <fieldset className="machine__lock" disabled={create.isPending}>
-      <legend className="machine__subhead">Create a certificate authority</legend>
       <div className="field">
         <label htmlFor={modeId}>Kind</label>
         <select id={modeId} value={draft.mode} onChange={(event) => set('mode', selectOption(['root', 'intermediate'] as const, event.target.value))}>
@@ -417,7 +492,7 @@ function CreateIssuerForm({
         </div>
       ) : null}
       <Input label="CRL distribution URL (optional)" mono value={draft.crlUrl} placeholder="https://pki.example.com/issuing.crl" onChange={(event) => set('crlUrl', event.target.value)} />
-      <div className="panel__actions">
+      <div className="actions">
         <Button
           type="button"
           variant="primary"
@@ -441,5 +516,6 @@ function CreateIssuerForm({
         </Button>
       </div>
     </fieldset>
+    </SidePanel>
   );
 }

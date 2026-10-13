@@ -174,7 +174,7 @@ export function MatrixPublishSheet({
                     {/* The badge carries the WORD, the way `.matrix__protected`
                         and `.history__protected` do; what the word costs you is
                         the sentence beside it, not more badge. */}
-                    <Badge tone="danger">PROTECTED</Badge>
+                    <Badge tone="danger" icon="lock">PROTECTED</Badge>
                     <span>confirms before publish</span>
                   </>
                 ) : null}
