@@ -217,10 +217,10 @@ docs proof remains valid for its unchanged bootstrap. These are local proofs;
 fresh hosted feedback, token dispatch, same-head serialization and the complete
 populated queued group still require exact-head acceptance.
 
-All new jobs are disabled until `QUEUE_HEAD_WORKERS_ENABLED` is enabled through
-the reviewed cutover. Drain older compiled unleased publishers before enabling
-the direct and worker paths. No variable, policy or queue operation is performed
-by this source preparation. The legacy full-only publisher remains independent.
+The direct and worker paths are enabled only through the reviewed cutover,
+after older compiled unleased publishers are drained and actual trusted-main
+capability is accepted. The verified activation below records that transition.
+The legacy full-only publisher remains independent.
 
 - <a href="../../.github/workflows/ci-queue-gate.yml">Direct and discovery publisher</a>
 - <a href="../../.github/workflows/ci-queue-worker.yml">Fixed head worker</a>
@@ -232,7 +232,8 @@ Recurring healthy reconciliation must not add historical check rows. The
 completed-to-queued reset attempts proved unsuitable: probe 38306521236 retained
 completed/success after the omitted-field PATCH, and probe 38312785608 rejected
 the explicit-null PATCH. Both known canaries were independently neutral after
-cleanup. Workers remain disabled; these failures do not qualify as acceptance.
+cleanup. Workers remained disabled after those probes; neither failed protocol
+qualified as acceptance.
 
 The replacement publishes immutable terminal verdicts. Every reconciliation
 still repeats current policy, role/member identity, exact workflow authority,
@@ -244,14 +245,16 @@ adds no row. No terminal reset payload, history-cap increase, latest-only
 collision scan, check deletion or cached authority is introduced. The legacy
 full-only producer retains its existing lifecycle.
 
-Every incomplete observation or error must verify the newest owned blocking
-record before returning. The reserve reads actual server state after an
-uncertain write, so a cached pending record cannot hide a server-side success.
-Lost creation receipts are not retried. If a new barrier cannot be established,
-a genuine error may be published only on a freshly authenticated effective owned
-ID; a foreign or ambiguous record is never patched. Failed publication remains
-an error. Pending feedback, inactive protection and fork recomputation remain
-pending. The reserve is independently cancellable and stays inside the original
+A failed complete owned-history scan returns an error and authorizes no new
+check mutation; it cannot claim a verified effective blocker. Once a complete
+inventory authenticates the current owned record, recovery must establish or
+verify blocking state before returning. The reserve reads actual server state
+after an uncertain write, so a cached pending record cannot hide a server-side
+success. Lost creation receipts are not retried. If a new barrier cannot be
+established, a genuine error may be published only on a freshly authenticated
+effective owned ID; a foreign or ambiguous record is never patched. Failed
+publication remains an error. Pending feedback, inactive protection and fork
+recomputation remain pending. The reserve is independently cancellable and stays inside the original
 invocation deadline. These checks do not make GitHub&#x27;s mutable API observations
 atomic, or guarantee successful publication during an API outage.
 
@@ -279,17 +282,28 @@ counts 2/5. Every known ID is cleaned even after a later failure. Foreign or los
 creation identity is not guessed, and uncertain writes are not retried. Old
 reset receipts and partial cleanup cannot authorize activation.
 
-Landing remains staged. `QUEUE_HEAD_WORKERS_ENABLED` stays unset/false until an
-actual successful exact-main version-2 probe, authenticated artifact and live
-neutral cleanup for every participating ID are independently verified. Old
-unleased definitions refuse before publication; all new production jobs remain
-skipped during this protected hold. Existing mandatory queue protection and
-complete full-current-main bootstrap proof are preserved. Source tests do not
-substitute for actual token acceptance, activation or hosted timing.
+The staged hold ended after verified activation. PR
+<a href="https://github.com/Hikyo-Org/Hikyo/pull/898">#898</a> merged at 08:43:15 UTC on
+13 October 2026 as `f1022b9c6a6b95c98a59ac98cb2865b36d4438bb`, GitHub Verified,
+with the exact tested tree. Full candidate
+<a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38319381792">38319381792</a>, attempt 1,
+passed all 16 domains in 24m 51s: 47 successful jobs and the expected vouch skip.
+The normal merge restored and verified the exact mandatory queue policy.
+
+Trusted-main version-2 probe
+<a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38371444282">38371444282</a>, attempt 1,
+passed independent artifact, source and actual lifecycle acceptance. Its two
+owned IDs, `115210274850` and `115210283624`, were independently verified neutral
+at the final activation boundary. The complete source and writer-drain audit
+passed. Guarded cutover set `QUEUE_HEAD_WORKERS_ENABLED=true` at 08:51:48 UTC,
+with exact source and protections unchanged. This proves capability and
+configuration, not ordinary deployed PR eligibility or a new full queued group.
+A future source-generation cutover must retain the same acceptance and drain
+guards; local tests alone never replace actual token proof.
 
 Earlier c95 feedback passed in 82 seconds while the deployed global publisher
 took 6m 59s to complete admission. A historical group took 40m 39s; a later full
-group 38288765434 passed in 24m 03s. These observed runs do not prove the disabled
+group 38288765434 passed in 24m 03s. These historical runs do not prove the newly enabled
 per-head pipeline meets the requested timing on each commit. The four-minute
 feedback and one-minute targeted publisher bound controlled execution; provider
 queue and API delays remain outside that bound. Fresh full-group and activated
@@ -301,4 +315,20 @@ database serialization. The source union is 800 planner units, not a test count.
 The measured-cost model maximum improves from 985.78 to 753.51 seconds; model
 redistribution is not hosted latency proof. This lifecycle repair changes none
 of those planner weights or application/full-suite tests.
+
+## Interpreting merged-PR status summaries
+
+A PR-head check, immutable merge-group proof and the landed main result refer to
+different commits. Closed legacy reconciliation can leave a non-required
+`ci-required-next` pending placeholder on an already merged head. That synthetic
+record has no allocated runner; it is not evidence of a still-running test.
+Use the exact SHA, context, App, source binding and native job steps to identify
+the result instead of treating the PR&#x27;s aggregate icon as current main&#x27;s state.
+
+Historical optional performance measurements and third-party review failures
+remain separate from the required all-16 proof. Mandatory benchmark smoke and
+floor enforcement are retained. Failed non-required lifecycle probes explain
+the earlier activation hold, while successful later neutral cleanup does not
+rewrite those failures. Neither old green results nor stale pending rows grant
+new merge authority. Do not delete or bypass checks to make a summary green.
 </pre></main></body></html>
