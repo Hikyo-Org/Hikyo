@@ -7,7 +7,7 @@ or release publisher. PR #903 supplies the fresh hosted lab and coordinator.
 
 Install `requirements-check.lock` into a Python 3.11+ virtual environment,
 then run `scripts/openaev/check.sh` with that environment on PATH.
-The check performs Ruff, mypy and all 271 combined core/suite unit tests.
+The check performs Ruff, mypy and all 278 combined core/suite unit tests.
 These unit tests are distinct from the 313 assertions against a live release.
 
 The core preserves sanitized reporting diagnostics, requires native node identity,
@@ -26,3 +26,8 @@ and incomplete administrator resume state. Native administrator exec has a
 Platform transports accept only the exact loopback tunnel or two OpenAEV lab
 DNS endpoints. Private and public network alternatives are rejected; workload
 TLS still verifies the trusted loopback IP SAN with required certificates.
+
+Reporting traverses complete bounded native asset pages before creation. Checker
+installation requires official PyPI wheel hashes and binary-only distributions.
+The unused standalone HTTP pilot CLI is disabled before parsing or credential
+access; all bounded hosted import helpers and original assertions remain intact.
