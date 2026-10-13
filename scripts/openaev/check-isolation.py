@@ -9,6 +9,29 @@ import subprocess
 from pathlib import Path
 
 
+DNS_PROGRAM = """
+import json,secrets,socket,struct,sys
+server=sys.argv[1]
+def query(name):
+    ident=secrets.randbelow(65536)
+    labels=name.rstrip('.').split('.')
+    question=b''.join(bytes([len(label)])+label.encode('ascii') for label in labels)+b'\\0'+struct.pack('!HH',1,1)
+    request=struct.pack('!HHHHHH',ident,0x100,1,0,0,0)+question
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as channel:
+        channel.settimeout(3)
+        channel.connect((server,53))
+        channel.send(request)
+        answer=channel.recv(4096)
+    if len(answer)<12 or answer[12:12+len(question)]!=question:
+        raise RuntimeError('invalid_dns_answer')
+    reply,flags,questions,count,authority,additional=struct.unpack('!HHHHHH',answer[:12])
+    if reply!=ident or not flags&0x8000 or questions!=1:
+        raise RuntimeError('invalid_dns_answer')
+    return {'rcode':flags&15,'answers':count}
+print(json.dumps({'internal':query('rabbitmq.openaev-lab.svc.cluster.local.'),'external':query('example.com.')}))
+"""
+
+
 def main() -> None:
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -35,6 +58,8 @@ def main() -> None:
     if len(ready) != 1:
         raise SystemExit("one_live_forbidden_canary_required")
     api = resource(["get", "svc", "kubernetes", "-n", "default"])
+    dns = resource(["get", "svc", "kube-dns", "-n", "kube-system"])
+    dns_ip = str(ipaddress.ip_address(dns["spec"]["clusterIP"]))
     cluster_file = os.environ.get("OPENAEV_CLUSTER_FILE")
     if not cluster_file:
         raise SystemExit("runner_cluster_file_required")
@@ -64,6 +89,10 @@ print('all_connected')
     command = kubectl + ["exec", "-n", "openaev-control", "deployment/control", "--", "python", "-c"]
     control = subprocess.run(command + [baseline_program, json.dumps(targets)],
                              check=True, capture_output=True, timeout=25)
+    dns_control = subprocess.run(command + [DNS_PROGRAM, dns_ip], check=True, capture_output=True, timeout=10)
+    control_dns = json.loads(dns_control.stdout)
+    if control_dns.get("internal", {}).get("rcode") != 0 or control_dns.get("internal", {}).get("answers", 0) < 1:
+        raise SystemExit("internal_dns_control_unverified")
     if control.stdout.strip() != b"all_connected":
         raise SystemExit("forbidden_destinations_control_unverified")
     program = """
@@ -80,7 +109,20 @@ print(json.dumps({'checks':results,'pass':all(r['pass'] for r in results)}))
 """
     result = subprocess.run(kubectl + ["exec", "-n", "openaev-lab", "deployment/http-injector", "--", "python", "-c", program, json.dumps(targets)],
                             check=True, capture_output=True, timeout=60)
+    dns_result = subprocess.run(kubectl + ["exec", "-n", "openaev-lab", "deployment/http-injector", "--", "python", "-c", DNS_PROGRAM, dns_ip],
+                                check=True, capture_output=True, timeout=10)
+    dns_observed = json.loads(dns_result.stdout)
+    internal = dns_observed.get("internal", {})
+    external = dns_observed.get("external", {})
     report = json.loads(result.stdout)
+    report["checks"].extend([
+        {"target": "lab-cluster-dns", "outcome": "resolved" if internal.get("rcode") == 0 and internal.get("answers", 0) >= 1 else "indeterminate",
+         "pass": internal.get("rcode") == 0 and internal.get("answers", 0) >= 1},
+        {"target": "forbidden-external-dns", "outcome": "nxdomain" if external.get("rcode") == 3 and external.get("answers") == 0 else "indeterminate",
+         "pass": external.get("rcode") == 3 and external.get("answers") == 0},
+    ])
+    report["pass"] = all(row["pass"] is True for row in report["checks"])
+    report["dns_positive_control"] = "cluster_resolved"
     report["forbidden_destination_control"] = "all_connected"
     report["scope"] = "isolated runner canaries; no production access or assertion"
     args.output.write_text(json.dumps(report, indent=2) + "\n")
