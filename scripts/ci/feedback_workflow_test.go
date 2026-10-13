@@ -1,13 +1,16 @@
 package ci_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -411,6 +414,18 @@ func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
 			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
 			steps[4].(map[string]any)["continue-on-error"] = true
 		},
+		"bootstrap touches seed cache": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+			steps[1].(map[string]any)["env"] = map[string]any{"GOCACHE": "${{ github.workspace }}/.ci-cache/go-feedback"}
+		},
+		"bootstrap inherits seed cache": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+			delete(steps[1].(map[string]any), "env")
+		},
+		"compiler reuses bootstrap cache": func(w map[string]any) {
+			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+			steps[4].(map[string]any)["env"] = map[string]any{"GOCACHE": "${{ runner.temp }}/feedback-bootstrap"}
+		},
 		"reuse oversized archive": func(w map[string]any) {
 			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
 			delete(steps[3].(map[string]any)["with"].(map[string]any), "lookup-only")
@@ -459,6 +474,9 @@ func requireFeedbackSeed(workflow map[string]any) error {
 	if checkout["ref"] != "${{ github.sha }}" || checkout["path"] != "source" || checkout["persist-credentials"] != false {
 		return fmt.Errorf("seed must use the immutable main SHA without credentials")
 	}
+	if !reflect.DeepEqual(steps[1].(map[string]any)["env"], map[string]any{"GOCACHE": "${{ runner.temp }}/feedback-bootstrap"}) {
+		return fmt.Errorf("setup diagnostics must use a separate temporary bootstrap cache")
+	}
 	setup := steps[1].(map[string]any)["with"].(map[string]any)
 	if setup["cache"] != false || setup["go-version-file"] != "source/go.mod" {
 		return fmt.Errorf("seed must select pinned Go without implicit caches")
@@ -473,7 +491,7 @@ func requireFeedbackSeed(workflow map[string]any) error {
 	}
 	compile := steps[4].(map[string]any)
 	want := "test ! -e \"$GOCACHE\"\nmkdir -p \"$GOCACHE\"\ngo list -deps -test -export ./internal/cli ./scripts/ci >/dev/null\n./scripts/ci/run-go-tool.sh actionlint -version\ngo run ./scripts/ci/feedback-reuse-size \"$GOCACHE\"\n"
-	if compile["run"] != want || compile["if"] != "steps.feedback-reuse.outputs.cache-hit != 'true'" || compile["continue-on-error"] != nil {
+	if compile["run"] != want || compile["if"] != "steps.feedback-reuse.outputs.cache-hit != 'true'" || compile["continue-on-error"] != nil || compile["env"] != nil {
 		return fmt.Errorf("fresh seed must compile without executing tests and pass size bounds")
 	}
 	save := steps[5].(map[string]any)
@@ -481,4 +499,77 @@ func requireFeedbackSeed(workflow map[string]any) error {
 		return fmt.Errorf("only successful bounded main seed may publish")
 	}
 	return nil
+}
+
+// setup-go's actual diagnostic invocation initializes GOCACHE. Exercise the
+// workflow's real environment scopes and unchanged fresh-seed guard with Go.
+func TestFeedbackSeedSetupDiagnosticsKeepSeedFresh(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback-cache.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow map[string]any
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	job := workflow["jobs"].(map[string]any)["seed"].(map[string]any)
+	steps := job["steps"].([]any)
+	setup := steps[1].(map[string]any)
+	compile := steps[4].(map[string]any)["run"].(string)
+	prefix, _, found := strings.Cut(compile, "go list -deps")
+	if !found {
+		t.Fatal("actual compile guard missing")
+	}
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("existing-seed-%v", existing), func(t *testing.T) {
+			dir := t.TempDir()
+			runnerTemp := filepath.Join(dir, "runner-temp")
+			workspace := filepath.Join(dir, "workspace")
+			for _, p := range []string{runnerTemp, workspace} {
+				if err := os.MkdirAll(p, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resolve := func(value string) string {
+				return strings.NewReplacer("${{ runner.temp }}", runnerTemp, "${{ github.workspace }}", workspace).Replace(value)
+			}
+			seed := resolve(job["env"].(map[string]any)["GOCACHE"].(string))
+			bootstrap := seed
+			if env, ok := setup["env"].(map[string]any); ok {
+				bootstrap = resolve(env["GOCACHE"].(string))
+			}
+			sentinel := filepath.Join(seed, "existing-owned-entry")
+			if existing {
+				if err := os.MkdirAll(seed, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(sentinel, []byte("preserve"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			diagnostics := exec.CommandContext(ctx, "go", "env")
+			diagnostics.Dir = workspace
+			diagnostics.Env = append(os.Environ(), "GOCACHE="+bootstrap, "GOENV=off", "GOTOOLCHAIN=local")
+			if err := diagnostics.Run(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(bootstrap); err != nil {
+				t.Fatalf("real setup diagnostic did not initialize bootstrap cache: %v", err)
+			}
+			guard := exec.CommandContext(ctx, "bash", "-e", "-c", prefix)
+			guard.Env = append(os.Environ(), "GOCACHE="+seed)
+			output, err := guard.CombinedOutput()
+			if (err != nil) != existing {
+				t.Fatalf("fresh guard: existing=%v err=%v output=%s", existing, err, output)
+			}
+			if existing {
+				data, err := os.ReadFile(sentinel)
+				if err != nil || string(data) != "preserve" {
+					t.Fatalf("existing seed modified: %q %v", data, err)
+				}
+			}
+		})
+	}
 }

@@ -938,7 +938,8 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	}
 	p.Number = snap.Entries[len(snap.Entries)-1].PR.Number
 	members, authorized, err := q.groupMembers(ctx, snap)
-	if err != nil {
+	_, authorityPending := err.(*groupAuthorityPending)
+	if err != nil && !authorityPending {
 		return err
 	}
 	p.Base.SHA = members[0].Base.SHA
@@ -985,7 +986,9 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return errors.New("missing or duplicated full merge-group proof")
 	}
 	result := refused("Complete merge-group validation failed; queue merge remains blocked.")
-	if ok && r.Conclusion == "success" {
+	if ok && r.Conclusion == "success" && authorityPending {
+		result = pending("Trusted exact-head group member policy is pending; full validation alone cannot authorize merging.")
+	} else if ok && r.Conclusion == "success" {
 		result = outcome{Status: "completed", Conclusion: "success", Title: "Complete merge group validated", Summary: fmt.Sprintf("All full-suite domains passed on %s; authenticated queue membership, current base, source run %d attempt %d and authority verified.", r.HeadSHA, r.ID, r.Attempt)}
 	}
 	finalPolicy, err := q.policy(ctx)
@@ -1000,8 +1003,12 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return errors.New("merge queue changed before publication")
 	}
 	finalMembers, finalAuthorized, err := q.groupMembers(ctx, final)
-	if err != nil {
+	_, finalAuthorityPending := err.(*groupAuthorityPending)
+	if err != nil && !finalAuthorityPending {
 		return err
+	}
+	if finalAuthorityPending && result.Conclusion == "success" {
+		result = pending("Trusted exact-head group member policy is pending; full validation alone cannot authorize merging.")
 	}
 	if len(members) != len(finalMembers) {
 		return errors.New("merge-group members changed")
@@ -1078,9 +1085,16 @@ func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, err
 	}
 	return all.Checks, nil
 }
+
+// A pending canonical policy can accompany complete member identity, but never
+// supplies workflow-change authority or authorizes a successful group verdict.
+type groupAuthorityPending struct{}
+
+func (*groupAuthorityPending) Error() string { return "queue member exact-head authority is pending" }
+
 func (q *queueController) groupMembers(ctx context.Context, s queueSnapshot) ([]pull, bool, error) {
 	var members []pull
-	authorized := false
+	authorized, authorityPending := false, false
 	for _, entry := range s.Entries {
 		p, err := q.readPR(ctx, entry.PR.Number)
 		if err != nil {
@@ -1093,7 +1107,12 @@ func (q *queueController) groupMembers(ctx context.Context, s queueSnapshot) ([]
 		if err != nil {
 			return nil, false, err
 		}
-		if decision.Code != 0 {
+		switch decision.Code {
+		case 0:
+			authorized = authorized || decision.WorkflowChangeAuthorized
+		case 75:
+			authorityPending = true
+		default:
 			return nil, false, errors.New("queue member exact-head authority is not approved")
 		}
 		if p.Head.Repo.ID != q.repo.ID {
@@ -1112,8 +1131,10 @@ func (q *queueController) groupMembers(ctx context.Context, s queueSnapshot) ([]
 		if code != 0 {
 			return nil, false, errors.New("queue member canonical DCO sign-off is missing")
 		}
-		authorized = authorized || decision.WorkflowChangeAuthorized
 		members = append(members, p)
+	}
+	if authorityPending {
+		return members, authorized, &groupAuthorityPending{}
 	}
 	return members, authorized, nil
 }

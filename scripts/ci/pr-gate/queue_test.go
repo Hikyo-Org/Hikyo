@@ -1058,3 +1058,164 @@ func TestQueueForkRecomputationDoesNotHideActualFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueGroupPendingAuthorityKeepsTerminalValidationTruth(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		initial, final        int
+		runFailed, jobsFailed bool
+		want                  string
+	}{
+		{"initial pending", 75, 0, false, false, "queued"},
+		{"final pending", 0, 75, false, false, "queued"},
+		{"both pending", 75, 75, false, false, "queued"},
+		{"failed full run remains failed", 75, 75, true, false, "failure"},
+		{"failed aggregate remains failed", 75, 75, true, true, "failure"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			calls := 0
+			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+				calls++
+				code := tc.initial
+				if calls > 1 {
+					code = tc.final
+				}
+				return policyDecision{Code: code, WorkflowChangeAuthorized: code == 0}, nil
+			}
+			if tc.runFailed {
+				f.groupRun.Conclusion = "failure"
+				f.groupRefresh()
+			}
+			if tc.jobsFailed {
+				path := f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", f.groupRun.ID, f.groupRun.Attempt))
+				f.api.responses[path] = map[string]any{"total_count": 2, "jobs": []job{{ID: 203, RunID: f.groupRun.ID, Attempt: 1, HeadSHA: f.groupRun.HeadSHA, Name: "validation / ci-required", Status: "completed", Conclusion: "failure"}, {ID: 204, RunID: f.groupRun.ID, Attempt: 1, HeadSHA: f.groupRun.HeadSHA, Name: "merge-group-proof", Status: "completed", Conclusion: "failure"}}}
+			}
+			if err := f.group(); err != nil {
+				t.Fatalf("canonical pending policy was treated as operational failure: %v", err)
+			}
+			if calls != 2 {
+				t.Fatalf("initial/final authority not both checked: %d", calls)
+			}
+			latest := newestQueueCheck(f.api.checks)
+			if latest == nil || (tc.want == "queued" && (latest.Status != "queued" || latest.Conclusion != "")) || (tc.want == "failure" && (latest.Status != "completed" || latest.Conclusion != "failure")) {
+				t.Fatalf("lost pending/failure distinction: %+v", latest)
+			}
+			f.assertNoSuccess(t)
+			if tc.want == "failure" {
+				count := len(f.api.checks)
+				if err := f.group(); err != nil {
+					t.Fatal(err)
+				}
+				if len(f.api.checks) != count {
+					t.Fatal("identical known failed proof created another generation")
+				}
+			}
+		})
+	}
+}
+
+func TestQueueGroupPendingAuthorityRetainsAllRefusals(t *testing.T) {
+	for _, why := range []string{"policy refusal", "unknown policy code", "policy API error", "mixed pending and API error", "DCO failure", "fork vouch revoked", "source drift", "final check collision"} {
+		t.Run(why, func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+				switch why {
+				case "policy refusal":
+					return policyDecision{Code: 1}, nil
+				case "unknown policy code":
+					return policyDecision{Code: 2}, nil
+				case "policy API error":
+					return policyDecision{}, errors.New("canonical authority API unavailable")
+				case "mixed pending and API error":
+					return policyDecision{}, errors.Join(&groupAuthorityPending{}, errors.New("canonical authority API unavailable"))
+				}
+				return policyDecision{Code: 75}, nil
+			}
+			switch why {
+			case "fork vouch revoked":
+				f.pr.Head.Repo = repository{ID: 50, FullName: "fork/Hikyo"}
+				f.refresh()
+				f.groupRefresh()
+				f.api.responses[f.c.endpoint("contents/.github/VOUCHED.td?ref=main")] = map[string]string{"type": "file", "path": ".github/VOUCHED.td", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("github:someoneelse"))}
+			case "DCO failure":
+				f.q.dco = func(context.Context, pull) (int, error) { return 1, nil }
+			case "source drift":
+				f.api.responses[f.c.endpoint("contents/.github/workflows/ci.yml?ref="+f.groupRun.HeadSHA)] = map[string]string{"type": "file", "path": ".github/workflows/ci.yml", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("unapproved changed definition"))}
+			case "final check collision":
+				f.api.readHook = func(path string, n int) {
+					if path == f.query && n == 4 {
+						foreign := check{ID: 9000, Name: queueCheckName, HeadSHA: f.groupRun.HeadSHA, Status: "completed", Conclusion: "success"}
+						foreign.App.ID, foreign.App.Slug = actionsAppID, "github-actions"
+						f.api.checks = append(f.api.checks, foreign)
+					}
+				}
+			}
+			if err := f.group(); err == nil {
+				t.Fatal("real refusal was swallowed as pending")
+			}
+			f.assertNoSuccess(t)
+		})
+	}
+}
+
+func TestQueueGroupPendingAuthorityStillChecksEveryMember(t *testing.T) {
+	for _, laterCode := range []int{0, 1, 2} {
+		t.Run(fmt.Sprint(laterCode), func(t *testing.T) {
+			f := newQueueFixture(t)
+			second := f.entry
+			second.ID = "ENTRY8"
+			second.Position = 2
+			second.PR.Number = 8
+			second.PR.Head = strings.Repeat("e", 40)
+			member := f.pr
+			member.Number = 8
+			member.Head.SHA = second.PR.Head
+			f.api.responses[f.c.endpoint("pulls/8")] = member
+			seen := []int{}
+			dcos := 0
+			f.c.verify = func(_ context.Context, n int, _ string) (policyDecision, error) {
+				seen = append(seen, n)
+				if n == 7 {
+					return policyDecision{Code: 75, WorkflowChangeAuthorized: true}, nil
+				}
+				return policyDecision{Code: laterCode}, nil
+			}
+			f.q.dco = func(context.Context, pull) (int, error) { dcos++; return 0, nil }
+			members, authorized, err := f.q.groupMembers(context.Background(), queueSnapshot{Entries: []queueEntry{f.entry, second}})
+			if len(seen) != 2 || seen[0] != 7 || seen[1] != 8 {
+				t.Fatalf("pending first member skipped later authority: %v", seen)
+			}
+			if laterCode == 0 {
+				if _, pending := err.(*groupAuthorityPending); !pending || len(members) != 2 || authorized || dcos != 2 {
+					t.Fatalf("pending conferred authority or skipped DCO: members=%d authorized=%v dcos=%d err=%v", len(members), authorized, dcos, err)
+				}
+			} else if err == nil {
+				t.Fatal("later member refusal was swallowed")
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("member collection published a verdict")
+			}
+		})
+	}
+}
+
+func TestQueueGroupPendingAuthorityRevokesGreenWithoutRepeatedGrowth(t *testing.T) {
+	f := newQueueFixture(t)
+	if err := f.group(); err != nil {
+		t.Fatal(err)
+	}
+	f.c.verify = func(context.Context, int, string) (policyDecision, error) { return policyDecision{Code: 75}, nil }
+	for i := 0; i < 4; i++ {
+		if err := f.group(); err != nil {
+			t.Fatal(err)
+		}
+		latest := newestQueueCheck(f.api.checks)
+		if latest == nil || latest.Status != "queued" || latest.Conclusion != "" {
+			t.Fatalf("prior green survived pending authority: %+v", latest)
+		}
+		if len(f.api.checks) != 2 {
+			t.Fatalf("pending callback grew immutable history: %d", len(f.api.checks))
+		}
+	}
+}
