@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,17 @@ INJECT_ID = "85db69c9-6ef9-48d7-9ab8-ec3c6f027c69"
 
 
 class RecorderTests(unittest.TestCase):
+    def test_unused_standalone_pilot_cli_refuses_before_reading_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, str(recorder._pilot_path), "--platform-token-file", "missing-token"],
+                cwd=directory, capture_output=True, timeout=5, check=False,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, b"")
+            self.assertEqual(result.stderr.strip(), b"standalone_pilot_cli_unsupported_use_hosted_suite")
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_platform_url_preserves_only_exact_hosted_lab_endpoints(self):
         for origin in (
             "https://127.0.0.1:18080",

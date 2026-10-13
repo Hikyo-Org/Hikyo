@@ -21,6 +21,8 @@ python3 -m pip install -r scripts/openaev/requirements-check.lock
 scripts/openaev/check.sh
 ```
 
-Current local result: Ruff passed; Mypy checked nine application files; 140 Python regression tests passed. Actionlint and ShellCheck validate the checker workflow and script. These local regressions are separate from the full hosted 313-assertion exercise, which remains pending.
+Current local result: Ruff passed; Mypy checked nine application files; 147 Python regression tests passed. Actionlint and ShellCheck validate the checker workflow and script. These local regressions are separate from the full hosted 313-assertion exercise, which remains pending.
 
 See [the core handoff](../../docs/handoff/core.md) for stack ownership and delivery evidence.
+
+The reporting asset search traverses all bounded native Spring pages before creating a target and refuses inconsistent or incomplete inventory. Checker dependencies include official PyPI wheel hashes with required hash checking and binary-only installation. The unused standalone HTTP pilot executable now fails closed; bounded import helpers remain available to the hosted suite.

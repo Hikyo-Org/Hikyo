@@ -22,6 +22,8 @@ import openaev_security
 
 HIKYO_ORIGIN = openaev_security.HIKYO_ORIGIN
 ASSET_NAME = "Hikyo disposable authorization lab"
+ASSET_SEARCH_SIZE = 100
+MAX_ASSET_SEARCH_PAGES = 20
 ASSET_REFERENCE = "hikyo-isolated-lab-authorization-target"
 ASSERTION_SOURCE = "Hikyo lab independent assertions"
 AUDIT_SOURCE = "Hikyo lab native audit evidence"
@@ -169,6 +171,12 @@ def _object(value: object, code: str) -> dict[str, object]:
     if not isinstance(value, dict) or any(not isinstance(k, str) for k in value):
         raise ReportingError(code)
     return {k: v for k, v in value.items()}
+
+
+def _page_count(value: object) -> int:
+    if type(value) is not int or value < 0:
+        raise ReportingError("invalid_asset_search_pagination")
+    return value
 
 
 def _objects(value: object, code: str) -> list[dict[str, object]]:
@@ -450,17 +458,49 @@ class OpenAEVReporter:
             + "/types/ASSETS",
         )
 
+    def _asset_matches(self) -> list[dict[str, object]]:
+        """Read the complete bounded native Spring Page inventory before writes."""
+        matches: list[dict[str, object]] = []
+        observed_ids: set[str] = set()
+        totals: tuple[int, int] | None = None
+        for number in range(MAX_ASSET_SEARCH_PAGES):
+            page = self._request(
+                "POST", "endpoints/search",
+                {"page": number, "size": ASSET_SEARCH_SIZE, "textSearch": ASSET_NAME,
+                 "sorts": [{"property": "asset_external_reference", "direction": "asc"}]},
+            )
+            rows = _objects(page.get("content"), "invalid_asset_search_response")
+            native_number = _page_count(page.get("number"))
+            size = _page_count(page.get("size"))
+            pages = _page_count(page.get("totalPages"))
+            total = _page_count(page.get("totalElements"))
+            count = _page_count(page.get("numberOfElements"))
+            if pages > MAX_ASSET_SEARCH_PAGES or total > ASSET_SEARCH_SIZE * MAX_ASSET_SEARCH_PAGES:
+                raise ReportingError("asset_search_page_limit")
+            terminal = number + 1 >= pages
+            if (native_number != number or size != ASSET_SEARCH_SIZE
+                    or pages != (total + size - 1) // size
+                    or count != len(rows)
+                    or count != min(size, max(0, total - number * size))
+                    or page.get("last") is not terminal):
+                raise ReportingError("invalid_asset_search_pagination")
+            if totals is not None and totals != (pages, total):
+                raise ReportingError("asset_search_inventory_changed")
+            totals = (pages, total)
+            for row in rows:
+                asset_id = _uuid(row.get("asset_id"))
+                if asset_id in observed_ids:
+                    raise ReportingError("asset_search_inventory_repeated")
+                observed_ids.add(asset_id)
+                if row.get("asset_external_reference") == ASSET_REFERENCE:
+                    matches.append(row)
+            if terminal:
+                return matches
+        raise ReportingError("asset_search_page_limit")
+
     def ensure_asset(self) -> str:
         self._asset_id = None
-        page = self._request(
-            "POST",
-            "endpoints/search",
-            {"page": 0, "size": 100, "textSearch": ASSET_NAME},
-        )
-        rows = _objects(page.get("content"), "invalid_asset_search_response")
-        found = [
-            r for r in rows if r.get("asset_external_reference") == ASSET_REFERENCE
-        ]
+        found = self._asset_matches()
         if len(found) > 1:
             raise ReportingError("duplicate_disposable_reporting_assets")
         if found:

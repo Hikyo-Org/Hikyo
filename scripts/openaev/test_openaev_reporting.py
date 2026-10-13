@@ -36,6 +36,25 @@ def payload(case: str = CASE) -> dict[str, object]:
     return openaev_security._payload(case, "GET", PATH, None, None)
 
 
+def search_page(rows: list[dict[str, object]], number: int = 0) -> dict[str, object]:
+    size = 100
+    total = len(rows)
+    content = copy.deepcopy(rows[number * size:(number + 1) * size])
+    for row in content:
+        row.pop("asset_url", None)
+    pages = (total + size - 1) // size
+    return {"content": content, "number": number, "size": size,
+            "totalElements": total, "totalPages": pages,
+            "numberOfElements": len(content), "last": number + 1 >= pages}
+
+
+def other_asset(index: int) -> dict[str, object]:
+    row = asset()
+    row["asset_id"] = f"00000000-0000-4000-8000-{index:012d}"
+    row["asset_external_reference"] = f"a-other-{index:04d}"
+    return row
+
+
 class FakeAPI:
     def __init__(self, detection: bool = False):
         self.calls: list[tuple[str, str, dict[str, object] | None]] = []
@@ -91,12 +110,11 @@ class FakeAPI:
     ) -> object:
         self.calls.append((method, path, copy.deepcopy(payload)))
         if path == "endpoints/search":
-            summaries = copy.deepcopy(self.assets)
-            for row in summaries:
-                row.pop("asset_url", None)
-            return {"content": summaries}
+            if payload is None:
+                raise AssertionError("search pagination body required")
+            return search_page(self.assets, payload["page"])
         if path == "endpoints/" + ASSET_ID:
-            full = copy.deepcopy(self.assets[0])
+            full = copy.deepcopy(next(row for row in self.assets if row["asset_id"] == ASSET_ID))
             full.pop("asset_external_reference", None)
             return full
         if path == "endpoints/agentless":
@@ -412,6 +430,78 @@ class ReportingTests(unittest.TestCase):
         api.assets = [asset(), asset()]
         with self.assertRaises(reporting.ReportingError):
             result.ensure_asset()
+
+    def test_asset_on_later_native_page_is_reused_without_creation(self):
+        api = FakeAPI()
+        api.assets = [other_asset(index) for index in range(100)] + [asset()]
+        self.assertEqual(reporter(api).ensure_asset(), ASSET_ID)
+        pages = [body["page"] for _, path, body in api.calls if path == "endpoints/search"]
+        self.assertEqual(pages, [0, 1])
+        self.assertFalse(any(path == "endpoints/agentless" for _, path, _ in api.calls))
+        self.assertEqual(len(api.assets), 101)
+
+    def test_duplicate_external_reference_on_later_page_is_refused(self):
+        api = FakeAPI()
+        duplicate = asset()
+        duplicate["asset_id"] = "aa624f0f-8e78-4cb9-8b6d-a989972d57ed"
+        api.assets = [other_asset(index) for index in range(99)] + [asset(), duplicate]
+        with self.assertRaisesRegex(reporting.ReportingError, "duplicate_disposable_reporting_assets"):
+            reporter(api).ensure_asset()
+        self.assertFalse(any(path == "endpoints/agentless" for _, path, _ in api.calls))
+
+    def test_incomplete_or_invalid_native_asset_pages_never_create(self):
+        original = search_page([asset()])
+        for field, value in (
+            ("number", None), ("number", True), ("number", 1), ("size", 99),
+            ("totalPages", 2), ("totalElements", 2), ("numberOfElements", 0),
+            ("last", False), ("last", 1),
+        ):
+            api = FakeAPI()
+            page = {**original, field: value}
+            with self.subTest(field=field, value=value), patch.object(api, "request", return_value=page) as request:
+                with self.assertRaisesRegex(reporting.ReportingError, "invalid_asset_search_pagination"):
+                    reporter(api).ensure_asset()
+                self.assertEqual(request.call_count, 1)
+
+    def test_changed_totals_or_repeated_asset_ids_refuse_complete_search(self):
+        for changed in ("totals", "repeated"):
+            api = FakeAPI()
+            api.assets = [other_asset(index) for index in range(101)]
+            original_request = api.request
+            def changed_second(method, path, payload=None):
+                page = original_request(method, path, payload)
+                if path == "endpoints/search" and payload["page"] == 1:
+                    if changed == "totals":
+                        page = search_page(api.assets + [other_asset(101)], 1)
+                    else:
+                        page["content"] = [other_asset(0)]
+                return page
+            with self.subTest(changed=changed), patch.object(api, "request", side_effect=changed_second):
+                code = "asset_search_inventory_changed" if changed == "totals" else "asset_search_inventory_repeated"
+                with self.assertRaisesRegex(reporting.ReportingError, code):
+                    reporter(api).ensure_asset()
+            self.assertFalse(any(path == "endpoints/agentless" for _, path, _ in api.calls))
+
+    def test_asset_search_inventory_bound_is_refused_before_mutation(self):
+        api = FakeAPI()
+        rows = [other_asset(index) for index in range(2001)]
+        with patch.object(api, "request", return_value=search_page(rows)) as request:
+            with self.assertRaisesRegex(reporting.ReportingError, "asset_search_page_limit"):
+                reporter(api).ensure_asset()
+            self.assertEqual(request.call_count, 1)
+
+    def test_failed_later_page_never_creates_or_claims_complete_search(self):
+        api = FakeAPI()
+        api.assets = [other_asset(index) for index in range(101)]
+        original_request = api.request
+        def fail_second(method, path, payload=None):
+            if path == "endpoints/search" and payload["page"] == 1:
+                raise OSError("raw-private-network-detail")
+            return original_request(method, path, payload)
+        with patch.object(api, "request", side_effect=fail_second):
+            with self.assertRaisesRegex(reporting.ReportingError, "^reporting_platform_request_failed$"):
+                reporter(api).ensure_asset()
+        self.assertFalse(any(path == "endpoints/agentless" for _, path, _ in api.calls))
 
     def test_empty_inventory_creates_only_disposable_agentless_target(self):
         api = FakeAPI()

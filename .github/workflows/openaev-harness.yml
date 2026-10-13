@@ -25,7 +25,7 @@ jobs:
       - name: Check the trusted harness
         run: |
           python3 -m venv "$RUNNER_TEMP/checks"
-          "$RUNNER_TEMP/checks/bin/python" -m pip install --disable-pip-version-check -r scripts/openaev/requirements-check.lock
+          "$RUNNER_TEMP/checks/bin/python" -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r scripts/openaev/requirements-check.lock
           PATH="$RUNNER_TEMP/checks/bin:$PATH" scripts/openaev/check.sh
           if [ -d scripts/openaev/native-prepare ]; then
             go test ./scripts/openaev/native-prepare

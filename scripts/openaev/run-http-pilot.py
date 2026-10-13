@@ -294,4 +294,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit("standalone_pilot_cli_unsupported_use_hosted_suite")
