@@ -58,7 +58,8 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - if: matrix.work.kind == 'group'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -72,7 +73,7 @@ jobs:
           else
             remaining=$((PR_GATE_DEADLINE - 15 - $(date +%s)))
             test "$remaining" -gt 0
-            timeout --kill-after=1s "${remaining}s" go build -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate
+            timeout --kill-after=1s "${remaining}s" bash scripts/ci/build-queue-publisher.sh
           fi
       - name: Reconcile one authenticated head without borrowing another lease
         if: always()
