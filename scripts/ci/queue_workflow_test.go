@@ -158,9 +158,9 @@ func queuePublisherContract(raw []byte) error {
 		checkoutIndex, setupIndex, publishIndex := 0, 1, 2
 		if id == "publish" {
 			budget, jobHead = "1", head
-			checkoutIndex, setupIndex, publishIndex = 1, 2, 4
+			checkoutIndex, setupIndex, publishIndex = 1, -1, 3
 			command = "test -x \"$RUNNER_TEMP/queue-publisher\"\n\"$RUNNER_TEMP/queue-publisher\" --queue --targeted --expected-head \"$HEAD\""
-			if len(j.Steps) != 5 || j.Steps[4].If != "always()" {
+			if len(j.Steps) != 4 || j.Steps[3].If != "always()" {
 				return fmt.Errorf("targeted setup/compile/terminal reserve is required")
 			}
 			if err := queueBootstrapContract(j.Steps[0].Run, true); err != nil {
@@ -169,7 +169,7 @@ func queuePublisherContract(raw []byte) error {
 			if !reflect.DeepEqual(j.Steps[0].Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEAD": head}) {
 				return fmt.Errorf("bootstrap must authenticate current exact head job")
 			}
-			if strings.TrimSpace(j.Steps[3].Run) != queueCompileCommand || len(j.Steps[3].Env) != 0 {
+			if strings.TrimSpace(j.Steps[2].Run) != queueCompileCommand || j.Steps[2].Uses != "" || len(j.Steps[2].With) != 0 || len(j.Steps[2].Env) != 0 {
 				return fmt.Errorf("compile must share the setup-inclusive45-second work cutoff")
 			}
 		} else if len(j.Steps) != 3 {
@@ -214,7 +214,7 @@ func queuePublisherContract(raw []byte) error {
 const queueCompileCommand = `set -euo pipefail
 remaining=$((PR_GATE_DEADLINE - 15 - $(date +%s)))
 test "$remaining" -gt 0
-timeout --kill-after=1s "${remaining}s" go build -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate`
+timeout --kill-after=1s "${remaining}s" bash scripts/ci/build-queue-publisher.sh`
 
 func queueTrustedJob(j queueWorkflowJob) error {
 	if j.Uses != "" || j.Continue.Kind != 0 || j.Env.Kind != 0 || j.Defaults.Kind != 0 || j.Container.Kind != 0 || j.Services.Kind != 0 || j.RunsOn != "ubuntu-latest" {
@@ -228,10 +228,14 @@ func queueTrustedJob(j queueWorkflowJob) error {
 	return nil
 }
 func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int) error {
-	checkout, setup := j.Steps[checkoutIndex], j.Steps[setupIndex]
+	checkout := j.Steps[checkoutIndex]
 	if checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || checkout.Run != "" || len(checkout.Env) != 0 || !reflect.DeepEqual(checkout.With, map[string]string{"ref": "${{ github.event.repository.default_branch }}", "persist-credentials": "false"}) {
 		return fmt.Errorf("publisher must checkout pinned trusted main withoutcredentials")
 	}
+	if setupIndex < 0 {
+		return nil
+	}
+	setup := j.Steps[setupIndex]
 	if setup.Uses != "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e" || setup.Run != "" || len(setup.Env) != 0 || !reflect.DeepEqual(setup.With, map[string]string{"go-version-file": "go.mod", "cache": "false"}) {
 		return fmt.Errorf("publisher must retain pinned trusted Go withoutPRcache")
 	}
@@ -299,7 +303,7 @@ func queueWorkerContract(raw []byte) error {
 		return err
 	}
 	for i, step := range j.Steps {
-		if i > 0 && i < 4 && step.If != "" {
+		if i > 0 && i < 4 && step.If != map[int]string{2: "matrix.work.kind == 'group'"}[i] {
 			return fmt.Errorf("worker setup/compile cannot be skipped")
 		}
 	}
@@ -309,7 +313,7 @@ if [ "$KIND" = group ]; then
 else
   remaining=$((PR_GATE_DEADLINE - 15 - $(date +%s)))
   test "$remaining" -gt 0
-  timeout --kill-after=1s "${remaining}s" go build -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate
+  timeout --kill-after=1s "${remaining}s" bash scripts/ci/build-queue-publisher.sh
 fi`
 	if strings.TrimSpace(j.Steps[3].Run) != wantCompile || j.Steps[3].Uses != "" || len(j.Steps[3].With) != 0 || !reflect.DeepEqual(j.Steps[3].Env, map[string]string{"KIND": "${{ matrix.work.kind }}"}) {
 		return fmt.Errorf("worker compile must remain source-bound to sharedbudget")
@@ -406,7 +410,7 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 			queuePublisherJob(w)["steps"].([]any)[0].(map[string]any)["run"] = "echo PR_GATE_DEADLINE=$(($(date +%s) + 60)) >> $GITHUB_ENV"
 		},
 		"unbounded compiler": func(w map[string]any) {
-			queuePublisherJob(w)["steps"].([]any)[3].(map[string]any)["run"] = "go build -o $RUNNER_TEMP/queue-publisher ./scripts/ci/pr-gate"
+			queuePublisherJob(w)["steps"].([]any)[2].(map[string]any)["run"] = "go build -o $RUNNER_TEMP/queue-publisher ./scripts/ci/pr-gate"
 		},
 		"unaudited container": func(w map[string]any) { queuePublisherJob(w)["container"] = "untrusted/image:latest" },
 		"secret service execution": func(w map[string]any) {
@@ -435,7 +439,7 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 		"PR artifact import": func(w map[string]any) {
 			queuePublisherStep(w, 1)["uses"] = "actions/download-artifact@0000000000000000000000000000000000000000"
 		},
-		"cache replay":             func(w map[string]any) { queuePublisherStep(w, 1)["with"].(map[string]any)["cache"] = true },
+		"cache replay":             func(w map[string]any) { queuePublisherStep(w, 1)["with"] = map[string]any{"cache": true} },
 		"source write permissions": func(w map[string]any) { queuePublisherJob(w)["permissions"].(map[string]any)["contents"] = "write" },
 		"PR write permissions": func(w map[string]any) {
 			queuePublisherJob(w)["permissions"].(map[string]any)["pull-requests"] = "write"
@@ -563,7 +567,7 @@ func queuePublisherJob(w map[string]any) map[string]any {
 }
 
 func queuePublisherStep(w map[string]any, index int) map[string]any {
-	return queuePublisherJob(w)["steps"].([]any)[[]int{1, 2, 4}[index]].(map[string]any)
+	return queuePublisherJob(w)["steps"].([]any)[[]int{1, 2, 3}[index]].(map[string]any)
 }
 
 func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {

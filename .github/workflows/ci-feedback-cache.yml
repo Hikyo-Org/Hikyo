@@ -31,6 +31,8 @@ jobs:
           path: source
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        env:
+          GOCACHE: ${{ runner.temp }}/feedback-bootstrap
         with:
           go-version-file: source/go.mod
           cache: false

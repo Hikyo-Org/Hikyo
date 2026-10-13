@@ -73,16 +73,12 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
       - name: Compile trusted publisher inside the remaining work budget
         run: |
           set -euo pipefail
           remaining=$((PR_GATE_DEADLINE - 15 - $(date +%s)))
           test "$remaining" -gt 0
-          timeout --kill-after=1s "${remaining}s" go build -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate
+          timeout --kill-after=1s "${remaining}s" bash scripts/ci/build-queue-publisher.sh
       - name: Reconcile targeted admission with a terminal publication reserve
         if: always()
         env:

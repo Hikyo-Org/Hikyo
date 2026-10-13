@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, type Page } from '@playwright/test';
-import { zEnvironment, zOrg, zProject, zServiceAccount } from '@hikyo/zod';
+import { zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -76,15 +76,12 @@ async function revokeMinted(page: Page) {
 
 test.describe('machine access', () => {
   test.describe.configure({ mode: 'serial' });
-  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'], sharedSession: true });
 
   let page: Page;
 
   test.beforeEach(async ({ passkeyPage }) => {
     page = passkeyPage;
-    await page.context().clearCookies();
-    await page.goto(PATH);
-    await establishSession(page);
     await page.goto(PATH);
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
@@ -945,14 +942,12 @@ async function authoriseAdapterCeremony(page: Page): Promise<void> {
 
 test.describe('deployment adapters', () => {
   test.describe.configure({ mode: 'serial' });
+  test.use({ sharedSession: true });
 
   let page: Page;
 
   test.beforeEach(async ({ passkeyPage }) => {
     page = passkeyPage;
-    await page.context().clearCookies();
-    await page.goto(ADAPTERS_PATH);
-    await establishSession(page);
     await page.goto(ADAPTERS_PATH);
     await expect(page.getByRole('heading', { name: 'Deployment adapters', level: 1 })).toBeVisible();
   });
@@ -1281,15 +1276,13 @@ test.describe('deployment adapters', () => {
  */
 test.describe('project audit', () => {
   test.describe.configure({ mode: 'serial' });
+  test.use({ sharedSession: true });
 
   let page: Page;
   const AUDIT_PATH = `/orgs/${seed.org}/projects/${seed.project}/audit`;
 
   test.beforeEach(async ({ passkeyPage }) => {
     page = passkeyPage;
-    await page.context().clearCookies();
-    await page.goto(AUDIT_PATH);
-    await establishSession(page);
     await page.goto(AUDIT_PATH);
     await expect(page.getByRole('heading', { name: 'Project audit', level: 1 })).toBeVisible();
   });
@@ -1532,7 +1525,20 @@ test.describe('browser-only lifecycle', () => {
         if (await production.isChecked()) {
           await production.uncheck();
         }
-        await modal.getByRole('button', { name: 'Declare' }).click();
+        const initialized = page.waitForResponse((response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === `${api}/environments/${dev}/values/${name}/initialize`,
+        );
+        const declared = await captureCreated(page, `${api}/keys`, zKey, async () => {
+          await modal.getByRole('button', { name: 'Declare' }).click();
+        });
+        expect(declared.name).toBe(name);
+        const valueResponse = await initialized;
+        expect(valueResponse.status()).toBe(200);
+        const draft = zInitializeValueResponse.parse(await valueResponse.json());
+        expect(draft.name).toBe(name);
+        expect(draft.key_id).toBe(declared.id);
+        expect(draft.operation).toBe('set');
         await expect(page.locator('.notice')).toContainText(`Declared ${name} with a draft value in 1 environment`);
       };
       await declare('LOG_LEVEL', 'info', false);

@@ -1936,6 +1936,21 @@ export async function refreshSharedSession(): Promise<void> {
   );
 }
 
+/** Import the freshly verified real session before loading its passkey counter. */
+export async function restoreSharedSession(page: Page): Promise<void> {
+  await refreshSharedSession();
+  const cookies = zStorageState
+    .parse(JSON.parse(readFileSync(STORAGE_STATE, 'utf8')))
+    .cookies.filter((cookie) => cookie.domain === HOST || cookie.domain === `.${HOST}`);
+  for (const name of ['__Host-hikyo', '__Host-hikyo-csrf']) {
+    if (!cookies.some((cookie) => cookie.name === name && cookie.value !== '')) {
+      throw new Error(`the shared storage state has no ${name} cookie for ${HOST}`);
+    }
+  }
+  await page.context().clearCookies();
+  await page.context().addCookies(cookies);
+}
+
 /**
  * refreshServingSession repairs the SERVING half of the shared storage state.
  *
