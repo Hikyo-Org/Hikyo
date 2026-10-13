@@ -276,11 +276,12 @@ A complete fresh reconciliation repeats current policy, workflow authority,
 fork vouch, DCO, source attempt, role/member and historical collision checks.
 Only then may an identical terminal binding and outcome require no mutation.
 Changed bindings or verdicts create one new queued generation; authenticated
-nonterminal generations can be reused. A failed complete owned-history scan
-returns an error and authorizes no new check mutation; it cannot establish that
-the effective result is blocking. After a complete inventory authenticates the
-current owned record, recovery must verify blocking state within the existing
-independent reserve. An uncertain creation is not retried. When safe creation
+nonterminal generations can be reused. A failed initial owned-history scan
+remains an error, but a separate successful recovery scan can authenticate the
+current owned record and authorize publication. The original error is retained;
+recovery must verify the effective blocking state within the existing reserve.
+If that recovery scan also fails, it authorizes no new queue mutation and cannot
+establish an effective blocker. An uncertain creation is not retried. When safe creation
 fails, a freshly authenticated effective owned record may receive a genuine
 failure. This fallback is for an error, never routine pending.
 No terminal check is reset, foreign checks are not patched, and complete

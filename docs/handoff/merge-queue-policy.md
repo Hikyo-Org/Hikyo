@@ -244,10 +244,12 @@ adds no row. No terminal reset payload, history-cap increase, latest-only
 collision scan, check deletion or cached authority is introduced. The legacy
 full-only producer retains its existing lifecycle.
 
-A failed complete owned-history scan returns an error and authorizes no new
-check mutation; it cannot claim a verified effective blocker. Once a complete
-inventory authenticates the current owned record, recovery must establish or
-verify blocking state before returning. The reserve reads actual server state
+A failed initial owned-history scan remains an error, even if a separate
+successful recovery scan authenticates the current owned record and authorizes
+publication. Recovery must establish or verify the effective blocking state
+before returning; the original error is retained. If the recovery scan fails,
+it authorizes no new queue mutation and cannot claim a verified effective
+blocker. The reserve reads actual server state
 after an uncertain write, so a cached pending record cannot hide a server-side
 success. Lost creation receipts are not retried. If a new barrier cannot be
 established, a genuine error may be published only on a freshly authenticated
