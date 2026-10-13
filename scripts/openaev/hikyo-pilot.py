@@ -165,7 +165,10 @@ def host_command(args: argparse.Namespace, command: list[str]) -> bytes:
             "server",
             "--",
         ]
-    result = subprocess.run(prefix + command, check=True, capture_output=True)
+    try:
+        result = subprocess.run(prefix + command, check=True, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        raise SystemExit("bounded_lab_admin_command_failed") from None
     return result.stdout
 
 
@@ -217,7 +220,10 @@ def bootstrap(args: argparse.Namespace) -> None:
     )
     if args.resume:
         admin = private_json(args.state / "admin.json")
-        password, uri = admin["password"], admin["totp_uri"]
+        password, uri = admin.get("password"), admin.get("totp_uri")
+        if (not isinstance(password, str) or not password
+                or not isinstance(uri, str) or not uri):
+            raise SystemExit("incomplete_bootstrap_admin_state")
         api.call(
             "POST",
             "/api/v1/auth/local/login",

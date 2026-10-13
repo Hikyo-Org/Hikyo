@@ -5,6 +5,7 @@ import copy
 import importlib.util
 import json
 import sys
+import subprocess
 import tempfile
 import unittest
 import uuid
@@ -78,6 +79,48 @@ class SecurityAssertions(unittest.TestCase):
             self.rejected(mode, {"error": {"code": "bad_request"}})
             self.rejected(mode, {"error": {"code": mode}, "keys": []})
             self.rejected(mode, {"error": {"code": mode}, "detail": "synthetic-secret"})
+
+    def test_denials_and_current_reject_nested_fixture_key_names(self):
+        for mode in ("not_found", "unauthenticated", "current"):
+            for name in ("LAB_CONFIG", "LAB_SECRET"):
+                response = {"current": True, "keys": []} if mode == "current" else {"error": {"code": mode}}
+                response["detail"] = {"nested": [{"name": name, "presence": "set"}]}
+                with self.subTest(mode=mode, name=name):
+                    self.rejected(mode, response)
+
+    def test_current_rejects_secret_metadata_without_plaintext(self):
+        self.rejected("current", {"current": True, "keys": [], "secrets": [{"presence": "set"}]})
+
+    def test_pilot_admin_exec_is_bounded_and_sanitizes_failures(self):
+        args = argparse.Namespace(docker_container=None, kubeconfig=Path("fixture-kubeconfig"))
+        for exception in (
+            subprocess.TimeoutExpired(["private-command"], 30, output=b"private-body"),
+            subprocess.CalledProcessError(1, ["private-command"], stderr=b"private-body"),
+            OSError("private-body"),
+        ):
+            with self.subTest(exception=type(exception)), patch.object(
+                suite.pilot.subprocess, "run", side_effect=exception
+            ) as run:
+                with self.assertRaises(SystemExit) as caught:
+                    suite.pilot.host_command(args, ["/usr/local/bin/hikyo", "admin", "create"])
+                self.assertEqual(str(caught.exception), "bounded_lab_admin_command_failed")
+                self.assertEqual(run.call_args.kwargs["timeout"], 30)
+
+    def test_pilot_resume_rejects_incomplete_totp_before_login(self):
+        with tempfile.TemporaryDirectory() as root:
+            state = Path(root)
+            state.chmod(0o700)
+            admin = state / "admin.json"
+            admin.write_text(json.dumps({"password": "synthetic-private-password"}))
+            admin.chmod(0o600)
+            args = argparse.Namespace(state=state, resume=True, origin=suite.LAN, ca=Path("fixture-ca"), expected_version="1.2.3")
+            api = Mock()
+            api.call.return_value = (200, {"server_version": "1.2.3", "instance_identity": "fixture-instance"})
+            with patch.object(suite.pilot, "API", return_value=api):
+                with self.assertRaises(SystemExit) as caught:
+                    suite.pilot.bootstrap(args)
+                self.assertEqual(str(caught.exception), "incomplete_bootstrap_admin_state")
+                self.assertEqual(api.call.call_count, 1)
 
     def test_current_requires_true_and_empty_keys(self):
         suite.assert_body(self.fixture, "current", {"current": True, "keys": []})

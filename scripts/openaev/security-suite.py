@@ -433,6 +433,8 @@ def assert_body(
         if (
             "keys" in response
             or "secrets" in response
+            or "LAB_CONFIG" in raw
+            or "LAB_SECRET" in raw
             or config in raw
             or secret in raw
         ):
@@ -444,8 +446,9 @@ def assert_body(
     if mode == "current":
         if response.get("current") is not True or keys:
             raise SuiteError("conditional_delivery_not_current")
-        if config in raw or secret in raw:
-            raise SuiteError("conditional_delivery_disclosed_value")
+        if ("secrets" in response or "LAB_CONFIG" in raw or "LAB_SECRET" in raw
+                or config in raw or secret in raw):
+            raise SuiteError("conditional_delivery_disclosed_material")
         return
     if response.get("current") is not False:
         raise SuiteError("unexpected_current_delivery")
