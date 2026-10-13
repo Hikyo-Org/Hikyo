@@ -131,6 +131,8 @@ class WorkloadTransport:
                 if size > 1_048_576:
                     raise TransportError("response_too_large")
                 chunks.append(chunk)
+            if response.length not in (None, 0):
+                raise TransportError("response_incomplete")
             decoded: object = json.loads(b"".join(chunks))
             if not isinstance(decoded, dict) or any(not isinstance(k, str) for k in decoded):
                 raise TransportError("response_not_object")

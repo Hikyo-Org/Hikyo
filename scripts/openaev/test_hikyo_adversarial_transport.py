@@ -132,6 +132,17 @@ class WorkloadTransportTests(unittest.TestCase):
         self.assertNotIn(BODY_CANARY, str(error))
         self.assertIsNone(error.__cause__)
 
+    def test_complete_json_prefix_cannot_hide_truncated_http_body(self) -> None:
+        def send(server: socket.socket, _: threading.Event) -> None:
+            body = b'{"verified":true}'
+            server.sendall(
+                f"HTTP/1.1 200 Test\r\nContent-Length: {len(body) + 32}\r\nConnection: close\r\n\r\n".encode() + body
+            )
+
+        with self.assertRaises(transport.TransportError) as caught:
+            self.exchange(send)
+        self.assert_safe_error(caught.exception, "response_incomplete")
+
     def test_absolute_deadline_interrupts_trickled_headers_and_body(self) -> None:
         for prefix, tail in (
             (b"HTTP/1.1 200 OK\r\nX-Test: ", b"x" * 100),
