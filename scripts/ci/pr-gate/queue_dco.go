@@ -34,7 +34,7 @@ func verifyQueueDCO(ctx context.Context, repoName string, p pull) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer os.RemoveAll(dir)
+	defer cleanupQueueDCOMetadata(dir)
 	return checkQueueDCO(ctx, p, repo)
 }
 func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string, error) {
@@ -51,7 +51,7 @@ func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string
 	complete := false
 	defer func() {
 		if !complete {
-			os.RemoveAll(dir)
+			cleanupQueueDCOMetadata(dir)
 		}
 	}()
 	repo := filepath.Join(dir, "metadata.git")
@@ -128,9 +128,21 @@ func admissionDCOVerifier(repoName string) (queueDCOVerifier, func()) {
 		closed = true
 		captured = nil
 		if dir != "" {
-			os.RemoveAll(dir)
+			cleanupQueueDCOMetadata(dir)
 		}
 		dir, repo = "", ""
 	}
 	return verify, close
+}
+
+// Cleanup is operational diagnostics, not a substitute validation verdict.
+// Quote and bound trusted filesystem errors without logging metadata contents.
+func cleanupQueueDCOMetadata(dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		message := err.Error()
+		if len(message) > 160 {
+			message = message[:160] + "..."
+		}
+		fmt.Fprintf(os.Stderr, "Queue DCO metadata cleanup failed: %q\n", message)
+	}
 }

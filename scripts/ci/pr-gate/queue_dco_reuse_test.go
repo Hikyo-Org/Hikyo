@@ -282,3 +282,66 @@ func TestAdmissionDCOCanonicalRefusalIsNotReplacedByCachedVerdict(t *testing.T) 
 		t.Fatalf("refusal was cached as a verdict: %d/%d", fetches, checks)
 	}
 }
+
+func TestAdmissionDCOCleanupFailureIsObservableAndClosed(t *testing.T) {
+	f := newAdmissionDCOFixture(t, true)
+	f.p.User.Login = "contributor"
+	root := t.TempDir()
+	t.Setenv("TMPDIR", root)
+	verify, close := admissionDCOVerifier("Hikyo-Org/Hikyo")
+	if code, err := verify(context.Background(), f.p); code != 1 || err != nil {
+		t.Fatalf("unsigned canonical verdict changed: %d %v", code, err)
+	}
+	retained := root + ".retained"
+	if err := os.Rename(root, retained); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(root); os.Rename(retained, root) })
+	if err := os.WriteFile(root, []byte("parent is now a regular file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	log, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = log
+	close()
+	os.Stderr = old
+	log.Close()
+	data, err := os.ReadFile(log.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.ToLower(string(data)), "cleanup") {
+		t.Fatalf("real RemoveAll failure discarded: %q", data)
+	}
+	if _, err := verify(context.Background(), f.p); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("failed cleanup left reusable session: %v", err)
+	}
+}
+
+func TestQueueDCOMetadataCleanupDiagnosticIsBoundedAndQuoted(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "regular-file")
+	if err := os.WriteFile(root, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	log, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = log
+	defer func() { os.Stderr = old; log.Close() }()
+	cleanupQueueDCOMetadata(root + "/child\n" + strings.Repeat("x", 800))
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(log.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) > 240 || strings.Count(string(data), "\n") != 1 || !strings.Contains(string(data), "cleanup failed: \"") {
+		t.Fatalf("unbounded/unquoted cleanup diagnostic: %q", data)
+	}
+}
