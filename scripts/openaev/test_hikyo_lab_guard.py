@@ -271,7 +271,7 @@ class GuardTests(unittest.TestCase):
                     self.collect()
                 self.assertNotIn(self.summary_query, self.calls)
 
-    def test_unique_nodes_read_once_and_each_pod_checked_on_its_node(self) -> None:
+    def test_unverified_pod_node_is_rejected_before_native_metrics(self) -> None:
         rows = self.metrics()
         last = rows[-1]
         self.change_metrics(rows[:-1])
@@ -287,10 +287,14 @@ class GuardTests(unittest.TestCase):
             "/api/v1/nodes/node-two/proxy/stats/summary?only_cpu_and_memory=true",
         )
         self.documents[second] = {"node": {"nodeName": "node-two"}, "pods": [last]}
-        self.assertEqual(len(guard._object(self.collect()["memory"])), 7)
-        self.assertEqual(self.calls.count(self.summary_query), 1)
-        self.assertEqual(self.calls.count(second), 1)
-        self.change_metrics(rows)
+        with self.assertRaisesRegex(guard.GuardError, "lab_pod_outside_verified_node"):
+            self.collect()
+        self.assertNotIn(self.summary_query, self.calls)
+        self.assertNotIn(second, self.calls)
+        self.documents[query]["items"][0]["spec"]["nodeName"] = "node"
+        altered = copy.deepcopy(rows)
+        altered[-1]["podRef"]["uid"] = "foreign-pod-uid"
+        self.change_metrics(altered)
         with self.assertRaisesRegex(guard.GuardError, "metrics_pod_identity_mismatch"):
             self.collect()
 

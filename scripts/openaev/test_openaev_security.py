@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import http.client
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import openaev_security as recorder
 
@@ -18,6 +19,41 @@ INJECT_ID = "85db69c9-6ef9-48d7-9ab8-ec3c6f027c69"
 
 
 class RecorderTests(unittest.TestCase):
+    def test_platform_http_protocol_errors_are_sanitized_during_open_and_read(self):
+        for stage in ("open", "read"):
+            for exception in (
+                http.client.BadStatusLine("private-status-line"),
+                http.client.LineTooLong("private-header"),
+                http.client.IncompleteRead(b"private-partial-body", 100),
+            ):
+                api = recorder._pilot.PlatformAPI.__new__(recorder._pilot.PlatformAPI)
+                api.origin, api.token, api.opener = "https://127.0.0.1:18080", TOKEN, MagicMock()
+                if stage == "open":
+                    api.opener.open.side_effect = exception
+                else:
+                    api.opener.open.return_value.__enter__.return_value.read.side_effect = exception
+                with self.subTest(stage=stage, exception=type(exception)), self.assertRaises(recorder._pilot.PilotError) as caught:
+                    api.request("GET", "me")
+                self.assertEqual(str(caught.exception), "platform_connection_failed")
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_active_inject_identity_survives_protocol_and_redirect_failures(self):
+        for exception in (
+            http.client.BadStatusLine("private-status-line"),
+            http.client.LineTooLong("private-header"),
+            http.client.IncompleteRead(b"private-partial-body", 100),
+            recorder._pilot.PilotError("platform_redirect_rejected"),
+        ):
+            instance, transport = self._recorder()
+            transport.request.side_effect = self._responses({})[:-1] + [exception]
+            with self.subTest(exception=type(exception)), self.assertRaises(recorder.OpenAEVRecordingError) as caught:
+                instance.record_case("protocol-failed", "GET", PATH, TOKEN, None, lambda _: None)
+            self.assertEqual(str(caught.exception), "platform_recording_failed")
+            self.assertEqual(caught.exception.inject_id, INJECT_ID)
+            self.assertIsNone(caught.exception.__cause__)
+            self.assertTrue(caught.exception.__suppress_context__)
+
     def test_unused_standalone_pilot_cli_refuses_before_reading_credentials(self):
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(

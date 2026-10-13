@@ -221,6 +221,8 @@ def collect(
     if len(pods) != expected_lab_pods:
         raise GuardError("unexpected_lab_pod_count")
     nodes = sorted({_node(_object(row)["node"]) for row in pods.values()})
+    if nodes != [identities[0]["name"]]:
+        raise GuardError("lab_pod_outside_verified_node")
     summary_queries = [
         (
             "get",

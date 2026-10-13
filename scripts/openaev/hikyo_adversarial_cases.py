@@ -149,6 +149,13 @@ def _validate_path(path: str) -> None:
         raise AdversarialAssertionError("query_requires_delivery")
 
 
+def _canary(fixture: dict[str, object], field: str) -> str:
+    value = _string(fixture, field)
+    if re.fullmatch(r"[A-Za-z0-9_-]+", value) is None:
+        raise AdversarialAssertionError("invalid_fixture_canary")
+    return value
+
+
 def _fixture_paths(fixture: dict[str, object]) -> tuple[str, str, str, str, str]:
     env, base, org = (_string(fixture, field) for field in ("env", "base", "org_path"))
     if (
@@ -180,7 +187,7 @@ def _fixture_paths(fixture: dict[str, object]) -> tuple[str, str, str, str, str]
     if not _ID.fullmatch(principal) or not _ID.fullmatch(version):
         raise AdversarialAssertionError("invalid_fixture_identifier")
     for field in ("config_value", "secret_value"):
-        _string(fixture, field)
+        _canary(fixture, field)
     return env, base, outside_env, principal, version
 
 
@@ -400,7 +407,7 @@ def assert_response(
     """Assert recorded JSON; the root runner separately proves exact HTTP status."""
     response = _object(response)
     config, secret = (
-        _string(fixture, field) for field in ("config_value", "secret_value")
+        _canary(fixture, field) for field in ("config_value", "secret_value")
     )
     raw = json.dumps(response, allow_nan=False)
     if secret in raw:

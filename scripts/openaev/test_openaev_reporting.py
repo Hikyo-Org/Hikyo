@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import copy
+import http.client
 import unittest
 from dataclasses import replace
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import openaev_reporting as reporting
 import openaev_security
@@ -220,6 +222,27 @@ def monitoring() -> reporting.MonitoringEvidence:
 
 
 class ReportingTests(unittest.TestCase):
+    def test_native_reporting_protocol_and_redirect_errors_are_safe(self):
+        for stage in ("open", "read"):
+            for exception in (
+                http.client.BadStatusLine("private-status-line"),
+                http.client.LineTooLong("private-header"),
+                http.client.IncompleteRead(b"private-partial-body", 100),
+                openaev_security._pilot.PilotError("platform_redirect_rejected"),
+            ):
+                transport = reporting.NativeJSONTransport.__new__(reporting.NativeJSONTransport)
+                opener = MagicMock()
+                transport._base = SimpleNamespace(origin="https://127.0.0.1:18080", token="synthetic-token", opener=opener)
+                if stage == "open":
+                    opener.open.side_effect = exception
+                else:
+                    opener.open.return_value.__enter__.return_value.read.side_effect = exception
+                with self.subTest(stage=stage, exception=type(exception)), self.assertRaises(reporting.ReportingError) as caught:
+                    transport.request("GET", "me")
+                self.assertEqual(str(caught.exception), "reporting_platform_request_failed")
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertTrue(caught.exception.__suppress_context__)
+
     def test_reporting_schema_errors_retain_safe_diagnostic_codes(self):
         for method_name, response, code in (
             ("_request", [], "invalid_reporting_object"),
@@ -248,7 +271,7 @@ class ReportingTests(unittest.TestCase):
             ("_request", "reporting_platform_request_failed"),
             ("_array_request", "reporting_platform_array_request_failed"),
         ):
-            for exception_type in (OSError, ValueError, TypeError):
+            for exception_type in (OSError, ValueError, TypeError, http.client.HTTPException, openaev_security._pilot.PilotError):
                 api = FakeAPI()
                 with self.subTest(method=method_name, exception=exception_type), patch.object(
                     api, "request", side_effect=exception_type(secret)

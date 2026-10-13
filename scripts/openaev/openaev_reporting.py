@@ -9,6 +9,7 @@ metrics. Detection requires an assessed, bounded native audit observation.
 from __future__ import annotations
 
 import copy
+import http.client
 import json
 import re
 import uuid
@@ -149,8 +150,11 @@ class NativeJSONTransport:
                 "Accept": "application/json",
             },
         )
-        with self._base.opener.open(request, timeout=15) as response:
-            raw = response.read(2_097_153)
+        try:
+            with self._base.opener.open(request, timeout=15) as response:
+                raw = response.read(2_097_153)
+        except (OSError, http.client.HTTPException, openaev_security._pilot.PilotError):
+            raise ReportingError("reporting_platform_request_failed") from None
         if len(raw) > 2_097_152:
             raise ReportingError("reporting_response_too_large")
         return json.loads(raw)
@@ -430,7 +434,7 @@ class OpenAEVReporter:
             )
         except ReportingError:
             raise
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, http.client.HTTPException, openaev_security._pilot.PilotError):
             # Never surface raw HTTP errors whose details may contain secret bodies.
             raise ReportingError("reporting_platform_request_failed") from None
 
@@ -443,7 +447,7 @@ class OpenAEVReporter:
             )
         except ReportingError:
             raise
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, http.client.HTTPException, openaev_security._pilot.PilotError):
             raise ReportingError("reporting_platform_array_request_failed") from None
 
     def _expectations(self, inject_id: str) -> list[dict[str, object]]:

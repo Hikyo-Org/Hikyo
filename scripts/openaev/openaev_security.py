@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import http.client
 import re
 import time
 import uuid
@@ -140,7 +141,7 @@ class OpenAEVRecorder:
             self._api = _pilot.PlatformAPI(
                 platform_url, _pilot.private_file(platform_token_file).strip(), ca_file
             )
-        except (OSError, ValueError, TypeError, _pilot.PilotError):
+        except (OSError, ValueError, TypeError, http.client.HTTPException, _pilot.PilotError):
             raise OpenAEVRecordingError("platform_initialization_failed") from None
         self._registered_contracts: set[str] = set()
         self._active_inject_id: str | None = None
@@ -197,7 +198,7 @@ class OpenAEVRecorder:
             status = self._api.request(
                 "GET", "injects/status-all-traces?" + urlencode({"injectId": inject_id})
             )
-        except (OSError, ValueError, TypeError, _pilot.PilotError):
+        except (OSError, ValueError, TypeError, http.client.HTTPException, _pilot.PilotError):
             raise OpenAEVRecordingError(
                 "failure_verification_unavailable", inject_id
             ) from None
@@ -251,7 +252,7 @@ class OpenAEVRecorder:
         except OpenAEVRecordingError as exc:
             exc.inject_id = self._active_inject_id
             raise
-        except (OSError, ValueError, TypeError, _pilot.PilotError):
+        except (OSError, ValueError, TypeError, http.client.HTTPException, _pilot.PilotError):
             raise OpenAEVRecordingError(
                 "platform_recording_failed", self._active_inject_id
             ) from None

@@ -201,7 +201,11 @@ def discover_candidate(client: ReleaseClient) -> Candidate:
     eligible = [row for row in releases if _eligible(row) and NIGHTLY.fullmatch(str(row["tag_name"]))]
     if not eligible:
         raise ReleaseError("published_nightly_unavailable")
-    latest = max(eligible, key=_published)
+    newest = max(_published(row) for row in eligible)
+    tied = [row for row in eligible if _published(row) == newest]
+    if len(tied) != 1:
+        raise ReleaseError("published_nightly_ambiguous")
+    latest = tied[0]
     release_id = latest.get("id")
     if type(release_id) is not int:
         raise ReleaseError("release_identity_invalid")
@@ -415,6 +419,8 @@ def write_report(
     if directory.is_symlink():
         raise ReleaseError("report_directory_symlink")
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if directory.is_symlink():
+        raise ReleaseError("report_directory_symlink")
     if not directory.is_dir() or list(directory.iterdir()):
         raise ReleaseError("report_directory_must_be_empty")
     directory.chmod(0o700)

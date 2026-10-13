@@ -134,6 +134,13 @@ class WorkloadTransportTests(unittest.TestCase):
         self.assertNotIn(BODY_CANARY, str(error))
         self.assertIsNone(error.__cause__)
 
+    def test_refusal_rejects_json_escaped_canaries(self) -> None:
+        for field in ("config_value", "secret_value"):
+            for canary in ('quote"canary', "slash\\canary", "line\ncanary", "canaryé"):
+                fixture = {"config_value": "CONFIG_CANARY", "secret_value": "SECRET_CANARY", field: canary}
+                with self.subTest(field=field, canary=canary), self.assertRaises(transport.TransportError):
+                    transport.assert_refusal(fixture, "not_found", {"error": {"code": "not_found"}, "detail": canary})
+
     def test_complete_json_prefix_cannot_hide_truncated_http_body(self) -> None:
         def send(server: socket.socket, _: threading.Event) -> None:
             body = b'{"verified":true}'

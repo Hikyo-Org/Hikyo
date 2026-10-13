@@ -57,6 +57,20 @@ class PlanTests(unittest.TestCase):
         self.cases = build_cases(self.fixture, "valid_full_cursor")
         self.named = {case.name: case for case in self.cases}
 
+    def test_escaped_fixture_canaries_are_rejected_at_build_and_assertion_boundaries(self) -> None:
+        denied = next(case for case in self.cases if case.mode == "not_found")
+        for field in ("config_value", "secret_value"):
+            for canary in ('quote"canary', "slash\\canary", "line\ncanary", "canaryé"):
+                altered = {**self.fixture, field: canary}
+                response = {"error": {"code": "not_found"}, "detail": canary}
+                for boundary in ("build", "direct"):
+                    with self.subTest(field=field, canary=canary, boundary=boundary):
+                        with self.assertRaisesRegex(AdversarialAssertionError, "invalid_fixture_canary"):
+                            if boundary == "build":
+                                build_cases(altered, "valid_full_cursor")
+                            else:
+                                assert_response(altered, denied, response)
+
     def test_exact_status_matrix_and_unique_names(self) -> None:
         outcomes = {
             case.name.removeprefix("whack-"): case.status for case in self.cases

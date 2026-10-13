@@ -175,5 +175,6 @@ def assert_refusal(
         raise TransportError("refusal_contains_delivery")
     for field in ("config_value", "secret_value"):
         canary = fixture.get(field)
-        if not isinstance(canary, str) or not canary or canary in raw:
+        if (not isinstance(canary, str) or re.fullmatch(r"[A-Za-z0-9_-]+", canary) is None
+                or canary in raw):
             raise TransportError("refusal_disclosed_canary")

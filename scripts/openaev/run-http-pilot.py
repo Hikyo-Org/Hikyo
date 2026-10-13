@@ -11,6 +11,7 @@ content and response. Standard library only. No credentials or bodies are logged
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import re
@@ -147,9 +148,9 @@ class PlatformAPI:
             with self.opener.open(request, timeout=15) as response:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except HTTPError as exc:
-            raise PilotError(f"platform_http_{exc.code}") from exc
-        except (URLError, TimeoutError) as exc:
-            raise PilotError("platform_connection_failed") from exc
+            raise PilotError(f"platform_http_{exc.code}") from None
+        except (URLError, TimeoutError, http.client.HTTPException):
+            raise PilotError("platform_connection_failed") from None
         if len(raw) > MAX_RESPONSE_BYTES:
             raise PilotError("platform_response_too_large")
         return object_value(json.loads(raw), "invalid_platform_response_object")

@@ -17,12 +17,17 @@ The only workflow in this layer is the read-only harness checker. It does not la
 Install the pinned checker dependencies into a Python environment, then run:
 
 ```sh
-python3 -m pip install -r scripts/openaev/requirements-check.lock
+python3 -m pip install --require-hashes --only-binary=:all: -r scripts/openaev/requirements-check.lock
 scripts/openaev/check.sh
 ```
 
-Current local result: Ruff passed; Mypy checked nine application files; 147 Python regression tests passed. Actionlint and ShellCheck validate the checker workflow and script. These local regressions are separate from the full hosted 313-assertion exercise, which remains pending.
+Current local result: Ruff passed; Mypy checked nine application files; 154 Python regression tests passed. Actionlint and ShellCheck validate the checker workflow and script. These local regressions are separate from the full hosted 313-assertion exercise, which remains pending.
 
 See [the core handoff](../../docs/handoff/core.md) for stack ownership and delivery evidence.
 
 The reporting asset search traverses all bounded native Spring pages before creating a target and refuses inconsistent or incomplete inventory. Checker dependencies include official PyPI wheel hashes with required hash checking and binary-only installation. The unused standalone HTTP pilot executable now fails closed; bounded import helpers remain available to the hosted suite.
+
+Canaries must use an unescaped ASCII alphabet, and every lab pod must bind to
+the verified ARM64 node. Latest-nightly timestamp ties and report-directory
+symlinks introduced during creation fail closed. Protocol and redirect errors
+are sanitized, with active inject identity preserved and no raw error chains.

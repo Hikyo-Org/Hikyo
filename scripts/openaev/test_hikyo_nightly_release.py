@@ -105,6 +105,16 @@ class SelectionTests(unittest.TestCase):
         ]
         self.assertEqual(release.discover_candidate(client), candidate())
 
+    def test_latest_nightly_publication_ties_refuse_in_both_response_orders(self) -> None:
+        rows = [native_release(), native_release(id=73, tag_name=TAG.replace(".72.", ".73."))]
+        for listing in (rows, list(reversed(rows))):
+            client = Client()
+            client.listing = listing
+            with self.subTest(order=[row["id"] for row in listing]), self.assertRaisesRegex(
+                release.ReleaseError, "published_nightly_ambiguous"
+            ):
+                release.discover_candidate(client)
+
     def test_revocation_body_and_explicit_flag_excluded(self) -> None:
         for changes in ({"revoked": True}, {"body": "<!-- hikyo-release-revoked -->"}):
             client = Client()
@@ -298,6 +308,22 @@ class ArtifactTests(unittest.TestCase):
                     link, candidate(), RUN, suites("passed"), cleanup_verified=True
                 )
             self.assertEqual(list(destination.iterdir()), [])
+
+    def test_symlink_created_during_mkdir_is_rejected_without_target_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination, directory = Path(temporary) / "destination", Path(temporary) / "report"
+            destination.mkdir()
+            original_mode = destination.stat().st_mode
+            original_mkdir = Path.mkdir
+            def replace_with_link(path, *args, **kwargs):
+                if path == directory:
+                    path.symlink_to(destination)
+                return original_mkdir(path, *args, **kwargs)
+            with patch.object(Path, "mkdir", replace_with_link):
+                with self.assertRaisesRegex(release.ReleaseError, "symlink"):
+                    release.write_report(directory, candidate(), RUN, suites("passed"), cleanup_verified=True)
+            self.assertEqual(list(destination.iterdir()), [])
+            self.assertEqual(destination.stat().st_mode, original_mode)
 
     def test_failed_cleanup_json_matches_nonpassing_badge(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
