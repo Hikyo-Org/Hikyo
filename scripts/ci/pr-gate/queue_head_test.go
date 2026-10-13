@@ -215,7 +215,7 @@ func TestQueueFinalRoleSnapshotRefusesNewSharedPRHead(t *testing.T) {
 	f := newQueueFixture(t)
 	injected := false
 	f.api.readHook = func(path string, n int) {
-		if strings.Contains(path, "pulls?state=open") && n == 4 {
+		if strings.Contains(path, "pulls?state=open") && n == 3 {
 			injected = true
 			other := f.pr
 			other.Number = 8
@@ -290,7 +290,7 @@ func TestQueueFinalRoleSnapshotRefusesChangedAdmissionIdentity(t *testing.T) {
 			f := newQueueFixture(t)
 			injected := false
 			f.api.readHook = func(path string, n int) {
-				if strings.Contains(path, "pulls?state=open") && n == 4 {
+				if strings.Contains(path, "pulls?state=open") && n == 3 {
 					injected = true
 					p := f.pr
 					switch change {
@@ -318,7 +318,7 @@ func TestQueueFinalRoleSnapshotRefusesChangedAuthorIdentity(t *testing.T) {
 		for _, field := range []string{"id", "login"} {
 			t.Run(role+"/"+field, func(t *testing.T) {
 				f := newQueueFixture(t)
-				read := 4
+				read := 3
 				if role == "group" {
 					read = 2
 				}
@@ -346,5 +346,56 @@ func TestQueueFinalRoleSnapshotRefusesChangedAuthorIdentity(t *testing.T) {
 				f.assertNoSuccess(t)
 			})
 		}
+	}
+}
+
+func TestAdmissionFinalRolesStillValidatesInventoryAfterFeedback(t *testing.T) {
+	for _, change := range []string{"none", "duplicate", "missing", "invalid inventory"} {
+		t.Run(change, func(t *testing.T) {
+			f := newQueueFixture(t)
+			finalFeedback, finalInventory, finalQueue := false, false, false
+			feedbackJobs := f.c.endpoint("actions/runs/101/attempts/1/jobs?per_page=100&page=1")
+			f.api.readHook = func(path string, n int) {
+				if path == feedbackJobs && n == 2 {
+					finalFeedback = true
+				}
+				if strings.Contains(path, "pulls?state=open") && n == 3 {
+					if !finalFeedback {
+						t.Fatal("final inventory read before final feedback")
+					}
+					finalInventory = true
+					switch change {
+					case "duplicate":
+						other := f.pr
+						other.Number = 8
+						f.api.responses[path] = []pull{f.pr, other}
+					case "missing":
+						f.api.responses[path] = []pull{}
+					case "invalid inventory":
+						f.api.responses[path] = map[string]string{"message": "unavailable"}
+					}
+				}
+				if path == f.query && n == 2 {
+					if !finalInventory {
+						t.Fatal("final queue-role read preceded final inventory")
+					}
+					finalQueue = true
+				}
+			}
+			err := f.admit()
+			if !finalFeedback || !finalInventory {
+				t.Fatal("fresh final feedback/inventory not observed")
+			}
+			if change == "none" {
+				if err != nil || !finalQueue {
+					t.Fatalf("positive finalroles: %v queue=%v", err, finalQueue)
+				}
+				if got := f.api.checks[len(f.api.checks)-1].Conclusion; got != "success" {
+					t.Fatal(got)
+				}
+			} else {
+				f.assertNoSuccess(t)
+			}
+		})
 	}
 }

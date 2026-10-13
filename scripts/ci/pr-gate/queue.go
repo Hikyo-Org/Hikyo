@@ -282,6 +282,12 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 }
 
 func (q *queueController) admitProof(ctx context.Context, number int) error {
+	dcoVerifier := q.dco
+	if dcoVerifier == nil {
+		var close func()
+		dcoVerifier, close = admissionDCOVerifier(q.repoName)
+		defer close()
+	}
 	p, err := q.readPR(ctx, number)
 	if err != nil {
 		return err
@@ -389,7 +395,7 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 					result = refused("Exact-head fast feedback failed; queue admission remains blocked.")
 					break
 				}
-				code, err := q.dcoResult(ctx, p)
+				code, err := canonicalDCOResult(ctx, p, dcoVerifier)
 				if err != nil {
 					return err
 				}
@@ -438,7 +444,7 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 				return q.queueMovement(ctx, number)
 			}
 		}
-		code, err := q.dcoResult(ctx, p)
+		code, err := canonicalDCOResult(ctx, final, dcoVerifier)
 		if err != nil {
 			return err
 		}
@@ -455,13 +461,6 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 		}
 		if r == nil || selectedRun == nil || r.ID != selectedRun.ID || r.Attempt != selectedRun.Attempt || r.Status != "completed" || r.Conclusion != "success" {
 			return q.queueMovement(ctx, number)
-		}
-		shared, err := q.sharedHead(ctx, final)
-		if err != nil {
-			return err
-		}
-		if shared {
-			result = refused("This head now belongs to multiple open PRs; commit-level admission is ambiguous.")
 		}
 	}
 	if result.Conclusion == "success" {
@@ -1299,6 +1298,9 @@ func (q *queueController) dcoResult(ctx context.Context, p pull) (int, error) {
 	if verifier == nil {
 		verifier = func(ctx context.Context, p pull) (int, error) { return verifyQueueDCO(ctx, q.repoName, p) }
 	}
+	return canonicalDCOResult(ctx, p, verifier)
+}
+func canonicalDCOResult(ctx context.Context, p pull, verifier queueDCOVerifier) (int, error) {
 	code, err := verifier(ctx, p)
 	if err != nil {
 		return 0, err
