@@ -1,0 +1,33 @@
+name: OpenAEV harness checks
+on:
+  pull_request:
+    paths: ['scripts/openaev/**', '.github/workflows/openaev*.yml', 'scripts/ci/openaev_release_workflow_test.go']
+  push:
+    branches: [main]
+    paths: ['scripts/openaev/**', '.github/workflows/openaev*.yml', 'scripts/ci/openaev_release_workflow_test.go']
+permissions:
+  contents: read
+concurrency:
+  group: openaev-harness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check the trusted harness
+        run: |
+          python3 -m venv "$RUNNER_TEMP/checks"
+          "$RUNNER_TEMP/checks/bin/python" -m pip install --disable-pip-version-check -r scripts/openaev/requirements-check.lock
+          PATH="$RUNNER_TEMP/checks/bin:$PATH" scripts/openaev/check.sh
+          if [ -d scripts/openaev/native-prepare ]; then
+            go test ./scripts/openaev/native-prepare
+            go test ./scripts/ci -run '^TestOpenAEV' -count=1
+          fi
