@@ -16,6 +16,38 @@ INJECT_ID = "85db69c9-6ef9-48d7-9ab8-ec3c6f027c69"
 
 
 class RecorderTests(unittest.TestCase):
+    def test_platform_url_preserves_only_exact_hosted_lab_endpoints(self):
+        for origin in (
+            "https://127.0.0.1:18080",
+            "https://openaev.openaev-lab.svc:8080",
+            "https://openaev.openaev-lab.svc.cluster.local:8080",
+        ):
+            with self.subTest(origin=origin):
+                self.assertEqual(recorder._pilot.validate_platform_url(origin), origin)
+                self.assertEqual(recorder._pilot.validate_platform_url(origin + "/"), origin)
+
+    def test_platform_url_rejects_private_public_and_ambiguous_endpoints(self):
+        for origin in (
+            "https://10.0.0.1:18080",
+            "https://172.16.0.1:18080",
+            "https://192.168.1.1:18080",
+            "https://8.8.8.8:18080",
+            "https://localhost:18080",
+            "https://[::1]:18080",
+            "https://platform.example:18080",
+            "https://127.0.0.1:8080",
+            "https://openaev.openaev-lab.svc:18080",
+            "https://openaev.openaev-lab.svc.cluster.local:18080",
+            "http://127.0.0.1:18080",
+            "https://user@127.0.0.1:18080",
+            "https://127.0.0.1:18080/path",
+            "https://127.0.0.1:18080?query=1",
+            "https://127.0.0.1:18080#fragment",
+            "https://127.0.0.1.evil.example:18080",
+        ):
+            with self.subTest(origin=origin), self.assertRaises(recorder._pilot.PilotError):
+                recorder._pilot.validate_platform_url(origin)
+
     def test_targets_reject_origin_escape_and_redirect_parameters(self):
         rejected = [
             "https://production.example" + PATH,

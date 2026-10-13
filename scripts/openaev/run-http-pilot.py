@@ -11,7 +11,6 @@ content and response. Standard library only. No credentials or bodies are logged
 from __future__ import annotations
 
 import argparse
-import ipaddress
 import json
 import os
 import re
@@ -103,29 +102,13 @@ def validate_platform_url(url: str) -> str:
         or parsed.fragment
     ):
         raise PilotError("platform_requires_https_lab_origin")
-    if (
-        parsed.hostname
-        in (
-            "openaev.openaev-lab.svc",
-            "openaev.openaev-lab.svc.cluster.local",
-        )
-        and parsed.port == 8080
-    ):
-        return url.rstrip("/")
-    try:
-        address = ipaddress.ip_address(parsed.hostname or "")
-    except ValueError as exc:
-        raise PilotError("platform_requires_private_lan_tunnel_or_lab_service") from exc
-    private_networks = (
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
-    )
-    if (
-        not (address == ipaddress.ip_address("127.0.0.1") or any(address in network for network in private_networks))
-        or parsed.port != 18080
-    ):
-        raise PilotError("platform_requires_private_lan_tunnel_port_18080")
+    allowed_endpoints = {
+        ("127.0.0.1", 18080),
+        ("openaev.openaev-lab.svc", 8080),
+        ("openaev.openaev-lab.svc.cluster.local", 8080),
+    }
+    if (parsed.hostname, parsed.port) not in allowed_endpoints:
+        raise PilotError("platform_requires_isolated_lab_origin")
     return url.rstrip("/")
 
 

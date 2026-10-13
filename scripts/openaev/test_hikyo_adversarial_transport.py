@@ -67,6 +67,8 @@ class WorkloadTransportTests(unittest.TestCase):
 
     def test_workload_transport_enforces_tls_1_2_or_newer(self) -> None:
         self.assertEqual(self.transport.context.minimum_version, ssl.TLSVersion.TLSv1_2)
+        self.assertTrue(self.transport.context.check_hostname)
+        self.assertEqual(self.transport.context.verify_mode, ssl.CERT_REQUIRED)
 
     def exchange(
         self,
