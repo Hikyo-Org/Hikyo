@@ -1,0 +1,206 @@
+name: OpenAEV post-release validation
+
+on:
+  release:
+    types: [published]
+  # Nightly publication precedes its container job. The completed producer is
+  # the readiness signal, and its exact run number selects the release.
+  workflow_run:
+    workflows: [nightly-release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact published release tag to rehearse (never publishes results)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# The hosted lab never consumes or publishes GitHub Actions caches.
+# Deny cache capabilities in the scoped runtime token for every trigger.
+cache-mode: none
+
+concurrency:
+  group: openaev-release-${{ github.event.release.id || github.event.workflow_run.id || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  identity:
+    if: >-
+      github.repository == 'Hikyo-Org/Hikyo' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      run: ${{ steps.release.outputs.run }}
+      tag: ${{ steps.release.outputs.tag }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
+      release_id: ${{ steps.release.outputs.release_id }}
+      published_at: ${{ steps.release.outputs.published_at }}
+      trusted_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Pin trusted harness source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Production and manual replay share one trusted source. The release
+          # candidate is data only, and the resolved main SHA stays pinned.
+          sha=$(gh api repos/Hikyo-Org/Hikyo/commits/main --jq '.sha')
+          printf '%s\n' "$sha" | grep -Eq '^[0-9a-f]{40}$'
+          printf 'sha=%s\n' "$sha" >>"$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+      - name: Resolve exact published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          OPENAEV_RESULT_DIR: ${{ runner.temp }}/openaev
+        run: python3 scripts/openaev/publish/release_context.py
+
+  validate:
+    needs: identity
+    if: needs.identity.outputs.run == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      passed: ${{ steps.pass.outputs.passed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.identity.outputs.trusted_sha }}
+          persist-credentials: false
+      - name: Download published candidate identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.identity.outputs.release_id }}
+          RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.identity.outputs.source_sha }}
+          PUBLISHED_AT: ${{ needs.identity.outputs.published_at }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/openaev"
+          gh api "repos/$REPOSITORY/releases/$RELEASE_ID" >"$RUNNER_TEMP/openaev/release.json"
+          jq -n --arg repository "$REPOSITORY" --arg tag "$RELEASE_TAG" \
+            --arg source_sha "$RELEASE_COMMIT" --arg published_at "$PUBLISHED_AT" \
+            --argjson release_id "$RELEASE_ID" \
+            '{repository:$repository,tag:$tag,source_sha:$source_sha,published_at:$published_at,release_id:$release_id}' \
+            >"$RUNNER_TEMP/openaev/release-identity.json"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.36.1
+          driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+      - name: Authenticate immutable signed container
+        id: candidate
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.identity.outputs.source_sha }}
+        run: |
+          image=$(printf 'ghcr.io/%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          version=${RELEASE_TAG#v}
+          digest=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manifest}}' | jq -er '.digest')
+          printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          case "${version#*-}" in
+            nightly.*) identity="https://github.com/$REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" ;;
+            *) identity="https://github.com/$REPOSITORY/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ;;
+          esac
+          cosign verify --certificate-identity "$identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "$RELEASE_COMMIT" "$image@$digest" >/dev/null
+          printf 'image=%s@%s\n' "$image" "$digest" >>"$GITHUB_OUTPUT"
+      - name: Check trusted harness before starting the lab
+        run: |
+          python3 -m venv "$RUNNER_TEMP/openaev-checks"
+          "$RUNNER_TEMP/openaev-checks/bin/python3" -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: \
+            -r scripts/openaev/requirements-check.lock
+          export PATH="$RUNNER_TEMP/openaev-checks/bin:$PATH"
+          printf '%s\n' "$RUNNER_TEMP/openaev-checks/bin" >>"$GITHUB_PATH"
+          scripts/openaev/check.sh
+          go test ./scripts/openaev/native-prepare
+          go test ./scripts/ci -run '^TestOpenAEV' -count=1
+      - name: Start disposable isolated lab
+        run: scripts/openaev/stack/start.sh "$RUNNER_TEMP/openaev-stack" "$HIKYO_IMAGE"
+        env:
+          HIKYO_IMAGE: ${{ steps.candidate.outputs.image }}
+      - name: Run all assertions against the released candidate
+        env:
+          RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.identity.outputs.source_sha }}
+          HIKYO_IMAGE: ${{ steps.candidate.outputs.image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source "$RUNNER_TEMP/openaev-stack/environment.sh"
+          scripts/openaev/run-hosted.sh "$RELEASE_TAG" "$RELEASE_COMMIT" "$HIKYO_IMAGE" "$RUNNER_TEMP/openaev"
+      - name: Destroy disposable lab
+        if: always()
+        run: scripts/openaev/stack/stop.sh "$RUNNER_TEMP/openaev-stack"
+      - name: Require complete sanitized PASS attestation
+        id: pass
+        run: |
+          python3 scripts/openaev/publish/publish_pass.py \
+            "$RUNNER_TEMP/openaev/validated-pass.json" "$RUNNER_TEMP/openaev/release-identity.json"
+          printf 'passed=true\n' >>"$GITHUB_OUTPUT"
+      # Raw evidence, exploit output and lab credentials stay on this disposable
+      # runner. Only the validated allowlisted public attestation crosses jobs.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: openaev-pass
+          path: ${{ runner.temp }}/openaev/validated-pass.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-pass:
+    needs: [identity, validate]
+    if: >-
+      (github.event_name == 'release' || github.event_name == 'workflow_run') &&
+      needs.validate.result == 'success' && needs.validate.outputs.passed == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.identity.outputs.trusted_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: openaev-pass
+          path: ${{ runner.temp }}/openaev-pass
+      - name: Publish complete PASS only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.identity.outputs.release_id }}
+          RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.identity.outputs.source_sha }}
+          PUBLISHED_AT: ${{ needs.identity.outputs.published_at }}
+        run: |
+          jq -n --arg repository "$REPOSITORY" --arg tag "$RELEASE_TAG" \
+            --arg source_sha "$RELEASE_COMMIT" --arg published_at "$PUBLISHED_AT" \
+            --argjson release_id "$RELEASE_ID" \
+            '{repository:$repository,tag:$tag,source_sha:$source_sha,published_at:$published_at,release_id:$release_id}' \
+            >"$RUNNER_TEMP/openaev-pass/release-identity.json"
+          python3 scripts/openaev/publish/publish_pass.py \
+            "$RUNNER_TEMP/openaev-pass/validated-pass.json" \
+            "$RUNNER_TEMP/openaev-pass/release-identity.json" --run-url "$RUN_URL"

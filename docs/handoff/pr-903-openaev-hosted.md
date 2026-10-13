@@ -1,0 +1,63 @@
+# Hosted OpenAEV validation, PR stack #905 / #904 / #903
+
+## Requested behavior
+
+After release or prerelease publication, run the complete OpenAEV suite on a GitHub-hosted ARM64 runner. Validation is independent of publication and cannot block it. Failed, canceled or incomplete validation adds no result. Only complete 313/313 PASS with authenticated candidate bytes, verified isolation and verified cleanup may create a successful OpenAEV check on the released commit. Release notes and release assets are never mutated.
+
+## Delivery stack
+
+Merge order is #905 (reusable core), #904 (complete assertions), then #903 (hosted lab, candidate verifier and coordinator). The split preserves every assertion and regression test while fitting GitHub's diff limit and the review service's prompt limit. All commits require cryptographic signatures and DCO sign-off.
+
+The workflow uses release:published for stable releases and prereleases. Nightlies wait for their exact successful nightly-release producer, because publication precedes container signing. Both paths pin the trusted harness to an authenticated default-branch commit; released code is the target, never the preparation tool. Manual exact-tag replay is read-only and performs the full validation even when a prior PASS exists.
+
+## Original infrastructure failure
+
+Nightly v0.0.1-nightly.20261012.75.g868703c7 stopped at pod_not_ready before candidate preparation. All 313 assertions were skipped. RabbitMQ rejected its persisted Erlang cookie with mode 0660. The original failure and historical release have been retained. Fresh hosted RabbitMQ repairs owner-only mode on every start; forced remounts proved a new pod UID and mode 0600.
+
+## Hosted startup and portability corrections
+
+OpenAEV had attempted a backend connection during simultaneous startup, then remained Running without a healthy application after Spring startup failed. The lab now waits for all four native backend readiness checks before starting OpenAEV. RabbitMQ's old ping probe was proven to succeed with its application stopped; native application/listener startup checks now reject that state.
+
+The first successful hosted stack then exposed a Mac-only Docker socket ownership condition. Linux validation accepts either the runner-owned local socket or a root-owned local socket with runner group access, rejecting foreign owners, remote endpoints and permissions for other users. An execute reproduction matched the original 0.7-second failure, with zero candidate or health calls.
+
+## Trust, custody and cleanup
+
+All service images, K3s, k3d, injector source and injector wheels are pinned. TLS, OpenAEV credentials, Hikyo root key and synthetic actors are fresh owner-only custody. Candidate verification uses Hikyo's native signed-release and offline-bundle APIs; the image binary must match the authenticated ARM64 artifact, and stable images bind to their signed manifest digest. GitHub credentials are removed before candidate and exercise execution.
+
+The stack enforces namespace NetworkPolicies and a node fence following live policy source sets. Independent controls prove forbidden TCP destinations reachable before negative tests. Cluster DNS and NodeHosts resolve locally; external names receive NXDOMAIN, with no external forwarding. Storage helpers have only their required operations, with no mutation rights over lab Pods. Native volume write and reclamation are verified.
+
+The target lifecycle verifies ownership before deletion. Stack teardown verifies absence of all owned containers, networks and recorded volumes before deleting private custody. Only the small allowlisted PASS attestation can cross workflow jobs. Response bodies, exploit output, raw audits and credentials are never uploaded.
+
+## Why success is a check, not a release-note edit
+
+GitHub does not support conditional PATCH for release updates. Reading a body and writing an appended replacement can erase concurrent human edits. Immutable published releases also disallow new assets. The publisher therefore has contents:read and checks:write only, and creates an idempotent completed-success OpenAEV release validation CheckRun. It checks exact release identity again and accepts only its own GitHub Actions app's matching completed success when deduplicating. The shared API rejects release mutations and non-success check creation before launching a request.
+
+## Assertion integrity and review fixes
+
+The suite retains 24 authorization, 22 adversarial, 260 bounded-request, six load-safety and one native audit/Prometheus/Alertmanager/inbox observation. Readiness, sample freshness, resource ceilings, exact identities and the independent delivery chain remain mandatory. Stable/RC/core versions now pass the exact lifecycle identity grammar rather than the old nightly-only check.
+
+Review reproductions fixed nested key disclosure, conditional secret metadata, incomplete HTTP evidence, background-collector crash false greens, bounded administrative execution and sanitized diagnostic loss. A successful final sample cannot clear a background worker failure. Strict workflow syntax validation supports GitHub's service-enforced cache-mode:none without disabling actionlint checks.
+
+The unused historical HTTP pilot CLI now refuses standalone execution before parsing inputs or contacting a platform; its bounded transport helpers remain imported by the hosted suite. Reporting searches the complete bounded native Spring Page inventory, validates stable metadata and unique identities, and refuses creation on incomplete reads. Seven fixed checker dependencies now require official artifact hashes and binary-only installation. Real partial native expectation history is retained, while incomplete reporting cannot establish release PASS. Hosted fixtures use long random canaries; arbitrary short fixtures can fail conservatively. Uncooperative third-party callbacks produce failed evidence and remain subject to the outer process watchdog. No claim of unchanged Pi production workloads, production capacity or vendor certification is made.
+
+## Validation state
+
+Core 147 and combined core/suite 278 unit tests, lint, types and signature/DCO checks passed. The updated hosted layer inherits those reviewed corrections. Native Linux RabbitMQ, network/DNS, monitor and volume lifecycle probes passed. Superseded trial 38446453943 was canceled after the reviewed corrections. Read-only hosted trials 38451111826 and 38452343300 target original nightly 75 and are still executing native assertions as of 2026-10-13 19:38 UTC. They precede the final pagination/hash/CLI corrections; a fresh trial of the updated harness is required. Full runtime proof remains pending. This document does not assert 313/313 runtime PASS, automatic trigger activation or a successful live publisher write. Those remain separate evidence states and will be updated when available.
+
+## Operator replay after merge
+
+From a trusted checkout with gh authentication and workflow access:
+
+```sh
+gh workflow run openaev-release.yml --repo Hikyo-Org/Hikyo --ref main -f tag=v0.0.1-nightly.20261012.75.g868703c7
+```
+
+Expected result: a fresh hosted validation run with no publisher mutation, regardless of outcome. Exact-tag replay bypasses the bounded nightly-history window. Automatic validation begins after merge and a subsequent published candidate.
+
+## Cutover
+
+The idle Mac LaunchAgent com.went.hikyo-openaev-nightly was unloaded and disabled on 2026-10-13 so it cannot append failure notes. Its evidence and the persistent Pi lab remain retained. No homelab deployment, release publication or destructive infrastructure cleanup was performed.
+
+## Remaining gates
+
+The core review threads are resolved with verified corrections or evidence-backed dispositions. Core required queue admission passed; each updated head still requires current-head CI and review. The middle and top PR queue checks reject their non-default stacked bases by design. After each parent merges, retarget the next layer to main and obtain fresh protected-branch validation; do not weaken or bypass those gates. Cross-provider subscription review is unavailable and is not labeled CLEAN. Human merge approval is still required. The temporary feature-branch rehearsal workflow will be removed before the final PR handoff.

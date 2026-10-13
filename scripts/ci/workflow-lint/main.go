@@ -1,5 +1,5 @@
-// workflow-lint validates GitHub's concurrency queue configuration before
-// passing the workflow to pinned actionlint, which predates this supported key.
+// workflow-lint validates GitHub concurrency queue and cache capability syntax
+// before passing the workflow to pinned actionlint, which predates these keys.
 package main
 
 import (
@@ -86,6 +86,61 @@ func validateQueues(raw []byte) ([]byte, error) {
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
+// validateCacheModes checks the documented literal enum at workflow/job scope.
+// The runtime enforces this capability with scoped cache tokens, independently
+// of whether an action opts into caching. Validate it before adapting the input
+// for the older actionlint parser; preserve every other field and line number.
+func validateCacheModes(raw []byte) ([]byte, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) != 1 {
+		return nil, fmt.Errorf("expected one workflow document")
+	}
+	root := doc.Content[0]
+	blocks := []*yaml.Node{root}
+	if jobs := field(root, "jobs"); jobs != nil && jobs.Kind == yaml.MappingNode {
+		for i := 1; i < len(jobs.Content); i += 2 {
+			blocks = append(blocks, jobs.Content[i])
+		}
+	}
+	lines := strings.Split(string(raw), "\n")
+	standalone := regexp.MustCompile(`^\s*cache-mode:\s+(read|write|write-only|none|'(read|write|write-only|none)'|"(read|write|write-only|none)")\s*(#.*)?$`)
+	for _, block := range blocks {
+		if block.Kind != yaml.MappingNode {
+			continue
+		}
+		count := 0
+		for i := 0; i < len(block.Content); i += 2 {
+			if block.Content[i].Value == "cache-mode" {
+				count++
+			}
+		}
+		if count > 1 {
+			return nil, fmt.Errorf("duplicate cache-mode")
+		}
+		mode := field(block, "cache-mode")
+		if mode == nil {
+			continue
+		}
+		if mode.Kind != yaml.ScalarNode || mode.Tag != "!!str" {
+			return nil, fmt.Errorf("line %d: cache-mode must be read, write, write-only or none", mode.Line)
+		}
+		switch mode.Value {
+		case "read", "write", "write-only", "none":
+		default:
+			return nil, fmt.Errorf("line %d: cache-mode must be read, write, write-only or none", mode.Line)
+		}
+		line := mode.Line - 1
+		if line < 0 || line >= len(lines) || !standalone.MatchString(lines[line]) {
+			return nil, fmt.Errorf("line %d: write cache-mode as a standalone unquoted key with a literal enum value", mode.Line)
+		}
+		lines[line] = ""
+	}
+	return []byte(strings.Join(lines, "\n")), nil
+}
+
 func execute(args []string) error {
 	if len(args) == 0 || !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(args[0]) {
 		return fmt.Errorf("usage: workflow-lint PINNED_VERSION [workflow paths]")
@@ -138,6 +193,9 @@ func execute(args []string) error {
 			return err
 		}
 		normalized, err := validateQueues(raw)
+		if err == nil {
+			normalized, err = validateCacheModes(normalized)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
 			failed = true

@@ -1,0 +1,814 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: openaev-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+        lab.went.io/name: openaev-hikyo
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: openaev-lab
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: rabbitmq
+        image: rabbitmq@sha256:b848a0a78f27ab2a4528921baeade53a30b82eac9b129e80249e50fb421d2cd5
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          value: openaev
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: RABBITMQ_DEFAULT_PASS
+        - name: RABBITMQ_ERLANG_COOKIE
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: RABBITMQ_ERLANG_COOKIE
+        - name: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
+          value: +S 2:2
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 384Mi
+          limits:
+            cpu: 400m
+            memory: 384Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: data
+          mountPath: /var/lib/rabbitmq
+        ports:
+        - containerPort: 5672
+          name: service
+        - name: management
+          containerPort: 15672
+        startupProbe:
+          exec:
+            command:
+            - sh
+            - -ec
+            - rabbitmq-diagnostics -q check_running; rabbitmq-diagnostics -q check_port_connectivity
+          timeoutSeconds: 10
+          periodSeconds: 10
+          failureThreshold: 90
+        readinessProbe:
+          tcpSocket:
+            port: 5672
+          timeoutSeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        command:
+        - sh
+        - -ec
+        args:
+        - umask 077; printf "%s" "$RABBITMQ_ERLANG_COOKIE" > /var/lib/rabbitmq/.erlang.cookie;
+          chmod 0600 /var/lib/rabbitmq/.erlang.cookie; test "$(stat -c %a /var/lib/rabbitmq/.erlang.cookie)"
+          = 600; exec docker-entrypoint.sh rabbitmq-server
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+  serviceName: rabbitmq
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: openaev-lab
+spec:
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+  - name: service
+    port: 5672
+    targetPort: 5672
+  - name: management
+    port: 15672
+    targetPort: 15672
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pgsql
+  namespace: openaev-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgsql
+  template:
+    metadata:
+      labels:
+        app: pgsql
+        lab.went.io/name: openaev-hikyo
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: openaev-lab
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: pgsql
+        image: postgres@sha256:0b2882c46a2b8d8e148431b333394348cf4d7f15aec6df7f17d51dc641e56cfa
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_USER
+          value: openaev
+        - name: POSTGRES_DB
+          value: openaev
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 384Mi
+          limits:
+            cpu: 400m
+            memory: 384Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: socket
+          mountPath: /var/run/postgresql
+        ports:
+        - containerPort: 5432
+          name: service
+        args:
+        - postgres
+        - -c
+        - max_connections=50
+        - -c
+        - shared_buffers=32MB
+        - -c
+        - work_mem=1MB
+        - -c
+        - maintenance_work_mem=16MB
+        - -c
+        - autovacuum_work_mem=16MB
+        startupProbe:
+          exec: &id001
+            command:
+            - pg_isready
+            - -U
+            - openaev
+            - -d
+            - openaev
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 90
+        readinessProbe:
+          exec: *id001
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+      - name: socket
+        emptyDir:
+          sizeLimit: 8Mi
+  serviceName: pgsql
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgsql
+  namespace: openaev-lab
+spec:
+  type: ClusterIP
+  selector:
+    app: pgsql
+  ports:
+  - name: service
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: openaev-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+        lab.went.io/name: openaev-hikyo
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: openaev-lab
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch@sha256:c2a3ed5f968be6d59c960aa0c60cfdaee667b6bc8211142021a41d0e85b43237
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: xpack.security.enabled
+          value: 'false'
+        - name: xpack.ml.enabled
+          value: 'false'
+        - name: ES_JAVA_OPTS
+          value: -Xms256m -Xmx256m -XX:ActiveProcessorCount=2 -XX:ErrorFile=/tmp/hs_err_pid%p.log
+        - name: node.store.allow_mmap
+          value: 'false'
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: &id002
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 1024Mi
+          limits:
+            cpu: 750m
+            memory: 1024Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        - name: config
+          mountPath: /usr/share/elasticsearch/config
+        - name: logs
+          mountPath: /usr/share/elasticsearch/logs
+        ports:
+        - containerPort: 9200
+          name: service
+        startupProbe:
+          httpGet: &id001
+            path: /
+            port: 9200
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 90
+        readinessProbe:
+          httpGet: *id001
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+      - name: config
+        emptyDir:
+          sizeLimit: 32Mi
+      - name: logs
+        emptyDir:
+          sizeLimit: 32Mi
+      initContainers:
+      - name: prepare-config
+        image: docker.elastic.co/elasticsearch/elasticsearch@sha256:c2a3ed5f968be6d59c960aa0c60cfdaee667b6bc8211142021a41d0e85b43237
+        command:
+        - sh
+        - -ec
+        - cp -R /usr/share/elasticsearch/config/. /run/es-config/; sed -i 's#^-Xlog:.*#-Xlog:gc=info:stderr:utctime,level,tags#'
+          /run/es-config/jvm.options
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: *id002
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+        volumeMounts:
+        - name: config
+          mountPath: /run/es-config
+  serviceName: elasticsearch
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 2Gi
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: openaev-lab
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch
+  ports:
+  - name: service
+    port: 9200
+    targetPort: 9200
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: silo
+  namespace: openaev-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: silo
+  template:
+    metadata:
+      labels:
+        app: silo
+        lab.went.io/name: openaev-hikyo
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: openaev-lab
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: silo
+        image: pgsty/silo@sha256:1ff329e4507f742a8437f1773d43cf6adb0131477074dd45c770d1a1db19e99c
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: MINIO_ROOT_USER
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: MINIO_ROOT_PASSWORD
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: data
+          mountPath: /data
+        ports:
+        - containerPort: 9000
+          name: service
+        args:
+        - server
+        - /data
+        startupProbe:
+          httpGet: &id001
+            path: /minio/health/live
+            port: 9000
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 90
+        readinessProbe:
+          httpGet: *id001
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+  serviceName: silo
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: silo
+  namespace: openaev-lab
+spec:
+  type: ClusterIP
+  selector:
+    app: silo
+  ports:
+  - name: service
+    port: 9000
+    targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: http-injector
+  namespace: openaev-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: http-injector
+  template:
+    metadata:
+      labels:
+        app: http-injector
+        lab.went.io/name: openaev-hikyo
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: openaev-lab
+      dnsConfig:
+        options:
+        - name: ndots
+          value: '4'
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: http-injector
+        image: INJECTOR_IMAGE
+        imagePullPolicy: IfNotPresent
+        env:
+        - &id001
+          name: OPENAEV_URL
+          value: https://openaev.openaev-lab.svc:8080
+        - &id002
+          name: OPENAEV_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_ADMIN_TOKEN
+        - name: INJECTOR_ID
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: INJECTOR_ID
+        - name: INJECTOR_NAME
+          value: Hikyo isolated HTTP lab
+        - name: INJECTOR_LOG_LEVEL
+          value: error
+        - &id003
+          name: REQUESTS_CA_BUNDLE
+          value: /run/lab-ca/ca.crt
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: &id004
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 128Mi
+        volumeMounts: &id005
+        - name: tmp
+          mountPath: /tmp
+        - name: ca
+          mountPath: /run/lab-ca
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+      - name: ca
+        configMap:
+          name: lab-ca
+      initContainers:
+      - name: wait-for-platform
+        image: INJECTOR_IMAGE
+        command:
+        - python
+        - -c
+        - "import os,time,requests\nsession=requests.Session()\nsession.trust_env=False\n\
+          while True:\n    try:\n        response=session.get(os.environ[\"OPENAEV_URL\"\
+          ]+\"/api/injectors\",headers={\"Authorization\":\"Bearer \"+os.environ[\"\
+          OPENAEV_TOKEN\"]},verify=os.environ[\"REQUESTS_CA_BUNDLE\"],timeout=5,allow_redirects=False)\n\
+          \        if response.status_code==200:\n            print(\"Lab platform\
+          \ API ready\",flush=True)\n            break\n        if response.status_code\
+          \ in (401,403):\n            raise SystemExit(\"Lab platform credential\
+          \ refused\")\n    except requests.RequestException:\n        pass\n    time.sleep(5)\n"
+        env:
+        - *id001
+        - *id002
+        - *id003
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: *id004
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+        volumeMounts: *id005
+  strategy:
+    type: Recreate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openaev
+  namespace: openaev-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openaev
+  template:
+    metadata:
+      labels:
+        app: openaev
+        lab.went.io/name: openaev-hikyo
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: openaev-lab
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: openaev
+        image: openaev/platform@sha256:e8e4b07f27ee47a9b92aaa62643f0640ebc81168787a0344eb3ee3b8e38d122f
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: OPENAEV_BASE_URL
+          value: https://127.0.0.1:18080
+        - name: OPENAEV_AGENT_URL
+          value: https://openaev.openaev-lab.svc:8080
+        - name: OPENAEV_AUTH_LOCAL_ENABLE
+          value: 'true'
+        - name: OPENAEV_COOKIE_SECURE
+          value: 'true'
+        - name: OPENAEV_SESSION_COOKIE_SAME_SITE
+          value: Strict
+        - name: OPENAEV_STARTERPACK_ENABLED
+          value: 'false'
+        - name: OPENAEV_MAIL_IMAP_ENABLED
+          value: 'false'
+        - name: OPENAEV_WITH_PROXY
+          value: 'false'
+        - name: SPRING_DATASOURCE_URL
+          value: jdbc:postgresql://pgsql:5432/openaev
+        - name: SPRING_DATASOURCE_USERNAME
+          value: openaev
+        - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+          value: '10'
+        - name: MINIO_ENDPOINT
+          value: silo
+        - name: MINIO_PORT
+          value: '9000'
+        - name: OPENAEV_RABBITMQ_HOSTNAME
+          value: rabbitmq
+        - name: OPENAEV_RABBITMQ_USER
+          value: openaev
+        - name: ENGINE_URL
+          value: http://elasticsearch:9200
+        - name: SERVER_SSL_ENABLED
+          value: 'true'
+        - name: SERVER_SSL_KEY_STORE_TYPE
+          value: PKCS12
+        - name: SERVER_SSL_KEY_STORE
+          value: file:/run/openaev-tls/openaev.p12
+        - name: SERVER_SSL_KEY_ALIAS
+          value: openaev
+        - name: JAVA_TOOL_OPTIONS
+          value: -Xms128m -Xmx320m -XX:MaxMetaspaceSize=256m -XX:ActiveProcessorCount=2
+            -Dopenaev.audit-logs.file.rollover-max-size=4MB -Dopenaev.audit-logs.file.retention-days=1
+            -Dopenaev.audit-logs.file.rollover-total-size-cap=16MB
+        - name: OPENAEV_REPORTING_MAX_CONCURRENT_RENDERS
+          value: '1'
+        - name: COLLECTOR_EXPECTATIONS_EXPIRATION_MANAGER_ENABLE
+          value: 'false'
+        - name: SPRING_MAIL_HOST
+          value: 127.0.0.1
+        - name: SPRING_MAIL_PORT
+          value: '1'
+        - name: OPENAEV_ADMIN_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_ADMIN_EMAIL
+        - name: OPENAEV_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_ADMIN_PASSWORD
+        - name: OPENAEV_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_ADMIN_TOKEN
+        - name: OPENAEV_HEALTHCHECK_KEY
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_HEALTHCHECK_KEY
+        - name: OPENAEV_ADMIN_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_ADMIN_ENCRYPTION_KEY
+        - name: OPENAEV_ADMIN_ENCRYPTION_SALT
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_ADMIN_ENCRYPTION_SALT
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: SPRING_DATASOURCE_PASSWORD
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_ACCESS_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: MINIO_ACCESS_SECRET
+        - name: OPENAEV_RABBITMQ_PASS
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: OPENAEV_RABBITMQ_PASS
+        - name: SERVER_SSL_KEY_STORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: credentials
+              key: SERVER_SSL_KEY_STORE_PASSWORD
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 1280Mi
+          limits:
+            cpu: 1000m
+            memory: 1280Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: tls
+          mountPath: /run/openaev-tls
+          readOnly: true
+        - name: audit
+          mountPath: /logs
+        ports:
+        - containerPort: 8080
+          name: service
+        startupProbe:
+          exec: &id001
+            command:
+            - sh
+            - -c
+            - wget --no-check-certificate -qO- "https://127.0.0.1:8080/api/health?health_access_key=$OPENAEV_HEALTHCHECK_KEY"
+              >/dev/null
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 90
+        readinessProbe:
+          exec: *id001
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+      - name: tls
+        secret:
+          secretName: openaev-tls
+          defaultMode: 288
+      - name: audit
+        emptyDir:
+          sizeLimit: 64Mi
+  strategy:
+    type: Recreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openaev
+  namespace: openaev-lab
+spec:
+  type: ClusterIP
+  selector:
+    app: openaev
+  ports:
+  - name: service
+    port: 8080
+    targetPort: 8080

@@ -1,0 +1,77 @@
+name: OpenAEV hosted rehearsal
+on:
+  push:
+    branches: [dunky13/investigate-openaev-runner-job]
+    paths: ['scripts/openaev/**', '.github/workflows/openaev-rehearsal.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+
+# The hosted lab never consumes or publishes GitHub Actions caches.
+# Deny cache capabilities in the scoped runtime token for every trigger.
+cache-mode: none
+concurrency:
+  group: openaev-hosted-rehearsal-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  rehearse:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+        with:
+          cosign-release: v3.1.3
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+        with:
+          version: v0.36.1
+          driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+      - name: Validate trusted harness
+        run: |
+          python3 -m venv "$RUNNER_TEMP/checks"
+          "$RUNNER_TEMP/checks/bin/pip" install --disable-pip-version-check --require-hashes --only-binary=:all: -r scripts/openaev/requirements-check.lock
+          PATH="$RUNNER_TEMP/checks/bin:$PATH" scripts/openaev/check.sh
+          echo "$RUNNER_TEMP/checks/bin" >>"$GITHUB_PATH"
+          go test ./scripts/openaev/native-prepare
+          go test ./scripts/ci -run '^TestOpenAEV' -count=1
+      - name: Bind exact published nightly 75
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/openaev"
+          gh api repos/Hikyo-Org/Hikyo/releases/410420933 >"$RUNNER_TEMP/openaev/release.json"
+          jq -n '{repository:"Hikyo-Org/Hikyo",tag:"v0.0.1-nightly.20261012.75.g868703c7",source_sha:"868703c75cb5ee65b073f09b1790d874378dc0f0",published_at:"2026-10-12T09:18:40Z",release_id:410420933}' >"$RUNNER_TEMP/openaev/release-identity.json"
+          cosign verify --certificate-identity 'https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main' --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha 868703c75cb5ee65b073f09b1790d874378dc0f0 ghcr.io/hikyo-org/hikyo@sha256:ba251b1b611aff1b4ca1040edc5e31a00f20412d503d28a9faf796016366b8de >/dev/null
+      - name: Start fresh hosted lab
+        run: scripts/openaev/stack/start.sh "$RUNNER_TEMP/openaev-stack" ghcr.io/hikyo-org/hikyo@sha256:ba251b1b611aff1b4ca1040edc5e31a00f20412d503d28a9faf796016366b8de
+      - name: Execute all native assertions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source "$RUNNER_TEMP/openaev-stack/environment.sh"
+          scripts/openaev/run-hosted.sh v0.0.1-nightly.20261012.75.g868703c7 868703c75cb5ee65b073f09b1790d874378dc0f0 ghcr.io/hikyo-org/hikyo@sha256:ba251b1b611aff1b4ca1040edc5e31a00f20412d503d28a9faf796016366b8de "$RUNNER_TEMP/openaev"
+      - name: Print safe readiness diagnostics
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/openaev-stack/kubeconfig" ]; then
+            for namespace in openaev-lab hikyo-lab kube-system; do
+              kubectl --kubeconfig "$RUNNER_TEMP/openaev-stack/kubeconfig" get pods -n "$namespace" || true
+            done
+          fi
+          if [ -f "$RUNNER_TEMP/openaev/exercise/guard-failure.json" ]; then
+            jq '{code}' "$RUNNER_TEMP/openaev/exercise/guard-failure.json"
+          fi
+          if [ -f "$RUNNER_TEMP/openaev/exercise/summary.json" ]; then
+            jq '{status,cleanup_verified,counts,error_codes}' "$RUNNER_TEMP/openaev/exercise/summary.json"
+          fi
+      - name: Destroy and verify hosted lab
+        if: always()
+        run: scripts/openaev/stack/stop.sh "$RUNNER_TEMP/openaev-stack"
+      - name: Validate complete PASS without publishing
+        run: python3 scripts/openaev/publish/publish_pass.py "$RUNNER_TEMP/openaev/validated-pass.json" "$RUNNER_TEMP/openaev/release-identity.json"

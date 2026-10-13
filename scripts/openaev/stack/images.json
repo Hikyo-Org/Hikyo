@@ -1,0 +1,14 @@
+{
+  "rabbitmq": "rabbitmq@sha256:b848a0a78f27ab2a4528921baeade53a30b82eac9b129e80249e50fb421d2cd5",
+  "pgsql": "postgres@sha256:0b2882c46a2b8d8e148431b333394348cf4d7f15aec6df7f17d51dc641e56cfa",
+  "elasticsearch": "docker.elastic.co/elasticsearch/elasticsearch@sha256:c2a3ed5f968be6d59c960aa0c60cfdaee667b6bc8211142021a41d0e85b43237",
+  "silo": "pgsty/silo@sha256:1ff329e4507f742a8437f1773d43cf6adb0131477074dd45c770d1a1db19e99c",
+  "openaev": "openaev/platform@sha256:e8e4b07f27ee47a9b92aaa62643f0640ebc81168787a0344eb3ee3b8e38d122f",
+  "k3s": "docker.io/rancher/k3s@sha256:08fdebd14db9ab7d5ea821d5bfa95d02341a6ef886842fcc8d9dfd0e9fa9e0cd",
+  "k3d_tools": "ghcr.io/k3d-io/k3d-tools@sha256:c5ceb2b9e8ff2cf55917b0bee8bc9c54fe1483a16366b734117e2cfac1417bed",
+  "preparer": "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e",
+  "coredns": "rancher/mirrored-coredns-coredns@sha256:b21d26b915e10acb5bc78715c1e8b6047ab2675389b2bcc18b3a6499d90e74c0",
+  "local_path": "rancher/local-path-provisioner@sha256:1eba82e9c386038b4af6d69cca7519fac738c28c42735ed48ce70c882ad0d80f",
+  "storage_helper": "rancher/mirrored-library-busybox@sha256:101b4afd76732482eff9b95cae5f94bcf295e521fbec4e01b69c5421f3f3f3e5",
+  "pause": "rancher/mirrored-pause@sha256:74c4244427b7312c5b901fe0f67cbc53683d06f4f24c6faee65d4182bf0fa893"
+}
