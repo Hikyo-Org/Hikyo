@@ -198,11 +198,14 @@ def collect(
     identities = []
     for row in _items(documents[1]):
         native = _object(row.get("metadata"))
+        uid = native.get("uid")
+        if not isinstance(uid, str) or not uid:
+            raise GuardError("runner_node_identity_missing")
         info = _object(_object(row.get("status")).get("nodeInfo"))
         labels = _object(native.get("labels"))
         if labels.get("kubernetes.io/arch") != "arm64" or info.get("architecture") != "arm64":
             raise GuardError("native_arm64_runner_required")
-        identities.append({"name": _node(native.get("name")), "uid": native.get("uid"),
+        identities.append({"name": _node(native.get("name")), "uid": uid,
                            "architecture": info.get("architecture")})
     if len(identities) != 1:
         raise GuardError("isolated_single_node_runner_required")
@@ -300,6 +303,9 @@ def collect(
 
 class LabGuard:
     def __init__(self, baseline: dict[str, object]):
+        self.expected_lab_pods = len(_object(baseline.get("lab_pods")))
+        if self.expected_lab_pods not in (6, 7):
+            raise GuardError("invalid_expected_lab_pod_count")
         self.baseline = baseline
         self.checks = 0
         self.peak_memory: dict[str, int] = {}
@@ -318,8 +324,11 @@ class LabGuard:
         self.last = sample
         self.checks += 1
 
+    def collect_sample(self) -> dict[str, object]:
+        return collect(expected_lab_pods=self.expected_lab_pods)
+
     def __call__(self) -> None:
-        self.verify(collect())
+        self.verify(self.collect_sample())
 
 
 class BackgroundGuard:
@@ -335,14 +344,14 @@ class BackgroundGuard:
         self,
         guard: LabGuard,
         *,
-        collect_sample: Callable[[], dict[str, object]] = collect,
+        collect_sample: Callable[[], dict[str, object]] | None = None,
         cadence_s: float = 5.0,
     ) -> None:
         if not 0 < cadence_s <= 5.0:
             raise GuardError("invalid_background_guard_cadence")
         self.guard, self.collect_sample, self.cadence_s = (
             guard,
-            collect_sample,
+            guard.collect_sample if collect_sample is None else collect_sample,
             cadence_s,
         )
         self._lock = threading.Lock()

@@ -420,7 +420,9 @@ class OpenAEVReporter:
             return _object(
                 self._api.request(method, path, payload), "invalid_reporting_object"
             )
-        except (OSError, ValueError, TypeError, ReportingError):
+        except ReportingError:
+            raise
+        except (OSError, ValueError, TypeError):
             # Never surface raw HTTP errors whose details may contain secret bodies.
             raise ReportingError("reporting_platform_request_failed") from None
 
@@ -431,7 +433,9 @@ class OpenAEVReporter:
             return _objects(
                 self._api.request(method, path, payload), "invalid_reporting_array"
             )
-        except (OSError, ValueError, TypeError, ReportingError):
+        except ReportingError:
+            raise
+        except (OSError, ValueError, TypeError):
             raise ReportingError("reporting_platform_array_request_failed") from None
 
     def _expectations(self, inject_id: str) -> list[dict[str, object]]:

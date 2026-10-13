@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 import openaev_reporting as reporting
 import openaev_security
@@ -201,6 +202,45 @@ def monitoring() -> reporting.MonitoringEvidence:
 
 
 class ReportingTests(unittest.TestCase):
+    def test_reporting_schema_errors_retain_safe_diagnostic_codes(self):
+        for method_name, response, code in (
+            ("_request", [], "invalid_reporting_object"),
+            ("_array_request", {}, "invalid_reporting_array"),
+            ("_array_request", [42], "invalid_reporting_array"),
+        ):
+            api = FakeAPI()
+            with self.subTest(method=method_name, response=response), patch.object(
+                api, "request", return_value=response
+            ):
+                with self.assertRaisesRegex(reporting.ReportingError, "^" + code + "$"):
+                    getattr(reporter(api), method_name)("GET", "me")
+
+    def test_reporting_transport_preserves_already_sanitized_error(self):
+        for method_name in ("_request", "_array_request"):
+            api = FakeAPI()
+            safe = reporting.ReportingError("reporting_response_too_large")
+            with self.subTest(method=method_name), patch.object(api, "request", side_effect=safe):
+                with self.assertRaises(reporting.ReportingError) as caught:
+                    getattr(reporter(api), method_name)("GET", "me")
+                self.assertIs(caught.exception, safe)
+
+    def test_reporting_raw_transport_errors_never_disclose_details(self):
+        secret = "raw-network-body-secret"
+        for method_name, code in (
+            ("_request", "reporting_platform_request_failed"),
+            ("_array_request", "reporting_platform_array_request_failed"),
+        ):
+            for exception_type in (OSError, ValueError, TypeError):
+                api = FakeAPI()
+                with self.subTest(method=method_name, exception=exception_type), patch.object(
+                    api, "request", side_effect=exception_type(secret)
+                ):
+                    with self.assertRaises(reporting.ReportingError) as caught:
+                        getattr(reporter(api), method_name)("GET", "me")
+                    self.assertEqual(str(caught.exception), code)
+                    self.assertNotIn(secret, str(caught.exception))
+                    self.assertTrue(caught.exception.__suppress_context__)
+
     def test_new_monitoring_score_has_full_chain_source_and_receipt(self):
         api = FakeAPI(detection=True)
         native_result = reporter(api).publish_verdict(

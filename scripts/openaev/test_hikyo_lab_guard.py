@@ -128,6 +128,31 @@ class GuardTests(unittest.TestCase):
             with self.assertRaisesRegex(guard.GuardError, "native_arm64_runner_required"):
                 self.collect()
 
+    def test_missing_or_invalid_native_node_uid_is_rejected(self) -> None:
+        query = ("get", "nodes", "-o", "json")
+        original = copy.deepcopy(self.documents[query])
+        for uid in (None, "", 42):
+            changed = copy.deepcopy(original)
+            changed["items"][0]["metadata"]["uid"] = uid
+            self.documents[query] = changed
+            with self.subTest(uid=uid), self.assertRaisesRegex(
+                guard.GuardError, "runner_node_identity_missing"
+            ):
+                self.collect()
+
+    def test_idle_guard_collects_the_six_pod_boundary(self) -> None:
+        self.documents[("get", "pods", "-n", "hikyo-lab", "-o", "json")] = {"items": []}
+        self.change_metrics(self.metrics()[:-1])
+        baseline = guard.collect(self.read, expected_lab_pods=6)
+        verifier = guard.LabGuard(baseline)
+        with patch.object(guard, "collect", return_value=baseline) as collect:
+            verifier()
+            collect.assert_called_once_with(expected_lab_pods=6)
+        background = guard.BackgroundGuard(verifier)
+        with patch.object(guard, "collect", return_value=baseline) as collect:
+            background.collect_sample()
+            collect.assert_called_once_with(expected_lab_pods=6)
+
     def test_85_percent_pressure_is_rejected(self) -> None:
         threshold = (384 * 1024**2 * 85 + 99) // 100
         self.change_memory(workingSetBytes=threshold - 1)
