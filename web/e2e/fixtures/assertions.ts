@@ -529,7 +529,8 @@ async function expectFontRole(page: Page, target: Locator, role: FontRole): Prom
  */
 async function expectNoStrayPills(page: Page): Promise<void> {
   const stray = await page.evaluate(() => {
-    const allowed = ['avatar', 'count'];
+    // A tab's count (`.tab__count`, DESIGN.md Tabs) is a count badge too.
+    const allowed = ['avatar', 'count', 'tab__count'];
     const dotMax = 12;
     const offenders: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>('body *')) {

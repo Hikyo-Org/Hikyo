@@ -5,6 +5,7 @@ import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { Button } from './Button.tsx';
 import { Glyph } from './Glyph.tsx';
+import { Input } from './Input.tsx';
 import { SidePanel } from './SidePanel.tsx';
 
 // The panel is routed in the app (closing navigates back); here a state flag
@@ -56,7 +57,7 @@ const meta = {
       ...topLayerDocs.docs,
       description: {
         component:
-          'A routed detail surface that slides in from the right over the content area. The scrim stops at the app\'s side menu; the panel starts one sidebar width further right, or at the menu when that would leave it narrower than `--width-side-panel-min`, and spans the full width on a phone (and here, outside the app chrome). The header stays pinned while the body scrolls; Escape, an outside press (not on a toast) and the header Close all close it, and focus returns to the opener. Modal over the content area: the rest of the page\'s `<main>` is inert and Tab wraps inside the panel, while the side menu outside `<main>` stays live for the pointer.',
+          'A routed detail surface that slides in from the right over the content area. The scrim stops at the app\'s side menu; the panel starts one sidebar width further right, or at the menu when that would leave it narrower than `--width-side-panel-min`, and spans the full width on a phone (and here, outside the app chrome). The header stays pinned while the body scrolls; Escape, an outside press (not on a toast) and the header Close all close it, and focus returns to the opener. Once something in the body has been edited, an outside press does nothing and Escape or Close asks "Discard unsaved changes?" first; the caller closing it after a save never asks. Modal over the content area: the rest of the page\'s `<main>` is inert and Tab wraps inside the panel, while the side menu outside `<main>` stays live for the pointer.',
       },
     },
   },
@@ -269,5 +270,79 @@ export const ClosePhone: Story = {
     await expect(label.getBoundingClientRect().width).toBeLessThanOrEqual(1);
     const box = close.getBoundingClientRect();
     await expect(Math.round(box.width)).toBe(Math.round(box.height));
+  },
+};
+
+// A form in the panel. Typing marks it edited: an outside press then leaves
+// it open, and Escape or Close asks before discarding. Saving closes it from
+// the caller, which never asks.
+function FormDemo() {
+  const [open, setOpen] = useState(true);
+  return (
+    <div>
+      <Button type="button" onClick={() => setOpen(true)}>New issuer</Button>
+      {open ? (
+        <SidePanel title="New issuer" onClose={() => setOpen(false)}>
+          <Input label="Issuer URL" name="issuer" />
+          <div className="actions">
+            <Button type="button" variant="primary" onClick={() => setOpen(false)}>Save issuer</Button>
+          </div>
+        </SidePanel>
+      ) : null}
+    </div>
+  );
+}
+
+const scrimPress = async () => {
+  const scrim = document.querySelector('.side-panel__scrim');
+  if (!(scrim instanceof HTMLElement)) throw new Error('scrim missing');
+  await userEvent.click(scrim);
+};
+
+export const UnsavedChanges: Story = {
+  render: () => <FormDemo />,
+  play: async ({ canvas }) => {
+    const panel = () => canvas.queryByRole('complementary', { name: 'New issuer' });
+
+    // Untouched: an outside press closes as before.
+    await scrimPress();
+    await expect(panel()).toBeNull();
+
+    // Edited: an outside press leaves it open with the text.
+    await userEvent.click(canvas.getByRole('button', { name: 'New issuer' }));
+    const field = canvas.getByRole('textbox', { name: 'Issuer URL' });
+    await userEvent.type(field, 'https://id.example');
+    await scrimPress();
+    await expect(panel()).toBeVisible();
+    await expect(canvas.queryByRole('alertdialog')).toBeNull();
+
+    // Escape asks; Keep editing (focused first) returns to the field with the text.
+    await userEvent.click(field);
+    await userEvent.keyboard('{Escape}');
+    const ask = await canvas.findByRole('alertdialog', { name: 'Discard unsaved changes?' });
+    const keep = within(ask).getByRole('button', { name: 'Keep editing' });
+    await waitFor(() => expect(keep).toHaveFocus());
+    await userEvent.click(keep);
+    await expect(canvas.queryByRole('alertdialog')).toBeNull();
+    await expect(field).toHaveFocus();
+    await expect(field).toHaveValue('https://id.example');
+
+    // Escape while asking is Keep editing too.
+    await userEvent.keyboard('{Escape}');
+    await canvas.findByRole('alertdialog');
+    await userEvent.keyboard('{Escape}');
+    await expect(canvas.queryByRole('alertdialog')).toBeNull();
+    await expect(panel()).toBeVisible();
+
+    // Close asks as well; Discard closes.
+    await userEvent.click(canvas.getByRole('button', { name: 'Close' }));
+    await userEvent.click(within(await canvas.findByRole('alertdialog')).getByRole('button', { name: 'Discard' }));
+    await expect(panel()).toBeNull();
+
+    // The caller closing after a save never asks.
+    await userEvent.click(canvas.getByRole('button', { name: 'New issuer' }));
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Issuer URL' }), 'https://id.example');
+    await userEvent.click(canvas.getByRole('button', { name: 'Save issuer' }));
+    await expect(panel()).toBeNull();
   },
 };

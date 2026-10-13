@@ -237,7 +237,7 @@ test.describe('revision history', () => {
   // the seeded state rather than whatever the last restore left behind.
   for (const surface of surfacesForFlow('history')) {
     for (const scheme of SCHEMES) {
-      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(DEV_HISTORY);
 
@@ -271,7 +271,9 @@ test.describe('revision history', () => {
           text: [heading, row, retention],
           radii: [
             [retention, 'container'],
-            [tab, 'control'],
+            // At the phone breakpoint tabs wrap into pills with the badge
+            // radius (DESIGN.md, Tabs).
+            [tab, testInfo.project.name === 'mobile' ? 'badge' : 'control'],
           ],
           fonts: [
             [heading, 'ui'],
@@ -777,7 +779,7 @@ test.describe('revision history', () => {
       `${seed.history.pinnedWorkload} still runs on r${String(pinnedRevision)}'s values, ${String(behind)} publishes behind latest (r${String(latest)}). New publishes don't reach it.`,
     );
     await expect(pinRow.locator('.history__expiry--month')).toHaveText(
-      `! expires in ${String(expiryDays)} d`,
+      `! expires in ${String(expiryDays)} days`,
     );
   });
 

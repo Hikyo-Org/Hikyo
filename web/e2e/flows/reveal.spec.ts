@@ -201,9 +201,11 @@ test.describe('reveal ceremonies', () => {
     await dialog.getByRole('button', { name: 'Use a passkey' }).click();
     await expect(dialog).toBeHidden();
 
-    // The value is on screen, and the remask countdown is visible.
+    // The value is on screen, and the remask countdown is visible (the
+    // visually hidden reveal announcement carries the same words).
     await expect(page.getByText('hunter2-development')).toBeVisible();
-    await expect(page.getByText(/re-masks in \d+ seconds?/)).toBeVisible();
+    await expect(page.locator('.values__countdown')).toHaveText(/^re-masks in \d+ seconds?$/);
+    await expect(page.locator('.values__countdown')).toBeVisible();
 
     // One audit line, for one key. Never "revealed N secrets".
     await expect(auditLines(page)).toHaveCount(1);
@@ -263,7 +265,7 @@ test.describe('reveal ceremonies', () => {
 
     const notice = page.getByRole('status').filter({ hasText: 'recorded as a disclosure' });
     await expect(notice).toBeVisible();
-    await expect(notice).toContainText('Attempts to clear after 45s');
+    await expect(notice).toContainText('Attempts to clear after 45 seconds');
     await expect(notice).toContainText('retries once on return within 2 minutes');
     await expect(notice).toContainText('Clipboard managers may keep this browser copy');
     await expect(notice).toContainText('hikyo values get KEY --reveal --clipboard');

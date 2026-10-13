@@ -242,21 +242,22 @@ test.describe('account and security', () => {
         const visible = page.locator('.tabpanel__section:not([hidden])');
         const well = visible.locator('.panel').first();
         const add = page.getByRole('button', { name: 'Add a passkey' });
-        const badge = visible.locator('.badge').first();
+        // Each factor is a settings row whose detail line is the mono
+        // metadata; the tab renders no badge, so there is no badge radius here.
+        const meta = visible.locator('.settings-row__detail').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'account',
           surface: 'settings',
           theme: scheme,
-          text: [heading, visible.locator('.factor__meta').first(), page.locator('.page__lede')],
+          text: [heading, meta, page.locator('.page__lede')],
           radii: [
             [well, 'container'],
             [add, 'control'],
-            [badge, 'badge'],
           ],
           fonts: [
             [heading, 'ui'],
-            [page.locator('.factor__meta').first(), 'mono'],
+            [meta, 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],

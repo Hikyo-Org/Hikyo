@@ -71,7 +71,7 @@ export function WhoCan({
 
   return (
     <>
-      <div className="access-ask">
+      <div className="access-ask" role="search" aria-label="The question">
         <Select
           label="Permission"
           hint={perm(permId).desc}

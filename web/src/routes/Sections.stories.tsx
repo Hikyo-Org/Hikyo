@@ -92,6 +92,19 @@ export const TabbedFromAnchor: Story = {
   },
 };
 
+/** A malformed `#fragment` (`#%`) cannot be decoded: the first tab opens instead of the page throwing. */
+export const TabbedFromMalformedAnchor: Story = {
+  render: () => (
+    <MemoryRouter initialEntries={['/#%E0%A4%A']}>
+      <SectionTabs label="Demo sections" idPrefix="demo" sections={tabSections} />
+    </MemoryRouter>
+  ),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('heading', { name: 'Profile' })).toBeVisible();
+  },
+};
+
 /** One section has nothing to switch to: no tab bar, the section bare. */
 export const TabbedSingleSection: Story = {
   render: () => (

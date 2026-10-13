@@ -27,6 +27,16 @@ type TabSection = {
   readonly content: ReactNode;
 };
 
+/** A URL fragment decoded, or undefined when it is empty or malformed (`#%`): a bad link opens the first tab rather than throwing. */
+function safeDecode(fragment: string): string | undefined {
+  if (fragment === '') return undefined;
+  try {
+    return decodeURIComponent(fragment);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * useTabParam keeps the selected tab in `?tab=` so a reload or a shared link
  * keeps it. The first tab is the default and leaves no param; an unknown value
@@ -40,9 +50,10 @@ export function useTabParam<Id extends string>(
   const { hash } = useLocation();
   const first = ids[0] as Id;
   const requested = search.get('tab');
+  const fragment = safeDecode(hash.slice(1));
   const tab =
     ids.find((id) => id === requested) ??
-    (hash.length > 1 ? fromHash?.(decodeURIComponent(hash.slice(1))) : undefined) ??
+    (fragment === undefined ? undefined : fromHash?.(fragment)) ??
     first;
   const setTab = (next: Id) =>
     setSearch(
@@ -85,7 +96,8 @@ export function SectionTabs({
   const { hash } = useLocation();
   // The browser's own fragment scroll ran before the tab was shown; redo it.
   useEffect(() => {
-    if (hash.length > 1) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView({ block: 'start' });
+    const fragment = safeDecode(hash.slice(1));
+    if (fragment !== undefined) document.getElementById(fragment)?.scrollIntoView({ block: 'start' });
   }, [hash]);
 
   if (shown.length < 2) return <>{shown[0]?.content}</>;

@@ -124,7 +124,7 @@ test.describe('secret scanning warn dialog', () => {
 
   for (const surface of surfacesForFlow('scanning')) {
     for (const scheme of SCHEMES) {
-      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(MATRIX_PATH);
 
@@ -154,7 +154,10 @@ test.describe('secret scanning warn dialog', () => {
             [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
-          density: [[chooser, '--control']],
+          // The `envs N/N` picker is the compact button (DESIGN.md, Buttons):
+          // `--hit-min` tall on a fine pointer, the `--control` touch floor on
+          // a coarse one.
+          density: [[chooser, testInfo.project.name === 'mobile' ? '--control' : '--hit-min']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
         // where the rule has to be, a border on the list around them would

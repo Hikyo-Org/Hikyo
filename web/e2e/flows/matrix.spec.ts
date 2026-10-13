@@ -412,7 +412,7 @@ test.describe('environment matrix', () => {
 
   for (const surface of surfacesForFlow('matrix')) {
     for (const scheme of SCHEMES) {
-      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(MATRIX_PATH);
 
@@ -442,7 +442,10 @@ test.describe('environment matrix', () => {
             [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
-          density: [[chooser, '--control']],
+          // The `envs N/N` picker is the compact button (DESIGN.md, Buttons):
+          // `--hit-min` tall on a fine pointer, the `--control` touch floor on
+          // a coarse one.
+          density: [[chooser, testInfo.project.name === 'mobile' ? '--control' : '--hit-min']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
         // where the rule has to be, a border on the list around them would
@@ -958,7 +961,11 @@ test.describe('catalogue declaration detail', () => {
       const linkedKey = await fixtureApiCall(token, 'GET', keyPath, zKeyRead);
       expect(linkedKey.group_id).toBe(group.id);
       await page.goto(MATRIX_PATH);
-      await expect(page.locator('.matrix__linked-keys').filter({ hasText: `catgrp-${testInfo.project.name}` })).toBeVisible();
+      const linkedMark = page.locator('.matrix__linked-keys').filter({ hasText: `catgrp-${testInfo.project.name}` });
+      // A phone's key column is one glyph per key (DESIGN.md, Key column): the
+      // link mark is in the row but not drawn there.
+      if (testInfo.project.name === 'mobile') await expect(linkedMark).toBeAttached();
+      else await expect(linkedMark).toBeVisible();
       await expect(page.locator('.matrix__group-toggle').filter({ hasText: `catgrp-${testInfo.project.name}` })).toHaveCount(0);
       await expect(page.locator('.matrix__group-toggle').filter({ hasText: linkedKey.folder_path || 'No folder' })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('folders-linked-keys.png'), fullPage: true });

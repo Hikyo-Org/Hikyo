@@ -34,10 +34,10 @@ async function openNav(page: Page): Promise<void> {
   await expect
     .poll(async () => (await navigation.isVisible()) || (await toggle.isVisible()))
     .toBe(true);
-  if (await navigation.isVisible()) {
-    return;
-  }
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+  // The phone drawer is driven by its toggle's state, not by whether the
+  // navigation is still painted: a drawer that is sliding shut after a
+  // navigation is visible for a moment and then gone.
+  if ((await toggle.isVisible()) && (await toggle.getAttribute('aria-expanded')) !== 'true') {
     await toggle.click();
   }
   await expect(navigation).toBeVisible();
@@ -136,7 +136,11 @@ test.describe('app chrome', () => {
     await expect(drawer).toHaveCSS('position', 'fixed');
     await expect(drawer).toHaveCSS('width', '300px');
     await expect(drawer.locator('.sidebar__mobile-organisations button')).not.toHaveCount(0);
-    await expect(drawer.locator('.sidebar__mobile-projects button')).not.toHaveCount(0);
+    // On an organisation page with no project opened yet, the organisation's
+    // project list takes the project switcher's place (DESIGN.md, Side menu).
+    await expect(
+      drawer.locator('.sidebar__mobile-projects button, .sidebar__section--projects a'),
+    ).not.toHaveCount(0);
     await expect(drawer.getByRole('link', { name: 'Account & security' })).toBeVisible();
     await expect(drawer.getByRole('link', { name: 'Instance settings' })).toBeVisible();
     await expect(drawer.getByRole('link', { name: 'Instance members' })).toBeVisible();
@@ -495,19 +499,9 @@ test.describe('app chrome', () => {
             // dark and opposite sides of the page in light.
             [well, 'backgroundColor', '--bg-panel'],
             [well, 'borderTopColor', '--panel-line'],
-            // Treatment e's hairline rule belongs to each ROW, so that the
-            // current row can own its segment of it and turn it accent.
-            // Not `.first()`: the first link on this surface IS the current one,
-            // and the current row's whole point is that its segment of the rule
-            // turns accent. Assert the rule on a row that is not current.
-            [
-              page.locator('.sidebar__link:not([aria-current="page"])').first(),
-              'borderLeftColor',
-              '--chrome-line',
-            ],
-            // ...and the current row owns its segment of that rule in accent.
-            // Asserting only the hairline would pass just as well with the rule
-            // on the container and a second line drawn inside the row.
+            // Rows run flush to the sidebar's left edge with no guide line
+            // (DESIGN.md, Side menu); only the current row draws its edge, in
+            // accent.
             [active, 'borderLeftColor', '--accent'],
           ],
           hairlines: [well],

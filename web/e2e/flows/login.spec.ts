@@ -83,7 +83,8 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
       [provider, 'backgroundColor', '--bg-panel'],
     ],
     hairlines: [card, provider],
-    density: [[passwordRow, '--touch'], [provider, '--touch']],
+    // Method rows are buttons: `--control`, the touch floor on a coarse pointer.
+    density: [[passwordRow, '--control'], [provider, '--control']],
   });
 
   // Step two: only the chosen method's form.
@@ -221,7 +222,7 @@ async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'color', '--on-accent'],
     ],
     hairlines: [card, authority, provider],
-    density: [[submit, '--control'], [provider, '--touch']],
+    density: [[submit, '--control'], [provider, '--control']],
   });
 }
 
@@ -1004,7 +1005,7 @@ test.describe('sign-up door', () => {
             [card, 'backgroundColor', '--bg-raise'],
           ],
           hairlines: [card, landing, provider],
-          density: [[provider, '--touch']],
+          density: [[provider, '--control']],
         });
       }
 

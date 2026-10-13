@@ -524,7 +524,7 @@ test.describe('project settings', () => {
       ).toBeVisible();
       await policy.getByLabel('Reveal reauth window').selectOption('300');
       await expect(
-        page.locator('.notice').filter({ hasText: 'changed to 300 seconds' }),
+        page.locator('.notice').filter({ hasText: 'changed to 5 minutes' }),
       ).toBeVisible();
     } finally {
       await browserApi(page, 'PUT', settingsPath, zEnvironmentSettings, original);
@@ -827,7 +827,11 @@ test.describe('settings flow visual contract', () => {
           const control = surface.id === 'org-settings'
             ? page.locator('#org-identity input:not([type="range"]):not([type="file"])')
             : page.locator('#project-metadata input').first();
-          const metadata = well.locator('.settings-row__detail').first();
+          // Org identity's rows carry a mono metadata line; project Metadata
+          // is a bare form with none.
+          const metadata = surface.id === 'org-settings'
+            ? [well.locator('.settings-row__detail').first()]
+            : [];
 
           await expectPinnedAssertionSet(page, {
             flow: 'chrome-settings',
@@ -836,7 +840,7 @@ test.describe('settings flow visual contract', () => {
             text: [
               heading,
               page.locator('.page__lede'),
-              metadata,
+              ...metadata,
             ],
             radii: [
               [well, 'container'],
@@ -844,7 +848,7 @@ test.describe('settings flow visual contract', () => {
             ],
             fonts: [
               [heading, 'ui'],
-              [metadata, 'mono'],
+              ...metadata.map((line) => [line, 'mono'] as const),
             ],
             colours: [
               [heading, 'color', '--tx'],

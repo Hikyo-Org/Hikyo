@@ -322,6 +322,12 @@ const expectSectionsAndGlyphs = async (root: HTMLElement) => {
 // The table spans its scroll area and the trailing aria-hidden filler column
 // takes whatever the environment columns leave.
 const expectColumnLayout = async (root: HTMLElement) => {
+  // Column widths are sized for IBM Plex Mono's advance. Measuring while the
+  // swap-period fallback face still paints the values reads a different font's
+  // width, so wait for both weights the cells use before reading any box.
+  await Promise.all(['400', '500'].map((weight) => document.fonts.load(`${weight} 13px "IBM Plex Mono"`)));
+  await document.fonts.ready;
+  await expect(document.fonts.check('13px "IBM Plex Mono"')).toBe(true);
   const scroller = root.querySelector('.matrix__scroll');
   const table = root.querySelector<HTMLElement>('.matrix__table');
   const filler = root.querySelector('.matrix__table thead .matrix__filler');

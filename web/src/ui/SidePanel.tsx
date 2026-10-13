@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 
 import { Button } from './Button.tsx';
 import { cx } from './cx.ts';
@@ -17,6 +17,16 @@ import { Glyph } from './Glyph.tsx';
  * down while a native `<dialog>` is open: a sheet the panel opened owns the
  * top layer and its own dismissal, and must not also collapse the surface
  * behind it.
+ *
+ * Unsaved input: an `input` or `change` event in the body (outside a nested
+ * `<dialog>` or a `role="search"` lookup) marks the panel edited, for as
+ * long as the edited control is still in the body: a form the caller removes
+ * after saving it takes its edits with it. While edited, an outside press does nothing, and Escape or the built-in Close
+ * asks "Discard unsaved changes?" in the header: Discard calls `onClose`,
+ * Keep editing (focused first, and Escape) puts focus back where it was. Only these user dismissals ask: a
+ * caller that closes the panel itself (after a save, a Cancel in the body)
+ * unmounts it without asking. A custom `header` that closes through its own
+ * link or button bypasses the question, so use it for detail panels only.
  *
  * Focus: `initialFocus` (usually the header's heading, `tabIndex={-1}`) takes
  * focus on open. On close focus returns to `opener`, snapshotted at mount
@@ -80,6 +90,34 @@ export function SidePanel({
   useEffect(() => {
     latest.current = { onClose, fallbackFocus };
   });
+  // The controls edited in the body. Only those still in the document count:
+  // a form the caller unmounted after a save is no longer unsaved input.
+  const editedControls = useRef(new Set<Element>());
+  const edited = () => [...editedControls.current].some((element) => element.isConnected);
+  // While asking "Discard unsaved changes?": where focus was, for Keep editing.
+  const [asking, setAsking] = useState<{ from: Element | null } | null>(null);
+  const keep = useRef<HTMLButtonElement>(null);
+  const askId = useId();
+  const requestClose = () => {
+    if (!edited()) onClose();
+    else if (asking === null) setAsking({ from: document.activeElement });
+  };
+  const keepEditing = () => {
+    const from = asking?.from;
+    setAsking(null);
+    if (from instanceof HTMLElement && from.isConnected) from.focus();
+  };
+  const markEdited = (event: { target: EventTarget }) => {
+    // Neither a sheet the panel opened (a reauthentication, a typed
+    // confirmation) nor a lookup (`role="search"`, whose question the caller
+    // keeps) is the panel's own unsaved input.
+    if (event.target instanceof Element && event.target.closest('dialog, [role="search"]') === null) editedControls.current.add(event.target);
+  };
+  // Escape answers the question with Keep editing, or asks it.
+  const onEscape = useEffectEvent(() => (asking === null ? requestClose() : keepEditing()));
+  useEffect(() => {
+    if (asking !== null) keep.current?.focus();
+  }, [asking]);
 
   useEffect(() => {
     const from = opener.current;
@@ -103,7 +141,8 @@ export function SidePanel({
         event.target instanceof Element &&
         panel.current?.contains(event.target) !== true &&
         event.target.closest('.toast') === null &&
-        document.querySelector('dialog[open]') === null
+        document.querySelector('dialog[open]') === null &&
+        !edited()
       ) {
         latest.current.onClose();
       }
@@ -111,7 +150,7 @@ export function SidePanel({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented && document.querySelector('dialog[open]') === null) {
         event.preventDefault();
-        latest.current.onClose();
+        onEscape();
       }
     };
     document.addEventListener('pointerdown', closeOutside);
@@ -167,13 +206,24 @@ export function SidePanel({
           {title === undefined ? header : (
             <div className="side-panel__title">
               <h2 ref={ownHeading} tabIndex={-1}>{title}</h2>
-              <Button type="button" readOnlySafe className="btn--icon-phone" onClick={onClose}>
+              <Button type="button" readOnlySafe className="btn--icon-phone" onClick={requestClose}>
                 <Glyph name="cross" /><span className="btn__label"> Close</span>
               </Button>
             </div>
           )}
+          {asking === null ? null : (
+            <div className="side-panel__ask" role="alertdialog" aria-labelledby={askId}>
+              <p id={askId}>Discard unsaved changes?</p>
+              <div className="actions">
+                <Button ref={keep} type="button" readOnlySafe onClick={keepEditing}>Keep editing</Button>
+                <Button type="button" variant="danger" readOnlySafe onClick={onClose}>Discard</Button>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="side-panel__body">{children}</div>
+        <div className="side-panel__body" onInput={markEdited} onChange={markEdited}>
+          {children}
+        </div>
       </aside>
     </>
   );

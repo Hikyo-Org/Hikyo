@@ -100,9 +100,9 @@ export const SingleProject: Story = {
       tertiary.remove();
       await expect(getComputedStyle(crumbs).color).toBe(tertiaryColor);
       // Compact spacing, not a larger touch target: the gap between
-      // segments is tight, and the hit area for a scope link comes from an
-      // invisible, centred `::after` (.header__crumb-link) instead, so a
-      // short name's own box never grows past its text.
+      // segments is tight, and the hit area for a scope link is the link's
+      // own `--control` floor (.header__crumb-link), which a name longer
+      // than the floor never notices.
       await expect(getComputedStyle(crumbs).columnGap).toBe(getComputedStyle(document.documentElement).getPropertyValue('--space-1').trim());
       // The trail stays on one line, never wrapping onto a second: every
       // segment's vertical range overlaps every other's (a touch-sized link
@@ -130,9 +130,9 @@ export const SingleProject: Story = {
       const rootLink = within(crumbs).getByRole('link', { name: 'Acme operations' });
       await expect(rootLink).toBeVisible();
       await expect(within(crumbs).getByRole('link', { name: 'Billing platform' })).toBeVisible();
-      // The root crumb's own box is no wider than its text; the gap before
-      // the next separator is the ordinary crumb gap, not a touch-floor
-      // remainder.
+      // A long root crumb's own box is no wider than its text; the gap
+      // before the next separator is the ordinary crumb gap, not a
+      // touch-floor remainder.
       const nextSeparator = items[1]?.querySelector('.header__crumb-separator');
       if (nextSeparator === null || nextSeparator === undefined) throw new Error('next separator missing');
       const observedGap = nextSeparator.getBoundingClientRect().left - rootLink.getBoundingClientRect().right;

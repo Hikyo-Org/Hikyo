@@ -136,7 +136,15 @@ test.describe('multi-instance', () => {
     await expect(panel.getByText('Organisations', { exact: true })).toBeVisible();
     await expect(panel.getByText('Projects', { exact: true })).toBeVisible();
     await panel.scrollIntoViewIfNeeded();
-    expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    // The card is a page root, so its veil (a decorative ::before, app.css
+    // Atmosphere) reaches past it into the well's gutter and counts toward its
+    // scrollWidth. Measure the content instead: nothing inside the card may
+    // overhang its padding box or scroll sideways within itself.
+    expect(await panel.evaluate((element) => {
+      const edge = element.getBoundingClientRect().left + element.clientLeft + element.clientWidth;
+      return [...element.querySelectorAll<HTMLElement>('*')].every((child) =>
+        child.getBoundingClientRect().right <= edge + 0.5 && child.scrollWidth <= child.clientWidth + 1);
+    })).toBe(true);
     for (const colorScheme of ['dark', 'light']) {
       await page.emulateMedia({ colorScheme: colorScheme === 'dark' ? 'dark' : 'light', reducedMotion: 'reduce' });
       await expectNoSeriousAxeViolations(page);

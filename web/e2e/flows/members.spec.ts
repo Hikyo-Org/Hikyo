@@ -723,12 +723,15 @@ test.describe('members and grants', () => {
         const chip = page.locator('#members-list .access-rule__perms .badge').first();
         await page.locator('#members-list').getByRole('button', { name: 'Permission origins', exact: true }).first().click();
         const newGrant = page.getByRole('button', { name: 'Add access' });
+        // A capability is a tag now; the mono identifier on its line is the
+        // origin it came from.
+        const origin = page.locator('#members-list .capability .badge.mono').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'members',
           surface: 'members',
           theme: scheme,
-          text: [heading, page.locator('.inspect__answer'), page.locator('.capability__name').first()],
+          text: [heading, page.locator('.inspect__answer'), origin],
           radii: [
             [well, 'container'],
             [newGrant, 'control'],
@@ -736,7 +739,7 @@ test.describe('members and grants', () => {
           ],
           fonts: [
             [heading, 'ui'],
-            [page.locator('.capability__name').first(), 'mono'],
+            [origin, 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],
@@ -819,7 +822,9 @@ test.describe('members and grants', () => {
             [composition, 'container'],
             [composition.getByRole('button', { name: 'Cancel' }), 'control'],
           ],
-          fonts: [[composition.locator('.mono').first(), 'mono']],
+          // Capabilities are tags in the UI face; the composition shows no mono
+          // identifier until a principal ID is typed.
+          fonts: [[composition.getByRole('heading', { level: 2 }), 'ui']],
           colours: [[composition, 'backgroundColor', '--bg-panel']],
           hairlines: [composition],
           density: [[composition.getByRole('button', { name: 'Cancel' }), '--control']],
@@ -911,8 +916,12 @@ test.describe('scim provisioning', () => {
     await page.getByLabel('Provider slug').fill(SCIM_PROVIDER_SLUG);
     await page.getByRole('button', { name: 'Create binding' }).click();
     await expect(page.getByText(new RegExp(`Bound ${SCIM_PROVIDER_SLUG}`))).toBeVisible();
-    // The form is a side panel over the page; close it to reach the list.
-    await page.getByRole('complementary', { name: 'Create a binding' }).getByRole('button', { name: 'Close' }).click();
+    // The form is a side panel over the page; close it to reach the list. It
+    // was typed in, so Close asks before discarding.
+    const bindingPanel = page.getByRole('complementary', { name: 'Create a binding' });
+    await bindingPanel.getByRole('button', { name: 'Close' }).click();
+    await bindingPanel.getByRole('alertdialog', { name: 'Discard unsaved changes?' }).getByRole('button', { name: 'Discard' }).click();
+    await expect(bindingPanel).toHaveCount(0);
 
     // Administer it, the binding id lands in the query string as route data.
     // Administering opens the Mappings tab; switch to Provisioning credentials
@@ -1003,12 +1012,15 @@ test.describe('scim provisioning', () => {
     await page.getByRole('tab', { name: 'Mappings' }).click();
     await page.getByRole('button', { name: 'Map a group' }).click();
     await page.getByLabel('Provisioned group').selectOption(group.id);
-    await page.getByLabel('Template').selectOption('viewer');
+    await page.getByLabel('Template', { exact: true }).selectOption('viewer');
     await page.getByRole('button', { name: 'Add mapping' }).click();
     await expect(page.getByText(/Applied to 1 member/)).toBeVisible();
     await expect(page.getByText(/[1-9]\d* grants created/)).toBeVisible();
     await expect(page.locator('.scim-warnings')).toBeVisible();
-    await page.getByRole('complementary', { name: 'Map a group' }).getByRole('button', { name: 'Close' }).click();
+    const mapPanel = page.getByRole('complementary', { name: 'Map a group' });
+    await mapPanel.getByRole('button', { name: 'Close' }).click();
+    await mapPanel.getByRole('alertdialog', { name: 'Discard unsaved changes?' }).getByRole('button', { name: 'Discard' }).click();
+    await expect(mapPanel).toHaveCount(0);
     const mappingRow = page.locator('.scim-mapping', { hasText: 'E2E Engineers' });
     await expect(mappingRow).toBeVisible();
     const capabilityLines = mappingRow.locator('.capability');
@@ -1118,6 +1130,9 @@ test.describe('audit trail', () => {
     const detail = page.getByRole('complementary', { name: 'Event detail' });
     await expect(detail).toBeVisible();
     await expect(detail.getByRole('heading', { level: 3, name: 'Payload' })).toBeVisible();
+    // The detail panel is modal over the trail: close it to reach the filter.
+    await page.keyboard.press('Escape');
+    await expect(detail).toBeHidden();
 
     // A filter that cannot match anything is an explicit empty state, never a
     // silent blank. `operation` is a free string, so an unknown one is not a

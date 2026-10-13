@@ -1601,24 +1601,15 @@ fieldset.field > legend {
     /* `--control` is already the hit floor: 36px on a fine pointer, the
        44px touch floor on a coarse one (tokens.css). `line-height` (not flex
        centring) centres the one line of text inside that height, matching
-       the separator beside it. No `min-width` here: it would grow a short
-       name's box past its text, opening a gap before the next separator.
-       The width floor instead rides on an
-       invisible `::after`, centred over the link and never narrower than
-       `--control`, so a short crumb keeps its tap target without widening
-       the visible trail. */
-    position: relative;
+       the separator beside it. The same floor holds the width: a short name
+       ("ledger") is centred in a `--control` wide box rather than leaving a
+       tap target narrower than a fingertip. A hit area painted outside the
+       box (an absolutely positioned pseudo-element) cannot do this, because
+       the link clips its own overflow for the ellipsis. */
+    min-width: var(--control);
     min-height: var(--control);
     line-height: var(--control);
-  }
-
-  .header__crumb-link::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    left: 50%;
-    width: max(100%, var(--control));
-    transform: translateX(-50%);
+    text-align: center;
   }
 
   /* On a phone the fixed account avatar at the header's right edge already
@@ -2155,6 +2146,9 @@ fieldset.field > legend {
   --matrix-icon-gap: 6px;
   /* Icon slots a column reserves: pencil and one mark (one on a phone). */
   --matrix-mark-slots: 2;
+  /* One mono character's advance, rounded up to a whole pixel (see the
+     environment column width below). */
+  --matrix-char: round(up, 0.6 * var(--fs-mono), 1px);
   /* The alternate key row's stripe. */
   --row-stripe: color-mix(in oklch, var(--bg), var(--bg-raise) 42%);
   /* The full page width: environment columns keep their content width and the
@@ -2185,10 +2179,13 @@ fieldset.field > legend {
    border and `--matrix-mark-slots` icon slots. A specified width still
    shrinks toward the header's width when the page is short, then the table
    scrolls. The filler column after them takes any spare width.
-   ponytail: 0.6em is IBM Plex Mono's advance width; a fallback mono face can be
-   a pixel or two off per ten characters. One mark slot fits the common case. */
+   0.6em is IBM Plex Mono's advance width, rounded UP to a whole pixel per
+   character: a renderer without subpixel glyph positioning (Linux Chromium)
+   lays each glyph on a whole pixel, so 13px text advances 8px a character, not
+   7.8px, and an unrounded width cuts the longest value by a few pixels. One
+   mark slot fits the common case. */
 .matrix__table thead th:not(:first-child, .matrix__filler) {
-  width: calc(var(--chars, 0) * 0.6 * var(--fs-mono) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
+  width: calc(var(--chars, 0) * var(--matrix-char) + var(--matrix-cell-inset) + var(--matrix-mark-slots) * (var(--matrix-icon) + var(--matrix-icon-gap)));
 }
 
 .matrix__table .matrix__filler {
@@ -3250,6 +3247,15 @@ fieldset.field > legend {
 
   .table-scroll > table :is(.mono, code, kbd) {
     font-size: var(--fs-xs);
+  }
+
+  /* The phone's two-column action grid (Button.css) shares a cell's width
+     equally, and an auto-sized table cell offers it no width of its own, so
+     the buttons shrank under the touch floor. In a table the grid is never
+     narrower than its max-content width, at which its equal columns are each
+     the widest button's one-line width; the wrapper scrolls instead. */
+  .table-scroll > table td .actions:has(> .btn ~ .btn) {
+    min-width: max-content;
   }
 }
 

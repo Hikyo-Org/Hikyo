@@ -1315,6 +1315,9 @@ test.describe('project audit', () => {
     await rows.first().click();
     const detail = page.getByRole('complementary', { name: 'Event detail' });
     await expect(detail).toContainText(seed.dev);
+    // The detail panel is modal over the trail: close it to reach the export.
+    await page.keyboard.press('Escape');
+    await expect(detail).toBeHidden();
 
     const download = page.waitForEvent('download');
     await exportLink.click();
@@ -1630,6 +1633,9 @@ test.describe('browser-only lifecycle', () => {
 
       // 7. SECRET DELIVERY needs the per-project opt-in AND a reveal grant on
       // the workload (the opt-in alone grants nothing; the dialog says so).
+      // The account's side panel is modal over the page, so close it first.
+      await page.keyboard.press('Escape');
+      await expect(accountPanel).toBeHidden();
       await page.getByRole('button', { name: /Enable the opt-in/ }).click();
       const optIn = page.getByRole('dialog', { name: 'Enable machine secret delivery' });
       await expect(optIn).toContainText('Nothing is granted by this act alone');

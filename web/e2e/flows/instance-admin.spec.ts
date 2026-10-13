@@ -1238,12 +1238,15 @@ test.describe('instance administration', () => {
         const chip = page.locator('#members-list .access-rule__perms .badge').first();
         await page.locator('#members-list').getByRole('button', { name: 'Permission origins', exact: true }).first().click();
         const newGrant = page.getByRole('button', { name: 'Add access' });
+        // A capability is a tag now; the mono identifier on its line is the
+        // origin it came from.
+        const origin = page.locator('#members-list .capability .badge.mono').first();
 
         await expectPinnedAssertionSet(page, {
           flow: 'instance-admin',
           surface: 'instance-members',
           theme: scheme,
-          text: [heading, page.locator('.inspect__answer'), page.locator('.capability__name').first()],
+          text: [heading, page.locator('.inspect__answer'), origin],
           radii: [
             [well, 'container'],
             [newGrant, 'control'],
@@ -1251,7 +1254,7 @@ test.describe('instance administration', () => {
           ],
           fonts: [
             [heading, 'ui'],
-            [page.locator('.capability__name').first(), 'mono'],
+            [origin, 'mono'],
           ],
           colours: [
             [heading, 'color', '--tx'],
