@@ -20,7 +20,7 @@ This layer adds no release mutation or lab provisioning. Its read-only pull-requ
 
 ## Verified evidence
 
-All 269 combined core and suite unit tests pass, with Ruff and mypy. These tests are distinct from the 313 runtime assertions. Complete hosted 313/313 proof is tracked in PR #903 and was still pending when this foundation was prepared. The entire suite and its tests remain intact; the three-layer split avoids both GitHub's 20,000-line diff limit and the review service's 200,000-token limit.
+All 271 combined core and suite unit tests pass, with Ruff and mypy. These tests are distinct from the 313 runtime assertions. Complete hosted 313/313 proof is tracked in PR #903 and was still pending when this foundation was prepared. The entire suite and its tests remain intact; the three-layer split avoids both GitHub's 20,000-line diff limit and the review service's 200,000-token limit.
 
 ## Repeat checks
 
@@ -32,7 +32,7 @@ python3 -m venv /tmp/hikyo-openaev-checks
 PATH=/tmp/hikyo-openaev-checks/bin:$PATH scripts/openaev/check.sh
 ```
 
-Expected result: Ruff and mypy pass, followed by 269 passing unit tests. No lab credentials are needed. GitHub runs the same entry point for changes to this scope.
+Expected result: Ruff and mypy pass, followed by 271 passing unit tests. No lab credentials are needed. GitHub runs the same entry point for changes to this scope.
 
 ## Operational state
 
@@ -43,3 +43,7 @@ The obsolete Mac nightly scheduler was unloaded and disabled as part of the appr
 Cryptographic signatures and DCO sign-offs are required on every commit. Current-head GitHub CI, bot review and the human merge gate remain separate from local tests. Cross-provider review is skipped because the Anthropic subscription is unavailable. This document does not assert merge readiness or hosted PASS.
 
 The monitor accepts the native runner-owned Docker socket or a root-owned Linux socket with runner group access, rejecting foreign owners, remote endpoints and permissions for other users. This handles GitHub-hosted Linux without weakening the Docker ownership boundary.
+
+Platform transports accept only the exact loopback tunnel or two OpenAEV lab
+DNS endpoints. Private and public network alternatives are rejected; workload
+TLS still verifies the trusted loopback IP SAN with required certificates.
