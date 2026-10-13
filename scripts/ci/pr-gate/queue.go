@@ -190,12 +190,23 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 	if q.checkName != queueCheckName {
 		return errors.New("queue publisher cannot write the legacy full-proof context")
 	}
+	if q.repairOnly && name != "workflow_dispatch" {
+		return errors.New("group-only queue repair requires authenticated manual dispatch")
+	}
+	if q.targeted && (name != "pull_request_target" && name != "workflow_dispatch" && (name != "workflow_run" || e.Run.Event != "pull_request")) {
+		return errors.New("targeted admission cannot execute a group or batch repair")
+	}
+	q.repo = repository{}
 	if err := q.init(ctx); err != nil {
-		return err
+		return q.initializedFailure(ctx, e.Repository.ID, e.Repository.FullName, err)
 	}
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {
 		return errors.New("queue event repository identity mismatch")
 	}
+	return q.reassess(ctx, func(ctx context.Context) error { return q.executeProof(ctx, name, e) })
+}
+
+func (q *queueController) executeProof(ctx context.Context, name string, e event) error {
 	if q.repairOnly {
 		if name != "workflow_dispatch" {
 			return errors.New("group-only queue repair requires authenticated manual dispatch")
@@ -267,9 +278,10 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 }
 
 func (q *queueController) admit(ctx context.Context, number int) error {
-	if err := q.invalidateSuccess(ctx, number); err != nil {
-		return err
-	}
+	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, number) })
+}
+
+func (q *queueController) admitProof(ctx context.Context, number int) error {
 	p, err := q.readPR(ctx, number)
 	if err != nil {
 		return err
@@ -366,6 +378,9 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 					break
 				}
 				b = newBinding(q.repo.ID, p, r)
+				if err := q.changedBinding(ctx, p, b); err != nil {
+					return err
+				}
 				if r.Status != "completed" || r.Conclusion == "action_required" {
 					result = pending("Exact-head fast feedback is still running or awaiting GitHub approval.")
 					break
@@ -857,7 +872,22 @@ func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnap
 	return snap, nil
 }
 
-func (q *queueController) group(ctx context.Context, hint run) (err error) {
+func (q *queueController) group(ctx context.Context, hint run) error {
+	if q.repo.ID == 0 {
+		if err := q.init(ctx); err != nil {
+			return err
+		}
+	}
+	if hint.ID <= 0 || hint.Attempt <= 0 || hint.Event != "merge_group" || hint.Path != queueWorkflowPath || hint.Repository.ID != q.repo.ID || !shaPattern.MatchString(hint.HeadSHA) || !strings.HasPrefix(hint.HeadBranch, "gh-readonly-queue/"+q.repo.DefaultBranch+"/") {
+		return errors.New("invalid merge group callback")
+	}
+	if hint.HeadSHA != q.expectedHead {
+		return &staleHeadWork{expected: q.expectedHead}
+	}
+	return q.reassess(ctx, func(ctx context.Context) error { return q.groupProof(ctx, hint) })
+}
+
+func (q *queueController) groupProof(ctx context.Context, hint run) (err error) {
 	defer func() {
 		var stale *staleQueueGroup
 		if errors.As(err, &stale) {
@@ -866,19 +896,10 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 		}
 	}()
 
-	if hint.ID <= 0 || hint.Attempt <= 0 || hint.Event != "merge_group" || hint.Path != queueWorkflowPath || hint.Repository.ID != q.repo.ID || !shaPattern.MatchString(hint.HeadSHA) || !strings.HasPrefix(hint.HeadBranch, "gh-readonly-queue/"+q.repo.DefaultBranch+"/") {
-		return errors.New("invalid merge group callback")
-	}
-	if hint.HeadSHA != q.expectedHead {
-		return &staleHeadWork{expected: q.expectedHead}
-	}
-	// A valid callback can revoke a prior green before any mutable source read.
-	// The temporary binding is blocking only; final proof adds queue membership.
+	// A valid callback establishes held-head identity. Final proof adds queue
+	// membership; any incomplete or uncertain exit verifies a blocking verdict.
 	p := pull{Number: 1, State: "open", Head: reference{SHA: hint.HeadSHA, Repo: q.repo}, Base: reference{SHA: hint.HeadSHA, Ref: hint.HeadBranch, Repo: q.repo}}
 	b := newBinding(q.repo.ID, p, nil)
-	if _, err := q.groupBarrier(ctx, p, b); err != nil {
-		return err
-	}
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
@@ -923,6 +944,9 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 	p.Base.SHA = members[0].Base.SHA
 	b = newBinding(q.repo.ID, p, &r)
 	b.BaseRef = sha256.Sum256(append(snap.Digest[:], []byte(r.HeadBranch)...))
+	if err := q.changedBinding(ctx, p, b); err != nil {
+		return err
+	}
 	if err := q.proveCurrentBase(ctx, p.Base.SHA, r.HeadSHA); err != nil {
 		return err
 	}
@@ -1025,36 +1049,11 @@ func (q *queueController) group(ctx context.Context, hint run) (err error) {
 			return &staleQueueGroup{reason: "current member changed in final role snapshot"}
 		}
 	}
-	selected, err := q.groupBarrier(ctx, p, b)
+	own, err := q.groupChecks(ctx, p)
 	if err != nil {
 		return err
 	}
-	return q.publish(ctx, p, b, selected, result)
-}
-
-func (q *queueController) groupBarrier(ctx context.Context, p pull, b binding) (*check, error) {
-	// Retain the complete historical identity check and its existing bound.
-	// A foreign check is never patched, and ambiguous history remains blocked.
-	own, err := q.groupChecks(ctx, p)
-	if err != nil {
-		writeErr := q.publish(ctx, p, b, nil, pending("Group check identity could not be verified; proof remains blocked."))
-		return nil, errors.Join(err, writeErr)
-	}
-	var selected *check
-	for i := range own {
-		if selected == nil || own[i].ID > selected.ID {
-			selected = &own[i]
-		}
-	}
-	if err := q.publish(ctx, p, b, selected, pending("Merge-group proof is being reassessed; no runner waits for validation.")); err != nil {
-		return nil, err
-	}
-	if selected != nil {
-		// publish verified the actual PATCH ID and returned identity. This
-		// pending record can receive only the independently re-proved result.
-		selected.ExternalID, selected.Status, selected.Conclusion = b.externalID(), "queued", ""
-	}
-	return selected, nil
+	return q.publish(ctx, p, b, newestQueueCheck(own), result)
 }
 
 func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, error) {
@@ -1254,6 +1253,11 @@ func (q *queueController) repairGroups(ctx context.Context) error {
 			return errors.New("invalid group repair identity")
 		}
 		seen[entry.Head.OID] = true
+		// Complete queue identity still validates above. A held-head writer
+		// cannot repair another head; discovery routes that work separately.
+		if entry.Head.OID != q.expectedHead {
+			continue
+		}
 		r, err := q.latestGroup(ctx, entry.Head.OID)
 		if err != nil {
 			failures = append(failures, err)

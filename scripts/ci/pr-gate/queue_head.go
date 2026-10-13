@@ -128,7 +128,17 @@ func (q *queueController) roleCollision(ctx context.Context, roles headRoles) er
 }
 
 func (q *queueController) runHead(ctx context.Context, name string, e event, kind string) error {
+	q.repo = repository{}
 	if err := q.init(ctx); err != nil {
+		batch, parseErr := parseHeadBatch(e.Inputs.Work)
+		if name != "workflow_dispatch" || parseErr != nil {
+			return err
+		}
+		for _, work := range batch {
+			if work.Head == q.expectedHead && work.Kind == kind {
+				return q.initializedFailure(ctx, e.Repository.ID, e.Repository.FullName, err)
+			}
+		}
 		return err
 	}
 	if name != "workflow_dispatch" || e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) || !shaPattern.MatchString(q.expectedHead) {
@@ -147,11 +157,10 @@ func (q *queueController) runHead(ctx context.Context, name string, e event, kin
 	if !matched {
 		return errors.New("worker head and role do not match its typed discovery record")
 	}
-	// The lease and typed routing record authorize only a blocking placeholder,
-	// never a PR/group result. Revoke any old success before mutable reads.
-	if err := q.headBarrier(ctx); err != nil {
-		return err
-	}
+	return q.reassess(ctx, func(ctx context.Context) error { return q.runHeadProof(ctx, name, e, kind) })
+}
+
+func (q *queueController) runHeadProof(ctx context.Context, name string, e event, kind string) error {
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
@@ -186,28 +195,4 @@ func (q *queueController) runHead(ctx context.Context, name string, e event, kin
 		return q.group(ctx, *r)
 	}
 	return &staleHeadWork{expected: q.expectedHead}
-}
-
-func (q *queueController) headBarrier(ctx context.Context) error {
-	placeholder := pull{Number: 1, State: "open", Head: reference{SHA: q.expectedHead, Repo: q.repo}, Base: reference{SHA: q.expectedHead, Ref: q.repo.DefaultBranch, Repo: q.repo}}
-	b := newBinding(q.repo.ID, placeholder, nil)
-	own, readErr := q.listOwnedChecks(ctx, q.expectedHead)
-	var selected *check
-	for i := range own {
-		if selected == nil || own[i].ID > selected.ID {
-			selected = &own[i]
-		}
-	}
-	if selected != nil {
-		if existing, err := decodeBinding(selected.ExternalID); err == nil {
-			// Keep its authenticated identity while making the result blocking.
-			// The guarded queue path reopens this owned record without
-			// carrying its old success into the fresh proof.
-			b = existing
-			placeholder.Number = existing.PR
-			placeholder.Base.SHA = existing.Base
-		}
-	}
-	writeErr := q.publish(ctx, placeholder, b, selected, pending("Rechecking this held head's current role and authority."))
-	return errors.Join(readErr, writeErr)
 }

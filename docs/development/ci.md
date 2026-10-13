@@ -59,7 +59,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
-| Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token reset/neutral-cleanup proof on trusted main, before enabling new queue writers. |
+| Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token immutable-verdict/neutral-cleanup proof on trusted main, before enabling new queue writers. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
@@ -252,18 +252,30 @@ remaining hosted checks.
 
 The fixed `check-lifecycle-probe` manual workflow has no caller inputs and must
 run from current trusted main before enabling the new publishers. It creates
-only the non-required `ci-check-lifecycle-probe` check, tests the exact production
-completed-to-queued reset candidate with explicit JSON null conclusion and
-completion fields, and must
-verify same-ID terminal neutral cleanup. Its authenticated receipt is data, not
-a success flag: the operator also verifies exact workflow/run/attempt/source,
-current main/policy and the actual owned cleanup check. Failure, lost identity
-or incomplete cleanup leaves `QUEUE_HEAD_WORKERS_ENABLED` disabled. The staged
-publication hold preserves mandatory queue protection; no parallel legacy queue
-writer is introduced. Old unleased templates refuse before publication, and
-all new production writers remain skipped while the variable is unset/false.
-The [policy handoff](../handoff/merge-queue-policy.md) records local evidence and
-the separate actual API/activation/timing acceptance still required.
+only non-required `ci-check-lifecycle-probe` checks through the production
+immutable-verdict helper. It must supersede an authenticated terminal success
+with a different queued ID, verify that new pending record is effective, reuse
+and finalize it, and prove identical terminal publication adds no writes.
+Every known created ID must be independently read back as neutral after cleanup.
+Its version-2 `immutable-verdict` receipt is data, not a success flag: the operator
+also verifies exact workflow/run/attempt/source, actual owned identities and
+cleanup. Old reset receipts cannot qualify. Failure, lost identity or incomplete
+cleanup leaves `QUEUE_HEAD_WORKERS_ENABLED` disabled. The staged publication
+hold preserves mandatory queue protection; old unleased templates refuse before
+publication and new production writers stay skipped while unset/false.
+
+A complete fresh reconciliation repeats current policy, workflow authority,
+fork vouch, DCO, source attempt, role/member and historical collision checks.
+Only then may an identical terminal binding and outcome require no mutation.
+Changed bindings or verdicts create one new queued generation; authenticated
+nonterminal generations can be reused. Incomplete observations and errors must
+verify an effective owned blocking record before exit, using an independent
+reserve within the existing deadline. An uncertain creation is not retried;
+when safe creation fails, a freshly authenticated effective owned record may
+receive a genuine failure. This fallback is for an error, never routine pending.
+No terminal check is reset, foreign checks are not patched, and complete
+historical scans and their existing bounds remain. These final mutable reads
+are not an atomic GitHub authority transaction.
 
 Race weights are recalibrated from all twelve JSON timing artifacts of successful
 full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
@@ -275,9 +287,9 @@ immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
 are exercised after landing; a later legitimate full group must establish the
 approximately 35-minute target.
 
-The explicit-null reset is an experimental compatibility candidate. The API
-schema does not document null acceptance, and two trusted-main probes showed
-that omitting terminal fields retains completed/success. Unit tests model both
-acceptance and rejection; only a new exact-main probe with queued, empty-conclusion
-and empty-completion readbacks can satisfy the activation gate. Queue CREATE
-payloads and the legacy full-only publisher retain their existing behavior.
+Trusted-main probes demonstrated that omitting terminal reset fields retains
+completed/success and that the explicit-null candidate is rejected. Those
+canaries were cleaned up to neutral; neither protocol authorized activation.
+The immutable-verdict protocol instead uses supported creation and nonterminal
+updates, but its actual workflow-token lifecycle acceptance remains a hard gate
+before enabling workers. The separate legacy full-only lifecycle is unchanged.

@@ -225,81 +225,78 @@ by this source preparation. The legacy full-only publisher remains independent.
 - [Fixed head worker](../../.github/workflows/ci-queue-worker.yml)
 - [GitHub concurrency contract](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
 
-## Recurring check history and guarded API lifecycle proof
+## Immutable verdicts and guarded workflow-token acceptance
 
-Review finding 4250549208 reproduces recurring history growth: unchanged PR
-reassessment adds a check, group reassessment adds four, and supported histories
-at 1,000 PR checks or 100 group checks fail on the next pass. The guarded queue
-path now reuses the newest authenticated owned ID for a pending barrier and its
-freshly re-proved result. Complete `filter=all` ownership and collision scans,
-their existing bounds, head leases and final source/member barriers remain.
-Older native same-name collisions remain blocking. Unknown or already excessive
-history is refused rather than silently skipped. No check is deleted and no
-history limit is increased. The separate legacy producer retains its lifecycle.
+Recurring healthy reconciliation must not add historical check rows. The
+completed-to-queued reset attempts proved unsuitable: probe 38306521236 retained
+completed/success after the omitted-field PATCH, and probe 38312785608 rejected
+the explicit-null PATCH. Both known canaries were independently neutral after
+cleanup. Workers remain disabled; these failures do not qualify as acceptance.
 
-Local permanent tests pass more than 1,100 unchanged reassessments for each role
-with constant check count, including the existing history boundaries. Pending
-feedback and transient fork geometry remain pending. An uncertain reset never
-retries its PATCH; a short independent reserve, capped by the original targeted
-deadline, attempts one distinct blocking pending barrier and retains the error.
-The callback cannot turn cancellation into a green result.
+The replacement publishes immutable terminal verdicts. Every reconciliation
+still repeats current policy, role/member identity, exact workflow authority,
+fork vouch, canonical DCO, useful source attempt, current main and final complete
+owned-history checks. An identical terminal binding and outcome may then be a
+publication no-op. A changed source binding or verdict creates a fresh queued
+ID; only authenticated nonterminal records are updated. Routine healthy refresh
+adds no row. No terminal reset payload, history-cap increase, latest-only
+collision scan, check deletion or cached authority is introduced. The legacy
+full-only producer retains its existing lifecycle.
 
-The actual GitHub completed-to-queued reset remains unproved. An authorized
-uniquely named non-required local canary request was refused with HTTP 403 because
-that token was not a GitHub App; it created no check and proves no lifecycle
-constraint. The new fixed [trusted-main lifecycle workflow](../../.github/workflows/ci-check-lifecycle-probe.yml)
-uses the actual workflow App token, no caller inputs, and current immutable main.
-Its CLI authenticates run/attempt, native job start, main and owning/effective
-policy before mutation, including that its fixed canary name is not required.
-Normal work ends at job-start plus 120 seconds; cleanup is independently bounded
-inside plus 150 seconds, leaving margin within the three-minute native job.
+Every incomplete observation or error must verify the newest owned blocking
+record before returning. The reserve reads actual server state after an
+uncertain write, so a cached pending record cannot hide a server-side success.
+Lost creation receipts are not retried. If a new barrier cannot be established,
+a genuine error may be published only on a freshly authenticated effective owned
+ID; a foreign or ambiguous record is never patched. Failed publication remains
+an error. Pending feedback, inactive protection and fork recomputation remain
+pending. The reserve is independently cancellable and stays inside the original
+invocation deadline. These checks do not make GitHub's mutable API observations
+atomic, or guarantee successful publication during an API outage.
 
-The single diagnostic ID starts completed/success, receives the same production
-queued reset builder with explicit JSON null conclusion/completed_at,
-and must read back as queued with no success conclusion. Its actual timestamps
-are retained in the receipt. The known owned ID is then restored to completed/
-neutral and independently read back. Lost or foreign creation identity is not
-guessed; uncertain reset writes are not retried. Any reset or cleanup refusal
-leaves the hosted acceptance unmet. This non-required canary supplies no test,
-admission or merge proof. See the [GitHub Checks API](https://docs.github.com/en/rest/checks/runs#update-a-check-run).
+Permanent tests exercise more than 1,100 unchanged reconciliations for both PR
+and group roles with constant check count, existing history boundaries,
+nonterminal reuse, source/outcome transitions, early API and policy exits,
+retained completion, acknowledged contradictory responses, uncertain terminal
+mutation after cancellation, owned-only failure fallback and foreign refusal.
+Previous source/member/authority/collision and full-suite coverage is retained.
+Local checks are separate from fresh exact-head hosted full-suite proof.
 
-Landing is deliberately staged. `QUEUE_HEAD_WORKERS_ENABLED` remains unset/false
-until a successful exact-main lifecycle run, its trusted run-attempt artifact,
-and actual same-ID neutral cleanup are verified. Old workflow definitions loading
-new code lack an expected-head lease and refuse before API writes; already
-compiled old code has no new reset behavior. All new production queue jobs are
-skipped while disabled, and the legacy full-only publisher cannot invoke queue
-reuse. The temporary publication hold is accepted, with queue protection active
-and no parallel legacy queue writer. Drain/empty-queue and current-source checks
-remain necessary before enabling. Source tests cannot substitute for this proof.
+The fixed [trusted-main lifecycle workflow](../../.github/workflows/ci-check-lifecycle-probe.yml)
+has no inputs and uses only its non-required canary name. Its CLI authenticates
+current main, source workflow/run/attempt, native job clock and effective
+non-required status before mutation. Normal work ends at job-start plus 120
+seconds; neutral cleanup is independently bounded inside plus 150 seconds.
 
-The whole publisher package passed in 3.348 seconds and vet locally. Independent adversarial
-source tests cover canceled reset transport, actual workflow naming, required
-canary refusal and historical native collisions. Fresh hosted feedback, all 16
-full-group domains, lifecycle acceptance, head-worker activation and timing still
-require verification. Observed feedback for earlier c95 passed in 82 seconds,
-while its old deployed global publisher took 6m 59s to finish admission. A separate
-actual full group ran 40m 39s, exceeding the approximately 35-minute target. Neither
-measurement proves the new disabled pipeline meets the requested timing goals.
+The version-2 receipt uses protocol `immutable-verdict` and records every known
+owned ID, complete typed states and physical write counters. Production creates
+queued A and finalizes it to success. Superseding A creates a different queued B;
+the probe verifies B through complete owned history and GitHub's latest filter,
+then reuses B, finalizes B and observes a terminal no-op. Cumulative create/PATCH
+counts are 1/1, 2/1, 2/2, 2/3 and 2/3. Both A and B must finish neutral, with final
+counts 2/5. Every known ID is cleaned even after a later failure. Foreign or lost
+creation identity is not guessed, and uncertain writes are not retried. Old
+reset receipts and partial cleanup cannot authorize activation.
 
-Race weights are recalibrated from all twelve JSON timing artifacts of successful
-full group 38279650054, attempt 1. The twelve-shard count, packing, complete target
-discovery and database serialization are unchanged. The source snapshot contains
-800 planner units, including whole-package units; this is not a test count.
-The measured-cost model maximum improves from 985.78 to 753.51 seconds. This model
-is not hosted latency proof. PR #893 bootstrap copies the planner from its
-immutable trusted `BASE_SHA`, so it exercises the old placement. The new weights
-are exercised after landing; a later legitimate full group must establish the
-approximately 35-minute target.
+Landing remains staged. `QUEUE_HEAD_WORKERS_ENABLED` stays unset/false until an
+actual successful exact-main version-2 probe, authenticated artifact and live
+neutral cleanup for every participating ID are independently verified. Old
+unleased definitions refuse before publication; all new production jobs remain
+skipped during this protected hold. Existing mandatory queue protection and
+complete full-current-main bootstrap proof are preserved. Source tests do not
+substitute for actual token acceptance, activation or hosted timing.
 
-The reset payload is now an experimental explicit-null candidate, scoped to
-PATCHing an existing authenticated queue check and the same fixed canary. CREATE
-requests and the legacy full-only publisher remain unchanged. Actual probe
-38306521236 returned completed/success with all identity fields correct when the
-old reset omitted terminal fields. Its canary 115001958045 was verified neutral
-after cleanup. The official API schema does not document nullable reset fields;
-this proposed payload is not yet proven to work. The next trusted-main probe
-must confirm queued status, empty conclusion and empty completion timestamp,
-then exact same-ID neutral cleanup, before workers can be enabled. Tests model
-both acceptance and HTTP rejection/retained completion, preserving the separate
-blocking uncertainty barrier and no mutation retries.
+Earlier c95 feedback passed in 82 seconds while the deployed global publisher
+took 6m 59s to complete admission. A historical group took 40m 39s; a later full
+group 38288765434 passed in 24m 03s. These observed runs do not prove the disabled
+per-head pipeline meets the requested timing on each commit. The four-minute
+feedback and one-minute targeted publisher bound controlled execution; provider
+queue and API delays remain outside that bound. Fresh full-group and activated
+per-commit acceptance are still required.
+
+Race weights use all twelve JSON artifacts of successful full group 38279650054,
+attempt 1, preserving twelve shards, packing, complete target discovery and
+database serialization. The source union is 800 planner units, not a test count.
+The measured-cost model maximum improves from 985.78 to 753.51 seconds; model
+redistribution is not hosted latency proof. This lifecycle repair changes none
+of those planner weights or application/full-suite tests.

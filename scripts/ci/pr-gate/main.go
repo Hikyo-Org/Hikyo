@@ -459,6 +459,7 @@ type controller struct {
 	checkName     string
 	expectedHead  string
 	queueDeadline time.Time
+	queueRefresh  *queueReassessment
 	dryRun        bool
 	output        io.Writer
 }
@@ -1254,16 +1255,15 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
-	if err := ctx.Err(); err != nil {
+	if c.checkName == queueCheckName || c.checkName == lifecycleName {
+		_, err := c.publishQueueRecord(ctx, p, b, selected, result)
+		if err == nil && c.queueRefresh != nil && result.Status == "completed" {
+			c.queueRefresh.verifiedTerminal = true
+		}
 		return err
 	}
-	if c.checkName == queueCheckName {
-		if !shaPattern.MatchString(c.expectedHead) {
-			return errors.New("queue writes require an authenticated per-head worker lease")
-		}
-		if p.Head.SHA != c.expectedHead || b.Head != c.expectedHead || selected != nil && selected.HeadSHA != c.expectedHead {
-			return &staleHeadWork{expected: c.expectedHead}
-		}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if !shaPattern.MatchString(b.Head) || !shaPattern.MatchString(b.Base) {
 		return errors.New("refuse invalid publication binding")
@@ -1276,11 +1276,7 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	if decoded != b {
 		return errors.New("refuse invalid publication binding")
 	}
-	// Queue writers reset only a fully authenticated owned ID. Its previous
-	// binding grants no current authority; every terminal result is re-proved.
-	// This route remains disabled until the trusted-main lifecycle probe passes.
-	reuseQueue := c.checkName == queueCheckName && reusableQueueCheck(selected, b)
-	if selected != nil && !reuseQueue && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
+	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
 		old, err := decodeBinding(selected.ExternalID)
 		// The pre-ref-read barrier carries PR metadata, whose base SHA can be
 		// stale. Only an incomplete, unbound barrier for this same identity may
@@ -1291,10 +1287,6 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 		}
 	}
 	payload, err := c.checkPayload(b, result)
-	resetQueue := reuseQueue && result.Status == "queued"
-	if resetQueue {
-		payload, err = c.checkResetPayload(b, result)
-	}
 	if err != nil {
 		return err
 	}
@@ -1310,10 +1302,10 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	}
 	var written check
 	if err := c.api.write(ctx, method, path, payload, &written); err != nil {
-		return c.blockResetFailure(ctx, p, b, selected, result, err)
+		return err
 	}
-	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID || resetQueue && written.CompletedAt != "" {
-		return c.blockResetFailure(ctx, p, b, selected, result, errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted"))
+	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID {
+		return errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted")
 	}
 	return nil
 }
@@ -1584,7 +1576,7 @@ func main() {
 	if err == nil {
 		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout}
 		if *lifecycleProbe {
-			receipt := lifecycleReceipt{Version: 1}
+			receipt := lifecycleReceipt{Version: 2, Protocol: lifecycleProtocol}
 			path := os.Getenv("PR_GATE_PROBE_RECEIPT")
 			if path == "" {
 				err = errors.New("lifecycle probe receipt path is required before mutation")
