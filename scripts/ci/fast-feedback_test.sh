@@ -109,6 +109,16 @@ for consumer in dependency.go dependency_test.go; do
 	commit_fixture
 done
 
+# Feedback compiles consumers without running test binaries or package init.
+printf 'package fixture\n\nfunc init() { panic("feedback executed init") }\n' >no_execute.go
+commit_fixture
+compile_only_base=$(git rev-parse HEAD)
+printf '\n// Another dependency selection.\n' >>go.mod
+commit_fixture
+FAST_FEEDBACK_BASE="$compile_only_base" run_feedback --lane=go
+rm no_execute.go
+commit_fixture
+
 mkdir web
 printf 'export const value = 1;\n' >web/fixture.ts
 commit_fixture

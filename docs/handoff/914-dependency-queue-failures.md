@@ -31,7 +31,12 @@ Dependency-only fast feedback checked module integrity, not consumer compilation
   login. The new library correctly rejects unsolicited extension output; its
   strict validation remains enabled.
 - On go.mod/go.sum changes, verify modules and compile all production and test
-  consumers with `go test -c -o /dev/null ./...`. This does not execute tests.
+  consumers. The initial `go test -c` implementation linked every test binary;
+  hosted feedback exhausted its unchanged 220-second budget. The follow-up uses
+  `go list -deps -test -export -f '{{""}}' ./...` to build all package/test
+  archives without linking or executing test binaries. Its regression fixtures
+  cover broken unchanged production and test-only consumers and an init panic
+  that must never execute. Hosted timing for this follow-up remains unverified.
 - Add the advisory `merge-queue-validation` PR status, with a direct run/attempt
   link. The reporter reads only authenticated GitHub metadata and immutable merge
   parents, so it can report after eviction. Superseded heads, attempts and groups
@@ -66,6 +71,15 @@ visible hosted validation before that activation.
   activation after merge.
 
 ## Remaining delivery gates
+
+The first full candidate of fix `0da7139d3` exposed a second breaking change:
+WebAuthn 0.18 rejects IP-address RP IDs. Compose, macOS file-sync and the headline
+restart check fail during boot for literal-IP origins. The file-sync failure was
+reproduced locally. A scope decision is pending: retain WebAuthn 0.17.4 in this
+batch to preserve existing startup behavior (recommended), or complete a broader
+hostname-origin migration and accept the configuration compatibility change.
+Do not assume this decision has been made. No origin/security validation has
+been bypassed.
 
 Push the signed, DCO-signed fix, request a visible full candidate, and recheck
 exact-head reviews and checks. Because the PR author is Dependabot and .github/

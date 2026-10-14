@@ -194,7 +194,9 @@ if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 	if [ "$all_go" = true ]; then
 		# Integrity alone cannot catch upstream API changes in unchanged consumers.
 		run go mod verify
-		run go test -c -o /dev/null ./...
+		# Build production and test archives without linking every test binary.
+		# The empty template keeps the complete dependency graph out of the log.
+		run go list -deps -test -export -f '{{""}}' ./...
 	fi
 	if [ "$all_go" = false ] && [ "${#go_packages[@]}" -gt 0 ]; then
 		# One build graph shares compilation and linking across every owner.
