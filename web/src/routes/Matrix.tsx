@@ -2,7 +2,7 @@ import { WorkspaceSettingsLink } from './WorkspaceSettingsLink.tsx';
 import { useSelfConfig } from '../api/selfConfig.ts';
 import { SystemProjectNotice } from './InstanceConfig.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { type CSSProperties, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type CSSProperties, type MouseEvent, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { isDemo } from '../demo/config.ts';
@@ -1731,7 +1731,11 @@ function MatrixKeyLink({
         to={to}
         onMouseEnter={previewOnHover}
         onFocus={previewOnHover}
-        onMouseLeave={closeTip}
+        onPointerLeave={(event: PointerEvent<HTMLAnchorElement>) => {
+          // Touch can synthesize mouseleave after opening the first-tap
+          // preview. Only non-touch pointer exits should dismiss it here.
+          if (event.pointerType !== 'touch') closeTip();
+        }}
         onBlur={closeTip}
         onClick={(event: MouseEvent<HTMLAnchorElement>) => {
           if (phone && event.detail > 0 && !tipOpen()) {

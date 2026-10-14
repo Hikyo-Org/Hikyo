@@ -27,6 +27,90 @@ test.beforeEach(async ({ page }) => {
   page.on('response', (response) => { expect(response.status()).toBeLessThan(400); });
 });
 
+test('matrix key names preview on the first phone tap and open on the second', async ({ page, isMobile }) => {
+  await page.goto('./');
+  const link = page.getByRole('link', { name: 'Declaration of LOG_LEVEL', exact: true });
+  const tip = page.locator('.matrix__key-tip').filter({ hasText: /^LOG_LEVEL$/ });
+  await expect(tip).toBeHidden();
+
+  if (isMobile) {
+    // Use real touch input: a click does not reproduce Chromium's synthesized
+    // mouse events after touchend, which used to dismiss this preview.
+    await link.tap();
+    await expect(tip).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`#${DEMO_MATRIX_PATH}$`));
+    // Also exercise the compatibility event explicitly so this regression is
+    // covered on browsers that do not synthesize it for this particular tap.
+    await link.dispatchEvent('mouseout', { relatedTarget: null });
+    await expect(tip).toBeVisible();
+    await link.tap();
+  } else {
+    await link.hover();
+    await expect(tip).toBeHidden();
+    await link.click();
+  }
+
+  await expect(page).toHaveURL(new RegExp(`#${DEMO_MATRIX_PATH}/keys/key_11111111-1111-4111-8111-000000000001$`));
+  await expect(page.getByRole('heading', { name: 'LOG_LEVEL', exact: true })).toBeVisible();
+  await expect(tip).toBeHidden();
+});
+
+test('compact matrix key previews dismiss on outside press, Escape and focus loss', async ({ page, isMobile }) => {
+  // A narrow window with a mouse still supports hover; a phone uses taps.
+  if (!isMobile) await page.setViewportSize({ width: 393, height: 851 });
+  await page.goto('./');
+  const link = page.getByRole('link', { name: 'Declaration of LOG_LEVEL', exact: true });
+  const tip = page.locator('.matrix__key-tip').filter({ hasText: /^LOG_LEVEL$/ });
+  const showPreview = async () => {
+    if (isMobile) await link.tap();
+    else {
+      await page.mouse.move(0, 0);
+      await link.hover();
+    }
+    await expect(tip).toBeVisible();
+  };
+
+  if (!isMobile) {
+    await showPreview();
+    await page.mouse.move(0, 0);
+    await expect(tip).toBeHidden();
+    await test.step('a hovering pen opens and dismisses the preview', async () => {
+      await link.dispatchEvent('pointerover', { pointerType: 'pen', relatedTarget: null });
+      await link.dispatchEvent('mouseover', { relatedTarget: null });
+      await expect(tip).toBeVisible();
+      await link.dispatchEvent('pointerout', { pointerType: 'pen', relatedTarget: null });
+      await link.dispatchEvent('mouseout', { relatedTarget: null });
+      await expect(tip).toBeHidden();
+    });
+  }
+
+  await showPreview();
+  const heading = page.getByRole('heading', { name: 'Environment matrix', exact: true });
+  if (isMobile) await heading.tap();
+  else await heading.click();
+  await expect(tip).toBeHidden();
+
+  await showPreview();
+  await page.keyboard.press('Escape');
+  await expect(tip).toBeHidden();
+
+  await showPreview();
+  await link.focus();
+  await page.keyboard.press('Tab');
+  await expect(link).not.toBeFocused();
+  await expect(tip).toBeHidden();
+  await expect(page).toHaveURL(new RegExp(`#${DEMO_MATRIX_PATH}$`));
+});
+
+test('keyboard activation opens a matrix declaration without a preview tap', async ({ page }) => {
+  await page.goto('./');
+  const link = page.getByRole('link', { name: 'Declaration of LOG_LEVEL', exact: true });
+  await link.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(`#${DEMO_MATRIX_PATH}/keys/key_11111111-1111-4111-8111-000000000001$`));
+  await expect(page.getByRole('heading', { name: 'LOG_LEVEL', exact: true })).toBeVisible();
+});
+
 test('developer stages drafts, cannot publish or edit production, and reset clears them', async ({ page }) => {
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Environment matrix', exact: true })).toBeVisible();
@@ -120,7 +204,7 @@ type SurfaceCheck = {
   [Id in SurfaceId]: { mode: (typeof DEMO_SURFACE_POLICIES)[Id]['mode'] } & (
     (typeof DEMO_SURFACE_POLICIES)[Id]['mode'] extends 'excluded'
       ? { result: 'matrix' | 'unavailable' }
-      : { heading: string | RegExp; sample: string; environment?: string; level?: number }
+      : { heading: string | RegExp; sample: string; tab?: string; environment?: string; level?: number }
   );
 };
 const surfaceChecks = {
@@ -132,19 +216,19 @@ const surfaceChecks = {
   projects: { mode: 'interactive', heading: 'Projects', level: 1, sample: 'Payments' },
   remotes: { mode: 'read-only', heading: 'Remotes', sample: 'European production (sample)' },
   members: { mode: 'read-only', heading: /^Members\s*·?\s*Acme$/, sample: 'Sam Rivera' },
-  'org-settings': { mode: 'read-only', heading: /^Organisation settings\s*·?\s*Acme$/, sample: 'Payments' },
+  'org-settings': { mode: 'read-only', heading: /^Organisation settings\s*·?\s*Acme$/, sample: 'Payments', tab: 'Policy' },
   scim: { mode: 'read-only', heading: 'SCIM provisioning', sample: 'acme-sso' },
   audit: { mode: 'read-only', heading: 'Audit', sample: 'revision.published' },
   'instance-admin': { mode: 'excluded', result: 'unavailable' },
   'instance-config': { mode: 'excluded', result: 'unavailable' },
   'instance-members': { mode: 'excluded', result: 'unavailable' },
-  settings: { mode: 'read-only', heading: 'Account & security', sample: 'Sample security key' },
+  settings: { mode: 'read-only', heading: 'Account & security', sample: 'Sample security key', tab: 'Sign-in factors' },
   matrix: { mode: 'interactive', heading: 'Environment matrix', sample: 'LOG_LEVEL' },
   history: { mode: 'interactive', heading: 'Revision history', sample: 'current r1' },
   'key-detail': { mode: 'interactive', heading: 'LOG_LEVEL', sample: 'Application log verbosity.' },
   values: { mode: 'interactive', heading: 'Values', sample: 'LOG_LEVEL' },
   'machine-access': { mode: 'read-only', heading: 'Machine access', sample: 'payments-api' },
-  'change-approvals': { mode: 'read-only', heading: 'Change approvals', sample: 'Sample review: rotate the payment provider credential.', environment: DEMO_IDS.staging },
+  'change-approvals': { mode: 'read-only', heading: 'Change approvals', sample: 'Sample review: rotate the payment provider credential.', tab: 'Review queue', environment: DEMO_IDS.staging },
   'temporary-access': { mode: 'read-only', heading: 'Temporary access', sample: 'Sample request: investigate a checkout error.', environment: DEMO_IDS.staging },
   adapters: { mode: 'read-only', heading: 'Deployment adapters', sample: 'acme/payments' },
   'project-audit': { mode: 'read-only', heading: 'Project audit', sample: 'revision.published' },
@@ -185,6 +269,7 @@ for (const surface of SURFACES) {
         } else {
           await expect(page.getByRole('heading', { name: check.heading, exact: true, level: 'level' in check ? check.level : undefined })).toBeVisible();
           if (check.mode === 'read-only') await expect(page.getByText(/^Read-only/)).toBeVisible();
+          if ('tab' in check) await page.getByRole('tab', { name: check.tab, exact: true }).click();
           if ('environment' in check) {
             await page.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(check.environment);
           }
@@ -203,6 +288,7 @@ test('read-only details and filters work while management actions stay disabled'
   await expect(page.getByRole('button', { name: 'Create service account', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: /payments-api/ }).click();
   await expect(page.getByText('hik_demo_only', { exact: false }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   for (const name of ['Federation', 'Kubernetes targets', 'Providers', 'Leases', 'SSH certificates', 'Certificates']) {
     await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
     await expect(page.getByRole('main').getByText(/^Loading/)).toHaveCount(0);
@@ -226,6 +312,7 @@ test('read-only details and filters work while management actions stay disabled'
   await page.getByRole('button', { name: 'Map a group', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Add mapping', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('tab', { name: 'Directory', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Filter users by name' }).fill('Sam');
   await expect(page.getByRole('main').getByText('Sam Rivera', { exact: true })).toBeVisible();
   await expect(page.getByRole('main').getByText('Dana Chen', { exact: true })).toHaveCount(0);
