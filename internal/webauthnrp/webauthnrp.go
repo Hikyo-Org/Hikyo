@@ -165,7 +165,7 @@ func (rp *RP) BeginEnrol(u User) (options, session []byte, challenge string, err
 	// the RP asks, and an unreported residency is recorded non-discoverable
 	// (B13), which the passkey sign-in then refuses.
 	creation, sess, err := rp.wa.BeginRegistration(waUser{u},
-		webauthn.WithExtensions(protocol.AuthenticationExtensions{"credProps": true}))
+		webauthn.WithExtensions(webauthn.WithExtensionCredProps()))
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("%w: %v", ErrCeremony, err)
 	}
@@ -332,16 +332,8 @@ func transportStrings(ts []protocol.AuthenticatorTransport) []string {
 }
 
 func credProps(ext protocol.AuthenticationExtensionsClientOutputs) map[string]any {
-	if ext == nil {
+	if ext.CredProps == nil || ext.CredProps.RK == nil {
 		return nil
 	}
-	raw, ok := ext["credProps"]
-	if !ok {
-		return nil
-	}
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return nil
-	}
-	return m
+	return map[string]any{"rk": *ext.CredProps.RK}
 }

@@ -96,6 +96,19 @@ FAST_FEEDBACK_BASE="$rename_base" refuse 'undefined: Value'
 rm -r old new
 commit_fixture
 
+# A dependency-only update must compile existing consumers. Module hashes can
+# remain valid while an upstream API change breaks an unchanged source file.
+for consumer in dependency.go dependency_test.go; do
+	printf 'package fixture\n\nvar dependencyConsumer = removedDependencyAPI\n' >"$consumer"
+	commit_fixture
+	dependency_base=$(git rev-parse HEAD)
+	printf '\n// Updated dependency selection.\n' >>go.mod
+	commit_fixture
+	FAST_FEEDBACK_BASE="$dependency_base" refuse 'undefined: removedDependencyAPI' --lane=go
+	rm "$consumer"
+	commit_fixture
+done
+
 mkdir web
 printf 'export const value = 1;\n' >web/fixture.ts
 commit_fixture

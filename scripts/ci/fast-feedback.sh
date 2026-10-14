@@ -192,11 +192,11 @@ fi
 if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 	need go
 	if [ "$all_go" = true ]; then
-		# Dependency integrity is quick feedback, not compatibility evidence.
-		# The full candidate still compiles and tests every package.
+		# Integrity alone cannot catch upstream API changes in unchanged consumers.
 		run go mod verify
+		run go test -c -o /dev/null ./...
 	fi
-	if [ "${#go_packages[@]}" -gt 0 ]; then
+	if [ "$all_go" = false ] && [ "${#go_packages[@]}" -gt 0 ]; then
 		# One build graph shares compilation and linking across every owner.
 		# Null output also supports distinct packages with the same basename;
 		# no test/init/TestMain executes and no binaries dirty the checkout.
