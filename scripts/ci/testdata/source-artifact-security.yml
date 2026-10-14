@@ -51,10 +51,11 @@ steps:
     run: |
       go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
       go build -tags ui -ldflags "$(cat "$RUNNER_TEMP/security-fixture/ldflags")" -o ci-artifacts/hikyo-security-ui ./cmd/hikyo
+      go build -o "$RUNNER_TEMP/security-artifact-harness" ./scripts/security/artifact-harness
   - name: Native artifact adversarial campaign on both datastores
     timeout-minutes: 11
     run: >-
-      go run ./scripts/security/artifact-harness
+      "$RUNNER_TEMP/security-artifact-harness"
       --binary "$GITHUB_WORKSPACE/ci-artifacts/hikyo-security-ui"
       --bundle "$RUNNER_TEMP/security-fixture/public/bundle"
       --postgres-dsn 'postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test?sslmode=disable'

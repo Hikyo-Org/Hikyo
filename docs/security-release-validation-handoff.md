@@ -128,7 +128,14 @@ the existing `web-go` plan. The original `web-go` job keeps its 15-minute
 budget and complete test/no-egress steps. The new job has a 35-minute ceiling,
 bounded setup/build steps and a separate campaign budget; its internal 10-minute campaign
 deadline is unchanged. This addresses a shared job-budget risk, rather than
-a reproduced hosted timeout. The optional performance benchmark was skipped
+a reproduced hosted timeout. The source campaign now invokes a prebuilt harness:
+compilation occurs in the existing five-minute fixture-build step. Its
+11-minute runtime step keeps the harness's ten-minute deadline separate
+from compilation, with no timeout increases. Four actual-shell regression scenarios cover command
+ordering, exact inputs, and failures in fixture generation, UI compilation
+and harness compilation; no campaign or success receipt follows a failed
+build. The local warm harness build took 1.43 seconds; this is not a hosted
+cold-build performance claim. The optional performance benchmark was skipped
 by its existing rolling budget policy; no credit override was requested.
 
 Candidate-local reusable workflows can execute this new job while loading an
@@ -207,6 +214,12 @@ Owned CREATE/DROP passed; an actual `newTarget` creation collision preserved
 the existing database; invalid/unowned names rejected before SQL. Parent
 database identity and marker data were unchanged. All owned databases and
 markers were removed, and the task-owned container was removed after proof.
+A supplementary probe requires the exact CREATE-stage error and confirms
+that the forced nonce reader was used once. An unforced constructor succeeds
+with a different owned database and passes cleanup, so the collision refusal
+oracle rejects that control. Its first diagnostic attempt had a duplicated
+cleanup call in the temporary probe; that failed source/log pair is retained,
+and the corrected probe passes without a repository code change.
 This validates the extracted setup/cleanup path; the earlier complete
 published-binary campaigns remain observations from their earlier harness
 revision. Updated full hosted campaign proof remains a separate gate.
