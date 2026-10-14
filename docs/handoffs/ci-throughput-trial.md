@@ -2,7 +2,7 @@
 
 The hosted pilot supports adopting single-pass shard planning and retaining the existing trusted-main compiler cache. Compiling a race-test binary once is promising within each existing runner, but transferring it to a separate runner did not establish a latency win. No extra runner capacity, paid service, review bypass or reduced test inventory is proposed.
 
-Status: all four hosted experiment jobs passed. The temporary experiment workflow, Python harness and cache-policy exception have been removed from the branch. The production change remains single-pass planning with a trusted-base migration. PR #916 remains a draft; merge is not authorized. Local validation of the cleaned branch against current main passed; hosted checks for the next pushed head remain pending.
+The hosted pilot concluded on 2026-10-14 with all four experiment jobs passing. The temporary experiment workflow, Python harness and cache-policy exception were removed. The production change is single-pass planning with a trusted-base migration. This report records that experiment and its source revisions; current review, validation and delivery status belongs to PR #916.
 
 ## Measured options and concrete next steps
 
@@ -25,7 +25,7 @@ The cache restored 8,584 files from the compatible main seed ending in `5a9e7aad
 
 The race pilot ran only `TestOperatorCustodyRejectsSymlinksAndUnsafeMode` in `internal/upgradegate`, preserving race instrumentation, fresh execution, timeout and anchored selection. The second reversed-order pair was 21.8657s versus 6.9669s, but its binary already existed and the build command took only 0.2396s. Use the first-creation pair for the conservative comparison. The initial 112.2087s priming invocation includes cold setup/compilation and is not a cold A/B pair. The binary was 135,359,284 bytes; the consumer verified its source/run/attempt manifest and SHA-256. Successful transport is not trusted merge attestation and does not prove complete race-suite equivalence.
 
-Raw numeric records are retained in [ci-throughput-evidence.json](ci-throughput-evidence.json). The original harness and workflow remain available at commit `3ae586d3fb99eea1f5ff09c784811fe3708a8632`. Local logs, executed scripts, manifests, job metadata and downloaded artifacts are retained under `/Users/developwent/.t3/scratch/hikyo-ci-hosted-trial-2026-10-14/`. No modelled capacity gain is presented as a hosted measurement.
+Raw numeric records are retained in [ci-throughput-evidence.json](ci-throughput-evidence.json). The original harness and workflow remain available at commit `3ae586d3fb99eea1f5ff09c784811fe3708a8632`. The committed numeric evidence contains the raw measurement records. The [hosted run artifacts](https://github.com/Hikyo-Org/Hikyo/actions/runs/38558588752#artifacts) additionally contain logs, executed scripts and manifests while retained by GitHub. No modelled capacity gain is presented as a hosted measurement.
 
 ## Production change and trust boundaries
 
