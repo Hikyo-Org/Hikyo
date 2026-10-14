@@ -653,28 +653,30 @@ test.describe('members and grants', () => {
 
   test('switches creator membership from a project route without leaking the old org', async ({
     browser,
+    isMobile,
   }) => {
     const view = await freshPage(browser);
     try {
         await view.page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix`);
         const menu = view.page.getByRole('button', { name: 'Menu' });
-        const mobile = await menu.isVisible();
-        if (mobile) {
+        // The fresh context inherits the configured device; the shell may
+        // still be loading when goto returns, so visibility is not a device check.
+        if (isMobile) {
           await menu.click();
         }
         const rail = view.page.getByRole('navigation', { name: 'Organisations' });
         const mobileOrganizations = view.page.getByRole('region', { name: 'Organisations' });
-        const orgButton = (name: string) => mobile
+        const orgButton = (name: string) => isMobile
           ? mobileOrganizations.getByRole('button').filter({ hasText: name })
           : rail.getByRole('button', { name: `Organisation ${name}` });
         await expect(orgButton(seed.orgName)).toHaveAttribute(
           'aria-current',
-          mobile ? 'page' : 'true',
+          isMobile ? 'page' : 'true',
         );
         await orgButton(seed.orgBName).click();
         await expect(view.page).toHaveURL(/\/projects$/);
         await expect(view.page.getByLabel('Breadcrumb')).toContainText(seed.orgBName);
-        if (await menu.isVisible()) {
+        if (isMobile) {
           await menu.click();
         }
         // `exact`: the operator's drawer also lists "Instance members" (#567).
@@ -690,18 +692,18 @@ test.describe('members and grants', () => {
         await view.page.goto(`/orgs/${seed.orgB}/members`);
         await expect(view.page.getByLabel('Breadcrumb')).toContainText(seed.orgBName);
         const menuAgain = view.page.getByRole('button', { name: 'Menu' });
-        if (await menuAgain.isVisible()) {
+        if (isMobile) {
           await menuAgain.click();
         }
         await view.page.getByRole('link', { name: 'Projects', exact: true }).click();
         await expect(view.page).toHaveURL(/\/projects$/);
         await expect(view.page.getByLabel('Breadcrumb')).toContainText(seed.orgBName);
-        if (mobile) {
+        if (isMobile) {
           await menu.click();
         }
         await expect(orgButton(seed.orgBName)).toHaveAttribute(
           'aria-current',
-          mobile ? 'page' : 'true',
+          isMobile ? 'page' : 'true',
         );
     } finally {
       await view.context.close();
