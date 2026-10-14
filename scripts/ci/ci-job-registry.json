@@ -114,6 +114,7 @@
     "web-closure": {"required_gate": "planned", "plan_jobs": ["web"]},
     "storybook": {"required_gate": "indirect", "plan_jobs": ["web"]},
     "web-go": {"required_gate": "planned", "plan_jobs": ["web-go"]},
+    "source-artifact-security": {"required_gate": "planned", "plan_jobs": ["web-go"]},
     "k8s-e2e": {
       "required_gate": "planned",
       "plan_jobs": ["k8s-e2e"]

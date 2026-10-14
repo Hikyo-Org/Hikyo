@@ -278,10 +278,14 @@ func (q *queueController) executeProof(ctx context.Context, name string, e event
 }
 
 func (q *queueController) admit(ctx context.Context, number int) error {
-	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, number) })
+	return q.admitCaptured(ctx, number, nil)
 }
 
-func (q *queueController) admitProof(ctx context.Context, number int) error {
+func (q *queueController) admitCaptured(ctx context.Context, number int, captured *admissionSnapshot) error {
+	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, number, captured) })
+}
+
+func (q *queueController) admitProof(ctx context.Context, number int, captured *admissionSnapshot) error {
 	dcoVerifier := q.dco
 	if dcoVerifier == nil {
 		var close func()
@@ -298,6 +302,14 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 	if p.Head.SHA != q.expectedHead {
 		return &staleHeadWork{expected: q.expectedHead}
 	}
+	if captured != nil {
+		initial, exists := captured.roles.AllPulls[number]
+		// REST Base.SHA may lag main; readPR above resolves the live branch.
+		// Every other captured PR/actor/reference identity must still match.
+		if !exists || !sameRolePull(initial, p) {
+			return &staleHeadWork{expected: q.expectedHead}
+		}
+	}
 	var trace *admissionTrace
 	if q.targeted {
 		if q.admissions == nil {
@@ -308,9 +320,14 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 	}
 	b := newBinding(q.repo.ID, p, nil)
 	result := pending("Merge queue is not active; the legacy full-candidate check remains required.")
-	policy, err := q.policy(ctx)
-	if err != nil {
-		return err
+	var policy liveQueuePolicy
+	if captured != nil {
+		policy = captured.policy
+	} else {
+		policy, err = q.policy(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	var earlyFeedback *run
 	if trace != nil && policy.Enabled {
@@ -325,13 +342,22 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 		}
 		trace.Run = earlyFeedback
 	}
+	var initialRoles headRoles
 	if policy.Enabled {
-		roles, err := q.roles(ctx, p.Head.SHA)
-		if err != nil {
-			return err
+		if captured != nil {
+			initialRoles = captured.roles
+		} else {
+			initialRoles, err = q.roles(ctx, p.Head.SHA)
+			if err != nil {
+				return err
+			}
+			current, exists := initialRoles.AllPulls[number]
+			if !exists || !sameRolePull(current, p) {
+				return &staleHeadWork{expected: q.expectedHead}
+			}
 		}
-		if roles.Group && len(roles.Pulls) > 0 {
-			return q.roleCollision(ctx, roles)
+		if initialRoles.Group && len(initialRoles.Pulls) > 0 {
+			return q.roleCollision(ctx, initialRoles)
 		}
 	}
 	var selectedRun *run
@@ -359,9 +385,12 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 						break
 					}
 				}
-				collision, err := q.sharedHead(ctx, p)
-				if err != nil {
-					return err
+				collision := false
+				for _, other := range initialRoles.Pulls {
+					if other.Number != p.Number && other.Head.SHA == p.Head.SHA {
+						collision = true
+						break
+					}
 				}
 				if collision {
 					result = refused("This head belongs to multiple open PRs; commit-level admission is ambiguous.")
@@ -409,6 +438,9 @@ func (q *queueController) admitProof(ctx context.Context, number int) error {
 			}
 		}
 	}
+	// This scan also establishes a blocking barrier if a foreign green appears
+	// before a later PR read fails. Its recovery side effect is required even
+	// though the final publication independently repeats the ownership scan.
 	own, err := q.ownedChecks(ctx, p)
 	if err != nil {
 		return err

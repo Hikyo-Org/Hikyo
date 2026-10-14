@@ -1,11 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  fixtureEnvironment,
   idpIssuerMatchesRequestedPort,
   persistSharedPasskey,
   refreshSharedSessionFromProbe,
   type VirtualCredential,
 } from './instance.ts';
+
+describe('security fixture child environment', () => {
+  const ambient = {
+    PATH: '/fixture/toolchain/bin', HOME: '/fixture/host-home', TMPDIR: '/fixture/host-temp',
+    GH_TOKEN: 'hostile-github-fixture-token', AWS_SECRET_ACCESS_KEY: 'hostile-provider-fixture-token',
+    HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '500', HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
+    HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true', HIKYO_SECOND_FACTOR: 'optional',
+    HIKYO_ROOT_KEY: 'hostile-root-key-fixture', HIKYO_DB: 'hostile-datastore-fixture',
+  };
+
+  it('drops ambient credentials and policy overrides, and owns HOME and temporary storage', () => {
+    expect(fixtureEnvironment('security', '/fixture/owned', 'http://localhost:28789', ambient)).toEqual({
+      PATH: '/fixture/toolchain/bin', HOME: '/fixture/owned', TMPDIR: '/fixture/owned',
+      XDG_CACHE_HOME: '/fixture/owned/cache', HIKYO_EXTERNAL_ORIGIN: 'http://localhost:28789',
+    });
+  });
+
+  it('preserves existing flow defaults and ambient inheritance only for the flow profile', () => {
+    expect(fixtureEnvironment('flows', '/fixture/owned', 'http://localhost:28789', ambient)).toEqual({
+      ...ambient, HIKYO_EXTERNAL_ORIGIN: 'http://localhost:28789',
+    });
+  });
+});
 
 describe('fake IdP issuer binding', () => {
   it('accepts the actual loopback port when the OS assigns it', () => {
