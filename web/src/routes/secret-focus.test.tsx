@@ -85,7 +85,7 @@ for (const surface of ['Values', 'Matrix editor']) {
         expect(view.container.textContent).toContain(revealed.value);
         const countdown = view.container.querySelector(surface === 'Values'
           ? '.values__countdown' : 'small[aria-hidden="true"]');
-        expect(countdown?.textContent).toBe('re-masks in 10s');
+        expect(countdown?.textContent).toBe('re-masks in 10 seconds');
         await act(async () => loseFocus(event));
         expect(view.container.textContent).not.toContain(revealed.value);
         await act(async () => regainFocus());
@@ -108,7 +108,7 @@ for (const surface of ['Values', 'Matrix editor']) {
         await settle();
         expect(view.container.textContent).not.toContain(revealed.value);
         expect(view.container.textContent).toContain('Reveal again to view the value.');
-        if (surface === 'Values') expect(view.container.textContent).toContain('Disclosure recorded · PASSWORD');
+        if (surface === 'Values') expect(view.container.textContent).toMatch(/Disclosure recorded\s*·\s*PASSWORD/);
         await view.unmount();
       });
     }
@@ -200,7 +200,7 @@ it('clears Values bulk disclosure and rejects a pending bulk reveal', async () =
   await settle();
   expect(view.container.textContent).not.toContain(revealed.value);
   expect(view.container.textContent).toContain('Reveal again to view the value.');
-  expect(view.container.textContent).toContain('Disclosure recorded · PASSWORD');
+  expect(view.container.textContent).toMatch(/Disclosure recorded\s*·\s*PASSWORD/);
   await view.unmount();
 });
 

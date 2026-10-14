@@ -11,6 +11,8 @@ export type SidebarLink = {
   readonly to: string;
   /** Non-null renders the row as a disabled span carrying this title. */
   readonly disabledReason: string | null;
+  /** The disabled row's short visible note; "local only" when absent. */
+  readonly disabledNote?: string;
 };
 
 export type SidebarBlock = {
@@ -28,6 +30,18 @@ export type SidebarModel = {
   readonly instance: SidebarBlock | null;
   /** Mobile drawer only; desktop reaches it from the rail-foot menu. */
   readonly account: SidebarBlock;
+  /**
+   * The organisation's project list takes the project block's place: an
+   * organisation page with no project opened yet, projects loaded, local.
+   */
+  readonly orgProjectList: boolean;
+  /**
+   * One link back to a project, shown only when neither `context` nor the
+   * org-page project list renders (account settings today): the org's
+   * last-opened project while it still exists, else the project list. Null
+   * everywhere `context` or that list already offers a way back.
+   */
+  readonly backToProject: { readonly label: string; readonly to: string } | null;
 };
 
 const localOnly = (label: string) => `${label} is local-instance only`;
@@ -49,12 +63,13 @@ export function sidebarModel(input: {
   readonly surface: Surface | undefined;
   readonly activeOrgId: string;
   /**
-   * The project the ROUTE addresses, resolved to its id, or '' on any route
-   * that names no project. Never the rail's fallback: that value is never
-   * empty once an organisation has a project, and keying the context block on
-   * it would hide the organisation list everywhere.
+   * The project the project block shows, resolved to its id: the one the
+   * route addresses, or on an organisation page the one last opened in this
+   * organisation; '' for none. Never the rail's fallback (the org's first
+   * project): an organisation page with no project opened yet shows the
+   * project list instead.
    */
-  readonly routeProjectId: string;
+  readonly projectId: string;
   readonly remote: string;
   readonly isInstanceOperator: boolean;
   /**
@@ -64,10 +79,27 @@ export function sidebarModel(input: {
    * 2026-09-06 amendment), so those entries are absent rather than dead.
    */
   readonly systemScope: SystemScope | null;
+  /** Projects in the active organisation, or null while unknown. */
+  readonly projects: readonly { readonly id: string; readonly name: string }[] | null;
+  /** True on an organisation-section route with no project in the URL: the
+   * route the project list falls back on when `context` is null. */
+  readonly onOrgPage: boolean;
+  /** The org's last-opened project id (`hikyo.lastProject`), or '' for none. */
+  readonly lastProjectId: string;
 }): SidebarModel {
-  const { surface, activeOrgId, routeProjectId, remote, isInstanceOperator, systemScope } = input;
+  const {
+    surface,
+    activeOrgId,
+    projectId,
+    remote,
+    isInstanceOperator,
+    systemScope,
+    projects,
+    onOrgPage,
+    lastProjectId,
+  } = input;
   const systemOrg = systemScope !== null && systemScope.org === activeOrgId;
-  const systemProject = systemOrg && systemScope.project === routeProjectId;
+  const systemProject = systemOrg && systemScope.project === projectId;
 
   // An org-scoped destination needs an organisation to point at. With none
   // active the entry is absent rather than dead: a link that resolves to
@@ -79,7 +111,15 @@ export function sidebarModel(input: {
       .filter((item) => !needsOrg(item) || activeOrgId !== '')
       .filter((item) => !systemOrg || !SYSTEM_SCOPE_REFUSES.has(item.id))
       .map((item) =>
-        link(item, needsOrg(item) ? generatePath(item.path, { org: activeOrgId }) : item.path),
+        // With exactly one project there is nothing to overview: landing goes
+        // straight to its matrix, and the entry stays visible but greyed so
+        // the menu does not change shape as projects come and go.
+        item.id === 'overview' && projects?.length === 1
+          ? {
+              ...link(item, item.path, 'This organisation has one project, so it opens on its matrix.'),
+              disabledNote: 'one project',
+            }
+          : link(item, needsOrg(item) ? generatePath(item.path, { org: activeOrgId }) : item.path),
       ),
   };
 
@@ -98,10 +138,10 @@ export function sidebarModel(input: {
   };
 
   let context: SidebarBlock | null = null;
-  if (routeProjectId !== '' && activeOrgId !== '') {
-    const params = { org: activeOrgId, project: routeProjectId };
+  if (projectId !== '' && activeOrgId !== '') {
+    const params = { org: activeOrgId, project: projectId };
     const membersSurface = surfaceById('members');
-    const membersPath = `${generatePath(membersSurface.path, { org: activeOrgId })}?project=${encodeURIComponent(routeProjectId)}`;
+    const membersPath = `${generatePath(membersSurface.path, { org: activeOrgId })}?project=${encodeURIComponent(projectId)}`;
     const projectLinks = sectionsFor('project')
       .filter((item) => !systemProject || !SYSTEM_SCOPE_REFUSES.has(item.id))
       .map((item) => {
@@ -127,11 +167,26 @@ export function sidebarModel(input: {
     context = instanceBlock;
   }
 
+  const orgProjectList = context === null && onOrgPage && activeOrgId !== '' && remote === '' && projects !== null;
+  const lastProject = projects?.find((item) => item.id === lastProjectId);
+  const backToProject =
+    context === null && activeOrgId !== '' && !orgProjectList
+      ? {
+          label: lastProject?.name ?? 'Projects',
+          to:
+            lastProject === undefined
+              ? generatePath(surfaceById('projects').path, { org: activeOrgId })
+              : generatePath(surfaceById('matrix').path, { org: activeOrgId, project: lastProject.id }),
+        }
+      : null;
+
   return {
     context,
     organisation,
     instance: context?.kind === 'instance' ? null : instanceBlock,
     account,
+    orgProjectList,
+    backToProject,
   };
 }
 

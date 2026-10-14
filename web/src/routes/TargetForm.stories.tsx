@@ -89,11 +89,25 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // A fresh repository target: routing is editable and every project key is offered.
+// `heading` defaults true, so the form keeps its own h3 when it is not inside
+// a side panel whose header already names it.
 export const Default: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('form', { name: 'Add target' })).toBeVisible();
+    await expect(canvas.getByRole('heading', { name: 'Add target' })).toBeVisible();
     await expect(canvas.getByRole('combobox', { name: /^environment$/i })).toBeEnabled();
     await expect(canvas.getByRole('checkbox', { name: 'DATABASE_URL' })).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Save' }).closest('.actions')).not.toBeNull();
+  },
+};
+
+// Inside a side panel the panel's own header already names the form:
+// `heading={false}` drops the duplicate h3, the form keeps its aria-label.
+export const NoHeading: Story = {
+  args: { heading: false },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('form', { name: 'Add target' })).toBeVisible();
+    await expect(canvas.queryByRole('heading', { name: 'Add target' })).toBeNull();
   },
 };
 

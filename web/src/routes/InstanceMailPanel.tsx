@@ -38,7 +38,7 @@ export function InstanceMailPanel() {
     {mail.isPending ? <p role="status">Loading mailer status…</p> : null}
     {mail.isError ? <Alert>{mailFailureText(mail.error)}</Alert> : null}
     {mail.isSuccess ? <>
-      <p>Mailer <Badge>{mail.data.configured ? 'configured' : 'not configured'}</Badge></p>
+      <p>Mailer <Badge icon={mail.data.configured ? 'check' : 'cross'}>{mail.data.configured ? 'configured' : 'not configured'}</Badge></p>
       <p className="field__hint">Configured means the active configuration has valid mail settings. Only a test send checks reachability and delivery.</p>
       {!mail.data.configured ? <>
         <p>Configure mail and apply the changes. Before managed configuration is adopted, bootstrap mail uses HIKYO_MAIL_* environment settings. An email sign-up entry stays inactive until the mailer is configured.</p>

@@ -80,15 +80,15 @@ export function CertificatesTab({
   const clear = () => setFeedback({ failure: null, done: null });
 
   return (
-    <>
-      <h2>Certificates</h2>
+    <section className="card machine__card" aria-labelledby="certificates-title">
+      <h2 id="certificates-title">Certificates</h2>
       <p className="machine__lede">
         Short-lived X.509 certificates issued through the instance&apos;s certificate profiles. Only
         metadata and public certificates are listed: a private key is never stored. Renewal keeps
         the key and re-checks the names against the current profile; revocation reaches the CRL on
         its next publication.
       </p>
-      <p className="machine__actions">
+      <div className="actions">
         <Button
           variant="primary"
           type="button"
@@ -100,88 +100,90 @@ export function CertificatesTab({
         >
           Issue certificate
         </Button>
-      </p>
+      </div>
       {view.isPending ? <p role="status">Loading certificates…</p> : null}
       {view.isError ? <Alert>At least one environment&apos;s certificates could not be listed; the table is incomplete.</Alert> : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
-      <table className="values__table machine__table">
-        <caption className="visually-hidden">
-          The project&apos;s certificates across every environment. No private key is listed.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Environment</th>
-            <th scope="col">Names</th>
-            <th scope="col">State</th>
-            <th scope="col" className="col-secondary">
-              Issuer
-            </th>
-            <th scope="col" className="col-secondary">
-              Expires
-            </th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {view.rows.map((row) => {
-            const c = row.certificate;
-            const live = c.state === 'issued';
-            return (
-              <tr key={c.id} data-certificate={c.id}>
-                <td>{row.environmentName}</td>
-                <td className="mono">{[...c.dns_names, ...c.ip_addresses, ...c.uris].join(', ')}</td>
-                <td>
-                  <Badge tone={c.state === 'revoked' || c.state === 'unknown' ? 'danger' : 'neutral'}>{c.state}</Badge>
-                </td>
-                <td className="col-secondary mono">
-                  {c.issuer_name} v{String(Number(c.issuer_version))}
-                </td>
-                <td className="col-secondary mono">{new Date(c.not_after).toLocaleString()}</td>
-                <td>
-                  {live ? (
+      <div className="table-scroll">
+        <table className="values__table machine__table">
+          <caption className="visually-hidden">
+            The project&apos;s certificates across every environment. No private key is listed.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Environment</th>
+              <th scope="col">Names</th>
+              <th scope="col">State</th>
+              <th scope="col" className="col-secondary">
+                Issuer
+              </th>
+              <th scope="col" className="col-secondary">
+                Expires
+              </th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.rows.map((row) => {
+              const c = row.certificate;
+              const live = c.state === 'issued';
+              return (
+                <tr key={c.id} data-certificate={c.id}>
+                  <td>{row.environmentName}</td>
+                  <td className="mono">{[...c.dns_names, ...c.ip_addresses, ...c.uris].join(', ')}</td>
+                  <td>
+                    <Badge tone={c.state === 'revoked' || c.state === 'unknown' ? 'danger' : 'neutral'}>{c.state}</Badge>
+                  </td>
+                  <td className="col-secondary mono">
+                    {c.issuer_name} v{String(Number(c.issuer_version))}
+                  </td>
+                  <td className="col-secondary mono">{new Date(c.not_after).toLocaleString()}</td>
+                  <td>
+                    {live ? (
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        disabled={renew.isPending}
+                        onClick={() => {
+                          clear();
+                          renew.mutate(
+                            { environment: row.environmentId, certificate: c.id },
+                            {
+                              onSuccess: (next) => setFeedback({ failure: null, done: `Renewed: the successor ${next.serial} carries the same key.` }),
+                              onError: (error) => setFeedback({ failure: certificateRefusalText(error, 'renew the certificate'), done: null }),
+                            },
+                          );
+                        }}
+                      >
+                        Renew
+                      </Button>
+                    ) : null}
+                    {c.state === 'issued' || c.state === 'renewed' || c.state === 'unknown' ? (
+                      <Button type="button" variant="quiet" onClick={() => setRevoking({ row, reason: 'unspecified' })}>
+                        Revoke
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="quiet"
-                      disabled={renew.isPending}
                       onClick={() => {
                         clear();
-                        renew.mutate(
-                          { environment: row.environmentId, certificate: c.id },
-                          {
-                            onSuccess: (next) => setFeedback({ failure: null, done: `Renewed: the successor ${next.serial} carries the same key.` }),
-                            onError: (error) => setFeedback({ failure: certificateRefusalText(error, 'renew the certificate'), done: null }),
-                          },
+                        fetchCertificateCrl({ ...project, environment: row.environmentId }, c.id, transport).then(
+                          (pem) => setCrl(pem),
+                          (error: unknown) => setFeedback({ failure: certificateRefusalText(error, 'read the CRL'), done: null }),
                         );
                       }}
                     >
-                      Renew
+                      CRL
                     </Button>
-                  ) : null}
-                  {c.state === 'issued' || c.state === 'renewed' || c.state === 'unknown' ? (
-                    <Button type="button" variant="quiet" onClick={() => setRevoking({ row, reason: 'unspecified' })}>
-                      Revoke
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="quiet"
-                    onClick={() => {
-                      clear();
-                      fetchCertificateCrl({ ...project, environment: row.environmentId }, c.id, transport).then(
-                        (pem) => setCrl(pem),
-                        (error: unknown) => setFeedback({ failure: certificateRefusalText(error, 'read the CRL'), done: null }),
-                      );
-                    }}
-                  >
-                    CRL
-                  </Button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {view.rows.length === 0 && !view.isPending && !view.isError ? (
         <p role="status">No certificates in this project yet.</p>
       ) : null}
@@ -253,7 +255,7 @@ export function CertificatesTab({
           onIssued={(message) => setFeedback({ failure: null, done: message })}
         />
       ) : null}
-    </>
+    </section>
   );
 }
 

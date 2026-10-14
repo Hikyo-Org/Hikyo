@@ -23,14 +23,14 @@ const meta = {
 } satisfies Meta<typeof OpenRegistrationPanel>;
 export default meta;
 type Story = StoryObj<typeof meta>;
-export const Closed: Story = { play: async ({ canvas }) => { await expect(await canvas.findByRole('button', { name: 'Open registration…' })).toBeVisible(); } };
+export const Closed: Story = { play: async ({ canvas }) => { await expect(await canvas.findByRole('button', { name: 'Open registration' })).toBeVisible(); } };
 export const Active: Story = { parameters: { app: { responses: [{ url, body: policy }, methods] } } };
 export const InactiveAuthority: Story = { parameters: { app: { responses: [{ url, body: { ...policy, state: 'inactive', inactive_cause: 'authority-lost' } }, methods] } }, play: async ({ canvas }) => { await expect(await canvas.findByText(/no longer holds the grant/)).toBeVisible(); } };
 export const Loading: Story = { parameters: { app: { responses: [{ url, pending: true }] } }, play: async ({ canvas }) => { await waitFor(() => expect(canvas.getByText('Loading the registration policy…')).toBeVisible()); } };
 export const Failed: Story = { parameters: { app: { responses: [{ url, status: 500, body: { error: { code: 'internal', message: 'Internal' } } }] } }, play: async ({ canvas }) => { await expect(await canvas.findByRole('alert')).toHaveTextContent('server error 500'); } };
 export const EditorValidation: Story = { play: async ({ canvas, step }) => {
   await step('Open the registration policy editor', async () => {
-    await userEvent.click(await canvas.findByRole('button', { name: 'Open registration…' }));
+    await userEvent.click(await canvas.findByRole('button', { name: 'Open registration' }));
     await expect(await canvas.findByRole('dialog')).toBeVisible();
     await expect(canvas.getByRole('checkbox', { name: 'Email + password' })).not.toBeChecked();
   });

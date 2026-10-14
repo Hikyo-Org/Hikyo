@@ -1,12 +1,11 @@
 import { useId, useState, type ReactNode } from 'react';
 
-import { Badge } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { Disclosure } from '../../ui/Disclosure.tsx';
 import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
 import { Select } from '../../ui/Select.tsx';
 import { label, perm, PERM_GROUPS, PERMS, projectById, resolve, type Person, type PermId, type Rule, type World } from './model.ts';
-import { Lock, RulePerms, RuleWhere } from './parts.tsx';
+import { Lock, MachineBadge, RulePerms, RuleWhere } from './parts.tsx';
 
 export type Question = { readonly perm: PermId; readonly project: string; readonly env: string; readonly key: string };
 
@@ -30,14 +29,21 @@ export function WhoCan({
   world,
   projects,
   onEditRule,
+  asked: liftedAsked,
+  onAsk,
 }: {
   world: World;
   /** The projects this surface may ask about. */
   projects: readonly string[];
   /** Opens a rule in the editor; absent where rules cannot be edited from here. */
   onEditRule?: (rule: Rule) => void;
+  /** The question, when the caller keeps it across this form's unmounting (a side panel closing). */
+  asked?: Partial<Question>;
+  onAsk?: (asked: Partial<Question>) => void;
 }) {
-  const [asked, setAsked] = useState<Partial<Question>>({ perm: 'reveal' });
+  const [ownAsked, setOwnAsked] = useState<Partial<Question>>({ perm: 'reveal' });
+  const asked = liftedAsked ?? ownAsked;
+  const setAsked = onAsk ?? setOwnAsked;
   const permId = asked.perm ?? 'reveal';
   const project = projects.includes(asked.project ?? '') ? (asked.project ?? '') : (projects[0] ?? '');
   const node = projectById(world, project);
@@ -65,7 +71,7 @@ export function WhoCan({
 
   return (
     <>
-      <div className="access-ask">
+      <div className="access-ask" role="search" aria-label="The question">
         <Select
           label="Permission"
           hint={perm(permId).desc}
@@ -150,7 +156,7 @@ export function WhoCan({
               <ul>
                 {notReached.map((person) => (
                   <li key={person.id}>
-                    <strong>{person.name}</strong>{person.kind === 'machine' ? <> <Badge tone="changed">Machine</Badge></> : null}
+                    <strong>{person.name}</strong>{person.kind === 'machine' ? <> <MachineBadge /></> : null}
                     <p className="access-hint">None of their rules or scope-wide access gives {permLabel} here.</p>
                   </li>
                 ))}
@@ -216,7 +222,7 @@ function AnswerTable({
               <th scope="row">
                 <span className="access-table__member">
                   {person.name}
-                  {person.kind === 'machine' ? <Badge tone="changed">Machine</Badge> : null}
+                  {person.kind === 'machine' ? <MachineBadge /> : null}
                 </span>
               </th>
               <td>

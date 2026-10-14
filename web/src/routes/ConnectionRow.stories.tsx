@@ -41,25 +41,36 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// A live credential shows its state badge and a Revoke action.
+// A live credential shows its state badge (the shared lifetime tag: ok tone,
+// a check icon) and a Revoke action in the row's `.actions`.
 export const Live: Story = {
   args: { connection: base },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'staging cluster' })).toBeVisible();
-    await expect(canvas.getByRole('button', { name: /revoke staging cluster/i })).toBeVisible();
+    const revoke = canvas.getByRole('button', { name: /revoke staging cluster/i });
+    await expect(revoke).toBeVisible();
+    await expect(revoke.closest('.actions')).not.toBeNull();
+    const badge = canvas.getByText('live').closest('.badge');
+    await expect(badge).toHaveClass('badge--ok');
+    await expect(badge?.querySelector('svg')).toHaveAttribute('data-glyph', 'check');
   },
 };
 
-// Expired: not revoked, but no longer live. Badge reads "expired", still revocable.
+// Expired: not revoked, but no longer live. Badge reads "expired", still
+// revocable, with the lifetime tag's neutral tone and wait icon.
 export const Expired: Story = {
   args: { connection: { ...base, label: 'retired laptop agent', live: false } },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText('expired')).toBeVisible();
+    const badge = canvas.getByText('expired').closest('.badge');
+    await expect(badge).toBeVisible();
+    await expect(badge).not.toHaveClass('badge--ok', 'badge--danger', 'badge--changed');
+    await expect(badge?.querySelector('svg')).toHaveAttribute('data-glyph', 'wait');
     await expect(canvas.getByRole('button', { name: /revoke retired laptop agent/i })).toBeVisible();
   },
 };
 
 // A revoked credential drops the Revoke action; there is nothing left to do.
+// Its tag carries the danger tone and a cross icon.
 export const Revoked: Story = {
   args: {
     connection: {
@@ -71,7 +82,9 @@ export const Revoked: Story = {
   },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'compromised CI runner' })).toBeVisible();
-    await expect(canvas.getByText('revoked')).toBeVisible();
+    const badge = canvas.getByText('revoked').closest('.badge');
+    await expect(badge).toHaveClass('badge--danger');
+    await expect(badge?.querySelector('svg')).toHaveAttribute('data-glyph', 'cross');
     await expect(canvas.queryByRole('button', { name: /revoke/i })).toBeNull();
   },
 };

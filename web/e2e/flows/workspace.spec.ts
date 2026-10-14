@@ -60,6 +60,7 @@ async function allowOrigin(page: Page): Promise<void> {
   await expect(allowed.or(empty)).toBeVisible();
   if (await allowed.isVisible()) return;
 
+  await page.getByRole('button', { name: 'Allow an origin' }).click();
   await page.getByRole('textbox', { name: 'Origin' }).fill(VIEWING_ORIGIN);
   await page.getByRole('button', { name: 'Allow origin' }).click();
   await expect(allowed).toBeVisible();
@@ -135,7 +136,15 @@ test.describe('multi-instance', () => {
     await expect(panel.getByText('Organisations', { exact: true })).toBeVisible();
     await expect(panel.getByText('Projects', { exact: true })).toBeVisible();
     await panel.scrollIntoViewIfNeeded();
-    expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    // The card is a page root, so its veil (a decorative ::before, app.css
+    // Atmosphere) reaches past it into the well's gutter and counts toward its
+    // scrollWidth. Measure the content instead: nothing inside the card may
+    // overhang its padding box or scroll sideways within itself.
+    expect(await panel.evaluate((element) => {
+      const edge = element.getBoundingClientRect().left + element.clientLeft + element.clientWidth;
+      return [...element.querySelectorAll<HTMLElement>('*')].every((child) =>
+        child.getBoundingClientRect().right <= edge + 0.5 && child.scrollWidth <= child.clientWidth + 1);
+    })).toBe(true);
     for (const colorScheme of ['dark', 'light']) {
       await page.emulateMedia({ colorScheme: colorScheme === 'dark' ? 'dark' : 'light', reducedMotion: 'reduce' });
       await expectNoSeriousAxeViolations(page);
@@ -218,6 +227,7 @@ test.describe('multi-instance', () => {
     const peer = await playwright.request.newContext();
     const directory = `${BASE_URL_B}/api/v1/instance/directory`;
     try {
+      await section.getByRole('button', { name: 'Mint a credential' }).click();
       await section.getByLabel('Label').fill(label);
       await section.getByRole('button', { name: 'Mint credential' }).click();
 
@@ -427,7 +437,7 @@ test.describe('multi-instance', () => {
 
     // The workspace session appears in the REMOTE'S own list as its own
     // artifact type, carrying the origin it was issued to, criterion 5.
-    await onB(b, '/settings');
+    await onB(b, '/settings?tab=sessions');
     const workspaceRow = b.locator('.session').filter({ hasText: 'workspace' });
     await expect(workspaceRow).toBeVisible();
     await expect(workspaceRow).toContainText(VIEWING_ORIGIN);

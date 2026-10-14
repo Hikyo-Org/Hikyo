@@ -10,7 +10,7 @@ import {
   revisionsForKeyFilter,
   defaultPinExpiry,
   historyKeyDisplay,
-  impactHeading,
+  impactStep,
   pinCeremonyUnit,
   pinSchemaOverrideOffered,
   relativeAge,
@@ -182,7 +182,7 @@ describe('pinExpiry', () => {
     expect(pinExpiry('2026-12-19T12:00:00Z', now)).toEqual({
       days: 122,
       tier: 'ok',
-      text: 'expires in 122 d',
+      text: 'expires in 122 days',
     });
   });
 
@@ -191,17 +191,17 @@ describe('pinExpiry', () => {
     expect(pinExpiry('2026-09-18T12:00:00Z', now)).toEqual({
       days: 30,
       tier: 'month',
-      text: '! expires in 30 d',
+      text: '! expires in 30 days',
     });
     expect(pinExpiry('2026-08-26T12:00:00Z', now)).toEqual({
       days: 7,
       tier: 'week',
-      text: '!! expires in 7 d',
+      text: '!! expires in 7 days',
     });
     expect(pinExpiry('2026-08-20T12:00:00Z', now)).toEqual({
       days: 1,
       tier: 'day',
-      text: '!!! expires in 1 d',
+      text: '!!! expires in 1 day',
     });
     expect(pinExpiry('2026-08-19T12:00:00.001Z', now)).toEqual({
       days: 1,
@@ -254,8 +254,8 @@ describe('impact preview per environment', () => {
     { environmentId: 'env_stage', name: 'staging', baseRevision: 2n, protected: false, changes: [] },
   ];
 
-  it('heads each group with the environment and its revision step', () => {
-    expect(impactHeading(production)).toBe('production · r7 → r8');
+  it('steps each group from its base revision to the next', () => {
+    expect(impactStep(production)).toBe('r7 → r8');
   });
 
   it('names every environment on the publish button, not only the first', () => {
@@ -377,7 +377,7 @@ describe('retentionLine', () => {
         lastRevisions: 10,
       }),
     ).toEqual({
-      window: 'values kept: 90 d or the last 10 revisions, whichever is longer, plus pinned',
+      window: 'values kept: 90 days or the last 10 revisions, whichever is longer, plus pinned',
       badge: 'inherits org',
       badgeTitle:
         'this project has no retention of its own: it follows the org default and moves when the org value moves',

@@ -99,9 +99,13 @@ export const Protected: Story = {
   args: {
     protectedEnvironmentIds: ['env_a'],
   },
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     const publish = canvas.getByRole('button', { name: /Publish selected/ });
     await expect(publish).toBeDisabled();
+    // The protected column is named by a danger tag carrying the lock.
+    const tag = canvasElement.querySelector('.badge--danger');
+    await expect(tag).toHaveTextContent('PROTECTED');
+    await expect(tag?.querySelector('svg')?.getAttribute('data-glyph')).toBe('lock');
     await userEvent.click(
       canvas.getByRole('checkbox', { name: /I confirm publishing to protected/ }),
     );

@@ -24,6 +24,7 @@ import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Field } from '../ui/Field.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { Sep } from '../ui/Sep.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
@@ -42,6 +43,8 @@ import {
 } from './useProtectedPublishCeremony.ts';
 import { FOCUS_REMASK_NOTICE, useRemaskOnFocusLoss, waitForDisclosureFocus } from './useRemaskOnFocusLoss.ts';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
+import { duration, plural } from '../app/duration.ts';
+import { dotted } from './dotted.tsx';
 
 type MatrixKey = MatrixKeyList['items'][number];
 type Environment = EnvironmentList['items'][number];
@@ -224,7 +227,7 @@ export function MatrixRowEditor({
           {/* The eyebrow follows the title now: the atom's h2 is always first,
               and it already names the classification the lock glyph stood for. */}
           <p className="matrix-editor__eyebrow">
-            {`${environment.name} · ${keyRecord.classification}`}
+            {environment.name}<Sep />{keyRecord.classification}
           </p>
 
           {secret ? (
@@ -342,7 +345,7 @@ export function MatrixRowEditor({
                       <span>{publishedSet ? 'set' : '· absent'}</span>
                       {row.signal?.pending === undefined ? null : (
                         <span>
-                          <Glyph name="delta" />{' '}
+                          <Glyph name="own-draft" />{' '}
                           {`pending ${row.signal.pending.operation === 'unset' ? 'clear' : 'set'}`}
                         </span>
                       )}
@@ -424,7 +427,7 @@ export function MatrixRowEditor({
                       // announcement lives in the status region below.
                       <p className="matrix-editor__revealed mono">
                         <span>{disclosure.revealed.value}</span>
-                        <small aria-hidden="true">{`re-masks in ${String(disclosure.revealed.remaining)}s`}</small>
+                        <small aria-hidden="true">{`re-masks in ${plural(disclosure.revealed.remaining, 'second')}`}</small>
                       </p>
                     ) : null}
                     {editAll ? null : (
@@ -525,10 +528,18 @@ export function MatrixRowEditor({
           ) : null}
 
           <details className="matrix-editor__schema">
-            <summary>Schema and presence rules</summary>
-            <p>{declarationSummary(keyRecord, rows)}</p>
-            <details>
-              <summary>Raw declaration</summary>
+            {/* A bare summary reads as a label, not as something to press
+                (ProjectSettings' environment-lifecycle disclosure). */}
+            <summary className="btn">
+              <Glyph name="chevron" />
+              Schema and presence rules
+            </summary>
+            <p>{dotted(declarationSummary(keyRecord, rows))}</p>
+            <details className="matrix-editor__raw">
+              <summary className="btn">
+                <Glyph name="chevron" />
+                Raw declaration
+              </summary>
               <pre className="mono">{JSON.stringify(
                 { declaration: keyRecord.declaration, presence: keyRecord.presence },
                 // Integer bounds arrive as bigint, which JSON.stringify refuses.
@@ -724,7 +735,7 @@ function useCellDisclosure(
           setNotice('Disclosure recorded.');
           setAnnouncement((current) => ({
             id: (current?.id ?? 0) + 1,
-            message: `${keyRecord.name} revealed, re-masks in ${String(REMASK_MS / 1000)}s`,
+            message: `${keyRecord.name} revealed, re-masks in ${duration(REMASK_MS / 1000)}`,
           }));
         });
       });

@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zDirectoryListing, zInstanceConnectionList, zMeta, zRemoteList, zWorkspaceOriginList } from '@hikyo/zod';
-import { expect, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { DemoSurface } from '../demo/DemoSurface.tsx';
 import { Remotes } from './Remotes.tsx';
 
 const url = '/api/v1/instance/remotes';
@@ -27,3 +28,63 @@ export const Empty: Story = { play: async ({ canvas }) => { await expect(await c
 export const LongContent: Story = { parameters: { app: { responses: [{ url, body: { items: [remote], count: 1 } satisfies z.input<typeof zRemoteList> }, ...responses] } }, play: async ({ canvas }) => { await expect(await canvas.findByRole('heading', { name: remote.name })).toBeVisible(); } };
 export const LoadingDirectory: Story = { parameters: { app: { responses: [{ url, pending: true }, { url: '/api/v1/instance/directory', pending: true }, ...responses.slice(1)] } }, play: async ({ canvas }) => { await waitFor(() => expect(canvas.getByText("Loading this instance's directory…")).toBeVisible()); } };
 export const PermissionRequired: Story = { parameters: { app: { responses: [{ url, status: 403, body: { error: { code: 'forbidden', message: 'Forbidden' } } }, ...responses] } }, play: async ({ canvas }) => { await expect(await canvas.findByRole('alert')).toHaveTextContent('may not hold'); } };
+
+// Every input on the page opens from a button into the side panel.
+export const AddRemotePanel: Story = {
+  play: async ({ canvas }) => {
+    const open = await canvas.findByRole('button', { name: 'Add a remote' });
+    await expect(canvas.queryByRole('textbox', { name: 'URL' })).toBeNull();
+    await userEvent.click(open);
+    const panel = canvas.getByRole('complementary', { name: 'Add a remote' });
+    await expect(within(panel).getByRole('form', { name: 'Add a remote' })).toBeVisible();
+    await expect(within(panel).getByRole('textbox', { name: 'URL' })).toBeVisible();
+  },
+};
+
+// Rename is a form in the side panel (it was a browser prompt), prefilled with
+// the current name; Save stays off until the name changes.
+export const RenamePanel: Story = {
+  parameters: LongContent.parameters,
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Rename' }));
+    const panel = canvas.getByRole('complementary', { name: 'Rename remote' });
+    const field = within(panel).getByRole('textbox', { name: 'Display name' });
+    await expect(field).toHaveValue(remote.name);
+    await expect(within(panel).getByRole('button', { name: 'Save name' })).toBeDisabled();
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Production');
+    await expect(within(panel).getByRole('button', { name: 'Save name' })).toBeEnabled();
+  },
+};
+
+export const AllowOriginPanel: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Allow an origin' }));
+    const panel = canvas.getByRole('complementary', { name: 'Allow an origin' });
+    await expect(within(panel).getByRole('textbox', { name: 'Origin' })).toBeVisible();
+    await expect(within(panel).getByRole('button', { name: 'Allow origin' })).toBeVisible();
+  },
+};
+
+// The public demo mounts this page read-only via `ReadOnlyContext` ('actions'
+// mode, owner decision M7, 2026-10-13), not a disabling `<fieldset>`: every
+// opener into a side panel (Button reads the context itself) stays disabled.
+export const DemoReadOnly: Story = {
+  parameters: LongContent.parameters,
+  decorators: [(Story) => <DemoSurface id="remotes"><Story /></DemoSurface>],
+  play: async ({ canvas, canvasElement }) => {
+    await expect(await canvas.findByText(/^Read-only sample data\./)).toBeVisible();
+    await expect(canvasElement.querySelector('fieldset[disabled]')).toBeNull();
+    await expect(await canvas.findByRole('button', { name: 'Add a remote' })).toBeDisabled();
+    await expect(canvas.getByRole('button', { name: 'Rename' })).toBeDisabled();
+  },
+};
+
+export const MintPanel: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Mint a credential' }));
+    const panel = canvas.getByRole('complementary', { name: 'Mint a credential' });
+    await expect(within(panel).getByRole('textbox', { name: 'Label' })).toBeVisible();
+    await expect(within(panel).getByRole('radio', { name: 'Instance default' })).toBeChecked();
+  },
+};

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 
@@ -53,15 +53,18 @@ import {
   runAdapterTOTPCeremony,
 } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
-import { Badge } from '../ui/Badge.tsx';
+import { Badge, type BadgeTone } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { AwsAccessFields, awsAccessComplete, awsAccessDescriptor, emptyAwsAccess, type AwsAccess } from './AwsAccessFields.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
+import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 
 /**
  * Deployment adapters (#157): the multi-target synchronization surface.
@@ -130,7 +133,6 @@ function destinationText(target: AdapterTarget): string {
   return target.destination_environment === '' ? base : `${base} (${target.destination_environment})`;
 }
 
-
 function environmentSet(adapter: Adapter, extra?: string): string[] {
   const ids = new Set(adapter.targets.map((target) => target.environment_id));
   if (extra !== undefined && extra !== '') ids.add(extra);
@@ -156,9 +158,13 @@ function AdaptersPage() {
   const adapters = useAdapters(ref);
   const environments = useProjectEnvironments(ref);
   const keys = useProjectKeys(ref);
-  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<AdapterFormKind | null>(null);
   const [ceremony, setCeremony] = useState<CeremonyAsk | null>(null);
   const feedback = useFeedback(adapterRefusalText);
+  // Page-owned so a credential replace or origin move still in flight keeps
+  // the adapter rows busy after the panel that started it closes.
+  const setCredential = useSetAdapterCredential(ref);
+  const moveOrigin = useMoveAdapterOrigin(ref);
 
   const environmentName = (id: string): string =>
     environments.data?.items.find((environment) => environment.id === id)?.name ?? id;
@@ -188,6 +194,23 @@ function AdaptersPage() {
   const selectedAdapter = adapters.data?.items.find((adapter) =>
     adapter.targets.some((target) => target.id === selected),
   );
+  // One side panel at a time: a form a button opened, else the followed move,
+  // else the selected target. Outcomes show where the person is looking:
+  // inside the open panel, which covers the page, or on the page.
+  const panel =
+    form !== null ? 'form' : move !== '' ? 'move' : selected !== '' && selectedAdapter !== undefined ? 'target' : null;
+  const notices = (
+    <>
+      {feedback.failure !== null ? (
+        <Alert>{feedback.failure}</Alert>
+      ) : null}
+      {feedback.done !== null ? (
+        <p className="adapters__done" role="status">
+          {feedback.done}
+        </p>
+      ) : null}
+    </>
+  );
 
   return (
     <div className="page page--chrome page--adapters">
@@ -198,17 +221,9 @@ function AdaptersPage() {
         pausing never blocks another.
       </p>
 
-      {feedback.failure !== null ? (
-        <Alert>{feedback.failure}</Alert>
-      ) : null}
-      {feedback.done !== null ? (
-        <p className="adapters__done" role="status">
-          {feedback.done}
-        </p>
-      ) : null}
+      {panel === null ? notices : null}
 
-      <div className={`adapters__panes${selected !== '' || move !== '' ? ' adapters__panes--split' : ''}`}>
-        <section className="adapters__list" aria-label="Adapters">
+      <section className="adapters__list" aria-label="Adapters">
           {adapters.isError ? (
             <Alert>{adapterRefusalText(adapters.error)}</Alert>
           ) : null}
@@ -225,32 +240,34 @@ function AdaptersPage() {
               selected={selected}
               onSelect={select}
               environmentName={environmentName}
-              environments={environments.data?.items ?? []}
-              keys={keys.data?.items ?? []}
-              ceremonyFor={ceremonyFor}
               feedback={feedback}
-              onMove={follow}
+              formPending={setCredential.isPending || moveOrigin.isPending}
+              onForm={(kind) => setForm({ kind, adapter })}
             />
           ))}
-          {creating ? (
-            <CreateAdapterPanel
-              refData={ref}
-              environments={environments.data?.items ?? []}
-              keys={keys.data?.items ?? []}
-              ceremonyFor={ceremonyFor}
-              feedback={feedback}
-              onClose={() => setCreating(false)}
-            />
-          ) : (
-            <div className="panel__actions">
-              <Button type="button" variant="primary" onClick={() => setCreating(true)}>
-                Add adapter
-              </Button>
-            </div>
-          )}
+          <div className="actions">
+            <Button type="button" variant="primary" onClick={() => setForm({ kind: 'create' })}>
+              Add adapter
+            </Button>
+          </div>
         </section>
 
-        {selected !== '' && selectedAdapter !== undefined ? (
+        {panel === 'form' && form !== null ? (
+          <AdapterFormPanel
+            form={form}
+            refData={ref}
+            environments={environments.data?.items ?? []}
+            keys={keys.data?.items ?? []}
+            ceremonyFor={ceremonyFor}
+            feedback={feedback}
+            notices={notices}
+            setCredential={setCredential}
+            moveOrigin={moveOrigin}
+            onClose={() => setForm(null)}
+            onMove={follow}
+          />
+        ) : null}
+        {panel === 'target' && selectedAdapter !== undefined ? (
           <TargetDetail
             key={selected}
             refData={ref}
@@ -260,10 +277,11 @@ function AdaptersPage() {
             keys={keys.data?.items ?? []}
             ceremonyFor={ceremonyFor}
             feedback={feedback}
+            notices={notices}
             onClose={() => select('')}
           />
         ) : null}
-        {move !== '' ? (
+        {panel === 'move' ? (
           <MoveDetail
             key={move}
             refData={ref}
@@ -272,10 +290,10 @@ function AdaptersPage() {
             environmentName={environmentName}
             ceremonyFor={ceremonyFor}
             feedback={feedback}
+            notices={notices}
             onClose={() => follow('')}
           />
         ) : null}
-      </div>
 
       {ceremony !== null ? (
         <AdapterCeremony
@@ -291,12 +309,31 @@ function AdaptersPage() {
 
 type Feedback = ReturnType<typeof useFeedback>;
 
+/** The tag each route-move state wears. */
+const MOVE_TAG: Record<AdapterMove['state'], { tone: BadgeTone; icon: GlyphName }> = {
+  scrubbing: { tone: 'changed', icon: 'sync' },
+  activating: { tone: 'changed', icon: 'sync' },
+  attention_required: { tone: 'danger', icon: 'warn' },
+  completed: { tone: 'ok', icon: 'check' },
+  canceled: { tone: 'neutral', icon: 'cross' },
+};
+
+/** The tag each sync state wears: the word names it, tone and icon echo. */
+const HEALTH_TAG: Record<AdapterTarget['sync_status'], { tone: BadgeTone; icon: GlyphName }> = {
+  never: { tone: 'neutral', icon: 'minus' },
+  pending: { tone: 'changed', icon: 'wait' },
+  converging: { tone: 'changed', icon: 'sync' },
+  converged: { tone: 'ok', icon: 'check' },
+  degraded: { tone: 'danger', icon: 'warn' },
+  failed: { tone: 'danger', icon: 'alert' },
+  paused: { tone: 'neutral', icon: 'pause' },
+};
+
 export function HealthChip({ target }: { readonly target: AdapterTarget }) {
   return (
-    <Badge className={`adapters__health adapters__health--${target.sync_status}`}>
-      <span className="adapters__health-glyph" aria-hidden="true" />
+    <Badge className={`adapters__health adapters__health--${target.sync_status}`} {...HEALTH_TAG[target.sync_status]}>
       {healthLabel(target.sync_status)}
-      {target.drift_attention ? ' · needs attention' : ''}
+      {target.drift_attention ? <><Sep />needs attention</> : null}
     </Badge>
   );
 }
@@ -307,43 +344,33 @@ function AdapterPanel({
   selected,
   onSelect,
   environmentName,
-  environments,
-  keys,
-  ceremonyFor,
   feedback,
-  onMove,
+  formPending,
+  onForm,
 }: {
   readonly adapter: Adapter;
   readonly refData: ProjectRef;
   readonly selected: string;
   readonly onSelect: (target: string) => void;
   readonly environmentName: (id: string) => string;
-  readonly environments: readonly ProjectEnvironment[];
-  readonly keys: readonly ProjectKey[];
-  readonly ceremonyFor: (op: AdapterOperation, envs: readonly string[]) => Promise<void>;
   readonly feedback: Feedback;
-  readonly onMove: (move: string) => void;
+  readonly formPending: boolean;
+  readonly onForm: (kind: 'add' | 'origin' | 'credential') => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<'origin' | 'credential' | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const add = useAddAdapterTarget(refData);
-  const moveOrigin = useMoveAdapterOrigin(refData);
-  const setCredential = useSetAdapterCredential(refData);
   const revokeCredential = useRevokeAdapterCredential(refData);
   const remove = useDeleteAdapter(refData);
-  const busy = moveOrigin.isPending || setCredential.isPending || revokeCredential.isPending || remove.isPending;
-  const environmentsOfAdapter = environmentSet(adapter);
+  const busy = formPending || revokeCredential.isPending || remove.isPending;
   return (
     <section className="panel adapters__adapter" aria-label={`Adapter ${adapter.origin}`}>
       <div className="adapters__adapter-head">
         <h2>{providerLabel(adapter.provider)}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
-        <Badge>
+        <Badge icon={adapter.credential_present ? 'passkey' : 'cross'}>
           {adapter.credential_present ? 'credential set' : 'credential absent'}
         </Badge>
-        {adapter.state === 'moving' ? <Badge>moving</Badge> : null}
+        {adapter.state === 'moving' ? <Badge tone="changed" icon="sync">moving</Badge> : null}
       </div>
       {adapter.targets.length === 0 ? (
         <p className="adapters__empty">This adapter has no targets.</p>
@@ -370,91 +397,29 @@ function AdapterPanel({
           ))}
         </ul>
       )}
-      {adding ? (
-        <TargetForm
-          title="Add target"
-          provider={adapter.provider}
-          environments={environments}
-          keys={keys}
-          busy={add.isPending}
-          onCancel={() => setAdding(false)}
-          onSubmit={async (input) => {
-            try {
-              await ceremonyFor('adapter.configure', environmentSet(adapter, input.environment_id));
-              await add.mutateAsync({ adapter: adapter.id, target: input });
-              feedback.ok('Target added. Its first converge is queued.');
-              setAdding(false);
-            } catch (error) {
-              feedback.report(error);
-            }
-          }}
-        />
-      ) : editing === 'origin' ? (
-        <OriginMoveForm
-          title="Change origin"
-          submitLabel="Start move"
-          provider={adapter.provider}
-          busy={moveOrigin.isPending}
-          keepRemoteChoice
-          onCancel={() => setEditing(null)}
-          onSubmit={async (input) => {
-            try {
-              await ceremonyFor('adapter.configure', environmentsOfAdapter);
-              const started = await moveOrigin.mutateAsync({
-                adapter: adapter.id,
-                origin: input.origin,
-                credential: input.credential,
-                keepRemote: input.keepRemote,
-              });
-              feedback.ok('Origin move started. The old route is scrubbed before the switch.');
-              setEditing(null);
-              onMove(started.id);
-            } catch (error) {
-              feedback.report(error);
-            }
-          }}
-        />
-      ) : editing === 'credential' ? (
-        <CredentialForm
-          provider={adapter.provider}
-          busy={setCredential.isPending}
-          onCancel={() => setEditing(null)}
-          onSubmit={async (credential) => {
-            try {
-              await ceremonyFor('adapter.credential-set', environmentsOfAdapter);
-              await setCredential.mutateAsync({ adapter: adapter.id, credential });
-              feedback.ok('Credential replaced. Nothing was queued; the next push uses it.');
-              setEditing(null);
-            } catch (error) {
-              feedback.report(error);
-            }
-          }}
-        />
-      ) : (
-        <div className="panel__actions">
-          <Button type="button" disabled={busy} onClick={() => setAdding(true)}>
-            Add target
-          </Button>
-          <Button type="button" disabled={busy} onClick={() => setEditing('origin')}>
-            Change origin
-          </Button>
-          <Button type="button" disabled={busy} onClick={() => setEditing('credential')}>
-            Replace credential
-          </Button>
-          <Button
-            type="button"
-            disabled={busy || !adapter.credential_present}
-            onClick={() => setRevoking(true)}
-          >
-            Revoke credential
-          </Button>
-          {/* Neutral trigger: the destructive styling lives on the confirmation
-              inside the dialog, never on the always-rendered panel. */}
-          <Button type="button" disabled={busy} onClick={() => setDeleting(true)}>
-            Delete adapter
-          </Button>
-        </div>
-      )}
+      <div className="actions">
+        <Button type="button" disabled={busy} onClick={() => onForm('add')}>
+          Add target
+        </Button>
+        <Button type="button" disabled={busy} onClick={() => onForm('origin')}>
+          Change origin
+        </Button>
+        <Button type="button" disabled={busy} onClick={() => onForm('credential')}>
+          Replace credential
+        </Button>
+        <Button
+          type="button"
+          disabled={busy || !adapter.credential_present}
+          onClick={() => setRevoking(true)}
+        >
+          Revoke credential
+        </Button>
+        {/* Neutral trigger: the destructive styling lives on the confirmation
+            inside the dialog, never on the always-rendered panel. */}
+        <Button type="button" disabled={busy} onClick={() => setDeleting(true)}>
+          Delete adapter
+        </Button>
+      </div>
 
       {revoking ? (
         <RevokeCredentialDialog
@@ -514,11 +479,14 @@ function OriginMoveForm({
   provider,
   initialOrigin = '',
   keepRemoteChoice = false,
+  heading = true,
   busy,
   onCancel,
   onSubmit,
 }: {
   readonly title: string;
+  /** False inside a side panel whose header already names the form. */
+  readonly heading?: boolean;
   readonly submitLabel: string;
   readonly provider?: string;
   readonly initialOrigin?: string;
@@ -541,7 +509,7 @@ function OriginMoveForm({
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label={title}>
-      <h3>{title}</h3>
+      {heading ? <h3>{title}</h3> : null}
       <p className="field__hint">
         The old route is scrubbed before the switch; the new credential is write-only and never
         shown again.
@@ -571,7 +539,7 @@ function OriginMoveForm({
           onChange={(event) => setKeepRemote(event.target.checked)}
         />
       ) : null}
-      <div className="panel__actions">
+      <div className="actions">
         <Button type="submit" variant="primary" disabled={busy || origin.trim() === '' || !ready}>
           {busy ? 'Working…' : submitLabel}
         </Button>
@@ -607,7 +575,6 @@ export function CredentialForm({
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label="Replace credential">
-      <h3>Replace credential</h3>
       <p className="field__hint">Write-only: entered once, sealed, never read back. No job is queued.</p>
       {aws ? (
         <AwsAccessFields value={access} onChange={setAccess} />
@@ -623,7 +590,7 @@ export function CredentialForm({
           />
         </label>
       )}
-      <div className="panel__actions">
+      <div className="actions">
         <Button type="submit" variant="primary" disabled={busy || !ready}>
           {busy ? 'Replacing…' : 'Replace'}
         </Button>
@@ -756,6 +723,7 @@ function MoveDetail({
   environmentName,
   ceremonyFor,
   feedback,
+  notices,
   onClose,
 }: {
   readonly refData: ProjectRef;
@@ -764,6 +732,7 @@ function MoveDetail({
   readonly environmentName: (id: string) => string;
   readonly ceremonyFor: (op: AdapterOperation, envs: readonly string[]) => Promise<void>;
   readonly feedback: Feedback;
+  readonly notices: ReactNode;
   readonly onClose: () => void;
 }) {
   const move = useAdapterMove(refData, moveId);
@@ -794,13 +763,8 @@ function MoveDetail({
   ];
   const busy = resume.isPending || cancel.isPending;
   return (
-    <aside className="panel adapters__detail" aria-label="Route move">
-      <div className="adapters__adapter-head">
-        <h2>Route move</h2>
-        <Button type="button" variant="quiet" onClick={onClose} readOnlySafe>
-          Close
-        </Button>
-      </div>
+    <SidePanel title="Route move" onClose={onClose}>
+      {notices}
       {move.isError ? (
         <Alert>{adapterRefusalText(move.error)}</Alert>
       ) : null}
@@ -808,9 +772,13 @@ function MoveDetail({
         <p role="status">Loading…</p>
       ) : (
         <>
-          <Badge className={`adapters__move-state adapters__move-state--${data.state}`} role="status">
+          <Badge
+            className={`adapters__move-state adapters__move-state--${data.state}`}
+            role="status"
+            {...MOVE_TAG[data.state]}
+          >
             {data.state.replace('_', ' ')}
-            {moveInFlight(data.state) ? ' · polling' : ''}
+            {moveInFlight(data.state) ? <><Sep />polling</> : null}
           </Badge>
           <p className="field__hint">{moveStateText(data.state)}</p>
           <dl className="adapters__facts">
@@ -831,8 +799,8 @@ function MoveDetail({
                   {environmentName(target.environment_id)} → {target.destination_owner}/{target.destination_name}
                   {target.destination_environment === '' ? '' : `/${target.destination_environment}`}
                 </span>
-                {target.jobs.length > 0 ? ` · ${target.jobs.map(moveJobText).join(', ')}` : ''}
-                {target.orphaned_names.length > 0 ? ` · orphaned: ${target.orphaned_names.join(', ')}` : ''}
+                {target.jobs.length > 0 ? <><Sep />{target.jobs.map(moveJobText).join(', ')}</> : null}
+                {target.orphaned_names.length > 0 ? <><Sep />orphaned: {target.orphaned_names.join(', ')}</> : null}
               </li>
             ))}
           </ul>
@@ -843,7 +811,7 @@ function MoveDetail({
                   This target destination move cannot be resumed with an origin credential. Cancel
                   it below, then start the target destination change again with the corrected target.
                 </Alert>
-                <div className="panel__actions">
+                <div className="actions">
                   <Button
                     type="button"
                     variant="danger"
@@ -884,7 +852,7 @@ function MoveDetail({
                 }}
               />
             ) : (
-              <div className="panel__actions">
+              <div className="actions actions--stack">
                 <Button type="button" variant="primary" disabled={busy || adapter === undefined} onClick={() => setResuming(true)}>
                   Resume with a new credential
                 </Button>
@@ -911,11 +879,129 @@ function MoveDetail({
           ) : null}
         </>
       )}
-    </aside>
+    </SidePanel>
   );
 }
 
-function CreateAdapterPanel({
+type AdapterFormKind = { kind: 'create' } | { kind: 'add' | 'origin' | 'credential'; adapter: Adapter };
+
+/** AdapterFormPanel holds the adapter forms a button opens, one at a time, in the side panel. */
+function AdapterFormPanel({
+  form,
+  refData,
+  environments,
+  keys,
+  ceremonyFor,
+  feedback,
+  notices,
+  setCredential,
+  moveOrigin,
+  onClose,
+  onMove,
+}: {
+  readonly form: AdapterFormKind;
+  readonly refData: ProjectRef;
+  readonly environments: readonly ProjectEnvironment[];
+  readonly keys: readonly ProjectKey[];
+  readonly ceremonyFor: (op: AdapterOperation, envs: readonly string[]) => Promise<void>;
+  readonly feedback: Feedback;
+  readonly notices: ReactNode;
+  readonly setCredential: ReturnType<typeof useSetAdapterCredential>;
+  readonly moveOrigin: ReturnType<typeof useMoveAdapterOrigin>;
+  readonly onClose: () => void;
+  readonly onMove: (move: string) => void;
+}) {
+  const add = useAddAdapterTarget(refData);
+  if (form.kind === 'create') {
+    return (
+      <SidePanel title="New adapter" onClose={onClose}>
+        {notices}
+        <CreateAdapterForm
+          refData={refData}
+          environments={environments}
+          keys={keys}
+          ceremonyFor={ceremonyFor}
+          feedback={feedback}
+          onClose={onClose}
+        />
+      </SidePanel>
+    );
+  }
+  const { adapter } = form;
+  const environmentsOfAdapter = environmentSet(adapter);
+  const title = { add: 'Add target', origin: 'Change origin', credential: 'Replace credential' }[form.kind];
+  return (
+    <SidePanel title={title} onClose={onClose}>
+      <p className="adapters__origin mono">{adapter.origin}</p>
+      {notices}
+      {form.kind === 'add' ? (
+        <TargetForm
+          title="Add target"
+          heading={false}
+          provider={adapter.provider}
+          environments={environments}
+          keys={keys}
+          busy={add.isPending}
+          onCancel={onClose}
+          onSubmit={async (input) => {
+            try {
+              await ceremonyFor('adapter.configure', environmentSet(adapter, input.environment_id));
+              await add.mutateAsync({ adapter: adapter.id, target: input });
+              feedback.ok('Target added. Its first converge is queued.');
+              onClose();
+            } catch (error) {
+              feedback.report(error);
+            }
+          }}
+        />
+      ) : form.kind === 'origin' ? (
+        <OriginMoveForm
+          title="Change origin"
+          heading={false}
+          submitLabel="Start move"
+          provider={adapter.provider}
+          busy={moveOrigin.isPending}
+          keepRemoteChoice
+          onCancel={onClose}
+          onSubmit={async (input) => {
+            try {
+              await ceremonyFor('adapter.configure', environmentsOfAdapter);
+              const started = await moveOrigin.mutateAsync({
+                adapter: adapter.id,
+                origin: input.origin,
+                credential: input.credential,
+                keepRemote: input.keepRemote,
+              });
+              feedback.ok('Origin move started. The old route is scrubbed before the switch.');
+              onClose();
+              onMove(started.id);
+            } catch (error) {
+              feedback.report(error);
+            }
+          }}
+        />
+      ) : (
+        <CredentialForm
+          provider={adapter.provider}
+          busy={setCredential.isPending}
+          onCancel={onClose}
+          onSubmit={async (credential) => {
+            try {
+              await ceremonyFor('adapter.credential-set', environmentsOfAdapter);
+              await setCredential.mutateAsync({ adapter: adapter.id, credential });
+              feedback.ok('Credential replaced. Nothing was queued; the next push uses it.');
+              onClose();
+            } catch (error) {
+              feedback.report(error);
+            }
+          }}
+        />
+      )}
+    </SidePanel>
+  );
+}
+
+function CreateAdapterForm({
   refData,
   environments,
   keys,
@@ -941,10 +1027,7 @@ function CreateAdapterPanel({
   const [allowPersonalToken, setAllowPersonalToken] = useState(false);
   const personalTokenHintId = useId();
   return (
-    <section className="panel adapters__adapter" aria-label="New adapter">
-      <div className="adapters__adapter-head">
-        <h2>New adapter</h2>
-      </div>
+    <>
       <div className="adapters__form adapters__form--two">
         <label className="field">
           <span className="field__label">Provider</span>
@@ -1085,7 +1168,7 @@ function CreateAdapterPanel({
           }
         }}
       />
-    </section>
+    </>
   );
 }
 
@@ -1123,6 +1206,7 @@ export function normalisePrefix(raw: string): string {
 
 export function TargetForm({
   title,
+  heading = true,
   provider,
   environments,
   keys,
@@ -1133,6 +1217,8 @@ export function TargetForm({
   onSubmit,
 }: {
   readonly title: string;
+  /** False inside a side panel whose header already names the form. */
+  readonly heading?: boolean;
   /** Selects destination vocabulary for each provider. */
   readonly provider?: string;
   readonly environments: readonly EnvironmentOption[];
@@ -1242,7 +1328,7 @@ export function TargetForm({
 
   return (
     <form className="adapters__form" onSubmit={submit} aria-label={title}>
-      <h3>{title}</h3>
+      {heading ? <h3>{title}</h3> : null}
       {lockRouting === true ? (
         <p className="field__hint">
           Destination and routing are locked once a target exists; move it with the CLI move ceremony.
@@ -1477,7 +1563,7 @@ export function TargetForm({
         Patterns and classification are resolved to explicit keys when you save and are not kept:
         a key created later is never added on its own.
       </p>
-      <div className="panel__actions">
+      <div className="actions">
         <Button type="submit" variant="primary" disabled={busy}>
           {busy ? 'Saving…' : 'Save'}
         </Button>
@@ -1511,6 +1597,7 @@ function TargetDetail({
   keys,
   ceremonyFor,
   feedback,
+  notices,
   onClose,
 }: {
   readonly refData: ProjectRef;
@@ -1520,6 +1607,7 @@ function TargetDetail({
   readonly keys: readonly ProjectKey[];
   readonly ceremonyFor: (op: AdapterOperation, envs: readonly string[]) => Promise<void>;
   readonly feedback: Feedback;
+  readonly notices: ReactNode;
   readonly onClose: () => void;
 }) {
   const detail = useAdapterTarget(refData, targetId);
@@ -1557,13 +1645,8 @@ function TargetDetail({
   };
 
   return (
-    <aside className="panel adapters__detail" aria-label="Target detail">
-      <div className="adapters__adapter-head">
-        <h2>Target</h2>
-        <Button type="button" variant="quiet" onClick={onClose} readOnlySafe>
-          Close
-        </Button>
-      </div>
+    <SidePanel label="Target detail" title="Target" onClose={onClose}>
+      {notices}
       {detail.isError ? (
         <Alert>{adapterRefusalText(detail.error)}</Alert>
       ) : null}
@@ -1618,9 +1701,7 @@ function TargetDetail({
               <ul className="adapters__failures" aria-label="Failed names">
                 {target.failure_names.map((name) => (
                   <li key={name}>
-                    <span className="alert__glyph" aria-hidden="true">
-                      !
-                    </span>{' '}
+                    <Glyph name="alert" className="alert__glyph" />{' '}
                     <span className="mono">{name}</span>: failed
                   </li>
                 ))}
@@ -1644,7 +1725,7 @@ function TargetDetail({
             ))}
           </ul>
 
-          <div className="panel__actions">
+          <div className="actions">
             {target.sync_status === 'paused' ? (
               <Button
                 type="button"
@@ -1803,7 +1884,7 @@ function TargetDetail({
           }
         />
       ) : null}
-    </aside>
+    </SidePanel>
   );
 }
 
@@ -1879,7 +1960,7 @@ function ConflictArtifact({
           );
         })}
       </ul>
-      <div className="panel__actions">
+      <div className="actions">
         <Button type="button" disabled={busy || chosen.length === 0} onClick={() => onAdopt(chosen)}>
           Adopt {chosen.length} selected
         </Button>

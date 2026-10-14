@@ -2858,6 +2858,9 @@ The Babel AST inventory enumerates every top-level JSX-rendering function/wrappe
 | ui-glyph--decorative-is-hidden | ui-glyph--decorative, ui-glyph--named | web/src/ui/accessibility.test.tsx | Decorative hiding and named image semantics regression-tested; both views retained. |
 | ui-alert--roles-match-tone | ui-alert--all-states | web/src/ui/accessibility.test.tsx | Assertive/polite tone roles and decorative hiding regression-tested; all feedback states retained. |
 | ui-dialog--all-states | ui-dialog--decision, ui-dialog--wide | visual consolidation | Invalid simultaneous-modal gallery removed; one modal made its sibling inert and unreachable. Both sizes remain independently reviewable. |
+| ui-themeicon--sun | ui-glyph--gallery | pages-overview--populated | UI review: the one-caller ThemeIcon atom was inlined as `Glyph` sun/moon in Shell; the Populated play asserts the toggle's `data-glyph` matches the painted theme. |
+| ui-themeicon--moon | ui-glyph--gallery | pages-overview--populated | As above, dark theme. |
+| ui-sidepanel--min-width-token | ui-tokens--every-token-resolves | `node --run design:check` (tokens-check) | UI review: the story only restated a token value that tokens-check pins against hikyo.pen. |
 
 | Current module | Title | Meaningful current entries | Docs | Source SHA256 |
 | --- | --- | --- | --- | --- |

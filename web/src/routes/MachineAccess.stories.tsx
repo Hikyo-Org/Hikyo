@@ -9,8 +9,11 @@ import {
   zMachineCredentialList,
   zMachineRevealSettings,
   zServiceAccountList,
+  zSshCertificateList,
+  zSshProfileList,
+  zSshcaList,
 } from '@hikyo/zod';
-import { expect, userEvent, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -20,6 +23,7 @@ import { dynamicProvider } from '../testkit/machineAccess.ts';
 import { MachineAccessPage } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { openTab } from '../../.storybook/openTab.ts';
 
 // The page behind `gateSystemScope` (the exported `MachineAccess` wraps it):
 // storied directly so no instance-config read is needed. It calls `useAuth` for
@@ -219,9 +223,9 @@ const populatedResponses: readonly MockRoute[] = [
   { url: META_URL, body: metaBody(['local-password', 'delivery-target-report/1']) },
 ];
 
-const app = (responses: readonly MockRoute[]) => ({
+const app = (responses: readonly MockRoute[], path = PATH) => ({
   auth: true,
-  path: PATH,
+  path,
   routePath: ROUTE,
   responses,
 });
@@ -239,42 +243,186 @@ type Story = StoryObj<typeof meta>;
 
 // Three accounts across the journey: one reading and revealing production
 // (a bearer days from expiry plus a federated binding), one automation
-// principal, one fresh workload with nothing yet. Opt-in on.
+// principal, one fresh workload with nothing yet. Opt-in on. The title and
+// tabs are page chrome; the tab's module is the card under them.
 export const Populated: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByRole('button', { name: /api-gateway/ })).toBeVisible();
-    await expect(canvas.getByRole('tab', { name: 'Service accounts (3)' })).toBeVisible();
+    const accountsTab = canvas.getByRole('tab', { name: 'Service accounts, 3' });
+    await expect(accountsTab).toBeVisible();
+    // The count is a pill after the label, not "(3)" spelled into it.
+    await expect(accountsTab.querySelector('.tab__count')).toHaveTextContent('3');
+    await expect(accountsTab).not.toHaveTextContent('(');
     await expect(canvas.getByText(/opt-in\): on/)).toBeVisible();
+    await expect(canvas.getByRole('heading', { level: 1 }).closest('.card')).toBeNull();
+    await expect(canvas.getByRole('tablist').closest('.card')).toBeNull();
+    const card = canvas.getByRole('heading', { name: 'Service accounts', level: 2 }).closest('.card');
+    await expect(card).not.toBeNull();
+    await expect(card?.querySelector('table')).not.toBeNull();
+    // Create stands clear of the table: the card's gap spaces them.
+    const create = canvas.getByRole('button', { name: 'Create service account' }).getBoundingClientRect();
+    const table = canvas.getByRole('table').getBoundingClientRect();
+    await expect(table.top - create.bottom).toBeGreaterThanOrEqual(8);
+    // An account's kind is a tag with the kind's icon; an account
+    // with no setup journey shows "NA", named in full for assistive tech.
+    const kinds = [...canvas.getByRole('table').querySelectorAll('td .badge')].filter((tag) => /^(workload|automation)$/.test(tag.textContent ?? ''));
+    await expect(kinds.length).toBeGreaterThan(0);
+    for (const kind of kinds) await expect(kind.querySelector('svg')?.getAttribute('data-glyph')).toBe(kind.textContent);
+    const na = canvas.getAllByTitle('not applicable');
+    for (const tag of na) {
+      await expect(tag).toHaveTextContent('not applicable');
+      await expect(tag.querySelector('[aria-hidden="true"]:not(svg)')).toHaveTextContent('NA');
+    }
+    // A long "kind: subject" origin chip ellipsises at `--chip-id-max` rather
+    // than driving the table wider; the full id
+    // still rides in `title` for assistive tech and a hover.
+    const origins = [...canvas.getByRole('table').querySelectorAll<HTMLElement>('.machine__origin')];
+    await expect(origins.length).toBeGreaterThan(0);
+    for (const origin of origins) {
+      const max = Number.parseFloat(getComputedStyle(origin).maxWidth);
+      await expect(origin.getBoundingClientRect().width).toBeLessThanOrEqual(max + 0.5);
+      await expect(origin.title).toBe(origin.textContent);
+      await expect(origin.title.length).toBeGreaterThan(0);
+    }
   },
 };
 
-// A row opened: credentials and bindings left, targets and actions right,
-// the five-step setup journey full-width below.
-export const ExpandedRow: Story = {
+// The inventory lays every row out the same: name buttons never wrap (their
+// chevrons line up), and dates, badges and identifiers stay on one line, a long
+// identifier ellipsising with its full text in the title.
+export const AccountRowsAligned: Story = {
+  play: async ({ canvas }) => {
+    await canvas.findByRole('button', { name: /api-gateway/ });
+    const table = canvas.getByRole('table');
+    const chevrons = [...table.querySelectorAll('.values__keyname .glyph')].map((glyph) => glyph.getBoundingClientRect().left);
+    await expect(new Set(chevrons.map(Math.round)).size).toBe(1);
+    for (const node of table.querySelectorAll<HTMLElement>('.values__keyname, td.col-secondary, .badge')) {
+      await expect(getComputedStyle(node).whiteSpace).toBe('nowrap');
+    }
+    for (const origin of table.querySelectorAll<HTMLElement>('.machine__origin')) {
+      await expect(origin.title).toBe(origin.textContent);
+      await expect(getComputedStyle(origin).textOverflow).toBe('ellipsis');
+    }
+  },
+};
+
+// At a phone width the table drops to the compact type size and tighter cell
+// padding, the account name included. This table's four visible
+// columns (Credentials and Last used already drop at phone, `.col-secondary`)
+// still exceed a phone width on their own content, so it keeps its sideways
+// scroll by design; the width==container case is checked where it actually
+// holds, on the Who-can grants table (Members.stories.tsx).
+export const PhoneCompactTable: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas }) => {
+    const row = await canvas.findByRole('button', { name: /api-gateway/ });
+    const table = canvas.getByRole('table');
+    const compact = getComputedStyle(document.documentElement).getPropertyValue('--fs-xs');
+    const name = row.querySelector('.machine__name');
+    await expect(name).not.toBeNull();
+    await expect(getComputedStyle(name!).fontSize).toBe(compact.trim());
+    const cell = table.querySelector('td, th:not([scope="col"])');
+    await expect(cell).not.toBeNull();
+    await expect(getComputedStyle(cell!).paddingTop).toBe(getComputedStyle(document.documentElement).getPropertyValue('--space-1').trim());
+  },
+};
+
+// An account's detail opens in the side panel over the inventory:
+// credentials and bindings left, targets and actions right, the five-step
+// setup journey full-width below.
+export const AccountPanel: Story = {
+  play: async ({ canvas }) => {
+    const row = await canvas.findByRole('button', { name: /api-gateway/ });
+    await userEvent.click(row);
+    const panel = await canvas.findByRole('complementary', { name: 'Service account api-gateway' });
+    // The row opens a panel, it does not expand in place: no disclosure state.
+    await expect(row).not.toHaveAttribute('aria-expanded');
+    await expect(within(panel).getByRole('heading', { name: 'Setup journey' })).toBeVisible();
+    await expect(within(panel).getByRole('heading', { name: 'Federated bindings' })).toBeVisible();
+    await expect(
+      within(panel).getByRole('button', { name: 'Mint credential for api-gateway' }),
+    ).toBeEnabled();
+  },
+};
+
+// At a phone width the panel takes the full width, and its four account
+// actions, full-sentence labels, stack in one full-width column.
+export const AccountPanelPhone: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole('button', { name: /api-gateway/ }));
-    await expect(await canvas.findByRole('heading', { name: 'Setup journey' })).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Mint credential for api-gateway' })).toBeEnabled();
+    const panel = await canvas.findByRole('complementary', { name: 'Service account api-gateway' });
+    // Wait out the slide-in animation before measuring: mid-animation the
+    // panel sits at its `translateX(100%)` starting point.
+    await waitFor(() => expect(panel.getAnimations()).toHaveLength(0));
+    const box = panel.getBoundingClientRect();
+    await expect(Math.round(box.left)).toBe(0);
+    await expect(Math.round(box.width)).toBe(document.documentElement.clientWidth);
+    const mint = within(panel).getByRole('button', { name: 'Mint credential for api-gateway' });
+    const row = mint.closest<HTMLElement>('.actions');
+    await expect(row).not.toBeNull();
+    const width = Math.round(row!.getBoundingClientRect().width);
+    const buttons = [...row!.querySelectorAll<HTMLElement>(':scope > .btn')].map((button) => button.getBoundingClientRect());
+    await expect(buttons).toHaveLength(4);
+    for (const [index, button] of buttons.entries()) {
+      await expect(Math.round(button.left)).toBe(Math.round(buttons[0]!.left));
+      await expect(Math.round(button.width)).toBe(width);
+      if (index > 0) await expect(button.top).toBeGreaterThanOrEqual(buttons[index - 1]!.bottom);
+    }
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+  },
+};
+
+// An automation principal's panel: no setup journey, it never delivers to a
+// workload.
+export const AutomationAccountPanel: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: /nightly-report/ }));
+    const panel = await canvas.findByRole('complementary', { name: 'Service account nightly-report' });
+    await expect(within(panel).getByText(/has no setup journey/)).toBeVisible();
+    await expect(within(panel).queryByRole('heading', { name: 'Federated bindings' })).toBeNull();
+  },
+};
+
+// An act taken in the panel reports there, not on the page under its scrim.
+export const AccountPanelOutcome: Story = {
+  parameters: {
+    app: app([
+      { url: `${credentialsUrl(GATEWAY)}/mcr_123e4567-e89b-12d3-a456-426614174040`, method: 'DELETE', status: 204 },
+      ...populatedResponses,
+    ]),
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: /api-gateway/ }));
+    const panel = await canvas.findByRole('complementary', { name: 'Service account api-gateway' });
+    await userEvent.click(within(panel).getByRole('button', { name: 'Revoke hk_9f3a' }));
+    await expect(await within(panel).findByText(/stops authenticating at the next request/)).toBeVisible();
+    await expect(canvas.getAllByText(/stops authenticating at the next request/)).toHaveLength(1);
   },
 };
 
 // The Federation tab: every binding as a card with its byte-exact pins.
 export const FederationTab: Story = {
   play: async ({ canvas }) => {
-    await userEvent.click(await canvas.findByRole('tab', { name: 'Federation (1)' }));
+    await openTab(canvas, 'Federation, 1');
     await expect(
       await canvas.findByRole('button', { name: 'Replace binding on api-gateway' }),
     ).toBeVisible();
     await expect(canvas.getByText('repo:acme/gateway:ref:refs/heads/main')).toBeVisible();
+    await expect(canvas.getByRole('heading', { name: 'Federated bindings', level: 2 }).closest('.card')).not.toBeNull();
   },
 };
 
 // The Providers tab: an active provider with its actions and a tombstoned one.
 export const ProvidersTab: Story = {
   play: async ({ canvas }) => {
-    await userEvent.click(await canvas.findByRole('tab', { name: 'Providers (2)' }));
+    await openTab(canvas, 'Providers, 2');
     await expect(await canvas.findByRole('button', { name: 'Replace credential' })).toBeVisible();
     await expect(canvas.getByText('tombstoned')).toBeVisible();
+    const card = canvas.getByRole('heading', { name: 'Dynamic-secret providers', level: 2 }).closest('.card');
+    await expect(card).not.toBeNull();
+    // The table scrolls inside its own container, never the page.
+    await expect(card?.querySelector('.table-scroll > table')).not.toBeNull();
   },
 };
 
@@ -282,7 +430,7 @@ export const ProvidersTab: Story = {
 // staging is unreadable, so it is absent rather than empty.
 export const KubernetesTab: Story = {
   play: async ({ canvas }) => {
-    await userEvent.click(await canvas.findByRole('tab', { name: 'Kubernetes targets (1)' }));
+    await openTab(canvas, 'Kubernetes targets, 1');
     await expect(await canvas.findByText('api-secrets-0')).toBeVisible();
     await expect(canvas.getByText(/^reported by the controller, /)).toBeVisible();
     await expect(canvas.queryByText('staging')).not.toBeInTheDocument();
@@ -296,9 +444,9 @@ export const KubernetesTabUnsupported: Story = {
     app: app([{ url: META_URL, body: metaBody(['local-password']) }, ...populatedResponses]),
   },
   play: async ({ canvas }) => {
-    // "(unknown)" also matches the loading page: wait for the settled one.
-    await canvas.findByRole('tab', { name: 'Service accounts (3)' });
-    await userEvent.click(canvas.getByRole('tab', { name: 'Kubernetes targets (unknown)' }));
+    // ", unknown" also matches the loading page: wait for the settled one.
+    await canvas.findByRole('tab', { name: 'Service accounts, 3' });
+    await openTab(canvas, 'Kubernetes targets, unknown');
     await expect(
       await canvas.findByText(/this server does not support delivery-target reporting:/i),
     ).toBeVisible();
@@ -309,10 +457,68 @@ export const KubernetesTabUnsupported: Story = {
 // The Leases tab: an active, an unknown (awaiting reconcile) and a revoked lease.
 export const LeasesTab: Story = {
   play: async ({ canvas }) => {
-    await userEvent.click(await canvas.findByRole('tab', { name: 'Leases (3)' }));
+    await openTab(canvas, 'Leases, 3');
     await expect(await canvas.findByText('unknown, awaiting reconcile')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Settle' })).toBeVisible();
     await expect(canvas.getByText('1 lease awaiting reconcile')).toBeVisible();
+    const card = canvas.getByRole('heading', { name: 'Dynamic-secret leases', level: 2 }).closest('.card');
+    await expect(card).not.toBeNull();
+    await expect(card?.querySelector('.table-scroll > table')).not.toBeNull();
+  },
+};
+
+// The SSH tab, opened from the URL (`?tab=ssh`): the intro and environment
+// choice, then one card per subsection.
+const sshBase = `${BASE}/environments/${PROD}`;
+export const SshTab: Story = {
+  parameters: {
+    app: app(
+      [
+        { url: `${sshBase}/ssh-cas`, body: zSshcaList.parse({ items: [] }) },
+        { url: `${sshBase}/ssh-profiles`, body: zSshProfileList.parse({ items: [] }) },
+        { url: `${sshBase}/ssh-certificates`, body: zSshCertificateList.parse({ items: [] }) },
+        ...populatedResponses,
+      ],
+      `${PATH}?tab=ssh`,
+    ),
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'SSH certificates' })).toHaveAttribute('aria-selected', 'true');
+    await expect(await canvas.findByRole('heading', { name: 'SSH certificates', level: 2 })).toBeVisible();
+    for (const name of ['Certificate authorities', 'Profiles', 'Certificates']) {
+      const card = canvas.getByRole('heading', { name, level: 3 }).closest('.card');
+      await expect(card).not.toBeNull();
+      await expect(card?.querySelector('table')).not.toBeNull();
+    }
+    await expect(await canvas.findByText(/no ssh ca in this environment yet/i)).toBeVisible();
+  },
+};
+
+// The Certificates tab, opened from the URL: one card.
+export const CertificatesTab: Story = {
+  parameters: {
+    app: app(
+      [
+        { url: `${BASE}/environments/${PROD}/certificates`, body: { items: [] } },
+        { url: `${BASE}/environments/${STAGING}/certificates`, body: { items: [] } },
+        ...populatedResponses,
+      ],
+      `${PATH}?tab=certificates`,
+    ),
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Certificates, 0' })).toHaveAttribute('aria-selected', 'true');
+    const card = canvas.getByRole('heading', { name: 'Certificates', level: 2 }).closest('.card');
+    await expect(card).not.toBeNull();
+    await expect(await canvas.findByText('No certificates in this project yet.')).toBeVisible();
+  },
+};
+
+// An unknown `?tab=` falls back to the first tab rather than an empty page.
+export const UnknownTabParam: Story = {
+  parameters: { app: app(populatedResponses, `${PATH}?tab=nonsense`) },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Service accounts, 3' })).toHaveAttribute('aria-selected', 'true');
   },
 };
 
@@ -348,8 +554,8 @@ export const Loading: Story = {
     await waitFor(() =>
       expect(canvas.getByText(/reading the project.s machine-reveal opt-in/i)).toBeVisible(),
     );
-    await expect(canvas.getByRole('tab', { name: 'Service accounts (unknown)' })).toBeVisible();
-    await expect(canvas.getByRole('tab', { name: 'Kubernetes targets (unknown)' })).toBeVisible();
+    await expect(canvas.getByRole('tab', { name: 'Service accounts, unknown' })).toBeVisible();
+    await expect(canvas.getByRole('tab', { name: 'Kubernetes targets, unknown' })).toBeVisible();
   },
 };
 
@@ -370,5 +576,39 @@ export const Failed: Story = {
   },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/reload to try again/i)).toBeVisible();
+  },
+};
+
+// On a phone the tab bar wraps into rows of pills: nothing scrolls sideways,
+// neither the bar nor the page.
+export const PhoneTabPills: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('tab', { name: 'Service accounts, 3' });
+    const bar = canvas.getByRole('tablist');
+    await expect(getComputedStyle(bar).flexWrap).toBe('wrap');
+    const tops = canvas.getAllByRole('tab').map((tab) => Math.round(tab.getBoundingClientRect().top));
+    await expect(new Set(tops).size).toBeGreaterThan(1);
+    await expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth);
+    // The story's own mounted root, not `document.documentElement`: the Vitest
+    // browser-mode runner's surrounding page is wider than the story, and
+    // checking the whole document would fail on that, not on this component.
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth);
+  },
+};
+
+// At a phone width a provider row's actions sit on the two-column grid,
+// equal-width cells, instead of wrapping raggedly inside the table cell.
+export const PhoneProviderActions: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: { app: app(populatedResponses, `${PATH}?tab=providers`) },
+  play: async ({ canvas }) => {
+    const row = (await canvas.findByRole('button', { name: 'Replace credential' })).closest<HTMLElement>('.actions');
+    await expect(row).not.toBeNull();
+    await expect(getComputedStyle(row!).display).toBe('grid');
+    await expect(getComputedStyle(row!).gridTemplateColumns.split(' ')).toHaveLength(2);
+    const [a, b] = [...row!.querySelectorAll(':scope > .btn')].map((button) => button.getBoundingClientRect());
+    await expect(Math.round(a!.top)).toBe(Math.round(b!.top));
+    await expect(Math.round(a!.width)).toBe(Math.round(b!.width));
   },
 };

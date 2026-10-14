@@ -56,7 +56,13 @@ export const Plain: Story = { args: { provider: corp } };
 export const Contacting: Story = { args: { provider: github, busy: true, disabled: true } };
 
 /** This browser signed in through this row last time. */
-export const LastUsed: Story = { args: { provider: github, lastUsed: true } };
+export const LastUsed: Story = {
+  args: { provider: github, lastUsed: true },
+  play: async ({ canvas }) => {
+    const badge = canvas.getByText('Last used');
+    await expect(badge.closest('.badge')?.querySelector('svg')?.getAttribute('data-glyph')).toBe('history');
+  },
+};
 
 /** Another leg is in flight: barred, still recognisable. */
 export const Disabled: Story = { args: { disabled: true } };

@@ -156,7 +156,8 @@ it('lists each failed name on its own line and every warning separately', async 
     await settleTask();
     await settleTask();
     const failures = [...container.querySelectorAll('[aria-label="Failed names"] li')].map((li) => li.textContent?.trim());
-    expect(failures).toEqual(['! DB_URL: failed', '! API_KEY: failed']);
+    expect(failures).toEqual(['DB_URL: failed', 'API_KEY: failed']);
+    expect([...container.querySelectorAll('[aria-label="Failed names"] li .alert__glyph')].map((glyph) => glyph.getAttribute('data-glyph'))).toEqual(['alert', 'alert']);
     const warnings = [...container.querySelectorAll('.adapters__warnings li')].map((li) => li.textContent);
     expect(warnings).toEqual(['rate limited', 'name truncated']);
     expect(container.querySelector('[aria-label="Sync findings"]')?.textContent).toContain('possible_capture');

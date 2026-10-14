@@ -5,6 +5,7 @@ import { useSensitiveMutation } from '../../api/sensitiveMutation.ts';
 import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
 import { Input } from '../Input.tsx';
+import { Glyph } from '../Glyph.tsx';
 
 /** A 202 acknowledges the request, never delivery or whether an account exists. */
 export function LocalSignupForm({ landing, org, onBack }: {
@@ -25,7 +26,7 @@ export function LocalSignupForm({ landing, org, onBack }: {
     });
   };
   return <form className="login__card" onSubmit={submit}>
-    <Button type="button" variant="quiet" className="login__back" disabled={request.isPending} onClick={onBack}>‹ Other ways to create an account</Button>
+    <Button type="button" variant="quiet" className="login__back" disabled={request.isPending} onClick={onBack}><Glyph name="arrow-left" /> Other ways to create an account</Button>
     <h1 className="login__title" ref={heading} tabIndex={-1}>{sent ? 'Check your mail' : 'Create an account with email'}</h1>
     {request.isError ? <Alert>{signupFailureText(request.error)}</Alert> : null}
     {sent ? <>

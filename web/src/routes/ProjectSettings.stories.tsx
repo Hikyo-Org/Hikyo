@@ -6,12 +6,15 @@ import {
   zProjectRetentionPolicy,
   zRetentionPolicy,
 } from '@hikyo/zod';
-import { expect, userEvent } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
+import { DemoSurface } from '../demo/DemoSurface.tsx';
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { ProjectSettings } from './ProjectSettings.tsx';
 
+import { expectLeftAlignedPage, expectStackedRow, phone } from '../../.storybook/layout.ts';
+import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The project-settings surface reads `useParams({ org, project })` and fires
@@ -110,21 +113,159 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+
 // A project that grants both `can_manage_policy` and `can_delete` renders every
 // panel: Identity, Metadata, Environments, Policy (definitions + retention) and
 // the Danger zone.
 export const Administrable: Story = {
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByRole('heading', { name: /project settings · billing/i, level: 1 }),
+      await canvas.findByRole('heading', { name: /project settings\s*·?\s*billing/i, level: 1 }),
     ).toBeVisible();
+    await expect(canvas.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Identity', 'Metadata', 'Environments', 'Policy', 'Access', 'Keys & crypto', 'Danger zone',
+    ]);
+    await openTab(canvas, 'Metadata');
     await expect(canvas.getByLabelText('Name')).toBeVisible();
-    // The Policy panel exists only because the project grants can_manage_policy.
+    // The Policy tab exists only because the project grants can_manage_policy.
+    await openTab(canvas, 'Policy');
     await expect(canvas.getByRole('heading', { name: 'Policy', level: 2 })).toBeVisible();
     await expect(canvas.getByLabelText('Definitions source')).toBeVisible();
     await expect(canvas.getByLabelText('Retention mode')).toBeVisible();
     // The Danger zone exists only because the project grants can_delete.
+    await openTab(canvas, 'Danger zone');
     await expect(canvas.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeVisible();
+    // The page column starts at the well's left edge.
+    await expectLeftAlignedPage(canvas.getByRole('heading', { level: 1 }));
+    // The sections are tabs with exactly one selected.
+    await expect(canvas.getAllByRole('tab', { selected: true })).toHaveLength(1);
+  },
+};
+
+// A settings row with two or more buttons puts them on one row under
+// its copy. The definitions bundle's three buttons, the protected-environment
+// toggles and each environment's Move up / Move down.
+export const ActionRows: Story = {
+  parameters: { app: { auth: true, path: `${PATH}?tab=policy`, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: administrableProject },
+    { url: ENVIRONMENTS_URL, body: twoEnvironments },
+    { url: ORG_RETENTION_URL, body: orgRetention },
+    { url: PROJECT_RETENTION_URL, body: projectRetention },
+    { url: DEFINITIONS_URL, body: definitions },
+  ] } },
+  play: async ({ canvas }) => {
+    const bundle = (await canvas.findByText('Definitions bundle')).closest<HTMLElement>('.settings-row');
+    if (bundle === null) throw new Error('bundle row missing');
+    await expectStackedRow(bundle, 3);
+    const protectedRow = canvas.getByText('Protected environments').closest<HTMLElement>('.settings-row');
+    if (protectedRow === null) throw new Error('protected row missing');
+    await expectStackedRow(protectedRow, 2);
+    await openTab(canvas, 'Environments');
+    const manage = (await canvas.findByText('Manage staging')).closest('summary');
+    if (manage === null) throw new Error('summary missing');
+    await userEvent.click(manage);
+    const order = within(manage.closest('details') as HTMLElement).getByText('Order').closest<HTMLElement>('.settings-row');
+    if (order === null || order === undefined) throw new Error('order row missing');
+    await expectStackedRow(order, 2);
+  },
+};
+
+// At a phone width a row's 2+ buttons become an equal-width two-column grid.
+export const ActionRowsPhone: Story = {
+  parameters: ActionRows.parameters,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, canvasElement }) => {
+    const bundle = (await canvas.findByText('Definitions bundle')).closest<HTMLElement>('.settings-row');
+    if (bundle === null) throw new Error('bundle row missing');
+    await expectStackedRow(bundle, 3);
+    if (phone()) {
+      await expect(getComputedStyle(bundle.querySelector(':scope > .actions')!).gridTemplateColumns.split(' ')).toHaveLength(2);
+    }
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth);
+  },
+};
+
+// An old `#project-retention` link opens the Policy tab that now holds it.
+export const LegacyAnchorOpensTab: Story = {
+  parameters: { app: { auth: true, path: `${PATH}#project-retention`, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: administrableProject },
+    ...commonResponses,
+  ] } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Policy' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('heading', { name: 'Policy', level: 2 })).toBeVisible();
+  },
+};
+
+// The environments read failed: the Environments tab says so even to a
+// member without the policy capability.
+export const EnvironmentsReadFailed: Story = {
+  parameters: { app: { auth: true, path: `${PATH}?tab=environments`, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: memberProject },
+    { url: ENVIRONMENTS_URL, status: 500, body: { error: 'boom' } },
+    ...commonResponses.slice(1),
+  ] } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Environments' })).toHaveAttribute('aria-selected', 'true');
+    await expect(await canvas.findByText("This project's environments could not be read.")).toBeVisible();
+    await expect(canvas.queryByRole('tab', { name: 'Policy' })).toBeNull();
+  },
+};
+
+// The same failure for a project that grants can_manage_policy: the
+// Environments tab says so too, not only the Policy tab.
+export const EnvironmentsReadFailedWithPolicy: Story = {
+  parameters: { app: { auth: true, path: `${PATH}?tab=environments`, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: administrableProject },
+    { url: ENVIRONMENTS_URL, status: 500, body: { error: 'boom' } },
+    ...commonResponses.slice(1),
+  ] } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Environments' })).toHaveAttribute('aria-selected', 'true');
+    const environments = canvas.getByRole('heading', { name: 'Environments', level: 2 }).closest('section');
+    if (environments === null) throw new Error('Environments panel missing');
+    await expect(await within(environments).findByText("This project's environments could not be read.")).toBeVisible();
+    await openTab(canvas, 'Policy');
+    const policy = canvas.getByRole('heading', { name: 'Policy', level: 2 }).closest('section');
+    if (policy === null) throw new Error('Policy panel missing');
+    await expect(await within(policy).findByText("This project's environments could not be read.")).toBeVisible();
+  },
+};
+
+// The Danger zone's typed-name gate: Delete project arms only on the exact name.
+export const DangerZoneTypedName: Story = {
+  parameters: { app: { auth: true, path: `${PATH}?tab=danger`, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: administrableProject },
+    ...commonResponses,
+  ] } },
+  play: async ({ canvas }) => {
+    const input = await canvas.findByLabelText('Delete this project');
+    const button = canvas.getByRole('button', { name: 'Delete project' });
+    await waitFor(() => expect(input).toBeEnabled());
+    await userEvent.type(input, 'bill');
+    await expect(button).toBeDisabled();
+    await userEvent.type(input, 'ing');
+    await expect(button).toBeEnabled();
+    await expect(canvas.getByText('The name matches. Delete project is now possible.')).toBeVisible();
+  },
+};
+
+// The public demo mounts this page read-only via `ReadOnlyContext` ('actions'
+// mode, owner decision M7, 2026-10-13), not a disabling `<fieldset>`: its tabs
+// stay native buttons, so switching sections works, while the Name field that
+// would rename the project is individually disabled.
+export const DemoReadOnly: Story = {
+  parameters: { app: { auth: true, path: PATH, routePath: ROUTE, responses: [
+    { url: PROJECT_URL, body: administrableProject },
+    ...commonResponses,
+  ] } },
+  decorators: [(Story) => <DemoSurface id="project-settings"><Story /></DemoSurface>],
+  play: async ({ canvas, canvasElement }) => {
+    await waitFor(() => expect(canvas.getByText(/^Read-only sample data\./)).toBeVisible());
+    await expect(canvasElement.querySelector('fieldset[disabled]')).toBeNull();
+    await expect(canvas.getByLabelText('Name')).toBeDisabled();
+    await openTab(canvas, 'Policy');
+    await expect(await canvas.findByRole('tab', { name: 'Policy' })).toHaveAttribute('aria-selected', 'true');
   },
 };
 
@@ -136,6 +277,7 @@ export const UnlimitedRetentionOverride: Story = {
     ...commonResponses,
   ] } },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Policy');
     await expect(await canvas.findByText('inherits the org default: unlimited retention; follows org changes')).toBeVisible();
     await userEvent.selectOptions(canvas.getByLabelText('Retention mode'), 'custom');
     await expect(canvas.getByLabelText('Maximum retention age (seconds)')).toBeVisible();
@@ -163,10 +305,21 @@ export const MemberWithEnvironments: Story = {
     },
   },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Environments');
     await expect(await canvas.findByText('Manage production')).toBeVisible();
     await expect(canvas.getByText('Manage staging')).toBeVisible();
-    await expect(canvas.queryByRole('heading', { name: 'Policy', level: 2 })).toBeNull();
-    await expect(canvas.queryByRole('heading', { name: 'Danger zone', level: 2 })).toBeNull();
+    // Each "Manage …" disclosure wears the secondary button skin and opens in place.
+    const summary = canvas.getByText('Manage staging').closest('summary');
+    if (summary === null) throw new Error('summary missing');
+    await expect(summary).toHaveClass('btn');
+    await userEvent.click(summary);
+    await expect(summary.closest('details')).toHaveAttribute('open');
+    // The chevron, not a native marker, carries the open state.
+    const chevron = summary.querySelector('.glyph[data-glyph="chevron"]');
+    if (chevron === null) throw new Error('chevron missing');
+    await expect(getComputedStyle(chevron).transform).not.toBe('none');
+    await expect(canvas.queryByRole('tab', { name: 'Policy' })).toBeNull();
+    await expect(canvas.queryByRole('tab', { name: 'Danger zone' })).toBeNull();
   },
 };
 

@@ -18,12 +18,13 @@ import { Button } from '../../ui/Button.tsx';
 import { Checkbox } from '../../ui/Checkbox.tsx';
 import { Dialog } from '../../ui/Dialog.tsx';
 import { type IsMintSubmitting, type MintLifecycle, type MoveMint } from '../mintLifecycle.ts';
+import { Glyph } from '../../ui/Glyph.tsx';
 
 /** The expiry in words, with the tier echoed by colour beside them, never instead. */
 export function ExpiryBadge({ credential, now }: { credential: MachineCredential; now: Date }) {
   const expiry = expiryLabel(credential, now);
   return (
-    <Badge tone={expiry.tier === 'danger' ? 'danger' : expiry.tier === 'warn' ? 'changed' : 'neutral'}>
+    <Badge icon="wait" tone={expiry.tier === 'danger' ? 'danger' : expiry.tier === 'warn' ? 'changed' : 'neutral'}>
       {expiry.text}
     </Badge>
   );
@@ -160,9 +161,7 @@ export function MintDialog({
       {disclosed === null ? (
         <>
           <p className="ceremony__stepup">
-            <span className="alert__glyph" aria-hidden="true">
-              ⚿
-            </span>
+            <Glyph name="passkey" className="alert__glyph" />
             <span>
               <strong>Confirm it&apos;s you.</strong> The value is delivered display-once, to you.
               The formula is manage-identities on this project and a disclosure capability over
@@ -225,9 +224,7 @@ export function MintDialog({
           </Button>
           {disclosed.copyStatus === null ? null : (
             <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
-              <span className="alert__glyph" aria-hidden="true">
-                ⧉
-              </span>
+              <Glyph name="copy" className="alert__glyph" />
               <span>{disclosed.copyStatus}</span>
             </p>
           )}

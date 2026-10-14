@@ -113,6 +113,10 @@ export default defineConfig(({ mode }) => ({
           initialGlobals: {
             theme: storybookTheme,
             hikyoInteractionPass: interactionPass,
+            // The sand stays, so a11y sees it behind every route screen, but
+            // still and unblurred (.storybook/docs.css): the software-composited
+            // blur across parallel frames starved slow stories.
+            sand: 'still',
           },
         })],
         // Preview uses the canonical globals event to synchronize framed Docs.

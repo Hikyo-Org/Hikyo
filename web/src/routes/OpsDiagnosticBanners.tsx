@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { diagnosticWarnings, type RetentionHealth } from '../api/retention.ts';
+import { Glyph } from '../ui/Glyph.tsx';
 
 export type DiagnosticSeverity = 'error' | 'warn' | 'unknown';
 
@@ -18,9 +19,7 @@ export function ChromeDiagnostic({
 }) {
   return (
     <p className="retention-warning" role="status" data-severity={severity}>
-      <span className="alert__glyph" aria-hidden="true">
-        {severity === 'unknown' ? '?' : '!'}
-      </span>
+      <Glyph name={severity === 'unknown' ? 'question' : 'warn'} className="alert__glyph" />
       <span>{children}</span>
     </p>
   );

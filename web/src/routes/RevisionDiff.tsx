@@ -9,6 +9,8 @@ import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import { useCeremonyTask } from './useCeremonyTask.ts';
+import { plural } from '../app/duration.ts';
+import { Sep } from '../ui/Sep.tsx';
 
 export function RevisionDiffDialog({ env, environmentName, left, right, onClose }: {
   env: EnvRef; environmentName: string; left: bigint; right: bigint; onClose: () => void;
@@ -94,7 +96,7 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
           return <li key={row.key_id}>
             <span className="mono">{row.name}</span>
             <span>{shown.status.replace('_', ' ')}</span>
-            {shown.revealed ? <span className="mono">{shown.before ?? 'absent'}{' → '}{shown.after ?? 'absent'}</span> : <span>masked · write-presence only</span>}
+            {shown.revealed ? <span className="mono">{shown.before ?? 'absent'}{' → '}{shown.after ?? 'absent'}</span> : <span>masked<Sep />write-presence only</span>}
             {row.classification === 'secret' ? visible?.key_id === row.key_id
               ? <Button type="button" onClick={() => setDisclosure(null)}>Mask {row.name}</Button>
               : <Button type="button" disabled={reveal.isPending} onClick={() => void disclose(row)}>Reveal {row.name} in diff</Button>
@@ -102,7 +104,7 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
           </li>;
         })}
       </ul>
-      {visible !== null ? <p role="status">Re-masks in {Math.ceil(((disclosure?.until ?? now) - now) / 1000)}s. Switching away masks immediately.</p> : null}
+      {visible !== null ? <p role="status">Re-masks in {plural(Math.ceil(((disclosure?.until ?? now) - now) / 1000), 'second')}. Switching away masks immediately.</p> : null}
     </Dialog>
     {ceremony.request !== null ? <Ceremony key={ceremony.requestKey} request={ceremony.request} onAuthorised={ceremony.onAuthorised} onCancel={ceremony.onCancel} /> : null}
   </>;

@@ -4,9 +4,11 @@ import { expect, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { DemoSurface } from '../demo/DemoSurface.tsx';
 import { ORG } from '../testkit/ids.ts';
 import { OrgSettings } from './OrgSettings.tsx';
 
+import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The organisation settings page reads `useParams({ org })` and fires four
@@ -107,21 +109,44 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+
 // Every read resolved: the name, the grant count, the org default and each
 // project's effective bound, including the clamped one and the unreadable one.
 export const Populated: Story = {
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByRole('heading', { name: /organisation settings · acme/i, level: 1 }),
+      await canvas.findByRole('heading', { name: /organisation settings\s*·?\s*acme/i, level: 1 }),
     ).toBeVisible();
     await expect(canvas.getByLabelText('Name')).toHaveValue('Acme');
+    await expect(canvas.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Identity', 'Policy', 'Members', 'Danger zone']);
+    await openTab(canvas, 'Members');
     await expect(canvas.getByText('2 org-scoped grant lines')).toBeVisible();
+    await openTab(canvas, 'Policy');
     await expect(canvas.getByLabelText('Org default revisions kept')).toHaveValue(10);
     // Each project's bound arrives with its own retention read, after the list.
     await waitFor(() => expect(canvas.getByRole('link', { name: 'Settings for billing' })).toHaveTextContent('inherits → 10'));
     await waitFor(() => expect(canvas.getByRole('link', { name: 'Settings for checkout' })).toHaveTextContent('custom 4'));
     await waitFor(() => expect(canvas.getByRole('link', { name: 'Settings for warehouse-telemetry' })).toHaveTextContent(/capped to 10 by org/));
     await expect(await canvas.findByText(/this project's retention policy could not be read/i)).toBeVisible();
+  },
+};
+
+// A link can name a tab: `?tab=` opens it directly, and an old `#org-danger`
+// jump link opens the tab that now holds that section.
+export const TabFromLegacyAnchor: Story = {
+  parameters: { app: { ...app(populated), path: `${PATH}#org-danger` } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Danger zone' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeVisible();
+    await expect(canvas.queryByRole('heading', { name: 'Identity', level: 2 })).toBeNull();
+  },
+};
+
+export const TabFromQuery: Story = {
+  parameters: { app: { ...app(populated), path: `${PATH}?tab=retention` } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('tab', { name: 'Policy' })).toHaveAttribute('aria-selected', 'true');
+    await expect(await canvas.findByLabelText('Org default revisions kept')).toBeVisible();
   },
 };
 
@@ -136,7 +161,9 @@ export const Empty: Story = {
     ]),
   },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Policy');
     await expect(await canvas.findByText('This organisation has no projects.')).toBeVisible();
+    await openTab(canvas, 'Members');
     await expect(canvas.getByText('0 org-scoped grant lines')).toBeVisible();
   },
 };
@@ -147,9 +174,28 @@ export const Loading: Story = {
     app: app([ORG_URL, RETENTION_URL, GRANTS_URL, PROJECTS_URL].map((url) => ({ url, pending: true }))),
   },
   play: async ({ canvas }) => {
+    await waitFor(() => expect(canvas.getByLabelText('Name')).toBeDisabled());
+    await openTab(canvas, 'Policy');
     await waitFor(() => expect(canvas.getByText(/loading the retention policy/i)).toBeVisible());
-    await expect(canvas.getByLabelText('Name')).toBeDisabled();
     await expect(canvas.getByText(/loading project retention policies/i)).toBeVisible();
+  },
+};
+
+// The public demo mounts OrgSettings read-only ('actions' mode, no disabled
+// fieldset, per the M7 decision): tabs stay fully usable, but the rename
+// input (a mutation) is disabled.
+export const DemoReadOnly: Story = {
+  decorators: [(Story) => <DemoSurface id="org-settings"><Story /></DemoSurface>],
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByText(/^Read-only sample data\./)).toBeVisible();
+    await expect(canvasElement.querySelector('fieldset[disabled]')).toBeNull();
+    await openTab(canvas, 'Danger zone');
+    await expect(canvas.getByRole('tab', { name: 'Danger zone' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeVisible();
+    await openTab(canvas, 'Policy');
+    await expect(canvas.getByLabelText('Org default revisions kept')).toBeVisible();
+    await openTab(canvas, 'Identity');
+    await expect(canvas.getByLabelText('Name')).toBeDisabled();
   },
 };
 
@@ -161,7 +207,9 @@ export const Failed: Story = {
   },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/this organisation could not be read/i)).toBeVisible();
-    await expect(canvas.getByText(/retention policy could not be read/i)).toBeVisible();
+    await openTab(canvas, 'Policy');
+    await expect(await canvas.findByText(/retention policy could not be read/i)).toBeVisible();
+    await openTab(canvas, 'Members');
     await expect(canvas.getByText('membership listing unavailable')).toBeVisible();
   },
 };

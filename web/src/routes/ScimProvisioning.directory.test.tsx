@@ -34,8 +34,8 @@ it('flags a deprovisioned user loudly only while manual grants remain, and plura
     />,
   );
   const badge = withGrants.container.querySelector('.badge[data-state="inactive"]');
-  expect(badge?.textContent).toBe('! deprovisioned, manual grants remain');
-  expect(badge?.querySelector('[aria-hidden="true"]')?.textContent).toBe('! ');
+  expect(badge?.textContent?.trim()).toBe('deprovisioned, manual grants remain');
+  expect(badge?.querySelector('[aria-hidden="true"]')?.getAttribute('data-glyph')).toBe('warn');
   expect(withGrants.container.textContent).toContain('in 1 group');
   await withGrants.unmount();
 

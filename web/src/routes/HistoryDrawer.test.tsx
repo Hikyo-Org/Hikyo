@@ -247,7 +247,7 @@ describe('HistoryDrawer outside-click close', () => {
 });
 
 function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
-  const button = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === name);
+  const button = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === name);
   if (button === undefined) {
     throw new Error(`button ${name} is missing`);
   }
@@ -258,7 +258,7 @@ describe('HistoryDrawer pin release flow', () => {
   it('refuses a cleared expiry before starting disclosure or pinning', async () => {
     const { container } = await renderForm(drawer());
 
-    await act(async () => buttonNamed(container, 'Pin r4…').click());
+    await act(async () => buttonNamed(container, 'Pin workload to r4').click());
     const expiry = container.querySelector<HTMLInputElement>('#history-pin-expiry');
     const submit = container.querySelector<HTMLButtonElement>('#history-pin-submit');
     if (expiry === null || submit === null) {
@@ -328,7 +328,7 @@ describe('HistoryDrawer pin release flow', () => {
     mocks.preview = 'collection_eligible';
     const { container } = await renderForm(drawer());
 
-    await act(async () => buttonNamed(container, 'Pin r4…').click());
+    await act(async () => buttonNamed(container, 'Pin workload to r4').click());
 
     expect(container.querySelector('#history-pin-move-collection-warning')?.textContent).toContain(
       "make r3's values eligible for immediate collection",
@@ -338,25 +338,26 @@ describe('HistoryDrawer pin release flow', () => {
 });
 
 describe('HistoryDrawer head', () => {
-  it('opens on the detail pane when the deep link names a revision', async () => {
-    const { container } = await renderForm(drawer());
-    expect(container.querySelector('aside')?.className).toContain('history--detail');
-    const { container: list } = await renderForm(
+  it('selects the deep-linked revision in the revision selector, the newest without one', async () => {
+    // r3 is the older revision, so the deep link is what selects it.
+    const { container } = await renderForm(drawer('/orgs/org_a/projects/prj_a/matrix/history?env=env_a&rev=3'));
+    expect(container.querySelector<HTMLSelectElement>('#history-revision')?.value).toBe('3');
+    const { container: latest } = await renderForm(
       drawer('/orgs/org_a/projects/prj_a/matrix/history?env=env_a'),
     );
-    expect(list.querySelector('aside')?.className).not.toContain('history--detail');
+    expect(latest.querySelector<HTMLSelectElement>('#history-revision')?.value).toBe('4');
   });
 
   it('links the retention pointer to the project-settings Policy panel', async () => {
     const { container } = await renderForm(drawer());
     const pointer = container.querySelector<HTMLAnchorElement>('a.history__settings-pointer');
-    expect(pointer?.getAttribute('href')).toBe('/orgs/org_a/projects/prj_a/settings#project-policy');
+    expect(pointer?.getAttribute('href')).toBe('/orgs/org_a/projects/prj_a/settings?tab=policy');
     expect(pointer?.textContent).toContain('change it in project settings › Policy');
   });
 
   it('renders the pin quota against the pins held', async () => {
     const { container } = await renderForm(drawer());
-    await act(async () => buttonNamed(container, 'Pin r4…').click());
+    await act(async () => buttonNamed(container, 'Pin workload to r4').click());
     expect(container.textContent).toContain('1 pinned in this environment; the project quota is 100 and expiry is mandatory.');
   });
 
@@ -388,7 +389,7 @@ describe('HistoryDrawer restore sheet', () => {
     }));
     const view = await renderForm(drawer());
     try {
-      await act(async () => buttonNamed(view.container, 'Restore r4…').click());
+      await act(async () => buttonNamed(view.container, 'Restore to r4').click());
       await act(async () => buttonNamed(view.container, 'Stage the restore from r4').click());
       await settle();
       expect(view.container.textContent).toContain('already matches, nothing to stage');
@@ -400,7 +401,7 @@ describe('HistoryDrawer restore sheet', () => {
     mocks.currentSticky = true;
     const view = await renderForm(drawer());
     try {
-      await act(async () => buttonNamed(view.container, 'Restore r4…').click());
+      await act(async () => buttonNamed(view.container, 'Restore to r4').click());
       await act(async () => buttonNamed(view.container, 'Stage the restore from r4').click());
       expect(mocks.ceremonyRun.mock.calls[0]?.[0]).toEqual([{
         environmentId: 'env_a', environmentName: 'production',
@@ -414,7 +415,7 @@ describe('HistoryDrawer restore sheet', () => {
     mocks.currentDetailReady = false;
     const view = await renderForm(drawer());
     try {
-      await act(async () => buttonNamed(view.container, 'Restore r4…').click());
+      await act(async () => buttonNamed(view.container, 'Restore to r4').click());
       await act(async () => buttonNamed(view.container, 'Stage the restore from r4').click());
       expect(mocks.restoreMutate).not.toHaveBeenCalled();
       expect(mocks.ceremonyRun).not.toHaveBeenCalled();
@@ -467,12 +468,13 @@ describe('HistoryDrawer restore sheet', () => {
     });
     const { container } = await renderForm(drawer());
 
-    await act(async () => buttonNamed(container, 'Restore r4…').click());
+    await act(async () => buttonNamed(container, 'Restore to r4').click());
     await act(async () => buttonNamed(container, 'Stage the restore from r4').click());
     await settle();
 
     const headings = [...container.querySelectorAll('.history__impact-heading')].map((h) => h.textContent);
-    expect(headings).toEqual(['production · r7 → r8PROTECTED', 'staging · r2 → r3']);
+    // The separator is the shared <Sep/>; compare the words around it.
+    expect(headings.map((h) => h?.replace(/\s*·\s*/, ' · '))).toEqual(['production · r7 → r8protected', 'staging · r2 → r3']);
     const absent = [...container.querySelectorAll('.history__impact .values__absent')].map((a) => a.textContent);
     expect(absent).toEqual(['absent', 'cleared']);
     expect(container.textContent).toContain('Drafts are staged; they are also visible on the matrix.');
@@ -497,6 +499,6 @@ describe('HistoryDrawer key filter', () => {
 
 it('takes the remote retention settings pointer to the remote full-page settings', async () => {
   const view = await renderForm(<WorkspaceContextProvider value={{ origin: 'https://remote.example', remote: 'other', client: createClient() }}>{drawer()}</WorkspaceContextProvider>);
-  expect(view.container.querySelector('.history__settings-pointer')?.getAttribute('href')).toBe('https://remote.example/orgs/org_a/projects/prj_a/settings#project-policy');
+  expect(view.container.querySelector('.history__settings-pointer')?.getAttribute('href')).toBe('https://remote.example/orgs/org_a/projects/prj_a/settings?tab=policy');
   await view.unmount();
 });

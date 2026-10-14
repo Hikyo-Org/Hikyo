@@ -36,7 +36,7 @@ export function ChromeIdentityControls({
 
   // The consumer keeps this instance mounted across an id/kind change (no
   // `key`, and its own file is out of reach), so re-seed the local identity
-  // during render when the watched pair changes — the documented alternative
+  // during render when the watched pair changes: the documented alternative
   // to a reset effect.
   useResetOnChange(`${kind}:${identityId}`, () => {
     setIdentity(readChromeIdentity(kind, identityId, prototypeMode));
@@ -134,42 +134,46 @@ export function ChromeIdentityControls({
         </div>
       </div>
       {children}
-      <div className="settings-row identity-upload">
+      <div className={identity.image === null ? 'settings-row identity-upload' : 'settings-row settings-row--stacked identity-upload'}>
         <div className="settings-row__copy">
           <span className="settings-row__title">Image</span>
           <span className="settings-row__detail">
             PNG / SVG / JPG, replaces {kind === 'project' ? 'monogram and glyph' : 'the monogram'}
           </span>
         </div>
-        <span className="settings-row__spacer" />
-        <input
-          id={uploadId}
-          className="visually-hidden"
-          type="file"
-          accept="image/*"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (file === undefined) return;
-            const reader = new FileReader();
-            reader.addEventListener('load', () => {
-              if (typeof reader.result === 'string') {
-                updateIdentity({ ...identity, image: reader.result });
-              }
-            });
-            reader.readAsDataURL(file);
-          }}
-        />
-        <label className="btn" htmlFor={uploadId}>
-          {identity.image === null ? 'upload…' : 'replace…'}
-        </label>
-        {identity.image === null ? null : (
-          <Button
-            type="button"
-            onClick={() => updateIdentity({ ...identity, image: null })}
-          >
-            <Glyph name="cross" /><span className="visually-hidden">remove image</span>
-          </Button>
-        )}
+        {identity.image === null ? <span className="settings-row__spacer" /> : null}
+        <div className="actions">
+          <input
+            id={uploadId}
+            className="visually-hidden"
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file === undefined) return;
+              const reader = new FileReader();
+              reader.addEventListener('load', () => {
+                if (typeof reader.result === 'string') {
+                  updateIdentity({ ...identity, image: reader.result });
+                }
+              });
+              reader.readAsDataURL(file);
+            }}
+          />
+          <label className="btn" htmlFor={uploadId}>
+            {identity.image === null ? 'upload' : 'replace'}
+          </label>
+          {identity.image === null ? null : (
+            <Button
+              icon
+              type="button"
+              aria-label="remove image"
+              onClick={() => updateIdentity({ ...identity, image: null })}
+            >
+              <Glyph name="cross" />
+            </Button>
+          )}
+        </div>
       </div>
       <p className="settings-note">
         {kind === 'project'

@@ -138,7 +138,8 @@ describe('Projects', () => {
 
     expect(container.querySelector('#projects-new')).toBeNull();
     expect(container.querySelector('form')).toBeNull();
-    expect([...container.querySelectorAll('.jump__link')].map((a) => a.textContent)).toEqual(['All projects']);
+    // One section left (the list), so there is no jump index to render.
+    expect(container.querySelector('nav.jump')).toBeNull();
     const statuses = [...container.querySelectorAll('[role="status"]')].map((s) => s.textContent ?? '');
     expect(statuses.some((text) => text.includes('Hikyo system organisation'))).toBe(true);
     await unmount();
@@ -159,7 +160,8 @@ describe('Projects', () => {
 
 describe('Overview', () => {
   it('links to the project list and lists the projects it knows', async () => {
-    stubProjects([project]);
+    // Two: with exactly one the overview opens its matrix (Placeholder.test.tsx).
+    stubProjects([project, { ...project, id: 'prj_123e4567-e89b-12d3-a456-426614174002', name: 'ledger' }]);
     const { container, unmount } = await renderForm(inShell(<Overview />, 'org_1', '/'));
     await settleTask();
 
@@ -170,8 +172,9 @@ describe('Overview', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Overview');
     expect(container.querySelector('#well-title')).toBeNull();
     const rows = [...container.querySelectorAll('.projects__list li')];
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain('billing');
+    expect(rows[1]?.textContent).toContain('ledger');
     expect(rows[0]?.querySelector('a')?.getAttribute('href')).toBe(
       '/orgs/org_1/projects/prj_123e4567-e89b-12d3-a456-426614174000/matrix',
     );

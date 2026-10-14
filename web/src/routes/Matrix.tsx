@@ -2,7 +2,7 @@ import { WorkspaceSettingsLink } from './WorkspaceSettingsLink.tsx';
 import { useSelfConfig } from '../api/selfConfig.ts';
 import { SystemProjectNotice } from './InstanceConfig.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
 
 import { isDemo } from '../demo/config.ts';
@@ -51,6 +51,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
+import { BREAKPOINTS } from '../ui/tokens.ts';
 import { ImportWizard } from './ImportWizard.tsx';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
@@ -70,6 +71,7 @@ import {
   type MatrixStateKey,
   type MatrixValidationError,
 } from './matrix-state.ts';
+import { dotted } from './dotted.tsx';
 
 type MatrixKey = MatrixKeyList['items'][number];
 type Environment = EnvironmentList['items'][number];
@@ -270,22 +272,10 @@ export function Matrix({
     };
   }, [matrixHead]);
 
-  const [mobileLayout, setMobileLayout] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(max-width: 800px)').matches,
-  );
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const query = window.matchMedia('(max-width: 800px)');
-    const update = () => setMobileLayout(query.matches);
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
+  // At the phone breakpoint the sticky key column drops to icon-only, which
+  // also moves the envs picker out of that column (it has no room) and
+  // into the head row above the table.
+  const phone = useMediaQuery(`(max-width: ${String(BREAKPOINTS.phone)}px)`);
 
   // The legend and environment-picker are native <details> popovers. Native
   // <details> only close by re-clicking their summary, so, like the prototype's
@@ -497,6 +487,24 @@ export function Matrix({
   const visibleEnvironments = environments.filter((environment) =>
     visibleEnvironmentIds.includes(environment.id),
   );
+  // Each environment's longest cell text, from the data rather than the DOM:
+  // the table is virtualised, so the longest value may not be rendered. Its
+  // length sizes the column header (app.css, `--chars`).
+  const longestByEnvironment = useMemo(() => {
+    const keys = groups.flatMap((group) => group.keys);
+    return new Map(environments.map((environment) => {
+      if (degradedByEnvironment.has(environment.id)) return [environment.id, '· unreadable'];
+      let longest = '';
+      for (const key of keys) {
+        const id = cellID(key.id, environment.id);
+        const { state, stateGlyph } = cellState(valuesByCell.get(id), key, problemsByCell.get(id) ?? []);
+        // A state glyph and its space take about two mono characters.
+        const text = stateGlyph === null ? state : `${state}--`;
+        if (text.length > longest.length) longest = text;
+      }
+      return [environment.id, longest];
+    }));
+  }, [degradedByEnvironment, environments, groups, problemsByCell, valuesByCell]);
   const pendingByEnvironment = useMemo(() => {
     const pending = new Map<string, readonly MatrixPendingEntry[]>();
     for (const row of environmentRows) {
@@ -901,13 +909,51 @@ export function Matrix({
       : selection.environmentId === undefined
         ? environments[0]
         : environments.find((environment) => environment.id === selection.environmentId);
+  // One instance, placed in the table's key header on a wider viewport
+  // and in the head row above the table on a phone, where the icon-only key
+  // column has no room left for it.
+  const environmentPicker = (
+    <details className="matrix__environment-picker">
+      <summary className="btn btn--compact">
+        <Glyph name="chevron" />{`envs ${String(visibleEnvironments.length)}/${String(environments.length)}`}
+      </summary>
+      <fieldset>
+        <legend>Visible environments</legend>
+        {environments.map((environment) => {
+          const checked = visibleEnvironmentIds.includes(environment.id);
+          return (
+            /* markup-check: rich label (the PROTECTED
+               marker is its own span, pushed right by the
+               picker's rule), so this row cannot pass
+               ui/Checkbox's `label: string`. */
+            <label key={environment.id}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={checked && visibleEnvironmentIds.length === 1}
+                onChange={() =>
+                  setVisibleEnvironmentIds((current) =>
+                    toggleVisibleEnvironment(
+                      current,
+                      environment.id,
+                      environments.map((candidate) => candidate.id),
+                    ),
+                  )
+                }
+              />
+              <span>{environment.name}</span>
+              {protectedEnvironmentIds.includes(environment.id) ? (
+                <span className="matrix__protected">PROTECTED</span>
+              ) : null}
+            </label>
+          );
+        })}
+      </fieldset>
+    </details>
+  );
   return (
     <>
-    <section
-      className="matrix"
-      aria-labelledby="matrix-title"
-      inert={(historyOpen || keyDetailOpen) && mobileLayout}
-    >
+    <section className="matrix" aria-labelledby="matrix-title">
       {/* env-matrix 31 trims the head to the essentials: the legend is a `?`
           icon and drafts surface as a pill only once there is something to
           publish. The level-1 heading stays, every surface carries one (see
@@ -917,6 +963,7 @@ export function Matrix({
       <div className="matrix__head">
         <h1 id="matrix-title">Environment matrix</h1>
         <span className="matrix__head-spacer" />
+        {phone ? environmentPicker : null}
         <MatrixLegend />
         {pendingCount === 0 ? null : (
           <button
@@ -929,7 +976,7 @@ export function Matrix({
             aria-controls={publishOpen ? 'matrix-publish' : undefined}
             onClick={() => setPublishOpen((open) => !open)}
           >
-            <Glyph name="delta" />{' '}
+            <Glyph name="own-draft" />{' '}
             {`${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · Publish drafts`}
           </button>
         )}
@@ -967,7 +1014,7 @@ export function Matrix({
               setCreate({ folder: null });
             }}
           >
-            + New key
+            <Glyph name="plus" /> New key
           </Button>
         ) : null}
       </div>
@@ -1014,7 +1061,7 @@ export function Matrix({
         <div className="matrix__surface">
           {filter === 'problems' ? (
             <div className="matrix__filter" role="status">
-              <span>{`⚠ filter active: problems, showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
+              <span><Glyph name="warn" />{` filter active: problems, showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
               <Button type="button" onClick={() => setFilter('all')}>
                 <Glyph name="cross" /> Show all keys
               </Button>
@@ -1048,7 +1095,7 @@ export function Matrix({
               {gitManaged ? (
                 <p role="status">{GIT_DEFINITIONS_NOTICE}</p>
               ) : (
-                <div className="matrix__empty-actions">
+                <div className="actions">
                   {declarationsLocked ? null : (
                     <Button
                       type="button"
@@ -1085,56 +1132,36 @@ export function Matrix({
             </div>
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>
-              <table className="matrix__table" ref={matrixTable}>
+              <table
+                className="matrix__table"
+                ref={matrixTable}
+                // The key column compacts when the environments' nominal widths
+                // leave it less than its full width (app.css, .matrix__table).
+                style={{ '--env-count': visibleEnvironments.length } as CSSProperties}
+              >
                 <thead ref={setMatrixHead}>
                   <tr>
                     <th scope="col">
                       <div className="matrix__key-heading">
-                        <span>Key</span>
-                        <details className="matrix__environment-picker">
-                          <summary className="btn">
-                            {`envs ${String(visibleEnvironments.length)}/${String(environments.length)} ▾`}
-                          </summary>
-                          <fieldset>
-                            <legend>Visible environments</legend>
-                            {environments.map((environment) => {
-                              const checked = visibleEnvironmentIds.includes(environment.id);
-                              return (
-                                /* markup-check: rich label (the PROTECTED
-                                   marker is its own span, pushed right by the
-                                   picker's rule), so this row cannot pass
-                                   ui/Checkbox's `label: string`. */
-                                <label key={environment.id}>
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={checked && visibleEnvironmentIds.length === 1}
-                                    onChange={() =>
-                                      setVisibleEnvironmentIds((current) =>
-                                        toggleVisibleEnvironment(
-                                          current,
-                                          environment.id,
-                                          environments.map((candidate) => candidate.id),
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <span>{environment.name}</span>
-                                  {protectedEnvironmentIds.includes(environment.id) ? (
-                                    <span className="matrix__protected">PROTECTED</span>
-                                  ) : null}
-                                </label>
-                              );
-                            })}
-                          </fieldset>
-                        </details>
+                        {/* The icon stays visible once the phone breakpoint
+                            hides the word (app.css): the header must never
+                            go blank. Desktop keeps both, same as a key row's
+                            own icon-then-name order; the accessible name is
+                            still "Key" either way. */}
+                        <Glyph name="key" />
+                        <span className="visually-hidden-phone">Key</span>
+                        {phone ? null : environmentPicker}
                       </div>
                     </th>
                     {visibleEnvironments.map((environment) => {
                       const revision = revisionsByEnvironment.get(environment.id);
                       const degraded = degradedByEnvironment.get(environment.id);
                       return (
-                        <th scope="col" key={environment.id}>
+                        <th
+                          scope="col"
+                          key={environment.id}
+                          style={{ '--chars': longestByEnvironment.get(environment.id)?.length ?? 0 } as CSSProperties}
+                        >
                           <span>{environment.name}</span>
                           {/* DESIGN.md: the protected state is named in text, in
                               the header, a column you cannot reveal from should
@@ -1156,27 +1183,35 @@ export function Matrix({
                           )}
                           {degraded !== undefined || revision === undefined ? null : (
                             // Anchor, not Button: the class is what HistoryDrawer uses to find the opener.
+                            // Icon-only on a phone (btn--icon-phone, Button.css): the
+                            // label stays in the accessibility tree and in `title`,
+                            // only visually hidden, so the accessible name never
+                            // changes with width.
                             <Link
-                              className="btn btn--quiet matrix__history-link"
+                              className="btn btn--quiet btn--compact btn--icon-phone matrix__history-link"
                               data-history-environment={environment.id}
                               to={historyLink({ ...ref, env: environment.id })}
+                              title={`rev ${String(revision)} · history`}
                               onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                                 historyOpener.current = event.currentTarget;
                               }}
                             >
-                              {`rev ${String(revision)} · history`}
+                              <Glyph name="history" />
+                              <span className="btn__label">{`rev ${String(revision)} · history`}</span>
                             </Link>
                           )}
                         </th>
                       );
                     })}
+                    {/* Takes the spare width so the environment columns keep their content width. */}
+                    <th className="matrix__filler" aria-hidden="true" />
                   </tr>
                 </thead>
                 <tbody>
                   {virtualPaddingTop > 0 ? (
                     <tr aria-hidden="true" className="matrix__virtual-spacer">
                       <td
-                        colSpan={visibleEnvironments.length + 1}
+                        colSpan={visibleEnvironments.length + 2}
                         style={{ height: virtualPaddingTop }}
                       />
                     </tr>
@@ -1195,7 +1230,16 @@ export function Matrix({
                           data-index={virtualRow.index}
                           ref={rowVirtualizer.measureElement}
                         >
-                          <th colSpan={visibleEnvironments.length + 1} scope="colgroup">
+                          {/* Not colSpan-ed onto one cell (env-matrix sticky
+                              follow-up): a spanned `th` cannot itself use
+                              `position: sticky` in any browser under test, so
+                              the label would scroll out of view with the
+                              table. A plain, single-column `th` sticks the
+                              same way the key column already does, with a
+                              trailing filler `td` carrying the row's
+                              background the rest of the way so it still
+                              reads as one continuous row. */}
+                          <th scope="row">
                             <div className="matrix__group-row-inner">
                               <button
                                 type="button"
@@ -1211,14 +1255,12 @@ export function Matrix({
                                   })
                                 }
                               >
-                                <span className="matrix__group-chevron" aria-hidden="true">
-                                  ▾
-                                </span>
+                                <Glyph name="chevron-down" className="matrix__group-chevron" />
                                 <span>{group.name}</span>
                                 <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
                                   <Badge tone="danger">
-                                    {`! ${String(count)} problem${count === 1 ? '' : 's'}`}
+                                    {`${String(count)} problem${count === 1 ? '' : 's'}`}
                                   </Badge>
                                 )}
                                 {collapsed ? (
@@ -1235,17 +1277,19 @@ export function Matrix({
                                   type="button"
                                   variant="quiet"
                                   className="matrix__add-key"
+                                  aria-label={`Add key to ${group.name}`}
                                   onClick={() => {
                                     setCreateError(null);
                                     // New keys inherit this section's folder.
                                     setCreate({ folder: group.keys[0]?.folder_path || null });
                                   }}
                                 >
-                                  + Key
+                                  <Glyph name="plus" /> Key
                                 </Button>
                               )}
                             </div>
                           </th>
+                          <td className="matrix__group-row-fill" colSpan={visibleEnvironments.length + 1} />
                         </tr>
                       );
                     }
@@ -1269,17 +1313,14 @@ export function Matrix({
                               shared editor foundation. Per-key revision history
                               stays one gesture deeper, from inside the detail.
                               Any CELL still opens the row editor. */}
-                          <Link
-                            className="matrix__key mono"
-                            aria-label={`Declaration of ${key.name}${key.classification === 'secret' ? ', secret' : ''}`}
+                          <MatrixKeyLink
+                            keyRecord={key}
                             to={keyDetailLink(key.id)}
-                            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                              keyDetailOpener.current = event.currentTarget;
+                            phone={phone}
+                            onOpen={(anchor) => {
+                              keyDetailOpener.current = anchor;
                             }}
-                          >
-                            {key.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
-                            {key.name}
-                          </Link>
+                          />
                           {linkedGroupName === null ? null : (
                             <span
                               className="matrix__linked-keys"
@@ -1289,7 +1330,7 @@ export function Matrix({
                               <span className="visually-hidden">{`Linked keys: ${linkedGroupName}`}</span>
                             </span>
                           )}
-                          <span className="matrix__required">{requiredLabel(key, environments)}</span>
+                          <span className="matrix__required">{dotted(requiredLabel(key, environments))}</span>
                           </span>
                         </th>
                         {visibleEnvironments.map((environment) => {
@@ -1326,13 +1367,14 @@ export function Matrix({
                             </td>
                           );
                         })}
+                        <td className="matrix__filler" aria-hidden="true" />
                       </tr>
                     );
                   })}
                   {virtualPaddingBottom > 0 ? (
                     <tr aria-hidden="true" className="matrix__virtual-spacer">
                       <td
-                        colSpan={visibleEnvironments.length + 1}
+                        colSpan={visibleEnvironments.length + 2}
                         style={{ height: virtualPaddingBottom }}
                       />
                     </tr>
@@ -1610,6 +1652,140 @@ export function Matrix({
   );
 }
 
+/** Whether a media query matches, live; false where matchMedia is missing. */
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window.matchMedia !== 'function') return () => undefined;
+      const list = window.matchMedia(query);
+      list.addEventListener('change', onChange);
+      return () => list.removeEventListener('change', onChange);
+    },
+    () => typeof window.matchMedia === 'function' && window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+/**
+ * The key cell's link, plus the name preview for the icon-only phone
+ * column: a popover anchored to the icon, shown on hover/focus on a
+ * hover-capable pointer, or by a first tap on a coarse one (a second tap, now
+ * that it is open, proceeds to the declaration detail as any other click
+ * would). Screen readers and keyboard users never see this detour: the
+ * link's accessible name is unchanged, and `event.detail` is 0 for a
+ * keyboard-triggered click, so Enter always activates it directly.
+ *
+ * Above the phone breakpoint the popover never opens and a click navigates.
+ */
+function MatrixKeyLink({
+  keyRecord,
+  to,
+  phone,
+  onOpen,
+}: {
+  keyRecord: MatrixKey;
+  to: string;
+  phone: boolean;
+  onOpen: (anchor: HTMLAnchorElement) => void;
+}) {
+  const link = useRef<HTMLAnchorElement>(null);
+  const tip = useRef<HTMLSpanElement>(null);
+
+  const dismiss = useRef<AbortController | null>(null);
+  useEffect(() => () => dismiss.current?.abort(), []);
+
+  const tipOpen = () => tip.current?.matches(':popover-open') === true;
+  const closeTip = () => {
+    dismiss.current?.abort();
+    dismiss.current = null;
+    if (tipOpen()) tip.current?.hidePopover();
+  };
+  // A manual popover: an auto one light-dismisses on the tap's own pointer
+  // events, before the click, so the second tap would find it closed and
+  // reopen it instead of navigating. Outside press and Escape close it here.
+  const openTip = () => {
+    const rect = link.current?.getBoundingClientRect();
+    if (rect === undefined || tip.current === null || tipOpen()) return;
+    tip.current.style.setProperty('--tip-x', `${rect.left}px`);
+    tip.current.style.setProperty('--tip-y', `${rect.bottom}px`);
+    tip.current.showPopover();
+    dismiss.current = new AbortController();
+    const { signal } = dismiss.current;
+    document.addEventListener('pointerdown', (event) => {
+      if (!(event.target instanceof Node && link.current?.contains(event.target) === true)) closeTip();
+    }, { signal });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeTip();
+    }, { signal });
+  };
+  const previewOnHover = () => {
+    if (phone && window.matchMedia('(hover: hover)').matches) openTip();
+  };
+
+  return (
+    <>
+      <Link
+        ref={link}
+        className="matrix__key mono"
+        aria-label={`Declaration of ${keyRecord.name}${keyRecord.classification === 'secret' ? ', secret' : ''}`}
+        to={to}
+        onMouseEnter={previewOnHover}
+        onFocus={previewOnHover}
+        onPointerLeave={(event: PointerEvent<HTMLAnchorElement>) => {
+          // Touch can synthesize mouseleave after opening the first-tap
+          // preview. Only non-touch pointer exits should dismiss it here.
+          if (event.pointerType !== 'touch') closeTip();
+        }}
+        onBlur={closeTip}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+          if (phone && event.detail > 0 && !tipOpen()) {
+            event.preventDefault();
+            openTip();
+            return;
+          }
+          closeTip();
+          onOpen(event.currentTarget);
+        }}
+      >
+        {keyRecord.classification === 'secret' ? (
+          <><Glyph name="lock" /> </>
+        ) : (
+          <><Glyph name="config" className="matrix__key-glyph--config" /> </>
+        )}
+        <span className="matrix__key-name visually-hidden-phone">{keyRecord.name}</span>
+      </Link>
+      <span ref={tip} popover="manual" className="matrix__key-tip" aria-hidden="true">
+        {keyRecord.name}
+      </span>
+    </>
+  );
+}
+
+/** What a matrix cell shows, shared by the cell and the column sizer. */
+function cellState(
+  cell: ValueCell | undefined,
+  keyRecord: MatrixKey,
+  problems: readonly { readonly kind: string }[],
+): { state: string; stateGlyph: GlyphName | null; stateClass: string } {
+  if (problems.some((problem) => problem.kind === 'required-absent')) {
+    return { state: 'required · absent', stateGlyph: 'alert', stateClass: 'matrix-cell--problem' };
+  }
+  if (problems.some((problem) => problem.kind === 'validation')) {
+    // Name the offending value, not just the fact of one. Reading a column of
+    // "value problem" tells you where to click; reading `cross ten` tells you
+    // what happened. `offendingValue` is absent for anything the caller may not
+    // read, so a secret stays a secret in its own failure.
+    return { state: offendingValue(cell, keyRecord) ?? 'value problem', stateGlyph: 'cross', stateClass: 'matrix-cell--problem' };
+  }
+  if (cell?.set === true && keyRecord.classification === 'secret') {
+    return { state: '••••••••', stateGlyph: null, stateClass: 'matrix-cell--secret' };
+  }
+  if (cell?.set === true) {
+    return { state: cell.value ?? 'set', stateGlyph: null, stateClass: 'matrix-cell--set' };
+  }
+  return { state: '· absent', stateGlyph: null, stateClass: 'matrix-cell--absent' };
+}
+
 function MatrixCell({
   cell,
   keyRecord,
@@ -1629,29 +1805,8 @@ function MatrixCell({
 }) {
   const invalidDraft = draft?.advisory?.valid === false;
   const validationDeferred = draft?.advisory?.validation_deferred === true;
-  const requiredProblem = problems.find((problem) => problem.kind === 'required-absent');
   const validationProblem = problems.find((problem) => problem.kind === 'validation');
-  let state = '· absent';
-  let stateGlyph: GlyphName | null = null;
-  let stateClass = 'matrix-cell--absent';
-  if (requiredProblem !== undefined) {
-    state = '! required · absent';
-    stateClass = 'matrix-cell--problem';
-  } else if (validationProblem !== undefined) {
-    // Name the offending value, not just the fact of one. Reading a column of
-    // "value problem" tells you where to click; reading `cross ten` tells you
-    // what happened. `offendingValue` is absent for anything the caller may not
-    // read, so a secret stays a secret in its own failure.
-    stateGlyph = 'cross';
-    state = offendingValue(cell, keyRecord) ?? 'value problem';
-    stateClass = 'matrix-cell--problem';
-  } else if (cell?.set === true && keyRecord.classification === 'secret') {
-    state = '••••••••';
-    stateClass = 'matrix-cell--secret';
-  } else if (cell?.set === true) {
-    state = cell.value ?? 'set';
-    stateClass = 'matrix-cell--set';
-  }
+  const { state, stateGlyph, stateClass } = cellState(cell, keyRecord, problems);
   // env-matrix 31 fixes the changed/draft vocabulary to bare marks, not
   // sentences: a set cell carries a delta mark when it changed since publish
   // and a draft dot when it holds an unpublished edit. The revision and the
@@ -1663,7 +1818,9 @@ function MatrixCell({
       : signal.pending.operation === 'unset'
         ? 'clear'
         : 'set';
-  const changedRevision = signal?.changed_in_revision;
+  // r1 is the first publish: "changed in r1" only says the value exists, so
+  // it carries no mark and no words.
+  const changedRevision = signal?.changed_in_revision === 1n ? undefined : signal?.changed_in_revision;
   const otherDraft = signal?.pending_by_others === true;
   const signalWords = [
     draftSense === null ? null : `unpublished draft ${draftSense}`,
@@ -1693,17 +1850,19 @@ function MatrixCell({
             aria-hidden="true"
             title={`changed in r${String(changedRevision)}`}
           >
-            <Glyph name="delta" />
+            <Glyph name="history" />
           </span>
         )}
         {draftSense === null ? null : (
           <span
-            className="matrix-cell__draft-dot"
+            className="matrix-cell__draft"
             aria-hidden="true"
             title={`unpublished draft, ${draftSense}`}
-          />
+          >
+            <Glyph name="own-draft" />
+          </span>
         )}
-        {invalidDraft ? <span className="matrix-cell__error" title="Your draft is invalid" aria-hidden="true">!</span> : null}
+        {invalidDraft ? <span className="matrix-cell__error" title="Your draft is invalid" aria-hidden="true"><Glyph name="alert" /></span> : null}
         {otherDraft ? (
           <span
             className="matrix-cell__other"
@@ -1713,6 +1872,7 @@ function MatrixCell({
             <Glyph name="draft" />
           </span>
         ) : null}
+        {stateClass === 'matrix-cell--problem' ? null : <Glyph name="edit" className="matrix-cell__edit" />}
       </button>
       {validationProblem === undefined ? null : (
         <span className="matrix-cell__error">{validationProblem.message}</span>
@@ -1738,11 +1898,11 @@ function MatrixLegend() {
   return (
     <details className="matrix__legend">
       <summary
-        className="btn matrix__legend-toggle"
+        className="btn btn--icon matrix__legend-toggle"
         aria-label="what the cells mean"
         title="what the cells mean"
       >
-        ?
+        <Glyph name="question" />
       </summary>
       <div className="matrix__legend-body">
         <dl>
@@ -1752,16 +1912,13 @@ function MatrixLegend() {
           <dd>a secret is set; <Glyph name="lock" label="lock" /> marks the key. Open the cell to reveal it, if permitted</dd>
           <dt className="mono">· absent</dt>
           <dd>not set here, so nothing is delivered</dd>
-          <dt className="mono">! required · absent</dt>
+          <dt className="mono"><Glyph name="alert" label="alert" /> required · absent</dt>
           <dd>required in this environment and absent: publish is blocked</dd>
           <dt className="mono"><Glyph name="cross" label="cross" /> value</dt>
           <dd>the value is set but fails its declaration</dd>
-          <dt className="mono"><Glyph name="delta" label="delta" /></dt>
+          <dt className="mono"><Glyph name="history" label="changed" /></dt>
           <dd>changed since the last publish</dd>
-          <dt>
-            <span className="matrix-cell__draft-dot" aria-hidden="true" />
-            <span className="visually-hidden">draft dot</span>
-          </dt>
+          <dt className="mono"><Glyph name="own-draft" label="draft dot" /></dt>
           <dd>an unpublished draft of your own</dd>
           <dt className="mono"><Glyph name="draft" label="another editor's draft" /></dt>
           <dd>another editor has a draft here</dd>

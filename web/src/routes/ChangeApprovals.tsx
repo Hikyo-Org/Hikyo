@@ -19,9 +19,14 @@ import { useEnvironments } from '../api/settings.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
+import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
-import { JumpIndex, Panel } from './Sections.tsx';
+import { Panel, SectionTabs } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
+import { duration } from '../app/duration.ts';
 
 function refusal(error: unknown): string {
   if (error instanceof ApiError) {
@@ -124,7 +129,6 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
     }
   }
 
-
   const openEditor = (policy: ApprovalPolicy | null) => {
     setActionError(null);
     if (policy === null) {
@@ -201,248 +205,266 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
         publishing a covered environment submits a request for review instead.
       </p>
 
-      <JumpIndex
+      {actionError !== null && !formOpen ? <Alert>{actionError}</Alert> : null}
+
+      <SectionTabs
+        label="Change approvals sections"
+        idPrefix="ca"
         sections={[
-          { id: 'ca-policies', label: 'Policies' },
-          { id: 'ca-requests', label: 'Review queue' },
+          { id: 'ca-policies', label: 'Policies', content: (
+            <Panel id="ca-policies" title="Policies">
+              <div className="change-approvals__section-head">
+                <Button type="button" onClick={() => openEditor(null)}>
+                  New policy
+                </Button>
+              </div>
+              {policies.isLoading ? <p role="status">Loading policies…</p> : null}
+              {policies.isError ? (
+                <Alert>{refusal(policies.error)}</Alert>
+              ) : null}
+              {policies.data !== undefined && policies.data.items.length === 0 ? (
+                <p>No approval policies. Changes in every environment publish directly.</p>
+              ) : null}
+              {policies.data !== undefined && policies.data.items.length > 0 ? (
+                <div className="table-scroll">
+                  <table className="change-approvals__policies">
+                    <thead>
+                      <tr>
+                        <th>Environment</th>
+                        <th>Capability</th>
+                        <th>Approvals</th>
+                        <th>Self-approval</th>
+                        <th>Expiry</th>
+                        <th>State</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {policies.data.items.map((policy) => {
+                        const env = envItems.find((e) => e.id === policy.environment_id);
+                        return (
+                          <tr key={policy.id}>
+                            <td>{policy.environment_id === '' ? 'All environments' : env?.name ?? policy.environment_id}</td>
+                            <td><CapabilityTag id="publish" /></td>
+                            <td>{policy.min_approvals}</td>
+                            <td>{policy.allow_self_approval ? 'allowed' : 'not allowed'}</td>
+                            <td>{duration(policy.request_ttl_seconds)}</td>
+                            <td>{policy.enabled ? 'enabled' : 'disabled'}</td>
+                            <td>
+                              <div className="actions">
+                                <Button type="button" onClick={() => openEditor(policy)}>
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="danger"
+                                  onClick={() =>
+                                    act(() =>
+                                      deletePolicy.mutate(policy.id, {
+                                        onError: (error) => setActionError(refusal(error)),
+                                      }),
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+
+              {formOpen ? (
+                <SidePanel
+                  title={editingId === null ? 'New policy' : 'Edit policy'}
+                  onClose={() => setFormOpen(false)}
+                >
+                  {actionError === null ? null : <Alert>{actionError}</Alert>}
+                  <form
+                    className="form"
+                    aria-label={editingId === null ? 'New policy' : 'Edit policy'}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submitPolicy();
+                    }}
+                  >
+                    <label htmlFor="ca-env">Environment</label>
+                    <select
+                      id="ca-env"
+                      value={draft.environmentId}
+                      disabled={editingId !== null}
+                      onChange={(event) => setDraft({ ...draft, environmentId: event.target.value })}
+                    >
+                      <option value="">All environments in the project</option>
+                      {envItems.map((env) => (
+                        <option key={env.id} value={env.id}>
+                          {env.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <label htmlFor="ca-min">Approvals required</label>
+                    <input
+                      id="ca-min"
+                      type="number"
+                      min={1}
+                      value={draft.minApprovals}
+                      onChange={(event) => setDraft({ ...draft, minApprovals: Number(event.target.value) })}
+                    />
+
+                    <label htmlFor="ca-ttl">Request expiry (hours)</label>
+                    <input
+                      id="ca-ttl"
+                      type="number"
+                      min={1}
+                      value={Math.round(draft.requestTtlSeconds / 3600)}
+                      onChange={(event) =>
+                        setDraft({ ...draft, requestTtlSeconds: Math.max(1, Number(event.target.value)) * 3600 })
+                      }
+                    />
+
+                    <Checkbox
+                      label="Allow the requester to approve their own change"
+                      checked={draft.allowSelfApproval}
+                      onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
+                    />
+                    <Checkbox
+                      label="Enabled"
+                      checked={draft.enabled}
+                      onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+                    />
+
+                    <fieldset>
+                      <legend>Approvers</legend>
+                      <PolicyPeople names={knownPrincipals} selected={parseApprovers(approversText).filter((entry) => entry.kind === 'principal').map((entry) => entry.subject_id)} onChange={(id, checked) => {
+                        const next = parseApprovers(approversText).filter((entry) => entry.kind !== 'principal' || entry.subject_id !== id);
+                        if (checked) next.push({ kind: 'principal', subject_id: id });
+                        setApproversText(approversToText(next));
+                      }} />
+                    </fieldset>
+                    <fieldset>
+                      <legend>Emergency bypassers</legend>
+                      <PolicyPeople names={knownPrincipals} selected={parseList(bypassersText)} onChange={(id, checked) => {
+                        const next = parseList(bypassersText).filter((entry) => entry !== id);
+                        if (checked) next.push(id);
+                        setBypassersText(next.join('\n'));
+                      }} />
+                    </fieldset>
+                    <p className="field__hint">Names shown here come from policies and the selected review queue. This list does not grant or confirm permission to approve a change.</p>
+                    <details className="change-approvals__advanced">
+                      {/* A bare summary reads as a label, not as something to
+                          press (ProjectSettings' environment-lifecycle disclosure). */}
+                      <summary className="btn">
+                        <Glyph name="chevron" />
+                        Advanced: other people and provider groups
+                      </summary>
+                      <p>For someone not listed above, enter their exact principal ID. Provider groups require their group and binding IDs. This page cannot search the user directory.</p>
+                      <label htmlFor="ca-approvers">Approver IDs (one per line, or group:groupId:bindingId)</label>
+                      <textarea id="ca-approvers" value={approversText} onChange={(event) => setApproversText(event.target.value)} rows={3} />
+                      <label htmlFor="ca-bypassers">Emergency bypasser IDs (one per line)</label>
+                      <textarea id="ca-bypassers" value={bypassersText} onChange={(event) => setBypassersText(event.target.value)} rows={2} />
+                    </details>
+
+                    <div className="actions">
+                      <Button type="submit" variant="primary" disabled={savePolicy.isPending}>
+                        {savePolicy.isPending ? 'Saving…' : 'Save policy'}
+                      </Button>
+                      <Button type="button" onClick={() => setFormOpen(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </SidePanel>
+              ) : null}
+            </Panel>
+          ) },
+
+          { id: 'ca-requests', label: 'Review queue', content: (
+            <Panel id="ca-requests" title="Review queue">
+              <label htmlFor="ca-review-env">Environment</label>
+              <select
+                id="ca-review-env"
+                value={selectedEnv}
+                onChange={(event) => setSelectedEnv(event.target.value)}
+              >
+                <option value="">Choose an environment</option>
+                {envItems.map((env) => (
+                  <option key={env.id} value={env.id}>
+                    {env.name}
+                  </option>
+                ))}
+              </select>
+
+              {approvalGuard.error === null ? null : (
+                <Alert>{approvalGuard.error}</Alert>
+              )}
+
+              {selectedEnv === '' ? (
+                <p role="status">Choose an environment to see its queue.</p>
+              ) : null}
+
+              {selectedEnv !== '' && requests.isPending ? (
+                <p role="status">Loading the review queue…</p>
+              ) : null}
+
+              {selectedEnv !== '' && requests.isError ? (
+                <Alert>{refusal(requests.error)}</Alert>
+              ) : null}
+
+              {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length === 0 ? (
+                <p role="status">
+                  No requests in this environment. A policy on this environment creates one when a
+                  protected change is staged.
+                </p>
+              ) : null}
+
+              {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length > 0 ? (
+                <ul className="change-approvals__requests">
+                  {requests.data.items.map((request) => (
+                    <ApprovalRequestRow
+                      key={request.id}
+                      request={request}
+                      bypassReason={bypassReasons[request.id] ?? ''}
+                      onBypassReasonChange={(value) =>
+                        setBypassReasons((current) => ({ ...current, [request.id]: value }))
+                      }
+                      onVote={(decision) =>
+                        guardedAct(request, decision, () =>
+                          vote.mutate(
+                            { request: request.id, decision },
+                            { onError: (error) => setActionError(refusal(error)) },
+                          ),
+                        )
+                      }
+                      onMerge={() =>
+                        guardedAct(request, 'publish', () =>
+                          resolve.mutate(
+                            { request: request.id },
+                            { onError: (error) => setActionError(refusal(error)) },
+                          ),
+                        )
+                      }
+                      onBypass={() =>
+                        guardedAct(request, 'bypass', () =>
+                          resolve.mutate(
+                            { request: request.id, bypassReason: bypassReasons[request.id] ?? '' },
+                            { onError: (error) => setActionError(refusal(error)) },
+                          ),
+                        )
+                      }
+                      busy={vote.isPending || resolve.isPending}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+            </Panel>
+          ) },
         ]}
       />
-
-      <Panel id="ca-policies" title="Policies">
-        <div className="change-approvals__section-head">
-          <Button type="button" onClick={() => openEditor(null)}>
-            New policy
-          </Button>
-        </div>
-        {policies.isLoading ? <p role="status">Loading policies…</p> : null}
-        {policies.isError ? (
-          <Alert>{refusal(policies.error)}</Alert>
-        ) : null}
-        {policies.data !== undefined && policies.data.items.length === 0 ? (
-          <p>No approval policies. Changes in every environment publish directly.</p>
-        ) : null}
-        {policies.data !== undefined && policies.data.items.length > 0 ? (
-          <table className="change-approvals__policies">
-            <thead>
-              <tr>
-                <th>Environment</th>
-                <th>Approvals</th>
-                <th>Self-approval</th>
-                <th>Expiry</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {policies.data.items.map((policy) => {
-                const env = envItems.find((e) => e.id === policy.environment_id);
-                return (
-                  <tr key={policy.id}>
-                    <td>{policy.environment_id === '' ? 'All environments' : env?.name ?? policy.environment_id}</td>
-                    <td>{policy.min_approvals}</td>
-                    <td>{policy.allow_self_approval ? 'allowed' : 'not allowed'}</td>
-                    <td>{Math.round(policy.request_ttl_seconds / 3600)}h</td>
-                    <td>{policy.enabled ? 'enabled' : 'disabled'}</td>
-                    <td>
-                      <Button type="button" onClick={() => openEditor(policy)}>
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="danger"
-                        onClick={() =>
-                          act(() =>
-                            deletePolicy.mutate(policy.id, {
-                              onError: (error) => setActionError(refusal(error)),
-                            }),
-                          )
-                        }
-                      >
-                        Delete
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : null}
-
-        {formOpen ? (
-          <form
-            className="change-approvals__form panel"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submitPolicy();
-            }}
-          >
-            <h3>{editingId === null ? 'New policy' : 'Edit policy'}</h3>
-            <label htmlFor="ca-env">Environment</label>
-            <select
-              id="ca-env"
-              value={draft.environmentId}
-              disabled={editingId !== null}
-              onChange={(event) => setDraft({ ...draft, environmentId: event.target.value })}
-            >
-              <option value="">All environments in the project</option>
-              {envItems.map((env) => (
-                <option key={env.id} value={env.id}>
-                  {env.name}
-                </option>
-              ))}
-            </select>
-
-            <label htmlFor="ca-min">Approvals required</label>
-            <input
-              id="ca-min"
-              type="number"
-              min={1}
-              value={draft.minApprovals}
-              onChange={(event) => setDraft({ ...draft, minApprovals: Number(event.target.value) })}
-            />
-
-            <label htmlFor="ca-ttl">Request expiry (hours)</label>
-            <input
-              id="ca-ttl"
-              type="number"
-              min={1}
-              value={Math.round(draft.requestTtlSeconds / 3600)}
-              onChange={(event) =>
-                setDraft({ ...draft, requestTtlSeconds: Math.max(1, Number(event.target.value)) * 3600 })
-              }
-            />
-
-            <Checkbox
-              label="Allow the requester to approve their own change"
-              checked={draft.allowSelfApproval}
-              onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
-            />
-            <Checkbox
-              label="Enabled"
-              checked={draft.enabled}
-              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-            />
-
-            <fieldset>
-              <legend>Approvers</legend>
-              <PolicyPeople names={knownPrincipals} selected={parseApprovers(approversText).filter((entry) => entry.kind === 'principal').map((entry) => entry.subject_id)} onChange={(id, checked) => {
-                const next = parseApprovers(approversText).filter((entry) => entry.kind !== 'principal' || entry.subject_id !== id);
-                if (checked) next.push({ kind: 'principal', subject_id: id });
-                setApproversText(approversToText(next));
-              }} />
-            </fieldset>
-            <fieldset>
-              <legend>Emergency bypassers</legend>
-              <PolicyPeople names={knownPrincipals} selected={parseList(bypassersText)} onChange={(id, checked) => {
-                const next = parseList(bypassersText).filter((entry) => entry !== id);
-                if (checked) next.push(id);
-                setBypassersText(next.join('\n'));
-              }} />
-            </fieldset>
-            <p className="field__hint">Names shown here come from policies and the selected review queue. This list does not grant or confirm permission to approve a change.</p>
-            <details>
-              <summary>Advanced: other people and provider groups</summary>
-              <p>For someone not listed above, enter their exact principal ID. Provider groups require their group and binding IDs. This page cannot search the user directory.</p>
-              <label htmlFor="ca-approvers">Approver IDs (one per line, or group:groupId:bindingId)</label>
-              <textarea id="ca-approvers" value={approversText} onChange={(event) => setApproversText(event.target.value)} rows={3} />
-              <label htmlFor="ca-bypassers">Emergency bypasser IDs (one per line)</label>
-              <textarea id="ca-bypassers" value={bypassersText} onChange={(event) => setBypassersText(event.target.value)} rows={2} />
-            </details>
-
-            <div className="change-approvals__form-actions">
-              <Button type="submit" variant="primary" disabled={savePolicy.isPending}>
-                {savePolicy.isPending ? 'Saving…' : 'Save policy'}
-              </Button>
-              <Button type="button" onClick={() => setFormOpen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </Panel>
-
-      <Panel id="ca-requests" title="Review queue">
-        <label htmlFor="ca-review-env">Environment</label>
-        <select
-          id="ca-review-env"
-          value={selectedEnv}
-          onChange={(event) => setSelectedEnv(event.target.value)}
-        >
-          <option value="">Choose an environment</option>
-          {envItems.map((env) => (
-            <option key={env.id} value={env.id}>
-              {env.name}
-            </option>
-          ))}
-        </select>
-
-        {actionError !== null ? (
-          <Alert>{actionError}</Alert>
-        ) : null}
-
-        {approvalGuard.error === null ? null : (
-          <Alert>{approvalGuard.error}</Alert>
-        )}
-
-        {selectedEnv === '' ? (
-          <p role="status">Choose an environment to see its queue.</p>
-        ) : null}
-
-        {selectedEnv !== '' && requests.isPending ? (
-          <p role="status">Loading the review queue…</p>
-        ) : null}
-
-        {selectedEnv !== '' && requests.isError ? (
-          <Alert>{refusal(requests.error)}</Alert>
-        ) : null}
-
-        {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length === 0 ? (
-          <p role="status">
-            No requests in this environment. A policy on this environment creates one when a
-            protected change is staged.
-          </p>
-        ) : null}
-
-        {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length > 0 ? (
-          <ul className="change-approvals__requests">
-            {requests.data.items.map((request) => (
-              <ApprovalRequestRow
-                key={request.id}
-                request={request}
-                bypassReason={bypassReasons[request.id] ?? ''}
-                onBypassReasonChange={(value) =>
-                  setBypassReasons((current) => ({ ...current, [request.id]: value }))
-                }
-                onVote={(decision) =>
-                  guardedAct(request, decision, () =>
-                    vote.mutate(
-                      { request: request.id, decision },
-                      { onError: (error) => setActionError(refusal(error)) },
-                    ),
-                  )
-                }
-                onMerge={() =>
-                  guardedAct(request, 'publish', () =>
-                    resolve.mutate(
-                      { request: request.id },
-                      { onError: (error) => setActionError(refusal(error)) },
-                    ),
-                  )
-                }
-                onBypass={() =>
-                  guardedAct(request, 'bypass', () =>
-                    resolve.mutate(
-                      { request: request.id, bypassReason: bypassReasons[request.id] ?? '' },
-                      { onError: (error) => setActionError(refusal(error)) },
-                    ),
-                  )
-                }
-                busy={vote.isPending || resolve.isPending}
-              />
-            ))}
-          </ul>
-        ) : null}
-      </Panel>
       {approvalGuard.request === null ? null : (
         <Ceremony
           key={approvalGuard.requestKey}
@@ -479,7 +501,7 @@ function ApprovalRequestRow({
       <div className="change-approvals__request-head">
         <span className="mono">{request.id}</span>
         <span className="change-approvals__request-state">
-          {request.state} · {request.approvals}/{request.min_approvals} approvals
+          {request.state}<Sep />{request.approvals}/{request.min_approvals} approvals
         </span>
       </div>
       <dl className="change-approvals__request-meta">
@@ -508,7 +530,7 @@ function ApprovalRequestRow({
         </li>)}
       </ul> : null}
       {active ? (
-        <div className="change-approvals__request-actions">
+        <div className="actions">
           <Button type="button" disabled={busy} onClick={() => onVote('approve')}>
             Approve
           </Button>

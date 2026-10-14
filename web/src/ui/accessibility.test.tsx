@@ -40,9 +40,10 @@ it('only announces refusal assertively while confirmations and facts stay polite
     <Alert tone="info">Git managed.</Alert>
   </>);
   try {
-    expect([...view.container.querySelectorAll('[role="alert"]')].map((node) => node.textContent)).toEqual(['!Refused.']);
-    expect([...view.container.querySelectorAll('[role="status"]')].map((node) => node.textContent)).toEqual(['✓Saved.', '!Lifetime shortened.', 'ℹGit managed.']);
+    expect([...view.container.querySelectorAll('[role="alert"]')].map((node) => node.textContent)).toEqual(['Refused.']);
+    expect([...view.container.querySelectorAll('[role="status"]')].map((node) => node.textContent)).toEqual(['Saved.', 'Lifetime shortened.', 'Git managed.']);
     expect(view.container.querySelectorAll('.alert__glyph[aria-hidden="true"]')).toHaveLength(4);
+    expect([...view.container.querySelectorAll('.alert__glyph')].map((glyph) => glyph.getAttribute('data-glyph'))).toEqual(['alert', 'check', 'warn', 'info']);
   } finally { await view.unmount(); }
 });
 

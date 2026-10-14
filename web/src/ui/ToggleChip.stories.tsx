@@ -49,3 +49,30 @@ export const ExcludeToggles: Story = {
     await expect(canvas.getByRole('button', { name: 'prod (included)' })).toHaveAttribute('aria-pressed', 'false');
   },
 };
+
+// Every state carries a glyph mark (never a text "+"), and the state is in
+// the accessible name, not in the mark.
+export const StateMarks: Story = {
+  render: () => (
+    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      <ToggleChip mono pressed={false}>dev</ToggleChip>
+      <ToggleChip mono pressed>staging</ToggleChip>
+      <ToggleChip mono mode="exclude" pressed={false}>web</ToggleChip>
+      <ToggleChip mono mode="exclude" pressed>prod</ToggleChip>
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    const marks = {
+      'dev (not included)': 'plus',
+      'staging (included)': 'check',
+      'web (included)': 'check',
+      'prod (left out)': 'cross',
+    };
+    for (const [name, glyph] of Object.entries(marks)) {
+      const mark = canvas.getByRole('button', { name }).querySelector('.toggle-chip__mark');
+      await expect(mark?.tagName.toLowerCase()).toBe('svg');
+      await expect(mark).toHaveAttribute('data-glyph', glyph);
+      await expect(mark).toHaveAttribute('aria-hidden', 'true');
+    }
+  },
+};

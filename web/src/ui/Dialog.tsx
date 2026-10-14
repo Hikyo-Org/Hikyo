@@ -107,6 +107,10 @@ export function Dialog({
       ref={ref}
       className={cx('dialog', size === 'wide' && 'dialog--wide', pinActions === true && 'dialog--pinned', className)}
       aria-labelledby={titleId}
+      // The dialog is the scroll region when its body outgrows the viewport;
+      // a fully disabled in-flight form leaves nothing else Tab can reach,
+      // which axe's scrollable-region-focusable rule requires.
+      tabIndex={0}
       onCancel={onCancel}
       onMouseDown={
         onBackdropClick === undefined

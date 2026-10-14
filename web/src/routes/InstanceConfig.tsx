@@ -13,6 +13,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Sep } from '../ui/Sep.tsx';
 import { Panel } from './Sections.tsx';
 
 export function InstanceConfig() {
@@ -155,7 +156,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
     {done === null ? null : <Alert tone="done">{done}</Alert>}
     <Panel id="configuration-owner" title={workspace === null ? 'This instance' : workspace.remote}>
       <p className="settings-note">Owner <code>{status.owner_instance_id}</code></p>
-      <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">{stateLabel(status.state)}</span><span className="settings-row__detail">Generation {String(status.generation)} · Desired {status.desired_revision === null ? 'none' : `r${status.desired_revision}`} · Latest published {status.latest_revision === null ? 'none' : `r${status.latest_revision}`}</span></div></div>
+      <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">{stateLabel(status.state)}</span><span className="settings-row__detail">Generation {String(status.generation)}<Sep />Desired {status.desired_revision === null ? 'none' : `r${status.desired_revision}`}<Sep />Latest published {status.latest_revision === null ? 'none' : `r${status.latest_revision}`}</span></div></div>
       {status.state === 'partial' ? <Alert>Some nodes have not applied the committed revision. Review and publish a repair, then apply that revision with fresh authentication. The current target stays in place until the repair passes preparation.</Alert> : null}
       {rolloutUnresolved ? <div className="self-config-preview"><p>The controlled deployment must be restored before a new configuration repair can apply. Restoration keeps the desired revision fenced.</p>{status.job?.deployment_restore_pending ? <p role="status">Deployment restoration is pending controller confirmation.</p> : <Button type="button" disabled={busy || stale || decision !== null || preparation !== null} onClick={chooseRestore}>Restore deployment</Button>}</div> : null}
       {status.job?.deployment_restored ? <p role="status">Deployment resources are restored. Publish and apply a repair revision to resume Hikyo.</p> : null}
@@ -175,7 +176,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
           }}>Adopt previewed configuration</Button>
         </div>}
       </> : <>
-        <div className="panel__actions">
+        <div className="actions">
           <Link className="btn btn--primary" to={withRemote(generatePath(surfaceById('matrix').path, { org: binding.org_id, project: binding.project_id }), remote)}>Edit configuration project</Link>
           <Link className="btn" to={withRemote(`${generatePath(surfaceById('history').path, { org: binding.org_id, project: binding.project_id })}?environment=${encodeURIComponent(binding.environment_id)}`, remote)}>History and rollback</Link>
         </div>
@@ -198,9 +199,9 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
     </Panel>
     {status.nodes.length === 0 ? null : <Panel id="configuration-nodes" title="Nodes on this instance">
       {status.nodes.map((node) => <div className="settings-row" key={node.node_id}>
-        <div className="settings-row__copy"><span className="settings-row__title mono">{node.node_id}</span><span className="settings-row__detail">{node.state} · {node.active_revision === null ? 'Active revision unknown' : `r${node.active_revision}`} · generation {String(node.active_generation)} · last checked {new Date(node.updated_at).toLocaleString()}</span>{node.error === undefined ? null : <span className="settings-row__detail">{node.error}</span>}</div>
+        <div className="settings-row__copy"><span className="settings-row__title mono">{node.node_id}</span><span className="settings-row__detail">{node.state}<Sep />{node.active_revision === null ? 'Active revision unknown' : `r${node.active_revision}`}<Sep />generation {String(node.active_generation)}<Sep />last checked {new Date(node.updated_at).toLocaleString()}</span>{node.error === undefined ? null : <span className="settings-row__detail">{node.error}</span>}</div>
       </div>)}
-      {status.job === null ? null : <p className="settings-note">Last apply: {status.job.id} · {status.job.state} · r{String(status.job.revision)}{status.job.error === undefined ? '' : ` · ${status.job.error}`}</p>}
+      {status.job === null ? null : <p className="settings-note">Last apply: {status.job.id}<Sep />{status.job.state}<Sep />r{String(status.job.revision)}{status.job.error === undefined ? null : <><Sep />{status.job.error}</>}</p>}
     </Panel>}
     {decision === null ? null : <SelfConfigCeremony key={decision.idempotencyKey} decision={decision} onComplete={() => execute(decision)} onCancel={() => setDecision(null)} />}
   </>;
@@ -261,5 +262,5 @@ export function SystemProjectNotice({ org, project }: { org: string; project: st
   const query = useSelfConfig();
   const workspace = useWorkspaceContext();
   if (query.data?.binding?.org_id !== org || query.data.binding.project_id !== project) return null;
-  return <p className="self-config-notice"><strong>Hikyo system configuration</strong> · {stateLabel(query.data.state)} · Publishing does not apply settings. <Link to={withRemote(surfaceById('instance-config').path, workspace?.remote ?? '')}>Review and apply</Link></p>;
+  return <p className="self-config-notice"><strong>Hikyo system configuration</strong><Sep />{stateLabel(query.data.state)}<Sep />Publishing does not apply settings. <Link to={withRemote(surfaceById('instance-config').path, workspace?.remote ?? '')}>Review and apply</Link></p>;
 }

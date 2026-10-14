@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { cx } from './cx.ts';
+import { Glyph } from './Glyph.tsx';
 
 /**
  * An action / overflow menu built on the native Popover API. The trigger's
@@ -28,7 +29,7 @@ import { cx } from './cx.ts';
  */
 export function Menu({
   label,
-  glyph = '⋯',
+  glyph = <Glyph name="menu" />,
   children,
   className,
 }: {

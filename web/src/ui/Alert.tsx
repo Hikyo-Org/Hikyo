@@ -1,5 +1,7 @@
 import type { AriaRole, ReactNode } from 'react';
 
+import { Glyph, type GlyphName } from './Glyph.tsx';
+
 type Tone = 'danger' | 'done' | 'warn' | 'info';
 
 /**
@@ -9,11 +11,11 @@ type Tone = 'danger' | 'done' | 'warn' | 'info';
  * surface that assertively announced all four would train people to ignore the
  * one that matters.
  */
-const TONES: Record<Tone, { className: string; role: AriaRole; glyph: string }> = {
-  danger: { className: 'alert', role: 'alert', glyph: '!' },
-  done: { className: 'notice', role: 'status', glyph: '✓' },
-  warn: { className: 'notice', role: 'status', glyph: '!' },
-  info: { className: 'notice', role: 'status', glyph: 'ℹ' },
+const TONES: Record<Tone, { className: string; role: AriaRole; glyph: GlyphName }> = {
+  danger: { className: 'alert', role: 'alert', glyph: 'alert' },
+  done: { className: 'notice', role: 'status', glyph: 'check' },
+  warn: { className: 'notice', role: 'status', glyph: 'warn' },
+  info: { className: 'notice', role: 'status', glyph: 'info' },
 };
 
 /**
@@ -25,9 +27,9 @@ const TONES: Record<Tone, { className: string; role: AriaRole; glyph: string }> 
  *   is about something that did happen (a lifetime the server shortened, a
  *   credential that joined a live one) or a state that has gone wrong on its
  *   own (a mapping whose provider group no longer exists). `.notice` with the
- *   `!` glyph: it reads as a warning without claiming an act failed.
+ *   warning triangle: it reads as a warning without claiming an act failed.
  * - `info`: a standing fact about the surface (this project is git-managed).
- *   `.notice` with `ℹ`; nothing went wrong and nothing is asked.
+ *   `.notice` with the info circle; nothing went wrong and nothing is asked.
  *
  * None auto-dismisses: a toast that removes itself is a message a
  * screen-reader user can miss and a keyboard user cannot return to.
@@ -46,9 +48,7 @@ export function Alert({
   const { className, role, glyph } = TONES[tone];
   return (
     <div className={className} role={role}>
-      <span className="alert__glyph" aria-hidden="true">
-        {glyph}
-      </span>
+      <Glyph name={glyph} className="alert__glyph" />
       <span className="alert__text">{children}</span>
       {action !== undefined ? <span className="alert__action">{action}</span> : null}
     </div>

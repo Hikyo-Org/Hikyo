@@ -1,4 +1,6 @@
 {
-  "src/styles/app.css": 266,
-  "src/ui/Button.css": 0
+  "src/styles/app.css": 209,
+  "src/ui/Button.css": 0,
+  "src/ui/SidePanel.css": 0,
+  "src/ui/Sep.css": 0
 }

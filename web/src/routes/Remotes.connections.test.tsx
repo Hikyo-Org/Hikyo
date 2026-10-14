@@ -85,6 +85,8 @@ async function render(handlers: Handlers) {
   const rendered = await renderForm(<ConnectionCredentials />);
   cleanups.push(rendered.unmount);
   await settleTask();
+  // The mint form opens in a side panel from its button.
+  await act(async () => button(rendered.container, 'Mint a credential').click());
   return { ...rendered, fetchMock };
 }
 

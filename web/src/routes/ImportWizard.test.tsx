@@ -348,7 +348,7 @@ describe('ImportWizard git-managed', () => {
     expect(container.textContent).toContain(
       'Declare the missing keys with definitions plan / definitions apply, then import again.',
     );
-    expect(container.querySelector('.matrix-editor__eyebrow')?.textContent).toBe('Import · Step 3 of 5');
+    expect(container.querySelector('.matrix-editor__eyebrow')?.textContent).toMatch(/^Import\s*·\s*Step 3 of 5$/);
     await click(button(container, 'Review changes'));
     await click(button(container, 'Import'));
     expect(createKey).not.toHaveBeenCalled();

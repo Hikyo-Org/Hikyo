@@ -77,6 +77,8 @@ export const Idle: Story = {
     await expect(canvas.getByLabelText('Environment')).toHaveValue(PROD);
     await expect(canvas.getByLabelText('Maximum lifetime (seconds)')).toHaveValue('3600');
     await expect(canvas.getByRole('button', { name: 'Use a passkey and mint' })).toBeEnabled();
+    const stepUp = canvas.getByText(/Confirm it.s you/).closest('.ceremony__stepup');
+    await expect(stepUp?.querySelector('svg')?.getAttribute('data-glyph')).toBe('passkey');
   },
 };
 

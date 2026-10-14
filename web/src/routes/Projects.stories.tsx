@@ -78,6 +78,12 @@ export const Populated: Story = {
     await expect(canvas.getByText('web')).toBeVisible();
     await expect(canvas.getByText('analytics')).toBeVisible();
     await expect(canvas.getByRole('link', { name: 'Settings for billing' })).toBeVisible();
+    // The list and the form that adds to it stay one page: no tabs.
+    await expect(canvas.queryByRole('tablist')).toBeNull();
+    // A project's two links are one action row.
+    const settings = canvas.getByRole('link', { name: 'Settings for billing' });
+    await expect(settings.closest('.actions')).not.toBeNull();
+    await expect(settings.closest('.actions')?.querySelectorAll('.btn')).toHaveLength(2);
   },
 };
 

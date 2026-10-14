@@ -1,4 +1,3 @@
-import { type ReactNode } from 'react';
 import { type DeliveryTargetsView } from '../../api/deliveryTargets.ts';
 import {
   lastUsedLabel,
@@ -13,94 +12,96 @@ import { Button } from '../../ui/Button.tsx';
 
 import { BindingCard } from './FederationBindings.tsx';
 import { ExpiryBadge } from './Credentials.tsx';
-export function ExpandableRow({
+import { Glyph } from '../../ui/Glyph.tsx';
+/**
+ * One service account's summary row. Its name opens the account's detail
+ * (AccountDetail) in the side panel.
+ */
+export function AccountRow({
   account,
   scope,
-  open,
   scopeKnown,
   machineReveal,
   lastUsed,
-  onToggle,
-  children,
+  onOpen,
 }: {
   account: ServiceAccount;
   scope: readonly MachineEnvScope[];
-  open: boolean;
   /** False when the grants or the environments could not be read: unknown is not "none". */
   scopeKnown: boolean;
   /** The project's machine-reveal opt-in, as the server reports it. */
   machineReveal: boolean;
   lastUsed: string;
-  onToggle: () => void;
-  children: ReactNode;
+  onOpen: () => void;
 }) {
   const reading = scope.filter((s) => s.read);
   const journey = setupJourney(account.kind, scope, machineReveal);
   const outstanding = journey?.findIndex((step) => step.state !== 'done') ?? -1;
+  const { text, ...badge } = journey === null
+    ? {
+        icon: 'minus' as const,
+        title: 'not applicable',
+        text: <><span aria-hidden="true">NA</span><span className="visually-hidden">not applicable</span></>,
+      }
+    : !scopeKnown
+      ? { icon: 'question' as const, text: 'unknown' }
+      : outstanding === -1
+        ? { tone: 'ok' as const, text: 'complete' }
+        : { tone: 'changed' as const, icon: 'wait' as const, text: `step ${String(outstanding + 1)} of 5` };
   return (
-    <>
-      <tr>
-        <th scope="row">
-          <button
-            className="values__keyname mono"
-            type="button"
-            aria-expanded={open}
-            onClick={onToggle}
-          >
-            {`${open ? '▾' : '▸'} ${account.name}`}
-          </button>
-        </th>
-        <td>
-          <Badge>{account.kind}</Badge>
-        </td>
-        <td>
-          {!scopeKnown ? (
-            <span className="machine__none">unknown</span>
-          ) : reading.length === 0 ? (
-            <span className="machine__none">no environment</span>
-          ) : (
-            <span className="machine__chips">
-              {reading.map((s) => (
-                <span className="machine__scope" key={s.id}>
-                  <Badge>{s.reveal ? `${s.name} ◆` : s.name}</Badge>
-                  {/* Origin chips per scope, as Members renders them: the one
-                      thing that tells a break-glass grant from an ordinary one. */}
-                  {s.origins.map((origin) => (
-                    <Badge mono key={`${origin.kind}:${origin.subject}`}>
-                      {origin.kind}: {origin.subject}
-                    </Badge>
-                  ))}
-                </span>
-              ))}
-            </span>
-          )}
-        </td>
-        {/* The SERVER's live count: it applies revocation, the credential epoch
-            and expiry, none of which a client filtering on `revoked_at` sees. */}
-        <td className="col-secondary">{String(account.live_credentials)}</td>
-        <td className="col-secondary">{lastUsed}</td>
-        <td>
-          <Badge>
-            {journey === null
-              ? 'not applicable'
-              : !scopeKnown
-                ? 'unknown'
-                : outstanding === -1
-                  ? 'complete'
-                  : `step ${String(outstanding + 1)} of 5`}
-          </Badge>
-        </td>
-      </tr>
-      {open ? (
-        <tr className="machine__sub">
-          <td colSpan={6}>{children}</td>
-        </tr>
-      ) : null}
-    </>
+    <tr>
+      <th scope="row">
+        <button
+          className="values__keyname mono"
+          type="button"
+          title={account.name}
+          onClick={onOpen}
+        >
+          <Glyph name="chevron" /> <span className="machine__name">{account.name}</span>
+        </button>
+      </th>
+      <td>
+        <Badge icon={account.kind}>{account.kind}</Badge>
+      </td>
+      <td>
+        {!scopeKnown ? (
+          <span className="machine__none">unknown</span>
+        ) : reading.length === 0 ? (
+          <span className="machine__none">no environment</span>
+        ) : (
+          <span className="machine__chips">
+            {reading.map((s) => (
+              <span className="machine__scope" key={s.id}>
+                <Badge>{s.name}{s.reveal ? <> <Glyph name="reveal" label="reveal" /></> : null}</Badge>
+                {/* Origin chips per scope, as Members renders them: the one
+                    thing that tells a break-glass grant from an ordinary one. */}
+                {s.origins.map((origin) => (
+                  <Badge
+                    mono
+                    className="machine__origin"
+                    key={`${origin.kind}:${origin.subject}`}
+                    title={`${origin.kind}: ${origin.subject}`}
+                  >
+                    {origin.kind}: {origin.subject}
+                  </Badge>
+                ))}
+              </span>
+            ))}
+          </span>
+        )}
+      </td>
+      {/* The SERVER's live count: it applies revocation, the credential epoch
+          and expiry, none of which a client filtering on `revoked_at` sees. */}
+      <td className="col-secondary">{String(account.live_credentials)}</td>
+      <td className="col-secondary">{lastUsed}</td>
+      <td>
+        <Badge {...badge}>{text}</Badge>
+      </td>
+    </tr>
   );
 }
 
-export function ExpansionBody({
+export function AccountDetail({
   account,
   scope,
   machineReveal,
@@ -118,6 +119,7 @@ export function ExpansionBody({
   onRevoke,
   onReplaceBinding,
   onDelete,
+  onLeave,
 }: {
   account: ServiceAccount;
   scope: readonly MachineEnvScope[];
@@ -145,6 +147,8 @@ export function ExpansionBody({
   onRevoke: (credential: MachineCredential) => void;
   onReplaceBinding: (credential: MachineCredential) => void;
   onDelete: () => void;
+  /** Closes the side panel before a journey step points at the page behind it. */
+  onLeave: () => void;
 }) {
   const journey = setupJourney(account.kind, scope, machineReveal);
   const reported = deliveryTargets.reports.reduce(
@@ -155,7 +159,7 @@ export function ExpansionBody({
     <>
       <div className="machine__grid">
         <div>
-          <h2 className="machine__subhead">Credentials</h2>
+          <h3 className="machine__subhead">Credentials</h3>
           {bearers.length === 0 ? (
             <p className="machine__none">
               No bearer credentials. This account authenticates by federation only, or not at all
@@ -166,19 +170,21 @@ export function ExpansionBody({
               {bearers.map((credential) => (
                 <li className="cred" key={credential.id}>
                   <code className="mono">{`${credential.prefix_hint ?? 'unknown'}…`}</code>
-                  <Badge>bearer</Badge>
+                  <Badge icon="passkey">bearer</Badge>
                   <ExpiryBadge credential={credential} now={now} />
                   <span className="cred__meta">{lastUsedLabel(credential)}</span>
-                  <Button
-                    type="button"
-                    disabled={!ready}
-                    onClick={() => onMint(true)}
-                  >
-                    {`Rotate ${account.name}`}
-                  </Button>
-                  <Button type="button" onClick={() => onRevoke(credential)}>
-                    {`Revoke ${credential.prefix_hint ?? credential.id}`}
-                  </Button>
+                  <div className="actions">
+                    <Button
+                      type="button"
+                      disabled={!ready}
+                      onClick={() => onMint(true)}
+                    >
+                      {`Rotate ${account.name}`}
+                    </Button>
+                    <Button type="button" onClick={() => onRevoke(credential)}>
+                      {`Revoke ${credential.prefix_hint ?? credential.id}`}
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -186,7 +192,7 @@ export function ExpansionBody({
 
           {bindings.length > 0 ? (
             <>
-              <h2 className="machine__subhead">Federated bindings</h2>
+              <h3 className="machine__subhead">Federated bindings</h3>
               <ul className="machine__bindings">
                 {bindings.map((credential) => (
                   <li key={credential.id}>
@@ -206,7 +212,7 @@ export function ExpansionBody({
         </div>
 
         <div>
-          <h2 className="machine__subhead">Delivery targets</h2>
+          <h3 className="machine__subhead">Delivery targets</h3>
           <p role="status" className="machine__none">
             {reportingUnsupported
               ? 'This server does not support delivery-target reporting.'
@@ -223,7 +229,7 @@ export function ExpansionBody({
               query that failed would make it an understatement.
             </p>
           )}
-          <div className="machine__actions">
+          <div className="actions actions--stack">
             <Button
               variant="primary"
               type="button"
@@ -250,7 +256,7 @@ export function ExpansionBody({
         </div>
       </div>
 
-      <h2 className="machine__subhead">Setup journey</h2>
+      <h3 className="machine__subhead">Setup journey</h3>
       {journey === null ? (
         <p className="machine__none">
           Automation principal: it runs off-box, on a schedule or in CI, and never delivers to a
@@ -274,7 +280,12 @@ export function ExpansionBody({
                 {/* The step's act lives on the step: the same dialog or control
                     the buttons above open, reached from where the gap is named. */}
                 {step.action === undefined ? null : (
-                  <JourneyActionButton action={step.action} ready={ready} onGrant={onGrant} />
+                  <JourneyActionButton
+                    action={step.action}
+                    ready={ready}
+                    onGrant={onGrant}
+                    onLeave={onLeave}
+                  />
                 )}
               </span>
             </li>
@@ -297,18 +308,21 @@ function journeyActionLabel(action: JourneyAction): string {
 }
 
 /**
- * The opt-in control sits in the PolicyStrip at the top of this tab, which is
- * the only tab the journey renders on, so focusing it is a scroll and a focus,
- * not a navigation. A grant step opens the same grant dialog the actions do.
+ * The opt-in control sits in the PolicyStrip at the top of the service
+ * accounts tab, behind the side panel the journey renders in, so the step
+ * closes the panel, then scrolls to and focuses the control: not a navigation.
+ * A grant step opens the same grant dialog the actions do.
  */
 function JourneyActionButton({
   action,
   ready,
   onGrant,
+  onLeave,
 }: {
   action: JourneyAction;
   ready: boolean;
   onGrant: () => void;
+  onLeave: () => void;
 }) {
   return (
     <Button
@@ -320,6 +334,7 @@ function JourneyActionButton({
           onGrant();
           return;
         }
+        onLeave();
         const toggle = document.getElementById('machine-policy-toggle');
         toggle?.scrollIntoView({ block: 'center' });
         toggle?.focus();

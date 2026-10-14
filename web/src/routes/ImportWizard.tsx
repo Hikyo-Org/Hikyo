@@ -24,6 +24,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Sep } from '../ui/Sep.tsx';
 import type { KeyClassification } from '@hikyo/client';
 import {
   indexOccurrences,
@@ -35,6 +36,7 @@ import {
   type PrimitiveType,
 } from './import-state.ts';
 import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
+import { Glyph } from '../ui/Glyph.tsx';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
 
@@ -550,14 +552,17 @@ export function ImportWizard({
         {/* The eyebrow follows the title now: the atom's h2 is always first. */}
         <p className="matrix-editor__eyebrow">
           Import
-          {journey?.kind === 'cli'
-            ? ''
-            : ` · Step ${String(STEPS.indexOf(step) + 1)} of ${String(STEPS.length)}`}
+          {journey?.kind === 'cli' ? null : (
+            <>
+              <Sep />
+              Step {String(STEPS.indexOf(step) + 1)} of {String(STEPS.length)}
+            </>
+          )}
         </p>
 
         {step !== 'pick' && journey?.kind !== 'cli' ? (
           <p className="notice" role="note">{/* markup-check: note, not a live region */}
-            <span aria-hidden="true">⚠</span>
+            <Glyph name="warn" />
             <span>
               The file is read in this browser and reviewed here. Its values are sent only when you
               start the import, and are never stored by this page.
@@ -919,7 +924,7 @@ export function ImportWizard({
                 <div key={name} className="import-wizard__key">
                   <span className="import-wizard__key-name">
                     {name}
-                    {folder === '' ? null : <span className="import-wizard__key-folder">{` · ${folder}`}</span>}
+                    {folder === '' ? null : <span className="import-wizard__key-folder"><Sep />{folder}</span>}
                   </span>
                   <Checkbox
                     label="secret"

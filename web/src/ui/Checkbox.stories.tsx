@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { expect, userEvent } from 'storybook/test';
 
+import { Badge } from './Badge.tsx';
 import { Checkbox } from './Checkbox.tsx';
 
 const meta = {
@@ -51,3 +52,14 @@ export const AllStates: Story = {
   render: () => <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 360 }}>{states}</div>,
 };
 
+// A label can be a tag (the Audit outcome filter): the word stays the
+// accessible name in its source case, and pressing the tag toggles the box.
+export const TagLabel: Story = {
+  args: { label: <Badge tone="danger" icon="denied">denied</Badge> },
+  play: async ({ canvas }) => {
+    const box = canvas.getByRole('checkbox', { name: 'denied' });
+    await expect(box).not.toBeChecked();
+    await userEvent.click(canvas.getByText('denied'));
+    await expect(box).toBeChecked();
+  },
+};

@@ -20,6 +20,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Sep } from '../ui/Sep.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
@@ -32,42 +33,45 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
   const path = definitionsExportPath({ org, project });
   return (
     <>
-      <div className="settings-row">
+      {/* Three buttons: one `.actions` row under the copy. */}
+      <div className="settings-row settings-row--stacked">
         <div className="settings-row__copy">
           <span className="settings-row__title">Definitions bundle</span>
           <span className="settings-row__detail">
             download, compare and review catalogue changes from a file
           </span>
+          {workspace === null ? null : (
+            <span className="settings-row__detail">Open settings on the instance itself to download a bundle.</span>
+          )}
         </div>
-        <span className="settings-row__spacer" />
-        {workspace === null ? (
-          <>
-            {isDemo ? (
-              <>
-                <Button type="button" disabled title="Downloads are unavailable in the demo">
-                  Download definitions bundle
-                </Button>
-                <Button type="button" disabled title="Downloads are unavailable in the demo">
-                  Download portable bundle
-                </Button>
-              </>
-            ) : (
-              <>
-                <a className="btn" href={path} download="definitions.json">
-                  Download definitions bundle
-                </a>
-                <a className="btn" href={`${path}?portable=true`} download="definitions-portable.json">
-                  Download portable bundle
-                </a>
-              </>
-            )}
-          </>
-        ) : (
-          <span>Open settings on the instance itself to download a bundle.</span>
-        )}
-        <Button type="button" onClick={() => setOpen(true)}>
-          Check a bundle
-        </Button>
+        <div className="actions">
+          {workspace === null ? (
+            <>
+              {isDemo ? (
+                <>
+                  <Button type="button" disabled title="Downloads are unavailable in the demo">
+                    Download definitions bundle
+                  </Button>
+                  <Button type="button" disabled title="Downloads are unavailable in the demo">
+                    Download portable bundle
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <a className="btn" href={path} download="definitions.json">
+                    Download definitions bundle
+                  </a>
+                  <a className="btn" href={`${path}?portable=true`} download="definitions-portable.json">
+                    Download portable bundle
+                  </a>
+                </>
+              )}
+            </>
+          ) : null}
+          <Button type="button" onClick={() => setOpen(true)}>
+            Check a bundle
+          </Button>
+        </div>
       </div>
       {open ? (
         <BundleDialog
@@ -287,7 +291,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           Portable bundles add definitions; a based bundle can rename or delete existing
           definitions. Files remain only in this open dialog.
         </p>
-        <div className="panel__actions">
+        <div className="actions">
           <Button
             type="button"
             disabled={bundle === null || busy}
@@ -478,7 +482,7 @@ export function LastApplyProvenance({
       <time dateTime={lastApply.applied_at}>{new Date(lastApply.applied_at).toLocaleString()}</time>
       {labels.map(([label, value]) => (
         <span key={label}>
-          {' · '}
+          <Sep />
           {label} <span className="mono">{value}</span>
         </span>
       ))}

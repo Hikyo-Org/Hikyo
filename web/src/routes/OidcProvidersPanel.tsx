@@ -18,9 +18,12 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
+import { Glyph } from '../ui/Glyph.tsx';
 
 /**
  * OIDC provider administration (#499).
@@ -120,7 +123,7 @@ export function OidcProvidersPanel() {
         <Alert>{oidcProviderRefusalText(providers.error, 'list-oidc-providers')}</Alert>
       ) : null}
 
-      {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
+      {editor === null && feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       {providers.isSuccess && providers.data.providers.length === 0 ? (
@@ -128,37 +131,38 @@ export function OidcProvidersPanel() {
       ) : null}
       {providers.isSuccess
         ? providers.data.providers.map((provider) => (
-            <div className="settings-row" key={provider.slug}>
+            <div className="settings-row settings-row--stacked" key={provider.slug}>
               <div className="settings-row__copy">
                 <span className="settings-row__title">{provider.display_name}</span>
                 <span className="settings-row__detail mono">
-                  {provider.slug} · {provider.issuer}
+                  {provider.slug}<Sep />{provider.issuer}
                 </span>
               </div>
-              <span className="settings-row__spacer" />
               <Badge mono tone={provider.enabled ? 'neutral' : 'danger'}>
                 {provider.enabled ? 'enabled' : 'disabled'}
               </Badge>
-              <Button
-                type="button"
-                aria-label={`Reconfigure ${provider.display_name}`}
-                disabled={refreshingAfterConflict || editor !== null || deleting !== null}
-                onClick={() => openReconfigure(provider)}
-              >
-                Reconfigure
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                aria-label={`Delete ${provider.display_name}`}
-                disabled={refreshingAfterConflict || editor !== null || deleting !== null}
-                onClick={() => {
-                  feedback.clear();
-                  setDeleting(provider);
-                }}
-              >
-                Delete
-              </Button>
+              <div className="actions">
+                <Button
+                  type="button"
+                  aria-label={`Reconfigure ${provider.display_name}`}
+                  disabled={refreshingAfterConflict || editor !== null || deleting !== null}
+                  onClick={() => openReconfigure(provider)}
+                >
+                  Reconfigure
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  aria-label={`Delete ${provider.display_name}`}
+                  disabled={refreshingAfterConflict || editor !== null || deleting !== null}
+                  onClick={() => {
+                    feedback.clear();
+                    setDeleting(provider);
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
             </div>
           ))
         : null}
@@ -168,14 +172,14 @@ export function OidcProvidersPanel() {
       ) : null}
 
       {providers.isSuccess && editor === null ? (
-        <div className="panel__actions">
+        <div className="actions">
           <Button
             type="button"
             variant="primary"
             disabled={refreshingAfterConflict}
             onClick={openCreate}
           >
-            + add identity provider
+            <Glyph name="plus" /> add identity provider
           </Button>
           <code className="instance-cli">$ hikyo oidc-provider put</code>
         </div>
@@ -186,6 +190,7 @@ export function OidcProvidersPanel() {
           key={editor.kind === 'create' ? 'create' : `reconfigure:${editor.provider.slug}`}
           target={editor}
           existing={providers.data.providers}
+          failure={feedback.failure}
           onCancel={() => {
             feedback.clear();
             setEditor(null);
@@ -231,6 +236,7 @@ export function OidcProvidersPanel() {
 function ProviderEditor({
   target,
   existing,
+  failure,
   onCancel,
   onSaved,
   onFailure,
@@ -239,6 +245,8 @@ function ProviderEditor({
 }: {
   target: EditorTarget;
   existing: readonly OidcProvider[];
+  /** The page's save-refusal sentence, shown inside the panel while it is open. */
+  failure: string | null;
   onCancel: () => void;
   onSaved: (describe: string) => void;
   onFailure: (refusal: Refusal) => void;
@@ -305,9 +313,16 @@ function ProviderEditor({
   const refusalFor = (field: OidcProviderField) =>
     fieldRefusal?.field === field ? fieldRefusal.message : undefined;
 
+  const title = original === null ? 'New identity provider' : `Reconfigure ${original.display_name}`;
+
   return (
-    <div className="oidc-editor">
-      <h3>{original === null ? 'New identity provider' : `Reconfigure ${original.display_name}`}</h3>
+    <SidePanel
+      title={title}
+      onClose={() => {
+        if (!busy) onCancel();
+      }}
+    >
+      {failure !== null ? <Alert>{failure}</Alert> : null}
       {original === null ? (
         <Input
           label="Slug"
@@ -395,15 +410,15 @@ function ProviderEditor({
         </p>
       ) : null}
 
-      <div className="panel__actions">
-        <Button type="button" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
+      <div className="actions">
         <Button type="button" variant="primary" onClick={submit} disabled={busy}>
           {original === null ? 'Configure provider' : 'Save provider'}
         </Button>
+        <Button type="button" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
       </div>
-    </div>
+    </SidePanel>
   );
 }
 

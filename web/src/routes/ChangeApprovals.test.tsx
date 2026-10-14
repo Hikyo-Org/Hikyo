@@ -47,9 +47,9 @@ it('uses the chrome anatomy, loads, and names the next action in each empty stat
     expect(container.querySelector('main')).toBeNull();
     expect(container.querySelector('.page.page--chrome')).not.toBeNull();
     expect(container.querySelector('.page__lede')).not.toBeNull();
-    expect([...container.querySelectorAll('nav.jump a')].map((a) => a.getAttribute('href'))).toEqual([
-      '#ca-policies',
-      '#ca-requests',
+    expect([...container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)).toEqual([
+      'Policies',
+      'Review queue',
     ]);
     expect(container.querySelector('#ca-policies [role="status"]')?.textContent).toBe('Loading policies…');
     expect(container.querySelector('#ca-requests [role="status"]')?.textContent).toBe(

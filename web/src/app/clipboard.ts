@@ -143,7 +143,7 @@ export async function writeExpiringClipboard(
     scheduleClipboardClear(text, generation);
   }
   return audited
-    ? "Copied, and recorded as a disclosure. Attempts to clear after 45s. If unfocused, retries once on return within 2 minutes. Clipboard managers may keep this browser copy. On macOS or Windows, use hikyo values get KEY --reveal --clipboard to request exclusion from clipboard history."
+    ? "Copied, and recorded as a disclosure. Attempts to clear after 45 seconds. If unfocused, retries once on return within 2 minutes. Clipboard managers may keep this browser copy. On macOS or Windows, use hikyo values get KEY --reveal --clipboard to request exclusion from clipboard history."
     : "Copied. This value is not a secret, so no disclosure was recorded.";
 }
 import { notifyFailure } from './notifications.tsx';

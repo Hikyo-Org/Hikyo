@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { expect, userEvent, within } from 'storybook/test';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { RemoteCard } from './Remotes.tsx';
@@ -85,6 +85,12 @@ export const Healthy: Story = {
     ).toBeEnabled();
     await expect(canvas.getByRole('heading', { name: 'peer-one' })).toBeVisible();
     await expect(canvas.getByText('Reachable')).toBeVisible();
+    // The state tag carries an icon for its meaning, not colour alone.
+    await expect(canvas.getByText('Reachable').closest('.badge')?.querySelector('svg')).toHaveAttribute('data-glyph', 'check');
+    // Rename opens in the side panel; the card itself is untouched until Save.
+    await userEvent.click(canvas.getByRole('button', { name: 'Rename' }));
+    const panel = within(canvas.getByRole('complementary', { name: 'Rename remote' }));
+    await expect(panel.getByRole('textbox', { name: 'Display name' })).toHaveValue('peer-one');
   },
 };
 
@@ -103,6 +109,7 @@ export const Unreachable: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'peer-down' })).toBeVisible();
     await expect(canvas.getByText(/unreachable for/i)).toBeVisible();
+    await expect(canvas.getByText('Unreachable').closest('.badge')?.querySelector('svg')).toHaveAttribute('data-glyph', 'disconnected');
   },
 };
 
@@ -115,6 +122,7 @@ export const CredentialRejected: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'peer-rejected' })).toBeVisible();
     await expect(canvas.getByText(/pinned credential was rejected/i)).toBeVisible();
+    await expect(canvas.getByText('Credential rejected').closest('.badge')?.querySelector('svg')).toHaveAttribute('data-glyph', 'denied');
   },
 };
 
@@ -129,5 +137,7 @@ export const Duplicate: Story = {
     await expect(canvas.getByRole('heading', { name: 'peer-dup' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: /open workspace/i })).toBeDisabled();
     await expect(canvas.getByText(/another entry resolves to the same instance identity/i)).toBeVisible();
+    // The action row is a shared `.actions` row (DESIGN.md), not its own class alone.
+    await expect(canvas.getByRole('button', { name: 'Rename' }).closest('.remote__actions')).toHaveClass('actions');
   },
 };

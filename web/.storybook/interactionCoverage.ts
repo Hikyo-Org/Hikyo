@@ -20,7 +20,7 @@ export const INTERACTION_ONCE = {
     retained: ['ui-auth-loginform--provider-starts-from-step-one'],
   },
   'pages-overview--create-project-journey': {
-    reason: 'Route creation/cache assertions are theme-independent. The appearance pass seeds the same project before mounting, then waits for real navigation to the same populated Projects route with AppRoutes, providers and Shell. Standalone endpoint stories remain in both palettes.',
+    reason: 'Route creation/cache assertions are theme-independent. The appearance pass seeds the same project plus a second one (with exactly one, Overview opens its matrix) before mounting, then waits for real navigation to the same populated Projects route with AppRoutes, providers and Shell. Standalone endpoint stories remain in both palettes.',
     retained: ['pages-overview--create-project-journey', 'pages-overview--empty', 'pages-overview--populated', 'routes-projects--empty', 'routes-projects--populated'],
   },
 };

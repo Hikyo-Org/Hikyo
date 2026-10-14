@@ -77,3 +77,20 @@ export const NotReady: Story = {
     await expect(canvas.getByRole('button', { name: 'Revoke binding on api-gateway' })).toBeEnabled();
   },
 };
+
+// At a phone width the two long labels ("Replace binding on api-gateway",
+// "Revoke binding on api-gateway") would wrap onto 2-3 lines in the
+// 2-column action grid; `.actions--stack` drops to one column so each stays
+// on its own line, full width.
+export const PhoneStacksActions: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas }) => {
+    const replace = canvas.getByRole('button', { name: 'Replace binding on api-gateway' });
+    const revoke = canvas.getByRole('button', { name: 'Revoke binding on api-gateway' });
+    for (const button of [replace, revoke]) {
+      await expect(button.scrollHeight).toBeLessThanOrEqual(button.clientHeight);
+    }
+    // One column: the second button sits below the first, not beside it.
+    await expect(revoke.getBoundingClientRect().top).toBeGreaterThanOrEqual(replace.getBoundingClientRect().bottom);
+  },
+};

@@ -38,6 +38,7 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { useMintLifecycle, type MintBoundaryFields } from './mintLifecycle.ts';
+import { duration } from '../app/duration.ts';
 
 /**
  * The SSH tab of the machine-access page (#155): an environment's SSH user
@@ -179,220 +180,236 @@ export function SSHCertificatesPanel({
       {refusal !== null ? <Alert>{refusal}</Alert> : null}
       {notice !== null ? <Alert tone="done">{notice}</Alert> : null}
 
-      <h3>Certificate authorities</h3>
-      {cas.isError ? <Alert>The SSH CAs could not be listed. Listing them needs read on this environment.</Alert> : null}
-      <p className="machine__actions">
-        <Button variant="primary" type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'create-ca' })}>
-          Create CA
-        </Button>
-      </p>
-      <table className="values__table machine__table">
-        <caption className="visually-hidden">The environment&apos;s SSH CAs and their signing keys.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Keys</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {caItems.map((ca) => (
-            <tr key={ca.id}>
-              <td>
-                <code>{ca.name}</code>
-              </td>
-              <td>
-                <ul className="machine__keys">
-                  {ca.keys.map((key) => (
-                    <li key={key.id}>
-                      <Badge tone={key.state === 'active' ? 'ok' : key.trusted ? 'changed' : 'neutral'}>
-                        {key.state}
-                      </Badge>{' '}
-                      {key.algorithm} <code>{key.fingerprint}</code>
-                      {key.state === 'retiring' && key.retire_after !== undefined && key.retire_after !== null
-                        ? ` trusted until ${isoDay(key.retire_after)}`
-                        : null}
-                      {key.state === 'retiring' ? (
-                        <>
-                          {' '}
-                          <Button
-                            type="button"
-                            disabled={!canAct || retire.isPending}
-                            onClick={() =>
-                              retire.mutate(
-                                { ca: ca.id, key: key.id },
-                                {
-                                  onSuccess: () => done('Retired. Hosts drop the key at their next trust-bundle refresh.'),
-                                  onError: (error) => setRefusal(sshRefusalText('retire', error)),
-                                },
-                              )
-                            }
-                          >
-                            Retire now
-                          </Button>
-                        </>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </td>
-              <td>
-                <Button type="button" onClick={() => setDialog({ kind: 'trust', ca })}>
-                  Trust bundle
-                </Button>{' '}
-                {workspace === null ? (
-                  <>
-                    {isDemo ? <Button type="button" disabled title="Downloads are unavailable in the demo">Download KRL</Button> : (
-                      <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
-                        Download KRL
-                      </a>
-                    )}{' '}
-                  </>
-                ) : null}
-                <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'rotate', ca })}>
-                  Rotate
-                </Button>{' '}
-                <Button variant="danger" type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'delete-ca', ca })}>
-                  Delete
-                </Button>
-              </td>
+      <section className="card machine__card" aria-labelledby="ssh-cas-title">
+        <h3 id="ssh-cas-title">Certificate authorities</h3>
+        {cas.isError ? <Alert>The SSH CAs could not be listed. Listing them needs read on this environment.</Alert> : null}
+        <div className="actions">
+          <Button variant="primary" type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'create-ca' })}>
+            Create CA
+          </Button>
+        </div>
+        <div className="table-scroll">
+        <table className="values__table machine__table">
+          <caption className="visually-hidden">The environment&apos;s SSH CAs and their signing keys.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Keys</th>
+              <th scope="col">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {cas.isSuccess && caItems.length === 0 ? (
-        <p role="status">No SSH CA in this environment yet. Create one to issue certificates.</p>
-      ) : null}
+          </thead>
+          <tbody>
+            {caItems.map((ca) => (
+              <tr key={ca.id}>
+                <td>
+                  <code>{ca.name}</code>
+                </td>
+                <td>
+                  <ul className="machine__keys">
+                    {ca.keys.map((key) => (
+                      <li key={key.id}>
+                        <Badge tone={key.state === 'active' ? 'ok' : key.trusted ? 'changed' : 'neutral'}>
+                          {key.state}
+                        </Badge>{' '}
+                        {key.algorithm} <code>{key.fingerprint}</code>
+                        {key.state === 'retiring' && key.retire_after !== undefined && key.retire_after !== null
+                          ? ` trusted until ${isoDay(key.retire_after)}`
+                          : null}
+                        {key.state === 'retiring' ? (
+                          <>
+                            {' '}
+                            <Button
+                              type="button"
+                              disabled={!canAct || retire.isPending}
+                              onClick={() =>
+                                retire.mutate(
+                                  { ca: ca.id, key: key.id },
+                                  {
+                                    onSuccess: () => done('Retired. Hosts drop the key at their next trust-bundle refresh.'),
+                                    onError: (error) => setRefusal(sshRefusalText('retire', error)),
+                                  },
+                                )
+                              }
+                            >
+                              Retire now
+                            </Button>
+                          </>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+                <td>
+                  <div className="actions">
+                    <Button type="button" onClick={() => setDialog({ kind: 'trust', ca })}>
+                      Trust bundle
+                    </Button>
+                    {workspace === null ? (
+                      isDemo ? <Button type="button" disabled title="Downloads are unavailable in the demo">Download KRL</Button> : (
+                        <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
+                          Download KRL
+                        </a>
+                      )
+                    ) : null}
+                    <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'rotate', ca })}>
+                      Rotate
+                    </Button>
+                    <Button variant="danger" type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'delete-ca', ca })}>
+                      Delete
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+        {cas.isSuccess && caItems.length === 0 ? (
+          <p role="status">No SSH CA in this environment yet. Create one to issue certificates.</p>
+        ) : null}
+      </section>
 
-      <h3>Profiles</h3>
-      {profiles.isError ? <Alert>The SSH profiles could not be listed.</Alert> : null}
-      <p className="machine__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={!canAct || caItems.length === 0}
-          onClick={() => setDialog({ kind: 'profile', profile: null })}
-        >
-          Create profile
-        </Button>
-      </p>
-      <table className="values__table machine__table">
-        <caption className="visually-hidden">The signing profiles of this environment.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">CA</th>
-            <th scope="col">Principals</th>
-            <th scope="col" className="col-secondary">Max TTL</th>
-            <th scope="col" className="col-secondary">Requesters</th>
-            <th scope="col">State</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {profileItems.map((profile) => (
-            <tr key={profile.id}>
-              <td>
-                <code>{profile.name}</code>
-              </td>
-              <td>{caName(profile.ca_id)}</td>
-              <td>
-                <code>{profile.principals.join(', ')}</code>
-              </td>
-              <td className="col-secondary">{`${String(profile.max_ttl_seconds)}s`}</td>
-              <td className="col-secondary">{String(profile.requesters.length)}</td>
-              <td>
-                <Badge tone={profile.enabled ? 'ok' : 'neutral'}>{profile.enabled ? 'enabled' : 'disabled'}</Badge>
-              </td>
-              <td>
-                <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'profile', profile })}>
-                  Edit
-                </Button>{' '}
-                <Button
-                  variant="danger"
-                  type="button"
-                  disabled={!canAct}
-                  onClick={() => setDialog({ kind: 'delete-profile', profile })}
-                >
-                  Delete
-                </Button>
-              </td>
+      <section className="card machine__card" aria-labelledby="ssh-profiles-title">
+        <h3 id="ssh-profiles-title">Profiles</h3>
+        {profiles.isError ? <Alert>The SSH profiles could not be listed.</Alert> : null}
+        <div className="actions">
+          <Button
+            variant="primary"
+            type="button"
+            disabled={!canAct || caItems.length === 0}
+            onClick={() => setDialog({ kind: 'profile', profile: null })}
+          >
+            Create profile
+          </Button>
+        </div>
+        <div className="table-scroll">
+        <table className="values__table machine__table">
+          <caption className="visually-hidden">The signing profiles of this environment.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">CA</th>
+              <th scope="col">Principals</th>
+              <th scope="col" className="col-secondary">Max TTL</th>
+              <th scope="col" className="col-secondary">Requesters</th>
+              <th scope="col">State</th>
+              <th scope="col">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {profileItems.map((profile) => (
+              <tr key={profile.id}>
+                <td>
+                  <code>{profile.name}</code>
+                </td>
+                <td>{caName(profile.ca_id)}</td>
+                <td>
+                  <code>{profile.principals.join(', ')}</code>
+                </td>
+                <td className="col-secondary">{duration(Number(profile.max_ttl_seconds))}</td>
+                <td className="col-secondary">{String(profile.requesters.length)}</td>
+                <td>
+                  <Badge tone={profile.enabled ? 'ok' : 'neutral'}>{profile.enabled ? 'enabled' : 'disabled'}</Badge>
+                </td>
+                <td>
+                  <div className="actions">
+                    <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'profile', profile })}>
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      type="button"
+                      disabled={!canAct}
+                      onClick={() => setDialog({ kind: 'delete-profile', profile })}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
 
-      {profiles.isSuccess && profileItems.length === 0 ? (
-        <p role="status">No SSH profile in this environment yet.</p>
-      ) : null}
+        {profiles.isSuccess && profileItems.length === 0 ? (
+          <p role="status">No SSH profile in this environment yet.</p>
+        ) : null}
+      </section>
 
-      <h3>Certificates</h3>
-      {certificates.isError ? <Alert>The SSH certificates could not be listed.</Alert> : null}
-      <p className="machine__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={!canAct || profileItems.length === 0}
-          onClick={() => setDialog({ kind: 'issue' })}
-        >
-          Issue certificate
-        </Button>
-      </p>
-      <table className="values__table machine__table">
-        <caption className="visually-hidden">
-          The most recent certificates. The record carries public data only; no private key is ever listed.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Serial</th>
-            <th scope="col">Principals</th>
-            <th scope="col" className="col-secondary">Requester</th>
-            <th scope="col">Valid before</th>
-            <th scope="col">Status</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {certificateItems.map((cert) => (
-            <tr key={cert.id}>
-              <td>
-                <code>{cert.serial}</code>
-              </td>
-              <td>
-                <code>{cert.principals.join(', ')}</code>
-              </td>
-              <td className="col-secondary">
-                <code>{cert.requester_principal_id}</code>
-              </td>
-              <td>{isoDay(cert.valid_before)}</td>
-              <td>
-                <Badge tone={statusTone(cert.status)}>{cert.status}</Badge>
-                {cert.in_krl ? ' in KRL' : null}
-              </td>
-              <td>
-                {cert.status === 'active' || cert.status === 'untrusted' ? (
-                  <Button
-                    variant="danger"
-                    type="button"
-                    disabled={!canAct || revoke.isPending}
-                    onClick={() =>
-                      revoke.mutate(cert.id, {
-                        onSuccess: () => done('Revoked. The serial is in the KRL; hosts refuse it at their next KRL refresh.'),
-                        onError: (error) => setRefusal(sshRefusalText('revoke', error)),
-                      })
-                    }
-                  >
-                    Revoke
-                  </Button>
-                ) : null}
-              </td>
+      <section className="card machine__card" aria-labelledby="ssh-certificates-title">
+        <h3 id="ssh-certificates-title">Certificates</h3>
+        {certificates.isError ? <Alert>The SSH certificates could not be listed.</Alert> : null}
+        <div className="actions">
+          <Button
+            variant="primary"
+            type="button"
+            disabled={!canAct || profileItems.length === 0}
+            onClick={() => setDialog({ kind: 'issue' })}
+          >
+            Issue certificate
+          </Button>
+        </div>
+        <div className="table-scroll">
+        <table className="values__table machine__table">
+          <caption className="visually-hidden">
+            The most recent certificates. The record carries public data only; no private key is ever listed.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Serial</th>
+              <th scope="col">Principals</th>
+              <th scope="col" className="col-secondary">Requester</th>
+              <th scope="col">Valid before</th>
+              <th scope="col">Status</th>
+              <th scope="col">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {certificates.isSuccess && certificateItems.length === 0 ? (
-        <p role="status">No SSH certificate issued in this environment yet.</p>
-      ) : null}
+          </thead>
+          <tbody>
+            {certificateItems.map((cert) => (
+              <tr key={cert.id}>
+                <td>
+                  <code>{cert.serial}</code>
+                </td>
+                <td>
+                  <code>{cert.principals.join(', ')}</code>
+                </td>
+                <td className="col-secondary">
+                  <code>{cert.requester_principal_id}</code>
+                </td>
+                <td>{isoDay(cert.valid_before)}</td>
+                <td>
+                  <Badge tone={statusTone(cert.status)}>{cert.status}</Badge>
+                  {cert.in_krl ? ' in KRL' : null}
+                </td>
+                <td>
+                  {cert.status === 'active' || cert.status === 'untrusted' ? (
+                    <div className="actions">
+                      <Button
+                        variant="danger"
+                        type="button"
+                        disabled={!canAct || revoke.isPending}
+                        onClick={() =>
+                          revoke.mutate(cert.id, {
+                            onSuccess: () => done('Revoked. The serial is in the KRL; hosts refuse it at their next KRL refresh.'),
+                            onError: (error) => setRefusal(sshRefusalText('revoke', error)),
+                          })
+                        }
+                      >
+                        Revoke
+                      </Button>
+                    </div>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+        {certificates.isSuccess && certificateItems.length === 0 ? (
+          <p role="status">No SSH certificate issued in this environment yet.</p>
+        ) : null}
+      </section>
 
       {dialog?.kind === 'create-ca' ? (
 		<CADialog key={`${env.org}/${env.project}/${env.environment}/create`} env={env} onClose={() => setDialog(null)} onDone={done} />
@@ -808,7 +825,7 @@ function ProfileDialog({
           <label htmlFor="ssh-profile-requesters">Requesters (principal ids, one per line)</label>
           <textarea id="ssh-profile-requesters" className="mono" rows={3} value={requesters} onChange={(e) => setRequesters(e.target.value)} />
           {requesterOptions.length > 0 ? (
-            <p className="machine__actions">
+            <div className="actions">
               {requesterOptions.map((option) => (
                 <Button
                   key={option.id}
@@ -818,7 +835,7 @@ function ProfileDialog({
                   {`Add ${option.label}`}
                 </Button>
               ))}
-            </p>
+            </div>
           ) : null}
         </div>
         <Checkbox label="Enabled (issuance allowed)" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />

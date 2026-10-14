@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { deferred, revealWindow } from '../testkit/ceremony.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { duration, TemporaryAccess } from './TemporaryAccess.tsx';
+import { TemporaryAccess } from './TemporaryAccess.tsx';
 
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({ identity: { principal: { id: 'usr_00000000-0000-0000-0000-00000000000a' } } }),
@@ -78,12 +78,6 @@ async function mount() {
   );
 }
 
-it('renders durations in the largest whole unit', () => {
-  expect(duration(28800)).toBe('8h');
-  expect(duration(90)).toBe('90s');
-  expect(duration(1800)).toBe('30m');
-});
-
 it('files an immutable request within the offer and keeps policy administration to managers', async () => {
   const bodies: unknown[] = [];
   let queue = { offer, items: [] as unknown[] };
@@ -134,7 +128,7 @@ it('files an immutable request within the offer and keeps policy administration 
     // This policy does not permit this requester to approve their own request.
     expect(button(container, 'Withdraw')).toBeDefined();
     expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Approve')).toBe(false);
-    expect(container.querySelector('.temporary-access__request-state')?.textContent).toBe('open · 0/1 approvals');
+    expect(container.querySelector('.temporary-access__request-state')?.textContent).toMatch(/^open\s*·\s*0\/1 approvals$/);
   } finally {
     await unmount();
   }

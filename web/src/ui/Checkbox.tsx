@@ -1,4 +1,4 @@
-import { useId, type ComponentProps } from 'react';
+import { useId, type ComponentProps, type ReactNode } from 'react';
 
 import { cx } from './cx.ts';
 
@@ -10,7 +10,8 @@ import { cx } from './cx.ts';
  * the spread.
  */
 type CheckboxProps = ComponentProps<'input'> & {
-  label: string;
+  /** The words, or a tag that names the option (the Audit outcome filter). */
+  label: ReactNode;
   /** Set the label in the value face (key names, identifiers). */
   mono?: boolean;
 };

@@ -30,7 +30,9 @@ import { ProofDialog } from '../ui/auth/ProofDialog.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { QrCode } from '../ui/auth/QrCode.tsx';
-import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { dotted } from './dotted.tsx';
+import { DisplayOnceCopy, Panel, SectionTabs } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -197,363 +199,367 @@ export function AccountSecurity() {
         secret is a separate ceremony.
       </p>
 
-      <JumpIndex
-        sections={[
-          { id: 'account-profile', label: 'Profile' },
-          { id: 'account-factors', label: 'Sign-in factors' },
-          { id: 'account-recovery', label: 'Recovery' },
-          { id: 'account-sessions', label: 'Sessions' },
-          { id: 'account-identities', label: 'Identities' },
-          { id: 'account-preferences', label: 'Preferences' },
-        ]}
-      />
-
       {done !== null ? <Alert tone="done">{done}</Alert> : null}
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
-      <AccountProfile />
+      <SectionTabs
+        label="Account and security sections"
+        idPrefix="account"
+        sections={[
+          { id: 'account-profile', label: 'Profile', content: <AccountProfile /> },
+          { id: 'account-factors', label: 'Sign-in factors', content: (
+            <Panel id="account-factors" title="Sign-in factors">
+              {passkeys.isPending ? <p role="status">Loading passkeys…</p> : null}
+              {passkeys.isError ? <Alert>Your passkeys could not be listed.</Alert> : null}
+              {passkeys.isSuccess && passkeys.data.passkeys.length === 0 ? (
+                <p role="status">No passkey is enrolled on this account.</p>
+              ) : null}
+              {passkeys.isSuccess ? passkeys.data.passkeys.map((passkey) => (
+                <div className="settings-row account-passkey" key={passkey.id}>
+                  <div className="settings-row__copy">
+                    <span className="settings-row__title"><Glyph name="passkey" /> {passkey.label}</span>
+                    <span className="settings-row__detail">
+                      passkey<Sep />added {new Date(passkey.created_at).toISOString().slice(0, 10)}
+                      {passkey.disabled ? <><Sep />disabled after clone signal</> : null}
+                    </span>
+                  </div>
+                  <span className="settings-row__spacer" />
+                  <Button
+                    icon
+                    variant="quiet"
+                    type="button"
+                    aria-label={`Remove passkey ${passkey.label}`}
+                    onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id, proof: passkeyProof })}
+                  >
+                    <Glyph name="cross" />
+                  </Button>
+                </div>
+              )) : null}
 
-      <Panel id="account-factors" title="Sign-in factors">
-        {passkeys.isPending ? <p role="status">Loading passkeys…</p> : null}
-        {passkeys.isError ? <Alert>Your passkeys could not be listed.</Alert> : null}
-        {passkeys.isSuccess && passkeys.data.passkeys.length === 0 ? (
-          <p role="status">No passkey is enrolled on this account.</p>
-        ) : null}
-        {passkeys.isSuccess ? passkeys.data.passkeys.map((passkey) => (
-          <div className="settings-row account-passkey" key={passkey.id}>
-            <div className="settings-row__copy">
-              <span className="settings-row__title">🔑 {passkey.label}</span>
-              <span className="settings-row__detail">
-                passkey · added {new Date(passkey.created_at).toISOString().slice(0, 10)}
-                {passkey.disabled ? ' · disabled after clone signal' : ''}
-              </span>
-            </div>
-            <span className="settings-row__spacer" />
-            <Button
-              icon
-              variant="quiet"
-              type="button"
-              aria-label={`Remove passkey ${passkey.label}`}
-              onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id, proof: passkeyProof })}
-            >
-              <Glyph name="cross" />
-            </Button>
-          </div>
-        )) : null}
-
-        <div className="settings-row settings-row--compact">
-          <div className="settings-row__copy">
-            <span className="settings-row__title">Authenticator app</span>
-            <span className="settings-row__detail">TOTP · single-use per step</span>
-          </div>
-          <span className="settings-row__spacer" />
-          {totpStatus.isSuccess && totpStatus.data.confirmed ? (
-            <Button
-              type="button"
-              variant="quiet"
-              aria-label="Remove the authenticator"
-              disabled={totpRemove.isPending}
-              title="Remove authenticator app"
-              onClick={() => setProof({ kind: 'totp-remove' })}
-            >
-              enrolled
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              disabled={totpStart.isPending || totpStatus.isPending}
-              onClick={() => setProof({ kind: 'totp-start' })}
-            >
-              enrol
-            </Button>
-          )}
-        </div>
-        {totpStatus.isError ? (
-          <Alert>Your authenticator state could not be read. Reload to try again.</Alert>
-        ) : null}
-
-        <div className="settings-row settings-row--compact">
-          <div className="settings-row__copy">
-            <span className="settings-row__title">Password</span>
-            <span className="settings-row__detail">signs you in, never authorises security changes</span>
-          </div>
-          <span className="settings-row__spacer" />
-          <Button type="button" disabled title="Password changes are not in the API contract">
-            change
-          </Button>
-        </div>
-
-        <div className="settings-row settings-row--compact">
-          <div className="settings-row__copy">
-            <span className="settings-row__title">Add passkey</span>
-            <span className="settings-row__detail">
-              a new credential never authorizes its own enrollment
-            </span>
-          </div>
-          <span className="settings-row__spacer" />
-          <Button
-            type="button"
-            aria-label="Add a passkey"
-            disabled={enrolPasskey.isPending}
-            onClick={() => setProof({ kind: 'add-passkey', proof: passkeyProof })}
-          >
-            + add
-          </Button>
-        </div>
-
-        {totpEnrolmentInProgress ? (
-          <p role="status">
-            An enrolment is staged. Add it to your authenticator and confirm it with the code below.
-          </p>
-        ) : null}
-        {otpauth !== null && totpEnrolmentInProgress ? (
-          <div className="enrolment">
-            <QrCode value={otpauth} title="Authenticator setup QR code" />
-            <p className="field__hint">
-              Scan this with your authenticator, or enter the secret below by hand. Shown exactly
-              once: the seed is never retrievable again. Confirming with a code completes the
-              enrolment and reissues this session carrying only the password class, so you present
-              the new factor separately.
-            </p>
-            <p className="enrolment__uri mono">{otpauth}</p>
-            <DisplayOnceCopy
-              value={otpauth}
-              success="Authenticator setup copied. Store it somewhere safe; clipboard history may retain it."
-            />
-            <div className="field">
-              <label htmlFor={codeId}>Code from the authenticator</label>
-              <input
-                id={codeId}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={totpCode}
-                onChange={(event) => setTotpCode(event.target.value)}
-              />
-            </div>
-            <div className="panel__actions">
-              <Button
-                type="button"
-                variant="primary"
-                disabled={totpConfirm.isPending || totpCode.length < 6}
-                onClick={() =>
-                  totpConfirm.mutate(
-                    { code: totpCode },
-                    {
-                      onSuccess: () => {
-                        setOtpauth(null);
-                        setTotpCode('');
-                        ok('Authenticator enrolled. Present it to step up when you need to.');
-                      },
-                      onError: report,
-                      onSettled: () => setTotpCode(''),
-                    },
-                  )
-                }
-              >
-                Confirm enrolment
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </Panel>
-
-      <Panel id="account-recovery" title="Recovery">
-        {prototypeMode ? <>
-          <div className="settings-row">
-            <div className="settings-row__copy"><span className="settings-row__title">Recovery codes</span><span className="settings-row__detail">not generated yet</span></div>
-            <span className="settings-row__spacer" />
-            <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</Button>
-          </div>
-          <div className="settings-row">
-            <div className="settings-row__copy"><span className="settings-row__title">Passkey-only sign-in</span><span className="settings-row__detail">requires recovery codes + at least 2 passkeys</span></div>
-            <span className="settings-row__spacer" />
-            <Button type="button" disabled>enable</Button>
-          </div>
-          <p className="settings-note">Locked until preconditions are met: 2/2 passkeys · recovery codes ✗. Codes restore access; they never satisfy a disclosure reauth.</p>
-        </> : <>
-          <p>
-            Recovery codes restore <strong>access</strong> when every factor is gone. They never
-            satisfy a disclosure reauthentication, and they never authorise their own regeneration:
-            the proof is a code from your authenticator where one stands, otherwise your password.
-          </p>
-          <div className="panel__actions">
-            <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</Button>
-          </div>
-          <p className="field__hint">Replacing them invalidates the previous batch atomically, and the new codes are displayed once.</p>
-        </>}
-      </Panel>
-
-      <Panel id="account-sessions" title="Active sessions">
-        {prototypeMode ? (
-          <PrototypeSessions
-            sessions={sessions.data?.items ?? []}
-            busy={revokeSession.isPending}
-            onRevoke={(session) =>
-              revokeSession.mutate(session.id, {
-                onSuccess: () => ok(`Revoked the ${session.artifact} session ${session.id}.`),
-                onError: report,
-              })
-            }
-          />
-        ) : <>
-        <p>
-          Every artifact currently holding your account. A <span className="mono">workspace</span>{' '}
-          session belongs to another instance&apos;s shell operating this one as you; revoking it
-          ends that immediately, mid-flight, because the row is re-resolved on the next request.
-        </p>
-        {sessions.isError ? (
-          <Alert>Your sessions could not be loaded. Reload to try again.</Alert>
-        ) : null}
-        {sessions.isSuccess && sessions.data.items.length === 0 ? (
-          <p role="status">No active sessions.</p>
-        ) : null}
-        <ul className="sessions">
-          {sessions.isSuccess ? sessions.data.items.map((item) => (
-            <li key={item.id} className="session">
-              <div className="session__head">
-                {/* The artifact type is text in a badge, never a colour: it is
-                    the single most load-bearing fact in the row. */}
-                <Badge data-artifact={item.artifact}>
-                  {item.artifact}
-                </Badge>
-                <span className="mono session__id">{item.id}</span>
+              <div className="settings-row settings-row--compact">
+                <div className="settings-row__copy">
+                  <span className="settings-row__title">Authenticator app</span>
+                  <span className="settings-row__detail">TOTP<Sep />single-use per step</span>
+                </div>
+                <span className="settings-row__spacer" />
+                {totpStatus.isSuccess && totpStatus.data.confirmed ? (
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    aria-label="Remove the authenticator"
+                    disabled={totpRemove.isPending}
+                    title="Remove authenticator app"
+                    onClick={() => setProof({ kind: 'totp-remove' })}
+                  >
+                    enrolled
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    disabled={totpStart.isPending || totpStatus.isPending}
+                    onClick={() => setProof({ kind: 'totp-start' })}
+                  >
+                    enrol
+                  </Button>
+                )}
               </div>
-              <p className="session__detail">{sessionDetail(item)}</p>
-              <Button
-                type="button"
-                aria-label={`Revoke the ${item.artifact} session ${item.id}`}
-                onClick={() =>
-                  revokeSession.mutate(item.id, {
-                    onSuccess: () => ok(`Revoked the ${item.artifact} session ${item.id}.`),
-                    onError: report,
-                  })
-                }
-                disabled={revokeSession.isPending}
-              >
-                Revoke
-              </Button>
-            </li>
-          )) : null}
-        </ul>
-        </>}
-      </Panel>
+              {totpStatus.isError ? (
+                <Alert>Your authenticator state could not be read. Reload to try again.</Alert>
+              ) : null}
 
-      <Panel id="account-identities" title="Linked identities">
-        {prototypeMode ? <>
-          {identities.data?.identities.map((identity) => (
-            <div className="settings-row" key={identity.id}>
-              <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject}) · linked 2026-06-02</span></div>
-              <span className="settings-row__spacer" />
-              <Button icon variant="quiet" type="button" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}><Glyph name="cross" /></Button>
-            </div>
-          ))}
-          <div className="settings-row">
-            <div className="settings-row__copy"><span className="settings-row__title">Link another identity</span><span className="settings-row__detail">explicit binding: an unknown identity at sign-in is never a login, email never links</span></div>
-            <span className="settings-row__spacer" />
-            <Button
-              type="button"
-              disabled={link.isPending || methods.data?.providers[0] === undefined}
-              onClick={() => {
-                const provider = methods.data?.providers[0];
-                if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml' || provider.kind === 'oauth2')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
-              }}
-            >link…</Button>
-          </div>
-        </> : <>
-        <p>
-          An external identity is an explicit binding of (issuer, subject) to this account. An
-          unknown identity at sign-in is never a login, and an email address never links anything.
-        </p>
-        {identities.isError ? <Alert>Your linked identities could not be listed.</Alert> : null}
-        {identities.isSuccess && identities.data.identities.length === 0 ? (
-          <p role="status">No external identity is linked to this account.</p>
-        ) : null}
-        <ul className="factors">
-          {identities.isSuccess ? identities.data.identities.map((identity) => (
-            <li className="factor" key={identity.id}>
-              <div>
-                <strong className="mono">{identity.issuer}</strong>
-                <span className="factor__meta mono">
-                  subject {identity.subject} · {identity.kind}{identity.profile ? ` · ${identity.profile}` : ''} · linked{' '}
-                  {new Date(identity.created_at).toLocaleDateString()}
-                </span>
+              <div className="settings-row settings-row--compact">
+                <div className="settings-row__copy">
+                  <span className="settings-row__title">Password</span>
+                  <span className="settings-row__detail">signs you in, never authorises security changes</span>
+                </div>
+                <span className="settings-row__spacer" />
+                <Button type="button" disabled title="Password changes are not in the API contract">
+                  change
+                </Button>
               </div>
-              <Button
-                type="button"
-                aria-label={`Unlink ${identity.issuer}`}
-                onClick={() => setProof({ kind: 'unlink', id: identity.id })}
-              >
-                Unlink
-              </Button>
-            </li>
-          )) : null}
-        </ul>
-        {methods.isPending ? <p role="status">Loading configured identity providers…</p> : null}
-        {methods.isError ? <Alert>Configured identity providers could not be loaded.</Alert> : null}
-        {methods.isSuccess && methods.data.providers.length === 0 ? (
-          <p role="status">
-            Linking starts at a configured identity provider. This instance has none enabled, so
-            there is nothing to link to.
-          </p>
-        ) : null}
-        {methods.isSuccess && methods.data.providers.length > 0 ? (
-          <>
-            <div className="panel__actions">
-              {methods.data.providers.map((provider) => (
+
+              <div className="settings-row settings-row--compact">
+                <div className="settings-row__copy">
+                  <span className="settings-row__title">Add passkey</span>
+                  <span className="settings-row__detail">
+                    a new credential never authorizes its own enrollment
+                  </span>
+                </div>
+                <span className="settings-row__spacer" />
                 <Button
                   type="button"
-                  key={provider.slug}
-                  disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2')}
-                  onClick={() => {
-                    if (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2') return;
-                    setProof({
-                      kind: 'link',
-                      provider: provider.slug,
-                      providerKind: provider.kind,
-                    });
-                  }}
+                  aria-label="Add a passkey"
+                  disabled={enrolPasskey.isPending}
+                  onClick={() => setProof({ kind: 'add-passkey', proof: passkeyProof })}
                 >
-                  Link {provider.display_name}
+                  <Glyph name="plus" /> add
                 </Button>
-              ))}
-            </div>
-            <p className="field__hint">
-              Linking verifies your existing credential here, then redirects with purpose = link.
-              A normal sign-in uses purpose = login and cannot create this binding.
-            </p>
-          </>
-        ) : null}
-        </>}
-      </Panel>
+              </div>
 
-      <Panel id="account-preferences" title="Preferences">
-        <ThemePreference />
-        {prototypeMode ? <>
-          <div className="settings-row">
-            <div className="settings-row__copy">
-              <span className="settings-row__title">Credential-expiry warnings</span>
-              <span className="settings-row__detail">in-product, always on (#17); email is an added transport, not the mechanism</span>
-            </div>
-            <span className="settings-row__spacer" />
-            <span className="mono">in-app</span>
-            <Checkbox label="also email" defaultChecked />
-          </div>
-          <div className="settings-row">
-            <div className="settings-row__copy">
-              <span className="settings-row__title">Security alerts</span>
-              <span className="settings-row__detail">new session, factor change, identity link: always notified, not disableable</span>
-            </div>
-            <span className="settings-row__spacer" />
-            <span className="mono">always</span>
-          </div>
-        </> : (
-          <p className="field__hint">
-            The theme is this browser&apos;s choice and is stored here, not on the account: nothing in
-            the contract carries a preference, and a setting that silently failed to follow you would
-            be worse than one that never claimed to.
-          </p>
-        )}
-      </Panel>
+              {totpEnrolmentInProgress ? (
+                <p role="status">
+                  An enrolment is staged. Add it to your authenticator and confirm it with the code below.
+                </p>
+              ) : null}
+              {otpauth !== null && totpEnrolmentInProgress ? (
+                <div className="enrolment">
+                  <QrCode value={otpauth} title="Authenticator setup QR code" />
+                  <p className="field__hint">
+                    Scan this with your authenticator, or enter the secret below by hand. Shown exactly
+                    once: the seed is never retrievable again. Confirming with a code completes the
+                    enrolment and reissues this session carrying only the password class, so you present
+                    the new factor separately.
+                  </p>
+                  <p className="enrolment__uri mono">{otpauth}</p>
+                  <DisplayOnceCopy
+                    value={otpauth}
+                    success="Authenticator setup copied. Store it somewhere safe; clipboard history may retain it."
+                  />
+                  <div className="field">
+                    <label htmlFor={codeId}>Code from the authenticator</label>
+                    <input
+                      id={codeId}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={totpCode}
+                      onChange={(event) => setTotpCode(event.target.value)}
+                    />
+                  </div>
+                  <div className="actions">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      disabled={totpConfirm.isPending || totpCode.length < 6}
+                      onClick={() =>
+                        totpConfirm.mutate(
+                          { code: totpCode },
+                          {
+                            onSuccess: () => {
+                              setOtpauth(null);
+                              setTotpCode('');
+                              ok('Authenticator enrolled. Present it to step up when you need to.');
+                            },
+                            onError: report,
+                            onSettled: () => setTotpCode(''),
+                          },
+                        )
+                      }
+                    >
+                      Confirm enrolment
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </Panel>
+          ) },
+
+          { id: 'account-recovery', label: 'Recovery', content: (
+            <Panel id="account-recovery" title="Recovery">
+              {prototypeMode ? <>
+                <div className="settings-row">
+                  <div className="settings-row__copy"><span className="settings-row__title">Recovery codes</span><span className="settings-row__detail">not generated yet</span></div>
+                  <span className="settings-row__spacer" />
+                  <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</Button>
+                </div>
+                <div className="settings-row">
+                  <div className="settings-row__copy"><span className="settings-row__title">Passkey-only sign-in</span><span className="settings-row__detail">requires recovery codes + at least 2 passkeys</span></div>
+                  <span className="settings-row__spacer" />
+                  <Button type="button" disabled>enable</Button>
+                </div>
+                <p className="settings-note">Locked until preconditions are met: 2/2 passkeys<Sep />recovery codes <Glyph name="cross" label="missing" />. Codes restore access; they never satisfy a disclosure reauth.</p>
+              </> : <>
+                <p>
+                  Recovery codes restore <strong>access</strong> when every factor is gone. They never
+                  satisfy a disclosure reauthentication, and they never authorise their own regeneration:
+                  the proof is a code from your authenticator where one stands, otherwise your password.
+                </p>
+                <div className="actions">
+                  <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</Button>
+                </div>
+                <p className="field__hint">Replacing them invalidates the previous batch atomically, and the new codes are displayed once.</p>
+              </>}
+            </Panel>
+          ) },
+
+          { id: 'account-sessions', label: 'Sessions', content: (
+            <Panel id="account-sessions" title="Active sessions">
+              {prototypeMode ? (
+                <PrototypeSessions
+                  sessions={sessions.data?.items ?? []}
+                  busy={revokeSession.isPending}
+                  onRevoke={(session) =>
+                    revokeSession.mutate(session.id, {
+                      onSuccess: () => ok(`Revoked the ${session.artifact} session ${session.id}.`),
+                      onError: report,
+                    })
+                  }
+                />
+              ) : <>
+              <p>
+                Every artifact currently holding your account. A <span className="mono">workspace</span>{' '}
+                session belongs to another instance&apos;s shell operating this one as you; revoking it
+                ends that immediately, mid-flight, because the row is re-resolved on the next request.
+              </p>
+              {sessions.isError ? (
+                <Alert>Your sessions could not be loaded. Reload to try again.</Alert>
+              ) : null}
+              {sessions.isSuccess && sessions.data.items.length === 0 ? (
+                <p role="status">No active sessions.</p>
+              ) : null}
+              <ul className="sessions">
+                {sessions.isSuccess ? sessions.data.items.map((item) => (
+                  <li key={item.id} className="session">
+                    <div className="session__head">
+                      {/* The artifact type is text in a badge, never a colour: it is
+                          the single most load-bearing fact in the row. */}
+                      <Badge data-artifact={item.artifact}>
+                        {item.artifact}
+                      </Badge>
+                      <span className="mono session__id">{item.id}</span>
+                    </div>
+                    <p className="session__detail">{sessionDetail(item)}</p>
+                    <Button
+                      type="button"
+                      aria-label={`Revoke the ${item.artifact} session ${item.id}`}
+                      onClick={() =>
+                        revokeSession.mutate(item.id, {
+                          onSuccess: () => ok(`Revoked the ${item.artifact} session ${item.id}.`),
+                          onError: report,
+                        })
+                      }
+                      disabled={revokeSession.isPending}
+                    >
+                      Revoke
+                    </Button>
+                  </li>
+                )) : null}
+              </ul>
+              </>}
+            </Panel>
+          ) },
+
+          { id: 'account-identities', label: 'Identities', content: (
+            <Panel id="account-identities" title="Linked identities">
+              {prototypeMode ? <>
+                {identities.data?.identities.map((identity) => (
+                  <div className="settings-row" key={identity.id}>
+                    <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject})<Sep />linked 2026-06-02</span></div>
+                    <span className="settings-row__spacer" />
+                    <Button icon variant="quiet" type="button" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}><Glyph name="cross" /></Button>
+                  </div>
+                ))}
+                <div className="settings-row">
+                  <div className="settings-row__copy"><span className="settings-row__title">Link another identity</span><span className="settings-row__detail">explicit binding: an unknown identity at sign-in is never a login, email never links</span></div>
+                  <span className="settings-row__spacer" />
+                  <Button
+                    type="button"
+                    disabled={link.isPending || methods.data?.providers[0] === undefined}
+                    onClick={() => {
+                      const provider = methods.data?.providers[0];
+                      if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml' || provider.kind === 'oauth2')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
+                    }}
+                  >link…</Button>
+                </div>
+              </> : <>
+              <p>
+                An external identity is an explicit binding of (issuer, subject) to this account. An
+                unknown identity at sign-in is never a login, and an email address never links anything.
+              </p>
+              {identities.isError ? <Alert>Your linked identities could not be listed.</Alert> : null}
+              {identities.isSuccess && identities.data.identities.length === 0 ? (
+                <p role="status">No external identity is linked to this account.</p>
+              ) : null}
+              <ul className="factors">
+                {identities.isSuccess ? identities.data.identities.map((identity) => (
+                  <li className="factor" key={identity.id}>
+                    <div>
+                      <strong className="mono">{identity.issuer}</strong>
+                      <span className="factor__meta mono">
+                        subject {identity.subject}<Sep />{identity.kind}{identity.profile ? <><Sep />{identity.profile}</> : null}<Sep />linked{' '}
+                        {new Date(identity.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      aria-label={`Unlink ${identity.issuer}`}
+                      onClick={() => setProof({ kind: 'unlink', id: identity.id })}
+                    >
+                      Unlink
+                    </Button>
+                  </li>
+                )) : null}
+              </ul>
+              {methods.isPending ? <p role="status">Loading configured identity providers…</p> : null}
+              {methods.isError ? <Alert>Configured identity providers could not be loaded.</Alert> : null}
+              {methods.isSuccess && methods.data.providers.length === 0 ? (
+                <p role="status">
+                  Linking starts at a configured identity provider. This instance has none enabled, so
+                  there is nothing to link to.
+                </p>
+              ) : null}
+              {methods.isSuccess && methods.data.providers.length > 0 ? (
+                <>
+                  <div className="actions">
+                    {methods.data.providers.map((provider) => (
+                      <Button
+                        type="button"
+                        key={provider.slug}
+                        disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2')}
+                        onClick={() => {
+                          if (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2') return;
+                          setProof({
+                            kind: 'link',
+                            provider: provider.slug,
+                            providerKind: provider.kind,
+                          });
+                        }}
+                      >
+                        Link {provider.display_name}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="field__hint">
+                    Linking verifies your existing credential here, then redirects with purpose = link.
+                    A normal sign-in uses purpose = login and cannot create this binding.
+                  </p>
+                </>
+              ) : null}
+              </>}
+            </Panel>
+          ) },
+
+          { id: 'account-preferences', label: 'Preferences', content: (
+            <Panel id="account-preferences" title="Preferences">
+              <ThemePreference />
+              {prototypeMode ? <>
+                <div className="settings-row">
+                  <div className="settings-row__copy">
+                    <span className="settings-row__title">Credential-expiry warnings</span>
+                    <span className="settings-row__detail">in-product, always on (#17); email is an added transport, not the mechanism</span>
+                  </div>
+                  <span className="settings-row__spacer" />
+                  <span className="mono">in-app</span>
+                  <Checkbox label="also email" defaultChecked />
+                </div>
+                <div className="settings-row">
+                  <div className="settings-row__copy">
+                    <span className="settings-row__title">Security alerts</span>
+                    <span className="settings-row__detail">new session, factor change, identity link: always notified, not disableable</span>
+                  </div>
+                  <span className="settings-row__spacer" />
+                  <span className="mono">always</span>
+                </div>
+              </> : (
+                <p className="field__hint">
+                  The theme is this browser&apos;s choice and is stored here, not on the account: nothing in
+                  the contract carries a preference, and a setting that silently failed to follow you would
+                  be worse than one that never claimed to.
+                </p>
+              )}
+            </Panel>
+          ) },
+        ]}
+      />
 
       {proof === null ? null : (
         <AccountProofDialog
@@ -706,28 +712,28 @@ function PrototypeSessions({
   readonly onRevoke: (session: ActiveSession) => void;
 }) {
   const presentations = [
-    { title: 'Safari · macOS', detail: '193.28.x.x · Amsterdam · last active now', badge: 'browser' },
-    { title: 'Firefox · Fedora', detail: '193.28.x.x · Amsterdam · last active 2 days ago', badge: 'browser' },
-    { title: 'hikyo CLI', detail: 'laptop.example · device authorization · last active 25 min ago', badge: 'CLI artifact' },
-    { title: 'hikyo CLI', detail: 'example-cluster-0 · device authorization · last active 6 days ago', badge: 'CLI artifact' },
+    { title: ['Safari', 'macOS'], detail: ['193.28.x.x', 'Amsterdam', 'last active now'], badge: 'browser' },
+    { title: ['Firefox', 'Fedora'], detail: ['193.28.x.x', 'Amsterdam', 'last active 2 days ago'], badge: 'browser' },
+    { title: ['hikyo CLI'], detail: ['laptop.example', 'device authorization', 'last active 25 minutes ago'], badge: 'CLI artifact' },
+    { title: ['hikyo CLI'], detail: ['example-cluster-0', 'device authorization', 'last active 6 days ago'], badge: 'CLI artifact' },
   ];
   if (sessions.length === 0) return <p role="status">Loading active sessions…</p>;
   return <>
     {sessions.map((session, index) => {
       const presentation = presentations[index] ?? {
-        title: session.user_agent ?? session.artifact,
-        detail: session.source_ip ?? 'active session',
+        title: [session.user_agent ?? session.artifact],
+        detail: [session.source_ip ?? 'active session'],
         badge: session.artifact,
       };
       return <div className="settings-row" key={session.id}>
         <div className="settings-row__copy">
-          <span className="settings-row__title">{presentation.title}{index === 0 ? ' this session' : ''}</span>
-          <span className="settings-row__detail">{presentation.detail}</span>
+          <span className="settings-row__title">{dotted(presentation.title.join(' · '))}{index === 0 ? ' this session' : ''}</span>
+          <span className="settings-row__detail">{dotted(presentation.detail.join(' · '))}</span>
         </div>
         <span className="settings-row__spacer" />
         <Badge>{presentation.badge}</Badge>
         {index === 0 ? null : (
-          <Button icon variant="quiet" type="button" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}><Glyph name="cross" /></Button>
+          <Button icon variant="quiet" type="button" aria-label={`Revoke ${presentation.title.join(' · ')}`} disabled={busy} onClick={() => onRevoke(session)}><Glyph name="cross" /></Button>
         )}
       </div>;
     })}

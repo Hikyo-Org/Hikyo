@@ -24,12 +24,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The idle form: heading, label field, lifetime radios, submit. The day count
+// The idle form (its side panel names it): label field, lifetime radios, submit. The day count
 // is not on screen until the radio that asks for it is chosen, and when it is,
 // it is a labelled field on its own line with the clamp as its hint.
 export const Default: Story = {
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('heading', { name: /mint a credential/i })).toBeVisible();
+    await expect(canvas.getByRole('form', { name: 'Mint a credential' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: /mint credential/i })).toBeVisible();
 
     await expect(canvas.queryByRole('spinbutton', { name: 'Days' })).toBeNull();

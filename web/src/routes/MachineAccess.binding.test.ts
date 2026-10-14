@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
 import { carriedClaims, presetForBinding, seedClaims, unsafeNumericClaim } from './machineAccess/FederationBindings.tsx';
-import { tabLabel } from './MachineAccess.tsx';
 
 /**
  * The replace form's seeding. A replacement inherits the predecessor's platform
@@ -111,14 +110,3 @@ describe('carriedClaims', () => {
     expect(unsafeNumericClaim(credential)).toBe('custom_id');
   });
 });
-
-describe('tabLabel', () => {
-  it('spells a known count and says unknown for a listing it lacks', () => {
-    expect(tabLabel('Service accounts', 3)).toBe('Service accounts (3)');
-    expect(tabLabel('Leases', 'unknown')).toBe('Leases (unknown)');
-  });
-});
-
-// The tablist keyboard model moved to `ui/Tabs`, which owns arrows, Home and
-// End; `Tabs.stories.tsx` (`KeyboardMovesAndSelects`) exercises it. The route's
-// own `nextTab` went with the hand-rolled tablist.

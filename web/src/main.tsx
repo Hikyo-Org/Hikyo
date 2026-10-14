@@ -5,12 +5,16 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './app/App.tsx';
 import { AuthProvider } from './app/AuthProvider.tsx';
+import { installSandMotion } from './app/sandMotion.ts';
 import { initTheme } from './app/theme.ts';
 import { isDemo } from './demo/config.ts';
 
 // Paint the stored theme choice before first render, so a reload lands on it
 // without waiting for a theme-aware control to mount and apply it.
 initTheme();
+
+// The background sand moves only with a GPU, and pauses while not in view.
+installSandMotion();
 
 // The fonts are self-hosted npm packages, not a CDN link: `font-src 'self'`
 // is part of the CSP baseline, and an external font host would be both a CSP

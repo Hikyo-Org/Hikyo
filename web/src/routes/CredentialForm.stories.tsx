@@ -22,7 +22,11 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('form', { name: 'Replace credential' })).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Replace' })).toBeDisabled();
+    // The side panel's own header names the form now; no duplicate h3 inside it.
+    await expect(canvas.queryByRole('heading', { name: 'Replace credential' })).toBeNull();
+    const replace = canvas.getByRole('button', { name: 'Replace' });
+    await expect(replace).toBeDisabled();
+    await expect(replace.closest('.actions')).not.toBeNull();
   },
 };
 

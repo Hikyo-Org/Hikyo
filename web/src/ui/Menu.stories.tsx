@@ -46,7 +46,10 @@ export const Opens: Story = {
     // `.menu--pop:not(:popover-open)`, `:popover-open` alone can't catch that.
     const panel = canvasElement.querySelector('[popover]');
     await expect(panel).not.toBeVisible();
-    await userEvent.click(canvas.getByRole('button', { name: 'Row actions' }));
+    // The default trigger mark is the ellipsis glyph; the label names it.
+    const trigger = canvas.getByRole('button', { name: 'Row actions' });
+    await expect(trigger.querySelector('svg.glyph')).toHaveAttribute('data-glyph', 'menu');
+    await userEvent.click(trigger);
     await waitFor(() => expect(panel).toBeVisible());
   },
 };

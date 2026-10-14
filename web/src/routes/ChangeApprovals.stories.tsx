@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ChangeApprovals } from './ChangeApprovals.tsx';
 
+import { expectLeftAlignedPage } from '../../.storybook/layout.ts';
+import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The page mounts two queries at once: the environment list (whose names label
@@ -118,6 +120,39 @@ export const Populated: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByRole('cell', { name: 'All environments' })).toBeVisible();
     await expect(canvas.getByRole('cell', { name: 'production' })).toBeVisible();
+    // Request lifetimes are spelled out: 86400 seconds reads "1 day".
+    await expect(canvas.getByRole('cell', { name: '1 day' })).toBeVisible();
+    await expectLeftAlignedPage(canvas.getByRole('heading', { name: 'Change approvals', level: 1 }));
+    // Policies and the review queue are tabs.
+    await expect(canvas.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Policies', 'Review queue']);
+    await openTab(canvas, 'Review queue');
+    await expect(await canvas.findByRole('heading', { name: 'Review queue' })).toBeVisible();
+  },
+};
+
+// New policy opens its form in the side panel, not under the table.
+export const PolicyFormPanel: Story = {
+  parameters: Populated.parameters,
+  play: async ({ canvas, canvasElement }) => {
+    await canvas.findByRole('cell', { name: 'production' });
+    const open = canvas.getByRole('button', { name: 'New policy' });
+    await userEvent.click(open);
+    const panel = within(canvas.getByRole('complementary', { name: 'New policy' }));
+    await expect(panel.getByRole('form', { name: 'New policy' })).toBeVisible();
+    await expect(panel.getByLabelText('Approvals required')).toBeVisible();
+    // "Advanced" wears the button skin, not a bare label with the native
+    // triangle (ProjectSettings' environment-lifecycle pattern): the chevron,
+    // not a native marker, carries the open state.
+    const summary = canvasElement.querySelector('.change-approvals__advanced > summary');
+    if (!(summary instanceof HTMLElement)) throw new Error('advanced summary missing');
+    await expect(summary).toHaveClass('btn');
+    await expect(getComputedStyle(summary).listStyle).toContain('none');
+    const chevron = summary.querySelector('.glyph[data-glyph="chevron"]');
+    if (chevron === null) throw new Error('chevron missing');
+    await userEvent.click(summary);
+    await expect(summary.closest('details')).toHaveAttribute('open');
+    await expect(getComputedStyle(chevron).transform).not.toBe('none');
+    await userEvent.click(summary);
   },
 };
 
@@ -164,5 +199,37 @@ export const Failed: Story = {
   },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/could not be completed/i)).toBeVisible();
+  },
+};
+
+// A refused policy delete shows on the Policies tab, where the Delete was pressed.
+export const DeleteRefused: Story = {
+  parameters: {
+    app: {
+      auth: true,
+      path,
+      routePath,
+      responses: [
+        envRoute({ body: environments }),
+        policyRoute({ body: policies }),
+        { url: /\/approval-policies\/pol_/, method: 'DELETE', status: 500, body: { code: 'internal' } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('cell', { name: 'All environments' })).toBeVisible();
+    const [remove] = canvas.getAllByRole('button', { name: 'Delete' });
+    if (remove === undefined) throw new Error('Delete button missing');
+    await userEvent.click(remove);
+    const alert = await canvas.findByRole('alert');
+    await expect(alert).toBeVisible();
+    await expect(canvas.getByRole('tab', { name: 'Policies' })).toHaveAttribute('aria-selected', 'true');
+    // The refusal sits above the tab bar, so it stays in view on the Review
+    // queue tab as well.
+    const tabs = canvas.getByRole('tablist');
+    await expect(alert.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await openTab(canvas, 'Review queue');
+    await expect(canvas.getByRole('alert')).toBeVisible();
+    await expect(canvas.getByRole('heading', { name: 'Review queue', level: 2 })).toBeVisible();
   },
 };

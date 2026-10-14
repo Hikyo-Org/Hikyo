@@ -39,13 +39,7 @@ export function ToggleChip({ pressed, mode = 'include', mono, className, childre
   const state: ChipState = mode === 'include' ? (pressed ? 'included' : 'off') : pressed ? 'excluded' : 'implied';
   return (
     <button {...rest} type="button" className={cx('toggle-chip', mono === true && 'mono', className)} data-state={state} aria-pressed={pressed}>
-      {state === 'off' ? (
-        <span className="toggle-chip__mark" aria-hidden="true">
-          +
-        </span>
-      ) : (
-        <Glyph name={state === 'excluded' ? 'cross' : 'check'} className="toggle-chip__mark" />
-      )}
+      <Glyph name={state === 'off' ? 'plus' : state === 'excluded' ? 'cross' : 'check'} className="toggle-chip__mark" />
       <span className="toggle-chip__label">{children}</span>
       <span className="visually-hidden">({WORD[state]})</span>
     </button>

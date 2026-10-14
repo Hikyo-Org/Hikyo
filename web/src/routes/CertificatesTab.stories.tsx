@@ -26,7 +26,28 @@ const meta = {
 } satisfies Meta<typeof CertificatesTab>;
 export default meta;
 type Story = StoryObj<typeof meta>;
-export const Populated: Story = {};
+// The tab's module is one card: its action above a table that scrolls
+// sideways inside its own container.
+export const Populated: Story = { play: async ({ canvas }) => {
+  const card = canvas.getByRole('heading', { name: 'Certificates', level: 2 }).closest('.card');
+  await expect(card).not.toBeNull();
+  await expect(card?.querySelector('.table-scroll > table')).not.toBeNull();
+  await expect(card).toContainElement(canvas.getByRole('button', { name: 'Issue certificate' }));
+} };
+// At a phone width the table drops to the compact type size and tighter
+// cell padding; the long name list scrolls inside the table's container
+// while the page itself never scrolls sideways.
+export const PhoneCompactTable: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas }) => {
+    const table = canvas.getByRole('table');
+    const root = getComputedStyle(document.documentElement);
+    await expect(getComputedStyle(table).fontSize).toBe(root.getPropertyValue('--fs-xs').trim());
+    await expect(getComputedStyle(table.querySelector('td')!).paddingTop).toBe(root.getPropertyValue('--space-1').trim());
+    await expect(getComputedStyle(table.parentElement!).overflowX).toBe('auto');
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+  },
+};
 export const Empty: Story = { args: { view: { rows: [], isPending: false, isError: false } } };
 export const Loading: Story = { args: { view: { rows: [], isPending: true, isError: false } } };
 export const Incomplete: Story = { args: { view: { rows: [], isPending: false, isError: true } } };

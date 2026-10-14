@@ -183,17 +183,12 @@ export async function installAppFetch(context: {
 }
 
 function Shell({ app, children }: { app: AppParameters; children: ReactNode }) {
-  const path = app.path ?? '/'
-  const routePath = app.routePath ?? path
-  return (
-    <MemoryRouter initialEntries={[path]}>
-      {app.routeTree === true ? children : <Routes>
-        <Route element={<Outlet context={app.outlet} />}>
-          <Route path={routePath} element={children} />
-        </Route>
-      </Routes>}
-    </MemoryRouter>
-  )
+  const routePath = app.routePath ?? app.path ?? '/'
+  return app.routeTree === true ? children : <Routes>
+    <Route element={<Outlet context={app.outlet} />}>
+      <Route path={routePath} element={children} />
+    </Route>
+  </Routes>
 }
 
 /**
@@ -221,6 +216,21 @@ export const withApp: Decorator = (Story, context) => {
     </Shell>
   )
   // AuthProvider owns its own retry-free query client, so it is the provider for
-  // auth screens; no second QueryClientProvider around it.
-  return app.auth === true ? <AuthProvider>{shell}</AuthProvider> : <Providers>{shell}</Providers>
+  // auth screens; no second QueryClientProvider around it. The router sits
+  // OUTSIDE it: AuthProvider remounts its tree when the session binds, and in
+  // the app the URL (a `?tab=` a play just chose) survives that because the
+  // browser holds it; a MemoryRouter inside would reset to its first entry.
+  const screen = (
+    <MemoryRouter initialEntries={[app.path ?? '/']}>
+      {app.auth === true ? <AuthProvider>{shell}</AuthProvider> : <Providers>{shell}</Providers>}
+    </MemoryRouter>
+  )
+  // The app shell's raked sand and the veil behind the page root (app.css,
+  // Atmosphere) behind every route screen, so a story is judged on the real
+  // background. The toolbar's Sand toggle hides it through docs.css ('off';
+  // the test run holds it 'still'); the wrapper stays either way so layout
+  // never depends on the toggle. A story rendering the real Shell (routeTree)
+  // brings its own.
+  document.documentElement.dataset['sand'] = String(context.globals['sand'] ?? 'on')
+  return app.routeTree === true ? screen : <div className="sand"><div className="veil">{screen}</div></div>
 }

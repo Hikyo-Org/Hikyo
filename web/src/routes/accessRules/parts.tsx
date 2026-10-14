@@ -1,21 +1,31 @@
 import { Fragment, type ReactNode } from 'react';
 
 import { Badge } from '../../ui/Badge.tsx';
-import { Glyph } from '../../ui/Glyph.tsx';
+import { Glyph, type GlyphName } from '../../ui/Glyph.tsx';
+import { dotted } from '../dotted.tsx';
 import { effective, envById, itemLabel, mergeByName, perm, presetOf, projectName, reachOf, reachText, type EnvItem, type KeyItem, type PermId, type Rule, type World } from './model.ts';
+
+/** The icon on each Values permission's tag. */
+const VALUE_ICON: Partial<Record<PermId, GlyphName>> = { read: 'reveal', edit: 'edit', publish: 'arrow-up', pin: 'pin' };
 
 /** A permission as a badge: Secrets carry the lock and the danger tone, Administration the slate one. */
 export function PermBadge({ id }: { id: PermId }) {
   const { label, group } = perm(id);
   if (group === 'Secrets') {
     return (
-      <Badge tone="danger">
-        <Glyph name="lock" />
+      <Badge tone="danger" icon="lock">
         {label}
       </Badge>
     );
   }
-  return <Badge tone={group === 'Administration' ? 'changed' : 'neutral'}>{label}</Badge>;
+  return group === 'Administration'
+    ? <Badge tone="changed" icon="settings">{label}</Badge>
+    : <Badge icon={VALUE_ICON[id]}>{label}</Badge>;
+}
+
+/** A service account among people: one tag wherever a member list marks it. */
+export function MachineBadge() {
+  return <Badge icon="workload">machine</Badge>;
 }
 
 /** A lock after a name, with the word for assistive tech: never glyph-only. */
@@ -31,8 +41,10 @@ export function Lock({ word }: { word: 'protected' | 'secret' }) {
 
 const ruleProjectIds = (world: World, rule: Rule) => (rule.projects === '*' ? world.projects.map((p) => p.id) : rule.projects);
 
-function EnvList({ world, rule, items }: { world: World; rule: Rule; items: readonly EnvItem[] }) {
-  const labels = mergeByName(
+type Labels = { label: string; flag: boolean }[];
+
+const envLabels = (world: World, rule: Rule, items: readonly EnvItem[]): Labels =>
+  mergeByName(
     items.map((item) => {
       const env = envById(world, item.environment);
       return { project: item.project, name: env?.name ?? item.environment, flag: env?.protected === true };
@@ -40,11 +52,27 @@ function EnvList({ world, rule, items }: { world: World; rule: Rule; items: read
     ruleProjectIds(world, rule),
     (id) => projectName(world, id),
   );
+
+const keyLabels = (world: World, rule: Rule, items: readonly KeyItem[]): Labels =>
+  mergeByName(
+    items.map((item) => {
+      const { text, secret } = itemLabel(world, item);
+      return { project: item.project, name: text, flag: secret };
+    }),
+    ruleProjectIds(world, rule),
+    (id) => projectName(world, id),
+  );
+
+/** The list as plain text, the lock spelled as its word, as a screen reader hears it. */
+const labelsText = (labels: Labels, word: 'protected' | 'secret') =>
+  labels.map((item) => (item.flag ? `${item.label} (${word})` : item.label)).join(', ');
+
+function LabelList({ labels, word }: { labels: Labels; word: 'protected' | 'secret' }) {
   return joined(
-    labels.map((env) => (
-      <Fragment key={env.label}>
-        {env.label}
-        {env.flag ? <Lock word="protected" /> : null}
+    labels.map((item) => (
+      <Fragment key={item.label}>
+        {item.label}
+        {item.flag ? <Lock word={word} /> : null}
       </Fragment>
     )),
   );
@@ -57,25 +85,6 @@ export function KeyLabel({ world, item }: { world: World; item: KeyItem }) {
       {text}
       {secret ? <Lock word="secret" /> : null}
     </>
-  );
-}
-
-function KeyList({ world, rule, items }: { world: World; rule: Rule; items: readonly KeyItem[] }) {
-  const labels = mergeByName(
-    items.map((item) => {
-      const { text, secret } = itemLabel(world, item);
-      return { project: item.project, name: text, flag: secret };
-    }),
-    ruleProjectIds(world, rule),
-    (id) => projectName(world, id),
-  );
-  return joined(
-    labels.map((key) => (
-      <Fragment key={key.label}>
-        {key.label}
-        {key.flag ? <Lock word="secret" /> : null}
-      </Fragment>
-    )),
   );
 }
 
@@ -92,11 +101,14 @@ function Except({ children }: { children: ReactNode }) {
   );
 }
 
-function WherePart({ label, children }: { label: string; children: ReactNode }) {
+/** The value may ellipsise in its column; `title` carries its whole text. */
+function WherePart({ label, title, children }: { label: string; title: string; children: ReactNode }) {
   return (
     <span className="access-where__part">
       <span className="access-where__label">{label}</span>
-      <span className="access-where__value">{children}</span>
+      <span className="access-where__value" title={title}>
+        {children}
+      </span>
     </span>
   );
 }
@@ -104,40 +116,51 @@ function WherePart({ label, children }: { label: string; children: ReactNode }) 
 /**
  * Where, as labelled parts: Projects, Environments, Keys, each with its
  * value in the value face. Not arrows: nothing here is a link or a path to
- * follow. The parts wrap onto their own lines in a narrow cell.
+ * follow. Three fixed columns, so the parts align across cards.
  */
 export function RuleWhere({ world, rule }: { world: World; rule: Rule }) {
   const { envs, keys } = rule;
+  const projects = rule.projects === '*' ? 'all' : rule.projects.map((p) => projectName(world, p)).join(', ');
+  const envList = envLabels(world, rule, envs.items);
+  const keyList = keyLabels(world, rule, keys.items);
+  const envText = labelsText(envList, 'protected');
+  const keyText = labelsText(keyList, 'secret');
   return (
     <p className="access-where">
-      <WherePart label="Projects">{rule.projects === '*' ? 'all' : rule.projects.map((p) => projectName(world, p)).join(', ')}</WherePart>
-      <WherePart label="Environments">
+      <WherePart label="Projects" title={projects}>{projects}</WherePart>
+      <WherePart
+        label="Environments"
+        title={envs.mode === 'all' ? (envList.length > 0 ? `all except ${envText}` : 'all') : envText}
+      >
         {envs.mode === 'all' ? (
           <>
-            all{envs.items.length > 0 ? ' ' : null}
-            {envs.items.length > 0 ? (
+            all{envList.length > 0 ? ' ' : null}
+            {envList.length > 0 ? (
               <Except>
-                <EnvList world={world} rule={rule} items={envs.items} />
+                <LabelList labels={envList} word="protected" />
               </Except>
             ) : null}
           </>
         ) : (
-          <EnvList world={world} rule={rule} items={envs.items} />
+          <LabelList labels={envList} word="protected" />
         )}
       </WherePart>
-      <WherePart label="Keys">
+      <WherePart
+        label="Keys"
+        title={keys.mode === 'all' ? (keyList.length > 0 ? `all except ${keyText}` : 'all') : `only ${keyText}`}
+      >
         {keys.mode === 'all' ? (
           <>
-            all{keys.items.length > 0 ? ' ' : null}
-            {keys.items.length > 0 ? (
+            all{keyList.length > 0 ? ' ' : null}
+            {keyList.length > 0 ? (
               <Except>
-                <KeyList world={world} rule={rule} items={keys.items} />
+                <LabelList labels={keyList} word="secret" />
               </Except>
             ) : null}
           </>
         ) : (
           <>
-            only <KeyList world={world} rule={rule} items={keys.items} />
+            only <LabelList labels={keyList} word="secret" />
           </>
         )}
       </WherePart>
@@ -167,7 +190,9 @@ export function RuleSummary({ world, rule, reach = false }: { world: World; rule
     <div className="access-rule__main">
       <RulePerms rule={rule} />
       <RuleWhere world={world} rule={rule} />
-      {reach ? <p className="access-rule__reach">{reachText(reachOf(world, rule))}</p> : null}
+      {reach ? (
+        <p className="access-rule__reach">{dotted(reachText(reachOf(world, rule)))}</p>
+      ) : null}
     </div>
   );
 }

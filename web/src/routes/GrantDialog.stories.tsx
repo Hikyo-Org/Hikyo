@@ -4,6 +4,7 @@ import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MachineEnvScope } from '../api/identities.ts';
+import { dottedText } from '../testkit/dottedText.ts';
 import { ORG, PRJ } from '../testkit/ids.ts';
 import { serviceAccount as account } from '../testkit/machineAccess.ts';
 import { GrantDialog } from './machineAccess/EnvironmentGrants.tsx';
@@ -97,7 +98,7 @@ export const ReadGrant: Story = {
     await expect(canvas.getByRole('dialog', { name: 'Add environment grant · api-gateway' })).toBeVisible();
     await expect(canvas.queryByLabelText('Capability')).not.toBeInTheDocument();
     await expect(canvas.getByLabelText('Environment (read)')).toHaveValue(scope[2]?.id);
-    await expect(await canvas.findByText('LOG_LEVEL · config')).toBeVisible();
+    await expect(await canvas.findByText(dottedText(/^LOG_LEVEL\s*·\s*config$/))).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Grant read' })).toBeEnabled();
   },
 };
@@ -109,8 +110,8 @@ export const RevealGrant: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByLabelText('Capability')).toHaveValue('reveal');
     await expect(canvas.getByLabelText('Environment (reveal)')).toHaveValue(scope[1]?.id);
-    await expect(await canvas.findByText('DATABASE_URL · secret')).toBeVisible();
-    await expect(canvas.queryByText('LOG_LEVEL · config')).not.toBeInTheDocument();
+    await expect(await canvas.findByText(dottedText(/^DATABASE_URL\s*·\s*secret$/))).toBeVisible();
+    await expect(canvas.queryByText(dottedText(/^LOG_LEVEL\s*·\s*config$/))).not.toBeInTheDocument();
     await expect(canvas.getByText(/newly decrypts staging/)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Grant reveal' })).toBeEnabled();
   },
@@ -179,7 +180,7 @@ export const ReportingNotGrantable: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText('LOG_LEVEL · config')).toBeVisible();
+    await expect(await canvas.findByText(dottedText(/^LOG_LEVEL\s*·\s*config$/))).toBeVisible();
     await expect(
       canvas.queryByRole('checkbox', { name: /also grant report-delivery-status/i }),
     ).not.toBeInTheDocument();

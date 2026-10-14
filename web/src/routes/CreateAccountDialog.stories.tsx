@@ -31,10 +31,21 @@ type Story = StoryObj<typeof meta>;
 
 // Empty form: name blank, kind defaulting to workload.
 export const Default: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByRole('dialog', { name: 'Create service account' })).toBeVisible();
     await expect(canvas.getByLabelText('Kind (immutable)')).toHaveValue('workload');
     await expect(canvas.getByRole('button', { name: 'Create service account' })).toBeEnabled();
+    // The two fields sit in a bare `fieldset.machine__lock` (native disabled
+    // propagation only): "Kind (immutable)"
+    // must not sit flush under "Name", the shared field gap token.
+    const nameInput = canvas.getByLabelText('Name');
+    const kindLabel = canvasElement.querySelector('label[for="create-account-kind"]');
+    const lock = canvasElement.querySelector('.machine__lock');
+    if (kindLabel === null || lock === null) throw new Error('kind label or lock fieldset missing');
+    const fieldGap = Number.parseFloat(getComputedStyle(lock).rowGap);
+    const gap = kindLabel.getBoundingClientRect().top - nameInput.getBoundingClientRect().bottom;
+    await expect(fieldGap).toBeGreaterThan(0);
+    await expect(gap).toBeGreaterThanOrEqual(fieldGap);
   },
 };
 

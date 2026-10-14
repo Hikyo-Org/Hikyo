@@ -4,6 +4,7 @@ import { expect, fn } from 'storybook/test';
 import { SidebarLinkItem } from './Shell.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { dottedText } from '../testkit/dottedText.ts';
 
 type Props = Parameters<typeof SidebarLinkItem>[0];
 type Link = Props['link'];
@@ -61,7 +62,26 @@ export const Disabled: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText(/members · local only/i)).toBeVisible();
+    await expect(canvas.getByText(dottedText(/^members\s*·\s*local only$/i))).toBeVisible();
+    await expect(canvas.queryByRole('link')).toBeNull();
+  },
+};
+
+// With exactly one project, Overview is greyed: not a link, and it says why.
+export const OverviewOneProject: Story = {
+  args: {
+    link: {
+      id: 'overview',
+      label: 'Overview',
+      to: '/',
+      disabledReason: 'This organisation has one project, so it opens on its matrix.',
+      disabledNote: 'one project',
+    },
+  },
+  play: async ({ canvas }) => {
+    const row = canvas.getByText(dottedText(/^Overview\s*·\s*one project$/));
+    await expect(row).toHaveAttribute('aria-disabled', 'true');
+    await expect(row).toHaveAttribute('title', 'This organisation has one project, so it opens on its matrix.');
     await expect(canvas.queryByRole('link')).toBeNull();
   },
 };

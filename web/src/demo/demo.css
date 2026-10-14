@@ -37,19 +37,8 @@
   margin: 0 0 var(--space-4);
 }
 
-.demo-readonly__fields {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
 @media (max-width: 700px) {
   .demo-toolbar__note {
     flex-basis: 100%;
   }
-}
-
-.demo-readonly__fields > .card + .card {
-  margin-top: var(--space-5);
 }

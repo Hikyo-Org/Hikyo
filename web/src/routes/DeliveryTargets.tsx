@@ -8,7 +8,6 @@ import {
 import type { ProjectRef, ServiceAccount } from '../api/identities.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
-import { Glyph } from '../ui/Glyph.tsx';
 import { relativeAge } from './history-state.ts';
 
 /**
@@ -36,27 +35,27 @@ export type TargetState = DeliveryTarget['state'] | 'unknown';
 export function StateBadge({ state }: { state: TargetState }) {
   switch (state) {
     case 'reported':
-      return <Badge data-state="reported">reported</Badge>;
+      return <Badge data-state="reported" icon="info">reported</Badge>;
     case 'stale':
       return (
-        <Badge data-state="stale">
-          <Glyph name="warn" /> stale
+        <Badge data-state="stale" icon="warn">
+          stale
         </Badge>
       );
     case 'refused':
       return (
-        <Badge tone="danger" data-state="refused">
-          <Glyph name="cross" /> refused
+        <Badge tone="danger" data-state="refused" icon="cross">
+          refused
         </Badge>
       );
     case 'reporter-revoked':
       return (
-        <Badge tone="danger" data-state="reporter-revoked">
-          <Glyph name="warn" /> reporter revoked
+        <Badge tone="danger" data-state="reporter-revoked" icon="warn">
+          reporter revoked
         </Badge>
       );
     case 'unknown':
-      return <Badge data-state="unknown">? unknown</Badge>;
+      return <Badge data-state="unknown" icon="question">unknown</Badge>;
   }
 }
 
@@ -111,7 +110,7 @@ export function DeliveryTargetsPanel({
     `/orgs/${project.org}/projects/${project.project}/environments/${environment}/values`;
   const heading = (
     <>
-      <h2>Kubernetes delivery targets</h2>
+      <h2 id="delivery-targets-title">Kubernetes delivery targets</h2>
       <p className="machine__lede">
         Two layers, never merged: what this server observed, and what each controller reported. A
         report is the controller&apos;s own assertion; this server holds no cluster credential and
@@ -122,19 +121,19 @@ export function DeliveryTargetsPanel({
 
   if (view.support === 'unsupported') {
     return (
-      <>
+      <section className="card machine__card" aria-labelledby="delivery-targets-title">
         {heading}
         <p role="status">
           This server does not support delivery-target reporting: it does not advertise
           delivery-target-report, so no controller can report here and there is nothing to list.
           This says nothing about the targets themselves.
         </p>
-      </>
+      </section>
     );
   }
 
   return (
-    <>
+    <section className="card machine__card" aria-labelledby="delivery-targets-title">
       {heading}
       {view.support === 'failed' ? (
         <Alert>
@@ -157,53 +156,55 @@ export function DeliveryTargetsPanel({
             : 'unknown'}
         </p>
       ) : (
-        <table className="values__table machine__table">
-          <caption className="visually-hidden">
-            Per reporting service account: this server&apos;s last authenticated delivery fetch and
-            any quota refusal.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Service account</th>
-              <th scope="col">Environment</th>
-              <th scope="col">Last authenticated fetch</th>
-              <th scope="col">Reports</th>
-            </tr>
-          </thead>
-          <tbody>
-            {observed.map(({ environment, principal, reporting }) => (
-              <tr key={`${environment.id} ${principal.principal_id}`}>
-                <td>{nameOf(principal.principal_id)}</td>
-                <td>{environment.name}</td>
-                <td>
-                  {principal.last_contact_at === undefined
-                    ? 'never observed'
-                    : relativeAge(principal.last_contact_at, now)}
-                </td>
-                <td>
-                  <span className="machine__chips">
-                    {reporting ? (
-                      <span>listed below</span>
-                    ) : (
-                      <>
-                        <StateBadge state="unknown" />
-                        <span>no report received</span>
-                      </>
-                    )}
-                    {principal.quota_refused_at === undefined ? null : (
-                      <>
-                        <Badge tone="danger" data-state="quota-refused">
-                          <Glyph name="cross" /> quota-refused
-                        </Badge>
-                        <span>{`a report past the account's target quota was refused ${relativeAge(principal.quota_refused_at, now)}`}</span>
-                      </>
-                    )}
-                  </span>
-                </td>
+        <div className="table-scroll">
+          <table className="values__table machine__table">
+            <caption className="visually-hidden">
+              Per reporting service account: this server&apos;s last authenticated delivery fetch and
+              any quota refusal.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Service account</th>
+                <th scope="col">Environment</th>
+                <th scope="col">Last authenticated fetch</th>
+                <th scope="col">Reports</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {observed.map(({ environment, principal, reporting }) => (
+                <tr key={`${environment.id} ${principal.principal_id}`}>
+                  <td>{nameOf(principal.principal_id)}</td>
+                  <td>{environment.name}</td>
+                  <td>
+                    {principal.last_contact_at === undefined
+                      ? 'never observed'
+                      : relativeAge(principal.last_contact_at, now)}
+                  </td>
+                  <td>
+                    <span className="machine__chips">
+                      {reporting ? (
+                        <span>listed below</span>
+                      ) : (
+                        <>
+                          <StateBadge state="unknown" />
+                          <span>no report received</span>
+                        </>
+                      )}
+                      {principal.quota_refused_at === undefined ? null : (
+                        <>
+                          <Badge tone="danger" data-state="quota-refused" icon="cross">
+                            quota-refused
+                          </Badge>
+                          <span>{`a report past the account's target quota was refused ${relativeAge(principal.quota_refused_at, now)}`}</span>
+                        </>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h3>Reported by controllers</h3>
@@ -220,58 +221,60 @@ export function DeliveryTargetsPanel({
               {', namespace '}
               <code className="mono">{group.namespace}</code>
             </h4>
-            <table className="values__table machine__table">
-              <caption className="visually-hidden">
-                {`Delivery targets in namespace ${group.namespace}, as their controller reported them.`}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Target</th>
-                  <th scope="col">Environment</th>
-                  <th scope="col">Reported by</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Conditions (as asserted)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.rows.map(({ environment, target }) => (
-                  <tr key={target.id} data-state={target.state}>
-                    <td className="mono">{target.target.name}</td>
-                    <td>{environment.name}</td>
-                    <td>{nameOf(target.principal_id)}</td>
-                    <td>
-                      <span className="machine__chips">
-                        <StateBadge state={target.state} />
-                        <span>{stateSentence(target, now)}</span>
-                      </span>
-                    </td>
-                    <td>
-                      <ul className="delivery-targets__conditions">
-                        <li className="mono">{`lifecycle=${target.lifecycle}`}</li>
-                        {target.conditions.map((condition) => (
-                          <li className="mono" key={condition.type}>
-                            {`${condition.type}=${condition.status}/`}
-                            {KEY_REASONS.has(condition.reason) ? (
-                              <Link
-                                to={keysPath(environment.id)}
-                                aria-label={`${condition.reason}: open the ${environment.name} keys`}
-                              >
-                                {condition.reason}
-                              </Link>
-                            ) : (
-                              condition.reason
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
+            <div className="table-scroll">
+              <table className="values__table machine__table">
+                <caption className="visually-hidden">
+                  {`Delivery targets in namespace ${group.namespace}, as their controller reported them.`}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Target</th>
+                    <th scope="col">Environment</th>
+                    <th scope="col">Reported by</th>
+                    <th scope="col">State</th>
+                    <th scope="col">Conditions (as asserted)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {group.rows.map(({ environment, target }) => (
+                    <tr key={target.id} data-state={target.state}>
+                      <td className="mono">{target.target.name}</td>
+                      <td>{environment.name}</td>
+                      <td>{nameOf(target.principal_id)}</td>
+                      <td>
+                        <span className="machine__chips">
+                          <StateBadge state={target.state} />
+                          <span>{stateSentence(target, now)}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <ul className="delivery-targets__conditions">
+                          <li className="mono">{`lifecycle=${target.lifecycle}`}</li>
+                          {target.conditions.map((condition) => (
+                            <li className="mono" key={condition.type}>
+                              {`${condition.type}=${condition.status}/`}
+                              {KEY_REASONS.has(condition.reason) ? (
+                                <Link
+                                  to={keysPath(environment.id)}
+                                  aria-label={`${condition.reason}: open the ${environment.name} keys`}
+                                >
+                                  {condition.reason}
+                                </Link>
+                              ) : (
+                                condition.reason
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         ))
       )}
-    </>
+    </section>
   );
 }

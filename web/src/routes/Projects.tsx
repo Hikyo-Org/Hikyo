@@ -6,7 +6,7 @@ import { isDemo } from '../demo/config.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { JumpIndex, Panel } from './Sections.tsx';
+import { Panel } from './Sections.tsx';
 import { useInSystemScope } from './SystemScope.tsx';
 
 /** Projects is a real data surface; keeping it out of Placeholder preserves the chrome skeleton seam. */
@@ -40,12 +40,8 @@ export function Projects() {
         </Panel>
       ) : (
         <>
-          <JumpIndex
-            sections={[
-              { id: 'projects-list', label: 'All projects' },
-              ...(formReady ? [{ id: 'projects-new', label: 'New project' }] : []),
-            ]}
-          />
+          {/* No tabs: the list and the form that adds to it are read
+              together, so they stay one page. */}
           <Panel id="projects-list" title="Projects">
             {projects.isPending ? <p role="status">Loading projects…</p> : null}
             {projects.isError ? (
@@ -86,7 +82,7 @@ export function ProjectList({
           <div>
             <strong>{project.name}</strong>
           </div>
-          <span className="projects__actions">
+          <span className="actions">
             <Link
               className="btn"
               to={generatePath(surfaceById('matrix').path, { org, project: project.id })}

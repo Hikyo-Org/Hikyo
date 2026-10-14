@@ -165,7 +165,7 @@ export function LoginForm({
       disabled={anyBusy}
       onClick={() => setStage(to)}
     >
-      <span aria-hidden="true">‹ </span>
+      <Glyph name="arrow-left" />
       {label}
     </Button>
   );
@@ -280,7 +280,7 @@ export function LoginForm({
             >
               Password
               {isLastSignIn(lastUsed, { kind: 'password' }) ? (
-                <Badge className="login__last-used">Last used</Badge>
+                <Badge className="login__last-used" icon="history">Last used</Badge>
               ) : null}
               <span className="login__method-hint" aria-hidden="true">
                 username
@@ -290,7 +290,7 @@ export function LoginForm({
               <Button type="button" className="login__method" disabled={anyBusy} onClick={onPasskey}>
                 {busy === 'passkey' ? 'Waiting for the passkey…' : 'Passkey'}
                 {isLastSignIn(lastUsed, { kind: 'passkey' }) ? (
-                  <Badge className="login__last-used">Last used</Badge>
+                  <Badge className="login__last-used" icon="history">Last used</Badge>
                 ) : null}
                 {busy === 'passkey' ? null : (
                   <span className="login__method-hint" aria-hidden="true">

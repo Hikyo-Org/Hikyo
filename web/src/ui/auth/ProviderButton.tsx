@@ -113,7 +113,7 @@ export function ProviderButton({
           <span className="login__brand-tenant">· {provider.display_name}</span>
         ) : null}
       </span>
-      {lastUsed ? <Badge className="login__last-used">Last used</Badge> : null}
+      {lastUsed ? <Badge className="login__last-used" icon="history">Last used</Badge> : null}
     </button>
   );
 }

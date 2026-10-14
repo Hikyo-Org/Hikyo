@@ -3,6 +3,7 @@ import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
+import { dottedText } from '../testkit/dottedText.ts';
 
 type Props = Parameters<typeof MatrixRowEditor>[0];
 
@@ -78,15 +79,36 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The editor opens on the published value with Save disabled — nothing has
+// The editor opens on the published value with Save disabled: nothing has
 // changed yet.
 export const Default: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     // Named, not just present: the value control is labelled through ui/Field.
     await expect(canvas.getByRole('textbox', { name: 'development value' })).toHaveValue(
       'published',
     );
     await expect(canvas.getByRole('button', { name: /^Save/ })).toBeDisabled();
+    // The eyebrow names environment and classification with the shared separator.
+    await expect(canvas.getByText(dottedText(/^development\s*·\s*config$/))).toHaveClass('matrix-editor__eyebrow');
+    // Both nested disclosures wear the button skin, not a bare label with the
+    // native triangle (ProjectSettings' environment-lifecycle pattern).
+    for (const detailsSelector of ['.matrix-editor__schema', '.matrix-editor__raw']) {
+      const summary = canvasElement.querySelector(`${detailsSelector} > summary`);
+      if (!(summary instanceof HTMLElement)) throw new Error(`${detailsSelector} summary missing`);
+      await expect(summary).toHaveClass('btn');
+      await expect(getComputedStyle(summary).listStyle).toContain('none');
+    }
+    // Opening the outer one: the chevron, not a native marker, carries the
+    // open state. (The inner "Raw declaration" stays closed here: its `<pre>`
+    // has its own pre-existing scrollable-region focus gap, out of scope for
+    // this disclosure-styling pass.)
+    const schemaSummary = canvasElement.querySelector('.matrix-editor__schema > summary');
+    if (!(schemaSummary instanceof HTMLElement)) throw new Error('schema summary missing');
+    const chevron = schemaSummary.querySelector('.glyph[data-glyph="chevron"]');
+    if (chevron === null) throw new Error('chevron missing');
+    await userEvent.click(schemaSummary);
+    await expect(schemaSummary.closest('details')).toHaveAttribute('open');
+    await expect(getComputedStyle(chevron).transform).not.toBe('none');
   },
 };
 
@@ -173,5 +195,79 @@ export const LongSecretValue: Story = {
     await userEvent.paste(longValue);
     await expect(textarea).toHaveValue(longValue);
     await expectNoHorizontalOverflow(textarea);
+  },
+};
+
+// A key required everywhere with an own pending draft: the row head marks the
+// draft with the own-draft glyph, and the schema summary joins its parts with
+// the shared separator.
+export const PendingDraft: Story = {
+  args: {
+    keyRecord: { ...keyRecord, presence: { required_in: { mode: 'all' }, forbidden_in: { mode: 'none' } } },
+    rows: rows.map((row) => ({
+      ...row,
+      signal: {
+        key_id: keyRecord.id,
+        name: keyRecord.name,
+        classification: 'config',
+        pending_by_others: false,
+        pending: { versionId: 'ver_01989abc-def0-7123-8123-123456789abc', operation: 'set' },
+      },
+    })),
+  },
+  play: async ({ canvas, canvasElement }) => {
+    const pending = canvas.getByText('pending set');
+    await expect(pending.querySelector('.glyph')).toHaveAttribute('data-glyph', 'own-draft');
+    const schema = canvasElement.querySelector('.matrix-editor__schema');
+    const summary = schema?.querySelector(':scope > summary');
+    if (!(summary instanceof HTMLElement)) throw new Error('schema summary missing');
+    await userEvent.click(summary);
+    const rules = schema?.querySelector(':scope > p');
+    await expect(rules).toHaveTextContent(/^string\s*·\s*required everywhere$/);
+    await expect(rules?.querySelector('.sep')).not.toBeNull();
+  },
+};
+
+const SECRET_ENV_URL = `/api/v1/orgs/org-a/projects/project-a/environments/${environmentId}`;
+
+// A secret revealed under a live window: the plaintext shows with its
+// countdown in spelled-out seconds (R12), and the status region announces it.
+export const RevealedSecret: Story = {
+  args: {
+    keyRecord: { ...keyRecord, name: 'API_TOKEN', classification: 'secret' },
+    rows: rows.map((row) => ({
+      ...row,
+      cell: { key_id: keyRecord.id, name: 'API_TOKEN', classification: 'secret', set: true, revealed: false },
+    })),
+  },
+  parameters: {
+    app: {
+      responses: [
+        {
+          url: `${SECRET_ENV_URL}/reveal-window`,
+          body: {
+            effective_window_seconds: 600,
+            protected: false,
+            totp_offered: false,
+            live: true,
+            single_decision: false,
+            can_reveal: true,
+            expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+          },
+        },
+        {
+          url: `${SECRET_ENV_URL}/values/API_TOKEN/reveal`,
+          method: 'POST',
+          body: { key_id: keyRecord.id, name: 'API_TOKEN', classification: 'secret', set: true, revealed: true, value: 'tok_live_revealed' },
+        },
+      ],
+    },
+  },
+  play: async ({ canvas, canvasElement }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reveal API_TOKEN' }));
+    await expect(await canvas.findByText('tok_live_revealed')).toBeVisible();
+    const countdown = canvasElement.querySelector('.matrix-editor__revealed small');
+    await expect(countdown?.textContent).toMatch(/^re-masks in \d+ seconds?$/);
+    await expect(canvasElement.querySelector('.visually-hidden[role="status"]')).toHaveTextContent('API_TOKEN revealed, re-masks in 10 seconds');
   },
 };

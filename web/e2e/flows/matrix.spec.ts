@@ -22,6 +22,7 @@ import { z } from 'zod';
 import {
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
+  openKeyDeclaration,
 } from '../fixtures/assertions.ts';
 import { BrowserApiError, browserApi, fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
 import {
@@ -123,7 +124,7 @@ test.describe('environment matrix', () => {
       // Anchored: a group that HAS problems carries "problems" in its own
       // aria-label ("app/ · 1 key · 2 problems"), so an unanchored match is
       // ambiguous the moment the filter has anything to show.
-      await page.getByRole('button', { name: /^problems/ }).click();
+      await page.getByRole('button', { name: /^Problems/ }).click();
       const bar = page.locator('.matrix__filter');
       await expectStatusIsTextAndAria(page, bar);
       await expect(bar).toContainText('filter active: problems');
@@ -404,14 +405,14 @@ test.describe('environment matrix', () => {
       await page.getByRole('button', { name: 'Use a passkey' }).click();
       await expect(page.locator('.notice')).toContainText(/Published atomically: .*Signals updated/);
       await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).not.toHaveAccessibleName(/draft set/);
-      // env-matrix 31: the changed state is a bare `Δ` mark; its revision moved
+      // env-matrix 31: the changed state is a bare history mark; its revision moved
       // off the row text and into the cell's accessible name.
       await expect(page.getByRole('button', { name: /LOG_LEVEL in development:/ })).toHaveAccessibleName(/changed in r/);
   });
 
   for (const surface of surfacesForFlow('matrix')) {
     for (const scheme of SCHEMES) {
-      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }, testInfo) => {
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(MATRIX_PATH);
 
@@ -441,7 +442,10 @@ test.describe('environment matrix', () => {
             [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
-          density: [[chooser, '--control']],
+          // The `envs N/N` picker is the compact button (DESIGN.md, Buttons):
+          // `--hit-min` tall on a fine pointer, the `--control` touch floor on
+          // a coarse one.
+          density: [[chooser, testInfo.project.name === 'mobile' ? '--control' : '--hit-min']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
         // where the rule has to be, a border on the list around them would
@@ -687,13 +691,13 @@ test.describe('key declaration gate', () => {
       await signInAs(page, account);
       await page.goto(MATRIX_PATH);
       await expect(loaded(page)).toBeVisible();
-      await expect(page.getByRole('button', { name: '+ New key' })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: '+ Key', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'New key' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^Add key to / })).toHaveCount(0);
 
       await withSharedAdmin(browser, async (admin) => {
         await admin.goto(MATRIX_PATH);
         await expect(loaded(admin)).toBeVisible();
-        await expect(admin.getByRole('button', { name: '+ New key' })).toBeVisible();
+        await expect(admin.getByRole('button', { name: 'New key' })).toBeVisible();
       });
     } finally {
       await withSharedAdmin(browser, async (admin) => {
@@ -718,7 +722,7 @@ test.describe('key declaration gate', () => {
         try {
           await page.goto(MATRIX_PATH);
           const heading = page.getByRole('heading', { name: 'Environment matrix', level: 1 });
-          const newKey = page.getByRole('button', { name: '+ New key' });
+          const newKey = page.getByRole('button', { name: 'New key' });
           const key = page.locator('.matrix__key').first();
           await expect(newKey).toBeVisible();
           await expectPinnedAssertionSet(page, {
@@ -862,8 +866,7 @@ test.describe('catalogue declaration detail', () => {
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
 
-    // The key name opens the declaration detail (not the history it used to).
-    await page.getByRole('link', { name: `Declaration of ${keyName}` }).click();
+    await openKeyDeclaration(page, testInfo, keyName);
     await expect(page).toHaveURL(new RegExp(`/matrix/keys/${keyId}$`));
     await expect(page.getByRole('heading', { name: keyName, level: 2 })).toBeVisible();
 
@@ -958,7 +961,11 @@ test.describe('catalogue declaration detail', () => {
       const linkedKey = await fixtureApiCall(token, 'GET', keyPath, zKeyRead);
       expect(linkedKey.group_id).toBe(group.id);
       await page.goto(MATRIX_PATH);
-      await expect(page.locator('.matrix__linked-keys').filter({ hasText: `catgrp-${testInfo.project.name}` })).toBeVisible();
+      const linkedMark = page.locator('.matrix__linked-keys').filter({ hasText: `catgrp-${testInfo.project.name}` });
+      // A phone's key column is one glyph per key (DESIGN.md, Key column): the
+      // link mark is in the row but not drawn there.
+      if (testInfo.project.name === 'mobile') await expect(linkedMark).toBeAttached();
+      else await expect(linkedMark).toBeVisible();
       await expect(page.locator('.matrix__group-toggle').filter({ hasText: `catgrp-${testInfo.project.name}` })).toHaveCount(0);
       await expect(page.locator('.matrix__group-toggle').filter({ hasText: linkedKey.folder_path || 'No folder' })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('folders-linked-keys.png'), fullPage: true });
@@ -1237,7 +1244,7 @@ test.describe('environment matrix declaration', () => {
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
 
-    await page.getByRole('button', { name: '+ New key' }).click();
+    await page.getByRole('button', { name: 'New key' }).click();
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
 
@@ -1266,7 +1273,7 @@ test.describe('environment matrix declaration', () => {
     passkeyPage: page,
   }) => {
     await page.goto(MATRIX_PATH);
-    await page.getByRole('button', { name: '+ New key' }).click();
+    await page.getByRole('button', { name: 'New key' }).click();
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
 
@@ -1284,7 +1291,7 @@ test.describe('environment matrix declaration', () => {
     passkeyPage: page,
   }) => {
     await page.goto(MATRIX_PATH);
-    await page.getByRole('button', { name: '+ New key' }).click();
+    await page.getByRole('button', { name: 'New key' }).click();
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible();
 
@@ -1587,7 +1594,7 @@ test.describe('change approvals', () => {
     );
     expect(summary.state).toBe('open');
 
-    await page.goto(CA_PATH);
+    await page.goto(`${CA_PATH}?tab=requests`);
     await expect(page.getByRole('heading', { name: 'Change approvals', level: 1 })).toBeVisible();
     await page.locator('#ca-review-env').selectOption(seed.dev);
     await expect(page.getByText(summary.id)).toBeVisible();
@@ -1723,7 +1730,7 @@ test.describe('change approvals', () => {
       );
       const reviewerPage = await reviewerContext.newPage();
       const approved = await stageRequest(`approval-${suffix}`);
-      await reviewerPage.goto(CA_PATH);
+      await reviewerPage.goto(`${CA_PATH}?tab=requests`);
       await reviewerPage.locator('#ca-review-env').selectOption(seed.dev);
       const approvedRow = reviewerPage.locator('.change-approvals__request').filter({ hasText: approved.id });
       await approvedRow.getByRole('button', { name: 'Approve' }).click();
@@ -1731,13 +1738,13 @@ test.describe('change approvals', () => {
         totpCode(enrolled.otpauth_uri, new Date(Date.now() + 30_000)),
       );
       await reviewerPage.getByRole('button', { name: 'Authorise with a code' }).click();
-      await expect(approvedRow).toContainText('approved · 1/1 approvals');
+      await expect(approvedRow).toContainText(/approved\s*·\s*1\/1 approvals/);
 
-      await adminPage.goto(CA_PATH);
+      await adminPage.goto(`${CA_PATH}?tab=requests`);
       await adminPage.locator('#ca-review-env').selectOption(seed.dev);
       const mergeRow = adminPage.locator('.change-approvals__request').filter({ hasText: approved.id });
       await mergeRow.getByRole('button', { name: 'Merge', exact: true }).click();
-      await expect(mergeRow).toContainText('merged · 1/1 approvals');
+      await expect(mergeRow).toContainText(/merged\s*·\s*1\/1 approvals/);
 
       const stale = await stageRequest(`stale-${suffix}`);
       expect(stale.id).not.toBe(approved.id);
@@ -1763,7 +1770,7 @@ test.describe('change approvals', () => {
       await bypassRow.getByLabel('Bypass reason').fill('browser acceptance drill');
       await bypassRow.getByRole('button', { name: 'Emergency bypass' }).click();
       await adminPage.getByRole('button', { name: 'Use a passkey' }).click();
-      await expect(bypassRow).toContainText('bypassed · 0/1 approvals');
+      await expect(bypassRow).toContainText(/bypassed\s*·\s*0\/1 approvals/);
 
       const requests = await fixtureApiCall(
         adminToken,
@@ -1960,7 +1967,7 @@ test.describe('temporary access', () => {
       const requestRow = requesterPage
         .locator('.temporary-access__request')
         .filter({ hasText: `browser acceptance ${suffix}` });
-      await expect(requestRow.locator('.temporary-access__request-state')).toHaveText('open · 0/1 approvals');
+      await expect(requestRow.locator('.temporary-access__request-state')).toHaveText(/^open\s*·\s*0\/1 approvals$/);
       await expect(requestRow.getByRole('button', { name: 'Withdraw' })).toBeVisible();
 
       await adminPage.goto(TA_PATH);
@@ -2009,7 +2016,7 @@ test.describe('temporary access', () => {
       test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: scheme });
         try {
-          await page.goto(TA_PATH);
+          await page.goto(`${TA_PATH}?tab=policies`);
           const heading = page.getByRole('heading', { name: 'Temporary access', level: 1 });
           const newPolicy = page.getByRole('button', { name: 'New access policy' });
           await expect(newPolicy).toBeVisible();

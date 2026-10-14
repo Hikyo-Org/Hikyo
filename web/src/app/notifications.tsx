@@ -87,9 +87,10 @@ export function ToastViewport() {
       </div>
       {notification === null ? null : (
         <div key={notification.id} className={`toast toast--${notification.tone}`}>
-          <span className="alert__glyph" aria-hidden="true">
-            {notification.tone === 'error' ? '!' : notification.tone === 'success' ? <Glyph name="check" /> : '↑'}
-          </span>
+          <Glyph
+            name={notification.tone === 'error' ? 'alert' : notification.tone === 'success' ? 'check' : 'arrow-up'}
+            className="alert__glyph"
+          />
           <span>{notification.message}</span>
           {notification.action === undefined ? null : (
             <a
@@ -107,7 +108,7 @@ export function ToastViewport() {
             aria-label="Dismiss notification"
             onClick={() => dismiss(notification.id)}
           >
-            ×
+            <Glyph name="cross" />
           </button>
         </div>
       )}

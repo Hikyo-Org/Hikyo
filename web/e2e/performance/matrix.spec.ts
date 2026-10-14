@@ -50,7 +50,7 @@ test('large matrix remains usable while filtering, editing and receiving updates
   for (let cycle = 0; cycle < 6; cycle++) {
     const menu = page.getByRole('button', { name: 'Menu', exact: true });
     if (await menu.isVisible()) await menu.click();
-    await measure(page, 'filter-problems', { selector: '.matrix__filter', text: 'showing 100 of 1000 keys' }, () => page.getByRole('button', { name: /^problems/ }).click());
+    await measure(page, 'filter-problems', { selector: '.matrix__filter', text: 'showing 100 of 1000 keys' }, () => page.getByRole('button', { name: /^Problems/ }).click());
     if (await menu.isVisible()) await page.keyboard.press('Escape');
     await measure(page, 'show-all', { selector: '.matrix__filter', absent: true }, () => page.getByRole('button', { name: 'Show all keys' }).click());
     await measure(page, 'open-editor', { selector: 'dialog[open]' }, () => page.getByRole('button', { name: /SETTING_0001 in environment-00:/ }).click());

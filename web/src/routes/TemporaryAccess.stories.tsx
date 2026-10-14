@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, waitFor } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { TemporaryAccess } from './TemporaryAccess.tsx';
 
+import { openTab } from '../../.storybook/openTab.ts';
+import { expectLeftAlignedPage } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The page mounts the environment list and the access-policy list at once; the
@@ -89,9 +91,34 @@ export const Populated: Story = {
     },
   },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Policies');
     await expect(await canvas.findByRole('cell', { name: 'All environments' })).toBeVisible();
-    await expect(canvas.getByRole('cell', { name: 'edit, publish' })).toBeVisible();
+    // Capabilities are tags, not a joined string: each capability is its own
+    // CapabilityTag, keeping the plain word as its text.
+    await expect(canvas.getByText('edit')).toBeVisible();
+    await expect(canvas.getByText('publish')).toBeVisible();
     await expect(canvas.getByRole('cell', { name: 'disabled' })).toBeVisible();
+    // The longest duration is spelled out, never "8h".
+    await expect(canvas.getAllByRole('cell', { name: /^\d+ (day|hour|minute|second)s?$/ }).length).toBeGreaterThan(0);
+    await expectLeftAlignedPage(canvas.getByRole('heading', { level: 1 }));
+  },
+};
+
+// The policy form and the delete confirmation open in the side panel.
+export const PolicyPanels: Story = {
+  parameters: Populated.parameters,
+  play: async ({ canvas }) => {
+    await openTab(canvas, 'Policies');
+    await canvas.findByRole('cell', { name: 'All environments' });
+    await userEvent.click(canvas.getByRole('button', { name: 'New access policy' }));
+    const form = within(canvas.getByRole('complementary', { name: 'New access policy' }));
+    await expect(form.getByRole('group', { name: 'Requestable capabilities' })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(canvas.getAllByRole('button', { name: 'Delete' })[0] ?? canvas.getByRole('table'));
+    const confirm = within(canvas.getByRole('complementary', { name: 'Delete access policy' }));
+    await expect(confirm.getByRole('button', { name: 'Delete policy' })).toBeDisabled();
+    await userEvent.click(confirm.getByRole('button', { name: 'Cancel deletion' }));
+    await expect(canvas.queryByRole('complementary', { name: 'Delete access policy' })).toBeNull();
   },
 };
 
@@ -107,8 +134,10 @@ export const Requester: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByText(/administered by project member managers/i)).toBeVisible();
-    await expect(canvas.getByText(/choose an environment to request access/i)).toBeVisible();
+    await openTab(canvas, 'Requests');
+    await waitFor(() => expect(canvas.getByText(/choose an environment to request access/i)).toBeVisible());
+    await openTab(canvas, 'Policies');
+    await waitFor(() => expect(canvas.getByText(/administered by project member managers/i)).toBeVisible());
   },
 };
 
@@ -123,6 +152,7 @@ export const Loading: Story = {
     },
   },
   play: async ({ canvas }) => {
+    await openTab(canvas, 'Policies');
     await waitFor(() => expect(canvas.getByText(/loading policies/i)).toBeVisible());
   },
 };

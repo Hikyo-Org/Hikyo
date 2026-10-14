@@ -26,36 +26,23 @@ export function DemoSurface({ id, children }: { id: SurfaceId; children: ReactNo
     );
   }
   if (policy.mode === 'interactive') return children;
-  if (policy.controls === 'audit') {
+  if (policy.audit === true) {
     return <div className="demo-readonly">
       <p className="demo-readonly__notice">Read-only sample audit events. Explore the filters and event details; export is disabled.</p>
       {children}
     </div>;
   }
-  if (policy.controls === 'actions') {
-    return (
-      <ReadOnlyContext.Provider value={true}>
-        <div className="demo-readonly" onSubmitCapture={(event) => {
-          // Mutation forms can submit with Enter even when their buttons are disabled.
-          // Audit filters are deliberately outside this boundary: their submit is a read.
-          event.preventDefault();
-          event.stopPropagation();
-        }}>
-          <p className="demo-readonly__notice">Read-only sample data. Explore the tabs and details; actions that change configuration are disabled.</p>
-          {children}
-        </div>
-      </ReadOnlyContext.Provider>
-    );
-  }
   return (
-    <div className="demo-readonly" onSubmitCapture={(event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    }}>
-      <p className="demo-readonly__notice">Read-only in this demo. Explore these settings; use the account switcher above to try different permissions.</p>
-      <fieldset disabled className="demo-readonly__fields" aria-label="Read-only demo settings">
+    <ReadOnlyContext.Provider value={true}>
+      <div className="demo-readonly" onSubmitCapture={(event) => {
+        // Mutation forms can submit with Enter even when their buttons are disabled.
+        // Audit filters are deliberately outside this boundary: their submit is a read.
+        event.preventDefault();
+        event.stopPropagation();
+      }}>
+        <p className="demo-readonly__notice">Read-only sample data. Explore the tabs and details; actions that change configuration are disabled.</p>
         {children}
-      </fieldset>
-    </div>
+      </div>
+    </ReadOnlyContext.Provider>
   );
 }

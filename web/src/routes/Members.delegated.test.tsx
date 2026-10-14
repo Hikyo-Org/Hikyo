@@ -83,8 +83,13 @@ it('allows a narrowed manager to edit disclosed project rules without offering s
     expect(buttons).not.toContain('Add access');
     expect(buttons).not.toContain('Invite');
     expect(buttons.some((text) => text?.includes('Add scope-wide access') || text?.includes('Reset credential'))).toBe(false);
+    // Who can reach one key? opens in the side panel from its button.
+    const ask = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Who can reach one key?');
+    await act(async () => ask?.click());
     expect(view.container.querySelector('#members-whocan')?.textContent).toContain('cannot answer who has access across the project');
     expect(view.container.querySelector('#members-whocan select')).toBeNull();
+    await act(async () => view.container.querySelector('aside[aria-label="Who can reach one key?"]')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     await act(async () => edit?.click());
     expect(view.container.querySelector('dialog')?.textContent).toContain('Edit rule · Dana');
   } finally { await view.unmount(); }

@@ -27,6 +27,7 @@ import {
   type MintLifecycle,
   type MoveMint,
 } from '../mintLifecycle.ts';
+import { Glyph } from '../../ui/Glyph.tsx';
 
 /** A queued lease-lifecycle action awaiting confirmation. */
 export type LeaseAction = {
@@ -212,9 +213,7 @@ export function LeaseMintDialog({
       {disclosed === null ? (
         <>
           <p className="ceremony__stepup">
-            <span className="alert__glyph" aria-hidden="true">
-              ⚿
-            </span>
+            <Glyph name="passkey" className="alert__glyph" />
             <span>
               <strong>Confirm it&apos;s you.</strong> The password is delivered display-once, to you.
               A human mint takes a passkey reauthentication over the chosen environment and a
@@ -326,9 +325,7 @@ export function LeaseMintDialog({
           </Button>
           {disclosed.copyStatus === null ? null : (
             <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
-              <span className="alert__glyph" aria-hidden="true">
-                ⧉
-              </span>
+              <Glyph name="copy" className="alert__glyph" />
               <span>{disclosed.copyStatus}</span>
             </p>
           )}

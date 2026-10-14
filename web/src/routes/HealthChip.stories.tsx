@@ -53,11 +53,18 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // The chip is a role-less <span>, so the label text (from healthLabel) is the
-// assertable subject rather than an ARIA role.
+// assertable subject rather than an ARIA role. Each state is a tag: its
+// tone class (none for neutral) and the icon before the word.
+async function expectTag(word: HTMLElement, tone: 'neutral' | 'ok' | 'changed' | 'danger', glyph: string) {
+  const tag = word.closest('.badge');
+  await expect([...(tag?.classList ?? [])].filter((name) => /^badge--/.test(name))).toEqual(tone === 'neutral' ? [] : [`badge--${tone}`]);
+  await expect(tag?.querySelector('svg.glyph')?.getAttribute('data-glyph')).toBe(glyph);
+}
 export const Never: Story = {
   args: { target: { ...baseTarget, sync_status: 'never' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Never synced')).toBeVisible();
+    await expectTag(canvas.getByText('Never synced'), 'neutral', 'minus');
   },
 };
 
@@ -65,6 +72,7 @@ export const Pending: Story = {
   args: { target: { ...baseTarget, sync_status: 'pending' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Queued')).toBeVisible();
+    await expectTag(canvas.getByText('Queued'), 'changed', 'wait');
   },
 };
 
@@ -72,6 +80,7 @@ export const Converging: Story = {
   args: { target: { ...baseTarget, sync_status: 'converging' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Converging')).toBeVisible();
+    await expectTag(canvas.getByText('Converging'), 'changed', 'sync');
   },
 };
 
@@ -79,6 +88,7 @@ export const Converged: Story = {
   args: { target: { ...baseTarget, sync_status: 'converged' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Healthy')).toBeVisible();
+    await expectTag(canvas.getByText('Healthy'), 'ok', 'check');
   },
 };
 
@@ -86,6 +96,7 @@ export const Degraded: Story = {
   args: { target: { ...baseTarget, sync_status: 'degraded' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Degraded')).toBeVisible();
+    await expectTag(canvas.getByText('Degraded'), 'danger', 'warn');
   },
 };
 
@@ -93,6 +104,7 @@ export const Failed: Story = {
   args: { target: { ...baseTarget, sync_status: 'failed' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Failed')).toBeVisible();
+    await expectTag(canvas.getByText('Failed'), 'danger', 'alert');
   },
 };
 
@@ -100,6 +112,7 @@ export const Paused: Story = {
   args: { target: { ...baseTarget, sync_status: 'paused' } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Paused')).toBeVisible();
+    await expectTag(canvas.getByText('Paused'), 'neutral', 'pause');
   },
 };
 
@@ -107,6 +120,13 @@ export const Paused: Story = {
 export const DriftAttention: Story = {
   args: { target: { ...baseTarget, sync_status: 'degraded', drift_attention: true } },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText('Degraded · needs attention')).toBeVisible();
+    // The dot is now the decorative <Sep/> glyph (aria-hidden, spaced by
+    // CSS), so "Degraded" and "needs attention" are separate text nodes:
+    // match by the phrase that survives the split, not the old literal
+    // " · " text.
+    const tag = canvas.getByText(/needs attention/);
+    await expect(tag).toBeVisible();
+    await expect(tag).toHaveTextContent(/Degraded.*needs attention/);
+    await expectTag(tag, 'danger', 'warn');
   },
 };

@@ -4,7 +4,7 @@ import {
   setCredentialPolicyOp,
 } from '@hikyo/operations';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { ApiError, parsed } from '../api/client.ts';
@@ -31,6 +31,8 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { InstanceMailPanel } from './InstanceMailPanel.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OAuth2ProvidersPanel } from './OAuth2ProvidersPanel.tsx';
@@ -39,9 +41,11 @@ import { PkiIssuersPanel } from './PkiIssuersPanel.tsx';
 import { PkiProfilesPanel } from './PkiProfilesPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
-import { ConsequencesDialog, JumpIndex, Panel } from './Sections.tsx';
+import { ConsequencesDialog, Panel, SectionTabs } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
+import { Glyph } from '../ui/Glyph.tsx';
+import { duration, plural } from '../app/duration.ts';
 
 const credentialPolicyKey = ['instance-credential-policy'] as const;
 const instanceRetentionKey = ['instance-retention-health'] as const;
@@ -71,26 +75,6 @@ function useInstanceRetentionHealth() {
     queryKey: instanceRetentionKey,
     queryFn: () => parsed(getRetentionHealthOp, {}),
   });
-}
-
-/**
- * humanDuration names a whole number of seconds in the largest unit that
- * divides it exactly, so a policy of 7776000s reads "90 days" and an odd value
- * stays in seconds rather than rounding to a lie.
- */
-export function humanDuration(seconds: number): string {
-  const units = [
-    [86_400, 'day'],
-    [3600, 'hour'],
-    [60, 'minute'],
-  ] as const;
-  for (const [size, name] of units) {
-    if (seconds >= size && seconds % size === 0) {
-      const count = seconds / size;
-      return `${String(count)} ${name}${count === 1 ? '' : 's'}`;
-    }
-  }
-  return `${String(seconds)} second${seconds === 1 ? '' : 's'}`;
 }
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
@@ -123,7 +107,14 @@ export function InstanceAdmin() {
     notifySuccess(message);
     ok(message);
   });
+  const [editingPolicy, setEditingPolicy] = useState(false);
   const stale = retentionBanner(health.data, health.isError);
+  // Outcomes show where the person is looking: in an open side panel, which
+  // covers the page, or on the page.
+  const notices = <>
+    {failure !== null ? <Alert>{failure}</Alert> : null}
+    {done !== null ? <Alert tone="done">{done}</Alert> : null}
+  </>;
 
   return <div className="page page--chrome">
     <h1>Instance settings</h1>
@@ -132,120 +123,124 @@ export function InstanceAdmin() {
       the same grant-evaluated network operation the CLI verb calls; membership and instance grants
       have their own surface.
     </p>
-    <JumpIndex sections={[
-      { id: 'instance-configuration', label: 'Hikyo configuration' },
-      { id: 'instance-mail', label: 'Mailer' },
-      { id: 'instance-orgs', label: 'Organisations' },
-      { id: 'instance-members', label: 'Members' },
-      { id: 'instance-settings', label: 'Policy' },
-      { id: 'instance-oidc', label: 'Identity providers' },
-      { id: 'instance-oauth2', label: 'GitHub sign-in' },
-      { id: 'instance-federation', label: 'Federation' },
-      { id: 'instance-retention', label: 'Retention health' },
-      { id: 'instance-keys', label: 'Keys & crypto' },
-      { id: 'instance-saml-providers', label: 'SAML providers' },
-      { id: 'instance-saml-sp-keys', label: 'SP signing keys' },
-      { id: 'instance-pki-issuers', label: 'Certificate authorities' },
-      { id: 'instance-pki-profiles', label: 'Certificate profiles' },
-    ]} />
-    {failure !== null ? <Alert>{failure}</Alert> : null}
-    {done !== null ? <Alert tone="done">{done}</Alert> : null}
+    {showCreate || editingPolicy ? null : notices}
 
-    <InstanceMailPanel />
-
-    <Panel id="instance-orgs" title="Organisations">
-      {/* Self-served orgs (a registration policy's fresh-org landing) are
-          filtered by origin and pruned with the ordinary delete (#585 d9). */}
-      <div className="field instance-org-filter">
-        <label htmlFor={originFilterId}>Show</label>
-        <select id={originFilterId} value={originFilter} onChange={(event) => {
-          const value = event.target.value;
-          setOriginFilter(value === 'manual' || value === 'registration' ? value : 'all');
-        }}>
-          <option value="all">All organisations</option>
-          <option value="manual">Created by an operator</option>
-          <option value="registration">Self-served (sign-up)</option>
-        </select>
-      </div>
-      {orgs.isPending ? <p role="status">Loading organisations…</p> : null}
-      {secondFactor(orgs.error) ? <Alert>Listing every organisation on this instance needs a second factor. This session does not have sufficient second-factor assurance; present your authenticator code or passkey in the banner above.</Alert> : null}
-      {nondisclosed(orgs.error) ? <p role="status">The organisation directory is not disclosed to this session.</p> : null}
-      {orgs.isError && !secondFactor(orgs.error) && !nondisclosed(orgs.error) ? <Alert>{settingsFailureText(orgs.error, 'list-instance-orgs')}</Alert> : null}
-      {orgs.isSuccess ? orgs.data.items.map((org) => (
-        <div className="settings-row settings-row--compact" key={org.id}>
-          <div className="settings-row__copy">
-            <Link className="settings-row__title settings-row__title--link" to={generatePath(surfaceById('org-settings').path, { org: org.id })}>{org.name}</Link>
-            <span className="settings-row__detail">Organisation settings</span>
-          </div>
-          <span className="settings-row__spacer" />
-          <Badge mono>{orgOriginLabel(org.origin)}</Badge>
-          <Badge mono>{org.active ? 'active' : 'inactive'}</Badge>
-        </div>
-      )) : null}
-      {orgs.isSuccess && orgs.data.items.length === 0 && originFilter !== 'all' ? (
-        <p role="status">No organisations of this origin.</p>
-      ) : null}
-      {showCreate ? (
-        <div className="settings-row">
-          <div className="field settings-row__spacer"><label htmlFor={nameId}>New organisation name</label><input id={nameId} value={name} onChange={(event) => setName(event.target.value)} /></div>
-          <Button type="button" variant="primary" aria-label="Create organisation" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
-            onError: (error) => report(settingsOperationFailure('create-org', error)),
-          })}>Create organisation</Button>
-        </div>
-      ) : null}
-      <div className="instance-create-row">
-        <Button type="button" variant="primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</Button>
-        <code className="instance-cli">$ hikyo org create</code>
-      </div>
-    </Panel>
-
-    {/* The same entry-point panel organisation and project settings carry:
-        granting, revoking and inspection live on the members surface. */}
-    <Panel id="instance-members" title="Members">
-      <div className="settings-row">
-        <div className="settings-row__copy">
-          <span className="settings-row__title">Members</span>
-          <span className="settings-row__detail">Instance-scope grants inherit downward into every organisation</span>
-        </div>
-        <span className="settings-row__spacer" />
-        <Link className="btn" to={surfaceById('instance-members').path}>open members →</Link>
-      </div>
-      <p className="settings-note">Entry point only: granting, revoking and inspection live on the members surface.</p>
-    </Panel>
-
-    <Panel id="instance-configuration" title="Hikyo configuration"><p>Edit mail and notification settings in Hikyo’s protected project, then apply a published revision without restarting.</p><Link className="btn btn--primary" to={surfaceById('instance-config').path}>Manage Hikyo configuration</Link></Panel>
-
-    <CredentialPolicyPanel query={policy} onDone={ok} onFailure={report} />
-
-    <OidcProvidersPanel />
-    <OAuth2ProvidersPanel />
-
-    <FederationIssuersPanel />
-
-    <Panel id="instance-retention" title="Retention health">
-      {health.isPending ? <p role="status">Loading retention health…</p> : null}
-      {secondFactor(health.error) ? <Alert>Retention health requires a second factor for this session.</Alert> : null}
-      {nondisclosed(health.error) ? <p role="status">Retention health is not disclosed to this session.</p> : null}
-      {health.isError && !secondFactor(health.error) && !nondisclosed(health.error) ? <Alert>{settingsFailureText(health.error, 'get-retention-health')}</Alert> : null}
-      {health.isSuccess ? <><p role="status">{stale?.kind === 'stale'
-        ? health.data.last_prune_success === null ? 'Payload pruning has never succeeded. Retention bounds are not being enforced.' : `Payload pruning has not succeeded since ${new Date(health.data.last_prune_success).toLocaleString()}. Retention bounds are not being enforced.`
-        : `Payload pruning last succeeded ${health.data.last_prune_success === null ? 'never' : new Date(health.data.last_prune_success).toLocaleString()}.`}</p>
-        <p className="field__hint">A run is stale after {health.data.stale_after_seconds / 3600} hours. The same fact is a Prometheus gauge and a <span className="mono">hikyo doctor</span> row.</p></> : null}
-    </Panel>
-
-    <Panel id="instance-keys" title="Keys &amp; crypto">
-      <CryptoMaintenance onDone={ok} />
-    </Panel>
-    <SamlProvidersPanel />
-    <SamlSpKeysPanel />
-    <PkiIssuersPanel />
-    <PkiProfilesPanel />
+    <SectionTabs
+      label="Instance settings sections"
+      idPrefix="instance"
+      sections={[
+        { id: 'instance-configuration', label: 'Hikyo configuration', content: (
+          <Panel id="instance-configuration" title="Hikyo configuration"><p>Edit mail and notification settings in Hikyo’s protected project, then apply a published revision without restarting.</p><Link className="btn btn--primary" to={surfaceById('instance-config').path}>Manage Hikyo configuration</Link></Panel>
+        ) },
+        { id: 'instance-mail', label: 'Mailer', content: <InstanceMailPanel /> },
+        { id: 'instance-orgs', label: 'Organisations', content: (
+          <Panel id="instance-orgs" title="Organisations">
+            {/* Self-served orgs (a registration policy's fresh-org landing) are
+                filtered by origin and pruned with the ordinary delete (#585 d9). */}
+            <div className="field instance-org-filter">
+              <label htmlFor={originFilterId}>Show</label>
+              <select id={originFilterId} value={originFilter} onChange={(event) => {
+                const value = event.target.value;
+                setOriginFilter(value === 'manual' || value === 'registration' ? value : 'all');
+              }}>
+                <option value="all">All organisations</option>
+                <option value="manual">Created by an operator</option>
+                <option value="registration">Self-served (sign-up)</option>
+              </select>
+            </div>
+            {orgs.isPending ? <p role="status">Loading organisations…</p> : null}
+            {secondFactor(orgs.error) ? <Alert>Listing every organisation on this instance needs a second factor. This session does not have sufficient second-factor assurance; present your authenticator code or passkey in the banner above.</Alert> : null}
+            {nondisclosed(orgs.error) ? <p role="status">The organisation directory is not disclosed to this session.</p> : null}
+            {orgs.isError && !secondFactor(orgs.error) && !nondisclosed(orgs.error) ? <Alert>{settingsFailureText(orgs.error, 'list-instance-orgs')}</Alert> : null}
+            {orgs.isSuccess ? orgs.data.items.map((org) => (
+              <div className="settings-row settings-row--compact" key={org.id}>
+                <div className="settings-row__copy">
+                  <Link className="settings-row__title settings-row__title--link" to={generatePath(surfaceById('org-settings').path, { org: org.id })}>{org.name}</Link>
+                  <span className="settings-row__detail">Organisation settings</span>
+                </div>
+                <span className="settings-row__spacer" />
+                <Badge mono>{orgOriginLabel(org.origin)}</Badge>
+                <Badge mono>{org.active ? 'active' : 'inactive'}</Badge>
+              </div>
+            )) : null}
+            {orgs.isSuccess && orgs.data.items.length === 0 && originFilter !== 'all' ? (
+              <p role="status">No organisations of this origin.</p>
+            ) : null}
+            {showCreate ? (
+              <SidePanel title="Create organisation" onClose={() => setShowCreate(false)}>
+                {notices}
+                <div className="field"><label htmlFor={nameId}>New organisation name</label><input id={nameId} value={name} onChange={(event) => setName(event.target.value)} /></div>
+                <div className="actions">
+                  <Button type="button" variant="primary" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
+                    onError: (error) => report(settingsOperationFailure('create-org', error)),
+                  })}>Create organisation</Button>
+                  <Button type="button" onClick={() => setShowCreate(false)}>Cancel</Button>
+                </div>
+              </SidePanel>
+            ) : null}
+            <div className="instance-create-row">
+              <Button type="button" variant="primary" aria-label="Open create organisation form" onClick={() => setShowCreate(true)}><Glyph name="plus" /> create organisation</Button>
+              <code className="instance-cli">$ hikyo org create</code>
+            </div>
+          </Panel>
+        ) },
+        // The same entry-point panel organisation and project settings carry:
+        // granting, revoking and inspection live on the members surface.
+        { id: 'instance-members', label: 'Members', content: (
+          <Panel id="instance-members" title="Members">
+            <div className="settings-row">
+              <div className="settings-row__copy">
+                <span className="settings-row__title">Members</span>
+                <span className="settings-row__detail">Instance-scope grants inherit downward into every organisation</span>
+              </div>
+              <span className="settings-row__spacer" />
+              <Link className="btn" to={surfaceById('instance-members').path}>open members <Glyph name="arrow-right" /></Link>
+            </div>
+            <p className="settings-note">Entry point only: granting, revoking and inspection live on the members surface.</p>
+          </Panel>
+        ) },
+        { id: 'instance-settings', label: 'Policy', content: <CredentialPolicyPanel query={policy} editing={editingPolicy} setEditing={setEditingPolicy} notices={notices} onDone={ok} onFailure={report} /> },
+        { id: 'instance-oidc', label: 'Identity providers', content: <OidcProvidersPanel /> },
+        { id: 'instance-oauth2', label: 'GitHub sign-in', content: <OAuth2ProvidersPanel /> },
+        // SAML providers and their SP signing keys are one feature: one tab.
+        { id: 'instance-saml', label: 'SAML', anchors: ['instance-saml-providers', 'instance-saml-sp-keys'], content: (
+          <>
+            <SamlProvidersPanel />
+            <SamlSpKeysPanel />
+          </>
+        ) },
+        { id: 'instance-federation', label: 'Federation', content: <FederationIssuersPanel /> },
+        // Certificate authorities and the profiles that issue under them: one tab.
+        { id: 'instance-pki', label: 'Certificates', anchors: ['instance-pki-issuers', 'instance-pki-profiles'], content: (
+          <>
+            <PkiIssuersPanel />
+            <PkiProfilesPanel />
+          </>
+        ) },
+        { id: 'instance-retention', label: 'Retention health', content: (
+          <Panel id="instance-retention" title="Retention health">
+            {health.isPending ? <p role="status">Loading retention health…</p> : null}
+            {secondFactor(health.error) ? <Alert>Retention health requires a second factor for this session.</Alert> : null}
+            {nondisclosed(health.error) ? <p role="status">Retention health is not disclosed to this session.</p> : null}
+            {health.isError && !secondFactor(health.error) && !nondisclosed(health.error) ? <Alert>{settingsFailureText(health.error, 'get-retention-health')}</Alert> : null}
+            {health.isSuccess ? <><p role="status">{stale?.kind === 'stale'
+              ? health.data.last_prune_success === null ? 'Payload pruning has never succeeded. Retention bounds are not being enforced.' : `Payload pruning has not succeeded since ${new Date(health.data.last_prune_success).toLocaleString()}. Retention bounds are not being enforced.`
+              : `Payload pruning last succeeded ${health.data.last_prune_success === null ? 'never' : new Date(health.data.last_prune_success).toLocaleString()}.`}</p>
+              <p className="field__hint">A run is stale after {duration(health.data.stale_after_seconds)}. The same fact is a Prometheus gauge and a <span className="mono">hikyo doctor</span> row.</p></> : null}
+          </Panel>
+        ) },
+        { id: 'instance-keys', label: 'Keys & crypto', content: (
+          <Panel id="instance-keys" title="Keys &amp; crypto">
+            <CryptoMaintenance onDone={ok} />
+          </Panel>
+        ) },
+      ]}
+    />
   </div>;
 }
 
-function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType<typeof useCredentialPolicy>; onDone: (message: string) => void; onFailure: (error: unknown) => void }) {
+function CredentialPolicyPanel({ query, editing, setEditing, notices, onDone, onFailure }: { query: ReturnType<typeof useCredentialPolicy>; editing: boolean; setEditing: (editing: boolean) => void; notices: ReactNode; onDone: (message: string) => void; onFailure: (error: unknown) => void }) {
   const update = useSetCredentialPolicy();
-  const [editing, setEditing] = useState(false);
   const finiteId = useId(); const liveId = useId();
   // Seed from the fetched policy on first render (react-query may hand this back
   // already cached, before any signature change would fire the reset below) and
@@ -285,18 +280,19 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
     {query.isSuccess ? <>
       <div className="settings-row">
         <div className="settings-row__copy"><span className="settings-row__title">Machine-credential ceiling</span><span className="settings-row__detail">authoritative instance policy; clamps every org value</span></div>
-        <span className="settings-row__spacer" /><code className="mono"><span title={`${String(query.data.max_finite_lifetime_seconds)}s`}>{humanDuration(query.data.max_finite_lifetime_seconds)}</span> · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><Button type="button" onClick={() => setEditing(true)}>edit</Button>
+        <span className="settings-row__spacer" /><code className="mono"><span title={plural(query.data.max_finite_lifetime_seconds, 'second')}>{duration(query.data.max_finite_lifetime_seconds)}</span><Sep />{String(query.data.max_live_credentials)} live max<Sep />{query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><Button type="button" onClick={() => setEditing(true)}>edit</Button>
       </div>
     </> : null}
-    {editing ? <>
-      {query.isSuccess ? <>
+    {editing && query.isSuccess ? (
+      <SidePanel title="Edit credential policy" onClose={() => setEditing(false)}>
+        {notices}
         <div className="field"><label htmlFor={finiteId}>Maximum finite lifetime (seconds)</label><input id={finiteId} inputMode="numeric" value={finite} onChange={(event) => { setPreview(null); setFinite(event.target.value); }} /></div>
         <div className="field"><label htmlFor={liveId}>Maximum live credentials per service account</label><input id={liveId} inputMode="numeric" value={live} onChange={(event) => { setPreview(null); setLive(event.target.value); }} /></div>
         <Checkbox label="Allow credentials with no expiry" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} />
         {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><Button type="button" variant="danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</Button></div>}
-        <div className="panel__actions"><Button type="button" onClick={() => setEditing(false)}>Cancel</Button><Button type="button" variant="primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</Button></div>
-      </> : null}
-    </> : null}
+        <div className="actions"><Button type="button" variant="primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</Button><Button type="button" onClick={() => setEditing(false)}>Cancel</Button></div>
+      </SidePanel>
+    ) : null}
   </Panel>;
 }
 
@@ -364,17 +360,17 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
     {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}
     {drain.failure === null ? null : <Alert>{drain.failure}</Alert>}
 
-    <div className="settings-row">
+    <div className="settings-row settings-row--stacked">
       <div className="settings-row__copy">
         <span className="settings-row__title">Root-key rotation</span>
         <span className="settings-row__detail">Three crash-safe phases over a dual-wrapped master. No key material crosses the wire. Between <strong>prepare</strong> and <strong>verify</strong> you install the new root at the primary source on the host. The instance stays bootable under either root and warns on every start until <strong>finalize</strong>. Run the phases in order; the server refuses one run out of turn.</span>
       </div>
-      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-root-key</code>
-      <div className="crypto-phases">
+      <div className="actions">
         <Button type="button" onClick={() => open('root-prepare')}>Prepare</Button>
         <Button type="button" onClick={() => open('root-verify')}>Verify</Button>
         <Button type="button" onClick={() => open('root-finalize')}>Finalize</Button>
       </div>
+      <code className="instance-cli">$ hikyo rotate-root-key</code>
     </div>
 
     <p className="field__hint"><span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation, break-glass, host-file custody and startup-only key material are local host authority. They are deliberately absent from every network surface: CLI-at-the-box, not CLI-over-network.</p>

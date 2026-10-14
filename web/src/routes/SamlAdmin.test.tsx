@@ -46,7 +46,7 @@ function setNativeValue(
 
 function button(container: HTMLElement, label: string): HTMLButtonElement {
   const found = [...container.querySelectorAll("button")].find(
-    (b) => b.textContent === label,
+    (b) => b.textContent?.trim() === label,
   );
   if (found === undefined) throw new Error(`button "${label}" is missing`);
   return found;
@@ -135,15 +135,15 @@ describe("SamlProvidersPanel metadata ceremony", () => {
     await settleTask();
 
     await act(async () =>
-      button(container, "+ configure SAML provider").click(),
+      button(container, "configure SAML provider").click(),
     );
     const inputs =
-      container.querySelectorAll<HTMLInputElement>(".saml-editor input");
+      container.querySelectorAll<HTMLInputElement>(".side-panel input");
     const slug = inputs[0];
     const name = inputs[1];
     const entity = inputs[2];
     const textarea = container.querySelector<HTMLTextAreaElement>(
-      ".saml-editor textarea",
+      ".side-panel textarea",
     );
     if (
       slug === undefined ||
@@ -165,11 +165,11 @@ describe("SamlProvidersPanel metadata ceremony", () => {
     expect(container.textContent).toContain("sha256:AAA");
 
     // Every policy field invalidates trust confirmation, not only metadata.
-    const assurance = container.querySelectorAll<HTMLTextAreaElement>('.saml-editor textarea')[1];
+    const assurance = container.querySelectorAll<HTMLTextAreaElement>('.side-panel textarea')[1];
     if (assurance === undefined) throw new Error('assurance field missing');
     const policyEdits = [
       () => setNativeValue(assurance, 'https://idp.example/mfa'),
-      ...[...container.querySelectorAll<HTMLInputElement>('.saml-editor input[type="checkbox"]')].map(
+      ...[...container.querySelectorAll<HTMLInputElement>('.side-panel input[type="checkbox"]')].map(
         (checkbox) => () => checkbox.click(),
       ),
     ];
@@ -202,7 +202,7 @@ describe("SamlProvidersPanel metadata ceremony", () => {
     });
     expect(container.textContent).toContain("Configured SAML provider acme");
     // The write-only metadata never survives a successful apply in the DOM…
-    expect(container.querySelector(".saml-editor")).toBeNull();
+    expect(container.querySelector(".side-panel")).toBeNull();
     // …nor in React Query's mutation cache: the ceremony resets the mutation so
     // the document is not recoverable from the client afterwards.
     const leaked = client
@@ -279,15 +279,15 @@ describe("SamlProvidersPanel metadata ceremony", () => {
     const { container, unmount } = await renderForm(<SamlProvidersPanel />);
     await settleTask();
     await act(async () =>
-      button(container, "+ configure SAML provider").click(),
+      button(container, "configure SAML provider").click(),
     );
     const inputs =
-      container.querySelectorAll<HTMLInputElement>(".saml-editor input");
+      container.querySelectorAll<HTMLInputElement>(".side-panel input");
     const slug = inputs[0];
     const name = inputs[1];
     const entity = inputs[2];
     const textarea = container.querySelector<HTMLTextAreaElement>(
-      ".saml-editor textarea",
+      ".side-panel textarea",
     );
     if (
       slug === undefined ||
@@ -309,12 +309,12 @@ describe("SamlProvidersPanel metadata ceremony", () => {
 
     // Edit to a different document while the preview response is still pending.
     const liveTextarea = container.querySelector<HTMLTextAreaElement>(
-      ".saml-editor textarea",
+      ".side-panel textarea",
     );
     if (liveTextarea === null) throw new Error("textarea vanished mid-preview");
     expect(liveTextarea.disabled).toBe(true);
     expect([...container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-      '.saml-editor input, .saml-editor select, .saml-editor textarea',
+      '.side-panel input, .side-panel select, .side-panel textarea',
     )].every((field) => field.disabled)).toBe(true);
     // A synthetic/programmatic edit must also invalidate the older response.
     await act(async () => setNativeValue(liveTextarea, "DOCUMENT_B"));

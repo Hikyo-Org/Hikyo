@@ -21,6 +21,7 @@ import type { MatrixRef } from '../api/keys.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Sep } from '../ui/Sep.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 
 type ScanBlockState = {
@@ -375,7 +376,7 @@ function GroupRow({
         />
         <span className="catalogue-manage__meta">
           {String(group.members.length)} {group.members.length === 1 ? 'key' : 'keys'}
-          {group.inert ? <span className="catalogue-manage__inert"> · needs at least two keys</span> : null}
+          {group.inert ? <span className="catalogue-manage__inert"><Sep />needs at least two keys</span> : null}
         </span>
         <Button
           type="button"

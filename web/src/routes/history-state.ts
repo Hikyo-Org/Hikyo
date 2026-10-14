@@ -15,6 +15,7 @@
  */
 
 import type { RetentionConsequence } from '@hikyo/client';
+import { duration } from '../app/duration.ts';
 
 type HistoryChangedKey = {
   readonly keyId: string;
@@ -233,15 +234,15 @@ export function pinExpiry(expiresAt: string, now: Date): PinExpiry {
     return { days, tier: 'day', text: '!!! expires today' };
   }
   if (remaining <= DAY_MS) {
-    return { days, tier: 'day', text: '!!! expires in 1 d' };
+    return { days, tier: 'day', text: `!!! expires in ${duration(DAY_MS / 1_000)}` };
   }
   if (remaining <= 7 * DAY_MS) {
-    return { days, tier: 'week', text: `!! expires in ${String(days)} d` };
+    return { days, tier: 'week', text: `!! expires in ${duration(days * 86_400)}` };
   }
   if (remaining <= 30 * DAY_MS) {
-    return { days, tier: 'month', text: `! expires in ${String(days)} d` };
+    return { days, tier: 'month', text: `! expires in ${duration(days * 86_400)}` };
   }
-  return { days, tier: 'ok', text: `expires in ${String(days)} d` };
+  return { days, tier: 'ok', text: `expires in ${duration(days * 86_400)}` };
 }
 
 export type HistoryRetention = {
@@ -292,9 +293,9 @@ export type HistoryImpactEnvironment = {
   readonly changes: readonly HistoryImpactChange[];
 };
 
-/** The per-environment heading above an impact group: "{env} · r{a} → r{b}". */
-export function impactHeading(environment: HistoryImpactEnvironment): string {
-  return `${environment.name} · r${String(environment.baseRevision)} → r${String(environment.baseRevision + 1n)}`;
+/** The revision step an impact group's heading shows after its environment: "r{a} → r{b}". */
+export function impactStep(environment: HistoryImpactEnvironment): string {
+  return `r${String(environment.baseRevision)} → r${String(environment.baseRevision + 1n)}`;
 }
 
 /** The publish button names EVERY environment the preview covers, never only the first. */
@@ -448,10 +449,9 @@ export function retentionLine(policy: HistoryRetention & {
       badgeTitle,
     };
   }
-  const days = Math.round(policy.maxAgeSeconds / (24 * 60 * 60));
   return {
     window:
-      `values kept: ${String(days)} d or the last ${String(policy.lastRevisions)} revisions, ` +
+      `values kept: ${duration(policy.maxAgeSeconds)} or the last ${String(policy.lastRevisions)} revisions, ` +
       'whichever is longer, plus pinned',
     badge,
     badgeTitle,

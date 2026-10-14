@@ -1,5 +1,5 @@
 import { useIsMutating } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useContext, useId, useState } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import {
@@ -44,11 +44,14 @@ import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { ConsequencesDialog, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { ConsequencesDialog, Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
+import { duration } from '../app/duration.ts';
+import { Sep } from '../ui/Sep.tsx';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 
@@ -88,23 +91,11 @@ export function ProjectSettings() {
 
   return (
     <div className="page page--chrome">
-      <h1>Project settings · {current?.name ?? 'project'}</h1>
+      <h1>Project settings<Sep />{current?.name ?? 'project'}</h1>
       <p className="page__lede">
         Rename this project, edit its metadata, and manage its environments; grants are edited
         on the members surface.
       </p>
-
-      <JumpIndex
-        sections={[
-          { id: 'project-identity', label: 'Identity' },
-          { id: 'project-metadata', label: 'Metadata' },
-          { id: 'project-environments', label: 'Environments' },
-          ...(canManagePolicy ? [{ id: 'project-policy', label: 'Policy' }] : []),
-          { id: 'project-access', label: 'Access' },
-          ...(prototypeMode ? [] : [{ id: 'project-keys', label: 'Keys & crypto' }]),
-          ...(canDelete ? [{ id: 'project-danger', label: 'Danger zone' }] : []),
-        ]}
-      />
 
       {projectQuery.isError ? (
         <Alert>
@@ -115,196 +106,211 @@ export function ProjectSettings() {
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
       {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
-      <Panel id="project-identity" title="Identity">
-        <ChromeIdentityControls
-          identityId={current?.id ?? project}
-          name={current?.name ?? 'project'}
-          kind="project"
-        />
-      </Panel>
-
-      <Panel id="project-metadata" title="Metadata" tight>
-        <div className="settings-grid">
-          <div className="field">
-            <label htmlFor={nameId}>Name</label>
-            {current === undefined ? (
-              <input id={nameId} disabled />
-            ) : (
-              // Remount on org/project switch: a half-typed draft never carries
-              // into another project, and a refetch no longer clobbers typing.
-              <NameEditor
-                key={`${org}/${project}`}
-                id={nameId}
-                project={project}
-                current={current}
-                rename={rename}
-                onRenamed={(renamed) => feedback.ok(`Renamed to ${renamed}.`)}
-                onFail={(error) => report('rename-project', error)}
+      <SectionTabs
+        label="Project settings sections"
+        idPrefix="project"
+        sections={[
+          { id: 'project-identity', label: 'Identity', content: (
+            <Panel id="project-identity" title="Identity">
+              <ChromeIdentityControls
+                identityId={current?.id ?? project}
+                name={current?.name ?? 'project'}
+                kind="project"
               />
-            )}
-          </div>
-        </div>
-      </Panel>
+            </Panel>
+          ) },
 
-      <Panel id="project-environments" title="Environments">
-        <p className="settings-note">
-          An environment is a named column of the matrix: every key gets its own explicit value in
-          each one. A project starts with none; add the first here before declaring keys.
-        </p>
-        {/* The environments-read failure is surfaced once, by the Policy panel
-            below (a visual-contract test pins the alert there); both panels read
-            the same query, so repeating it here would show it twice. */}
-        {environments.isError && !canManagePolicy ? <Alert>This project&apos;s environments could not be read.</Alert> : null}
-        {environments.isPending ? <p role="status">Loading environments…</p> : null}
-        {environments.isSuccess && environments.data.items.length === 0 ? (
-          <p role="status">This project holds no environments yet.</p>
-        ) : null}
-        {environments.isSuccess && environments.data.items.length > 0 ? (
-          <ul className="factors">
-            {environments.data.items.map((environment) => (
-              <li className="factor" key={environment.id}>
-                <strong className="mono">{environment.name}</strong>
-                <EnvironmentLifecycleActions
+          { id: 'project-metadata', label: 'Metadata', content: (
+            <Panel id="project-metadata" title="Metadata" tight>
+              <div className="settings-grid">
+                <div className="field">
+                  <label htmlFor={nameId}>Name</label>
+                  {current === undefined ? (
+                    <input id={nameId} disabled />
+                  ) : (
+                    // Remount on org/project switch: a half-typed draft never carries
+                    // into another project, and a refetch no longer clobbers typing.
+                    <NameEditor
+                      key={`${org}/${project}`}
+                      id={nameId}
+                      project={project}
+                      current={current}
+                      rename={rename}
+                      onRenamed={(renamed) => feedback.ok(`Renamed to ${renamed}.`)}
+                      onFail={(error) => report('rename-project', error)}
+                    />
+                  )}
+                </div>
+              </div>
+            </Panel>
+          ) },
+
+          { id: 'project-environments', label: 'Environments', content: (
+            <Panel id="project-environments" title="Environments">
+              <p className="settings-note">
+                An environment is a named column of the matrix: every key gets its own explicit value in
+                each one. A project starts with none; add the first here before declaring keys.
+              </p>
+              {environments.isError ? <Alert>This project&apos;s environments could not be read.</Alert> : null}
+              {environments.isPending ? <p role="status">Loading environments…</p> : null}
+              {environments.isSuccess && environments.data.items.length === 0 ? (
+                <p role="status">This project holds no environments yet.</p>
+              ) : null}
+              {environments.isSuccess && environments.data.items.length > 0 ? (
+                <ul className="factors">
+                  {environments.data.items.map((environment) => (
+                    <li className="factor" key={environment.id}>
+                      <strong className="mono">{environment.name}</strong>
+                      <EnvironmentLifecycleActions
+                        org={org}
+                        project={project}
+                        environment={environment}
+                        environments={environments.data.items}
+                        onDone={feedback.ok}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <NewEnvironment
+                org={org}
+                project={project}
+                disabled={current === undefined}
+                onDone={feedback.ok}
+              />
+            </Panel>
+          ) },
+
+          canManagePolicy && { id: 'project-policy', label: 'Policy', anchors: ['project-retention'], content: (
+            <Panel id="project-policy" title="Policy">
+              {environments.isError ? (
+                <Alert>This project&apos;s environments could not be read.</Alert>
+              ) : null}
+              {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
+              {environments.isSuccess ? (
+                <EnvironmentPolicy
                   org={org}
                   project={project}
-                  environment={environment}
                   environments={environments.data.items}
                   onDone={feedback.ok}
+                  onError={(error) => report('set-environment-settings', error)}
                 />
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <NewEnvironment
-          org={org}
-          project={project}
-          disabled={current === undefined}
-          onDone={feedback.ok}
-        />
-      </Panel>
+              ) : null}
+              {definitionsSettings.isPending ? (
+                <p role="status">Loading definitions policy…</p>
+              ) : null}
+              {definitionsSettings.isError ? (
+                <Alert>This project&apos;s definitions policy could not be read.</Alert>
+              ) : null}
+              {definitionsSettings.data === undefined ? null : (
+                <DefinitionsPolicy
+                  settings={definitionsSettings.data}
+                  busy={setDefinitionsSettings.isPending}
+                  onApply={(source) =>
+                    setDefinitionsSettings.mutate(source, {
+                      onSuccess: (result) =>
+                        feedback.ok(
+                          result.definitions_source === 'git'
+                            ? 'Definitions are now managed through Git apply.'
+                            : 'Definitions can now be edited through the database-backed interfaces.',
+                        ),
+                      onError: (error) => report('set-definitions-settings', error),
+                    })
+                  }
+                />
+              )}
+              {definitionsSettings.data === undefined || prototypeMode ? null : (
+                <DefinitionsBundlePanel key={`${org}/${project}`} org={org} project={project} settings={definitionsSettings.data} />
+              )}
+              <div id='project-retention'>
+              {orgRetention.isPending ? <p role="status">Loading the organisation cap…</p> : null}
+              {orgRetention.isError ? (
+                <Alert>The organisation retention cap could not be read.</Alert>
+              ) : null}
+              {projectRetention.isError ? (
+                <Alert>This project&apos;s retention policy could not be read.</Alert>
+              ) : null}
+              {projectRetention.data === undefined || orgRetention.data === undefined ? null : (
+                <CompactProjectRetention
+                  org={org}
+                  project={project}
+                  policy={projectRetention.data}
+                  orgPolicy={orgRetention.data}
+                  onDone={feedback.ok}
+                  onError={(error) => report('set-project-retention', error)}
+                />
+              )}
+              </div>
+              <p className="settings-note">
+                These are the project-settings capability&apos;s contents: the guards on the definitions
+                editor live apart from the editor they restrain.
+              </p>
+            </Panel>
+          ) },
 
-      {canManagePolicy ? <Panel id="project-policy" title="Policy">
-        {environments.isError ? (
-          <Alert>This project&apos;s environments could not be read.</Alert>
-        ) : null}
-        {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
-        {environments.isSuccess ? (
-          <EnvironmentPolicy
-            org={org}
-            project={project}
-            environments={environments.data.items}
-            onDone={feedback.ok}
-            onError={(error) => report('set-environment-settings', error)}
-          />
-        ) : null}
-        {definitionsSettings.isPending ? (
-          <p role="status">Loading definitions policy…</p>
-        ) : null}
-        {definitionsSettings.isError ? (
-          <Alert>This project&apos;s definitions policy could not be read.</Alert>
-        ) : null}
-        {definitionsSettings.data === undefined ? null : (
-          <DefinitionsPolicy
-            settings={definitionsSettings.data}
-            busy={setDefinitionsSettings.isPending}
-            onApply={(source) =>
-              setDefinitionsSettings.mutate(source, {
-                onSuccess: (result) =>
-                  feedback.ok(
-                    result.definitions_source === 'git'
-                      ? 'Definitions are now managed through Git apply.'
-                      : 'Definitions can now be edited through the database-backed interfaces.',
-                  ),
-                onError: (error) => report('set-definitions-settings', error),
-              })
-            }
-          />
-        )}
-        {definitionsSettings.data === undefined || prototypeMode ? null : (
-          <DefinitionsBundlePanel key={`${org}/${project}`} org={org} project={project} settings={definitionsSettings.data} />
-        )}
-        <div id="project-retention">
-        {orgRetention.isPending ? <p role="status">Loading the organisation cap…</p> : null}
-        {orgRetention.isError ? (
-          <Alert>The organisation retention cap could not be read.</Alert>
-        ) : null}
-        {projectRetention.isError ? (
-          <Alert>This project&apos;s retention policy could not be read.</Alert>
-        ) : null}
-        {projectRetention.data === undefined || orgRetention.data === undefined ? null : (
-          <CompactProjectRetention
-            org={org}
-            project={project}
-            policy={projectRetention.data}
-            orgPolicy={orgRetention.data}
-            onDone={feedback.ok}
-            onError={(error) => report('set-project-retention', error)}
-          />
-        )}
-        </div>
-        <p className="settings-note">
-          These are the project-settings capability&apos;s contents: the guards on the definitions
-          editor live apart from the editor they restrain.
-        </p>
-      </Panel> : null}
+          { id: 'project-access', label: 'Access', content: (
+            <Panel id="project-access" title="Access">
+              <div className="settings-row">
+                <div className="settings-row__copy">
+                  <span className="settings-row__title">Members</span>
+                  <span className="settings-row__detail">
+                    {prototypeMode
+                      ? '7 grant lines on this project'
+                      : 'Open the members surface to inspect project grants'}
+                  </span>
+                </div>
+                <span className="settings-row__spacer" />
+                <Link
+                  className="btn"
+                  to={`${generatePath(surfaceById('members').path, { org })}?project=${encodeURIComponent(project)}`}
+                >
+                  open members <Glyph name="arrow-right" />
+                </Link>
+              </div>
+              <p className="settings-note">
+                Entry point only: granting, revoking and inspection live on the members surface.
+              </p>
+            </Panel>
+          ) },
 
-      <Panel id="project-access" title="Access">
-        <div className="settings-row">
-          <div className="settings-row__copy">
-            <span className="settings-row__title">Members</span>
-            <span className="settings-row__detail">
-              {prototypeMode
-                ? '7 grant lines on this project'
-                : 'Open the members surface to inspect project grants'}
-            </span>
-          </div>
-          <span className="settings-row__spacer" />
-          <Link
-            className="btn"
-            to={`${generatePath(surfaceById('members').path, { org })}?project=${encodeURIComponent(project)}`}
-          >
-            open members →
-          </Link>
-        </div>
-        <p className="settings-note">
-          Entry point only: granting, revoking and inspection live on the members surface.
-        </p>
-      </Panel>
+          !prototypeMode && { id: 'project-keys', label: 'Keys & crypto', content: (
+            <Panel id="project-keys" title="Keys &amp; crypto">
+              <ProjectCryptoMaintenance
+                org={org}
+                project={project}
+                disabled={current === undefined}
+                onDone={feedback.ok}
+              />
+            </Panel>
+          ) },
 
-      {prototypeMode ? null : (
-        <Panel id="project-keys" title="Keys &amp; crypto">
-          <ProjectCryptoMaintenance
-            org={org}
-            project={project}
-            disabled={current === undefined}
-            onDone={feedback.ok}
-          />
-        </Panel>
-      )}
-
-      {canDelete ? <Panel id="project-danger" title="Danger zone" danger>
-        <TypedNameConfirm
-          key={current === undefined ? `pending-${project}` : current.id}
-          label="Delete this project"
-          expect={current === undefined ? null : current.name}
-          action="Delete project"
-          busy={remove.isPending}
-          hint={
-            <>
-              Deletion never cascades: a project that still holds any environment is refused.
-              Delete its environments first, deliberately and one at a time.
-            </>
-          }
-          onConfirm={() =>
-            remove.mutate(
-              { project },
-              {
-                onError: (error) => report('delete-project', error),
-              },
-            )
-          }
-        />
-      </Panel> : null}
+          canDelete && { id: 'project-danger', label: 'Danger zone', content: (
+            <Panel id="project-danger" title="Danger zone" danger>
+              <TypedNameConfirm
+                key={current === undefined ? `pending-${project}` : current.id}
+                label="Delete this project"
+                expect={current === undefined ? null : current.name}
+                action="Delete project"
+                busy={remove.isPending}
+                hint={
+                  <>
+                    Deletion never cascades: a project that still holds any environment is refused.
+                    Delete its environments first, deliberately and one at a time.
+                  </>
+                }
+                onConfirm={() =>
+                  remove.mutate(
+                    { project },
+                    {
+                      onError: (error) => report('delete-project', error),
+                    },
+                  )
+                }
+              />
+            </Panel>
+          ) },
+        ]}
+      />
     </div>
   );
 }
@@ -330,15 +336,17 @@ function NameEditor({
   onRenamed: (name: string) => void;
   onFail: (error: unknown) => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const name = draft ?? current.name;
   return (
     <input
       id={id}
       value={name}
+      disabled={readOnly}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => {
-        if (name === '' || name === current.name) return;
+        if (readOnly || name === '' || name === current.name) return;
         rename.mutate(
           { project, name },
           {
@@ -454,6 +462,7 @@ function DefinitionsPolicy({
   busy: boolean;
   onApply: (source: DefinitionsSettings['definitions_source']) => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   const sourceId = useId();
   const [source, setSource] = useState(settings.definitions_source);
 
@@ -477,8 +486,9 @@ function DefinitionsPolicy({
         id={sourceId}
         className="settings-select mono"
         value={source}
-        disabled={busy}
+        disabled={busy || readOnly}
         onChange={(event) => {
+          if (readOnly) return;
           const next = parseDefinitionsSource(event.currentTarget.value);
           setSource(next);
           onApply(next);
@@ -654,7 +664,12 @@ export function EnvironmentLifecycleActions({
 
   return (
     <details className="environment-lifecycle">
-      <summary>Manage {environment.name}</summary>
+      {/* A secondary button that expands: as bare
+          text with a marker it read as a label, not as something to press. */}
+      <summary className="btn">
+        <Glyph name="chevron" />
+        Manage {environment.name}
+      </summary>
 
       <form
         className="settings-row"
@@ -701,30 +716,31 @@ export function EnvironmentLifecycleActions({
       </form>
       {failure?.scope === 'rename' ? <Alert>{failure.text}</Alert> : null}
 
-      <div className="settings-row">
+      <div className="settings-row settings-row--stacked">
         <div className="settings-row__copy">
           <span className="settings-row__title">Order</span>
           <span className="settings-row__detail">
             move sends the complete project order as one atomic change
           </span>
         </div>
-        <span className="settings-row__spacer" />
-        <Button
-          type="button"
-          aria-label={`Move ${environment.name} up`}
-          disabled={busy || index === 0}
-          onClick={() => move(-1)}
-        >
-          Move up
-        </Button>
-        <Button
-          type="button"
-          aria-label={`Move ${environment.name} down`}
-          disabled={busy || index === environments.length - 1}
-          onClick={() => move(1)}
-        >
-          Move down
-        </Button>
+        <div className="actions">
+          <Button
+            type="button"
+            aria-label={`Move ${environment.name} up`}
+            disabled={busy || index === 0}
+            onClick={() => move(-1)}
+          >
+            Move up
+          </Button>
+          <Button
+            type="button"
+            aria-label={`Move ${environment.name} down`}
+            disabled={busy || index === environments.length - 1}
+            onClick={() => move(1)}
+          >
+            Move down
+          </Button>
+        </div>
       </div>
       {failure?.scope === 'order' ? <Alert>{failure.text}</Alert> : null}
 
@@ -817,6 +833,7 @@ function EnvironmentPolicy({
   onDone: (text: string) => void;
   onError: (error: unknown) => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   const protection = useEnvironmentSettings(org, project, environments);
   const save = useSetEnvironmentSettings(org, project);
   const windowId = useId();
@@ -829,59 +846,62 @@ function EnvironmentPolicy({
 
   return (
     <>
-      <div className="settings-row">
+      {/* Two or more buttons: the row stacks, its buttons one `.actions` row
+          under the copy, never split across the copy's line. */}
+      <div className="settings-row settings-row--stacked">
         <div className="settings-row__copy">
           <span className="settings-row__title">Protected environments</span>
           <span className="settings-row__detail">
             a protected environment caps the reveal window at 0: passkey per disclosure, no TOTP
           </span>
         </div>
-        <span className="settings-row__spacer" />
-        {environments.map((environment) => {
-          const state = protection.get(environment.id);
-          const ready = state?.status === 'ready';
-          const protectedFlag = ready && state.protected;
-          return (
-            <span className="environment-policy-control" key={environment.id}>
-              <Button
-                type="button"
-                variant="quiet"
-                disabled={!ready || save.isPending || windowBatchPending}
-                aria-pressed={protectedFlag}
-                onClick={() =>
-                  save.mutate(
-                    {
-                      environment: environment.id,
-                      protectedFlag: !protectedFlag,
-                      expectedProtected: protectedFlag,
-                      reauthWindowSeconds: protectedFlag ? Number(windowValue) : 0,
-                    },
-                    {
-                      onSuccess: (saved) =>
-                        onDone(
-                          saved.protected
-                            ? `${environment.name} is now protected.`
-                            : `${environment.name} is no longer protected.`,
-                        ),
-                      onError,
-                    },
-                  )
-                }
-              >
-                {protectedFlag ? <><Glyph name="lock" /> </> : null}{environment.name}
-              </Button>
-              {state?.status === 'unreadable' ? (
-                <span role="status">This environment&apos;s policy could not be read.</span>
-              ) : null}
-              {state?.status === 'forbidden' ? (
-                <Alert>You are not permitted to read this environment&apos;s policy.</Alert>
-              ) : null}
-              {state?.status === 'error' ? (
-                <Alert>This environment&apos;s policy failed to load. Reload to try again.</Alert>
-              ) : null}
-            </span>
-          );
-        })}
+        <div className="actions">
+          {environments.map((environment) => {
+            const state = protection.get(environment.id);
+            const ready = state?.status === 'ready';
+            const protectedFlag = ready && state.protected;
+            return (
+              <span className="environment-policy-control" key={environment.id}>
+                <Button
+                  type="button"
+                  variant="quiet"
+                  disabled={!ready || save.isPending || windowBatchPending}
+                  aria-pressed={protectedFlag}
+                  onClick={() =>
+                    save.mutate(
+                      {
+                        environment: environment.id,
+                        protectedFlag: !protectedFlag,
+                        expectedProtected: protectedFlag,
+                        reauthWindowSeconds: protectedFlag ? Number(windowValue) : 0,
+                      },
+                      {
+                        onSuccess: (saved) =>
+                          onDone(
+                            saved.protected
+                              ? `${environment.name} is now protected.`
+                              : `${environment.name} is no longer protected.`,
+                          ),
+                        onError,
+                      },
+                    )
+                  }
+                >
+                  {protectedFlag ? <><Glyph name="lock" /> </> : null}{environment.name}
+                </Button>
+                {state?.status === 'unreadable' ? (
+                  <span role="status">This environment&apos;s policy could not be read.</span>
+                ) : null}
+                {state?.status === 'forbidden' ? (
+                  <Alert>You are not permitted to read this environment&apos;s policy.</Alert>
+                ) : null}
+                {state?.status === 'error' ? (
+                  <Alert>This environment&apos;s policy failed to load. Reload to try again.</Alert>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
       </div>
       <div className="settings-row">
         <div className="settings-row__copy">
@@ -896,8 +916,9 @@ function EnvironmentPolicy({
           id={windowId}
           className="settings-select"
           value={windowValue}
-          disabled={save.isPending || windowBatchPending}
+          disabled={save.isPending || windowBatchPending || readOnly}
           onChange={async (event) => {
+            if (readOnly) return;
             const next = event.currentTarget.value;
             setWindowValue(next);
             const editable = environments.filter((environment) => {
@@ -925,13 +946,13 @@ function EnvironmentPolicy({
               onError(new Error(`Reveal-window update failed for: ${failed.join(', ')}. Every policy was refreshed; retry after reviewing the current values.`));
               return;
             }
-            onDone(`Reveal reauthentication window changed to ${next} seconds in ${String(editable.length)} environment${editable.length === 1 ? '' : 's'}.`);
+            onDone(`Reveal reauthentication window changed to ${duration(Number(next))} in ${String(editable.length)} environment${editable.length === 1 ? '' : 's'}.`);
           }}
         >
           <option value="0">0 (every disclosure)</option>
-          <option value="300">5m</option>
-          <option value="900">15m</option>
-          <option value="3600">60m</option>
+          <option value="300">{duration(300)}</option>
+          <option value="900">{duration(900)}</option>
+          <option value="3600">{duration(3600)}</option>
         </select>
       </div>
     </>
@@ -953,6 +974,7 @@ export function CompactProjectRetention({
   onDone: (text: string) => void;
   onError: (error: unknown) => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   const save = useSetProjectRetention(org, project);
   const policyKey = JSON.stringify([org, project, policy, orgPolicy]);
   const [draft, setDraft] = useState<{ policyKey: string; revisions: string; age: string } | null>(null);
@@ -981,6 +1003,7 @@ export function CompactProjectRetention({
     && own > cap;
 
   const apply = (inherited: boolean, revisions: number, age = Number(customAge)) => {
+    if (readOnly) return;
     if (draft !== null && draft.policyKey !== policyKey) {
       setDraft(null);
       setRefusal('The retention policy changed while you were editing. Review the current bounds and try again. Nothing was saved.');
@@ -1014,7 +1037,7 @@ export function CompactProjectRetention({
     );
   };
   const saveEdited = () => {
-    if (draft === null) return;
+    if (readOnly || draft === null) return;
     if (!policy.inherited && draft.policyKey === policyKey && Number(draft.revisions) === policy.last_revisions && Number(draft.age) === policy.max_age_seconds) {
       setDraft(null);
       return;
@@ -1044,7 +1067,7 @@ export function CompactProjectRetention({
           className="settings-select"
           aria-label="Retention mode"
           value={custom ? 'custom' : 'inherit'}
-          disabled={save.isPending}
+          disabled={save.isPending || readOnly}
           onChange={(event) => {
             const inherit = event.currentTarget.value === 'inherit';
             if (!inherit && customAge === '') {
@@ -1067,7 +1090,7 @@ export function CompactProjectRetention({
             max={orgPolicy.last_revisions ?? undefined}
             aria-label="Revisions kept per environment"
             value={customRevisions}
-            disabled={save.isPending}
+            disabled={save.isPending || readOnly}
             onChange={(event) => edit({ revisions: event.currentTarget.value })}
             onBlur={saveEdited}
           />
@@ -1078,7 +1101,7 @@ export function CompactProjectRetention({
           <div className="settings-row__copy"><span className="settings-row__title">Maximum retention age (seconds)</span></div>
           <span className="settings-row__spacer" />
           <input className="settings-input settings-input--compact" type="number" min="1"
-            aria-label="Maximum retention age (seconds)" value={customAge} disabled={save.isPending}
+            aria-label="Maximum retention age (seconds)" value={customAge} disabled={save.isPending || readOnly}
             onChange={(event) => edit({ age: event.currentTarget.value })} onBlur={saveEdited} />
         </div>
       ) : null}

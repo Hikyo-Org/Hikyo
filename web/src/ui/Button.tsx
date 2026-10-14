@@ -13,9 +13,12 @@ import { cx } from './cx.ts';
  * Variants carry a role, not a colour: `primary` is the one action a surface
  * leads with, `secondary` (default) every other action, `danger` a destructive
  * one (named in its text, colour only echoes), `quiet` a tertiary action that
- * sits inside a row or a panel header. Quiet is never shorter: it stands at
- * `--control` like every other button (36px on a fine pointer, the touch floor
- * on a coarse one) and recedes by padding and type size instead.
+ * sits inside a row or a panel header. A variant never changes the size: quiet
+ * recedes by its unfilled background only.
+ *
+ * One size, `--control` tall; an icon-only button is square. The smaller
+ * `btn--compact` class belongs to the matrix column header's anchor and
+ * summary (DESIGN.md, Button).
  *
  * `type` is deliberately not defaulted: native pass-through keeps behaviour
  * identical to a raw <button> (submit inside a form, plain button elsewhere).

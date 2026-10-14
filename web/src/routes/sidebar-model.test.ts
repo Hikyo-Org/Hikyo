@@ -5,10 +5,13 @@ import { isLinkActive, sidebarModel, type SidebarLink } from './sidebar-model.ts
 
 const base = {
   activeOrgId: 'org_1',
-  routeProjectId: '',
+  projectId: '',
   remote: '',
   isInstanceOperator: true,
   systemScope: null,
+  projects: [],
+  onOrgPage: false,
+  lastProjectId: '',
 };
 
 function mustFind(links: readonly SidebarLink[] | undefined, id: string): SidebarLink {
@@ -43,8 +46,24 @@ describe('sidebarModel', () => {
     expect(model.account.links.map((l) => l.to)).toEqual(['/settings']);
   });
 
+  it('greys out Overview when the organisation has exactly one project', () => {
+    const overview = (count: number | null) => {
+      const projects = count === null ? null : Array.from({ length: count }, (_, i) => ({ id: `prj_${String(i)}`, name: `P${String(i)}` }));
+      return mustFind(sidebarModel({ ...base, surface: surfaceById('projects'), projects }).organisation?.links, 'overview');
+    };
+    expect(overview(1)).toMatchObject({
+      label: 'Overview',
+      disabledReason: 'This organisation has one project, so it opens on its matrix.',
+      disabledNote: 'one project',
+    });
+    for (const count of [null, 0, 2]) {
+      expect(overview(count).disabledReason).toBeNull();
+      expect(overview(count).to).toBe('/');
+    }
+  });
+
   it('stacks the project block above the organisation block on a project route', () => {
-    const model = sidebarModel({ ...base, surface: surfaceById('matrix'), routeProjectId: 'prj_1' });
+    const model = sidebarModel({ ...base, surface: surfaceById('matrix'), projectId: 'prj_1' });
     expect(model.context?.kind).toBe('project');
     expect(model.context?.links.map((l) => [l.label, l.to])).toEqual([
       ['Environment matrix', '/orgs/org_1/projects/prj_1/matrix'],
@@ -64,7 +83,7 @@ describe('sidebarModel', () => {
     const model = sidebarModel({
       ...base,
       surface: surfaceById('matrix'),
-      routeProjectId: 'prj_1',
+      projectId: 'prj_1',
       remote: 'ew',
     });
     const links = model.context?.links;
@@ -111,8 +130,47 @@ describe('sidebarModel', () => {
     expect(model.instance).toBeNull();
   });
 
+  it('links back to the last-opened project on a page with no context block and no org-page fallback (account settings)', () => {
+    const model = sidebarModel({
+      ...base,
+      surface: surfaceById('settings'),
+      lastProjectId: 'prj_1',
+      projects: [{ id: 'prj_1', name: 'Billing platform' }],
+    });
+    expect(model.context).toBeNull();
+    expect(model.backToProject).toEqual({ label: 'Billing platform', to: '/orgs/org_1/projects/prj_1/matrix' });
+  });
+
+  it('falls back to the project list when no project is remembered', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('settings') });
+    expect(model.backToProject).toEqual({ label: 'Projects', to: '/projects' });
+  });
+
+  it('shows no back-link once a context block renders', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('matrix'), projectId: 'prj_1' });
+    expect(model.backToProject).toBeNull();
+  });
+
+  it('shows no back-link where the org-page project list already covers it', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('projects'), onOrgPage: true });
+    expect(model.context).toBeNull();
+    expect(model.orgProjectList).toBe(true);
+    expect(model.backToProject).toBeNull();
+  });
+
+  it('shows the back-link on an org page whose project list is not actually rendering (still loading)', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('projects'), onOrgPage: true, projects: null });
+    expect(model.orgProjectList).toBe(false);
+    expect(model.backToProject).toEqual({ label: 'Projects', to: '/projects' });
+  });
+
+  it('shows no back-link with no organisation active', () => {
+    const model = sidebarModel({ ...base, surface: surfaceById('settings'), activeOrgId: '' });
+    expect(model.backToProject).toBeNull();
+  });
+
   it('activates the filtered members projection only with its project query', () => {
-    const model = sidebarModel({ ...base, surface: surfaceById('members'), routeProjectId: 'prj_1' });
+    const model = sidebarModel({ ...base, surface: surfaceById('members'), projectId: 'prj_1' });
     const members = mustFind(model.context?.links, 'project-members');
     const orgMembers = mustFind(model.organisation?.links, 'members');
     expect(isLinkActive(members, '/orgs/org_1/members', '?project=prj_1')).toBe(true);
@@ -134,7 +192,7 @@ describe('sidebarModel in the Hikyo system scope', () => {
     const model = sidebarModel({
       ...base,
       surface: surfaceById('matrix'),
-      routeProjectId: 'prj_1',
+      projectId: 'prj_1',
       systemScope,
     });
     expect(model.context?.links.map((l) => l.label)).toEqual([
@@ -164,7 +222,7 @@ describe('sidebarModel in the Hikyo system scope', () => {
       ...base,
       surface: surfaceById('matrix'),
       activeOrgId: 'org_2',
-      routeProjectId: 'prj_2',
+      projectId: 'prj_2',
       systemScope,
     });
     expect(model.context?.links.map((l) => l.id)).toContain('machine-access');

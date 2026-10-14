@@ -65,8 +65,17 @@ export const Rules: Story = {
     // Alice's folder rule: its Where reads as labelled parts, its reach counts keys.
     await expect(canvas.getByRole('button', { name: 'Edit rule 2 of Alice Novak' })).toBeVisible();
     await expect(canvas.getAllByText(/only db\//).length).toBeGreaterThan(0);
-    await expect(canvas.getByText(/2 environments · 3 keys · can reveal 2 secret values · 1 protected/)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: '+ Add rule for Chen Li' })).toBeVisible();
+    // A Where value that may ellipsise in its column carries the full text as a title.
+    const keysValue = canvas.getAllByText(/only db\//)[0]?.closest('.access-where__value');
+    await expect(keysValue).toHaveAttribute('title', expect.stringContaining('db/'));
+    // The reach line's parts sit between <Sep/> elements, so match the paragraph's whole text.
+    await expect(
+      canvas.getByText((_, element) =>
+        element?.classList.contains('access-rule__reach') === true &&
+        /2 environments\s*·\s*3 keys\s*·\s*can reveal 2 secret values\s*·\s*1 protected/.test(element.textContent ?? ''),
+      ),
+    ).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Add rule for Chen Li' })).toBeVisible();
   },
 };
 
@@ -90,7 +99,7 @@ export const RulesOnAProject: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getAllByText("Also applies to other projects: change it on the organisation's Members page.")).toHaveLength(2);
     await expect(canvas.queryByRole('button', { name: /^Edit rule/ })).toBeNull();
-    await expect(canvas.getByRole('button', { name: '+ Add rule for Bob Tran' })).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Add rule for Bob Tran' })).toBeVisible();
   },
 };
 
@@ -233,7 +242,7 @@ export const WhoCan: Story = {
 
     const yes = within(canvas.getByRole('table', { name: 'Yes: 3' }));
     await expect(yes.getByRole('rowheader', { name: 'Sam Ortiz' })).toBeVisible();
-    await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('Machine');
+    await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('machine');
     await expect(yes.getAllByText('Scope-wide access: edit its card in Members.')).toHaveLength(2);
     const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));
     await expect(alice.getByText(/only db\//)).toBeVisible();

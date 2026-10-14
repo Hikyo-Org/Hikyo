@@ -22,19 +22,26 @@ describe('demo route boundary', () => {
     await unmount();
   });
 
-  it('keeps settings navigation while disabling form controls', async () => {
+  it('keeps project-settings navigation while disabling mutation controls', async () => {
+    const mutate = vi.fn();
     const { container, unmount } = await renderForm(
       <MemoryRouter>
         <DemoSurface id="project-settings">
           <a href="#metadata">Metadata</a>
-          <input aria-label="Project name" defaultValue="Sample project" />
-          <button type="button">Save</button>
+          <form onSubmit={mutate}>
+            <input aria-label="Project name" defaultValue="Sample project" />
+            <Button type="submit">Save</Button>
+          </form>
         </DemoSurface>
       </MemoryRouter>,
     );
-    expect(container.querySelector('fieldset')?.disabled).toBe(true);
     expect(container.querySelector('a')?.textContent).toBe('Metadata');
-    expect(container.textContent).toContain('Read-only in this demo');
+    expect(container.querySelector('button')?.disabled).toBe(true);
+    expect(container.textContent).toContain('Read-only sample data');
+    await act(async () => {
+      container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(mutate).not.toHaveBeenCalled();
     await unmount();
   });
 

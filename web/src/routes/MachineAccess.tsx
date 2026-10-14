@@ -36,6 +36,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { TabPanel, Tabs, type TabItem } from '../ui/Tabs.tsx';
 import {
   type IsMintSubmitting,
@@ -45,8 +46,9 @@ import {
 } from './mintLifecycle.ts';
 
 import { PolicyStrip } from './machineAccess/MachineRevealPolicy.tsx';
-import { ExpandableRow, ExpansionBody } from './machineAccess/AccountRows.tsx';
+import { AccountRow, AccountDetail } from './machineAccess/AccountRows.tsx';
 import { MintDialog } from './machineAccess/Credentials.tsx';
+import { useTabParam } from './Sections.tsx';
 import { BindingDialog, BindingCard } from './machineAccess/FederationBindings.tsx';
 import { GrantDialog } from './machineAccess/EnvironmentGrants.tsx';
 import { CreateAccountDialog, DeleteAccountDialog } from './machineAccess/AccountDialogs.tsx';
@@ -75,9 +77,11 @@ import {
  *  - **Write-only credential rows.** Prefix hint, kind, expiry in words,
  *    last used. Never the value: no route returns one after the mint, so there
  *    is nothing here that could render it.
- *  - **Row expansion leads with credentials and bindings (left), delivery
- *    targets and actions (right), and the five-step setup journey full-width
- *    below**, iteration 3's resolution, journey underneath rather than on top.
+ *  - **An account's detail leads with credentials and bindings (left),
+ *    delivery targets and actions (right), and the five-step setup journey
+ *    full-width below**. It opens in the side panel so the
+ *    inventory keeps its shape; the title and tabs are page chrome and each
+ *    tab's module is a card.
  *  - **Display-once mint.** A step-up naming the post-state formula, then the
  *    value exactly once, with a stored-confirmation checkbox gating dismiss.
  *    Rotation is the same flow: the prior value is never returned.
@@ -112,14 +116,6 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'ssh', label: 'SSH certificates' },
   { id: 'certificates', label: 'Certificates' },
 ];
-
-/**
- * tabLabel spells a count the surface knows and says "unknown" for one it does
- * not (a pending or failed listing is not zero).
- */
-export function tabLabel(label: string, count: number | 'unknown'): string {
-  return `${label} (${count === 'unknown' ? 'unknown' : String(count)})`;
-}
 
 /**
  * accountsRefusalText names the listing failure without inventing a cause.
@@ -178,8 +174,8 @@ export function MachineAccessPage() {
   const grants = useMemo(() => grantsQuery.data?.items ?? [], [grantsQuery.data]);
   const credentials = useCredentials(project, accounts);
 
-  const [tab, setTab] = useState<Tab>('accounts');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [tab, setTab] = useTabParam(TABS.map((entry) => entry.id));
+  const [panelAccountId, setPanelAccountId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -208,6 +204,7 @@ export function MachineAccessPage() {
   // this covers the setDialog-based dialogs.
   useResetOnChange(boundarySignature, () => {
     setDialog(null);
+    setPanelAccountId(null);
     setLeaseMintOpen(false);
     setLeaseAction(null);
   });
@@ -307,7 +304,9 @@ export function MachineAccessPage() {
     mintableProviders.length > 0 &&
     environments.length > 0;
 
-  const tabCount: Record<Tab, number | 'unknown'> = {
+  // SSH objects are read per environment inside the SSH tab; a project-wide
+  // count would need a fan-out of new reads, so that tab carries none.
+  const tabCount: Record<Exclude<Tab, 'ssh'>, number | 'unknown'> = {
     accounts: accountsQuery.isSuccess ? accounts.length : 'unknown',
     // Unknown is rendered as unknown: "Federation (0)" on a failed listing
     // reads as "there are none", which is the one thing it does not know.
@@ -319,14 +318,13 @@ export function MachineAccessPage() {
       : 'unknown',
     providers: providersQuery.isSuccess ? providers.length : 'unknown',
     leases: leases.isPending || leases.isError ? 'unknown' : leases.rows.length,
-    // SSH objects are per environment; the tab carries no project-wide count.
-    ssh: 'unknown',
     certificates: certificateCount(certificates),
   };
   const unknownLeases = leases.rows.filter((row) => row.lease.state === 'unknown').length;
   const countedTabs: readonly TabItem<Tab>[] = TABS.map((entry) => ({
     id: entry.id,
-    label: entry.id === 'ssh' ? entry.label : tabLabel(entry.label, tabCount[entry.id]),
+    label: entry.label,
+    ...(entry.id === 'ssh' ? {} : { count: tabCount[entry.id] }),
   }));
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
@@ -344,12 +342,40 @@ export function MachineAccessPage() {
   };
 
   const activeMintLifecycle = mint.active;
+  // The account whose detail the side panel shows; gone from the listing (a
+  // delete, another project) means no panel.
+  const panelAccount =
+    tab === 'accounts' ? accounts.find((candidate) => candidate.id === panelAccountId) : undefined;
+
+  // The outcome of the last act. It renders where the act was taken: in the
+  // side panel while it is open (the page behind is under its scrim), on the
+  // page otherwise.
+  const outcome = (
+    <>
+      {refusal !== null ? <Alert>{refusal}</Alert> : null}
+
+      {credentials.isPending && !credentials.isError && accounts.length > 0 ? (
+        <p className="notice" role="status">{/* markup-check: in-flight status, transient */}
+          <Glyph name="wait" className="alert__glyph" />
+          <span>Reading credentials…</span>
+        </p>
+      ) : null}
+
+      {notice !== null ? <Alert tone="done">{notice}</Alert> : null}
+    </>
+  );
 
   return (
-    <section className="card card--wide machine" aria-labelledby="machine-title">
-      <header className="values__head">
-        <h1 id="machine-title">Machine access</h1>
-      </header>
+    <div className="page page--chrome machine">
+      <h1 id="machine-title">Machine access</h1>
+
+      <Tabs
+        label="Machine access sections"
+        idPrefix="machine"
+        tabs={countedTabs}
+        selected={tab}
+        onSelect={setTab}
+      />
 
       {accountsQuery.isError ? (
         <Alert>{accountsRefusalText(accountsQuery.error)}</Alert>
@@ -378,36 +404,14 @@ export function MachineAccessPage() {
         </Alert>
       ) : null}
 
-      {refusal !== null ? (
-        <Alert>{refusal}</Alert>
-      ) : null}
-
-      {credentials.isPending && !credentials.isError && accounts.length > 0 ? (
-        <p className="notice" role="status">{/* markup-check: in-flight status, transient */}
-          <span className="alert__glyph" aria-hidden="true">
-            <Glyph name="ellipsis" />
-          </span>
-          <span>Reading credentials…</span>
-        </p>
-      ) : null}
-
-      {notice !== null ? (
-        <Alert tone="done">{notice}</Alert>
-      ) : null}
-
-      <Tabs
-        label="Machine access sections"
-        idPrefix="machine"
-        tabs={countedTabs}
-        selected={tab}
-        onSelect={setTab}
-      />
+      {panelAccount === undefined ? outcome : null}
 
       <TabPanel idPrefix="machine" selected={tab}>
         {tab === 'accounts' ? (
-          <>
+          <section className="card machine__card" aria-labelledby="machine-accounts-title">
+            <h2 id="machine-accounts-title">Service accounts</h2>
             <PolicyStrip key={boundarySignature} project={project} />
-            <p className="machine__actions">
+            <div className="actions">
               <Button
                 variant="primary"
                 type="button"
@@ -416,7 +420,8 @@ export function MachineAccessPage() {
               >
                 Create service account
               </Button>
-            </p>
+            </div>
+            <div className="table-scroll">
             <table className="values__table machine__table">
               <caption className="visually-hidden">
                 The project&apos;s service accounts. Credential values are never listed: a value is
@@ -426,7 +431,7 @@ export function MachineAccessPage() {
                 <tr>
                   <th scope="col">Service account</th>
                   <th scope="col">Kind</th>
-                  <th scope="col">Read scope (◆ = reveal)</th>
+                  <th scope="col">Read scope (<Glyph name="reveal" label="eye" /> = reveal)</th>
                   <th scope="col" className="col-secondary">
                     Credentials
                   </th>
@@ -440,49 +445,26 @@ export function MachineAccessPage() {
                 {accounts.map((sa) => {
                   const rows = credentialsFor(sa);
                   const scope = scopeFor(sa);
-                  const open = expanded === sa.id;
                   const newest = showable(rows)
                     .map((c) => c.last_used_at)
                     .filter((at): at is string => at !== undefined)
                     .sort()
                     .at(-1);
                   return (
-                    <ExpandableRow
+                    <AccountRow
                       key={sa.id}
                       account={sa}
                       scope={scope}
-                      open={open}
                       scopeKnown={grantsQuery.isSuccess && environmentsQuery.isSuccess}
                       machineReveal={machineReveal}
                       lastUsed={newest === undefined ? 'never' : isoDay(newest)}
-                      onToggle={() => setExpanded(open ? null : sa.id)}
-                    >
-                      <ExpansionBody
-                        account={sa}
-                        scope={scope}
-                        machineReveal={machineReveal}
-                        deliveryTargets={deliveryTargets}
-                        targetsKnown={targetsKnown}
-                        reportingUnsupported={deliveryTargets.support === 'unsupported'}
-                        bearers={bearers(rows)}
-                        bindings={bindings(rows)}
-                        now={now}
-                        ready={inputsReady}
-                        canDelete={canAdminister}
-                        onMint={(rotating) => reviewMint(sa, rotating)}
-                        onBind={() => setDialog({ kind: 'binding', account: sa })}
-                        onGrant={() => setDialog({ kind: 'grant', account: sa })}
-                        onRevoke={(credential) => doRevoke(sa, credential)}
-                        onReplaceBinding={(credential) =>
-                          setDialog({ kind: 'binding', account: sa, replaces: credential })
-                        }
-                        onDelete={() => setDialog({ kind: 'delete', account: sa })}
-                      />
-                    </ExpandableRow>
+                      onOpen={() => setPanelAccountId(sa.id)}
+                    />
                   );
                 })}
               </tbody>
             </table>
+            </div>
             {accounts.length === 0 && !accountsQuery.isPending && !accountsQuery.isError ? (
               <p role="status">
                 No service accounts on this project yet. Create one above: a browser operator seeds
@@ -494,12 +476,12 @@ export function MachineAccessPage() {
               are write-only: displayed exactly once at mint, never retrievable, and rotation never
               returns the prior value.
             </p>
-          </>
+          </section>
         ) : null}
 
         {tab === 'federation' ? (
-          <>
-            <h2>Federated bindings</h2>
+          <section className="card machine__card" aria-labelledby="machine-federation-title">
+            <h2 id="machine-federation-title">Federated bindings</h2>
             <p className="machine__lede">
               An external OIDC identity is bound to exactly one service account by a byte-exact
               (issuer, subject) pair, no wildcards, no case folding, no just-in-time provisioning.
@@ -507,7 +489,7 @@ export function MachineAccessPage() {
               credential and is immutable: renewal is a mint.
             </p>
             {accounts.length > 0 ? (
-              <p className="machine__actions">
+              <div className="actions">
                 <Button
                   variant="primary"
                   type="button"
@@ -521,7 +503,7 @@ export function MachineAccessPage() {
                 >
                   New binding
                 </Button>
-              </p>
+              </div>
             ) : null}
             {credentials.isPending || credentials.isError ? (
               <p role="status">
@@ -551,7 +533,7 @@ export function MachineAccessPage() {
                 ))}
               </ul>
             )}
-          </>
+          </section>
         ) : null}
 
         {tab === 'kubernetes' ? (
@@ -565,14 +547,14 @@ export function MachineAccessPage() {
         ) : null}
 
         {tab === 'providers' ? (
-          <>
-            <h2>Dynamic-secret providers</h2>
+          <section className="card machine__card" aria-labelledby="machine-providers-title">
+            <h2 id="machine-providers-title">Dynamic-secret providers</h2>
             <p className="machine__lede">
               Where Hikyo mints short-lived credentials. A provider is project-scoped, always
               connects over <code>verify-full</code> TLS, and its admin credential is write-only,
               set or replaced, never read back. Every minted lease role inherits the grant role.
             </p>
-            <p className="machine__actions">
+            <div className="actions">
               <Button
                 variant="primary"
                 type="button"
@@ -585,7 +567,8 @@ export function MachineAccessPage() {
               >
                 Configure provider
               </Button>
-            </p>
+            </div>
+            <div className="table-scroll">
             <table className="values__table machine__table">
               <caption className="visually-hidden">
                 The project&apos;s dynamic-secret providers. The admin credential is never listed.
@@ -625,7 +608,7 @@ export function MachineAccessPage() {
                     <td className="col-secondary">{provider.state}</td>
                     <td>
                       {provider.state === 'active' ? (
-                        <span className="machine__row-actions">
+                        <div className="actions">
                           <Button
                             type="button"
                             disabled={!canAdministerProviders}
@@ -663,7 +646,7 @@ export function MachineAccessPage() {
                           >
                             Delete
                           </Button>
-                        </span>
+                        </div>
                       ) : (
                         <span className="values__absent">none</span>
                       )}
@@ -672,6 +655,7 @@ export function MachineAccessPage() {
                 ))}
               </tbody>
             </table>
+            </div>
             {providersQuery.isError ? (
               <p role="status">The providers could not be read.</p>
             ) : providers.length === 0 && !providersQuery.isPending ? (
@@ -680,7 +664,7 @@ export function MachineAccessPage() {
                 credentials.
               </p>
             ) : null}
-          </>
+          </section>
         ) : null}
 
         {tab === 'certificates' ? (
@@ -688,14 +672,14 @@ export function MachineAccessPage() {
         ) : null}
 
         {tab === 'leases' ? (
-          <>
-            <h2>Dynamic-secret leases</h2>
+          <section className="card machine__card" aria-labelledby="machine-leases-title">
+            <h2 id="machine-leases-title">Dynamic-secret leases</h2>
             <p className="machine__lede">
               Short-lived credentials Hikyo minted at a provider. Status and metadata only: the
               password is disclosed once, at mint, and never shown again. Renew, revoke and settle
               are queued: the worker carries them out and the row moves when it does.
             </p>
-            <p className="machine__actions">
+            <div className="actions">
               <Button
                 variant="primary"
                 type="button"
@@ -708,12 +692,13 @@ export function MachineAccessPage() {
               >
                 Mint lease
               </Button>
-              {!canMintLease && providersQuery.isSuccess && mintableProviders.length === 0 ? (
-                <span className="machine__hint">
-                  Configure a provider with a credential first: a lease is minted against one.
-                </span>
-              ) : null}
-            </p>
+            </div>
+            {!canMintLease && providersQuery.isSuccess && mintableProviders.length === 0 ? (
+              <p className="machine__hint">
+                Configure a provider with a credential first: a lease is minted against one.
+              </p>
+            ) : null}
+            <div className="table-scroll">
             <table className="values__table machine__table">
               <caption className="visually-hidden">
                 The project&apos;s dynamic-secret leases across every environment. No secret value is
@@ -757,7 +742,7 @@ export function MachineAccessPage() {
                       </td>
                       <td>
                         {state === 'unknown' ? (
-                          <Badge tone="changed">unknown, awaiting reconcile</Badge>
+                          <Badge tone="changed" icon="wait">unknown, awaiting reconcile</Badge>
                         ) : (
                           state
                         )}
@@ -770,7 +755,7 @@ export function MachineAccessPage() {
                       <td className="col-secondary">{row.lease.principal_class}</td>
                       <td>
                         {liveSessionId !== null && (canRenew || canRevoke || canSettle) ? (
-                          <span className="machine__row-actions">
+                          <div className="actions">
                             {canRenew ? (
                               <Button type="button" onClick={() => openAction('renew')}>
                                 Renew
@@ -792,7 +777,7 @@ export function MachineAccessPage() {
                                 Revoke
                               </Button>
                             ) : null}
-                          </span>
+                          </div>
                         ) : (
                           <span className="values__absent">none</span>
                         )}
@@ -802,6 +787,7 @@ export function MachineAccessPage() {
                 })}
               </tbody>
             </table>
+            </div>
             {unknownLeases === 0 ? null : (
               <p role="status" className="machine__hint">
                 {`${String(unknownLeases)} lease${unknownLeases === 1 ? '' : 's'} awaiting reconcile`}
@@ -814,7 +800,7 @@ export function MachineAccessPage() {
                 No dynamic-secret leases on this project yet. Configure a provider and mint one.
               </p>
             ) : null}
-          </>
+          </section>
         ) : null}
         {tab === 'ssh' ? (
           <SSHCertificatesPanel
@@ -831,6 +817,43 @@ export function MachineAccessPage() {
           />
         ) : null}
       </TabPanel>
+
+      {panelAccount === undefined ? null : (
+        <SidePanel
+          label={`Service account ${panelAccount.name}`}
+          className="machine__sub"
+          onClose={() => setPanelAccountId(null)}
+          fallbackFocus={() => document.querySelector<HTMLElement>('.machine__table .values__keyname')}
+          title={<span className="mono">{panelAccount.name}</span>}
+        >
+          <p>
+            <Badge icon={panelAccount.kind}>{panelAccount.kind}</Badge>
+          </p>
+          {outcome}
+          <AccountDetail
+            account={panelAccount}
+            scope={scopeFor(panelAccount)}
+            machineReveal={machineReveal}
+            deliveryTargets={deliveryTargets}
+            targetsKnown={targetsKnown}
+            reportingUnsupported={deliveryTargets.support === 'unsupported'}
+            bearers={bearers(credentialsFor(panelAccount))}
+            bindings={bindings(credentialsFor(panelAccount))}
+            now={now}
+            ready={inputsReady}
+            canDelete={canAdminister}
+            onMint={(rotating) => reviewMint(panelAccount, rotating)}
+            onBind={() => setDialog({ kind: 'binding', account: panelAccount })}
+            onGrant={() => setDialog({ kind: 'grant', account: panelAccount })}
+            onRevoke={(credential) => doRevoke(panelAccount, credential)}
+            onReplaceBinding={(credential) =>
+              setDialog({ kind: 'binding', account: panelAccount, replaces: credential })
+            }
+            onDelete={() => setDialog({ kind: 'delete', account: panelAccount })}
+            onLeave={() => setPanelAccountId(null)}
+          />
+        </SidePanel>
+      )}
 
       {activeMintLifecycle.kind !== 'idle' ? (
         <MintDialog
@@ -906,10 +929,10 @@ export function MachineAccessPage() {
           onClose={() => setDialog(null)}
           onDeleted={(name) => {
             setDialog(null);
-            // The expanded row is gone; collapse before its listing is removed
-            // so nothing tries to render a deleted account's expansion.
-            if (expanded === dialog.account.id) {
-              setExpanded(null);
+            // The account is gone; close its panel before its listing is removed
+            // so nothing tries to render a deleted account's detail.
+            if (panelAccountId === dialog.account.id) {
+              setPanelAccountId(null);
             }
             setNotice(
               `Deleted ${name}. Every credential it held is revoked and every grant released, atomically, and this cannot be undone.`,
@@ -1006,6 +1029,6 @@ export function MachineAccessPage() {
           }}
         />
       ) : null}
-    </section>
+    </div>
   );
 }

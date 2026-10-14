@@ -37,7 +37,7 @@ import { notifyUpdate } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
-import { ThemeIcon } from '../ui/ThemeIcon.tsx';
+import { Sep } from '../ui/Sep.tsx';
 import {
   CHROME_IDENTITY_EVENT,
   chromeIdentityMark,
@@ -84,6 +84,32 @@ export function useProjectSidebar(state: ProjectSidebarState): void {
     publish?.(state);
     return () => publish?.(null);
   }, [publish, state]);
+}
+
+/**
+ * The project last opened in each organisation, for this browser tab: the
+ * sidebar keeps it on organisation pages. sessionStorage so a reload keeps it;
+ * any storage failure only means the project list shows instead.
+ */
+const LAST_PROJECTS_KEY = 'hikyo.lastProject';
+
+function readLastProjects(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(sessionStorage.getItem(LAST_PROJECTS_KEY) ?? '{}');
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLastProjects(last: Record<string, string>): void {
+  try {
+    sessionStorage.setItem(LAST_PROJECTS_KEY, JSON.stringify(last));
+  } catch {
+    // Storage refused: the choice lives for this page only.
+  }
 }
 
 /** Human-readable GiB for the storage high-water banner. */
@@ -204,6 +230,24 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
   const routedProjectId = routedProject?.id;
   useRoutedChoice(routedProjectId, setChosenProjectId);
+  const [lastProjects, setLastProjects] = useState(readLastProjects);
+  // A routed project is remembered for its organisation, the same render-time
+  // choice the rail makes (idempotent, so a repeated render writes nothing new).
+  useRoutedChoice(
+    routedProjectId === undefined || activeOrgId === '' ? undefined : routedProjectId,
+    (project) => {
+      if (lastProjects[activeOrgId] === project) return;
+      setLastProjects({ ...lastProjects, [activeOrgId]: project });
+    },
+  );
+  useEffect(() => writeLastProjects(lastProjects), [lastProjects]);
+  // The project block on an organisation page: the project last opened in
+  // this organisation, while it still exists; none opened yet means the
+  // project list takes its place.
+  const onOrgPage = here?.surface.section === 'organisation' && routeProjectId === '';
+  const rememberedProject = onOrgPage
+    ? projectItems.find((project) => project.id === lastProjects[activeOrgId])
+    : undefined;
   const activeProjectId =
     routeProjectId !== ''
       ? routedProject?.id ?? routeProjectId
@@ -337,15 +381,19 @@ export function Shell({ session }: { session: WhoAmI }) {
   const model = sidebarModel({
     surface: here?.surface,
     activeOrgId,
-    // The route's project, resolved to its id where the listing knows it.
-    routeProjectId: routeProjectId === '' ? '' : activeProjectId,
+    // The route's project, resolved to its id where the listing knows it, or
+    // on an organisation page the one last opened there.
+    projectId: routeProjectId !== '' ? activeProjectId : rememberedProject?.id ?? '',
     remote,
     isInstanceOperator,
     systemScope,
+    projects: projects.isSuccess ? projectItems : null,
+    onOrgPage,
+    lastProjectId: lastProjects[activeOrgId] ?? '',
   });
 
   return (
-    <div className="chrome" data-nav={navOpen ? 'open' : 'closed'}>
+    <div className="chrome sand" data-nav={navOpen ? 'open' : 'closed'}>
       <a className="skip" href="#content" tabIndex={navOpen ? -1 : undefined}
         onClick={isDemo ? (event) => {
           event.preventDefault();
@@ -417,7 +465,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             aria-label={surfaceById('instance-admin').label}
             title={surfaceById('instance-admin').label}
           >
-            <span aria-hidden="true">⚙</span>
+            <Glyph name="settings" />
           </NavLink>
         ) : null}
         <span className="rail__account-space" aria-hidden="true" />
@@ -437,7 +485,7 @@ export function Shell({ session }: { session: WhoAmI }) {
           aria-label="Close navigation"
           onClick={dismissNavigation}
         >
-          <span aria-hidden="true">×</span>
+          <Glyph name="cross" />
         </Button>
         {items.length < 2 ? null : (
           <section
@@ -490,6 +538,16 @@ export function Shell({ session }: { session: WhoAmI }) {
         {orgs.isError ? (
           <Alert>Your organisations could not be loaded. Reload to try again.</Alert>
         ) : null}
+        {/* Neither the project block below nor the org-page project list after
+            it renders here (account settings today):
+            `model.backToProject` is the one link back, so the menu never
+            strands the reader with no way back to a project. */}
+        {model.backToProject === null ? null : (
+          <Link className="sidebar__link sidebar__back" to={model.backToProject.to} onClick={onSidebarNavigate}>
+            <Glyph name="arrow-left" />
+            {model.backToProject.label}
+          </Link>
+        )}
         {/* The context block (project or instance) stacks ABOVE the organisation
             block, which is never hidden: every destination stays reachable in
             every mode, and both blocks render from the same table (#567). The
@@ -501,12 +559,36 @@ export function Shell({ session }: { session: WhoAmI }) {
           <ProjectContext
             org={activeOrgId}
             orgName={activeOrgName}
-            projectName={activeProjectName}
+            projectName={rememberedProject?.name ?? activeProjectName}
             orgRole={activeOrgRole}
             links={model.context.links}
             state={projectSidebar}
             onNavigate={onSidebarNavigate}
           />
+        ) : null}
+        {model.orgProjectList ? (
+          <section className="sidebar__section sidebar__section--projects" aria-labelledby="sidebar-projects-title">
+            <h2 id="sidebar-projects-title">Projects</h2>
+            {projectItems.length === 0 ? (
+              <p className="sidebar__empty" role="status">No projects yet. Create one under Projects.</p>
+            ) : (
+              <ul className="sidebar__items">
+                {projectItems.map((project) => (
+                  <li key={project.id}>
+                    <SidebarLinkItem
+                      link={{
+                        id: 'matrix',
+                        label: project.name,
+                        to: generatePath(surfaceById('matrix').path, { org: activeOrgId, project: project.id }),
+                        disabledReason: null,
+                      }}
+                      onNavigate={onSidebarNavigate}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         ) : null}
         {model.context?.kind === 'instance' ? (
           <InstanceContext links={model.context.links} onNavigate={onSidebarNavigate} />
@@ -514,7 +596,7 @@ export function Shell({ session }: { session: WhoAmI }) {
         {model.organisation === null ? null : (
           <SidebarSection block={model.organisation} onNavigate={onSidebarNavigate} />
         )}
-        {activeOrgId === '' ? null : (
+        {activeOrgId === '' || model.orgProjectList ? null : (
           <section
             className="sidebar__section sidebar__mobile-only sidebar__mobile-projects"
             aria-labelledby="mobile-projects-title"
@@ -569,18 +651,20 @@ export function Shell({ session }: { session: WhoAmI }) {
         <header className="header">
           <Button
             type="button"
+            icon
             className="nav-toggle"
             ref={navToggleRef}
+            aria-label="Menu"
             aria-expanded={navOpen}
             aria-controls="sidebar"
             onClick={() => setNavOpen((open) => !open)}
           >
-            Menu
+            <Glyph name="menu" />
           </Button>
           <ol className="header__crumbs" aria-label="Breadcrumb">
             {crumbs.map((crumb, index) => (
               <li
-                key={`${crumb}-${String(index)}`}
+                key={`${crumb.label}-${String(index)}`}
                 data-crumb={index === 0 ? 'root' : index === crumbs.length - 1 ? 'surface' : 'scope'}
               >
                 {index === 0 ? null : (
@@ -588,7 +672,11 @@ export function Shell({ session }: { session: WhoAmI }) {
                     /
                   </span>
                 )}
-                <span>{crumb}</span>
+                {crumb.to === undefined ? (
+                  <span title={crumb.label}>{crumb.label}</span>
+                ) : (
+                  <Link className="header__crumb-link" to={crumb.to} title={crumb.label}>{crumb.label}</Link>
+                )}
               </li>
             ))}
           </ol>
@@ -601,7 +689,7 @@ export function Shell({ session }: { session: WhoAmI }) {
                the one thing its shape promises. */
             <span className="header__identity">
               <span className="header__identity-label">acting as</span>
-              <span className="mono">alex · 2 orgs · org+instance admin</span>
+              <span className="mono">alex<Sep />2 orgs<Sep />org+instance admin</span>
             </span>
           ) : (
             <span className="header__identity">
@@ -653,7 +741,7 @@ export function Shell({ session }: { session: WhoAmI }) {
         {/* This is the app's scroll container. `tabIndex=0` both gives the skip
             link a focus target and lets keyboard users operate the region when
             its content overflows on a phone. */}
-        <main className="content" id="content" tabIndex={0}>
+        <main className="content veil" id="content" tabIndex={0}>
           <StepUpBanner session={session} />
           <ProjectSidebarPublisher.Provider value={setProjectSidebar}>
             <Outlet context={{ activeOrgId }} />
@@ -673,7 +761,7 @@ export function SidebarLinkItem({
 }) {
   const location = useLocation();
   if (isDemo && !demoSurfaceAvailable(link.id)) {
-    return <span className="sidebar__link sidebar__link--disabled" aria-disabled="true" title="Not available in the demo">{link.label} · unavailable</span>;
+    return <span className="sidebar__link sidebar__link--disabled" aria-disabled="true" title="Not available in the demo">{link.label}<Sep />unavailable</span>;
   }
   if (link.disabledReason !== null) {
     return (
@@ -682,7 +770,7 @@ export function SidebarLinkItem({
         aria-disabled="true"
         title={link.disabledReason}
       >
-        {`${link.label} · local only`}
+        {link.label}<Sep />{link.disabledNote ?? 'local only'}
       </span>
     );
   }
@@ -790,7 +878,7 @@ export function ProjectContext({
         </span>
       </div>
       <h2 id="context-sidebar-title">
-        <span>Project · </span>
+        <span>Project<Sep /></span>
         {projectName}
       </h2>
       <nav aria-label="Project">
@@ -818,7 +906,7 @@ export function ProjectContext({
                     <span className="context-sidebar__group-count">{String(group.keyCount)}</span>
                   ) : (
                     <span className="matrix__count count">
-                      <span className="count__glyph" aria-hidden="true">!</span>
+                      <Glyph name="warn" className="count__glyph" />
                       {String(group.problemCount)}
                     </span>
                   )}
@@ -835,8 +923,7 @@ export function ProjectContext({
                 }}
               >
                 <span>
-                  <span aria-hidden="true">⚠ </span>
-                  problems
+                  <Glyph name="warn" /> Problems
                 </span>
                 <span className="matrix__count count">{String(state.problemCount)}</span>
               </button>
@@ -1079,7 +1166,7 @@ export function ThemeToggle() {
       // so the state survives forced-colors, where the fills are repainted.
       aria-label={`Switch to ${next} theme`}
     >
-      <ThemeIcon dark={current === 'dark'} />
+      <Glyph name={current === 'dark' ? 'moon' : 'sun'} />
     </Button>
   );
 }
@@ -1102,10 +1189,18 @@ function matchedSurface(
   return undefined;
 }
 
+type Crumb = {
+  readonly label: string;
+  /** Omitted for the root and the current page: neither is a navigation target. */
+  readonly to?: string;
+};
+
 /**
  * breadcrumbs is the header trail as data: root, then the scope names the
  * route carries, then the surface's own label from the navigation table so
- * every trail ends in the same casing the sidebar uses.
+ * every trail ends in the same casing the sidebar uses. Every scope crumb
+ * (org, project) links to its level, the same targets the rail and sidebar
+ * use to get there; the root and the current page never link anywhere.
  */
 export function breadcrumbs(input: {
   readonly surface: Surface | undefined;
@@ -1113,16 +1208,23 @@ export function breadcrumbs(input: {
   readonly activeOrgName: string;
   readonly routeProjectId: string;
   readonly activeProjectName: string;
-}): string[] {
+}): Crumb[] {
   const { surface, activeOrgId, activeOrgName, routeProjectId, activeProjectName } = input;
   const label = surface?.label ?? 'Not found';
   if (surface?.section === 'instance') {
-    return ['hikyo', 'Instance', label];
+    return [{ label: 'Hikyo' }, { label: 'Instance' }, { label }];
   }
-  const result = ['hikyo'];
-  if (activeOrgId !== '') result.push(activeOrgName);
-  if (routeProjectId !== '') result.push(activeProjectName);
-  result.push(label);
+  const result: Crumb[] = [{ label: 'Hikyo' }];
+  // The organisation's own overview: the same global projects list its rail
+  // switcher falls back to.
+  if (activeOrgId !== '') result.push({ label: activeOrgName, to: surfaceById('projects').path });
+  if (routeProjectId !== '') {
+    result.push({
+      label: activeProjectName,
+      to: generatePath(surfaceById('matrix').path, { org: activeOrgId, project: routeProjectId }),
+    });
+  }
+  result.push({ label });
   return result;
 }
 

@@ -1,6 +1,6 @@
 import { useSelfConfig } from '../api/selfConfig.ts';
 import type { KeyRule } from '@hikyo/client';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { generatePath, Link, useNavigate } from 'react-router';
 
 import { useResetOnChange } from '../app/useResetOnChange.ts';
@@ -40,6 +40,8 @@ import { isDemo } from '../demo/config.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
@@ -96,59 +98,17 @@ export function KeyDeclarationDetail({
   const definitions = useDefinitionsSettings(refData.org, refData.project);
 
   const heading = useRef<HTMLHeadingElement>(null);
-  const panel = useRef<HTMLElement>(null);
 
   // Back into the matrix, keeping the workspace: closing inside a workspace
   // must land on the remote's matrix, not this instance's (#71).
   const matrixPath = withRemote(generatePath(surfaceById('matrix').path, refData), remote);
   const historyPath = withRemote(historyHref({ ...refData, keyId }), remote);
 
+  // A key reached from inside the panel (not from the matrix) takes the
+  // heading's focus too; the panel itself focuses it on open.
   useEffect(() => {
-    // Snapshot the opener at MOUNT and return focus to it on unmount, the
-    // matrix stays behind this panel, and closing to it must return focus to
-    // the key name that opened it. The matrix key list is the fallback when
-    // that row has since re-rendered away.
-    const opener = openerRef.current;
     heading.current?.focus();
-    return () => {
-      requestAnimationFrame(() => {
-        // Do not steal focus from a surface that replaced this one: navigating
-        // to the revision-history drawer unmounts this panel while the drawer
-        // focuses its own heading. Only restore focus when it was left nowhere
-        // (returned to the matrix), never on top of the next surface.
-        const active = document.activeElement;
-        if (active !== null && active !== document.body) {
-          return;
-        }
-        if (opener?.isConnected === true) {
-          opener.focus();
-          return;
-        }
-        document.querySelector<HTMLAnchorElement>('.matrix__key')?.focus();
-      });
-    };
-  }, [openerRef, keyId]);
-
-  // A pointer-down outside the panel closes it back to the matrix, the same way
-  // the Close link and Escape do, so a click anywhere on the matrix behind it
-  // dismisses without scrolling back up to the header. Guarded on an open dialog
-  // exactly like the Escape handler: a modal (scan block, reclassify confirm)
-  // owns the top layer and its own dismissal, and must not also collapse the
-  // surface behind it. Those dialogs render inside this subtree, so `contains`
-  // is true for a click within them regardless.
-  useEffect(() => {
-    const closeOutside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        panel.current?.contains(event.target) !== true &&
-        document.querySelector('dialog[open]') === null
-      ) {
-        void navigate(matrixPath);
-      }
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    return () => document.removeEventListener('pointerdown', closeOutside);
-  }, [navigate, matrixPath]);
+  }, [keyId]);
 
   // Editing is available ONLY once the source is confirmed `db` by a read that
   // is CURRENT. This fails closed on both the initial unresolved/errored state
@@ -173,31 +133,27 @@ export function KeyDeclarationDetail({
   const gitManaged = source === 'git';
 
   return (
-    <aside
-      ref={panel}
+    // Focus returns to the key name that opened the panel, or to the matrix
+    // key list when that row has since re-rendered away. Navigating on to the
+    // revision-history drawer leaves focus with the drawer.
+    <SidePanel
+      label="Key declaration"
       className="key-detail"
-      aria-label="Key declaration"
-      onKeyDown={(event) => {
-        // Escape closes the panel back to the matrix, but NOT while a modal
-        // dialog owns the top layer. The Surface-2 scanning block (#183) is a
-        // native <dialog>; its Escape is the dialog's own dismiss and must not
-        // also collapse the surface behind it. The keydown still bubbles here,
-        // so guard on an open dialog rather than let both fire.
-        if (event.key === 'Escape' && document.querySelector('dialog[open]') === null) {
-          event.preventDefault();
-          void navigate(matrixPath);
-        }
-      }}
+      onClose={() => void navigate(matrixPath)}
+      initialFocus={heading}
+      opener={openerRef}
+      fallbackFocus={() => document.querySelector<HTMLAnchorElement>('.matrix__key')}
+      header={(
+        <div className="key-detail__head">
+          <h2 id="key-detail-title" ref={heading} tabIndex={-1}>
+            {key.data?.name ?? 'Key declaration'}
+          </h2>
+          <Link className="btn key-detail__close btn--icon-phone" to={matrixPath} aria-label="Close key declaration">
+            <Glyph name="cross" /><span className="btn__label"> Close</span>
+          </Link>
+        </div>
+      )}
     >
-      <div className="key-detail__head">
-        <h2 id="key-detail-title" ref={heading} tabIndex={-1}>
-          {key.data?.name ?? 'Key declaration'}
-        </h2>
-        <Link className="btn key-detail__close" to={matrixPath} aria-label="Close key declaration">
-          <Glyph name="cross" /> Close
-        </Link>
-      </div>
-
       {key.isPending ? (
         <p className="key-detail__state" role="status">
           Loading the key declaration…
@@ -223,7 +179,7 @@ export function KeyDeclarationDetail({
           matrixPath={matrixPath}
         />
       )}
-    </aside>
+    </SidePanel>
   );
 }
 
@@ -405,9 +361,9 @@ function KeyDeclarationBody({
           {gitProvenance === undefined ? null : (
             <p className="key-detail__provenance">
               Last applied by <span className="mono">{gitProvenance.applied_by}</span>
-              {gitProvenance.actor === undefined ? '' : ` · actor ${gitProvenance.actor}`}
-              {gitProvenance.commit === undefined ? '' : ` · commit ${gitProvenance.commit}`}
-              {gitProvenance.ref === undefined ? '' : ` · ref ${gitProvenance.ref}`}
+              {gitProvenance.actor === undefined ? null : <><Sep />actor {gitProvenance.actor}</>}
+              {gitProvenance.commit === undefined ? null : <><Sep />commit {gitProvenance.commit}</>}
+              {gitProvenance.ref === undefined ? null : <><Sep />ref {gitProvenance.ref}</>}
             </p>
           )}
         </section>
@@ -515,7 +471,7 @@ function RuleLine({ rule }: { rule: NonNullable<MatrixKey['declaration']['rule']
     <>
       <p className="key-detail__rule">
         <span className="mono">{rule.type}</span>
-        {parts.length === 0 ? '' : ` · ${parts.join(' · ')}`}
+        {parts.map((part, i) => <Fragment key={i}><Sep />{part}</Fragment>)}
       </p>
       {rule.json_schema === undefined ? null : (
         // The full schema, not the word "schema": two keys with different JSON

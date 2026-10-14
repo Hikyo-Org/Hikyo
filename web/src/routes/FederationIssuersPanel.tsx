@@ -17,6 +17,8 @@ import {
 import { notifySuccess } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Sep } from '../ui/Sep.tsx';
+import { SidePanel } from '../ui/SidePanel.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel } from './Sections.tsx';
 import { selectOption } from './selectOption.ts';
@@ -63,7 +65,7 @@ export function FederationIssuersPanel() {
   const update = useUpdateFederationIssuer();
   const remove = useDeleteFederationIssuer();
 
-  // One editor at a time: 'create', or an issuer id being edited, or null.
+  // 'create', or the id of the issuer being edited, or null.
   const [editor, setEditor] = useState<'create' | { id: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<FederationIssuer | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -92,6 +94,77 @@ export function FederationIssuersPanel() {
     });
   };
 
+  const submitCreate = (input: IssuerFormValue) => {
+    const refusal = issuerFieldRefusal({
+      issuer: input.issuer,
+      jwksMode: input.jwksMode,
+      staticJwks: input.staticJwks,
+      refusedAudiences: input.refusedAudiences,
+    });
+    if (refusal !== null) {
+      setFailure(refusal);
+      return;
+    }
+    setFailure(null);
+    create.mutate(
+      {
+        issuer: input.issuer,
+        issuerType: input.issuerType,
+        jwksMode: input.jwksMode,
+        ...(input.jwksMode === 'static' ? { staticJwks: input.staticJwks } : {}),
+        refusedAudiences: input.refusedAudiences,
+      },
+      {
+        onSuccess: (result) => {
+          const message = `Configured ${result.issuer}. It can now take federated bindings from Machine Access.`;
+          setEditor(null);
+          setDone(message);
+          notifySuccess(message);
+        },
+        onError: (error) => setFailure(issuerCreateRefusalText(error)),
+      },
+    );
+  };
+
+  const submitEdit = (issuer: FederationIssuer) => (input: IssuerFormValue) => {
+    const refusal = issuerFieldRefusal({
+      jwksMode: input.jwksMode,
+      staticJwks: input.staticJwks,
+      refusedAudiences: input.refusedAudiences,
+    });
+    if (refusal !== null) {
+      setFailure(refusal);
+      return;
+    }
+    setFailure(null);
+    update.mutate(
+      {
+        id: issuer.id,
+        jwksMode: input.jwksMode,
+        ...(input.jwksMode === 'static'
+          ? { staticJwks: input.staticJwks }
+          : {}),
+        refusedAudiences: input.refusedAudiences,
+      },
+      {
+        onSuccess: () => {
+          const message = `Updated ${issuer.issuer}. The issuer string and platform type are unchanged; those are a replacement, not an edit.`;
+          setEditor(null);
+          setDone(message);
+          notifySuccess(message);
+        },
+        onError: (error) => setFailure(issuerUpdateRefusalText(error)),
+      },
+    );
+  };
+
+  // One editor at a time, in the side panel: the create form or one issuer's.
+  const editing =
+    typeof editor === 'object' && editor !== null
+      ? issuers.data?.items.find((issuer) => issuer.id === editor.id)
+      : undefined;
+  const formTitle = editing === undefined ? 'Configure a federation issuer' : `Edit ${editing.issuer}`;
+
   return (
     <Panel id="instance-federation" title="Federation issuers · instance-config">
       <p className="settings-note">
@@ -101,7 +174,7 @@ export function FederationIssuersPanel() {
         so a trailing slash is a different issuer.
       </p>
 
-      {failure !== null ? <Alert>{failure}</Alert> : null}
+      {failure !== null && editor === null ? <Alert>{failure}</Alert> : null}
       {done !== null ? <Alert tone="done">{done}</Alert> : null}
 
       {issuers.isPending ? <p role="status">Loading federation issuers…</p> : null}
@@ -135,14 +208,14 @@ export function FederationIssuersPanel() {
                 <div className="settings-row__copy">
                   <code className="settings-row__title mono">{issuer.issuer}</code>
                   <span className="settings-row__detail">
-                    {issuer.issuer_type} · JWKS {issuer.jwks_mode} · refuses{' '}
-                    {issuer.refused_audiences.join(', ')} ·{' '}
+                    {issuer.issuer_type}<Sep />JWKS {issuer.jwks_mode}<Sep />refuses{' '}
+                    {issuer.refused_audiences.join(', ')}<Sep />
                     {issuer.live_bindings === 0
                       ? 'no bindings name it'
                       : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'} name it (live or historical)`}
                   </span>
                 </div>
-                <div className="panel__actions">
+                <div className="actions">
                   <Button
                     type="button"
                     disabled={busy}
@@ -181,14 +254,7 @@ export function FederationIssuersPanel() {
                         ? `Delete ${issuer.issuer}? No binding names it, so nothing that authenticates depends on it.`
                         : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'}, live or revoked, name ${issuer.issuer}, so it cannot be deleted. That history is append-only: even a revoked binding still records what this issuer was trusted for, and erasing the issuer would erase what it trusted. Deletion is only ever available for an issuer that was never bound.`}
                     </p>
-                    <div className="panel__actions">
-                      <Button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setConfirmDelete(null)}
-                      >
-                        {issuer.live_bindings === 0 ? 'Cancel' : 'Close'}
-                      </Button>
+                    <div className="actions">
                       {issuer.live_bindings === 0 ? (
                         <Button
                           type="button"
@@ -199,57 +265,25 @@ export function FederationIssuersPanel() {
                           Delete issuer
                         </Button>
                       ) : null}
+                      <Button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setConfirmDelete(null)}
+                      >
+                        {issuer.live_bindings === 0 ? 'Cancel' : 'Close'}
+                      </Button>
                     </div>
                   </div>
                 ) : null}
 
-                {typeof editor === 'object' && editor?.id === issuer.id ? (
-                  <IssuerForm
-                    key={`edit-${issuer.id}`}
-                    issuer={issuer}
-                    busy={busy}
-                    onCancel={() => setEditor(null)}
-                    onSubmit={(input) => {
-                      const refusal = issuerFieldRefusal({
-                        jwksMode: input.jwksMode,
-                        staticJwks: input.staticJwks,
-                        refusedAudiences: input.refusedAudiences,
-                      });
-                      if (refusal !== null) {
-                        setFailure(refusal);
-                        return;
-                      }
-                      setFailure(null);
-                      update.mutate(
-                        {
-                          id: issuer.id,
-                          jwksMode: input.jwksMode,
-                          ...(input.jwksMode === 'static'
-                            ? { staticJwks: input.staticJwks }
-                            : {}),
-                          refusedAudiences: input.refusedAudiences,
-                        },
-                        {
-                          onSuccess: () => {
-                            const message = `Updated ${issuer.issuer}. The issuer string and platform type are unchanged; those are a replacement, not an edit.`;
-                            setEditor(null);
-                            setDone(message);
-                            notifySuccess(message);
-                          },
-                          onError: (error) => setFailure(issuerUpdateRefusalText(error)),
-                        },
-                      );
-                    }}
-                  />
-                ) : null}
               </li>
             ))}
           </ul>
         )
       ) : null}
 
-      {issuers.isSuccess && editor !== 'create' ? (
-        <div className="panel__actions">
+      {issuers.isSuccess ? (
+        <div className="actions">
           <Button
             type="button"
             variant="primary"
@@ -266,44 +300,17 @@ export function FederationIssuersPanel() {
         </div>
       ) : null}
 
-      {editor === 'create' ? (
-        <IssuerForm
-          key="create"
-          issuer={null}
-          busy={busy}
-          onCancel={() => setEditor(null)}
-          onSubmit={(input) => {
-            const refusal = issuerFieldRefusal({
-              issuer: input.issuer,
-              jwksMode: input.jwksMode,
-              staticJwks: input.staticJwks,
-              refusedAudiences: input.refusedAudiences,
-            });
-            if (refusal !== null) {
-              setFailure(refusal);
-              return;
-            }
-            setFailure(null);
-            create.mutate(
-              {
-                issuer: input.issuer,
-                issuerType: input.issuerType,
-                jwksMode: input.jwksMode,
-                ...(input.jwksMode === 'static' ? { staticJwks: input.staticJwks } : {}),
-                refusedAudiences: input.refusedAudiences,
-              },
-              {
-                onSuccess: (result) => {
-                  const message = `Configured ${result.issuer}. It can now take federated bindings from Machine Access.`;
-                  setEditor(null);
-                  setDone(message);
-                  notifySuccess(message);
-                },
-                onError: (error) => setFailure(issuerCreateRefusalText(error)),
-              },
-            );
-          }}
-        />
+      {editor === 'create' || editing !== undefined ? (
+        <SidePanel title={formTitle} onClose={() => setEditor(null)}>
+          {failure !== null ? <Alert>{failure}</Alert> : null}
+          <IssuerForm
+            key={editing === undefined ? 'create' : `edit-${editing.id}`}
+            issuer={editing ?? null}
+            busy={busy}
+            onCancel={() => setEditor(null)}
+            onSubmit={editing === undefined ? submitCreate : submitEdit(editing)}
+          />
+        </SidePanel>
       ) : null}
     </Panel>
   );
@@ -346,9 +353,6 @@ function IssuerForm({
 
   return (
     <fieldset className="machine__lock" disabled={busy}>
-      <legend className="machine__subhead">
-        {editing ? `Edit ${issuer.issuer}` : 'Configure a federation issuer'}
-      </legend>
 
       <div className="field">
         {editing ? (
@@ -449,10 +453,7 @@ function IssuerForm({
         hint="The issuer's default audiences, which no binding may name and no token may carry. At least one is required: the default-audience rule turns on the instance knowing what the default is, and it is not derivable."
       />
 
-      <div className="panel__actions">
-        <Button type="button" onClick={onCancel}>
-          Cancel
-        </Button>
+      <div className="actions">
         <Button
           type="button"
           variant="primary"
@@ -467,6 +468,9 @@ function IssuerForm({
           }
         >
           {editing ? 'Save issuer' : 'Configure issuer'}
+        </Button>
+        <Button type="button" onClick={onCancel}>
+          Cancel
         </Button>
       </div>
     </fieldset>

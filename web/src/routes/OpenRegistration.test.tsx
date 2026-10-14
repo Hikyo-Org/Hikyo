@@ -160,7 +160,7 @@ describe("OpenRegistrationPanel", () => {
       authorityName={(principal) => principal} onChanged={onChanged}
     />;
     const { container, rerender, unmount } = await renderForm(panel('org_first'));
-    await click(buttonNamed(container, 'Open registration…'));
+    await click(buttonNamed(container, 'Open registration'));
     expect(container.textContent).toContain('Corporate IdP');
     await rerender(panel('org_second'));
     expect(container.textContent).not.toContain('Corporate IdP');
@@ -182,7 +182,7 @@ describe("OpenRegistrationPanel", () => {
     expect(container.textContent).toContain(
       "No one can sign up into Acme without an invitation.",
     );
-    await click(buttonNamed(container, "Open registration…"));
+    await click(buttonNamed(container, "Open registration"));
     // Only federated kinds are sign-up providers: SAML is not listed.
     expect(container.textContent).toContain("Corporate IdP");
     expect(container.textContent).not.toContain("SAML SSO");
@@ -198,7 +198,7 @@ describe("OpenRegistrationPanel", () => {
   it("refuses email as an allowlist claim on its row", async () => {
     const { rendered } = mount({ kind: "org", org: "org_acme" });
     const { container, unmount } = await rendered;
-    await click(buttonNamed(container, "Open registration…"));
+    await click(buttonNamed(container, "Open registration"));
     await click(inputLabelled(container, "Corporate IdP"));
     // The requirement line appears with the entry.
     expect(container.textContent).toContain(
@@ -228,7 +228,7 @@ describe("OpenRegistrationPanel", () => {
     );
     const { rendered } = mount({ kind: "org", org: "org_acme" });
     const { container, unmount } = await rendered;
-    await click(buttonNamed(container, "Open registration…"));
+    await click(buttonNamed(container, "Open registration"));
     await click(inputLabelled(container, "Corporate IdP"));
     const save = buttonNamed(container, "Save");
     expect(save.classList.contains("btn--reauth")).toBe(true);
@@ -325,9 +325,7 @@ describe("OpenRegistrationPanel", () => {
     expect(container.textContent).toContain(
       "The address is proven by a mailed link",
     );
-    expect(container.textContent).toContain(
-      "Alex · re-checked against their current grants",
-    );
+    expect(container.textContent).toMatch(/Alex\s*·\s*re-checked against their current grants/);
     // No sign-up link at instance scope: the public login page is that door.
     expect(container.textContent).not.toContain("/signup?org=");
     await unmount();
@@ -344,7 +342,7 @@ describe("OpenRegistrationPanel", () => {
     mocks.put.mockResolvedValueOnce(policyOf({}));
     const { rendered, onChanged } = mount({ kind: "org", org: "org_acme" });
     const { container, unmount } = await rendered;
-    expect(container.textContent).toContain("inactive · authority-lost");
+    expect(container.textContent).toMatch(/inactive\s*·\s*authority-lost/);
     expect(container.textContent).toContain(
       "Alex no longer holds the grant this policy hands out.",
     );
@@ -389,7 +387,7 @@ describe("OpenRegistrationPanel", () => {
     };
     const { rendered } = mount({ kind: "org", org: "org_acme" });
     const { container, unmount } = await rendered;
-    expect(container.textContent).toContain("inactive · precondition");
+    expect(container.textContent).toMatch(/inactive\s*·\s*precondition/);
     expect(container.textContent).toContain(
       "The email entry needs a configured mailer",
     );
