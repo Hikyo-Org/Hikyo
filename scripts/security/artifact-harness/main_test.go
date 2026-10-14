@@ -14,6 +14,24 @@ import (
 	"time"
 )
 
+func TestOwnedDisposableDatabaseIdentifier(t *testing.T) {
+	valid := "hikyo_security_0123456789abcdef01234567"
+	if identifier, err := ownedDisposableDatabaseIdentifier(valid); err != nil || identifier != `"`+valid+`"` {
+		t.Fatalf("canonical generated database name refused: %q, %v", identifier, err)
+	}
+	for _, database := range []string{
+		"", "hikyo_test", "postgres", "hikyo_security_", valid + "00",
+		"hikyo_security_0123456789ABCDEF01234567", "hikyo_security_0123456789abcdeg01234567",
+		valid + `"; DROP DATABASE postgres; --`, "unowned_0123456789abcdef01234567",
+	} {
+		t.Run(database, func(t *testing.T) {
+			if identifier, err := ownedDisposableDatabaseIdentifier(database); err == nil || identifier != "" {
+				t.Fatalf("unsafe or unowned database name accepted: %q", database)
+			}
+		})
+	}
+}
+
 func TestOracleRejectsLeakedCanaryAndFalseDenial(t *testing.T) {
 	twin := response{status: 404, body: []byte(`{"error":{"code":"not_found"}}`)}
 	for _, r := range []response{{status: 200, body: twin.body}, {status: 404, body: []byte(`{"error":{"code":"not_found"},"leak":"protected-value"}`)}, {status: 404, body: []byte(`{"error":{"code":"not_found"},"leak":"\u0070rotected-value"}`)}} {

@@ -188,6 +188,29 @@ lookalike packages, subpackages and production packages remain refused;
 generated query imports stay forbidden. The actual repository confinement
 invariant is retained.
 
+The delayed `test_core` failure on `1756814` also identified a separate
+raw SQL protocol gap, reproduced on `dfe02a7`: both disposable-database CREATE
+and DROP operations were attributed to the broad `newTarget` lifecycle
+function. The repair extracts two small, named engine protocols with reviewed
+function bodies, a strict lowercase random-name/sanitization dependency and
+only `newTarget` as their reviewed caller. The lifecycle receives no raw SQL
+authority. All 95 prior protocol records, 245 prior helper records, query
+contracts and build-context records remain unchanged. The actual guard passes
+in all four build contexts. Thirteen typed source-overlay cases reject tenant
+SELECT/UPDATE, altered statements, unsafe identifier/validation changes,
+unowned names, lost creation-state gating, extra or aliased callers, wrong
+function owners and neighboring files. The original failed log is retained.
+
+A fresh local PostgreSQL fixture executed the exact copied runtime source
+(SHA-256 `25288898b416ca4226d8474eba4f44986acee54c3fe28ba1e374cd9665597904`).
+Owned CREATE/DROP passed; an actual `newTarget` creation collision preserved
+the existing database; invalid/unowned names rejected before SQL. Parent
+database identity and marker data were unchanged. All owned databases and
+markers were removed, and the task-owned container was removed after proof.
+This validates the extracted setup/cleanup path; the earlier complete
+published-binary campaigns remain observations from their earlier harness
+revision. Updated full hosted campaign proof remains a separate gate.
+
 A final local Go run exposed a separate queue-toolchain test race: the fixture
 created a whole-second deadline with only one work second remaining. A second
 boundary could expire that work before the expected Go calls. The fixture now

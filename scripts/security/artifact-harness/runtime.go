@@ -85,6 +85,36 @@ func unusedAddress() (string, error) {
 	return a, err
 }
 
+func ownedDisposableDatabaseIdentifier(database string) (string, error) {
+	nonce, owned := strings.CutPrefix(database, "hikyo_security_")
+	if !owned || len(nonce) != 24 {
+		return "", errors.New("invalid owned disposable database name")
+	}
+	decoded, err := hex.DecodeString(nonce)
+	if err != nil || hex.EncodeToString(decoded) != nonce {
+		return "", errors.New("invalid owned disposable database name")
+	}
+	return pgx.Identifier{database}.Sanitize(), nil
+}
+
+func createOwnedDisposableDatabase(ctx context.Context, conn *pgx.Conn, database string) error {
+	identifier, err := ownedDisposableDatabaseIdentifier(database)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Exec(ctx, "CREATE DATABASE "+identifier)
+	return err
+}
+
+func dropOwnedDisposableDatabase(ctx context.Context, conn *pgx.Conn, database string) error {
+	identifier, err := ownedDisposableDatabaseIdentifier(database)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Exec(ctx, "DROP DATABASE "+identifier)
+	return err
+}
+
 func newTarget(ctx context.Context, o options, engine string) (t *target, cleanup func() error, err error) {
 	dir, err := os.MkdirTemp("", "hikyo-artifact-")
 	if err != nil {
@@ -103,7 +133,7 @@ func newTarget(ctx context.Context, o options, engine string) (t *target, cleanu
 			defer cancel()
 			var dropErr error
 			if databaseCreated {
-				_, dropErr = conn.Exec(cctx, "DROP DATABASE "+pgx.Identifier{database}.Sanitize())
+				dropErr = dropOwnedDisposableDatabase(cctx, conn, database)
 			}
 			cleanupErr = errors.Join(cleanupErr, dropErr, conn.Close(cctx))
 		}
@@ -129,7 +159,7 @@ func newTarget(ctx context.Context, o options, engine string) (t *target, cleanu
 			return nil, cleanup, err
 		}
 		database = "hikyo_security_" + hex.EncodeToString(nonce[:])
-		if _, err = conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{database}.Sanitize()); err != nil {
+		if err = createOwnedDisposableDatabase(ctx, conn, database); err != nil {
 			return nil, cleanup, errors.New("create isolated PostgreSQL database (CREATEDB permission required)")
 		}
 		databaseCreated = true
