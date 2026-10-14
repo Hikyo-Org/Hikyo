@@ -45,8 +45,8 @@ ceremony execution remains unproven until an actual stable/prerelease run.</p>
 </tr>
 <tr>
 <td>Web tests</td>
-<td>196 files, 1,687 tests passed; typecheck and lint passed</td>
-<td>Local source checkout</td>
+<td>197 files, 1,689 tests passed; typecheck and lint passed</td>
+<td>Local source checkout; 12 seconds warm, 32.5 seconds cold wall time</td>
 </tr>
 <tr>
 <td>Semantic fuzz</td>
@@ -173,6 +173,54 @@ one stable app producer/consumer and the pinned transfer action. Twenty-eight
 regressions cover legitimate reports, adjacent-job contamination, duplicate,
 patterned, wildcard and unnamed app downloads, quoted names and input spoofing.
 The existing supply-chain test selector and no-egress lifecycle checks pass.</p>
+<p>Latest review follow-up: the immutable release resolver has 25 behavioral
+scenarios executing its actual shell with strictly ordered read-only API
+fixtures. Lightweight, annotated and nested tags are accepted; mismatched
+nightly source SHAs, ambiguous tags and untrusted events reject without
+partial outputs. These tests run under the existing supply-chain selector.
+The release job explicitly disables setup-node automatic package-manager
+caching. The pinned action currently enables automatic caching only for npm,
+so this is a preventive policy guarantee for this pnpm repository.</p>
+<p>Grant removal and restoration now retain the same native-issued credential
+across mandatory restarts. Native credential metadata independently confirms
+that removed-grant denials are not caused by expiry or revocation. Seeded
+sequences place at most two additional restarts before their fixed revocation
+tail. Seed 314 was run against the verified nightly 77 Darwin ARM64 binary:
+14/14 mandatory cases per datastore, 24 generated actions, including two
+restarts while grants were removed and the generated credential was live,
+cleanup complete, 372 seconds. The mandatory removal/restoration cases now
+report 9/5 successful oracle groups. This newer harness proof does not
+retroactively extend the earlier Linux campaign's scope. The SAML helper's
+unused parameter was removed; its 100,000-iteration semantic campaign passes.</p>
+<p>The frontend feedback failure on <code>ffd78e0</code> was reproduced with an empty
+Go toolchain/module/build cache: compilation of the real IdP helper consumed
+the test's 30-second startup window. The helper now builds during bounded
+preparation before the timed cases, using the existing prebuilt-binary input.
+The original startup assertions, 30-second case limit and four-minute feedback
+supervisor remain unchanged. The complete 1,689-test suite passes cold in
+32.5 seconds wall time and warm in 12 seconds. Canary teardown now closes
+unfinished HTTP requests after closing its listener; two real-socket
+regressions cover completed keep-alive and unfinished requests. Three browser
+security cases also pass against the published Darwin executable. That local
+receipt omits source SHA, so it supplies scoped browser proof only and cannot
+be published as a complete version-bound PASS receipt.</p>
+<p>Full CI also exposed the missing driver-handle inventory entry for the new
+harness. The repair grants only <code>scripts/security/artifact-harness/runtime.go</code>
+its owned disposable-database setup/cleanup exception. Neighboring files,
+lookalike packages, subpackages and production packages remain refused;
+generated query imports stay forbidden. The actual repository confinement
+invariant is retained.</p>
+<p>A final local Go run exposed a separate queue-toolchain test race: the fixture
+created a whole-second deadline with only one work second remaining. A second
+boundary could expire that work before the expected Go calls. The fixture now
+anchors wall-clock reads, adds the consumed-second refusal scenario, and
+retains the real hanging process, timeout and elapsed-time assertions.
+Production queue workflow and helper deadlines are unchanged; the original
+failed local run is preserved.</p>
+<p>Public standalone HTML now uses absolute contribution/security policy links;
+artifact documentation distinguishes <code>github.run_id</code> from the nightly build's
+run number. CodeRabbit's optional private-helper docstring percentage warning
+is not a repository gate; no documentation threshold or lint policy was muted.</p>
 <p>Local Linux native and browser campaigns have completed with the original
 failed browser attempt preserved. The signed, DCO-signed main-based PR is
 open. Validate its exact-head CI and reviews. Keep hosted activation and actual

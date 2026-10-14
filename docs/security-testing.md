@@ -39,7 +39,9 @@ Vulnerability results record a scan time; they are historical observations,
 not an indefinitely current statement about dependencies.
 
 The post-release profile is `hikyo-release-runtime-v1`. Its
-`security-pass-TAG-SOURCE-RUN-ATTEMPT` artifact is retained for 90 days. It
+`security-pass-TAG-SOURCE-RUN_ID-RUN_ATTEMPT` artifact is retained for 90 days.
+`RUN_ID` is `github.run_id`, and `RUN_ATTEMPT` is `github.run_attempt`; the
+nightly tag's build number is a different identifier. The report
 requires the complete native artifact campaign on both datastores, the
 authenticated Chromium campaign on the same binary, a vulnerability scan of
 those bytes, and successful fixture cleanup. A skipped or incomplete mandatory

@@ -20,6 +20,8 @@ export async function startCanary(): Promise<{
     origin: `http://127.0.0.1:${String(address.port)}`, hits, server,
     close: () => new Promise<void>((resolve, reject) => {
       server.close((error) => error === undefined ? resolve() : reject(error));
+      // Stop accepting first, then release unfinished requests as well as idle sockets.
+      server.closeAllConnections();
     }),
   };
 }

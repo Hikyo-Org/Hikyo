@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	vw "github.com/descope/virtualwebauthn"
 )
@@ -536,16 +537,50 @@ func runBackend(ctx context.Context, o options, b *backendResult) (err error) {
 		}
 		return sameDenial(rpc, missingDefinitions, 200, append(f.forbidden(), f.config))
 	}
-	if err = record(b, "grant-removal", "live credential loses REST conditional and MCP cursor access after committed grant removal", 4, func() error {
+	restart := func() error {
+		if e := t.stop(); e != nil {
+			return e
+		}
+		return t.start()
+	}
+	liveCredential := func(id string) error {
+		r, e := t.request("GET", f.projectPath()+"/service-accounts/"+f.account.ID+"/credentials", f.admin, nil)
+		if e != nil {
+			return e
+		}
+		if e = requireLiveCredential(r, id, time.Now()); e != nil {
+			return e
+		}
+		return noResponseCanary(r, []string{f.first.Value, f.second.Value, f.generated.Value, f.secret, f.password})
+	}
+	if err = record(b, "grant-removal", "committed grant removal survives restart: same live credential loses REST conditional and MCP cursor access before and after restart", 9, func() error {
 		if e := f.grant(t, false); e != nil {
 			return e
 		}
-		return removed(f.first.Value)
+		if e := removed(f.first.Value); e != nil {
+			return e
+		}
+		if e := liveCredential(f.first.Credential.ID); e != nil {
+			return e
+		}
+		if e := restart(); e != nil {
+			return e
+		}
+		if e := removed(f.first.Value); e != nil {
+			return e
+		}
+		return liveCredential(f.first.Credential.ID)
 	}); err != nil {
 		return err
 	}
-	if err = record(b, "grant-restoration", "same still-live credential works after grant restoration", 3, func() error {
+	if err = record(b, "grant-restoration", "same still-live credential works after grant restoration and after another restart", 5, func() error {
 		if e := f.grant(t, true); e != nil {
+			return e
+		}
+		if e := control(f.first.Value); e != nil {
+			return e
+		}
+		if e := restart(); e != nil {
 			return e
 		}
 		return control(f.first.Value)
@@ -719,13 +754,44 @@ func runBackend(ctx context.Context, o options, b *backendResult) (err error) {
 	})
 }
 
-// The fixed prefix is retained regression coverage. Seeded suffixes vary state
-// restoration, denial and restart ordering within a bounded process budget.
+// The fixed prefix retains grant removal/restoration regression coverage.
+// Seeded middles vary grant state and place at most two additional restarts;
+// the fixed tail always revokes the generated credential before restarting.
 func generate(r *rand.Rand, n int) []string {
 	out := []string{"remove-read", "probe", "restore-read", "probe"}
-	actions := []string{"remove-read", "restore-read", "probe"}
+	actions := []string{"remove-read", "restore-read", "probe", "restart"}
+	restarts := 0
 	for len(out) < n-4 {
-		out = append(out, actions[r.Intn(len(actions))])
+		action := actions[r.Intn(len(actions))]
+		if action == "restart" {
+			if restarts == 2 {
+				action = "probe"
+			} else {
+				restarts++
+			}
+		}
+		out = append(out, action)
 	}
 	return append(out, "revoke-generated", "restore-read", "restart", "probe")
+}
+
+// Credential metadata is an independent native positive control: a grantless
+// denial must not pass because the fixture credential was revoked or expired.
+func requireLiveCredential(r response, id string, now time.Time) error {
+	var credentials struct {
+		Items []struct {
+			ID        string     `json:"id"`
+			RevokedAt *time.Time `json:"revoked_at"`
+			ExpiresAt *time.Time `json:"expires_at"`
+		} `json:"items"`
+	}
+	if r.status != 200 || id == "" || json.Unmarshal(r.body, &credentials) != nil {
+		return errors.New("native live credential metadata control failed")
+	}
+	for _, c := range credentials.Items {
+		if c.ID == id && c.RevokedAt == nil && (c.ExpiresAt == nil || c.ExpiresAt.After(now)) {
+			return nil
+		}
+	}
+	return errors.New("native live credential metadata missing, revoked or expired")
 }

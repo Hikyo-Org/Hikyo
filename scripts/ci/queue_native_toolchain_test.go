@@ -70,6 +70,7 @@ func TestQueueNativeToolchainSetupSharesAbsoluteWorkCutoff(t *testing.T) {
 		{"download failure", "go 1.27.2\n", "go1.21.0", "failure", 60, false, 2},
 		{"download exceeds work cutoff", "go 1.27.2\n", "go1.21.0", "hang", 16, false, 2},
 		{"expired work cutoff", "go 1.27.2\n", "go1.21.0", "go1.27.2", 15, false, 0},
+		{"second boundary consumes work cutoff", "go 1.27.2\n", "go1.21.0", "go1.27.2", 16, false, 0},
 	} {
 		for route, command := range commands {
 			t.Run(route+"/"+tc.name, func(t *testing.T) {
@@ -111,6 +112,24 @@ func TestQueueNativeToolchainSetupSharesAbsoluteWorkCutoff(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(ambient, "go"), []byte("#!/bin/sh\necho ambient >> \"$TRACE\"\nexit 99\n"), 0700); err != nil {
 					t.Fatal(err)
 				}
+				// Anchor deadline arithmetic independently of process scheduling.
+				// The one-second download budget still uses the real timeout and
+				// hanging Go shim; only the workflow's wall-clock read is virtual.
+				const clockStart int64 = 1_800_000_000
+				clockNow := clockStart
+				if tc.name == "second boundary consumes work cutoff" {
+					clockNow++
+				}
+				clock := `#!/bin/sh
+set -eu
+test "$#" -eq 1
+test "$1" = +%s
+printf '%s\n' "$1" >> "$CLOCK_TRACE"
+printf '%s\n' "$CLOCK_NOW"
+`
+				if err := os.WriteFile(filepath.Join(ambient, "date"), []byte(clock), 0700); err != nil {
+					t.Fatal(err)
+				}
 				shim := `#!/usr/bin/env bash
 set -eu
 printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$*" "${GOTOOLCHAIN-}" "${GOENV-}" "${GOWORK-}" "${GOSUMDB-}" "${GOPROXY-}" "${GOFLAGS-}" "${GONOSUMDB-}" "${GOPRIVATE-}" >> "$TRACE"
@@ -131,7 +150,8 @@ else exit 1; fi
 				cmd := exec.CommandContext(ctx, "bash", "-c", command)
 				cmd.Dir = dir
 				trace := filepath.Join(dir, "trace")
-				cmd.Env = append(os.Environ(), "PATH="+ambient+":"+os.Getenv("PATH"), "RUNNER_TEMP="+dir, "RUNNER_TOOL_CACHE="+cacheRoot, "RUNNER_ARCH="+runnerArch, "BOOT_ARCH="+hostArch, "KIND="+route, "TRACE="+trace, "BOOT="+tc.bootstrap, "SELECTED="+tc.selected, fmt.Sprintf("PR_GATE_DEADLINE=%d", time.Now().Unix()+int64(tc.seconds)), "GOENV=untrusted", "GOTOOLCHAIN=auto", "GOSUMDB=off", "GONOSUMDB=*", "GOPRIVATE=*", "GOFLAGS=-toolexec=untrusted")
+				clockTrace := filepath.Join(dir, "clock-trace")
+				cmd.Env = append(os.Environ(), "PATH="+ambient+":"+os.Getenv("PATH"), "RUNNER_TEMP="+dir, "RUNNER_TOOL_CACHE="+cacheRoot, "RUNNER_ARCH="+runnerArch, "BOOT_ARCH="+hostArch, "KIND="+route, "TRACE="+trace, "BOOT="+tc.bootstrap, "SELECTED="+tc.selected, fmt.Sprintf("PR_GATE_DEADLINE=%d", clockStart+int64(tc.seconds)), fmt.Sprintf("CLOCK_NOW=%d", clockNow), "CLOCK_TRACE="+clockTrace, "GOENV=untrusted", "GOTOOLCHAIN=auto", "GOSUMDB=off", "GONOSUMDB=*", "GOPRIVATE=*", "GOFLAGS=-toolexec=untrusted")
 				if tc.name == "relative cache root" {
 					cmd.Env = append(cmd.Env, "RUNNER_TOOL_CACHE=relative")
 				}
@@ -148,6 +168,10 @@ else exit 1; fi
 				}
 				if tc.selected == "hang" && time.Since(start) > 3*time.Second {
 					t.Fatal("native selection escaped the remaining absolute cutoff")
+				}
+				clockData, clockErr := os.ReadFile(clockTrace)
+				if clockErr != nil || string(clockData) != "+%s\n" {
+					t.Fatalf("workflow did not use the anchored wall clock exactly once: %q, %v", clockData, clockErr)
 				}
 				data, _ := os.ReadFile(trace)
 				lines := strings.Split(strings.TrimSpace(string(data)), "\n")

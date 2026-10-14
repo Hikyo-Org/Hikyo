@@ -11,8 +11,8 @@ import (
 // Parsing XML alone never establishes a valid SAML authentication result.
 func FuzzValidateResponseBinding(f *testing.F) {
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	raw, certificate := signedResponseFixture(f, now, false)
-	_, untrusted := signedResponseFixture(f, now, false)
+	raw, certificate := signedResponseFixture(f, now)
+	_, untrusted := signedResponseFixture(f, now)
 	pins := []*x509.Certificate{certificate}
 	expected := ValidationExpectations{
 		ProviderEntityID: "https://idp.example/metadata",

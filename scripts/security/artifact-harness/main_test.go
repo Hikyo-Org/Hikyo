@@ -133,6 +133,70 @@ func TestSeedReplayAndFixedLifecycle(t *testing.T) {
 	}
 }
 
+func TestGeneratedRestartCoverageAndBudget(t *testing.T) {
+	sawRemovedLiveRestart, sawRestoredLiveRestart := false, false
+	for steps := 8; steps <= 24; steps++ {
+		for seed := int64(0); seed < 256; seed++ {
+			actions := generate(rand.New(rand.NewSource(seed)), steps)
+			if len(actions) != steps {
+				t.Fatalf("seed %d steps %d: got %d actions", seed, steps, len(actions))
+			}
+			live, read, randomRestarts := true, true, 0
+			for i, action := range actions {
+				switch action {
+				case "remove-read":
+					read = false
+				case "restore-read":
+					read = true
+				case "revoke-generated":
+					live = false
+				case "restart":
+					if i >= 4 && i < steps-4 {
+						randomRestarts++
+						if !live {
+							t.Fatal("randomized grant persistence restart used a revoked token")
+						}
+						sawRemovedLiveRestart = sawRemovedLiveRestart || !read
+						sawRestoredLiveRestart = sawRestoredLiveRestart || read
+					}
+				}
+			}
+			if randomRestarts > 2 {
+				t.Fatalf("seed %d steps %d exceeded randomized restart budget: %d", seed, steps, randomRestarts)
+			}
+			if live || !read {
+				t.Fatal("fixed tail must retain restored grant and revoked credential")
+			}
+		}
+	}
+	if !sawRemovedLiveRestart || !sawRestoredLiveRestart {
+		t.Fatal("seeded restarts never exercise both removed and restored grants with a live credential")
+	}
+}
+
+func TestLiveCredentialControlRejectsFalsePositive(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	for _, r := range []response{
+		{status: 404, body: []byte(`{"items":[{"id":"fixture"}]}`)},
+		{status: 200, body: []byte(`{}`)},
+		{status: 200, body: []byte(`{"items":[{"id":"other"}]}`)},
+		{status: 200, body: []byte(`{"items":[{"id":"fixture","revoked_at":"2026-10-14T11:00:00Z"}]}`)},
+		{status: 200, body: []byte(`{"items":[{"id":"fixture","expires_at":"2026-10-14T12:00:00Z"}]}`)},
+		{status: 200, body: []byte(`{"items":[{"id":"fixture","expires_at":"malformed"}]}`)},
+	} {
+		if requireLiveCredential(r, "fixture", now) == nil {
+			t.Fatal("missing, denied, revoked or expired credential accepted as live")
+		}
+	}
+	valid := response{status: 200, body: []byte(`{"items":[{"id":"fixture","expires_at":"2026-10-15T12:00:00Z"}]}`)}
+	if err := requireLiveCredential(valid, "fixture", now); err != nil {
+		t.Fatal(err)
+	}
+	if requireLiveCredential(valid, "", now) == nil {
+		t.Fatal("empty expected credential ID accepted")
+	}
+}
+
 func TestReadinessRequiresOperationalBarrier(t *testing.T) {
 	metaCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
