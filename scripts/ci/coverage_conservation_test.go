@@ -242,6 +242,41 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	baseline, original := readCoverageBaseline(t)
 	for name, mutation := range map[string]func(map[string]map[string]any){
+		"remove source artifact job": func(j map[string]map[string]any) {
+			delete(j, "source-artifact-security")
+		},
+		"fail open source artifact job": func(j map[string]map[string]any) {
+			j["source-artifact-security"]["continue-on-error"] = true
+		},
+		"source artifact job skips app build": func(j map[string]map[string]any) {
+			j["source-artifact-security"]["needs"] = []any{"changes"}
+		},
+		"source artifact job changes plan": func(j map[string]map[string]any) {
+			j["source-artifact-security"]["if"] = "${{ fromJSON(needs.changes.outputs.plan).web }}"
+		},
+		"source artifact job loses caller guard": func(j map[string]map[string]any) {
+			j["source-artifact-security"]["steps"] = j["source-artifact-security"]["steps"].([]any)[1:]
+		},
+		"source artifact job is not required": func(j map[string]map[string]any) {
+			needs := j["ci-required"]["needs"].([]any)
+			for i, need := range needs {
+				if need == "source-artifact-security" {
+					j["ci-required"]["needs"] = append(needs[:i], needs[i+1:]...)
+					return
+				}
+			}
+		},
+		"source artifact evidence uploads on failure": func(j map[string]map[string]any) {
+			steps := j["source-artifact-security"]["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["if"] = "always()"
+		},
+		"source artifact cleanup skips failure": func(j map[string]map[string]any) {
+			steps := j["source-artifact-security"]["steps"].([]any)
+			steps[len(steps)-2].(map[string]any)["if"] = "success()"
+		},
+		"increase original web Go timeout": func(j map[string]map[string]any) {
+			j["web-go"]["timeout-minutes"] = 30
+		},
 		"remove fixture Node pin": func(j map[string]map[string]any) {
 			steps := j["lint"]["steps"].([]any)
 			for i, value := range steps {

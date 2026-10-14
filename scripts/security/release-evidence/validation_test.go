@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
+	"github.com/Hikyo-Org/hikyo/scripts/ci"
 )
 
 func passingAttacks() attackResult {
@@ -87,16 +89,42 @@ func TestBrowserReceiptRequiresExactBinaryAndMandatoryControls(t *testing.T) {
 }
 
 func TestScanRequiresPinnedBinaryModeAndNoSymbolFindings(t *testing.T) {
-	config := `{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.7.0","db":"https://vuln.go.dev","db_last_modified":"2026-10-14T00:00:00Z","go_version":"go1.26.0","scan_mode":"binary","scan_level":"symbol"}}` + "\n" + `{"SBOM":{"go_version":"go1.26.0","roots":["github.com/Hikyo-Org/hikyo/cmd/hikyo"]}}`
+	version := scannerPin(t)
+	config := fmt.Sprintf(`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":%q,"db":"https://vuln.go.dev","db_last_modified":"2026-10-14T00:00:00Z","go_version":"go1.26.0","scan_mode":"binary","scan_level":"symbol"}}`+"\n"+`{"SBOM":{"go_version":"go1.26.0","roots":["github.com/Hikyo-Org/hikyo/cmd/hikyo"]}}`, version)
 	if _, err := validateScan([]byte(config)); err != nil {
 		t.Fatal(err)
 	}
-	for name, raw := range map[string]string{"empty": "", "source-mode": strings.Replace(config, `"binary"`, `"source"`, 1), "wrong-version": strings.Replace(config, "v1.7.0", "v1.6.0", 1), "finding": config + "\n" + `{"finding":{"osv":"GO-TEST"}}`, "config-only": strings.Split(config, "\n")[0], "truncated": config + "\n{"} {
+	for name, raw := range map[string]string{"empty": "", "source-mode": strings.Replace(config, `"binary"`, `"source"`, 1), "wrong-version": strings.Replace(config, version, version+"-unreviewed", 1), "finding": config + "\n" + `{"finding":{"osv":"GO-TEST"}}`, "config-only": strings.Split(config, "\n")[0], "truncated": config + "\n{"} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := validateScan([]byte(raw)); err == nil {
 				t.Fatal("nonqualifying scan accepted")
 			}
 		})
+	}
+}
+
+func scannerPin(t *testing.T) string {
+	t.Helper()
+	version, err := ci.GoToolVersion("golang.org/x/vuln")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return version
+}
+
+func TestScanUsesCanonicalToolPin(t *testing.T) {
+	version := scannerPin(t)
+	config := fmt.Sprintf(`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":%q,"db":"https://vuln.go.dev","db_last_modified":"2026-10-14T00:00:00Z","scan_mode":"binary","scan_level":"symbol"}}`+"\n"+`{"SBOM":{"go_version":"go1.27.2","roots":["github.com/Hikyo-Org/hikyo/cmd/hikyo"]}}`, version)
+	if result, err := validateScan([]byte(config)); err != nil || result.Version != version {
+		t.Fatalf("canonical manifest pin %s rejected: %+v, %v", version, result, err)
+	}
+	for _, mismatch := range []string{"v0.0.0", "v1.6.0", "v1.7.0", version + "-unreviewed", version + "+unreviewed"} {
+		if mismatch == version {
+			continue
+		}
+		if _, err := validateScan([]byte(strings.Replace(config, version, mismatch, 1))); err == nil {
+			t.Fatalf("unreviewed scanner version %s accepted", mismatch)
+		}
 	}
 }
 
@@ -108,6 +136,9 @@ func TestRealGovulnJSONKeepsAdvisoriesSeparateFromSymbolPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Preserve the historical raw fixture; only its config version is normalized
+	// in memory so parser/advisory coverage survives a coordinated tool upgrade.
+	raw = bytes.Replace(raw, []byte(`"scanner_version": "v1.7.0"`), []byte(fmt.Sprintf(`"scanner_version": %q`, scannerPin(t))), 1)
 	r, err := validateScan(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +233,7 @@ func TestPublisherWritesOnlyExactCompleteProfile(t *testing.T) {
 			p := prepared{Tag: "v1.2.3", Identity: releaseidentity.Identity{Profile: releaseidentity.StableV1, Version: "1.2.3", Sequence: 1, Commit: source, ManifestSHA256: releaseidentity.Digest(strings.Repeat("c", 64)), CompatibilitySHA256: releaseidentity.Digest(strings.Repeat("d", 64))}, Archive: releasetrust.Artifact{Name: "hikyo_1.2.3_Linux_x86_64.tar.gz", Platform: "linux/amd64", Kind: "binary", SHA256: strings.Repeat("e", 64)}, BinarySHA256: digest}
 			attacks := passingAttacks()
 			browser := map[string]any{"schema_version": 1, "profile": "hikyo-browser-security-v1", "status": "passed", "artifact_kind": "provided-binary", "binary_sha256": digest, "source_sha": source, "datastore": "sqlite", "authentication": "native-password-totp", "fixture_configuration": passingBrowserConfiguration(), "elapsed_ms": 100, "required_tests": []string{"stored-content", "hostile-origin", "oracle-negative-controls"}, "tests": []map[string]any{{"id": "stored-content", "status": "passed", "duration_ms": 1}, {"id": "hostile-origin", "status": "passed", "duration_ms": 1}, {"id": "oracle-negative-controls", "status": "passed", "duration_ms": 1}}}
-			scan := `{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.7.0","db":"https://vuln.go.dev","db_last_modified":"2026-10-14T00:00:00Z","scan_mode":"binary","scan_level":"symbol"}}` + "\n" + `{"SBOM":{"go_version":"go1.27.2","roots":["github.com/Hikyo-Org/hikyo/cmd/hikyo"]}}`
+			scan := fmt.Sprintf(`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":%q,"db":"https://vuln.go.dev","db_last_modified":"2026-10-14T00:00:00Z","scan_mode":"binary","scan_level":"symbol"}}`+"\n"+`{"SBOM":{"go_version":"go1.27.2","roots":["github.com/Hikyo-Org/hikyo/cmd/hikyo"]}}`, scannerPin(t))
 			switch scenario {
 			case "missing-postgres":
 				attacks.Backends = attacks.Backends[:1]

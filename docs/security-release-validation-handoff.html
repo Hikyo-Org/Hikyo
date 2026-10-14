@@ -122,7 +122,7 @@ external identity provider, browser engine or deployment configuration.</p>
 <li><code>scripts/security/artifact-harness</code>: actual-binary native campaigns.</li>
 <li><code>scripts/security/release-evidence</code>: strict receipt validation and HTML output.</li>
 <li><code>web/e2e/security.config.ts</code>: hardened compiled-SPA browser profile.</li>
-<li><a href="security-testing.md">Security checks</a>: public scope, limitations and pinned ASVS review mapping.</li>
+<li><a href="security-testing.html">Security checks</a>: public scope, limitations and pinned ASVS review mapping.</li>
 </ul>
 <p>From the repository root, with the pinned Go and Node toolchains installed:</p>
 <pre><code class="language-sh">go test ./scripts/security/... ./scripts/ci -count=1
@@ -147,6 +147,24 @@ Failures preserve safe Actions logs but publish no custom failing artifact,
 release note or release asset. Passing Actions artifacts expire after 90 days.
 The existing CI badge stays; no additional fuzz badge is added.</p>
 <h2>Remaining verification</h2>
+<p>Review follow-up: the scanner receipt validator now embeds the same
+<code>scripts/ci/go-tool-modules.txt</code> pin used by the launcher. It still requires
+exact scanner-version equality. A build-overlay regression demonstrates that
+a reviewed manifest upgrade changes the expected version in both paths;
+unexpected versions and missing, duplicate or malformed pins reject.</p>
+<p>The native source campaign moves into a dedicated required job selected by
+the existing <code>web-go</code> plan. The original <code>web-go</code> job keeps its 15-minute
+budget and complete test/no-egress steps. The new job has a 35-minute ceiling,
+bounded setup/build steps and a separate campaign budget; its internal 10-minute campaign
+deadline is unchanged. This addresses a shared job-budget risk, rather than
+a reproduced hosted timeout. The optional performance benchmark was skipped
+by its existing rolling budget policy; no credit override was requested.</p>
+<p>Candidate-local reusable workflows can execute this new job while loading an
+older protected-base checker. The aggregate checks its success/skip result
+against the strict Boolean plan before adapting only the recognized new
+result key for the older registry. The trusted checker and registry remain
+unchanged. Seventy-two behavioral migration scenarios exercise the actual
+older checker, current policy, missing/failing proof and malformed inputs.</p>
 <p>Local Linux native and browser campaigns have completed with the original
 failed browser attempt preserved. The signed, DCO-signed main-based PR is
 open. Validate its exact-head CI and reviews. Keep hosted activation and actual

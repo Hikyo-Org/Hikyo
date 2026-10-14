@@ -1187,33 +1187,6 @@ jobs:
       # Go-only change exercises. The binary is app-build's exact artifact.
       - name: govulncheck (vulnerabilities reachable from the release-shaped binary)
         run: ./scripts/ci/run-go-tool.sh govulncheck -mode=binary ci-artifacts/hikyo-ui
-      - name: Start disposable adversarial PostgreSQL
-        id: security-postgres
-        run: ./scripts/ci/start-ci-postgres.sh
-      - name: Build stamped production fixture with ephemeral test trust
-        env:
-          HIKYO_CHART_FIXTURE_OUTPUT: ${{ runner.temp }}/security-fixture
-          HIKYO_CHART_FIXTURE_COMMIT: ${{ inputs.revision }}
-        run: |
-          go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
-          go build -tags ui -ldflags "$(cat "$RUNNER_TEMP/security-fixture/ldflags")" -o ci-artifacts/hikyo-security-ui ./cmd/hikyo
-      - name: Native artifact adversarial campaign on both datastores
-        run: >-
-          go run ./scripts/security/artifact-harness
-          --binary "$GITHUB_WORKSPACE/ci-artifacts/hikyo-security-ui"
-          --bundle "$RUNNER_TEMP/security-fixture/public/bundle"
-          --postgres-dsn 'postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test?sslmode=disable'
-          --steps 24 --timeout 10m --output "$RUNNER_TEMP/source-artifact-attacks.json"
-      - name: Remove disposable adversarial PostgreSQL
-        if: ${{ always() && steps.security-postgres.outcome == 'success' }}
-        run: docker container rm --force hikyo-ci-postgres
-      - name: Retain successful source fixture attack evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: source-fixture-attacks-${{ inputs.revision }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/source-artifact-attacks.json
-          if-no-files-found: error
-          retention-days: 30
       - name: Go tests (transport, serving rules, browser session)
         # Restored GOCACHE may contain passing test results. Compile from cache,
         # but always execute against a fresh build.
@@ -1233,6 +1206,84 @@ jobs:
         env:
           HIKYO_NO_EGRESS_BIN: ${{ github.workspace }}/ci-artifacts/hikyo-ui
         run: ./scripts/ci/no-egress.sh
+
+  # Run the paced source campaign alongside the existing Go/no-egress checks.
+  source-artifact-security:
+    needs: [changes, app-build]
+    if: ${{ fromJSON(needs.changes.outputs.plan)['web-go'] }}
+    runs-on: ubuntu-latest
+    # Setup, build, campaign, cleanup and evidence have independent bounds.
+    # Keep the campaign's own 10m deadline and the original web-go budget.
+    timeout-minutes: 35
+    steps:
+      - *validate-revision
+      - name: Check out the validated immutable revision
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - name: Download the exact app build
+        timeout-minutes: 2
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: hikyo-app-${{ github.run_id }}
+      - timeout-minutes: 2
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        timeout-minutes: 1
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore source artifact Go cache
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: |
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      - name: Start disposable adversarial PostgreSQL
+        timeout-minutes: 2
+        id: security-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
+      - name: Build stamped production fixture with ephemeral test trust
+        timeout-minutes: 5
+        env:
+          HIKYO_CHART_FIXTURE_OUTPUT: ${{ runner.temp }}/security-fixture
+          HIKYO_CHART_FIXTURE_COMMIT: ${{ inputs.revision }}
+        run: |
+          go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
+          go build -tags ui -ldflags "$(cat "$RUNNER_TEMP/security-fixture/ldflags")" -o ci-artifacts/hikyo-security-ui ./cmd/hikyo
+      - name: Native artifact adversarial campaign on both datastores
+        timeout-minutes: 11
+        run: >-
+          go run ./scripts/security/artifact-harness
+          --binary "$GITHUB_WORKSPACE/ci-artifacts/hikyo-security-ui"
+          --bundle "$RUNNER_TEMP/security-fixture/public/bundle"
+          --postgres-dsn 'postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test?sslmode=disable'
+          --steps 24 --timeout 10m --output "$RUNNER_TEMP/source-artifact-attacks.json"
+      - name: Remove disposable adversarial PostgreSQL
+        timeout-minutes: 1
+        if: ${{ always() && steps.security-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+      - name: Retain successful source fixture attack evidence
+        timeout-minutes: 2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-fixture-attacks-${{ inputs.revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source-artifact-attacks.json
+          if-no-files-found: error
+          retention-days: 30
 
   # Fast package/build checks stay together; the historically dominant
   # internal/isolation package runs on three independent PostgreSQL runners.
@@ -1977,6 +2028,7 @@ jobs:
       - release-snapshot
       - scan-xplat
       - supply-chain-checks
+      - source-artifact-security
       - test_core
       - web
       - web-closure
@@ -2048,6 +2100,24 @@ jobs:
           if ! CI_JOB_REGISTRY="$trusted_registry" "$trusted_checker" --supports-plan-v2; then
             echo "trusted required-job checker does not support CI plan v2" >&2
             exit 1
+          fi
+          # Candidate-local reusable workflows can add this required job before
+          # the protected base registry owns it. Validate its live outcome in
+          # every mode, then adapt only this known addition for the older base.
+          jq -e --argjson plan "$PLAN_JSON" '
+            (if $plan["web-go"] == true then "success"
+             elif $plan["web-go"] == false then "skipped"
+             else error("web-go plan must be boolean") end) as $expected |
+            type == "object" and has("source-artifact-security") and
+            .["source-artifact-security"].result == $expected
+          ' <<<"$NEEDS_JSON" >/dev/null
+          if jq -e '
+            .version == 2 and
+            (.jobs | has("source-artifact-security") | not) and
+            .jobs["web-go"] == {required_gate: "planned", plan_jobs: ["web-go"]} and
+            (.path_classes.full | index("web-go") != null)
+          ' "$trusted_registry" >/dev/null; then
+            NEEDS_JSON=$(jq -ce 'del(.["source-artifact-security"])' <<<"$NEEDS_JSON")
           fi
           # Older bases enforced scan-xplat through test_core's dependency.
           # Check its live result before adapting only that known legacy shape;

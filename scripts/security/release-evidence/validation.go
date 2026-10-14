@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"slices"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/scripts/ci"
 )
 
 var mandatoryCases = []string{"native-bootstrap", "authorized-controls", "cross-project-denial", "cross-tenant-denial", "denied-mutation-unchanged", "grant-removal", "grant-restoration", "credential-revocation", "cursor-binding", "projection-boundary", "revision-boundary", "restart-continuity", "audit-boundary", "generated-sequence"}
@@ -136,6 +138,10 @@ type scanFinding struct {
 
 func validateScan(raw []byte) (scanEvidence, error) {
 	var result scanEvidence
+	scannerVersion, err := ci.GoToolVersion("golang.org/x/vuln")
+	if err != nil {
+		return result, fmt.Errorf("binary scanner pin: %w", err)
+	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	configs := 0
 	messages := 0
@@ -194,7 +200,7 @@ func validateScan(raw []byte) (scanEvidence, error) {
 		if msg.Config != nil {
 			configs++
 			c := msg.Config
-			if messages != 1 || c.ProtocolVersion != "v1.0.0" || c.ScannerName != "govulncheck" || c.ScannerVersion != "v1.7.0" || c.ScanMode != "binary" || c.ScanLevel != "symbol" || c.DB == "" || c.DBLastModified.IsZero() {
+			if messages != 1 || c.ProtocolVersion != "v1.0.0" || c.ScannerName != "govulncheck" || c.ScannerVersion != scannerVersion || c.ScanMode != "binary" || c.ScanLevel != "symbol" || c.DB == "" || c.DBLastModified.IsZero() {
 				return result, errors.New("binary scanner configuration incomplete or unpinned")
 			}
 			result = scanEvidence{Tool: c.ScannerName, Version: c.ScannerVersion, Mode: c.ScanMode, ScanTime: time.Now().UTC(), Database: c.DB, DatabaseModifiedAt: c.DBLastModified, GoVersion: c.GoVersion, RawSHA256: hashBytes(raw), Advisories: []scanFinding{},

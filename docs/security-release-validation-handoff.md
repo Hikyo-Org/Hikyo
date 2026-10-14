@@ -117,6 +117,27 @@ The existing CI badge stays; no additional fuzz badge is added.
 
 ## Remaining verification
 
+Review follow-up: the scanner receipt validator now embeds the same
+`scripts/ci/go-tool-modules.txt` pin used by the launcher. It still requires
+exact scanner-version equality. A build-overlay regression demonstrates that
+a reviewed manifest upgrade changes the expected version in both paths;
+unexpected versions and missing, duplicate or malformed pins reject.
+
+The native source campaign moves into a dedicated required job selected by
+the existing `web-go` plan. The original `web-go` job keeps its 15-minute
+budget and complete test/no-egress steps. The new job has a 35-minute ceiling,
+bounded setup/build steps and a separate campaign budget; its internal 10-minute campaign
+deadline is unchanged. This addresses a shared job-budget risk, rather than
+a reproduced hosted timeout. The optional performance benchmark was skipped
+by its existing rolling budget policy; no credit override was requested.
+
+Candidate-local reusable workflows can execute this new job while loading an
+older protected-base checker. The aggregate checks its success/skip result
+against the strict Boolean plan before adapting only the recognized new
+result key for the older registry. The trusted checker and registry remain
+unchanged. Seventy-two behavioral migration scenarios exercise the actual
+older checker, current policy, missing/failing proof and malformed inputs.
+
 Local Linux native and browser campaigns have completed with the original
 failed browser attempt preserved. The signed, DCO-signed main-based PR is
 open. Validate its exact-head CI and reviews. Keep hosted activation and actual

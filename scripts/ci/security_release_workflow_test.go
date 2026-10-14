@@ -15,6 +15,52 @@ import (
 // Permit reviewed additions while conserving the complete earlier baseline.
 // Missing, changed, duplicated or fail-open additions still fail this check.
 func normalizeSecurityAdditions(workflow map[string]map[string]any) error {
+	// Validate the entire isolated source job before excluding this additive
+	// execution from the frozen inventory. Never regenerate baseline hashes.
+	jobName := "source-artifact-security"
+	job, exists := workflow[jobName]
+	if !exists {
+		return fmt.Errorf("source artifact security job is missing")
+	}
+	jobSteps, ok := job["steps"].([]any)
+	guardSteps, guardOK := workflow["changes"]["steps"].([]any)
+	if !ok || !guardOK || len(jobSteps) == 0 || len(guardSteps) == 0 || !reflect.DeepEqual(jobSteps[0], guardSteps[0]) {
+		return fmt.Errorf("source artifact security lost the immutable caller guard")
+	}
+	fixture, err := os.ReadFile(filepath.Join("testdata", "source-artifact-security.yml"))
+	if err != nil {
+		return err
+	}
+	var expectedJob map[string]any
+	if err := yaml.Unmarshal(fixture, &expectedJob); err != nil {
+		return err
+	}
+	normalizedJob := make(map[string]any, len(job))
+	for key, value := range job {
+		normalizedJob[key] = value
+	}
+	normalizedJob["steps"] = jobSteps[1:]
+	if !reflect.DeepEqual(normalizedJob, expectedJob) {
+		return fmt.Errorf("source artifact security job lost its complete fail-closed configuration")
+	}
+	needs, ok := workflow["ci-required"]["needs"].([]any)
+	if !ok {
+		return fmt.Errorf("security job lost required aggregate dependencies")
+	}
+	keptNeeds := make([]any, 0, len(needs))
+	found := 0
+	for _, need := range needs {
+		if need == jobName {
+			found++
+		} else {
+			keptNeeds = append(keptNeeds, need)
+		}
+	}
+	if found != 1 {
+		return fmt.Errorf("source artifact security must gate ci-required exactly once")
+	}
+	workflow["ci-required"]["needs"] = keptNeeds
+	delete(workflow, jobName)
 	raw, err := os.ReadFile(filepath.Join("testdata", "security-additions.yml"))
 	if err != nil {
 		return err
