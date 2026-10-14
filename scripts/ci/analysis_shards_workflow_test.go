@@ -106,13 +106,89 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 import ("fmt"; "os")
 func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Println("analysis-shards-all-v1"); return }; fmt.Println("{}") }
 `
-	var expected map[string]json.RawMessage
-	for _, scenario := range []struct {
+	type workflowScenario struct {
 		name, event, ref string
 		source           []byte
 		wantSuccess      bool
 		wantCalls        int
-	}{
+	}
+	runScenario := func(t *testing.T, scenario workflowScenario) map[string]json.RawMessage {
+		t.Helper()
+		work := t.TempDir()
+		trusted := filepath.Join(work, "trusted.go")
+		output := filepath.Join(work, "outputs")
+		marker := filepath.Join(work, "candidate-executed")
+		calls := filepath.Join(work, "calls")
+		inventoryPath := filepath.Join(work, "inventory.json")
+		goStub := filepath.Join(work, "go-list")
+		candidatePath := filepath.Join(work, "scripts/ci/analysis-shards-go/main.go")
+		if err := os.MkdirAll(filepath.Dir(candidatePath), 0700); err != nil {
+			t.Fatal(err)
+		}
+		candidate := []byte("package main\nimport \"os\"\nfunc main(){ os.WriteFile(os.Getenv(\"CANDIDATE_MARKER\"), []byte(\"executed\"), 0600); os.Exit(1) }\n")
+		if scenario.event == "workflow_dispatch" || scenario.event == "push" {
+			// The caller guard authenticates main or the canonical release tag,
+			// and the release classifier verifies its peeled main ancestry.
+			candidate = scenario.source
+		}
+		for path, contents := range map[string][]byte{
+			trusted: scenario.source, inventoryPath: metadata, candidatePath: candidate,
+			goStub: []byte("#!/bin/sh\nset -eu\ntest \"$*\" = 'list -json ./...'\nprintf 'list\\n' >>\"$PLANNER_CALLS\"\ncat \"$PLANNER_INVENTORY\"\n"),
+		} {
+			if err := os.WriteFile(path, contents, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		command := exec.Command("bash", "-c", "git() { test \"$1\" = show && test \"$2\" = \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\" && cat \"$TRUSTED_SOURCE\"; }\n"+script)
+		command.Dir = work
+		command.Env = append(os.Environ(), "EVENT_NAME="+scenario.event, "GITHUB_REF="+scenario.ref,
+			"BASE_SHA="+strings.Repeat("a", 40), "RUNNER_TEMP="+work, "GITHUB_OUTPUT="+output,
+			"TRUSTED_SOURCE="+trusted, "GO_BIN="+goStub, "PLANNER_CALLS="+calls,
+			"PLANNER_INVENTORY="+inventoryPath, "CANDIDATE_MARKER="+marker)
+		logs, runErr := command.CombinedOutput()
+		if (runErr == nil) != scenario.wantSuccess {
+			t.Fatalf("success=%t, error=%v\n%s", scenario.wantSuccess, runErr, logs)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatal("candidate planner code executed")
+		}
+		callBytes, err := os.ReadFile(calls)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if got := bytes.Count(callBytes, []byte("list\n")); got != scenario.wantCalls {
+			t.Fatalf("package inventories=%d, want %d", got, scenario.wantCalls)
+		}
+		data, err := os.ReadFile(output)
+		if !scenario.wantSuccess {
+			if err == nil && len(data) != 0 {
+				t.Fatal("refused planning wrote partial downstream outputs")
+			}
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := map[string]json.RawMessage{}
+		for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+			key, value, ok := strings.Cut(line, "=")
+			if !ok || actual[key] != nil || !json.Valid([]byte(value)) {
+				t.Fatal("invalid or duplicate workflow output")
+			}
+			actual[key] = json.RawMessage(value)
+		}
+		if len(actual) != 5 {
+			t.Fatal("workflow lost complete matrix outputs")
+		}
+		return actual
+	}
+	// Build the immutable legacy reference even when -run selects only a bulk
+	// subtest. A failed legacy execution must stop the parent comparison test.
+	expected := runScenario(t, workflowScenario{
+		name: "fixed legacy reference", event: "merge_group", source: oldSource,
+		wantSuccess: true, wantCalls: 18,
+	})
+	for _, scenario := range []workflowScenario{
 		{"known legacy base", "merge_group", "", oldSource, true, 18},
 		{"new trusted base", "merge_group", "", newSource, true, 1},
 		{"trusted main", "workflow_dispatch", "refs/heads/main", newSource, true, 1},
@@ -123,75 +199,8 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 		{"malformed bulk plan", "merge_group", "", []byte(malformedBulk), false, 0},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			work := t.TempDir()
-			trusted := filepath.Join(work, "trusted.go")
-			output := filepath.Join(work, "outputs")
-			marker := filepath.Join(work, "candidate-executed")
-			calls := filepath.Join(work, "calls")
-			inventoryPath := filepath.Join(work, "inventory.json")
-			goStub := filepath.Join(work, "go-list")
-			candidatePath := filepath.Join(work, "scripts/ci/analysis-shards-go/main.go")
-			if err := os.MkdirAll(filepath.Dir(candidatePath), 0700); err != nil {
-				t.Fatal(err)
-			}
-			candidate := []byte("package main\nimport \"os\"\nfunc main(){ os.WriteFile(os.Getenv(\"CANDIDATE_MARKER\"), []byte(\"executed\"), 0600); os.Exit(1) }\n")
-			if scenario.event == "workflow_dispatch" || scenario.event == "push" {
-				// The caller guard authenticates main or the canonical release tag,
-				// and the release classifier verifies its peeled main ancestry.
-				candidate = scenario.source
-			}
-			for path, contents := range map[string][]byte{
-				trusted: scenario.source, inventoryPath: metadata, candidatePath: candidate,
-				goStub: []byte("#!/bin/sh\nset -eu\ntest \"$*\" = 'list -json ./...'\nprintf 'list\\n' >>\"$PLANNER_CALLS\"\ncat \"$PLANNER_INVENTORY\"\n"),
-			} {
-				if err := os.WriteFile(path, contents, 0700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			command := exec.Command("bash", "-c", "git() { test \"$1\" = show && test \"$2\" = \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\" && cat \"$TRUSTED_SOURCE\"; }\n"+script)
-			command.Dir = work
-			command.Env = append(os.Environ(), "EVENT_NAME="+scenario.event, "GITHUB_REF="+scenario.ref,
-				"BASE_SHA="+strings.Repeat("a", 40), "RUNNER_TEMP="+work, "GITHUB_OUTPUT="+output,
-				"TRUSTED_SOURCE="+trusted, "GO_BIN="+goStub, "PLANNER_CALLS="+calls,
-				"PLANNER_INVENTORY="+inventoryPath, "CANDIDATE_MARKER="+marker)
-			logs, runErr := command.CombinedOutput()
-			if (runErr == nil) != scenario.wantSuccess {
-				t.Fatalf("success=%t, error=%v\n%s", scenario.wantSuccess, runErr, logs)
-			}
-			if _, err := os.Stat(marker); !os.IsNotExist(err) {
-				t.Fatal("candidate planner code executed")
-			}
-			callBytes, err := os.ReadFile(calls)
-			if err != nil && !os.IsNotExist(err) {
-				t.Fatal(err)
-			}
-			if got := bytes.Count(callBytes, []byte("list\n")); got != scenario.wantCalls {
-				t.Fatalf("package inventories=%d, want %d", got, scenario.wantCalls)
-			}
-			data, err := os.ReadFile(output)
-			if !scenario.wantSuccess {
-				if err == nil && len(data) != 0 {
-					t.Fatal("refused planning wrote partial downstream outputs")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			actual := map[string]json.RawMessage{}
-			for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
-				key, value, ok := strings.Cut(line, "=")
-				if !ok || actual[key] != nil || !json.Valid([]byte(value)) {
-					t.Fatal("invalid or duplicate workflow output")
-				}
-				actual[key] = json.RawMessage(value)
-			}
-			if len(actual) != 5 {
-				t.Fatal("workflow lost complete matrix outputs")
-			}
-			if expected == nil {
-				expected = actual
-			} else if !reflect.DeepEqual(actual, expected) {
+			actual := runScenario(t, scenario)
+			if scenario.wantSuccess && !reflect.DeepEqual(actual, expected) {
 				t.Fatal("legacy and bulk outputs differ on the same candidate inventory")
 			}
 		})
