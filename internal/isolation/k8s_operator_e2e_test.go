@@ -88,6 +88,7 @@ func testServerOperationalProbes(t *testing.T, restCfg *rest.Config, sch *runtim
 						Args:            []string{"server", "--dev", "--listen=0.0.0.0:8080", "--operational-listen=0.0.0.0:8081"},
 						Env: []corev1.EnvVar{
 							{Name: "HIKYO_DB", Value: "sqlite:/data/hikyo.db"},
+							{Name: "HIKYO_EXTERNAL_ORIGIN", Value: "http://localhost:8080"},
 							{Name: "HIKYO_TRUSTED_PROXY_CIDRS", Value: "10.0.0.0/8"},
 						},
 						Ports: []corev1.ContainerPort{

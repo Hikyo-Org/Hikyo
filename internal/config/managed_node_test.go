@@ -39,6 +39,67 @@ func managedNodeTestTLS(t *testing.T) (string, string) {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate})), string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}))
 }
 
+func TestManagedOriginFollowsEffectiveNodeUnlessExplicit(t *testing.T) {
+	for _, explicitOrigin := range []string{"", "https://public.example.com:8443"} {
+		t.Run(explicitOrigin, func(t *testing.T) {
+			cfg, _, err := LoadBootstrap("server", []string{"--dev", "--listen", "0.0.0.0:9443"}, env(
+				"HIKYO_EXTERNAL_ORIGIN", explicitOrigin,
+				"HIKYO_TRUSTED_PROXY_CIDRS", "192.0.2.0/24",
+			), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			node, err := cfg.SeedNodeValues()
+			if err != nil {
+				t.Fatal(err)
+			}
+			seed, err := cfg.ManagedSeedForNode(node)
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner := make(map[string]string)
+			for _, key := range ManagedOwnerKeys() {
+				if value, present := seed[key]; present {
+					owner[key] = value
+				}
+			}
+			effective, err := ApplyManagedOwnerAndNodeValues(cfg, owner, node)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertOrigin := func(want string) {
+				t.Helper()
+				if explicitOrigin != "" {
+					want = explicitOrigin
+				}
+				if effective.ExternalOrigin != want || effective.ExternalOriginExplicit != (explicitOrigin != "") {
+					t.Fatalf("origin=%q explicit=%t, want %q explicit=%t", effective.ExternalOrigin, effective.ExternalOriginExplicit, want, explicitOrigin != "")
+				}
+				if exported := effective.ManagedOwnerValues()["HIKYO_EXTERNAL_ORIGIN"]; exported != explicitOrigin {
+					t.Fatalf("managed owner exported %q, want only explicit origin %q", exported, explicitOrigin)
+				}
+			}
+			assertOrigin("http://localhost:9443")
+			// A later activation changes both the port and TLS presence. It must
+			// derive from this candidate rather than the bootstrap or prior node.
+			node["HIKYO_LISTEN"] = "[::]:9444"
+			node["HIKYO_TLS_CERT_PEM"], node["HIKYO_TLS_KEY_PEM"] = managedNodeTestTLS(t)
+			effective, err = ApplyManagedNodeValues(effective, node)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertOrigin("https://localhost:9444")
+			delete(node, "HIKYO_TLS_CERT_PEM")
+			delete(node, "HIKYO_TLS_KEY_PEM")
+			effective, err = ApplyManagedNodeValues(effective, node)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertOrigin("http://localhost:9444")
+		})
+	}
+}
+
 func TestManagedNodeSeedImportsExactContentsOnceAndAppliesWithoutSourceFiles(t *testing.T) {
 	cert, key := managedNodeTestTLS(t)
 	contents := map[string]string{

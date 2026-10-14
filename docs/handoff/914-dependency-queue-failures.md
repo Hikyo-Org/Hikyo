@@ -72,16 +72,65 @@ visible hosted validation before that activation.
   eviction and proposes a failure status. Hosted reporter publication is pending
   activation after merge.
 
-## Remaining delivery gates
+## Hostname migration
 
 The first full candidate of fix `0da7139d3` exposed a second breaking change:
 WebAuthn 0.18 rejects IP-address RP IDs. Compose, macOS file-sync and the headline
 restart check fail during boot for literal-IP origins. The file-sync failure was
-reproduced locally. A scope decision is pending: retain WebAuthn 0.17.4 in this
-batch to preserve existing startup behavior (recommended), or complete a broader
-hostname-origin migration and accept the configuration compatibility change.
-Do not assume this decision has been made. No origin/security validation has
-been bypassed.
+reproduced locally. The maintainer chose the complete WebAuthn 0.18 migration,
+including hostname-based development origins and its configuration compatibility
+change. WebAuthn remains at 0.18.2; its validation is not bypassed.
+
+- Inferred origins for the default loopback and wildcard listeners use
+  `localhost`, preserving the listener, port, TLS scheme and non-explicit status.
+  Nonstandard loopback aliases need an operator-configured hostname pointing to
+  their actual address; they are not silently advertised as localhost.
+- Explicit server IP origins, including browser IPv4 aliases, fail at configuration
+  load with hostname migration guidance. Existing hostname origins stay unchanged.
+  Offline administration, migration and backup commands can still load an old IP
+  origin so the datastore remains maintainable.
+- Managed owner configuration now derives an implicit origin from the effective
+  listener and TLS candidate, rather than keeping the bootstrap port/scheme.
+  Explicit origins remain operator statements; inferred defaults are not exported
+  as explicit public origins.
+- README, Compose, retention and Kubernetes fixtures use hostname public origins
+  with separate IP transport listeners. The browser pair uses `localhost` and
+  `serving.localhost`, keeping two cookie jars. Node fixture traffic uses a
+  request-local Undici dispatcher because the pinned Linux OS resolver does not
+  resolve `.localhost`; URL, Host, Origin and Cookie headers remain unchanged.
+  Undici 8.11.0 passes the repository's existing release-age policy, with no
+  exclusion added.
+- The CSP builder and workspace origin validator recognize `.localhost` as the
+  reserved loopback namespace from RFC 6761. Each configured origin is still
+  emitted individually; wildcard CSP sources and lookalike domains remain refused.
+  New tests reproduced both refusals before the change. Browser `localhost.` was
+  tried and rejected by the actual RP library, then replaced with the canonical
+  subdomain spelling.
+
+Operators using an IP-address `HIKYO_EXTERNAL_ORIGIN` must configure a hostname
+and access the instance through it. Local default development uses
+`http://localhost:8080`; production uses the instance's HTTPS hostname. The
+socket bind may remain an IP address. Existing managed values must also name the
+new origin. Change them using the existing binary before upgrading; if the new
+binary already refuses startup, return to the previous binary to configure the
+hostname. Environment overrides do not replace adopted managed values. This is
+a configuration compatibility change, not a datastore schema migration.
+
+Local validation of this migration includes the full Compose demo, passkey and
+CLI integration cases on SQLite and the pinned PostgreSQL image, config/RP race
+checks, and web typecheck, lint and fixture-unit checks. The first broad app run
+also exposed an inconsistent HTTPS-origin test fixture; marking its manually
+configured public origin explicit preserved the existing HSTS assertion. That
+check and its sibling TLS/runtime checks pass. Two unrelated packaged-upgrade
+tests cannot complete locally because an existing VM listener owns port 8081;
+that environment failure is retained, and hosted validation remains required.
+The signed-out two-instance popup login passed on desktop and mobile. The final independent
+Standards and Spec reviews of the follow-up delta found no actionable issues.
+Documentation check and static build pass. The
+structural graph was refreshed; its existing Astro parser limitations remain
+navigational only.
+
+## Remaining delivery gates
 
 Push the signed, DCO-signed fix, request a visible full candidate, and recheck
 exact-head reviews and checks. Because the PR author is Dependabot and .github/

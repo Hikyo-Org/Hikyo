@@ -98,6 +98,7 @@ func TestDevBootSeparatesPublicAndOperationalRoutes(t *testing.T) {
 func TestProxyHTTPSOriginEmitsHSTSOnLoopbackBackend(t *testing.T) {
 	cfg := devConfig(t)
 	cfg.ExternalOrigin = "https://hikyo.example.com"
+	cfg.ExternalOriginExplicit = true
 	srv, err := Boot(t.Context(), cfg, testLogger())
 	if err != nil {
 		t.Fatal(err)

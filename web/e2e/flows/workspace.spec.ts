@@ -36,12 +36,10 @@ import { surfacesForFlow } from '../registry.ts';
  *   5. Revoking the session in the remote's own active-session list kills it
  *      the same way, criterion 5, seen from the browser.
  *
- * The two instances differ by HOSTNAME (A is `localhost`, B is `127.0.0.1`)
+ * The two instances differ by HOSTNAME (A is `localhost`, B is `serving.localhost`)
  * and not only by port, because cookies are not partitioned by port: one
- * hostname would mean one cookie jar and B's session would destroy A's. A
- * takes the NAME because a WebAuthn relying-party id must be a registrable
- * domain and an IP literal is not one, so the passkey ceremonies have to run
- * there.
+ * hostname would mean one cookie jar and B's session would destroy A's.
+ * Both origins use valid RP hostnames; A holds the shared resident passkey.
  */
 
 const VIEWING_ORIGIN = BASE_URL;
@@ -557,13 +555,9 @@ test.describe('multi-instance', () => {
     // password login this test performs in the popup is single-factor, and
     // every instance-scope surface on B is MFA-mandatory, so it cannot reach
     // B's own remotes page afterwards.
-    // Captured by DOMAIN, not by URL. `context.cookies(url)` applies the
-    // browser's own delivery rules, and a `Secure` cookie is not delivered to
-    // an `http://` URL whose host is an IP LITERAL, Chrome's plaintext
-    // carve-out for secure cookies is `localhost` by name. B is the address
-    // literal (A holds `localhost`, which WebAuthn requires of the instance
-    // that runs passkey ceremonies), so the URL form silently returns nothing
-    // here and the restore below would put back an empty jar.
+    // Capture by domain so restoration retains B's complete cookie jar,
+    // independently of URL delivery filtering. A's localhost cookies remain
+    // separate from B's serving.localhost cookies.
     const bSession = (await context.cookies()).filter((c) => c.domain === HOST_B);
     await context.clearCookies({ domain: HOST_B });
 

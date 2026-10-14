@@ -127,19 +127,24 @@ mkdir -m 700 .hikyo-runtime
 ./bin/hikyo server --dev --cli-socket "$PWD/.hikyo-runtime/cli.sock"
 ```
 
-Open <http://127.0.0.1:8080>. The command creates `hikyo-dev.db` and a
+Open <http://localhost:8080>. The command creates `hikyo-dev.db` and a
 permission-`0600` root key in the current directory.
 
 Local CLI authentication uses the same-user Unix socket, not the browser's
 plaintext loopback TCP listener:
 
 ```bash
-./bin/hikyo login http://127.0.0.1:8080 --local --as admin \
+./bin/hikyo login http://localhost:8080 --local --as admin \
   --socket "$PWD/.hikyo-runtime/cli.sock"
 ```
 
 `--dev` is loopback-only and intended for evaluation. A `-tags ui` build embeds
 the browser app; a plain `go build` produces an API-only binary.
+
+WebAuthn requires a hostname in the public origin. Local development uses
+`localhost` even when the server binds a loopback IP. For a configured server,
+set `HIKYO_EXTERNAL_ORIGIN` to its HTTPS hostname; an explicit IP-address origin
+is rejected at startup.
 
 Next, follow [Getting started](https://hikyo.app/docs/getting-started/) to create
 the first administrator, then [Your first project](https://hikyo.app/docs/first-project/)

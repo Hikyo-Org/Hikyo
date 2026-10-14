@@ -4,11 +4,50 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/webauthnrp"
 	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
+
+func TestFromExternalOriginRequiresExactHostnameOrigin(t *testing.T) {
+	for _, origin := range []string{
+		"", "localhost:8080", "https://:443", "http://127.0.0.1:8080", "https://192.0.2.1",
+		"http://[::1]:8080", "https://[::]", "https://[::ffff:127.0.0.1]",
+		"https://example.com/", "https://example.com/path", "https://example.com?token=secret",
+		"https://example.com?", "https://example.com#fragment", "https://example.com#",
+		"https://user:password@example.com", "ftp://example.com",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			if _, err := webauthnrp.FromExternalOrigin(origin); !errors.Is(err, webauthnrp.ErrConfig) {
+				t.Fatalf("FromExternalOrigin(%q) = %v, want ErrConfig", origin, err)
+			}
+		})
+	}
+	for _, origin := range []string{"http://localhost:8080", "https://example.com", "https://example.com:9443"} {
+		t.Run(origin, func(t *testing.T) {
+			rp, err := webauthnrp.FromExternalOrigin(origin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			host := strings.Split(strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://"), ":")[0]
+			user := webauthnrp.User{Handle: []byte("account-handle"), Name: "alice", DisplayName: "Alice"}
+			options, session, _, err := rp.BeginEnrol(user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			device := webauthntest.New(host, origin)
+			response, err := device.Enrol(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := rp.FinishEnrol(user, session, response); err != nil {
+				t.Fatalf("hostname origin ceremony: %v", err)
+			}
+		})
+	}
+}
 
 func TestRegistrationThenDiscoverableLogin(t *testing.T) {
 	rp, err := webauthnrp.New("example.com", []string{"https://example.com"})
