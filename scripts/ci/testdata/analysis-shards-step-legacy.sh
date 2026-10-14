@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -o pipefail
 trusted_planner="$RUNNER_TEMP/analysis-shards.go"
 if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then

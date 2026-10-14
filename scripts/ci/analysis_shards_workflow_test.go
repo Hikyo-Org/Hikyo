@@ -15,13 +15,26 @@ import (
 )
 
 //go:embed testdata/analysis-shards-step-legacy.sh
-var legacyShardPlanningRun string
+var legacyShardPlanningFixture string
 
 //go:embed testdata/analysis-shards-step-all.sh
-var completeShardPlanningRun string
+var completeShardPlanningFixture string
 
 //go:embed testdata/analysis-shards-legacy.go.txt
 var legacyShardPlannerSource string
+
+var legacyShardPlanningRun = shardPlanningFixtureBody(legacyShardPlanningFixture)
+var completeShardPlanningRun = shardPlanningFixtureBody(completeShardPlanningFixture)
+
+// Standalone fixtures declare Bash for linting. Remove only that exact header
+// so every byte of the embedded workflow body remains covered by comparisons.
+func shardPlanningFixtureBody(fixture string) string {
+	body, ok := strings.CutPrefix(fixture, "#!/usr/bin/env bash\n")
+	if !ok {
+		panic("shard planning fixture must declare Bash")
+	}
+	return body
+}
 
 // Scheduling changes may conserve the old inventory only through this exact,
 // separately executed transformation. Other conditions, inputs and outputs
