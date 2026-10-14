@@ -138,6 +138,18 @@ build. The local warm harness build took 1.43 seconds; this is not a hosted
 cold-build performance claim. The optional performance benchmark was skipped
 by its existing rolling budget policy; no credit override was requested.
 
+The hosted source campaign on `8af142e` completed all 28 mandatory native
+cases across SQLite and PostgreSQL, with 24 generated steps per datastore,
+under the unchanged runtime deadline. This is GitHub-hosted source-fixture
+proof, not post-publication validation of released assets. Its full CI run
+still failed isolation shard 0: the cache registry classified a pure workflow
+policy test as a cache implementation because its name contained `Caches`.
+The test is renamed to `TestMainValidationWorkflowPolicySecurityReleaseUsesEphemeralToolchains`;
+its body and existing supply-chain selection prefix are unchanged. The
+original invariant failure reproduced; the renamed test passes the actual
+cache invariant and full existing supply-chain Go selector. Independent
+review confirms this is a name-only repair with no analyzer or registry change.
+
 Candidate-local reusable workflows can execute this new job while loading an
 older protected-base checker. The aggregate checks its success/skip result
 against the strict Boolean plan before adapting only the recognized new

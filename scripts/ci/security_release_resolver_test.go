@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestMainValidationWorkflowPolicySecurityReleaseDisablesPackageManagerCaches(t *testing.T) {
+func TestMainValidationWorkflowPolicySecurityReleaseUsesEphemeralToolchains(t *testing.T) {
 	w := readConsolidatedWorkflow(t, "security-release")
 	goSteps, nodeSteps := 0, 0
 	for _, step := range w.Jobs["validate"].Steps {
