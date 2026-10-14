@@ -160,12 +160,12 @@ func TestValidateResponseRejectsUnsupportedSignedCondition(t *testing.T) {
 	}
 }
 
-func signedResponseFixture(t *testing.T, now time.Time, signResponse bool) ([]byte, *x509.Certificate) {
+func signedResponseFixture(t testing.TB, now time.Time, signResponse bool) ([]byte, *x509.Certificate) {
 	t.Helper()
 	return signedResponseFixtureWithTransform(t, now, func(xml string) string { return xml })
 }
 
-func signedResponseFixtureWithTransform(t *testing.T, now time.Time, transform func(string) string) ([]byte, *x509.Certificate) {
+func signedResponseFixtureWithTransform(t testing.TB, now time.Time, transform func(string) string) ([]byte, *x509.Certificate) {
 	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

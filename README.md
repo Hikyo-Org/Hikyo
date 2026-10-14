@@ -16,7 +16,8 @@
     <a href="https://hikyo.app/docs/"><strong>Documentation</strong></a> ·
     <a href="https://hikyo.app/docs/getting-started/">Getting started</a> ·
     <a href="https://hikyo.app/docs/self-hosting/">Self-hosting</a> ·
-    <a href="./CONTRIBUTING.md">Contributing</a>
+    <a href="./CONTRIBUTING.md">Contributing</a> ·
+    <a href="./docs/security-testing.md">Security checks</a>
   </p>
 
   <p>

@@ -1,0 +1,46 @@
+# Reviewed additive checks; never replace the original full-suite baseline.
+web:
+  - name: Authenticated browser security campaign and oracle controls
+    if: matrix.project == 'desktop' && matrix.group == 1
+    working-directory: web
+    env:
+      HIKYO_E2E_BINARY: ${{ github.workspace }}/ci-artifacts/hikyo-ui
+      HIKYO_SECURITY_SOURCE_SHA: ${{ inputs.revision }}
+      HIKYO_SECURITY_BROWSER_RECEIPT: ${{ runner.temp }}/source-browser-security.json
+    run: pnpm exec playwright test --config e2e/security.config.ts
+  - name: Retain successful source browser security evidence
+    if: matrix.project == 'desktop' && matrix.group == 1
+    uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+    with:
+      name: source-browser-security-${{ inputs.revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+      path: ${{ runner.temp }}/source-browser-security.json
+      if-no-files-found: error
+      retention-days: 30
+web-go:
+  - name: Start disposable adversarial PostgreSQL
+    id: security-postgres
+    run: ./scripts/ci/start-ci-postgres.sh
+  - name: Build stamped production fixture with ephemeral test trust
+    env:
+      HIKYO_CHART_FIXTURE_OUTPUT: ${{ runner.temp }}/security-fixture
+      HIKYO_CHART_FIXTURE_COMMIT: ${{ inputs.revision }}
+    run: |
+      go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
+      go build -tags ui -ldflags "$(cat "$RUNNER_TEMP/security-fixture/ldflags")" -o ci-artifacts/hikyo-security-ui ./cmd/hikyo
+  - name: Native artifact adversarial campaign on both datastores
+    run: >-
+      go run ./scripts/security/artifact-harness
+      --binary "$GITHUB_WORKSPACE/ci-artifacts/hikyo-security-ui"
+      --bundle "$RUNNER_TEMP/security-fixture/public/bundle"
+      --postgres-dsn 'postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test?sslmode=disable'
+      --steps 24 --timeout 10m --output "$RUNNER_TEMP/source-artifact-attacks.json"
+  - name: Remove disposable adversarial PostgreSQL
+    if: ${{ always() && steps.security-postgres.outcome == 'success' }}
+    run: docker container rm --force hikyo-ci-postgres
+  - name: Retain successful source fixture attack evidence
+    uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+    with:
+      name: source-fixture-attacks-${{ inputs.revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+      path: ${{ runner.temp }}/source-artifact-attacks.json
+      if-no-files-found: error
+      retention-days: 30

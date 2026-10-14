@@ -61,6 +61,7 @@ jobs:
           PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
           PR_BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+          TAG_DELETED: ${{ github.event.deleted }}
         shell: bash
         run: |
           set -euo pipefail
@@ -96,6 +97,16 @@ jobs:
               test "$SOURCE_REVISION" = "$GITHUB_SHA"
               test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"
               ;;
+            push)
+              # Only canonical stable/prerelease tags, never branch pushes,
+              # deletions or nightly tags, may select the full release plan.
+              test "$FULL_CANDIDATE" = false
+              test "$TAG_DELETED" = false
+              test "$DEFAULT_BRANCH" = main
+              [[ "$GITHUB_REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[A-Za-z][0-9A-Za-z-]*(\.([A-Za-z-][0-9A-Za-z-]*|[0-9]+[A-Za-z-][0-9A-Za-z-]*|0|[1-9][0-9]*))*)?$ ]]
+              [[ "$GITHUB_REF" != *-nightly.* ]]
+              test "$SOURCE_REVISION" = "$GITHUB_SHA"
+              ;;
             workflow_dispatch|schedule|repository_dispatch)
               test "$GITHUB_REF" = refs/heads/main
               test "$SOURCE_REVISION" = "$GITHUB_SHA"
@@ -112,6 +123,7 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
+          SOURCE_REVISION: ${{ inputs.revision }}
           FULL_CANDIDATE: ${{ inputs.candidate }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -127,7 +139,13 @@ jobs:
             test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"
             printf 'base_sha=%s\n' "$BASE_SHA" >>"$GITHUB_OUTPUT"
           fi
-          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
+          if [ "$EVENT_NAME" = push ]; then
+            # checkout has the complete canonical tag and branch history. Bind
+            # the peeled tag, not release.target_commitish (which may be main).
+            test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$SOURCE_REVISION"
+            git merge-base --is-ancestor "$SOURCE_REVISION" refs/remotes/origin/main
+            plan=$(./scripts/ci/classify-changed-paths.sh --all)
+          elif [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
             test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             plan=$(./scripts/ci/classify-changed-paths.sh --all)
           elif git cat-file -e "$BASE_SHA:scripts/ci/classify-changed-paths.sh" 2>/dev/null &&
@@ -203,7 +221,7 @@ jobs:
           shellcheck_dir="$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION"
           "$shellcheck_dir/shellcheck" \
             .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
-            scripts/release/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in install/upgrade-nightly*.sh
+            scripts/release/*.sh scripts/security/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in install/upgrade-nightly*.sh
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
       - name: Require full commit pins for workflow actions
         run: go test ./scripts/ci -run '^TestWorkflowActionPins' -count=1
@@ -939,6 +957,23 @@ jobs:
         working-directory: web
         run: pnpm exec playwright test --config e2e/session-epoch.config.ts
 
+      - name: Authenticated browser security campaign and oracle controls
+        if: matrix.project == 'desktop' && matrix.group == 1
+        working-directory: web
+        env:
+          HIKYO_E2E_BINARY: ${{ github.workspace }}/ci-artifacts/hikyo-ui
+          HIKYO_SECURITY_SOURCE_SHA: ${{ inputs.revision }}
+          HIKYO_SECURITY_BROWSER_RECEIPT: ${{ runner.temp }}/source-browser-security.json
+        run: pnpm exec playwright test --config e2e/security.config.ts
+      - name: Retain successful source browser security evidence
+        if: matrix.project == 'desktop' && matrix.group == 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-browser-security-${{ inputs.revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source-browser-security.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Flow suite (${{ matrix.project }} group ${{ matrix.group }})
         working-directory: web
         env:
@@ -1152,6 +1187,33 @@ jobs:
       # Go-only change exercises. The binary is app-build's exact artifact.
       - name: govulncheck (vulnerabilities reachable from the release-shaped binary)
         run: ./scripts/ci/run-go-tool.sh govulncheck -mode=binary ci-artifacts/hikyo-ui
+      - name: Start disposable adversarial PostgreSQL
+        id: security-postgres
+        run: ./scripts/ci/start-ci-postgres.sh
+      - name: Build stamped production fixture with ephemeral test trust
+        env:
+          HIKYO_CHART_FIXTURE_OUTPUT: ${{ runner.temp }}/security-fixture
+          HIKYO_CHART_FIXTURE_COMMIT: ${{ inputs.revision }}
+        run: |
+          go test -count=1 -run '^TestWriteChartFixture$' ./scripts/ci/chartfixture
+          go build -tags ui -ldflags "$(cat "$RUNNER_TEMP/security-fixture/ldflags")" -o ci-artifacts/hikyo-security-ui ./cmd/hikyo
+      - name: Native artifact adversarial campaign on both datastores
+        run: >-
+          go run ./scripts/security/artifact-harness
+          --binary "$GITHUB_WORKSPACE/ci-artifacts/hikyo-security-ui"
+          --bundle "$RUNNER_TEMP/security-fixture/public/bundle"
+          --postgres-dsn 'postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test?sslmode=disable'
+          --steps 24 --timeout 10m --output "$RUNNER_TEMP/source-artifact-attacks.json"
+      - name: Remove disposable adversarial PostgreSQL
+        if: ${{ always() && steps.security-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+      - name: Retain successful source fixture attack evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-fixture-attacks-${{ inputs.revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source-artifact-attacks.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Go tests (transport, serving rules, browser session)
         # Restored GOCACHE may contain passing test results. Compile from cache,
         # but always execute against a fresh build.
@@ -1459,8 +1521,8 @@ jobs:
         run: |
           set -o pipefail
           trusted_planner="$RUNNER_TEMP/analysis-shards.go"
-          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
-            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
+          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch|push)$ ]]; then
+            [[ "$GITHUB_REF" = refs/heads/main || "$EVENT_NAME" = push ]] || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             cp ./scripts/ci/analysis-shards-go/main.go "$trusted_planner"
           else
             git show "$BASE_SHA:scripts/ci/analysis-shards-go/main.go" >"$trusted_planner"
@@ -1652,8 +1714,8 @@ jobs:
           # replace the scheduler to omit assigned coverage. App database-drop
           # cleanup runs after peer packages finish their durable migrations.
           scheduler="$RUNNER_TEMP/test-race-packages.sh"
-          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
-            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
+          if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch|push)$ ]]; then
+            [[ "$GITHUB_REF" = refs/heads/main || "$EVENT_NAME" = push ]] || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             cp ./scripts/ci/test-race-packages.sh "$scheduler"
           else
             git show "$BASE_SHA:scripts/ci/test-race-packages.sh" >"$scheduler"
@@ -1971,8 +2033,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
             checker_event=merge_group
           fi
-          if [[ "$GITHUB_EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
-            test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch|push)$ ]]; then
+            [[ "$GITHUB_REF" = refs/heads/main || "$GITHUB_EVENT_NAME" = push ]] || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             # The checker applies its existing full-main policy to these runs.
             checker_event=push
             cp ./scripts/ci/check-required-jobs.sh "$trusted_checker"

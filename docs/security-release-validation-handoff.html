@@ -1,0 +1,153 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Native release security validation handoff</title><style>html{color-scheme:light dark}body{font-family:system-ui,sans-serif;line-height:1.6;max-width:75rem;margin:2rem auto;padding:0 1rem}h1,h2{line-height:1.2}a{color:light-dark(#1758ae,#90bfff)}code{overflow-wrap:anywhere}pre{padding:1rem;background:light-dark(#f1f3f5,#20242b);overflow:auto}table{border-collapse:collapse;width:100%;display:block;overflow:auto}th,td{text-align:left;border:1px solid light-dark(#ccd2da,#4b5260);padding:.65rem;vertical-align:top}th{background:light-dark(#f1f3f5,#20242b)}</style></head><body><main><h1>Native release security validation handoff</h1>
+<p>Task: retire OpenAEV CI and replace it with native application security checks.
+Date: 2026-10-14. Branch: <code>dunky13/security-release-validation</code>.
+Base: <code>4f1d1ec632728b517c9871735e3e69f1655d35a4</code>.</p>
+<h2>Result and activation</h2>
+<p>PRs <a href="https://github.com/Hikyo-Org/Hikyo/pull/903">903</a>,
+<a href="https://github.com/Hikyo-Org/Hikyo/pull/904">904</a> and
+<a href="https://github.com/Hikyo-Org/Hikyo/pull/905">905</a> were closed and unwatched.
+Both historical OpenAEV Actions workflows are disabled. Fresh main has no
+OpenAEV workflow dependency. The old paused worktree remains recoverable and
+is separate from this implementation.</p>
+<p>The replacement has no private infrastructure dependency. Stable/prerelease
+source validation uses the same full suite as nightlies. A separate hosted
+post-publication job authenticates actual release bytes, runs native attacks
+against SQLite and PostgreSQL, runs Chromium against the embedded SPA, scans
+the executable, and publishes complete passing JSON/HTML evidence only.
+Its failure does not block publication or modify the release.</p>
+<p>Existing CI coverage is conserved by strict baseline tests with an explicit
+additions fixture. Four semantic fuzz targets supplement existing crash
+targets. The source CI also executes the native harness and browser campaign.
+Application authentication, authorization and rate limits are unchanged.</p>
+<p>The post-release workflow becomes active only after this branch reaches main.
+Local execution does not establish a GitHub-hosted run. Stable release
+ceremony execution remains unproven until an actual stable/prerelease run.</p>
+<h2>Local evidence</h2>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Observed result</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Go policy/workflow/source suites</td>
+<td>All five selected packages passed; no test failures</td>
+<td>Local source checkout</td>
+</tr>
+<tr>
+<td>Final security tools and CI tests</td>
+<td>All three packages passed; race and vet passed</td>
+<td>Local harness, publisher and CI conservation</td>
+</tr>
+<tr>
+<td>Web tests</td>
+<td>196 files, 1,687 tests passed; typecheck and lint passed</td>
+<td>Local source checkout</td>
+</tr>
+<tr>
+<td>Semantic fuzz</td>
+<td>Each of four new targets executed a 100,000-iteration campaign</td>
+<td>Local Go fuzz engine, bounded corpus</td>
+</tr>
+<tr>
+<td>Source-shaped native campaign</td>
+<td>14/14 cases per datastore, cleanup complete, 250 seconds</td>
+<td>Current application source with authenticated ephemeral fixture trust</td>
+</tr>
+<tr>
+<td>Published Darwin native campaign</td>
+<td>14/14 cases per datastore, 24 generated steps each, cleanup complete, 373 seconds</td>
+<td>Verified nightly 77 Darwin ARM64 executable</td>
+</tr>
+<tr>
+<td>Published Darwin browser campaign</td>
+<td>3/3 cases, no skips, 55 seconds</td>
+<td>Same released executable, hardened native-auth browser profile</td>
+</tr>
+<tr>
+<td>Published Linux native campaign</td>
+<td>14/14 cases per datastore, 24 generated steps each, cleanup complete, 388 seconds</td>
+<td>Verified Linux AMD64 bytes under local Rosetta Docker emulation</td>
+</tr>
+<tr>
+<td>Published Linux browser campaign</td>
+<td>3/3 cases, no skips, 82 seconds on a subsequent isolated attempt</td>
+<td>Same verified Linux bytes under local Docker emulation; original failed attempt retained</td>
+</tr>
+<tr>
+<td>Independent source review</td>
+<td>No open findings after fixes; actual receipt producer/consumer controls pass</td>
+<td>OpenAI GPT-6.1 Sol, high reasoning; cross-provider review skipped</td>
+</tr>
+</tbody>
+</table>
+<p>The authenticated nightly is
+<code>v0.0.1-nightly.20261014.77.g2d5d494d</code>, source
+<code>2d5d494de5818601c30f91736f1668f531411247</code>.
+Darwin ARM64 executable SHA-256:
+<code>deb8e91fdaa3e03a1588564e5a779154c95b4ff6568851d8dfccc7f4d440b24c</code>.
+Linux AMD64 executable SHA-256:
+<code>5c46b5463465afdd4811168fa8ae89f766f63208036f8ed27b6e0a87e645591a</code>.
+This release revision and the implementation branch are separate identities.
+No local result is presented as a version-bound hosted PASS artifact.</p>
+<p>The first emulated Linux browser attempt crashed both application renderers
+while the native campaign was also running. A bounded rerun after that
+campaign completed passed with unchanged product policy, test budgets and
+container limits. Cgroup OOM and OOM-kill counters remained zero. The original
+receipt, logs and traces are retained; the renderer crash cause is unproven,
+and the later pass does not erase it. The hosted workflow runs the native and
+browser campaigns sequentially, but its execution is still separate proof.</p>
+<p>The mandatory native cases are native bootstrap, authorized controls,
+cross-project denial, cross-tenant denial, unchanged denied mutation,
+grant removal/restoration, credential revocation, cursor binding,
+projection/revision boundaries, restart continuity, audit boundary and
+generated sequences. Counts describe successful oracle groups, not a
+security coverage percentage or distinct attacks.</p>
+<p>The browser cases are stored hostile content, hostile origin and deliberately
+unsafe oracle controls. Browser tests record loopback HTTP development
+transport and development/protected disclosure windows of 300/0 seconds.
+The native campaign independently uses production TLS and the default zero
+window with actual signed WebAuthn ceremonies. Neither profile covers every
+external identity provider, browser engine or deployment configuration.</p>
+<h2>Owners and reproduction</h2>
+<ul>
+<li><code>.github/workflows/ci.yml</code>: full source gate and additive campaigns.</li>
+<li><code>.github/workflows/release.yml</code>: stable/prerelease source validation parity.</li>
+<li><code>.github/workflows/security-release.yml</code>: read-only hosted artifact campaign.</li>
+<li><code>scripts/security/verify-release.sh</code>: native signed release verification.</li>
+<li><code>scripts/security/artifact-harness</code>: actual-binary native campaigns.</li>
+<li><code>scripts/security/release-evidence</code>: strict receipt validation and HTML output.</li>
+<li><code>web/e2e/security.config.ts</code>: hardened compiled-SPA browser profile.</li>
+<li><a href="security-testing.md">Security checks</a>: public scope, limitations and pinned ASVS review mapping.</li>
+</ul>
+<p>From the repository root, with the pinned Go and Node toolchains installed:</p>
+<pre><code class="language-sh">go test ./scripts/security/... ./scripts/ci -count=1
+go test -race ./scripts/security/... -count=1
+go vet ./scripts/security/...
+scripts/ci/run-go-tool.sh actionlint .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/security-release.yml
+shellcheck scripts/security/*.sh
+pnpm --dir web typecheck
+pnpm --dir web lint
+pnpm --dir web test
+</code></pre>
+<p>For actual release execution, use the workflow's verification step first.
+Run the harness with the verified binary and assembled offline bundle, plus
+an explicitly owned loopback PostgreSQL database server. The harness creates
+and drops its own randomly named database; its parent user needs <code>CREATEDB</code>.
+It rejects DSN target overrides and inherited connection parameters. Do not
+point it at production infrastructure.</p>
+<p>The publisher requires complete receipts for the same Linux AMD64 bytes,
+all native and browser cases, exact fixture configuration, scan identity,
+cleanup and run attempt. Old, weakened, skipped or incomplete receipts reject.
+Failures preserve safe Actions logs but publish no custom failing artifact,
+release note or release asset. Passing Actions artifacts expire after 90 days.
+The existing CI badge stays; no additional fuzz badge is added.</p>
+<h2>Remaining verification</h2>
+<p>Local Linux native and browser campaigns have completed with the original
+failed browser attempt preserved. Open one main-based PR with cryptographic
+signature and DCO, and validate its exact-head CI and reviews. Keep hosted activation and actual
+stable release proof separate from those source checks. Merge and release
+remain subject to their respective human authorization gates.</p></main></body></html>
