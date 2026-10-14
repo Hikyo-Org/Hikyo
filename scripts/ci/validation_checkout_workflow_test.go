@@ -37,6 +37,7 @@ func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 		"PR_BASE_REPOSITORY":    "${{ github.event.pull_request.base.repo.full_name }}",
 		"PR_BASE_REPOSITORY_ID": "${{ github.event.pull_request.base.repo.id }}",
 		"MERGE_GROUP_SHA":       "${{ github.event.merge_group.head_sha }}",
+		"TAG_DELETED":           "${{ github.event.deleted }}",
 	}
 	if guard.Name != "Validate the immutable caller revision" || guard.Run == "" || guard.If != "" || !reflect.DeepEqual(guard.Env, expectedEnv) {
 		t.Fatal("pre-checkout authority must come only from the required input and authenticated GitHub metadata")

@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 import { seedTenant, totpCode } from './seed.ts';
+import { SECURITY_SEEDED, seedSecurityTenant } from '../security/seed.ts';
 
 /**
  * TWO real Hikyo instances for the flow suite.
@@ -189,6 +190,8 @@ type Instance = {
   operationalBase: string;
   host: string;
   cookies: Cookie[];
+  profile: InstanceProfile;
+  environment: NodeJS.ProcessEnv;
   /** Set before a deliberate kill so the death-report handler stays quiet. */
   expectedExit?: boolean;
 };
@@ -222,10 +225,13 @@ let oidcProcess: ChildProcess | null = null;
 let oidcProcess2: ChildProcess | null = null;
 let webuiOIDCIssuerFile: string | null = null;
 
-function run(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv }) {
+function run(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv; inheritEnv?: boolean }) {
+  if (options.inheritEnv === false && options.env === undefined) {
+    throw new Error('a non-inheriting fixture command requires an explicit environment');
+  }
   const result = spawnSync(command, args, {
     cwd: options.cwd,
-    env: { ...process.env, ...options.env },
+    env: options.inheritEnv === false ? options.env : { ...process.env, ...options.env },
     encoding: 'utf8',
   });
   if (result.status !== 0) {
@@ -676,11 +682,39 @@ function portTaken(host: string, port: number): Promise<boolean> {
  * seeded and takes a passkey, B enrols TOTP), and folding both into one
  * function would mean a flag deciding half the body.
  */
+type InstanceProfile = 'flows' | 'security';
+
+/** The security app and operator commands receive only this owned environment.
+ * Source compilation remains a separate host operation with its normal Go cache.
+ */
+export function fixtureEnvironment(
+  profile: InstanceProfile, directory: string, base: string,
+  ambient: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  if (profile === 'security') {
+    return {
+      ...(ambient['PATH'] === undefined ? {} : { PATH: ambient['PATH'] }),
+      HOME: directory, TMPDIR: directory, XDG_CACHE_HOME: join(directory, 'cache'),
+      HIKYO_EXTERNAL_ORIGIN: base,
+    };
+  }
+  return {
+    ...ambient,
+    // Existing flow tests exercise many logins/publishes and deployment adapters.
+    // These three dev-only overrides remain exclusive to that flow profile.
+    HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '500',
+    HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
+    HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true',
+    HIKYO_EXTERNAL_ORIGIN: base,
+  };
+}
+
 async function startInstanceAt(
   host: string,
   port: number,
   operationalPort: number,
   base: string,
+  profile: InstanceProfile = 'flows',
 ): Promise<Instance> {
   // Fail loud on a squatter. A previous run killed mid-flight (a timeout, a
   // ^C) leaves a server on this port with ANOTHER datastore behind it, and the
@@ -719,6 +753,7 @@ async function startInstanceAt(
   }
 
   const operationalBase = `http://127.0.0.1:${String(operationalPort)}`;
+  const environment = fixtureEnvironment(profile, dir, base);
   const proc = spawn(
     binary,
     [
@@ -732,42 +767,10 @@ async function startInstanceAt(
     {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        // Every login of every flow, on both viewport projects, arrives from one
-        // loopback address inside about twenty seconds, a traffic shape the
-        // locked per-IP allowance of ten a minute is deliberately not sized for.
-        // Raising it here is not weakening the product: the key is refused
-        // outside `--dev` and the server will not start with it set in
-        // production. The alternative was deleting tests to fit under the
-        // ceiling, which is measuring the throttle instead of the UI.
-        HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '500',
-        // Flow scenarios also reuse one authenticated principal and collectively
-        // publish more than the production allowance of ten per minute. Budget
-        // behavior has its own conformance/unit coverage; this harness validates
-        // UI behavior. The server refuses this switch unless --dev is active.
-        HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
-        // The deployment-adapters flow (#157) needs a provider to push to, and
-        // adapter egress requires HTTPS with certificate validation to a public
-        // address: nothing inside this harness can be that. The in-process fake
-        // keeps every other part of the path real (ceremony, outbox, ledger,
-        // audit) and is refused outside --dev.
-        HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true',
-        // No HIKYO_SECOND_FACTOR: the suite runs under the product default,
-        // `required` on a fresh install (#760, #785). A factor that stands is
-        // presented at sign-in, and an unenrolled account (an invitee, a
-        // recovered account) lands on the SPA enrolment gate; flows walk it
-        // with `passEnrolmentGate`.
-        // The instance's public origin, stated rather than derived from the
-        // listen address (#606): a registration policy refuses to open on a
-        // derived origin (`no-public-origin`), and the members flows open one.
-        // The value is the same origin the listener derives, so nothing else
-        // about the instance changes.
-        HIKYO_EXTERNAL_ORIGIN: base,
-      },
+      env: environment,
     },
   );
-  const instance: Instance = { proc, dir, binary, base, operationalBase, host, cookies: [] };
+  const instance: Instance = { proc, dir, binary, base, operationalBase, host, cookies: [], profile, environment };
   instances.push(instance);
   // The last 64 KiB of output is kept regardless of verbosity: when the server
   // dies unexpectedly mid-suite, the diagnosis lives in this buffer and nowhere
@@ -824,7 +827,7 @@ async function startInstanceAt(
     binary,
     ['admin', '--dev', 'create', '--username', ADMIN.username, '--display-name', ADMIN.displayName,
       '--output-file', authorityFile],
-    { cwd: dir, env: adminEnv(instance) },
+    { cwd: dir, env: adminEnv(instance), inheritEnv: profile !== 'security' },
   );
   await waitForManagedRuntime(instance);
 
@@ -834,6 +837,7 @@ async function startInstanceAt(
 /** adminEnv is what the `admin` verb needs to address this instance's store. */
 function adminEnv(instance: Instance): NodeJS.ProcessEnv {
   return {
+    ...(instance.profile === 'security' ? instance.environment : {}),
     HIKYO_DB: 'sqlite:hikyo-dev.db',
     HIKYO_ROOT_KEY: readFileSync(join(instance.dir, 'hikyo-dev.rootkey'), 'utf8').trim(),
   };
@@ -1104,6 +1108,40 @@ function repointRemoteAtB(instance: Instance): void {
   }
 }
 
+/** One genuine native-auth instance for the compiled SPA security campaign.
+ * It uses the same operator bootstrap and issued TOTP session as the flows,
+ * without remote-directory or fake external-provider setup.
+ */
+export async function startSecurityInstance(): Promise<void> {
+  if (process.env['HIKYO_E2E_BINARY'] === undefined &&
+      !existsSync(join(repoRoot, 'internal', 'webui', 'dist', 'index.html'))) {
+    throw new Error('build the production SPA before running browser security');
+  }
+  const instance = await startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL, 'security');
+  const document = await fetch(BASE_URL, { headers: { Accept: 'text/html' } });
+  const html = await document.text();
+  if (!document.ok || !document.headers.get('content-type')?.includes('text/html') ||
+      !/<script\b[^>]*\btype="module"[^>]*\bsrc="\/assets\//.test(html)) {
+    throw new Error('the tested binary does not serve an embedded production SPA');
+  }
+  await establishCredential(instance);
+  mkdirSync(fileURLToPath(new URL('../.auth', import.meta.url)), { recursive: true });
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const seeded = await seedSecurityTenant(page, (args) => {
+      run(instance.binary, ['admin', '--dev', 'grant', ...args], {
+        cwd: instance.dir, env: adminEnv(instance), inheritEnv: false,
+      });
+    }, (draw) => establishChallengeSession(page, draw));
+    writeFileSync(SECURITY_SEEDED, JSON.stringify(seeded));
+    await context.storageState({ path: STORAGE_STATE });
+  } finally {
+    await browser.close();
+  }
+}
+
 export async function startInstance(): Promise<void> {
   const dist = join(repoRoot, 'internal', 'webui', 'dist', 'index.html');
   if (!existsSync(dist)) {
@@ -1359,7 +1397,7 @@ async function beginBrowserChallenge(page: Page): Promise<string> {
  * the server's single-use accounting. Each draw also advances the counter, so a
  * wrong-step refusal under clock skew is recovered by drawing the next one.
  */
-async function establishChallengeSession(page: Page): Promise<void> {
+async function establishChallengeSession(page: Page, draw: () => Promise<string> = nextTotpCode): Promise<void> {
   const challengeId = await beginBrowserChallenge(page);
   if (challengeId === '') {
     return;
@@ -1368,7 +1406,7 @@ async function establishChallengeSession(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 4; attempt++) {
     const resp = await page.request.post(
       `${BASE_URL}/api/v1/auth/login/challenge/${challengeId}/totp`,
-      { data: { code: await nextTotpCode() } },
+      { data: { code: await draw() } },
     );
     if (resp.ok()) {
       return;

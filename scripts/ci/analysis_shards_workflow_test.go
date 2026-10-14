@@ -116,6 +116,7 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 		{"known legacy base", "merge_group", "", oldSource, true, 18},
 		{"new trusted base", "merge_group", "", newSource, true, 1},
 		{"trusted main", "workflow_dispatch", "refs/heads/main", newSource, true, 1},
+		{"authenticated release tag", "push", "refs/tags/v1.2.3", newSource, true, 1},
 		{"nonmain manual", "workflow_dispatch", "refs/heads/topic", newSource, false, 0},
 		{"unknown legacy source", "merge_group", "", append(append([]byte(nil), oldSource...), '\n'), false, 0},
 		{"bulk error has no fallback", "merge_group", "", []byte(badBulk), false, 0},
@@ -134,8 +135,10 @@ func main() { if len(os.Args)==2 && os.Args[1]=="--supports-all-v1" { fmt.Printl
 				t.Fatal(err)
 			}
 			candidate := []byte("package main\nimport \"os\"\nfunc main(){ os.WriteFile(os.Getenv(\"CANDIDATE_MARKER\"), []byte(\"executed\"), 0600); os.Exit(1) }\n")
-			if scenario.event == "workflow_dispatch" {
-				candidate = scenario.source // a main-only caller checks out trusted main
+			if scenario.event == "workflow_dispatch" || scenario.event == "push" {
+				// The caller guard authenticates main or the canonical release tag,
+				// and the release classifier verifies its peeled main ancestry.
+				candidate = scenario.source
 			}
 			for path, contents := range map[string][]byte{
 				trusted: scenario.source, inventoryPath: metadata, candidatePath: candidate,

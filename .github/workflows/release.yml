@@ -17,6 +17,14 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  validation:
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
+    permissions:
+      actions: read
+      contents: read
+
   floor-bench:
     uses: ./.github/workflows/floor-bench.yml
     with:
@@ -46,7 +54,7 @@ jobs:
         run: ./scripts/ci/verify-docs.sh
 
   build-signed-draft:
-    needs: [docs, floor-bench]
+    needs: [validation, docs, floor-bench]
     permissions:
       contents: write
       packages: write
@@ -127,7 +135,7 @@ jobs:
 
       - name: Test release source
         env:
-          RELEASE_SCHEMA_CONTAINER: ${{ job.services['release-schema'].id }}
+          RELEASE_SCHEMA_CONTAINER: hikyo-ci-postgres
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_tests?sslmode=disable
         run: |
           # Preserve the separate empty database used by artifact generation.

@@ -145,7 +145,7 @@ func TestCandidateBaseResolutionUsesLiveRefInsteadOfEventMetadata(t *testing.T) 
 	if err = yaml.Unmarshal(raw, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	script := strings.Split(workflow.Jobs["changes"].Steps[2].Run, "if [[ \"$EVENT_NAME\"")[0]
+	script := strings.Split(workflow.Jobs["changes"].Steps[2].Run, "if [ \"$EVENT_NAME\" = push ]")[0]
 	for _, fresh := range []bool{false, true} {
 		t.Run(map[bool]string{false: "stale-event-base", true: "fresh-live-base"}[fresh], func(t *testing.T) {
 			dir := t.TempDir()

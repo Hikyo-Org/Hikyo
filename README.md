@@ -16,7 +16,8 @@
     <a href="https://hikyo.app/docs/"><strong>Documentation</strong></a> ·
     <a href="https://hikyo.app/docs/getting-started/">Getting started</a> ·
     <a href="https://hikyo.app/docs/self-hosting/">Self-hosting</a> ·
-    <a href="./CONTRIBUTING.md">Contributing</a>
+    <a href="./CONTRIBUTING.md">Contributing</a> ·
+    <a href="./docs/security-testing.md">Security checks</a>
   </p>
 
   <p>
@@ -235,6 +236,13 @@ Hikyo is licensed under the [Mozilla Public License 2.0](./LICENSE).
 ## Sponsors
 
 <p align="center">
+  <a href="https://vu.nl/en">
+    <img alt="Vrije Universiteit Amsterdam logo" src="./docs/assets/sponsors/vu-amsterdam.png" width="240">
+  </a>
+  <br><br>
+</p>
+
+<p align="center">
   <a href="https://codspeed.io/?utm_source=oss-sponsorship&utm_medium=hikyo-org">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://codspeed.io/codspeed-logo-dark.svg">
@@ -242,6 +250,7 @@ Hikyo is licensed under the [Mozilla Public License 2.0](./LICENSE).
       <img alt="CodSpeed logo" src="https://codspeed.io/codspeed-logo-light.svg" width="150">
     </picture>
   </a>
+  &emsp;&emsp;
   <a href="https://www.coderabbit.ai/">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
@@ -249,6 +258,9 @@ Hikyo is licensed under the [Mozilla Public License 2.0](./LICENSE).
       <img alt="CodeRabbit logo" src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" width="150">
     </picture>
   </a>
+</p>
+
+<p align="center">
   <a href="https://mergewatch.ai/">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mergewatch/mergewatch.ai/main/docs-site/logo/wordmark-dark.svg">

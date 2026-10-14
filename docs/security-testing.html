@@ -1,0 +1,182 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Security checks</title><style>html{color-scheme:light dark}body{font-family:system-ui,sans-serif;line-height:1.6;max-width:75rem;margin:2rem auto;padding:0 1rem}h1,h2{line-height:1.2}a{color:light-dark(#1758ae,#90bfff)}code{overflow-wrap:anywhere}pre{padding:1rem;background:light-dark(#f1f3f5,#20242b);overflow:auto}table{border-collapse:collapse;width:100%;display:block;overflow:auto}th,td{text-align:left;border:1px solid light-dark(#ccd2da,#4b5260);padding:.65rem;vertical-align:top}th{background:light-dark(#f1f3f5,#20242b)}</style></head><body><main><h1>Security checks</h1>
+<p>Hikyo tests security behavior through its native application interfaces. The
+full validation pipeline includes adversarial isolation tests, coverage-guided
+Go fuzzing, race detection, encryption and recovery checks, browser tests,
+repository security analyzers, and linked-binary vulnerability checks.</p>
+<p>Security results describe a particular revision and test profile. A green
+branch badge is not evidence that a different released binary passed those
+checks, and a signature authenticates an artifact rather than its behavior.</p>
+<h2>Release validation</h2>
+<p>Nightlies and stable/prerelease candidates require full source validation for
+the immutable release revision. The stable tag path additionally checks the
+tag's actual commit and its relationship to the protected main history. A
+previous successful run for another revision cannot replace this validation.</p>
+<p>After publication, a separate GitHub-hosted job downloads the release and
+verifies its signed identity before executing its binary in disposable
+fixtures. This job is nonblocking. It does not edit release notes, upload
+release assets, or publish a passing report when validation fails.</p>
+<p>Source validation and artifact validation are separate claims. Publication
+does not wait for the post-release campaign. A missing report means that a
+passing artifact result is unavailable, not that the version passed.</p>
+<h2>Read the evidence</h2>
+<p>Open the exact version's validation run, rather than the latest successful run
+or a branch badge. The passing security-checks artifact contains JSON evidence
+and an HTML report that opens without a server. Compare the release tag,
+source commit, harness revision, tested binary digest, profile, datastore,
+executed cases and run attempt before reusing a result.</p>
+<p>Reports have GitHub Actions artifact retention limits. Expired, missing,
+cancelled and failed runs do not inherit a newer or older passing result.
+Vulnerability results record a scan time; they are historical observations,
+not an indefinitely current statement about dependencies.</p>
+<p>The post-release profile is <code>hikyo-release-runtime-v1</code>. Its
+<code>security-pass-TAG-SOURCE-RUN_ID-RUN_ATTEMPT</code> artifact is retained for 90 days.
+<code>RUN_ID</code> is <code>github.run_id</code>, and <code>RUN_ATTEMPT</code> is <code>github.run_attempt</code>; the
+nightly tag's build number is a different identifier. The report
+requires the complete native artifact campaign on both datastores, the
+authenticated Chromium campaign on the same binary, a vulnerability scan of
+those bytes, and successful fixture cleanup. A skipped or incomplete mandatory
+case prevents PASS publication. The JSON includes the producing harness commit
+and the exact run attempt.</p>
+<p>The native campaign has 14 mandatory scenarios per datastore and bounded
+generated grant, revocation and restart sequences. Its <code>assertions</code> count
+describes successful oracle groups, not individual comparisons, requests or
+independent attacks. The server uses normal production admission, TLS and
+native WebAuthn ceremonies with the default zero disclosure window. Requests
+are paced within the normal authentication and MCP limits.</p>
+<p>The browser campaign is a separate native-auth markup and CORS profile. It
+tests the compiled SPA embedded in the same binary with default admission and
+service budgets and no fake adapter provider. Its loopback HTTP <code>--dev</code>
+transport and deliberately configured 300-second development/zero-second
+protected disclosure windows are recorded. It does not claim full production
+browser deployment or external identity-provider coverage.</p>
+<p>The pinned binary scanner blocks symbol-reachable findings, matching the full
+CI scanner policy. Module and package advisory records remain visible with
+their identifiers and classification. They are not silently counted as zero
+vulnerabilities or treated as fully triaged. The runtime receipt explicitly
+does not infer source-fuzz execution counts or current CodeQL/Dependabot status.</p>
+<h2>Coverage and its limits</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Assertion</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Authorization</td>
+<td>Cross-tenant and capability refusals, real missing-object comparisons, current-grant and credential revocation checks</td>
+<td>A bounded regression and generated-sequence profile cannot enumerate all possible application histories</td>
+</tr>
+<tr>
+<td>State and disclosure</td>
+<td>Synthetic canaries must not escape denied reads; denied writes preserve protected state</td>
+<td>Operator/root compromise is outside the application's isolation boundary</td>
+</tr>
+<tr>
+<td>Artifact boundary</td>
+<td>Real binary, native bootstrap and issued credentials, disposable SQLite and PostgreSQL</td>
+<td>A Linux binary campaign does not prove every operating system, CPU architecture, image or deployment configuration</td>
+</tr>
+<tr>
+<td>Fuzzing</td>
+<td>Existing crash targets plus semantic and metamorphic assertions for accepted data</td>
+<td>Fuzz iterations are not distinct attacks or a security coverage percentage</td>
+</tr>
+<tr>
+<td>Browser</td>
+<td>Authenticated compiled SPA, hostile stored content, browser execution and controlled egress assertions</td>
+<td>A browser corpus is bounded and does not prove every extension, browser engine or malicious client behavior</td>
+</tr>
+<tr>
+<td>Encryption and recovery</td>
+<td>Tenant-bound encryption, tamper/truncation refusal and cross-engine restore invariants</td>
+<td>Recovery exercises do not establish the security of every operator procedure</td>
+</tr>
+<tr>
+<td>Static and dependencies</td>
+<td>Repository analyzers and linked-binary vulnerability checks</td>
+<td>Tool findings depend on rules, supported code paths and database freshness</td>
+</tr>
+</tbody>
+</table>
+<p>Keep the existing CI badge. The <a href="https://github.com/Hikyo-Org/Hikyo/actions">validation runs</a>
+and their version-bound reports provide the security detail; a separate fuzz
+badge would add no artifact-specific assurance.</p>
+<h2>Maintaining the profile</h2>
+<p>Preserve deterministic regressions when fuzzing or a generated sequence finds
+a failure. Retain the reproducing seed and operation sequence, minimize it,
+and verify both the refused operation and a legitimate positive control.
+Negative-control fixtures must demonstrate that the test oracle detects a
+deliberately broken boundary without changing production behavior.</p>
+<p>Changes to authorization, authentication, encryption, ingress, adapters or
+delivery also require maintainer security review under
+<a href="https://github.com/Hikyo-Org/Hikyo/blob/main/CONTRIBUTING.md#security-sensitive-contributions">CONTRIBUTING.md</a>.
+Automated tests supplement that review. This profile is not a penetration-test
+certification or an ASVS certification.</p>
+<h2>Review traceability</h2>
+<p>This limited map uses <strong>OWASP ASVS 5.0.0</strong>, rather than a moving standard.
+It identifies useful review questions and executable evidence owners. It
+does not establish conformance with an ASVS level or all requirements.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Evidence owner</th>
+<th>Review still required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8.2.1, function permissions</td>
+<td>Native denied-mutation control; isolation operation/formula matrices</td>
+<td>New operations and capability combinations</td>
+</tr>
+<tr>
+<td>8.2.2, object permissions</td>
+<td>Existing-object versus authorized-missing twins over native REST/MCP</td>
+<td>New object types and scope relationships</td>
+</tr>
+<tr>
+<td>8.2.3, field permissions</td>
+<td>Secret/config projection and disclosure tests</td>
+<td>New classifications and disclosure paths</td>
+</tr>
+<tr>
+<td>8.3.2, authorization changes</td>
+<td>Generated grant transitions, separate credential revocation and restart controls; native isolation replica tests</td>
+<td>New caches, distributed schedules and provider-driven changes</td>
+</tr>
+<tr>
+<td>8.4.1, tenant boundaries</td>
+<td>Native cross-tenant controls and unchanged protected state</td>
+<td>New tenant-scoped operations and side effects</td>
+</tr>
+<tr>
+<td>16.2.5, sensitive log data</td>
+<td>Audit canary and credential checks; native audit/crypto tests</td>
+<td>New event payloads and downstream export destinations</td>
+</tr>
+<tr>
+<td>16.3.2, denial logging</td>
+<td>Native durable denial audit control</td>
+<td>Completeness and event correlation across new denial paths</td>
+</tr>
+<tr>
+<td>16.5.1, safe errors</td>
+<td>Uniform refusal twins, body/header canaries and negative controls</td>
+<td>Unexpected faults and new error serialization</td>
+</tr>
+</tbody>
+</table>
+<p>Requirement meanings come from the pinned
+<a href="https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x17-V8-Authorization.md">ASVS authorization chapter</a>
+and <a href="https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x25-V16-Security-Logging-and-Error-Handling.md">logging/error chapter</a>.
+The runtime campaign does not cover datastore fault injection, backup restore,
+external providers, arbitrary concurrent schedules or detector/notification
+systems. Existing source suites supply additional coverage where documented;
+manual review remains necessary for the rest.</p>
+<p>OpenAEV is not a CI dependency. Detection and response drills, when needed,
+have a separate purpose from these application behavior assertions. Private
+vulnerability reporting remains governed by <a href="https://github.com/Hikyo-Org/Hikyo/blob/main/SECURITY.md">SECURITY.md</a>.</p></main></body></html>

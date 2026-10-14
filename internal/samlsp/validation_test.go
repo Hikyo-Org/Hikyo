@@ -19,7 +19,7 @@ func TestValidateResponseVerifiesExpiredPinnedCertificateAndExtractsClaims(t *te
 	t.Parallel()
 
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	raw, certificate := signedResponseFixture(t, now, false)
+	raw, certificate := signedResponseFixture(t, now)
 	claims, err := ValidateResponse(raw, []*x509.Certificate{certificate}, ValidationExpectations{
 		ProviderEntityID: "https://idp.example/metadata",
 		SPEntityID:       "https://hikyo.example/saml/metadata",
@@ -63,7 +63,7 @@ func TestValidateResponseRejectsTamperingAndInvalidPolicyFields(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	raw, certificate := signedResponseFixture(t, now, false)
+	raw, certificate := signedResponseFixture(t, now)
 	expected := ValidationExpectations{
 		ProviderEntityID: "https://idp.example/metadata",
 		SPEntityID:       "https://hikyo.example/saml/metadata",
@@ -160,12 +160,12 @@ func TestValidateResponseRejectsUnsupportedSignedCondition(t *testing.T) {
 	}
 }
 
-func signedResponseFixture(t *testing.T, now time.Time, signResponse bool) ([]byte, *x509.Certificate) {
+func signedResponseFixture(t testing.TB, now time.Time) ([]byte, *x509.Certificate) {
 	t.Helper()
 	return signedResponseFixtureWithTransform(t, now, func(xml string) string { return xml })
 }
 
-func signedResponseFixtureWithTransform(t *testing.T, now time.Time, transform func(string) string) ([]byte, *x509.Certificate) {
+func signedResponseFixtureWithTransform(t testing.TB, now time.Time, transform func(string) string) ([]byte, *x509.Certificate) {
 	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

@@ -46,6 +46,14 @@ type headRoles struct {
 	AllPulls map[int]pull
 }
 
+// A worker may reuse only the initial snapshot it read in this reconciliation.
+// Final authority, source and role reads remain independent; nothing is cached
+// across invocations or supplied by dispatch routing hints.
+type admissionSnapshot struct {
+	policy liveQueuePolicy
+	roles  headRoles
+}
+
 // REST Base.SHA can lag behind live main; ref/repository and exact source
 // identity must still match the proof when a later complete list is observed.
 func sameRolePull(current, proved pull) bool {
@@ -176,9 +184,10 @@ func (q *queueController) runHeadProof(ctx context.Context, name string, e event
 		return q.roleCollision(ctx, roles)
 	}
 	if kind == "admission" && !roles.Group && len(roles.Pulls) > 0 {
+		captured := admissionSnapshot{policy: policy, roles: roles}
 		var failures []error
 		for _, p := range roles.Pulls {
-			if err := q.admit(ctx, p.Number); err != nil && !onlyStaleHeadWork(err) {
+			if err := q.admitCaptured(ctx, p.Number, &captured); err != nil && !onlyStaleHeadWork(err) {
 				failures = append(failures, err)
 			}
 		}

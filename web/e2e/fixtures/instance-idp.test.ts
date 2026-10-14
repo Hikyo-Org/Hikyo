@@ -1,12 +1,40 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 
 import { readWebuiOIDCIssuer, startWebuiIdP, stopInstance } from './instance.ts';
 
 const directories: string[] = [];
+const inheritedBinary = process.env.HIKYO_E2E_OIDC_BINARY;
+const preparedDirectory = inheritedBinary === undefined ? mkdtempSync(join(tmpdir(), 'hikyo-idp-build-test-')) : undefined;
+let preparedBinary = inheritedBinary;
+if (preparedDirectory !== undefined) {
+  preparedBinary = join(preparedDirectory, 'oidctest-idp');
+  // Compile the real helper before timed startup cases: a cold toolchain download
+  // belongs to preparation, while each test still has its original startup budget.
+  // The fast-feedback supervisor also bounds this work within its overall deadline.
+  const result = spawnSync('go', ['build', '-o', preparedBinary, './internal/oidctest/cmd'], {
+    cwd: fileURLToPath(new URL('../../../', import.meta.url)),
+    encoding: 'utf8', timeout: 60_000,
+  });
+  if (result.status !== 0) {
+    rmSync(preparedDirectory, { recursive: true, force: true });
+    throw new Error(`preparing the real OIDC helper failed (${String(result.status)}): ${result.error?.message ?? ''}\n${result.stdout}\n${result.stderr}`);
+  }
+}
+beforeAll(() => {
+  if (preparedBinary === undefined) throw new Error('the real OIDC helper was not prepared');
+  process.env.HIKYO_E2E_OIDC_BINARY = preparedBinary;
+});
+afterAll(() => {
+  if (inheritedBinary === undefined) delete process.env.HIKYO_E2E_OIDC_BINARY;
+  else process.env.HIKYO_E2E_OIDC_BINARY = inheritedBinary;
+  if (preparedDirectory !== undefined) rmSync(preparedDirectory, { recursive: true, force: true });
+});
 afterEach(() => {
   stopInstance();
   for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true });

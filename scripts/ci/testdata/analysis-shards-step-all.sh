@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 trusted_planner="$RUNNER_TEMP/analysis-shards.go"
-if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
-  test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
+if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch|push)$ ]]; then
+  [[ "$GITHUB_REF" = refs/heads/main || "$EVENT_NAME" = push ]] || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
   cp ./scripts/ci/analysis-shards-go/main.go "$trusted_planner"
 else
   git show "$BASE_SHA:scripts/ci/analysis-shards-go/main.go" >"$trusted_planner"

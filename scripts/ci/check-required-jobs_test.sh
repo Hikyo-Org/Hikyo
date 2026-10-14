@@ -69,7 +69,8 @@ all_success='{
 	"test_core":{"result":"success"},
 	"web":{"result":"success"},
 	"web-closure":{"result":"success"},
-	"web-go":{"result":"success"}
+	"web-go":{"result":"success"},
+	"source-artifact-security":{"result":"success"}
 }'
 
 docs_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .docs = true')
@@ -89,13 +90,15 @@ docs_success=$(printf '%s' "$all_success" | jq '
 	.test_core.result = "skipped" |
 	.web.result = "skipped" |
 	.["web-closure"].result = "skipped" |
-	.["web-go"].result = "skipped"
+	.["web-go"].result = "skipped" |
+	.["source-artifact-security"].result = "skipped"
 ')
 
 app_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .["web-go"] = true')
 app_success=$(printf '%s' "$docs_success" | jq '
 	.docs.result = "skipped" |
-	.["web-go"].result = "success"
+	.["web-go"].result = "success" |
+	.["source-artifact-security"].result = "success"
 ')
 
 expect_accept 'successful full pull request' pull_request "$all_success" "$all_plan"
@@ -110,7 +113,7 @@ for result in failure cancelled skipped; do
 done
 expect_accept 'main push' push "$all_success" "$all_plan"
 
-for job in client compose-demo fuzz_shard isolation_shard preflight race_shard scan-xplat test_core; do
+for job in client compose-demo fuzz_shard isolation_shard preflight race_shard scan-xplat source-artifact-security test_core; do
 	for result in failure cancelled skipped; do
 		expect_reject "selected $job with $result result" pull_request \
 			"$(printf '%s' "$all_success" | jq --arg job "$job" --arg result "$result" '.[ $job ].result = $result')" \
@@ -164,3 +167,10 @@ printf 'required-jobs fixture: planned success/skip accepted; drift and failures
 expect_reject 'planned floor bench skipped' push "$(printf '%s' "$all_success" | jq '.["floor-bench"].result="skipped"')" "$all_plan"
 expect_reject 'floor bench failed' push "$(printf '%s' "$all_success" | jq '.["floor-bench"].result="failure"')" "$all_plan"
 expect_reject 'floor bench missing' push "$(printf '%s' "$all_success" | jq 'del(.["floor-bench"])')" "$all_plan"
+
+expect_reject 'missing source campaign while Go checks pass' pull_request \
+  "$(printf '%s' "$app_success" | jq 'del(.["source-artifact-security"])')" "$app_plan"
+expect_reject 'source campaign omitted on non-web app plan' pull_request \
+  "$(printf '%s' "$app_success" | jq '.["source-artifact-security"].result = "skipped"')" "$app_plan"
+expect_reject 'unplanned source campaign ran on docs-only plan' pull_request \
+  "$(printf '%s' "$docs_success" | jq '.["source-artifact-security"].result = "success"')" "$docs_plan"

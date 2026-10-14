@@ -2585,6 +2585,26 @@
           "internal/store/upgrade/identity_windows.go:requireSingleLink"
         ]
       }
+    },
+    "scripts/security/artifact-harness/runtime.go:createOwnedDisposableDatabase": {
+      "hash": "3c8fcf231ea04ce7624edec1b734ed4a80281d38afa9b79f0f8b4a1f60ccf08b",
+      "reason": "Owned disposable PostgreSQL database creation uses only the canonical generated lowercase-hex name and pgx identifier sanitization. The pinned newTarget caller owns nonce generation and successful-creation state; no application table SQL is admitted.",
+      "callers": {
+        "scripts/security/artifact-harness/runtime.go:newTarget": "bcb7544a447d4e8ca804b42172f568088799a934bd609a8fc3054edcdf9b0f84"
+      },
+      "dependencies": [
+        "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier"
+      ]
+    },
+    "scripts/security/artifact-harness/runtime.go:dropOwnedDisposableDatabase": {
+      "hash": "d16031df9b3778afbe03cbcb6b5eda83ddedb841815ec186b393cf42c29bc49d",
+      "reason": "Owned disposable PostgreSQL database cleanup drops only the canonical generated lowercase-hex name through pgx identifier sanitization. The pinned newTarget caller gates DROP on its own successful creation, preserving pre-existing databases and parent data.",
+      "callers": {
+        "scripts/security/artifact-harness/runtime.go:newTarget": "bcb7544a447d4e8ca804b42172f568088799a934bd609a8fc3054edcdf9b0f84"
+      },
+      "dependencies": [
+        "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier"
+      ]
     }
   },
   "helpers": {
@@ -2832,7 +2852,8 @@
     "internal/upgradecompat/plan.go:Plan.SourceManifest": "b8fd3ec9402f5c880680ad398be372659cae03e38434e3316c89a7c061a5144e",
     "internal/upgradecompat/plan.go:Plan.SourceSchemaDigest": "3a2b4959e2e0aea84a4821324f3c67f76f3b090abe845db43e8846abda1550cf",
     "internal/upgradecompat/plan.go:Plan.Target": "36c1ff6cf1ca3e7a8a6f98940cd2ae850311419211a1032e2b198c49080dae38",
-    "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d"
+    "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d",
+    "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier": "fd1bdf16828e043a8b228f131983e0ed407c4c4a4ce0c5188d506f1b5064f028"
   },
   "build_helpers": {
     "windows": {
