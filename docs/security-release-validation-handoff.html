@@ -1,5 +1,6 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Native release security validation handoff</title><style>html{color-scheme:light dark}body{font-family:system-ui,sans-serif;line-height:1.6;max-width:75rem;margin:2rem auto;padding:0 1rem}h1,h2{line-height:1.2}a{color:light-dark(#1758ae,#90bfff)}code{overflow-wrap:anywhere}pre{padding:1rem;background:light-dark(#f1f3f5,#20242b);overflow:auto}table{border-collapse:collapse;width:100%;display:block;overflow:auto}th,td{text-align:left;border:1px solid light-dark(#ccd2da,#4b5260);padding:.65rem;vertical-align:top}th{background:light-dark(#f1f3f5,#20242b)}</style></head><body><main><h1>Native release security validation handoff</h1>
 <p>Task: retire OpenAEV CI and replace it with native application security checks.
+Pull request: <a href="https://github.com/Hikyo-Org/Hikyo/pull/917">#917</a>.
 Date: 2026-10-14. Branch: <code>dunky13/security-release-validation</code>.
 Base: <code>4f1d1ec632728b517c9871735e3e69f1655d35a4</code>.</p>
 <h2>Result and activation</h2>
@@ -147,7 +148,7 @@ release note or release asset. Passing Actions artifacts expire after 90 days.
 The existing CI badge stays; no additional fuzz badge is added.</p>
 <h2>Remaining verification</h2>
 <p>Local Linux native and browser campaigns have completed with the original
-failed browser attempt preserved. Open one main-based PR with cryptographic
-signature and DCO, and validate its exact-head CI and reviews. Keep hosted activation and actual
+failed browser attempt preserved. The signed, DCO-signed main-based PR is
+open. Validate its exact-head CI and reviews. Keep hosted activation and actual
 stable release proof separate from those source checks. Merge and release
 remain subject to their respective human authorization gates.</p></main></body></html>

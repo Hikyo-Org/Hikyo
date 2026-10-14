@@ -1,6 +1,7 @@
 # Native release security validation handoff
 
 Task: retire OpenAEV CI and replace it with native application security checks.
+Pull request: [#917](https://github.com/Hikyo-Org/Hikyo/pull/917).
 Date: 2026-10-14. Branch: `dunky13/security-release-validation`.
 Base: `4f1d1ec632728b517c9871735e3e69f1655d35a4`.
 
@@ -117,7 +118,7 @@ The existing CI badge stays; no additional fuzz badge is added.
 ## Remaining verification
 
 Local Linux native and browser campaigns have completed with the original
-failed browser attempt preserved. Open one main-based PR with cryptographic
-signature and DCO, and validate its exact-head CI and reviews. Keep hosted activation and actual
+failed browser attempt preserved. The signed, DCO-signed main-based PR is
+open. Validate its exact-head CI and reviews. Keep hosted activation and actual
 stable release proof separate from those source checks. Merge and release
 remain subject to their respective human authorization gates.
