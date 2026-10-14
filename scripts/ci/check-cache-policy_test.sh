@@ -176,8 +176,6 @@ grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache rea
 for file in "$@"; do
 	feedback_cache=false
 	[ "$(basename "$file")" != ci-feedback.yml ] || feedback_cache=true
-	# Temporary read-only experiment uses the same trusted-main seed at source/.
-	[ "$(basename "$file")" != ci-throughput-trial.yml ] || feedback_cache=trial
 	awk -v feedback_cache="$feedback_cache" '
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
@@ -205,7 +203,6 @@ for file in "$@"; do
             if (index(block, "path: .ci-cache/go-feedback") > 0) {
                 build_hash = "hashFiles(\047source/go.mod\047, \047source/go.sum\047, \047source/scripts/ci/go-tool-modules.txt\047)"
                 mode = "lookup-only: true"
-                if (feedback_cache == "trial") mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
                 if (feedback_cache == "true") {
                     build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047, \047feedback-tools/scripts/ci/go-tool-modules.txt\047)"
                     mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
