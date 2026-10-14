@@ -1457,7 +1457,7 @@ jobs:
           BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          set -o pipefail
+          set -euo pipefail
           trusted_planner="$RUNNER_TEMP/analysis-shards.go"
           if [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
             test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
@@ -1465,48 +1465,49 @@ jobs:
           else
             git show "$BASE_SHA:scripts/ci/analysis-shards-go/main.go" >"$trusted_planner"
           fi
-
-          race_plan='[]'
-          fuzz_plan='[]'
-          isolation_plan='[]'
+          planner="$RUNNER_TEMP/analysis-shards"
+          go build -o "$planner" "$trusted_planner"
+          race_count=12
           shard_count=3
-          # Refresh against hosted timings: eight shards still reached 26m.
-          # Leave room for cold compiler caches without extending timeouts.
-          race_shard_count=12
-          shard=0
-          while [ "$shard" -lt "$race_shard_count" ]; do
-            race_shard=$(go run "$trusted_planner" race --root . \
-              --shard "$shard" --shards "$race_shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
-            race_plan=$(jq -cn --argjson plan "$race_plan" --argjson shard "$race_shard" \
-              '$plan + [$shard]')
-            shard=$((shard + 1))
-          done
-          shard=0
-          while [ "$shard" -lt "$shard_count" ]; do
-            fuzz_shard=$(go run "$trusted_planner" fuzz --root . \
-              --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
-            isolation_shard=$(go run "$trusted_planner" isolation --root . \
-              --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
-            fuzz_plan=$(jq -cn --argjson plan "$fuzz_plan" --argjson shard "$fuzz_shard" \
-              '$plan + [$shard]')
-            isolation_plan=$(jq -cn --argjson plan "$isolation_plan" --argjson shard "$isolation_shard" \
-              '$plan + [$shard]')
-            shard=$((shard + 1))
-          done
-
-          if [ "$(printf '%s' "$race_plan" | jq 'flatten | length')" -eq 0 ] ||
-            [ "$(printf '%s' "$fuzz_plan" | jq 'flatten | length')" -eq 0 ] ||
-            [ "$(printf '%s' "$isolation_plan" | jq 'flatten | length')" -eq 0 ]; then
-            echo 'analysis shards: test, race, or fuzz plan was empty' >&2
-            exit 1
+          if "$planner" --supports-all-v1 >"$RUNNER_TEMP/planner-capability" 2>"$RUNNER_TEMP/planner-capability-error"; then
+            test "$(cat "$RUNNER_TEMP/planner-capability")" = analysis-shards-all-v1
+            plan=$("$planner" all --root . --race-shards "$race_count" --shards "$shard_count")
+          else
+            probe_status=$?
+            # The first candidate still plans with its trusted pre-upgrade base. Only
+            # this exact legacy source may use the unchanged individual-mode contract.
+            test "$probe_status" = 2
+            test "$(sha256sum "$trusted_planner" | awk '{print $1}')" = 1349c193de1ca689aa322bb71affdea4e287a972af38d0d5530a6978e22b2d3c
+            race_plan='[]'
+            fuzz_plan='[]'
+            isolation_plan='[]'
+            for kind in race fuzz isolation; do
+              count=$shard_count
+              if [ "$kind" = race ]; then count=$race_count; fi
+              family='[]'
+              shard=0
+              while [ "$shard" -lt "$count" ]; do
+                targets=$("$planner" "$kind" --root . --shard "$shard" --shards "$count" | jq -Rsc 'split("\n") | map(select(length > 0))')
+                family=$(jq -cn --argjson plan "$family" --argjson targets "$targets" '$plan + [$targets]')
+                shard=$((shard + 1))
+              done
+              case "$kind" in race) race_plan=$family ;; fuzz) fuzz_plan=$family ;; isolation) isolation_plan=$family ;; esac
+            done
+            plan=$(jq -cn --argjson race_plan "$race_plan" --argjson fuzz_plan "$fuzz_plan" --argjson isolation_plan "$isolation_plan" \
+              '{race_plan:$race_plan,fuzz_plan:$fuzz_plan,isolation_plan:$isolation_plan,race_shards:($race_plan|keys),shards:($isolation_plan|keys)}')
           fi
-          {
-            echo "race_plan=$race_plan"
-            echo "fuzz_plan=$fuzz_plan"
-            echo "isolation_plan=$isolation_plan"
-            echo "race_shards=$(printf '%s' "$race_plan" | jq -c 'keys')"
-            echo "shards=$(printf '%s' "$isolation_plan" | jq -c 'keys')"
-          } >>"$GITHUB_OUTPUT"
+          # Both protocols must prove a complete, nonempty, correctly indexed matrix.
+          # No failed bulk call or unknown legacy source can fall back to a green plan.
+          plan=$(printf '%s\n' "$plan" | jq -ces --argjson race "$race_count" --argjson shards "$shard_count" '
+            if length != 1 then error("ambiguous shard plan") else .[0] end |
+            if type != "object" or keys != ["fuzz_plan","isolation_plan","race_plan","race_shards","shards"] then error("invalid shard plan fields") else . end |
+            if (.race_plan | length) != $race or (.fuzz_plan | length) != $shards or (.isolation_plan | length) != $shards or
+               .race_shards != [range(0;$race)] or .shards != [range(0;$shards)] or
+               ([.race_plan,.fuzz_plan,.isolation_plan] | all(.[]; type == "array" and all(.[]; type == "array" and length > 0 and all(.[]; type == "string" and length > 0)))) != true
+            then error("incomplete shard plan") else . end')
+          for key in race_plan fuzz_plan isolation_plan race_shards shards; do
+            printf '%s=%s\n' "$key" "$(printf '%s\n' "$plan" | jq -c --arg key "$key" '.[$key]')"
+          done >>"$GITHUB_OUTPUT"
 
   isolation_shard:
     name: isolation shard (${{ matrix.shard }})

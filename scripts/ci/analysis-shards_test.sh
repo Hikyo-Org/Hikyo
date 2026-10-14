@@ -233,4 +233,44 @@ if "$planner" race --root "$fixture_dir" --shard 3 --shards 3 >/dev/null 2>&1; t
 	exit 1
 fi
 
-printf 'analysis shard fixture: complete, disjoint race packages, fuzz targets, and isolation tests passed\n'
+bulk_plan=$("$planner" all --root "$fixture_dir" --race-shards 12 --shards 1)
+printf '%s\n' "$bulk_plan" | jq -e '
+  .race_shards == [range(0;12)] and .shards == [0] and
+  (.race_plan | length) == 12 and (.fuzz_plan | length) == 1 and (.isolation_plan | length) == 1
+' >/dev/null
+for kind in race fuzz isolation; do
+    case "$kind" in
+        race) count=12; individual=$race_actual ;;
+        fuzz) count=1; individual=$fuzz_actual ;;
+        isolation) count=1; individual=$isolation_actual ;;
+    esac
+    shard=0
+    while [ "$shard" -lt "$count" ]; do
+        if [ "$kind" = race ]; then
+            awk -F '\t' -v shard="$shard" '$1 == shard { sub(/^[^\t]*\t/, ""); print }' "$individual" >"$fixture_dir/individual-plan"
+        else
+            # This small fixture's old three-shard fuzz plan has an empty
+            # leg. Preserve those original tests and compare its complete
+            # sorted inventory with a nonempty one-shard bulk layout.
+            cut -f2- "$individual" | LC_ALL=C sort >"$fixture_dir/individual-plan"
+        fi
+        printf '%s\n' "$bulk_plan" | jq -r --arg family "${kind}_plan" --argjson shard "$shard" '.[$family][$shard][]' >"$fixture_dir/bulk-plan"
+        cmp "$fixture_dir/individual-plan" "$fixture_dir/bulk-plan"
+        shard=$((shard + 1))
+    done
+done
+for bad_count in 0 257; do
+    if "$planner" all --root "$fixture_dir" --race-shards "$bad_count" --shards 3 >"$fixture_dir/refused-plan" 2>/dev/null; then
+        printf 'analysis shard fixture failed: invalid bulk count accepted\n' >&2
+        exit 1
+    fi
+    test ! -s "$fixture_dir/refused-plan"
+done
+printf '\nfunc TestAlpha(t *testing.T) {}\n' >>"$fixture_dir/internal/isolation/isolation_test.go"
+if "$planner" all --root "$fixture_dir" --race-shards 12 --shards 1 >"$fixture_dir/refused-plan" 2>/dev/null; then
+    printf 'analysis shard fixture failed: duplicate target accepted by bulk mode\n' >&2
+    exit 1
+fi
+test ! -s "$fixture_dir/refused-plan"
+
+printf 'analysis shard fixture: complete, disjoint individual and bulk plans, and refusal cases passed\n'

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -98,6 +99,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		Jobs map[string]map[string]any `yaml:"jobs"`
 	}
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		return err
+	}
+	if err := normalizeCompleteShardPlanning(workflow.Jobs["analysis_shards"]); err != nil {
 		return err
 	}
 	// The feedback fixtures execute the real documentation checker. Pin its
@@ -239,6 +243,14 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	baseline, original := readCoverageBaseline(t)
 	for name, mutation := range map[string]func(map[string]map[string]any){
+		"narrow complete shard counts": func(j map[string]map[string]any) {
+			mutateShardPlanningStep(j, "run", strings.ReplaceAll(completeShardPlanningRun, "race_count=12", "race_count=6"))
+		},
+		"use candidate planner": func(j map[string]map[string]any) {
+			mutateShardPlanningStep(j, "run", strings.ReplaceAll(completeShardPlanningRun, "git show \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\"", "git show \"HEAD:scripts/ci/analysis-shards-go/main.go\""))
+		},
+		"fail open complete planning": func(j map[string]map[string]any) { mutateShardPlanningStep(j, "continue-on-error", true) },
+		"skip complete planning":      func(j map[string]map[string]any) { mutateShardPlanningStep(j, "if", "false") },
 		"remove fixture Node pin": func(j map[string]map[string]any) {
 			steps := j["lint"]["steps"].([]any)
 			for i, value := range steps {
@@ -342,6 +354,16 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				t.Fatal("coverage reduction escaped the frozen execution inventory")
 			}
 		})
+	}
+}
+
+func mutateShardPlanningStep(jobs map[string]map[string]any, key string, value any) {
+	for _, item := range jobs["analysis_shards"]["steps"].([]any) {
+		step := item.(map[string]any)
+		if step["name"] == "Plan complete test, race, and fuzz shards" {
+			step[key] = value
+			return
+		}
 	}
 }
 

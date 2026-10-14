@@ -67,8 +67,15 @@ func main() {
 }
 
 func run(args []string, output io.Writer) error {
+	if len(args) == 1 && args[0] == "--supports-all-v1" {
+		_, err := fmt.Fprintln(output, "analysis-shards-all-v1")
+		return err
+	}
+	if len(args) > 0 && args[0] == "all" {
+		return runAll(args[1:], output)
+	}
 	if len(args) == 0 || (args[0] != "race" && args[0] != "fuzz" && args[0] != "isolation" && args[0] != "isolation-race") {
-		return errors.New("usage: analysis-shards race|fuzz|isolation|isolation-race --root DIR --shard N --shards N")
+		return errors.New("usage: analysis-shards race|fuzz|isolation|isolation-race --root DIR --shard N --shards N; all --root DIR --race-shards N --shards N")
 	}
 	kind := args[0]
 	flags := flag.NewFlagSet(kind, flag.ContinueOnError)
@@ -106,6 +113,89 @@ func run(args []string, output io.Writer) error {
 	default:
 		panic("unreachable analysis kind")
 	}
+}
+
+type completePlan struct {
+	RacePlan      [][]string `json:"race_plan"`
+	FuzzPlan      [][]string `json:"fuzz_plan"`
+	IsolationPlan [][]string `json:"isolation_plan"`
+	RaceShards    []int      `json:"race_shards"`
+	Shards        []int      `json:"shards"`
+}
+
+func runAll(args []string, output io.Writer) error {
+	flags := flag.NewFlagSet("all", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	root := flags.String("root", ".", "repository root")
+	raceCount := flags.Int("race-shards", 0, "number of race shards")
+	shardCount := flags.Int("shards", 0, "number of fuzz and isolation shards")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected positional arguments")
+	}
+	// Bound allocations before inventory construction. Empty assignments are
+	// refused below rather than letting a matrix leg pass without work.
+	if *raceCount < 1 || *raceCount > 256 || *shardCount < 1 || *shardCount > 256 {
+		return errors.New("race-shards and shards must be between 1 and 256")
+	}
+	packages, err := listPackages(*root)
+	if err != nil {
+		return err
+	}
+	plan, err := planAll(packages, *raceCount, *shardCount)
+	if err != nil {
+		return err
+	}
+	// Construct and validate every family before writing any result. Discovery
+	// errors cannot leave a partial JSON plan for downstream jobs to consume.
+	return json.NewEncoder(output).Encode(plan)
+}
+
+func planAll(packages []packageInfo, raceCount, shardCount int) (completePlan, error) {
+	races, err := planRace(packages, raceCount)
+	if err != nil {
+		return completePlan{}, err
+	}
+	fuzz, err := discoverFuzzTargets(packages)
+	if err != nil {
+		return completePlan{}, err
+	}
+	isolation, err := discoverIsolationTargets(packages, false)
+	if err != nil {
+		return completePlan{}, err
+	}
+	plan := completePlan{
+		RacePlan: make([][]string, raceCount), FuzzPlan: make([][]string, shardCount),
+		IsolationPlan: make([][]string, shardCount), RaceShards: make([]int, raceCount), Shards: make([]int, shardCount),
+	}
+	for index, shard := range races {
+		plan.RacePlan[index] = raceShardLines(shard)
+		plan.RaceShards[index] = index
+	}
+	for _, target := range fuzz {
+		index := shardFor("fuzz", target.relativeDir, shardCount)
+		plan.FuzzPlan[index] = append(plan.FuzzPlan[index], target.packagePath+"\t"+target.name)
+	}
+	for _, test := range isolation {
+		index := shardFor("isolation", test.name, shardCount)
+		plan.IsolationPlan[index] = append(plan.IsolationPlan[index], test.name)
+	}
+	for index := range plan.Shards {
+		plan.Shards[index] = index
+	}
+	for _, family := range []struct {
+		name   string
+		shards [][]string
+	}{{"race", plan.RacePlan}, {"fuzz", plan.FuzzPlan}, {"isolation", plan.IsolationPlan}} {
+		for index, targets := range family.shards {
+			if len(targets) == 0 {
+				return completePlan{}, fmt.Errorf("%s shard %d is empty", family.name, index)
+			}
+		}
+	}
+	return plan, nil
 }
 
 func listPackages(root string) ([]packageInfo, error) {
@@ -179,7 +269,15 @@ func writeRaceShard(output io.Writer, packages []packageInfo, opts options) erro
 	if err != nil {
 		return err
 	}
-	shard := shards[opts.shard]
+	for _, line := range raceShardLines(shards[opts.shard]) {
+		if _, err := fmt.Fprintln(output, line); err != nil {
+			return fmt.Errorf("write race shard: %w", err)
+		}
+	}
+	return nil
+}
+
+func raceShardLines(shard raceShard) []string {
 	paths := make([]string, 0, len(shard.seconds))
 	for path := range shard.seconds {
 		paths = append(paths, path)
@@ -190,17 +288,16 @@ func writeRaceShard(output io.Writer, packages []packageInfo, opts options) erro
 		}
 		return paths[i] < paths[j]
 	})
+	lines := make([]string, 0, len(paths))
 	for _, path := range paths {
 		line := path
 		if names := shard.targets[path]; len(names) > 0 {
 			sort.Strings(names)
 			line += "\t^(" + strings.Join(names, "|") + ")$"
 		}
-		if _, err := fmt.Fprintln(output, line); err != nil {
-			return fmt.Errorf("write race shard: %w", err)
-		}
+		lines = append(lines, line)
 	}
-	return nil
+	return lines
 }
 
 // planRace packs whole packages and the top-level targets of the suites in
