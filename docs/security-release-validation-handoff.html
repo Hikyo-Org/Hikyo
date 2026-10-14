@@ -177,6 +177,24 @@ its body and existing supply-chain selection prefix are unchanged. The
 original invariant failure reproduced; the renamed test passes the actual
 cache invariant and full existing supply-chain Go selector. Independent
 review confirms this is a name-only repair with no analyzer or registry change.</p>
+<p>Queue admission on <code>8af142e</code> exhausted the trusted-main publisher's work
+budget; one supported manual reassessment also exhausted it. Both original
+logs are retained. The publisher has a setup-inclusive 60-second deadline,
+including a 15-second failure-publication reserve. Cold SDK setup and repeated
+initial API inventories consume that envelope. Source changes in this PR
+cannot affect that publisher until they reach protected main. No terminal
+check was reset, deadline extended, gate bypassed or repeated retry loop run.
+The worker repair passes its authenticated initial policy and complete role
+inventory directly into admission, after matching the live PR number, actor,
+head/ref/repository and base ref/repository. The controller fixture reduces
+reads from 28 to 23; this is local call-count evidence, not a hosted latency
+claim. Final source/main, policy, authority, canonical DCO, complete feedback,
+global roles and owned checks remain independent and in their original order.
+Delayed-movement tests refuse changed identity, duplicates, queue collisions,
+feedback attempts/lanes, policy, authority, DCO and check ownership. Full
+publisher tests, race checks and the actual trusted workflow-authority shell
+fixture pass. Direct admission and group routing retain their original reads;
+no cross-invocation cache or dispatch-supplied authority is introduced.</p>
 <p>Candidate-local reusable workflows can execute this new job while loading an
 older protected-base checker. The aggregate checks its success/skip result
 against the strict Boolean plan before adapting only the recognized new
