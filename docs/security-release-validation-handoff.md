@@ -138,6 +138,15 @@ result key for the older registry. The trusted checker and registry remain
 unchanged. Seventy-two behavioral migration scenarios exercise the actual
 older checker, current policy, missing/failing proof and malformed inputs.
 
+Supply-chain follow-up: the artifact-reuse fixture previously crossed job
+boundaries and treated attempt-specific report names as shared-app artifact
+names. Its reported failure was reproduced on `982a515`. Checks now bind to
+each job and the transfer action's actual `with` inputs, retaining exactly
+one stable app producer/consumer and the pinned transfer action. Twenty-eight
+regressions cover legitimate reports, adjacent-job contamination, duplicate,
+patterned, wildcard and unnamed app downloads, quoted names and input spoofing.
+The existing supply-chain test selector and no-egress lifecycle checks pass.
+
 Local Linux native and browser campaigns have completed with the original
 failed browser attempt preserved. The signed, DCO-signed main-based PR is
 open. Validate its exact-head CI and reviews. Keep hosted activation and actual
