@@ -342,18 +342,22 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		}
 		trace.Run = earlyFeedback
 	}
+	var initialRoles headRoles
 	if policy.Enabled {
-		var roles headRoles
 		if captured != nil {
-			roles = captured.roles
+			initialRoles = captured.roles
 		} else {
-			roles, err = q.roles(ctx, p.Head.SHA)
+			initialRoles, err = q.roles(ctx, p.Head.SHA)
 			if err != nil {
 				return err
 			}
+			current, exists := initialRoles.AllPulls[number]
+			if !exists || !sameRolePull(current, p) {
+				return &staleHeadWork{expected: q.expectedHead}
+			}
 		}
-		if roles.Group && len(roles.Pulls) > 0 {
-			return q.roleCollision(ctx, roles)
+		if initialRoles.Group && len(initialRoles.Pulls) > 0 {
+			return q.roleCollision(ctx, initialRoles)
 		}
 	}
 	var selectedRun *run
@@ -382,12 +386,10 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					}
 				}
 				collision := false
-				if captured != nil {
-					collision = len(captured.roles.Pulls) > 1
-				} else {
-					collision, err = q.sharedHead(ctx, p)
-					if err != nil {
-						return err
+				for _, other := range initialRoles.Pulls {
+					if other.Number != p.Number && other.Head.SHA == p.Head.SHA {
+						collision = true
+						break
 					}
 				}
 				if collision {
@@ -436,6 +438,9 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			}
 		}
 	}
+	// This scan also establishes a blocking barrier if a foreign green appears
+	// before a later PR read fails. Its recovery side effect is required even
+	// though the final publication independently repeats the ownership scan.
 	own, err := q.ownedChecks(ctx, p)
 	if err != nil {
 		return err

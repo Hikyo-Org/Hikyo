@@ -19,6 +19,12 @@ func snapshotAdmission(f *queueFixture) error {
 	})
 }
 
+func directSnapshotAdmission(f *queueFixture) error {
+	start := time.Now()
+	b := admissionBudget{Started: start, Deadline: start.Add(time.Minute)}
+	return f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b)
+}
+
 func snapshotPriorFailure(f *queueFixture) check {
 	b := newBinding(f.c.repo.ID, f.pr, &f.feedbackRun)
 	old := check{ID: 99, Name: queueCheckName, HeadSHA: f.pr.Head.SHA, ExternalID: b.externalID(), Status: "completed", Conclusion: "failure", CompletedAt: "2026-10-14T16:38:12Z"}
@@ -95,7 +101,7 @@ func TestDirectAdmissionRetainsFreshReadsAfterAHeadWorker(t *testing.T) {
 	for path, count := range map[string]int{
 		f.c.endpoint(fmt.Sprintf("rulesets/%d", queueRulesetID)): 2,
 		f.c.endpoint("rules/branches/main"):                      2,
-		f.c.endpoint("pulls?state=open&per_page=100&page=1"):     3,
+		f.c.endpoint("pulls?state=open&per_page=100&page=1"):     2,
 		f.query: 2,
 	} {
 		if f.api.reads[path] != count {
@@ -321,5 +327,123 @@ func TestHeadAdmissionSnapshotBlocksMovedProofAfterTerminalSuccess(t *testing.T)
 				t.Fatalf("new effective blocking generation absent: %+v", f.api.checks)
 			}
 		})
+	}
+}
+
+func TestDirectAdmissionInitialInventoryRequiresCurrentIdentityAndUniqueness(t *testing.T) {
+	for _, change := range []string{"control", "REST base SHA lag", "sole other PR", "current and other PR", "missing current PR", "head SHA", "head ref", "source repository", "base ref", "author ID", "author login"} {
+		t.Run(change, func(t *testing.T) {
+			f := newQueueFixture(t)
+			old := snapshotPriorFailure(f)
+			old.Conclusion = "success"
+			f.api.checks[0] = old
+			f.c.api = &immutableCheckAPI{api: f.api, fake: f.api}
+			verifyCalls, injected := 0, false
+			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+				verifyCalls++
+				return policyDecision{}, nil
+			}
+			list := f.c.endpoint("pulls?state=open&per_page=100&page=1")
+			f.api.readHook = func(path string, n int) {
+				if path != list || n != 1 {
+					return
+				}
+				injected = true
+				p := f.pr
+				inventory := []pull{p}
+				switch change {
+				case "REST base SHA lag":
+					inventory[0].Base.SHA = strings.Repeat("c", 40)
+				case "sole other PR":
+					inventory[0].Number++
+				case "current and other PR":
+					other := p
+					other.Number++
+					inventory = append(inventory, other)
+				case "missing current PR":
+					inventory = []pull{}
+				case "head SHA":
+					inventory[0].Head.SHA = strings.Repeat("c", 40)
+				case "head ref":
+					inventory[0].Head.Ref = "changed"
+				case "source repository":
+					inventory[0].Head.Repo.ID++
+				case "base ref":
+					inventory[0].Base.Ref = "release"
+				case "author ID":
+					inventory[0].User.ID++
+				case "author login":
+					inventory[0].User.Login = "changed"
+				}
+				f.api.responses[path] = inventory
+			}
+			err := directSnapshotAdmission(f)
+			if !injected {
+				t.Fatal("initial complete inventory was not exercised")
+			}
+			if !reflect.DeepEqual(f.api.checks[0], old) {
+				t.Fatal("initial inventory movement mutated the old terminal green")
+			}
+			if change == "control" || change == "REST base SHA lag" {
+				if err != nil || verifyCalls != 2 || newestQueueCheck(f.api.checks).Conclusion != "success" {
+					t.Fatalf("valid identity was refused: %v, authority calls=%d", err, verifyCalls)
+				}
+				total := 0
+				for _, count := range f.api.reads {
+					total += count
+				}
+				if total != 23 || f.api.reads[list] != 2 {
+					t.Fatalf("direct admission reads=%d, complete inventories=%d", total, f.api.reads[list])
+				}
+			} else {
+				f.assertNoSuccess(t)
+				wantAuthority := 0
+				if change == "current and other PR" {
+					wantAuthority = 1
+				}
+				if verifyCalls != wantAuthority {
+					t.Fatalf("initial identity/collision reached %d authority calls, want %d", verifyCalls, wantAuthority)
+				}
+				latest := newestQueueCheck(f.api.checks)
+				if latest.ID == old.ID || !blockingQueueCheck(latest) {
+					t.Fatal("initial inventory refusal retained an effective green")
+				}
+			}
+		})
+	}
+}
+
+func TestDirectAdmissionForeignGreenAndFinalPRReadFailureKeepsOwnershipBarrier(t *testing.T) {
+	f := newQueueFixture(t)
+	old := snapshotPriorFailure(f)
+	old.Conclusion = "success"
+	f.api.checks[0] = old
+	f.c.api = &immutableCheckAPI{api: f.api, fake: f.api}
+	var foreign check
+	dcoCalls := 0
+	f.q.dco = func(context.Context, pull) (int, error) {
+		dcoCalls++
+		if dcoCalls == 1 {
+			foreign = check{ID: 2000, Name: queueCheckName, HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success"}
+			foreign.App.ID, foreign.App.Slug = actionsAppID, "github-actions"
+			f.api.checks = append(f.api.checks, foreign)
+			f.api.nextID = 2001
+			f.api.responses[f.c.endpoint("pulls/7")] = fmt.Errorf("PR unavailable after first canonical DCO")
+		}
+		return 0, nil
+	}
+	if err := directSnapshotAdmission(f); err == nil || dcoCalls != 1 {
+		t.Fatalf("combined foreign-check/API failure not exercised: error=%v, DCO calls=%d", err, dcoCalls)
+	}
+	f.assertNoSuccess(t)
+	if !reflect.DeepEqual(f.api.checks[0], old) || !reflect.DeepEqual(f.api.checks[1], foreign) {
+		t.Fatal("recovery mutated an old terminal or foreign record")
+	}
+	latest := newestQueueCheck(f.api.checks)
+	if latest.ID <= foreign.ID || !blockingQueueCheck(latest) {
+		t.Fatalf("foreign green remained effective after PR read failure: %+v", latest)
+	}
+	if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || f.api.writes[0]["status"] != "queued" {
+		t.Fatal("ownership recovery failed to create a new immutable blocking generation")
 	}
 }

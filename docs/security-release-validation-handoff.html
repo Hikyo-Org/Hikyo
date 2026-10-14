@@ -193,8 +193,22 @@ global roles and owned checks remain independent and in their original order.
 Delayed-movement tests refuse changed identity, duplicates, queue collisions,
 feedback attempts/lanes, policy, authority, DCO and check ownership. Full
 publisher tests, race checks and the actual trusted workflow-authority shell
-fixture pass. Direct admission and group routing retain their original reads;
-no cross-invocation cache or dispatch-supplied authority is introduced.</p>
+fixture pass. Group routing retains its original reads; no cross-invocation
+cache or dispatch-supplied authority is introduced.</p>
+<p>Two further direct publisher attempts on <code>afdc011</code> exhausted the same
+trusted-main work budget during final feedback or check-history reads.
+Final canonical DCO passed in 46 milliseconds; approximately 22 seconds of
+cold setup left only 23 work seconds. Both failed logs are retained.
+Direct admission now also reuses its complete, identity-matched initial role
+inventory for preliminary shared-head detection, reducing the healthy
+controller fixture from 24 reads to 23. The worker remains at 23 reads.
+Fresh final roles still follow complete final feedback. The intermediate
+ownership scan is preserved because it has a recovery side effect: if a
+foreign native green appears and the next PR refresh fails, it establishes
+a distinct owned blocking generation. A retained regression covers that
+combined race while keeping the prior terminal record unchanged. One fewer
+read offers headroom, not hosted deadline proof. These changes still require
+legitimate protected-main activation before affecting the running publisher.</p>
 <p>Candidate-local reusable workflows can execute this new job while loading an
 older protected-base checker. The aggregate checks its success/skip result
 against the strict Boolean plan before adapting only the recognized new

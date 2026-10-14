@@ -213,9 +213,15 @@ func TestQueueFinalRoleReadCannotHideNativeCheckCollision(t *testing.T) {
 
 func TestQueueFinalRoleSnapshotRefusesNewSharedPRHead(t *testing.T) {
 	f := newQueueFixture(t)
-	injected := false
+	injected, finalFeedback := false, false
 	f.api.readHook = func(path string, n int) {
-		if strings.Contains(path, "pulls?state=open") && n == 3 {
+		if path == f.c.endpoint("actions/runs/101/attempts/1/jobs?per_page=100&page=1") && n == 2 {
+			finalFeedback = true
+		}
+		if strings.Contains(path, "pulls?state=open") && n == 2 {
+			if !finalFeedback {
+				t.Fatal("shared-head mutation preceded fresh final feedback")
+			}
 			injected = true
 			other := f.pr
 			other.Number = 8
@@ -288,9 +294,15 @@ func TestQueueFinalRoleSnapshotRefusesChangedAdmissionIdentity(t *testing.T) {
 	for _, change := range []string{"retargeted", "source ref", "source repository"} {
 		t.Run(change, func(t *testing.T) {
 			f := newQueueFixture(t)
-			injected := false
+			injected, finalFeedback := false, false
 			f.api.readHook = func(path string, n int) {
-				if strings.Contains(path, "pulls?state=open") && n == 3 {
+				if path == f.c.endpoint("actions/runs/101/attempts/1/jobs?per_page=100&page=1") && n == 2 {
+					finalFeedback = true
+				}
+				if strings.Contains(path, "pulls?state=open") && n == 2 {
+					if !finalFeedback {
+						t.Fatal("identity mutation preceded fresh final feedback")
+					}
 					injected = true
 					p := f.pr
 					switch change {
@@ -318,13 +330,16 @@ func TestQueueFinalRoleSnapshotRefusesChangedAuthorIdentity(t *testing.T) {
 		for _, field := range []string{"id", "login"} {
 			t.Run(role+"/"+field, func(t *testing.T) {
 				f := newQueueFixture(t)
-				read := 3
-				if role == "group" {
-					read = 2
-				}
-				injected := false
+				read := 2
+				injected, finalFeedback := false, false
 				f.api.readHook = func(path string, n int) {
+					if path == f.c.endpoint("actions/runs/101/attempts/1/jobs?per_page=100&page=1") && n == 2 {
+						finalFeedback = true
+					}
 					if strings.Contains(path, "pulls?state=open") && n == read {
+						if role == "admission" && !finalFeedback {
+							t.Fatal("author mutation preceded fresh final feedback")
+						}
 						injected = true
 						p := f.pr
 						if field == "id" {
@@ -359,7 +374,7 @@ func TestAdmissionFinalRolesStillValidatesInventoryAfterFeedback(t *testing.T) {
 				if path == feedbackJobs && n == 2 {
 					finalFeedback = true
 				}
-				if strings.Contains(path, "pulls?state=open") && n == 3 {
+				if strings.Contains(path, "pulls?state=open") && n == 2 {
 					if !finalFeedback {
 						t.Fatal("final inventory read before final feedback")
 					}
