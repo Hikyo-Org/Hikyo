@@ -197,6 +197,8 @@ if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 		# Build production and test archives without linking every test binary.
 		# The empty template keeps the complete dependency graph out of the log.
 		run go list -deps -test -export -f '{{""}}' ./...
+		# go test -c also ran vet. Reuse the archives without dropping diagnostics.
+		run go vet ./...
 	fi
 	if [ "$all_go" = false ] && [ "${#go_packages[@]}" -gt 0 ]; then
 		# One build graph shares compilation and linking across every owner.

@@ -36,7 +36,9 @@ Dependency-only fast feedback checked module integrity, not consumer compilation
   `go list -deps -test -export -f '{{""}}' ./...` to build all package/test
   archives without linking or executing test binaries. Its regression fixtures
   cover broken unchanged production and test-only consumers and an init panic
-  that must never execute. Hosted timing for this follow-up remains unverified.
+  that must never execute. A separate `go vet ./...` preserves the diagnostics
+  previously supplied by `go test -c`, with a compile-valid printf-mismatch
+  regression. Hosted timing for this follow-up remains unverified.
 - Add the advisory `merge-queue-validation` PR status, with a direct run/attempt
   link. The reporter reads only authenticated GitHub metadata and immutable merge
   parents, so it can report after eviction. Superseded heads, attempts and groups

@@ -119,6 +119,23 @@ FAST_FEEDBACK_BASE="$compile_only_base" run_feedback --lane=go
 rm no_execute.go
 commit_fixture
 
+# The previous go test -c check ran vet as well as the compiler. Preserve
+# diagnostics that compile successfully, including unchanged test consumers.
+cat >vet_test.go <<'EOF'
+package fixture
+
+import "fmt"
+
+func vetConsumer() { fmt.Printf("%d", "not an integer") }
+EOF
+commit_fixture
+vet_base=$(git rev-parse HEAD)
+printf '\n// Vet dependency consumers too.\n' >>go.mod
+commit_fixture
+FAST_FEEDBACK_BASE="$vet_base" refuse 'fmt.Printf format %d has arg "not an integer" of wrong type string' --lane=go
+rm vet_test.go
+commit_fixture
+
 mkdir web
 printf 'export const value = 1;\n' >web/fixture.ts
 commit_fixture
