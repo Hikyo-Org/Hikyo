@@ -99,6 +99,8 @@ EOF
 done
 
 for dependency_or_config in \
+	'docs/site/scripts/test-csp.mjs' \
+	'docs/site/scripts/new-build-helper.mjs' \
 	'docs/adr/mvp-boundary.md' \
 	'docs/adr/saml-sp.md' \
 	'docs/adr/scim-provisioning.md' \

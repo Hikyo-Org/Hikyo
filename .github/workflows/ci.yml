@@ -2125,16 +2125,16 @@ jobs:
           chmod +x "$trusted_checker"
 
           if [ "$GITHUB_EVENT_NAME" = merge_group ] &&
+            ! jq -e 'type == "object" and all(.[]; . == true)' <<<"$PLAN_JSON" >/dev/null &&
             git cat-file -e "$BASE_SHA:scripts/ci/plan-merge-group.sh" 2>/dev/null; then
-            # Recompute from the exact diff and authenticated PR metadata.
-            # The earlier job's output alone cannot authorize skipped checks.
+            # Only skipped checks need independent metadata authorization.
+            # A completed full run remains valid if metadata now permits less.
+            # The trusted checker below still validates every plan key/result.
             git show "$BASE_SHA:scripts/ci/plan-merge-group.sh" >"$RUNNER_TEMP/plan-merge-group.sh"
             git show "$BASE_SHA:scripts/ci/classify-changed-paths.sh" >"$RUNNER_TEMP/classify-changed-paths.sh"
             decision=$(CI_JOB_REGISTRY="$trusted_registry" bash "$RUNNER_TEMP/plan-merge-group.sh")
-            jq -e --argjson actual "$PLAN_JSON" '.plan == $actual' <<<"$decision" >/dev/null
-            if [ "$(jq -r '.mode' <<<"$decision")" = docs ]; then
-              checker_event=merge_group_docs
-            fi
+            jq -e --argjson actual "$PLAN_JSON" '.mode == "docs" and .plan == $actual' <<<"$decision" >/dev/null
+            checker_event=merge_group_docs
           fi
 
           if ! CI_JOB_REGISTRY="$trusted_registry" "$trusted_checker" --supports-plan-v2; then

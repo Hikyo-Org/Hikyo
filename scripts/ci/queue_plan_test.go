@@ -119,6 +119,8 @@ func TestDocsQueuePlanFallsBackForEveryUncertainBoundary(t *testing.T) {
 		{name: "mixed", mode: "full", paths: []string{"README.md", "web/src/page.tsx"}},
 		{name: "site dependency", mode: "full", paths: []string{"docs/site/package.json"}},
 		{name: "site config", mode: "full", paths: []string{"docs/site/astro.config.mjs"}},
+		{name: "shared app CSP checker", mode: "full", paths: []string{"docs/site/scripts/test-csp.mjs"}},
+		{name: "unknown site executable helper", mode: "full", paths: []string{"docs/site/scripts/new-build-helper.mjs"}},
 		{name: "floor policy", mode: "full", paths: []string{"docs/release/measurements/derate.json"}},
 		{name: "acceptance ledger", mode: "full", paths: []string{"docs/release/acceptance-1.0.md"}},
 		{name: "MVP acceptance inputs", mode: "full", paths: []string{"docs/adr/mvp-boundary.md"}},
@@ -229,5 +231,107 @@ func TestDocsQueueWorkflowUsesTrustedPlanAndRecomputesGate(t *testing.T) {
 	f.metadata["labels"] = []any{map[string]any{"name": "ci:full"}}
 	if out, err := run(gate, "PLAN_JSON="+plan, "NEEDS_JSON="+string(needs)); err == nil || strings.Contains(string(out), "candidate-tool-executed") {
 		t.Fatalf("changed policy must block without candidate tools: %v %s", err, out)
+	}
+}
+
+func TestDocsQueueFullValidationDoesNotRequireMetadataReauthorization(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	var classify, gate string
+	for _, step := range workflow.Jobs["changes"].Steps {
+		if step.Name == "Classify changed paths" {
+			classify = step.Run
+		}
+	}
+	for _, step := range workflow.Jobs["ci-required"].Steps {
+		if step.Name == "Require every validation job" {
+			gate = step.Run
+		}
+	}
+	if classify == "" || gate == "" {
+		t.Fatal("missing workflow steps")
+	}
+	var rules registry
+	data, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts/ci/ci-job-registry.json"))
+	if err != nil || json.Unmarshal(data, &rules) != nil {
+		t.Fatal("read registry")
+	}
+	full := map[string]bool{}
+	for _, key := range rules.PathClasses["full"] {
+		full[key] = true
+	}
+	results := map[string]map[string]string{}
+	for name, rule := range rules.Jobs {
+		if rule.RequiredGate == "always" || rule.RequiredGate == "planned" {
+			results[name] = map[string]string{"result": "success"}
+		}
+	}
+	encode := func(value any) string {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	for _, scenario := range []string{"full with docs metadata", "metadata API recovers", "ci:full label removed"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newDocsQueueFixture(t, []string{"README.md"})
+			gh, err := os.ReadFile(filepath.Join(f.dir, "bin/gh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run := func(script string, extra ...string) ([]byte, error) {
+				cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
+				cmd.Dir, cmd.Env = f.dir, append(f.env(t), extra...)
+				return cmd.CombinedOutput()
+			}
+			plan := encode(full)
+			if scenario != "full with docs metadata" {
+				if scenario == "metadata API recovers" {
+					f.write(t, "bin/gh", "#!/bin/sh\nexit 1\n")
+				} else {
+					f.metadata["labels"] = []any{map[string]any{"name": "ci:full"}}
+				}
+				if out, err := run(classify); err != nil {
+					t.Fatalf("initial full planning: %v %s", err, out)
+				}
+				output, err := os.ReadFile(filepath.Join(f.dir, "output"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				plan = strings.TrimSpace(strings.TrimPrefix(string(output), "plan="))
+				var actual map[string]bool
+				if err := json.Unmarshal([]byte(plan), &actual); err != nil || encode(actual) != encode(full) {
+					t.Fatalf("expected actual workflow to retain full plan, got %s: %v", plan, err)
+				}
+			}
+			// Metadata now permits a docs-only plan, but every job already ran.
+			f.metadata["labels"] = []any{}
+			f.write(t, "bin/gh", strings.Replace(string(gh), "set -eu\n", "set -eu\ntouch \"$QUEUE_FIXTURE_METADATA.queried\"\n", 1))
+			if out, err := run(gate, "PLAN_JSON="+plan, "NEEDS_JSON="+encode(results)); err != nil {
+				t.Fatalf("successful full validation must survive metadata changes: %v %s", err, out)
+			}
+			if _, err := os.Stat(filepath.Join(f.dir, "metadata.json.queried")); !os.IsNotExist(err) {
+				t.Fatal("full validation unnecessarily queried PR metadata")
+			}
+			// Skipping metadata authorization must not skip trusted plan/result validation.
+			for _, invalid := range []string{"not-json", "{}", `{"docs":true}`, strings.Replace(plan, `"docs":true`, `"docs":null`, 1), strings.ReplaceAll(plan, "true", "false")} {
+				if out, err := run(gate, "PLAN_JSON="+invalid, "NEEDS_JSON="+encode(results)); err == nil {
+					t.Fatalf("invalid plan accepted: %s %s", invalid, out)
+				}
+			}
+			results["docs"]["result"] = "failure"
+			if out, err := run(gate, "PLAN_JSON="+plan, "NEEDS_JSON="+encode(results)); err == nil {
+				t.Fatalf("failed full-suite job accepted: %s", out)
+			}
+			results["docs"]["result"] = "success"
+		})
 	}
 }

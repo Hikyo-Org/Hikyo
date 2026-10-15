@@ -59,6 +59,11 @@ else
 		.github/workflows/*)
 			all_jobs
 			;;
+		# Site tooling can also validate other applications: test-csp.mjs is
+		# invoked by web's build:demo. Keep executable helpers on the full plan.
+		docs/site/scripts/*)
+			all_jobs
+			;;
 		# These documents are executable Go-test inputs owned by
 		# api/acceptance_ledger_test.go, not only site content.
 		docs/adr/mvp-boundary.md | docs/adr/saml-sp.md | docs/adr/scim-provisioning.md | docs/adr/secret-scanning.md | docs/release/acceptance-1.0.md)
