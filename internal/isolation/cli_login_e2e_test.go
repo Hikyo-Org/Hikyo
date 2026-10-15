@@ -46,15 +46,17 @@ func assertCLISnapshot(t *testing.T, auth *service.Auth, db *store.DB, browser, 
 	if cli.Artifact != service.ArtifactCLI || cli.SessionID == browser.SessionID || cli.SessionToken == browser.SessionToken {
 		t.Fatal("handoff did not mint a distinct CLI session")
 	}
-	if !reflect.DeepEqual(cli.Assurance, browser.Assurance) {
-		t.Fatalf("snapshot differs: got %+v want %+v", cli.Assurance, browser.Assurance)
-	}
-	if _, err := auth.Identity(ctx, browser.SessionToken); err != nil {
-		t.Fatalf("browser session lost: %v", err)
-	}
 	before, err := auth.Identity(ctx, browser.SessionToken)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Approval snapshots the durable browser identity. Session timestamps are
+	// stored at microsecond precision, while the original mint result may carry
+	// nanoseconds supplied by the host clock.
+	want := browser.Assurance
+	want.AuthenticatedAt = before.Assurance.AuthenticatedAt
+	if !reflect.DeepEqual(cli.Assurance, want) {
+		t.Fatalf("snapshot differs: got %+v want %+v", cli.Assurance, want)
 	}
 	after, err := auth.Identity(ctx, cli.SessionToken)
 	if err != nil {
@@ -62,6 +64,9 @@ func assertCLISnapshot(t *testing.T, auth *service.Auth, db *store.DB, browser, 
 	}
 	if before.Principal != after.Principal || sessionProviderProvenance(t, db, browser.SessionID) != sessionProviderProvenance(t, db, cli.SessionID) {
 		t.Fatalf("provenance mismatch: browser %+v cli %+v", before, after)
+	}
+	if !reflect.DeepEqual(before.Assurance, after.Assurance) {
+		t.Fatalf("durable assurance differs: browser %+v cli %+v", before.Assurance, after.Assurance)
 	}
 	if queryInt(t, db, "SELECT COUNT(*) FROM credential_establish_evidence WHERE session_id='"+cli.SessionID+"'") != 0 {
 		t.Fatal("CLI inherited establish evidence")
@@ -161,7 +166,7 @@ func TestCLILoginDevice(t *testing.T) {
 		admin := oidcAdmin(t, db)
 		auth := admin.auth
 		ctx := t.Context()
-		clock := time.Now().UTC()
+		clock := time.Now().UTC().Truncate(time.Microsecond).Add(123 * time.Nanosecond)
 		auth.Now = func() time.Time { return clock }
 		browser, err := auth.LocalLogin(ctx, "oidc-admin", admin.password, service.ArtifactBrowser)
 		if err != nil {
