@@ -582,6 +582,18 @@ export function useMatrixProject(ref: MatrixRef) {
     enabled: ref.org !== '' && ref.project !== '',
   });
   const environmentItems = useMemo(() => environments.data?.items ?? [], [environments.data]);
+  // useQueries returns a new result array on every render. Combine only
+  // bound domain states so unchanged data/readiness can share their identity.
+  const combineQueries = useMemo(() => ({
+    values: (queries: readonly MatrixQueryResult<EnvironmentQueryData<MatrixValueList>>[]) =>
+      bindMatrixEnvironmentQueries('values', environmentItems, queries),
+    settings: (queries: readonly MatrixQueryResult<EnvironmentQueryData<MatrixEnvironmentSettings>>[]) =>
+      bindMatrixEnvironmentQueries('settings', environmentItems, queries),
+    signals: (queries: readonly MatrixQueryResult<EnvironmentQueryData<MatrixEnvironmentSignals>>[]) =>
+      bindMatrixEnvironmentQueries('signals', environmentItems, queries),
+    pendingDrafts: (queries: readonly MatrixQueryResult<EnvironmentQueryData<MatrixPendingDraftList>>[]) =>
+      bindMatrixEnvironmentQueries('pending drafts', environmentItems, queries),
+  }), [environmentItems]);
   const values = useQueries({
     queries: environmentItems.map((environment) => ({
       queryKey: valuesKey({ ...ref, environment: environment.id }),
@@ -592,6 +604,7 @@ export function useMatrixProject(ref: MatrixRef) {
         }),
       select: (value: MatrixValueList) => ({ environmentId: environment.id, value }),
     })),
+    combine: combineQueries.values,
   });
   const settings = useQueries({
     queries: environmentItems.map((environment) => {
@@ -609,6 +622,7 @@ export function useMatrixProject(ref: MatrixRef) {
         }),
       };
     }),
+    combine: combineQueries.settings,
   });
   const signals = useQueries({
     queries: environmentItems.map((environment) => ({
@@ -642,6 +656,7 @@ export function useMatrixProject(ref: MatrixRef) {
       // periodic signals requests.
       refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
     })),
+    combine: combineQueries.signals,
   });
   const pendingDrafts = useQueries({
     queries: environmentItems.map((environment) => ({
@@ -659,20 +674,12 @@ export function useMatrixProject(ref: MatrixRef) {
       // shows a marker without the draft behind it until the stream is back.
       refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
     })),
+    combine: combineQueries.pendingDrafts,
   });
 
   const environmentRows = useMemo(
     () =>
-      assembleMatrixEnvironmentRows(environmentItems, {
-        values: bindMatrixEnvironmentQueries('values', environmentItems, values),
-        signals: bindMatrixEnvironmentQueries('signals', environmentItems, signals),
-        settings: bindMatrixEnvironmentQueries('settings', environmentItems, settings),
-        pendingDrafts: bindMatrixEnvironmentQueries(
-          'pending drafts',
-          environmentItems,
-          pendingDrafts,
-        ),
-      }),
+      assembleMatrixEnvironmentRows(environmentItems, { values, signals, settings, pendingDrafts }),
     [environmentItems, pendingDrafts, settings, signals, values],
   );
 
