@@ -101,7 +101,14 @@ func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
 		Rules []rule `json:"rules"`
 	}
 	var effective []rule
-	if err := q.api.read(ctx, q.endpoint(fmt.Sprintf("rulesets/%d", queueRulesetID)), &owner); err != nil {
+	if err := parallelReads(ctx,
+		func(ctx context.Context) error {
+			return q.api.read(ctx, q.endpoint(fmt.Sprintf("rulesets/%d", queueRulesetID)), &owner)
+		},
+		func(ctx context.Context) error {
+			return q.api.read(ctx, q.endpoint("rules/branches/"+url.PathEscape(q.repo.DefaultBranch)), &effective)
+		},
+	); err != nil {
 		return liveQueuePolicy{}, err
 	}
 	// GitHub redacts bypass_actors without ruleset write access. Unknown is not
@@ -113,9 +120,6 @@ func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
 	}
 	if owner.ID != queueRulesetID || owner.Target != "branch" || owner.Enforcement != "active" || len(owner.Bypass) != 0 || len(owner.Conditions.Ref.Include) != 1 || owner.Conditions.Ref.Include[0] != "refs/heads/"+q.repo.DefaultBranch || len(owner.Conditions.Ref.Exclude) != 0 {
 		return liveQueuePolicy{}, errors.New("invalid owning merge-queue protection")
-	}
-	if err := q.api.read(ctx, q.endpoint("rules/branches/"+url.PathEscape(q.repo.DefaultBranch)), &effective); err != nil {
-		return liveQueuePolicy{}, err
 	}
 	if effective == nil {
 		return liveQueuePolicy{}, errors.New("missing effective branch protection")
