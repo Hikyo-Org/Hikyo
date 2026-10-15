@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -342,6 +343,7 @@ exit "$POLICY_FIXTURE_EXIT"
 }
 
 type fakeAPI struct {
+	mu                sync.Mutex
 	scopeChecksToHead bool
 	responses         map[string]any
 	readHook          func(string, int)
@@ -353,6 +355,8 @@ type fakeAPI struct {
 }
 
 func (f *fakeAPI) read(_ context.Context, path string, result any) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.reads[path]++
 	if f.readHook != nil {
 		f.readHook(path, f.reads[path])

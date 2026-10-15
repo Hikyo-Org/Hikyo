@@ -89,12 +89,18 @@ func materializedHeads(live *queueData, branch string) ([]string, error) {
 
 func (q *queueController) roles(ctx context.Context, head string) (headRoles, error) {
 	var roles headRoles
-	pulls, err := q.openPRs(ctx)
-	if err != nil {
-		return roles, err
-	}
-	live, err := q.liveQueue(ctx)
-	if err != nil {
+	var pulls []pull
+	var live *queueData
+	if err := parallelReads(ctx,
+		func(ctx context.Context) (err error) {
+			pulls, err = q.openPRs(ctx)
+			return err
+		},
+		func(ctx context.Context) (err error) {
+			live, err = q.liveQueue(ctx)
+			return err
+		},
+	); err != nil {
 		return roles, err
 	}
 	heads, err := materializedHeads(live, q.repo.DefaultBranch)

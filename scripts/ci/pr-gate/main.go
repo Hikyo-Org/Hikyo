@@ -358,6 +358,20 @@ type api interface {
 }
 type ghAPI struct{}
 
+// Keep REST failure status separate from untrusted response text. Callers can
+// recognize an absent ephemeral ref without hiding permission or API failures.
+type githubReadError struct {
+	path   string
+	status int
+}
+
+func (e *githubReadError) Error() string {
+	if e.status != 0 {
+		return fmt.Sprintf("GitHub read failed for %s (HTTP %d)", e.path, e.status)
+	}
+	return fmt.Sprintf("GitHub read failed for %s", e.path)
+}
+
 func decode(data []byte, result any) error {
 	d := json.NewDecoder(bytes.NewReader(data))
 	if err := d.Decode(result); err != nil {
@@ -386,7 +400,16 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				return graphQLDiagnostic(response.Errors)
 			}
 		}
-		return fmt.Errorf("GitHub read failed for %s", path)
+		var failure struct {
+			Status string `json:"status"`
+		}
+		status := 0
+		if !strings.HasPrefix(path, "graphql:") && decode(data, &failure) == nil {
+			if code, parseErr := strconv.Atoi(failure.Status); parseErr == nil && code >= 400 && code <= 599 {
+				status = code
+			}
+		}
+		return &githubReadError{path: path, status: status}
 	}
 	return decode(data, result)
 }

@@ -60,7 +60,7 @@ jobs:
             if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
             [.[] | select(.name == $name)] |
             if length != 1 then error("ambiguous publisher job") else .[0] end |
-            if (.id | type) != "number" or .id != (.id | floor) or .id <= 0 or .run_id != $run or .run_attempt != $attempt or .head_sha != $head or .status != "in_progress" or (.started_at | type) != "string" then error("invalid publisher job identity") else .started_at end |
+            if (.id | type) != "number" or .id != (.id | floor) or .id <= 0 or .run_id != $run or .run_attempt != $attempt or .head_sha != $head or .status != "in_progress" or (.started_at | type) != "string" then error("invalid publisher job identity: " + ({actual: {id, run_id, run_attempt, head_sha, status, started_at}, expected: {id: "positive integer", run_id: $run, run_attempt: $attempt, head_sha: $head, status: "in_progress", started_at: "ISO 8601 timestamp"}} | tojson)) else .started_at end |
             fromdateiso8601')
           now=$(date +%s)
           test "$started" -gt 0

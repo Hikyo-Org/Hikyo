@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -161,6 +162,53 @@ func TestSourceSecurityGateTrustedBaseMigration(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestSourceArtifactRestoresBoundedCompilerEntries(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Env   map[string]string `yaml:"env"`
+			Steps []struct {
+				Name     string            `yaml:"name"`
+				Uses     string            `yaml:"uses"`
+				If       string            `yaml:"if"`
+				Continue yaml.Node         `yaml:"continue-on-error"`
+				Timeout  int               `yaml:"timeout-minutes"`
+				With     map[string]string `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	job := workflow.Jobs["source-artifact-security"]
+	if job.Env["GOCACHE"] != "${{ github.workspace }}/.ci-cache/go-feedback" {
+		t.Fatal("source fixture compilation must use the bounded compiler archive")
+	}
+	readers := 0
+	for _, step := range job.Steps {
+		if strings.Contains(step.Uses, "actions/cache/save@") || step.With["path"] == "~/.cache/go-build" {
+			t.Fatal("source fixture must never publish or extract the full-test Go cache")
+		}
+		if step.With["path"] != ".ci-cache/go-feedback" {
+			continue
+		}
+		readers++
+		if step.Name != "Restore bounded source artifact Go cache" || step.Timeout != 2 || step.If != "" || step.Continue.Kind != 0 || step.Uses != "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" || !reflect.DeepEqual(step.With, map[string]string{
+			"path":         ".ci-cache/go-feedback",
+			"key":          "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ inputs.revision }}",
+			"restore-keys": "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
+		}) {
+			t.Fatal("source fixture cache must retain bounded compatible read-only restore and the existing two-minute deadline")
+		}
+	}
+	if readers != 1 {
+		t.Fatalf("want one bounded source compiler reader, got %d", readers)
 	}
 }
 

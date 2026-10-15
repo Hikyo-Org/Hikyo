@@ -376,7 +376,7 @@ func TestAdmissionFinalRolesStillValidatesInventoryAfterFeedback(t *testing.T) {
 				}
 				if strings.Contains(path, "pulls?state=open") && n == 2 {
 					if !finalFeedback {
-						t.Fatal("final inventory read before final feedback")
+						t.Error("final inventory read before final feedback")
 					}
 					finalInventory = true
 					switch change {
@@ -391,8 +391,8 @@ func TestAdmissionFinalRolesStillValidatesInventoryAfterFeedback(t *testing.T) {
 					}
 				}
 				if path == f.query && n == 2 {
-					if !finalInventory {
-						t.Fatal("final queue-role read preceded final inventory")
+					if !finalFeedback {
+						t.Error("final queue-role read before final feedback")
 					}
 					finalQueue = true
 				}

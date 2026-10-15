@@ -258,7 +258,11 @@ func (c client) existing(ctx context.Context, head, name, external, details stri
 			if candidate.ExternalID != external {
 				continue
 			}
-			if candidate.ID <= 0 || candidate.Name != name || candidate.HeadSHA != head || candidate.App.ID != actionsAppID || candidate.DetailsURL != details || found != nil {
+			// GitHub Actions can replace the submitted details URL with the
+			// check's canonical run URL. Bind that form to this exact check ID;
+			// the app, source binding, head and name must still all match.
+			canonical := fmt.Sprintf("https://github.com/%s/runs/%d", c.repo, candidate.ID)
+			if candidate.ID <= 0 || candidate.Name != name || candidate.HeadSHA != head || candidate.App.ID != actionsAppID || (candidate.DetailsURL != details && candidate.DetailsURL != canonical) || found != nil {
 				return nil, errors.New("ambiguous or unauthenticated existing queue report")
 			}
 			found = &candidate
