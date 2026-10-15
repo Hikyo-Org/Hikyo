@@ -1188,14 +1188,10 @@ func (s *Auth) assertPasskeyOnlyInvariant(ctx context.Context, az *authz.TxAutho
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
-	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
-	if err != nil {
+	if usable, err := s.hasUsableExternalIdentity(ctx, az, accountID, "", epoch); err != nil {
 		return err
-	}
-	for _, identity := range identities {
-		if identity.CredentialEpoch == epoch {
-			return nil
-		}
+	} else if usable {
+		return nil
 	}
 	return s.assertPasskeyFloor(ctx, az, accountID)
 }
@@ -1245,14 +1241,10 @@ func (s *Auth) assertRemovalKeepsInvariant(ctx context.Context, az *authz.TxAuth
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
-	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
-	if err != nil {
+	if usable, err := s.hasUsableExternalIdentity(ctx, az, accountID, "", epoch); err != nil {
 		return err
-	}
-	for _, identity := range identities {
-		if identity.CredentialEpoch == epoch {
-			return nil
-		}
+	} else if usable {
+		return nil
 	}
 	creds, err := az.WebAuthnCredentialsForAccount(ctx, accountID)
 	if err != nil {

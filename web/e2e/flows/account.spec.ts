@@ -56,10 +56,25 @@ test.describe('social-only account security', () => {
     await page.screenshot({ path: testInfo.outputPath('social-password-form.png'), fullPage: true });
     const password = 'first-security-password-611';
     await page.getByLabel('New password', { exact: true }).fill(password);
+    await page.getByLabel('Repeat new password', { exact: true }).fill(`${password}-different`);
+    await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
+    for (const label of ['New password', 'Repeat new password']) {
+      const input = page.getByLabel(label, { exact: true });
+      await expect(input).toHaveAttribute('aria-invalid', 'true');
+      await expect(input).toHaveAccessibleDescription(/The passwords do not match\. Enter them again\./);
+    }
+    await page.screenshot({ path: testInfo.outputPath('social-password-mismatch.png'), fullPage: true });
     await page.getByLabel('Repeat new password', { exact: true }).fill(password);
+    await expect(page.getByLabel('New password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByLabel('Repeat new password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
     const passwordSet = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
     await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
     expect((await passwordSet).postDataJSON()).toEqual({ password });
+    // Persistence and dialog closure also happen after an unexpected session
+    // replacement. Require the initiating mutation's success feedback too.
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: 'Password saved. Every other session you held has ended.' })).toBeVisible();
+    await expect(page.locator('.alert')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
     await expect(page.getByRole('status').filter({ hasText: 'Verified via' })).toHaveCount(0);
     expect((await browserApi(page, 'GET', '/api/v1/auth/totp', zTotpStatus)).has_password).toBe(true);
@@ -74,9 +89,11 @@ test.describe('social-only account security', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Change password', exact: true }).click();
     expect((await passwordChange).postDataJSON()).toEqual({ password: changedPassword, proof: password });
     await expect(page.getByRole('dialog')).toBeHidden();
-    await page.reload();
     // Password proof gives this session password assurance. The existing local
     // MFA floor applies; a provider assertion is never inherited by this write.
+    await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+    await expect(page.locator('.toast--error')).toHaveCount(0);
+    await page.reload();
     await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();

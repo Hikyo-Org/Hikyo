@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -864,4 +865,30 @@ func (t *publicMetadataRoundTripper) destinations(request *http.Request) ([]neti
 		return nil, nil, err
 	}
 	return addresses, proxyURL, nil
+}
+
+func TestSAMLStoredSubjectMatchesCurrentNameIDPolicy(t *testing.T) {
+	t.Parallel()
+	persistent, email, transient := samlNameIDPersistent, samlNameIDEmail, samlNameIDTransient
+	for _, format := range []*string{nil, &persistent, &email, &transient} {
+		encoded, err := samlsp.EncodeNameID(samlsp.NameID{Value: []byte("Exact Subject"), Format: format})
+		if err != nil {
+			t.Fatal(err)
+		}
+		subject := base64.RawStdEncoding.EncodeToString(encoded)
+		for _, allowEmail := range []bool{false, true} {
+			want := format == nil || *format == samlNameIDPersistent || (*format == samlNameIDEmail && allowEmail)
+			if got := samlStoredSubjectAllowed(subject, allowEmail); got != want {
+				t.Fatalf("format=%v allowEmail=%v got=%v want=%v", format, allowEmail, got, want)
+			}
+		}
+		if samlStoredSubjectAllowed(subject+"\n", true) {
+			t.Fatal("noncanonical subject counted as login")
+		}
+	}
+	for _, subject := range []string{"", "invalid!", base64.RawStdEncoding.EncodeToString([]byte{1, 0, 0, 0, 42})} {
+		if samlStoredSubjectAllowed(subject, true) {
+			t.Fatalf("malformed subject accepted: %q", subject)
+		}
+	}
 }

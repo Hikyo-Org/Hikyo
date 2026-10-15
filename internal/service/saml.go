@@ -100,6 +100,21 @@ func samlSubject(nameID samlsp.NameID, allowEmail bool) (string, error) {
 	return base64.RawStdEncoding.EncodeToString(encoded), nil
 }
 
+// samlStoredSubjectAllowed applies the same NameID policy to a retained
+// identity that the callback applies to the verified assertion's NameID.
+func samlStoredSubjectAllowed(subject string, allowEmail bool) bool {
+	encoded, err := base64.RawStdEncoding.Strict().DecodeString(subject)
+	if err != nil {
+		return false
+	}
+	nameID, err := samlsp.DecodeNameID(encoded)
+	if err != nil {
+		return false
+	}
+	current, err := samlSubject(nameID, allowEmail)
+	return err == nil && current == subject
+}
+
 func samlMethod(entityID string) string { return "saml:" + entityID }
 
 func samlFactors(mfa bool) []string {

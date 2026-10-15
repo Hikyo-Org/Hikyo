@@ -35114,6 +35114,20 @@ func (response EstablishCredential401JSONResponse) VisitEstablishCredentialRespo
 	return err
 }
 
+type EstablishCredential409JSONResponse struct{ ConflictJSONResponse }
+
+func (response EstablishCredential409JSONResponse) VisitEstablishCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type EstablishCredential429JSONResponse struct{ TooManyRequestsJSONResponse }
 
 func (response EstablishCredential429JSONResponse) VisitEstablishCredentialResponse(w http.ResponseWriter) error {
@@ -36116,6 +36130,20 @@ func (response LoginChallengeWebauthnFinish404JSONResponse) VisitLoginChallengeW
 	return err
 }
 
+type LoginChallengeWebauthnFinish409JSONResponse struct{ ConflictJSONResponse }
+
+func (response LoginChallengeWebauthnFinish409JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LoginChallengeWebauthnFinish429JSONResponse struct{ TooManyRequestsJSONResponse }
 
 func (response LoginChallengeWebauthnFinish429JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
@@ -36973,6 +37001,20 @@ func (response SetPassword404JSONResponse) VisitSetPasswordResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SetPassword409JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39145,6 +39187,20 @@ func (response ReauthPasskeyFinish404JSONResponse) VisitReauthPasskeyFinishRespo
 	return err
 }
 
+type ReauthPasskeyFinish409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReauthPasskeyFinish409JSONResponse) VisitReauthPasskeyFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReauthPasskeyFinish429JSONResponse struct{ TooManyRequestsJSONResponse }
 
 func (response ReauthPasskeyFinish429JSONResponse) VisitReauthPasskeyFinishResponse(w http.ResponseWriter) error {
@@ -39357,6 +39413,20 @@ func (response StepUpPasskeyFinish404JSONResponse) VisitStepUpPasskeyFinishRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StepUpPasskeyFinish409JSONResponse struct{ ConflictJSONResponse }
+
+func (response StepUpPasskeyFinish409JSONResponse) VisitStepUpPasskeyFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

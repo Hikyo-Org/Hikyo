@@ -188,7 +188,7 @@ export const whoami = <ThrowOnError extends boolean = false>(options?: Options<W
  * A live establish ceremony on a social-only account permits empty proof.
  * Deletes the principal's sessions and reissues the acting session, whose
  * replacement token must be persisted by the client. Password removal is
- * not supported.
+ * not supported. A concurrent credential change is refused with a 409 conflict.
  *
  */
 export const setPassword = <ThrowOnError extends boolean = false>(options: Options<SetPasswordData, ThrowOnError>) => (options.client ?? client).put<SetPasswordResponses, SetPasswordErrors, ThrowOnError>({

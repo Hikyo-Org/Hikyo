@@ -99,14 +99,10 @@ func (s *Auth) assertLoginCredential(ctx context.Context, az *authz.TxAuthorizer
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
-	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
-	if err != nil {
+	if usable, err := s.hasUsableExternalIdentity(ctx, az, accountID, excluding, epoch); err != nil {
 		return err
-	}
-	for _, identity := range identities {
-		if identity.ID != excluding && identity.CredentialEpoch == epoch {
-			return nil
-		}
+	} else if usable {
+		return nil
 	}
 	if err := s.assertPasskeyFloor(ctx, az, accountID); errors.Is(err, ErrPasskeyOnlyViolation) {
 		return ErrLastCredential
@@ -320,4 +316,66 @@ func localProofInventory(ctx context.Context, az *authz.TxAuthorizer, accountID 
 		}
 	}
 	return out, nil
+}
+
+// hasUsableExternalIdentity mirrors the static eligibility checks at login. A
+// retained identity row is not a login path while its provider is disabled,
+// missing or no longer matches its issuer. Network availability is not tested.
+func (s *Auth) hasUsableExternalIdentity(ctx context.Context, az *authz.TxAuthorizer, accountID, excluding string, epoch int64) (bool, error) {
+	identities, err := az.ExternalIdentitiesForAccount(ctx, accountID)
+	if err != nil {
+		return false, err
+	}
+	for _, identity := range identities {
+		if identity.ID == excluding || identity.CredentialEpoch != epoch {
+			continue
+		}
+		usable, err := s.externalIdentityUsableForLogin(ctx, az, identity)
+		if err != nil {
+			return false, err
+		}
+		if usable {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *Auth) externalIdentityUsableForLogin(ctx context.Context, az *authz.TxAuthorizer, identity authz.ExternalIdentity) (bool, error) {
+	switch identity.Kind {
+	case OIDCKind:
+		provider, err := az.ProviderForCallback(ctx, identity.ProviderID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return provider.Enabled && provider.Issuer == identity.Issuer, nil
+	case OAuth2Kind:
+		provider, err := az.OAuth2ProviderForCallback(ctx, identity.ProviderID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return provider.Enabled && provider.Issuer == identity.Issuer, nil
+	case SAMLKind:
+		// SAML login can rebind a retained identity to a recreated provider of the
+		// same entityID. Requiring its historical provider ID would reject that
+		// supported login path (completeSAMLLogin).
+		providers, err := az.ListSAMLProviders(ctx)
+		if err != nil {
+			return false, err
+		}
+		for _, provider := range providers {
+			if provider.Enabled && provider.EntityID == identity.Issuer && (provider.MetadataValidUntil == nil || s.now().Before(*provider.MetadataValidUntil)) && samlStoredSubjectAllowed(identity.Subject, provider.AllowEmailNameID) {
+				return true, nil
+			}
+		}
+		return false, nil
+	default:
+		return false, nil
+	}
 }

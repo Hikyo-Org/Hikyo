@@ -26,14 +26,14 @@ func (s *Auth) SetPassword(ctx context.Context, presented, password, proof strin
 		return LoginResult{}, err
 	}
 	var existing authz.PasswordCredential
-	var first bool
+	var havePasswordRow bool
 	err = tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		var err error
 		existing, err = az.PasswordCredentialFor(ctx, account.ID)
 		if errors.Is(err, domain.ErrNotFound) {
-			first = true
 			return nil
 		}
+		havePasswordRow = err == nil
 		return err
 	})
 	if err != nil {
@@ -66,7 +66,7 @@ func (s *Auth) SetPassword(ctx context.Context, presented, password, proof strin
 			return err
 		}
 		current, err := az.PasswordCredentialFor(ctx, account.ID)
-		if first {
+		if !havePasswordRow {
 			if err == nil {
 				return ErrCredentialRace
 			}
@@ -85,11 +85,14 @@ func (s *Auth) SetPassword(ctx context.Context, presented, password, proof strin
 		if err != nil {
 			return err
 		}
+		// Physical presence controls INSERT versus CAS replacement. The audit
+		// describes whether a usable password already stood in this epoch.
+		first := !havePasswordRow || current.CredentialEpoch != epoch
 		if err := az.AssertActiveInstanceDEKVersion(ctx, dekVersion); err != nil {
 			return err
 		}
 		cred := authz.PasswordCredential{AccountID: account.ID, Verifier: sealed, KDF: params, DEKVersion: dekVersion, CredentialEpoch: epoch, RowVersion: existing.RowVersion}
-		if first {
+		if !havePasswordRow {
 			if err := az.WritePasswordCredential(ctx, cred, now); err != nil {
 				return err
 			}

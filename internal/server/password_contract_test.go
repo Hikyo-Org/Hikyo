@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -45,6 +46,79 @@ func TestSetPasswordForwardsOnlyCanonicalFieldsAndOptionalProof(t *testing.T) {
 			resp, payload = call(t, srv, http.MethodPut, api.PathPrefix+"/auth/password", "hik_1_cli_x", map[string]any{"new_password": "new-password-secret"})
 			if resp.StatusCode != http.StatusBadRequest || calls != 1 {
 				t.Fatalf("legacy spelling status=%d calls=%d body=%s", resp.StatusCode, calls, payload)
+			}
+		})
+	}
+}
+
+func TestSetPasswordCredentialRaceReturnsConflict(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"credential race", service.ErrCredentialRace},
+		{"wrapped credential race", fmt.Errorf("private credential write context: %w", service.ErrCredentialRace)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			auth := passwordAuth{stubAuth: stubAuth{identity: liveIdentityFn}, password: func(context.Context, string, string, string) (service.LoginResult, error) {
+				calls++
+				return service.LoginResult{}, tc.err
+			}}
+			srv := newTestServer(t, auth, stubOrgs{})
+			resp, payload := call(t, srv, http.MethodPut, api.PathPrefix+"/auth/password", "hik_1_cli_x", map[string]any{
+				"password": "new-password-secret", "proof": "current-password",
+			})
+			if resp.StatusCode != http.StatusConflict || calls != 1 {
+				t.Fatalf("status=%d calls=%d body=%s", resp.StatusCode, calls, payload)
+			}
+			failure := decodeError(t, payload)
+			if failure.Error.Code != apigen.ErrorCodeConflict || failure.Error.Detail != nil || failure.Error.Message != "the current state of this resource refuses the request" {
+				t.Fatalf("credential race must use the uniform conflict response: %s", payload)
+			}
+		})
+	}
+}
+
+type credentialRaceAuth struct{ stubAuth }
+
+func (credentialRaceAuth) StepUpPasskeyFinish(context.Context, string, []byte) (service.LoginResult, error) {
+	return service.LoginResult{}, service.ErrCredentialRace
+}
+
+func (credentialRaceAuth) ReauthPasskeyFinish(context.Context, string, []byte) (service.ReauthResult, error) {
+	return service.ReauthResult{}, service.ErrCredentialRace
+}
+
+func TestCredentialRaceSiblingResponsesMatchContract(t *testing.T) {
+	auth := credentialRaceAuth{stubAuth{
+		identity: liveIdentityFn,
+		estab: func(context.Context, string, string) error {
+			return service.ErrCredentialRace
+		},
+		reissue: func() (service.LoginResult, error) {
+			return service.LoginResult{}, service.ErrCredentialRace
+		},
+	}}
+	srv := newTestServer(t, auth, stubOrgs{})
+	for _, tc := range []struct {
+		path string
+		body map[string]any
+	}{
+		{"/auth/credential/establish", map[string]any{"authority": "hik_1_bs_single-use-authority", "password": "new-password-secret"}},
+		{"/auth/recovery-codes/regenerate", map[string]any{"proof": "current-password"}},
+		{"/auth/login/challenge/lch_00000000-0000-0000-0000-000000000001/webauthn/finish", map[string]any{}},
+		{"/auth/webauthn/step-up/finish", map[string]any{}},
+		{"/auth/webauthn/reauth/finish", map[string]any{}},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			resp, payload := call(t, srv, http.MethodPost, api.PathPrefix+tc.path, "hik_1_cli_x", tc.body)
+			if resp.StatusCode != http.StatusConflict {
+				t.Fatalf("status=%d body=%s", resp.StatusCode, payload)
+			}
+			failure := decodeError(t, payload)
+			if failure.Error.Code != apigen.ErrorCodeConflict || failure.Error.Detail != nil {
+				t.Fatalf("credential race must use the uniform conflict response: %s", payload)
 			}
 		})
 	}

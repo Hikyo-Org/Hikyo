@@ -143,3 +143,55 @@ Failed attempts retained for final accounting:
 - Expanded lifecycle tests caught an expired-stamp refusal leaking
   `domain.ErrNotFound`; the consumer now returns `ErrNoProofCredential` and the
   expiry cases pass.
+
+## PR 925 review repairs
+
+Qodo's five findings on `b308a44530af` were verified and repaired by Sol 6.1
+high workers, with parent review. Auto-merge was disabled while repairing them.
+
+- Password mismatch now uses shared Input/Field errors associated with both
+  controls. The server refusal remains a form-level alert. The sensitive-state
+  ownership and clearing behavior were reviewed before updating its source pin.
+- Password mutation is registered as an expected account-session rotation.
+  A regression using the real hook and AuthProvider reproduced the old epoch
+  advance and lost success callback for both first-set and replacement, then
+  passed after the fix. Previous browser assertions observed persisted state
+  and dialog closure, which also occurred during the erroneous session reset.
+  The browser flow now checks success feedback and immediate policy navigation.
+- Unlink and both passkey invariant paths share a usable external-identity
+  predicate. Disabled, missing, mismatched or epoch-inert identities cannot
+  satisfy the remaining-login floor. SAML retains its supported same-entity
+  provider recreation behavior and checks metadata expiry.
+- An independent second review found that SAML email-NameID opt-out also makes
+  a retained identity unusable. A real signed link followed by the actual
+  provider policy toggle reproduced this for unlink and passkey removal on both
+  engines. The fix decodes the existing stored representation through its
+  samlsp owner and reapplies the callback's existing NameID policy, requiring
+  exact re-encoding. Decoder tests cover presence, arbitrary bytes, truncation,
+  lengths and trailing data. The reviewer rechecked the repair without finding
+  another defect in this delta.
+- Password audit `first` now reflects the current credential epoch, separately
+  from the physical row's INSERT/CAS choice. Regression coverage establishes
+  over an inert restored row, then changes the resulting current password,
+  checking both audit values and physical row behavior.
+- Credential races map to the uniform HTTP 409 conflict. The initial regression
+  reproduced HTTP 500; changing only the mapping exposed the missing OpenAPI
+  response. Password and four verified sibling operation contracts now declare
+  409; recovery regeneration already did. Generated clients were refreshed.
+  Seven HTTP contract cases cover plain/wrapped password errors and siblings.
+
+Repair validation: final web typecheck, lint, production build and all 1,718
+unit tests passed. API/server package tests passed (1.677/65.166 seconds), as did
+client typecheck and all 37 client tests. Core backend repair cases passed on
+SQLite and PostgreSQL 18.6 in 22.007 seconds; broader establishment, SAML
+recreation, passkey-floor and audit regressions passed in 142.733 seconds. The
+final SAML policy and provider eligibility cases passed on both engines in
+15.775 seconds. Final complete service/samlsp package checks passed in
+51.599/0.695 seconds. The strengthened social-password browser flow passed on
+desktop (2.9 minutes including setup) and mobile (3.0 minutes), with both
+mismatch screenshots visually inspected. Those OIDC browser runs preceded the
+last SAML-only refinement, which has the separate database and package evidence
+above. Go import formatting, the final AST graph refresh and diff checks passed;
+the graph refresh retains its existing partial-extraction warnings for 17 Astro
+documentation files. These are local results; the repaired head still requires
+fresh hosted feedback and immutable merge-group validation.

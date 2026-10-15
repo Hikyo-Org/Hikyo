@@ -3,6 +3,7 @@ import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Input } from '../ui/Input.tsx';
 
 export function AccountPasswordDialog({ first, proof, pending, failure, onCancel, onSubmit }: {
   first: boolean;
@@ -13,11 +14,10 @@ export function AccountPasswordDialog({ first, proof, pending, failure, onCancel
   onSubmit: (password: string, proof: string) => void;
 }) {
   const formId = useId();
-  const passwordId = useId();
-  const repeatId = useId();
   const [password, setPassword] = useSensitiveState('');
   const [repeat, setRepeat] = useSensitiveState('');
   const [mismatch, setMismatch] = useState(false);
+  const mismatchError = mismatch ? 'The passwords do not match. Enter them again.' : undefined;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
@@ -36,14 +36,10 @@ export function AccountPasswordDialog({ first, proof, pending, failure, onCancel
     </>}>
     <form id={formId} onSubmit={submit}>
       {failure === null ? null : <Alert>{failure}</Alert>}
-      {mismatch ? <Alert>The passwords do not match. Enter them again.</Alert> : null}
-      <div className="field"><label htmlFor={passwordId}>New password</label>
-        <input id={passwordId} name="password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required disabled={pending} value={password} onChange={(event) => { setPassword(event.target.value); setMismatch(false); }} />
-        <p className="field__hint">At least 12 characters.</p>
-      </div>
-      <div className="field"><label htmlFor={repeatId}>Repeat new password</label>
-        <input id={repeatId} name="repeat-password" type="password" autoComplete="new-password" required disabled={pending} value={repeat} onChange={(event) => { setRepeat(event.target.value); setMismatch(false); }} />
-      </div>
+      <Input label="New password" hint="At least 12 characters." error={mismatchError}
+        name="password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required disabled={pending} value={password} onChange={(event) => { setPassword(event.target.value); setMismatch(false); }} />
+      <Input label="Repeat new password" error={mismatchError}
+        name="repeat-password" type="password" autoComplete="new-password" required disabled={pending} value={repeat} onChange={(event) => { setRepeat(event.target.value); setMismatch(false); }} />
     </form>
   </Dialog>;
 }
