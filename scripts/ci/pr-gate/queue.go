@@ -610,6 +610,8 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			// event, keep admission pending and do not reuse an older success.
 			if r.Status == "completed" && r.Conclusion == "skipped" && len(jobs) == 0 {
 				_, err := fmt.Fprintf(q.output, "PR #%d head=%s feedback_run=%d attempt=%d: waiting for GitHub skipped jobs to materialize; admission remains pending.\n", p.Number, r.HeadSHA, r.ID, r.Attempt)
+				// A failed diagnostic write is an operational error. The caller
+				// still verifies an authenticated blocking barrier before return.
 				return nil, err
 			}
 			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedFeedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {

@@ -16,13 +16,13 @@ func parallelReads(ctx context.Context, first, second func(context.Context) erro
 	var failures [2]error
 	for i, read := range [2]func(context.Context) error{first, second} {
 		wait.Add(1)
-		go func() {
+		go func(index int, reader func(context.Context) error) {
 			defer wait.Done()
-			failures[i] = read(ctx)
-			if failures[i] != nil {
+			failures[index] = reader(ctx)
+			if failures[index] != nil {
 				cancel()
 			}
-		}()
+		}(i, read)
 	}
 	wait.Wait()
 	return errors.Join(failures[:]...)
