@@ -511,7 +511,10 @@ func (q *Queries) DeleteSessionsForPrincipal(ctx context.Context, principalID st
 }
 
 const deleteSessionsForProvider = `-- name: DeleteSessionsForProvider :execrows
-DELETE FROM sessions WHERE provider_id = ?
+DELETE FROM sessions WHERE sessions.provider_id = ?1
+OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+ JOIN external_identities i ON i.id = e.identity_id
+ WHERE i.kind = 'oidc' AND i.provider_id = ?1)
 `
 
 // The federated-session sweep (A4): every session minted through a provider

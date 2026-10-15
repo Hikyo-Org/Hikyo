@@ -239,6 +239,9 @@ func (r reissuedSessionResponse) VisitStepUpTotpResponse(w http.ResponseWriter) 
 func (r reissuedSessionResponse) VisitRemoveTotpResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }
+func (r reissuedSessionResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
 func (r reissuedSessionResponse) VisitUnlinkIdentityResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }

@@ -16,6 +16,8 @@ import {
   removeTotpOp,
   samlStartOp,
   oauth2StartOp,
+  oidcStartOp,
+  setPasswordOp,
   unlinkIdentityOp,
 } from '@hikyo/operations';
 import {
@@ -196,6 +198,26 @@ export function useRemoveTotp() {
   });
 }
 
+export function useSetPassword() {
+  const after = useAfterAccountMutation();
+  return useSensitiveMutation({
+    mutationFn: (input: { password: string; proof?: string }) => parsed(setPasswordOp, { body: input }),
+    onSettled: after,
+  });
+}
+
+/** Establish is browser-only and always returns to the initiating Security tab. */
+export function useEstablishCredential() {
+  return useSensitiveMutation({
+    mutationFn: async (input: { kind: 'oidc' | 'oauth2'; slug: string }) => {
+      const result = input.kind === 'oidc'
+        ? await parsed(oidcStartOp, { path: { provider: input.slug }, body: { purpose: 'establish', browser: true } })
+        : await parsed(oauth2StartOp, { path: { provider: input.slug }, body: { purpose: 'establish', browser: true } });
+      return result.authorization_url;
+    },
+  });
+}
+
 /**
  * AccountSecurityProof is the proof a passkey mutation carries, selected
  * possession-first by the server: the confirmed authenticator code where the
@@ -205,16 +227,18 @@ export function useRemoveTotp() {
  */
 export type AccountSecurityProof =
   | { readonly kind: 'password'; readonly password: string }
-  | { readonly kind: 'code'; readonly code: string };
+  | { readonly kind: 'code'; readonly code: string }
+  | { readonly kind: 'establish' };
 
-function proofBody(proof: AccountSecurityProof): { password: string } | { code: string } {
+function proofBody(proof: AccountSecurityProof): { password?: string; code?: string } {
+  if (proof.kind === 'establish') return {};
   return proof.kind === 'code' ? { code: proof.code } : { password: proof.password };
 }
 
 export function useRemovePasskey() {
   const after = useAfterAccountMutation();
   return useSensitiveMutation({
-    mutationFn: (input: { id: string; proof: AccountSecurityProof }) =>
+    mutationFn: (input: { id: string; proof: Exclude<AccountSecurityProof, { kind: 'establish' }> }) =>
       parsed(removePasskeyOp, { path: { id: input.id }, body: proofBody(input.proof) }),
     onSettled: after,
   });

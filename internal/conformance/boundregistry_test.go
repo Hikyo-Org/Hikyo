@@ -100,6 +100,9 @@ func goHelper(packagePath, name string) fixtureref.FixtureRef {
 // caught by TestReconciledBoundsMatchOpsSpecValues; completeness against new
 // spec rows is a review responsibility on this single source.
 var Registry = []Bound{
+	bound("credential-establish-lifetime", "Credential establishment session window", "social-signin §8 / ops-catalogue §Registration", "service.ErrNoProofCredential after unused expiry or session reissue", "Both kinds and engines refuse expired or already-spent stamps, including staged enrollment completion", StatusEnforced,
+		goTest("internal/isolation", "TestCredentialEstablishTOTPAndExpiry"),
+		goTest("internal/isolation", "TestCredentialEstablishStagedPasskeyExpires")),
 	bound("signup-token-lifetime", "Local sign-up token lifetime", "social-signin §8", "uniform refusal once 24-hour expiry reached", "Resend renews the same live row; expired rows pruned only", StatusEnforced,
 		goTest("internal/isolation", "TestLocalSignup")),
 	bound("mail-test-budget", "Operator test mail budget", "social-signin §8", "five/hour/principal and one concurrent per instance", "Shared datastore bucket and lease across active/snapshot test routes", StatusEnforced,
@@ -353,6 +356,7 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		// ops-spec banner 2026-09-03: the instance-wide signup budget (#606).
 		{"service.BudgetSignupPerHour", service.BudgetSignupPerHour, 20},
 		{"service.SignupLifetime", int(service.SignupLifetime / time.Second), 86400},
+		{"service.CredentialEstablishLifetime", int(service.CredentialEstablishLifetime / time.Second), 300},
 		// Already-conformant bounds, pinned so they cannot drift unnoticed.
 		{"schema.MaxKeysPerProject", schema.MaxKeysPerProject, 1000},
 		{"schema.MaxKeyGroupsPerProject", schema.MaxKeyGroupsPerProject, 100},

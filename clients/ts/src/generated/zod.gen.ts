@@ -1144,8 +1144,13 @@ export const zInstanceUpdateJob = z.object({
     finished_at: zTimestamp.optional()
 }).strict();
 
+export const zSetPasswordRequest = z.object({
+    password: z.string().min(12).max(1024),
+    proof: z.string().max(1024).optional()
+});
+
 export const zTotpEnrolStartRequest = z.object({
-    password: z.string().min(1).max(1024)
+    password: z.string().max(1024)
 });
 
 export const zTotpEnrolStartResult = z.object({
@@ -1313,7 +1318,7 @@ export const zTotpProofRequest = z.object({
 });
 
 export const zRecoveryProofRequest = z.object({
-    proof: z.string().min(1).max(1024)
+    proof: z.string().max(1024)
 });
 
 export const zRecoveryBeginRequest = z.object({
@@ -3748,6 +3753,8 @@ export const zAuthMethods = z.object({
 });
 
 export const zExternalIdentity = z.object({
+    provider_slug: z.string(),
+    display_name: z.string(),
     profile: z.enum(['github']).optional(),
     id: zId,
     kind: zIdentityProviderKind,
@@ -3899,6 +3906,8 @@ export const zWebauthnResponse = z.record(z.string(), z.unknown());
  * not know the factor state; the service enforces the selection, and
  * the field it did not select is ignored. A TOTP code is spent when the
  * ceremony is staged, so the same code cannot open a second ceremony.
+ * Empty proof is accepted only with a live establish stamp while no local
+ * proof credential stands.
  *
  */
 export const zWebauthnEnrolStartRequest = z.object({
@@ -4027,7 +4036,18 @@ export const zApprovalCeremonyBinding = z.object({
     window: zRevealWindow
 });
 
+export const zCredentialEstablishStatus = z.object({
+    kind: zIdentityProviderKind,
+    slug: z.string(),
+    display_name: z.string(),
+    expires_at: zTimestamp
+});
+
 export const zTotpStatus = z.object({
+    has_password: z.boolean(),
+    has_passkey: z.boolean(),
+    can_reauth_oidc: z.boolean(),
+    establish: zCredentialEstablishStatus.optional(),
     confirmed: z.boolean(),
     pending: z.boolean()
 });
@@ -5299,6 +5319,13 @@ export const zLogoutResponse = z.void();
  * The acting session.
  */
 export const zWhoamiResponse = zWhoAmI;
+
+export const zSetPasswordBody = zSetPasswordRequest;
+
+/**
+ * Password saved. The reissued session replaces the old one.
+ */
+export const zSetPasswordResponse = zLoginResult;
 
 export const zEnrolTotpStartBody = zTotpEnrolStartRequest;
 

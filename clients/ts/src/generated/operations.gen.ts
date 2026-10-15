@@ -388,6 +388,7 @@ import {
   setKeyGroup,
   setMachineReveal,
   setOrgRetention,
+  setPassword,
   setProjectRetention,
   settleLease,
   setValue,
@@ -780,6 +781,7 @@ import type {
   SetKeyGroupData,
   SetMachineRevealData,
   SetOrgRetentionData,
+  SetPasswordData,
   SetProjectRetentionData,
   SettleLeaseData,
   SetValueData,
@@ -1128,6 +1130,7 @@ import {
   zSetKeyGroupResponse,
   zSetMachineRevealResponse,
   zSetOrgRetentionResponse,
+  zSetPasswordResponse,
   zSetProjectRetentionResponse,
   zSettleLeaseResponse,
   zSetValueResponse,
@@ -1472,6 +1475,7 @@ export const setEnvironmentSettingsOp: BodyOperation<SetEnvironmentSettingsData,
 export const setKeyGroupOp: BodyOperation<SetKeyGroupData, typeof zSetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setKeyGroup, [200], zSetKeyGroupResponse);
 export const setMachineRevealOp: BodyOperation<SetMachineRevealData, typeof zSetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setMachineReveal, [200], zSetMachineRevealResponse);
 export const setOrgRetentionOp: BodyOperation<SetOrgRetentionData, typeof zSetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgRetention, [200], zSetOrgRetentionResponse);
+export const setPasswordOp: BodyOperation<SetPasswordData, typeof zSetPasswordResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setPassword, [200], zSetPasswordResponse);
 export const setProjectRetentionOp: BodyOperation<SetProjectRetentionData, typeof zSetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectRetention, [200], zSetProjectRetentionResponse);
 export const settleLeaseOp: BodyOperation<SettleLeaseData, typeof zSettleLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(settleLease, [200], zSettleLeaseResponse);
 export const setValueOp: BodyOperation<SetValueData, typeof zSetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setValue, [200], zSetValueResponse);

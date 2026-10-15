@@ -62,6 +62,7 @@ const identities = {
       issuer: 'https://idp.example.com',
       subject: 'alice@example.com',
       provider_id: 'corp',
+      provider_slug: 'corp', display_name: 'Corporate IdP',
       created_at: '2026-06-02T08:00:00Z',
     },
   ],
@@ -135,7 +136,7 @@ const everyRead = (rest: Partial<MockRoute>): MockRoute[] =>
 
 const populated: MockRoute[] = [
   ...answered({ profile, passkeys, identities, methods: providers, sessions }),
-  totp({ confirmed: true, pending: false }),
+  totp({ confirmed: true, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true }),
 ];
 
 const meta = {
@@ -163,9 +164,39 @@ export const Populated: Story = {
     await expect(canvas.getByText(/disabled after clone signal/)).toBeVisible();
     await expect(await canvas.findByRole('button', { name: 'Remove the authenticator' })).toBeVisible();
     await openTab(canvas, 'Identities');
-    await expect(await canvas.findByRole('button', { name: 'Link Corporate IdP' })).toBeVisible();
+    await expect(await canvas.findByRole('button', { name: 'Link another identity' })).toBeVisible();
     await openTab(canvas, 'Sessions');
     await expect(await canvas.findByRole('button', { name: /revoke the workspace session/i })).toBeVisible();
+  },
+};
+
+const socialOnly: MockRoute[] = [
+  ...answered({ profile, passkeys: { passkeys: [] }, identities, methods: providers, sessions }),
+  totp({ confirmed: false, pending: false, has_password: false, has_passkey: false, can_reauth_oidc: false }),
+];
+
+export const SocialOnly: Story = {
+  parameters: { app: { auth: true, path: '/settings?tab=factors', routePath: '/settings', responses: socialOnly } },
+  play: async ({ canvas }) => {
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Set password' })).toBeEnabled());
+    await userEvent.click(canvas.getByRole('button', { name: 'Set password' }));
+    await expect(await canvas.findByRole('button', { name: 'Verify with Corporate IdP' })).toBeVisible();
+    await expect(canvas.queryByLabelText('Password', { exact: true })).toBeNull();
+  },
+};
+
+export const SocialOnlyVerified: Story = {
+  parameters: { app: { auth: true, path: '/settings?tab=factors', routePath: '/settings', responses: [
+    ...socialOnly.filter((response) => response.url !== '/api/v1/auth/totp'),
+    totp({ confirmed: false, pending: false, has_password: false, has_passkey: false, can_reauth_oidc: false,
+      establish: { kind: 'oidc', slug: 'corp', display_name: 'Corporate IdP', expires_at: new Date(Date.now() + 300_000).toISOString() },
+    }),
+  ] } },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/Verified via Corporate IdP; complete one change within about 5 minutes/)).toBeVisible();
+    await userEvent.click(canvas.getByRole('button', { name: 'Set password' }));
+    await userEvent.click(await canvas.findByRole('button', { name: /^Continue$/ }));
+    await expect(await canvas.findByLabelText('New password', { exact: true })).toHaveAttribute('autocomplete', 'new-password');
   },
 };
 
@@ -188,13 +219,14 @@ export const LinkActionsPhone: Story = {
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ canvas, canvasElement }) => {
     await openTab(canvas, 'Identities');
-    const corp = await canvas.findByRole('button', { name: 'Link Corporate IdP' });
-    const saml = canvas.getByRole('button', { name: 'Link SAML SSO' });
+    await userEvent.click(await canvas.findByRole('button', { name: 'Link another identity' }));
+    const corp = await canvas.findByRole('button', { name: 'Corporate IdP · oidc' });
+    const saml = canvas.getByRole('button', { name: 'SAML SSO · saml' });
     const actions = corp.closest<HTMLElement>('.actions');
     await expect(actions).not.toBeNull();
     await expect(saml.closest('.actions')).toBe(actions);
     if (phone()) {
-      await expect(getComputedStyle(actions as HTMLElement).display).toBe('grid');
+      await expect(getComputedStyle(actions ?? corp).display).toBe('grid');
       await expect(Math.round(corp.getBoundingClientRect().width)).toBe(Math.round(saml.getBoundingClientRect().width));
     }
     await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth);
@@ -211,7 +243,7 @@ export const DemoReadOnly: Story = {
     await waitFor(() => expect(canvas.getByText(/^Read-only sample data\./)).toBeVisible());
     await expect(canvasElement.querySelector('fieldset[disabled]')).toBeNull();
     await openTab(canvas, 'Identities');
-    await expect(await canvas.findByRole('button', { name: 'Link Corporate IdP' })).toBeDisabled();
+    await expect(await canvas.findByRole('button', { name: 'Link another identity' })).toBeDisabled();
   },
 };
 
@@ -230,7 +262,7 @@ export const Empty: Story = {
           methods: { local_login_enabled: true, providers: [], signup_open: false, signup_paused: false, signup_methods: [] },
           sessions: { items: [], count: 0 },
         }),
-        totp({ confirmed: false, pending: false }),
+        totp({ confirmed: false, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true }),
       ],
     },
   },

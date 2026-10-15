@@ -3,7 +3,7 @@ import { CeremonyNotice } from '../ui/CeremonyNotice.tsx';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useWorkspaceContext } from '../api/transport.tsx';
-import { useAuthMethods, useSessionOIDCProvider } from '../api/account.ts';
+import { useAuthMethods, useSessionOIDCProvider, useTotpStatus } from '../api/account.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import {
   ceremonyRefusalText,
@@ -194,7 +194,11 @@ export function Ceremony({
   const oidcSession = assurance?.method.startsWith('oidc:') === true;
   const methods = useAuthMethods();
   const oidcProvider = useSessionOIDCProvider();
-  const offersOIDC = request.window.totp_offered && oidcProvider !== null;
+  const inventory = useTotpStatus();
+  const offersOIDC = request.window.totp_offered && oidcProvider !== null && inventory.data?.can_reauth_oidc === true;
+  const offersTOTP = request.window.totp_offered && inventory.data?.confirmed === true;
+  const noProof = inventory.isSuccess && !inventory.data.has_passkey && !offersTOTP && !offersOIDC &&
+    (!request.window.totp_offered || !inventory.data.can_reauth_oidc || methods.isSuccess);
   const signed = SIGNED_OPERATION[request.purpose];
 
   const attempt = async (factor: 'passkey' | 'oidc' | 'totp', run: () => Promise<void>) => {
@@ -298,6 +302,8 @@ export function Ceremony({
 
       {workspace === null ? (
         <>
+          {noProof ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {request.window.totp_offered ? 'Provider sign-in alone cannot authorise this operation.' : 'This policy requires an enrolled passkey.'}</Alert> : null}
+          {inventory.isError ? <Alert>Your credential inventory could not be loaded. Close this dialog and try again.</Alert> : null}
           {oidcSession && request.window.totp_offered && methods.isError ? (
             <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
           ) : null}
@@ -332,7 +338,7 @@ export function Ceremony({
               type="button"
               ref={first}
               onClick={onPasskey}
-              disabled={busy}
+              disabled={busy || !inventory.isSuccess || !inventory.data.has_passkey}
             >
               {pending === 'passkey' ? 'Waiting for your passkey…' : 'Use a passkey'}
             </Button>
@@ -345,7 +351,7 @@ export function Ceremony({
             </p>
           ) : null}
 
-          {request.window.totp_offered ? (
+          {offersTOTP ? (
             <form className="ceremony__totp" onSubmit={onCode}>
               <div className="field">
                 <label htmlFor="ceremony-code">Or a code from your authenticator</label>

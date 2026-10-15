@@ -89,6 +89,7 @@ operations:
   whoami:                      {webui: overview}
   getMyProfile:                {webui: settings}
   updateMyProfile:             {webui: settings}
+  setPassword:                 {webui: settings}
   enrolTotpStart:              {webui: settings}
   enrolTotpConfirm:            {webui: settings}
   stepUpTotp:                  {webui: overview}

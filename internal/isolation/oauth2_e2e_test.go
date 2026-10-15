@@ -283,6 +283,10 @@ func runOAuth2EstablishLifecycle(t *testing.T, auth *service.Auth) {
 	if _, err := auth.OAuth2Start(t.Context(), "github", "claim", "", "", "", "", invite.Authority, false); !isUnauth(err) {
 		t.Fatalf("consumed claim: %v", err)
 	}
+	if _, err := auth.SetPassword(t.Context(), established.Login.SessionToken, "first local password for closure fixture", ""); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestOAuth2EpochFence(t *testing.T) {

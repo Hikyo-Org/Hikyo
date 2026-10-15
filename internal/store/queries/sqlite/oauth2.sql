@@ -64,7 +64,10 @@ UPDATE sessions SET oauth2_provider_id = ? WHERE id = ? AND provider_id IS NULL 
 -- hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.
 -- hikyo:authn-resolution
 -- name: DeleteSessionsForOAuth2Provider :execrows
-DELETE FROM sessions WHERE oauth2_provider_id = ?;
+DELETE FROM sessions WHERE sessions.oauth2_provider_id = sqlc.narg(oauth2_provider_id)
+OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+ JOIN external_identities i ON i.id = e.identity_id
+ WHERE i.kind = 'oauth2' AND i.provider_id = sqlc.narg(oauth2_provider_id));
 
 -- hikyo:reason OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation.
 -- hikyo:authn-resolution
@@ -83,3 +86,14 @@ WHERE id = ? AND consumed_at IS NULL AND issued_by <> 'recovery';
 INSERT INTO credential_establish_evidence (session_id, identity_id, purpose, expires_at)
 VALUES (?, ?, 'account-security', ?)
 ON CONFLICT (session_id) DO UPDATE SET identity_id = excluded.identity_id, expires_at = excluded.expires_at;
+
+-- hikyo:reason Account-security credential creation reads only the acting session's purpose-bound establish stamp; service rechecks its principal, expiry and live no-local-proof precondition inside the write transaction.
+-- hikyo:authn-resolution
+-- name: GetCredentialEstablish :one
+SELECT e.identity_id, e.expires_at FROM credential_establish_evidence e
+JOIN sessions s ON s.id = e.session_id
+JOIN external_identities i ON i.id = e.identity_id
+JOIN accounts a ON a.id = i.account_id
+WHERE e.session_id = ? AND s.principal_id = ? AND a.principal_id = s.principal_id
+AND e.purpose = 'account-security' AND e.expires_at > ?
+AND i.credential_epoch = s.credential_epoch;

@@ -80,7 +80,7 @@ const transaction = (rest: Partial<MockRoute>): MockRoute => ({
 });
 const totpConfirmed: MockRoute = {
   url: '/api/v1/auth/totp',
-  body: { confirmed: true, pending: false } satisfies z.input<typeof zTotpStatus>,
+  body: { confirmed: true, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true } satisfies z.input<typeof zTotpStatus>,
 };
 const methods: MockRoute = {
   url: '/api/v1/auth/methods',

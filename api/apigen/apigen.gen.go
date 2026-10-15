@@ -6280,6 +6280,18 @@ type CreateTransitKeyRequest struct {
 	RotationPeriodSeconds *int64         `json:"rotation_period_seconds,omitempty"`
 }
 
+// CredentialEstablishStatus defines model for CredentialEstablishStatus.
+type CredentialEstablishStatus struct {
+	DisplayName string `json:"display_name"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
+	Kind IdentityProviderKind `json:"kind"`
+	Slug string               `json:"slug"`
+}
+
 // CredentialKind How a credential authenticates its service account. The discriminator
 // exists before a second kind does, so adding one is a new row type
 // rather than a schema change.
@@ -7159,6 +7171,9 @@ type ExternalIdentity struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
 
+	// DisplayName The configured provider display name.
+	DisplayName string `json:"display_name"`
+
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
 	Id     ID     `json:"id"`
 	Issuer string `json:"issuer"`
@@ -7167,7 +7182,10 @@ type ExternalIdentity struct {
 	Kind       IdentityProviderKind     `json:"kind"`
 	Profile    *ExternalIdentityProfile `json:"profile,omitempty"`
 	ProviderId string                   `json:"provider_id"`
-	Subject    string                   `json:"subject"`
+
+	// ProviderSlug The provider slug, addressed together with kind.
+	ProviderSlug string `json:"provider_slug"`
+	Subject      string `json:"subject"`
 }
 
 // ExternalIdentityProfile defines model for ExternalIdentity.Profile.
@@ -9189,7 +9207,8 @@ type RecoveryCodesResult struct {
 // RecoveryProofRequest defines model for RecoveryProofRequest.
 type RecoveryProofRequest struct {
 	// Proof The account-security proof: the confirmed TOTP code where one
-	// stands, else the password.
+	// stands, else the password. Empty proof requires a live establish
+	// stamp while no local proof credential stands.
 	Proof string `json:"proof"`
 }
 
@@ -10839,6 +10858,15 @@ type SetKeyGroupRequest struct {
 	GroupId string `json:"group_id"`
 }
 
+// SetPasswordRequest defines model for SetPasswordRequest.
+type SetPasswordRequest struct {
+	// Password The new password; never logged or echoed.
+	Password string `json:"password"`
+
+	// Proof Account-security proof; may be omitted with a live establish stamp.
+	Proof *string `json:"proof,omitempty"`
+}
+
 // SetProjectRetentionRequest defines model for SetProjectRetentionRequest.
 type SetProjectRetentionRequest struct {
 	// Inherited True clears the override; false requires both bounds.
@@ -10989,8 +11017,9 @@ type TotpDeveloperCredentialReauthRequestPurpose string
 
 // TotpEnrolStartRequest defines model for TotpEnrolStartRequest.
 type TotpEnrolStartRequest struct {
-	// Password The account-security proof: the pre-existing password. Verified
-	// before a pending seed is staged; never logged, never echoed.
+	// Password The account-security proof: the pre-existing password, or empty
+	// with a live establish stamp while no local proof credential stands.
+	// Verified before staging a seed; never logged or echoed.
 	Password string `json:"password"`
 }
 
@@ -11035,8 +11064,18 @@ type TotpSelfConfigReauthRequestPurpose string
 
 // TotpStatus defines model for TotpStatus.
 type TotpStatus struct {
+	// CanReauthOidc True when the acting OIDC session's enabled provider has an assurance policy.
+	CanReauthOidc bool `json:"can_reauth_oidc"`
+
 	// Confirmed True when a confirmed authenticator factor stands on the account.
-	Confirmed bool `json:"confirmed"`
+	Confirmed bool                       `json:"confirmed"`
+	Establish *CredentialEstablishStatus `json:"establish,omitempty"`
+
+	// HasPasskey True when the account has a usable passkey credential.
+	HasPasskey bool `json:"has_passkey"`
+
+	// HasPassword True when the account has a local password credential.
+	HasPassword bool `json:"has_password"`
 
 	// Pending True when an enrolment is staged but its first confirming code is not yet in.
 	Pending bool `json:"pending"`
@@ -11637,6 +11676,8 @@ type WebauthnCredentialProofRequest struct {
 // not know the factor state; the service enforces the selection, and
 // the field it did not select is ignored. A TOTP code is spent when the
 // ceremony is staged, so the same code cannot open a second ceremony.
+// Empty proof is accepted only with a live establish stamp while no local
+// proof credential stands.
 type WebauthnEnrolStartRequest struct {
 	// Code The confirmed TOTP code proof (an account holding a factor).
 	Code *string `json:"code,omitempty"`
@@ -12786,6 +12827,9 @@ type Oauth2StartJSONRequestBody = Oauth2StartRequest
 
 // OidcStartJSONRequestBody defines body for OidcStart for application/json ContentType.
 type OidcStartJSONRequestBody = OidcStartRequest
+
+// SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
+type SetPasswordJSONRequestBody = SetPasswordRequest
 
 // ReauthTotpJSONRequestBody defines body for ReauthTotp for application/json ContentType.
 type ReauthTotpJSONRequestBody = TotpReauthRequest
@@ -14359,6 +14403,9 @@ type ServerInterface interface {
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
+	// SetPassword Set or change the caller's password; reissues the session.
+	// (PUT /api/v1/auth/password)
+	SetPassword(w http.ResponseWriter, r *http.Request)
 	// ReauthTotp Open a disclosure reauthentication window with a TOTP code.
 	// (POST /api/v1/auth/reauth/totp)
 	ReauthTotp(w http.ResponseWriter, r *http.Request)
@@ -15628,6 +15675,12 @@ func (_ Unimplemented) OidcCallback(w http.ResponseWriter, r *http.Request, prov
 // OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 // (POST /api/v1/auth/oidc/{provider}/start)
 func (_ Unimplemented) OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetPassword Set or change the caller's password; reissues the session.
+// (PUT /api/v1/auth/password)
+func (_ Unimplemented) SetPassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18492,6 +18545,20 @@ func (siw *ServerInterfaceWrapper) OidcStart(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OidcStart(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPassword operation middleware
+func (siw *ServerInterfaceWrapper) SetPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPassword(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -32606,6 +32673,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/auth/whoami", wrapper.Whoami)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/auth/password", wrapper.SetPassword)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/totp/enrol/start", wrapper.EnrolTotpStart)
 	})
 	r.Group(func(r chi.Router) {
@@ -36831,6 +36901,114 @@ func (response OidcStart500JSONResponse) VisitOidcStartResponse(w http.ResponseW
 type OidcStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response OidcStart503JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPasswordRequestObject struct {
+	Body *SetPasswordJSONRequestBody
+}
+
+type SetPasswordResponseObject interface {
+	VisitSetPasswordResponse(w http.ResponseWriter) error
+}
+
+type SetPassword200JSONResponse LoginResult
+
+func (response SetPassword200JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetPassword400JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetPassword401JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetPassword404JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetPassword429JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetPassword500JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPassword503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetPassword503JSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -78227,6 +78405,9 @@ type StrictServerInterface interface {
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(ctx context.Context, request OidcStartRequestObject) (OidcStartResponseObject, error)
+	// SetPassword Set or change the caller's password; reissues the session.
+	// (PUT /api/v1/auth/password)
+	SetPassword(ctx context.Context, request SetPasswordRequestObject) (SetPasswordResponseObject, error)
 	// ReauthTotp Open a disclosure reauthentication window with a TOTP code.
 	// (POST /api/v1/auth/reauth/totp)
 	ReauthTotp(ctx context.Context, request ReauthTotpRequestObject) (ReauthTotpResponseObject, error)
@@ -80179,6 +80360,37 @@ func (sh *strictHandler) OidcStart(w http.ResponseWriter, r *http.Request, provi
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OidcStartResponseObject); ok {
 		if err := validResponse.VisitOidcStartResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPassword operation middleware
+func (sh *strictHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
+	var request SetPasswordRequestObject
+
+	var body SetPasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPassword(ctx, request.(SetPasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPasswordResponseObject); ok {
+		if err := validResponse.VisitSetPasswordResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

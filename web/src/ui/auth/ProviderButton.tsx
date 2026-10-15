@@ -63,7 +63,8 @@ const MARKS: Record<ProviderBrand, JSX.Element> = {
  * too. Entra is one row per tenant (#588 d1), so the tenant's display name
  * follows the fixed text instead of replacing it.
  */
-function providerLabel(provider: LoginProvider, intent: SignInIntent): string {
+function providerLabel(provider: LoginProvider, intent: SignInIntent | 'verify'): string {
+  if (intent === 'verify') return `Verify with ${provider.display_name}`;
   const brand = knownBrand(provider.brand);
   if (brand === undefined) return `Continue with ${provider.display_name}`;
   const verb = intent === 'sign-up' ? 'Sign up' : 'Continue';
@@ -90,7 +91,7 @@ export function ProviderButton({
   onClick,
 }: {
   provider: LoginProvider;
-  intent: SignInIntent;
+  intent: SignInIntent | 'verify';
   /** This row's own ceremony is in flight. */
   busy: boolean;
   disabled: boolean;
@@ -109,7 +110,7 @@ export function ProviderButton({
       {brand === undefined ? null : MARKS[brand]}
       <span>
         {busy ? 'Contacting identity provider…' : providerLabel(provider, intent)}
-        {brand === 'microsoft' && !busy ? (
+        {brand === 'microsoft' && intent !== 'verify' && !busy ? (
           <span className="login__brand-tenant">· {provider.display_name}</span>
         ) : null}
       </span>

@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { zPasskeyList, zWhoAmI } from '@hikyo/zod';
+import { zInvitationResult, zPasskeyList, zTotpStatus, zWhoAmI } from '@hikyo/zod';
 
 import { browserApi } from '../fixtures/api.ts';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -13,6 +13,78 @@ import {
 } from '../fixtures/instance.ts';
 import { enrolledAccount, signInAs } from '../fixtures/accounts.ts';
 import { test, withPasskeyPage } from '../fixtures/passkey.ts';
+
+test.describe('social-only account security', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('verifies an existing identity once to set a password, then changes it with local proof', async ({ page, browser }, testInfo) => {
+    const subject = `security-${testInfo.project.name}-${Date.now().toString(36)}`;
+    const admin = await browser.newContext({ storageState: STORAGE_STATE });
+    const invitation = await browserApi(await admin.newPage(), 'POST', `/api/v1/orgs/${readSeed().org}/invitations`, zInvitationResult, { username: subject }).finally(() => admin.close());
+    // Only the fixture IdP chooses a fresh subject. All Hikyo routes, cookies,
+    // callback verification, session stamps and mutations run on the real server.
+    await page.route(/\/authorize\?/, async (route) => {
+      await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(subject)}` });
+    });
+    await page.goto('/establish');
+    await page.getByLabel('Setup authority').fill(invitation.authority);
+    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await page.goto('/settings?tab=factors');
+    await expect(page.getByRole('button', { name: 'Set password', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('social-security-before.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Set password', exact: true }).click();
+    await expect(page.getByRole('dialog').locator('input')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('social-establish-chooser.png'), fullPage: true });
+    const establishStart = page.waitForRequest((request) => request.method() === 'POST' && request.url().includes(`/auth/oidc/${OIDC_PROVIDER.slug}/start`));
+    await page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }).click();
+    expect((await establishStart).postDataJSON()).toEqual({ purpose: 'establish', browser: true });
+    await expect(page).toHaveURL(/\/settings\?tab=factors$/);
+    await expect(page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })).toContainText('complete one change within about 5 minutes');
+    await page.screenshot({ path: testInfo.outputPath('social-security-verified.png'), fullPage: true });
+
+    await page.getByRole('tab', { name: 'Identities' }).click();
+    await expect(page.locator('#account-identities')).toContainText(OIDC_PROVIDER.displayName);
+    await page.getByRole('button', { name: 'Link another identity' }).click();
+    await expect(page.getByRole('dialog')).toContainText('Set a password or enrol an authenticator first');
+    await expect(page.getByRole('dialog').getByRole('button', { name: /Verify with/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+    await page.getByRole('tab', { name: 'Sign-in factors' }).click();
+    await page.getByRole('button', { name: 'Set password', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.screenshot({ path: testInfo.outputPath('social-password-form.png'), fullPage: true });
+    const password = 'first-security-password-611';
+    await page.getByLabel('New password', { exact: true }).fill(password);
+    await page.getByLabel('Repeat new password', { exact: true }).fill(password);
+    const passwordSet = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
+    await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
+    expect((await passwordSet).postDataJSON()).toEqual({ password });
+    await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Verified via' })).toHaveCount(0);
+    expect((await browserApi(page, 'GET', '/api/v1/auth/totp', zTotpStatus)).has_password).toBe(true);
+
+    await page.getByRole('button', { name: 'Change password', exact: true }).click();
+    await page.getByRole('dialog').getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+    const changedPassword = 'changed-security-password-611';
+    await page.getByLabel('New password', { exact: true }).fill(changedPassword);
+    await page.getByLabel('Repeat new password', { exact: true }).fill(changedPassword);
+    const passwordChange = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
+    await page.getByRole('dialog').getByRole('button', { name: 'Change password', exact: true }).click();
+    expect((await passwordChange).postDataJSON()).toEqual({ password: changedPassword, proof: password });
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await page.reload();
+    // Password proof gives this session password assurance. The existing local
+    // MFA floor applies; a provider assertion is never inherited by this write.
+    await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+    await page.goto('/settings?tab=factors');
+    await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
+  });
+});
 
 /**
  * Flow: account & security (registry surface `settings`), mvp-boundary S3's
@@ -79,7 +151,7 @@ test.describe('account and security', () => {
     const identities = page.locator('#account-identities');
     await expect(identities.getByRole('listitem').first()).toContainText('subject user');
     await expect(
-      identities.getByRole('button', { name: `Link ${OIDC_PROVIDER.displayName}` }),
+      identities.getByRole('button', { name: 'Link another identity' }),
     ).toBeVisible();
   });
 
@@ -346,7 +418,7 @@ test.describe('account and security', () => {
       await expect(proof).toContainText('never authorise their own regeneration');
       // The proof is a code from the authenticator where one stands, which it
       // does, and the ledger hands out a step nothing has spent.
-      await proof.getByLabel('Code or password').fill(await nextTotpCode());
+      await proof.getByLabel('Authenticator code').fill(await nextTotpCode());
       await proof.getByRole('button', { name: 'Confirm' }).click();
 
       const codes = page.getByRole('dialog');

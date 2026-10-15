@@ -1,3 +1,4 @@
+import { AccountPasswordDialog } from './AccountPasswordDialog.tsx';
 import { AccountProfile } from './AccountProfile.tsx';
 import { useEffect, useId, useState } from 'react';
 
@@ -9,6 +10,8 @@ import {
   useConfirmTotp,
   useEnrolPasskey,
   useEnrolTotpStart,
+  useEstablishCredential,
+  useSetPassword,
   useIdentities,
   useLinkIdentity,
   usePasskeys,
@@ -27,6 +30,7 @@ import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ProofDialog } from '../ui/auth/ProofDialog.tsx';
+import { ProviderButton } from '../ui/auth/ProviderButton.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { QrCode } from '../ui/auth/QrCode.tsx';
@@ -78,6 +82,21 @@ export function AccountSecurity() {
   const regenerate = useRegenerateRecoveryCodes();
   const unlink = useUnlinkIdentity();
   const link = useLinkIdentity();
+  const establish = useEstablishCredential();
+  const setPassword = useSetPassword();
+  const [passwordProof, setPasswordProof] = useSensitiveState<string | null>(null);
+  const [now, setNow] = useState(Date.now);
+  const inventory = totpStatus.data;
+  const noLocalProof = inventory !== undefined && !inventory.has_password && !inventory.confirmed && !inventory.has_passkey;
+  const stamp = noLocalProof && inventory?.establish !== undefined && Date.parse(inventory.establish.expires_at) > now ? inventory.establish : undefined;
+  const stampExpiry = inventory?.establish?.expires_at;
+  const refreshInventory = totpStatus.refetch;
+  useEffect(() => {
+    if (stampExpiry === undefined) return;
+    const timer = window.setTimeout(() => { setNow(Date.now()); void refreshInventory(); }, Math.max(0, Date.parse(stampExpiry) - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [stampExpiry, refreshInventory]);
+  const localProof: ProofClass = inventory?.has_password ? 'password' : 'code';
 
   const [proof, setProof] = useState<ProofRequest | null>(null);
   // Possession-first: where a confirmed authenticator stands, the passkey
@@ -125,9 +144,13 @@ export function AccountSecurity() {
     }
     setProof(null);
     switch (request.kind) {
+      case 'password':
+        setPassword.reset();
+        setPasswordProof(value);
+        return;
       case 'add-passkey':
         enrolPasskey.mutate(
-          { proof: accountSecurityProof(request.proof, value) },
+          { proof: value === '' ? { kind: 'establish' } : accountSecurityProof(passkeyProof, value) },
           {
             onSuccess: () => ok('Passkey enrolled. Every other session you held has ended.'),
             onError: report,
@@ -136,7 +159,7 @@ export function AccountSecurity() {
         return;
       case 'remove-passkey':
         removePasskey.mutate(
-          { id: request.id, proof: accountSecurityProof(request.proof, value) },
+          { id: request.id, proof: accountSecurityProof(passkeyProof, value) },
           { onSuccess: () => ok('Passkey removed.'), onError: report },
         );
         return;
@@ -199,6 +222,7 @@ export function AccountSecurity() {
         secret is a separate ceremony.
       </p>
 
+      {stamp === undefined ? null : <Alert tone="done">Verified via {stamp.display_name}; complete one change within about 5 minutes.</Alert>}
       {done !== null ? <Alert tone="done">{done}</Alert> : null}
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
@@ -229,7 +253,7 @@ export function AccountSecurity() {
                     variant="quiet"
                     type="button"
                     aria-label={`Remove passkey ${passkey.label}`}
-                    onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id, proof: passkeyProof })}
+                    onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id })}
                   >
                     <Glyph name="cross" />
                   </Button>
@@ -270,11 +294,13 @@ export function AccountSecurity() {
               <div className="settings-row settings-row--compact">
                 <div className="settings-row__copy">
                   <span className="settings-row__title">Password</span>
-                  <span className="settings-row__detail">signs you in, never authorises security changes</span>
+                  <span className="settings-row__detail">{inventory === undefined
+                    ? totpStatus.isError ? 'Password state is unavailable.' : 'Loading password state…'
+                    : inventory.has_password ? 'Signs you in; changes require fresh proof.' : 'No password is set.'}</span>
                 </div>
                 <span className="settings-row__spacer" />
-                <Button type="button" disabled title="Password changes are not in the API contract">
-                  change
+                <Button type="button" disabled={!totpStatus.isSuccess || setPassword.isPending} onClick={() => setProof({ kind: 'password' })}>
+                  {inventory === undefined ? totpStatus.isError ? 'Unavailable' : 'Loading…' : inventory.has_password ? 'Change password' : 'Set password'}
                 </Button>
               </div>
 
@@ -290,7 +316,7 @@ export function AccountSecurity() {
                   type="button"
                   aria-label="Add a passkey"
                   disabled={enrolPasskey.isPending}
-                  onClick={() => setProof({ kind: 'add-passkey', proof: passkeyProof })}
+                  onClick={() => setProof({ kind: 'add-passkey' })}
                 >
                   <Glyph name="plus" /> add
                 </Button>
@@ -307,8 +333,8 @@ export function AccountSecurity() {
                   <p className="field__hint">
                     Scan this with your authenticator, or enter the secret below by hand. Shown exactly
                     once: the seed is never retrievable again. Confirming with a code completes the
-                    enrolment and reissues this session carrying only the password class, so you present
-                    the new factor separately.
+                    enrolment and reissues this session without open verification windows. Present
+                    the new factor separately when needed.
                   </p>
                   <p className="enrolment__uri mono">{otpauth}</p>
                   <DisplayOnceCopy
@@ -440,27 +466,6 @@ export function AccountSecurity() {
 
           { id: 'account-identities', label: 'Identities', content: (
             <Panel id="account-identities" title="Linked identities">
-              {prototypeMode ? <>
-                {identities.data?.identities.map((identity) => (
-                  <div className="settings-row" key={identity.id}>
-                    <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject})<Sep />linked 2026-06-02</span></div>
-                    <span className="settings-row__spacer" />
-                    <Button icon variant="quiet" type="button" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}><Glyph name="cross" /></Button>
-                  </div>
-                ))}
-                <div className="settings-row">
-                  <div className="settings-row__copy"><span className="settings-row__title">Link another identity</span><span className="settings-row__detail">explicit binding: an unknown identity at sign-in is never a login, email never links</span></div>
-                  <span className="settings-row__spacer" />
-                  <Button
-                    type="button"
-                    disabled={link.isPending || methods.data?.providers[0] === undefined}
-                    onClick={() => {
-                      const provider = methods.data?.providers[0];
-                      if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml' || provider.kind === 'oauth2')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
-                    }}
-                  >link…</Button>
-                </div>
-              </> : <>
               <p>
                 An external identity is an explicit binding of (issuer, subject) to this account. An
                 unknown identity at sign-in is never a login, and an email address never links anything.
@@ -473,7 +478,7 @@ export function AccountSecurity() {
                 {identities.isSuccess ? identities.data.identities.map((identity) => (
                   <li className="factor" key={identity.id}>
                     <div>
-                      <strong className="mono">{identity.issuer}</strong>
+                      <strong>{identity.display_name}</strong>
                       <span className="factor__meta mono">
                         subject {identity.subject}<Sep />{identity.kind}{identity.profile ? <><Sep />{identity.profile}</> : null}<Sep />linked{' '}
                         {new Date(identity.created_at).toLocaleDateString()}
@@ -481,7 +486,7 @@ export function AccountSecurity() {
                     </div>
                     <Button
                       type="button"
-                      aria-label={`Unlink ${identity.issuer}`}
+                      aria-label={`Unlink ${identity.display_name}`}
                       onClick={() => setProof({ kind: 'unlink', id: identity.id })}
                     >
                       Unlink
@@ -498,33 +503,8 @@ export function AccountSecurity() {
                 </p>
               ) : null}
               {methods.isSuccess && methods.data.providers.length > 0 ? (
-                <>
-                  <div className="actions">
-                    {methods.data.providers.map((provider) => (
-                      <Button
-                        type="button"
-                        key={provider.slug}
-                        disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2')}
-                        onClick={() => {
-                          if (provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2') return;
-                          setProof({
-                            kind: 'link',
-                            provider: provider.slug,
-                            providerKind: provider.kind,
-                          });
-                        }}
-                      >
-                        Link {provider.display_name}
-                      </Button>
-                    ))}
-                  </div>
-                  <p className="field__hint">
-                    Linking verifies your existing credential here, then redirects with purpose = link.
-                    A normal sign-in uses purpose = login and cannot create this binding.
-                  </p>
-                </>
+                <Button type="button" disabled={link.isPending} onClick={() => setProof({ kind: 'link', provider: '', providerKind: 'oidc' })}>Link another identity</Button>
               ) : null}
-              </>}
             </Panel>
           ) },
 
@@ -564,10 +544,38 @@ export function AccountSecurity() {
       {proof === null ? null : (
         <AccountProofDialog
           request={proof}
+          failure={noLocalProof && proof.kind !== 'link' && proof.kind !== 'unlink' && establish.isError
+            ? accountFailureText(establish.error)
+            : proof.kind === 'password' && setPassword.isError ? accountFailureText(setPassword.error) : null}
+          field={proof.kind === 'add-passkey' || proof.kind === 'remove-passkey' || proof.kind === 'recovery' ? passkeyProof : localProof}
+          inventoryReady={totpStatus.isSuccess}
+          noLocalProof={noLocalProof}
+          localProofAvailable={inventory?.has_password === true || inventory?.confirmed === true}
+          stamp={stamp}
+          identities={identities.data?.identities ?? []}
+          providers={methods.data?.providers ?? []}
+          busy={establish.isPending}
+          onProviderChange={(provider, providerKind) => setProof({ kind: 'link', provider, providerKind })}
+          onEstablish={(kind, slug) => establish.mutate({ kind, slug }, {
+            onSuccess: (redirect) => {
+              const state = new URL(redirect).searchParams.get('state');
+              if (state === null) { report(new Error('The provider returned no transaction state.')); return; }
+              rememberOIDCReturn(state, window.location.href);
+              window.location.assign(redirect);
+            }, onError: report,
+          })}
           onCancel={() => setProof(null)}
           onSubmit={runProof}
         />
       )}
+
+      {passwordProof === null ? null : <AccountPasswordDialog first={!inventory?.has_password} proof={passwordProof}
+        pending={setPassword.isPending} failure={setPassword.isError ? accountFailureText(setPassword.error) : null}
+        onCancel={() => setPasswordProof(null)}
+        onSubmit={(password, value) => setPassword.mutate({ password, ...(value === '' ? {} : { proof: value }) }, {
+          onSuccess: () => { setPasswordProof(null); ok('Password saved. Every other session you held has ended.'); },
+          onError: (error) => { report(error); setPasswordProof(null); setProof({ kind: 'password' }); },
+        })} />}
 
       {regenerate.codes === null ? null : <RecoveryCodes codes={regenerate.codes} onClose={() => {
         regenerate.dismiss();
@@ -577,15 +585,16 @@ export function AccountSecurity() {
   );
 }
 
-type ProofClass = AccountSecurityProof['kind'];
+type ProofClass = Exclude<AccountSecurityProof['kind'], 'establish'>;
 
-function accountSecurityProof(kind: ProofClass, value: string): AccountSecurityProof {
+function accountSecurityProof(kind: ProofClass, value: string): Exclude<AccountSecurityProof, { kind: 'establish' }> {
   return kind === 'code' ? { kind, code: value } : { kind, password: value };
 }
 
 type ProofRequest =
-  | { kind: 'add-passkey'; proof: ProofClass }
-  | { kind: 'remove-passkey'; id: string; proof: ProofClass }
+  | { kind: 'password' }
+  | { kind: 'add-passkey' }
+  | { kind: 'remove-passkey'; id: string }
   | { kind: 'totp-start' }
   | { kind: 'totp-remove' }
   | { kind: 'recovery' }
@@ -593,6 +602,7 @@ type ProofRequest =
   | { kind: 'unlink'; id: string };
 
 const PROOF_COPY: Record<ProofRequest['kind'], { title: string; hint: string; label: string }> = {
+  password: { title: 'Confirm it is you', hint: 'Setting or changing your password needs fresh proof from your existing password, or your authenticator where no password exists.', label: 'Password' },
   'add-passkey': {
     title: 'Confirm it is you',
     hint: 'Enrolling a passkey is an account-security change, proved by a credential you already hold: a code from your authenticator where one is enrolled, otherwise your password. The new passkey never authorises itself.',
@@ -620,37 +630,68 @@ const PROOF_COPY: Record<ProofRequest['kind'], { title: string; hint: string; la
   },
   link: {
     title: 'Confirm it is you',
-    hint: 'Linking starts from this authenticated account. Your existing password authorises the provider round trip; an ordinary sign-in cannot link identities.',
+    hint: 'Linking starts from this authenticated account. Your existing password, or authenticator where no password exists, authorises the provider round trip; an ordinary sign-in cannot link identities.',
     label: 'Password',
   },
   unlink: {
     title: 'Confirm it is you',
-    hint: 'Unlinking an identity is an account-security change, proved by your password. Removing the last way in is refused.',
+    hint: 'Unlinking an identity is an account-security change, proved by your existing password, or authenticator where no password exists. Removing the last way in is refused.',
     label: 'Password',
   },
 };
 
-function AccountProofDialog({
-  request,
-  onCancel,
-  onSubmit,
-}: {
+function AccountProofDialog({ request, failure, field, inventoryReady, noLocalProof, localProofAvailable, stamp, identities, providers, busy, onProviderChange, onEstablish, onCancel, onSubmit }: {
   request: ProofRequest;
+  failure: string | null;
+  field: ProofClass;
+  inventoryReady: boolean;
+  noLocalProof: boolean;
+  localProofAvailable: boolean;
+  stamp: { display_name: string } | undefined;
+  identities: readonly { id: string; kind: string; provider_slug: string; display_name: string; profile?: string }[];
+  providers: readonly { kind: string; slug: string; display_name: string; profile?: string; brand?: string }[];
+  busy: boolean;
+  onProviderChange: (slug: string, kind: 'oidc' | 'saml' | 'oauth2') => void;
+  onEstablish: (kind: 'oidc' | 'oauth2', slug: string) => void;
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
   const copy = PROOF_COPY[request.kind];
-  const field: ProofClass = 'proof' in request ? request.proof : 'password';
-  return (
-    <ProofDialog
-      title={copy.title}
-      lede={copy.hint}
-      field={field}
-      label={field === 'code' ? 'Authenticator code' : copy.label}
-      onCancel={onCancel}
-      onSubmit={(value) => onSubmit(value)}
-    />
-  );
+  const linkOperation = request.kind === 'link' || request.kind === 'unlink';
+  const creation = request.kind === 'password' || request.kind === 'totp-start' || request.kind === 'add-passkey' || request.kind === 'recovery';
+  if (inventoryReady && !noLocalProof && !localProofAvailable) {
+    return <Dialog title={copy.title} lede="This change requires an existing password or confirmed authenticator. A passkey cannot prove this operation."
+      onCancel={(event) => { event.preventDefault(); onCancel(); }} actions={<Button type="button" onClick={onCancel}>Close</Button>}>
+      <p>This account has no compatible local proof. Contact your administrator for account recovery.</p>
+    </Dialog>;
+  }
+  if (!inventoryReady || (linkOperation && !localProofAvailable) || (creation && noLocalProof)) {
+    return <Dialog title={copy.title} lede={noLocalProof && creation
+      ? 'Provider verification authorises one local credential change while you have no password, confirmed authenticator or passkey.'
+      : copy.hint} onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}
+      actions={<><Button type="button" disabled={busy} onClick={onCancel}>Close</Button>{creation && stamp !== undefined ? <Button type="button" variant="primary" onClick={() => onSubmit('')}>Continue</Button> : null}</>}>
+      {failure === null ? null : <Alert>{failure}</Alert>}
+      {!inventoryReady ? <Alert>Your credential inventory is unavailable. Close this dialog and reload to try again.</Alert>
+        : linkOperation ? <p>Set a password or enrol an authenticator first. Linking and unlinking require an existing local proof; provider verification cannot authorise them.</p>
+        : stamp !== undefined ? <Alert tone="done">Verified via {stamp.display_name}; complete one change within about 5 minutes.</Alert>
+        : <>
+          <div className="login__methods">{identities.map((identity) => identity.kind === 'oidc' || identity.kind === 'oauth2' ? <ProviderButton key={identity.id} intent="verify" busy={busy} disabled={busy}
+            provider={{ kind: identity.kind, slug: identity.provider_slug, display_name: identity.display_name, brand: providers.find((provider) => provider.kind === identity.kind && provider.slug === identity.provider_slug)?.brand ?? (identity.profile === 'github' ? 'github' : undefined) }}
+            onClick={() => {
+            if (identity.kind === 'oidc' || identity.kind === 'oauth2') onEstablish(identity.kind, identity.provider_slug);
+          }} /> : null)}</div>
+          {!identities.some((identity) => identity.kind === 'oidc' || identity.kind === 'oauth2') ? <Alert>No linked provider can verify this change. Contact your administrator.</Alert> : null}
+        </>}
+    </Dialog>;
+  }
+  if (request.kind === 'link' && request.provider === '') {
+    return <Dialog title="Link an identity" lede="Choose a provider, then prove it is you with an existing local credential." onCancel={(event) => { event.preventDefault(); onCancel(); }} actions={<Button type="button" onClick={onCancel}>Cancel</Button>}>
+      <div className="actions">{providers.map((provider) => <Button type="button" key={`${provider.kind}:${provider.slug}`} disabled={provider.kind !== 'oidc' && provider.kind !== 'saml' && provider.kind !== 'oauth2'} onClick={() => {
+        if (provider.kind === 'oidc' || provider.kind === 'saml' || provider.kind === 'oauth2') onProviderChange(provider.slug, provider.kind);
+      }}>{provider.display_name} · {provider.kind}{provider.profile ? ` · ${provider.profile}` : ''}</Button>)}</div>
+    </Dialog>;
+  }
+  return <ProofDialog key={field} title={copy.title} lede={copy.hint} field={field} label={field === 'code' ? 'Authenticator code' : 'Password'} failure={failure} onCancel={onCancel} onSubmit={onSubmit} />;
 }
 
 /**

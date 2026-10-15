@@ -187,6 +187,10 @@ func (s stubAuth) ListIdentities(context.Context, string) ([]service.ExternalIde
 	return nil, domain.ErrUnauthenticated
 }
 
+func (s stubAuth) SetPassword(context.Context, string, string, string) (service.LoginResult, error) {
+	return s.reissued()
+}
+
 func (s stubAuth) UnlinkIdentity(context.Context, string, string, string) (service.LoginResult, error) {
 	return s.reissued()
 }

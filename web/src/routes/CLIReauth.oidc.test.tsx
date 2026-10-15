@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   selfConfigPlan: '',
   developerCredential: false,
   totpAvailable: false,
+  passkeyAvailable: true,
+  oidcReauthAllowed: true,
 }));
 
 vi.mock('../api/cliReauth.ts', () => ({
@@ -24,7 +26,7 @@ vi.mock('../api/cliReauth.ts', () => ({
 }));
 
 vi.mock('../api/account.ts', () => ({
-  useTotpStatus: () => ({ isSuccess: mocks.totpAvailable, data: { confirmed: mocks.totpAvailable } }),
+  useTotpStatus: () => ({ isSuccess: true, data: { confirmed: mocks.totpAvailable, has_passkey: mocks.passkeyAvailable, can_reauth_oidc: mocks.oidcReauthAllowed } }),
   useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
   useAuthMethods: () => mocks.methods,
 }));
@@ -84,9 +86,48 @@ beforeEach(() => {
   mocks.selfConfigPlan = '';
   mocks.developerCredential = false;
   mocks.totpAvailable = false;
+  mocks.passkeyAvailable = true;
+  mocks.oidcReauthAllowed = true;
 });
 
 describe('CLI OIDC disclosure handoff', () => {
+  it('refuses an impossible handoff with the Settings remedy and no usable approval', async () => {
+    mocks.passkeyAvailable = false;
+    mocks.oidcReauthAllowed = false;
+    const view = await renderTransaction([{ environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false }]);
+    try {
+      expect(view.container.textContent).toContain('This needs a second factor');
+      expect(view.container.querySelector('a')?.getAttribute('href')).toBe('/settings?tab=factors');
+      expect(view.container.textContent).not.toContain('Re-authenticate with Corporate IdP');
+      const approve = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Authorize CLI');
+      expect(approve?.disabled).toBe(true);
+    } finally { await view.unmount(); }
+  });
+
+  it('keeps policy-gated OIDC available when no local factor exists', async () => {
+    mocks.passkeyAvailable = false;
+    const view = await renderTransaction([{ environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false }]);
+    try {
+      expect(view.container.textContent).not.toContain('This needs a second factor');
+      const oidc = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Re-authenticate with Corporate IdP');
+      expect(oidc?.disabled).toBe(false);
+    } finally { await view.unmount(); }
+  });
+
+  it('refuses mixed policy approval when the required passkey is absent', async () => {
+    mocks.passkeyAvailable = false;
+    mocks.totpAvailable = true;
+    const view = await renderTransaction([
+      { environment_id: 'production', effective_window_seconds: 300, requires_webauthn: false },
+      { environment_id: 'locked', effective_window_seconds: 0, requires_webauthn: true },
+    ]);
+    try {
+      expect(view.container.textContent).toContain('This policy requires an enrolled passkey');
+      const approvals = [...view.container.querySelectorAll('button')].filter((button) => button.textContent === 'Authorize CLI' || button.textContent === 'Re-authenticate with Corporate IdP');
+      expect(approvals.every((button) => button.disabled)).toBe(true);
+    } finally { await view.unmount(); }
+  });
+
   it('shows the bounded future-key consent and offers fresh factors without OIDC window reuse', async () => {
     mocks.developerCredential = true;
     mocks.totpAvailable = true;

@@ -50,6 +50,7 @@ type AuthService interface {
 	LoginChallengeWebauthnStart(ctx context.Context, challengeID string) ([]byte, error)
 	LoginChallengeWebauthnFinish(ctx context.Context, challengeID string, responseJSON []byte) (service.LoginResult, error)
 	EstablishCredential(ctx context.Context, authority, password string) error
+	SetPassword(ctx context.Context, presented, password, proof string) (service.LoginResult, error)
 	Identity(ctx context.Context, presented string) (service.Identity, error)
 	Logout(ctx context.Context, presented string) error
 	VerifyBrowserCSRF(ctx context.Context, presented, csrfToken string) error
@@ -354,6 +355,21 @@ func (a *API) EstablishCredential(ctx context.Context, req apigen.EstablishCrede
 	return apigen.EstablishCredential204Response{}, nil
 }
 
+func (a *API) SetPassword(ctx context.Context, req apigen.SetPasswordRequestObject) (apigen.SetPasswordResponseObject, error) {
+	if req.Body == nil {
+		return apigen.SetPassword400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+	}
+	proof := ""
+	if req.Body.Proof != nil {
+		proof = *req.Body.Proof
+	}
+	result, err := a.Auth.SetPassword(ctx, bearer(ctx), req.Body.Password, proof)
+	if err != nil {
+		return nil, err
+	}
+	return sessionResponse(result), nil
+}
+
 func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.WhoamiResponseObject, error) {
 	id, err := a.Auth.Identity(ctx, bearer(ctx))
 	if err != nil {
@@ -471,10 +487,19 @@ func (a *API) GetTotpStatus(ctx context.Context, _ apigen.GetTotpStatusRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetTotpStatus200JSONResponse(apigen.TotpStatus{
-		Confirmed: status.Confirmed,
-		Pending:   status.Pending,
-	}), nil
+	out := apigen.TotpStatus{
+		Confirmed: status.Confirmed, Pending: status.Pending,
+		HasPassword: status.HasPassword, HasPasskey: status.HasPasskey,
+		CanReauthOidc: status.CanReauthOIDC,
+	}
+	if status.Establish != nil {
+		out.Establish = &apigen.CredentialEstablishStatus{
+			Kind: apigen.IdentityProviderKind(status.Establish.Kind),
+			Slug: status.Establish.Slug, DisplayName: status.Establish.DisplayName,
+			ExpiresAt: status.Establish.ExpiresAt,
+		}
+	}
+	return apigen.GetTotpStatus200JSONResponse(out), nil
 }
 
 func (a *API) RegenerateRecoveryCodes(ctx context.Context, req apigen.RegenerateRecoveryCodesRequestObject) (apigen.RegenerateRecoveryCodesResponseObject, error) {

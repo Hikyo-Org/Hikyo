@@ -20,7 +20,7 @@ import (
 
 // ErrBadPurpose refuses an unknown OIDC transaction purpose loudly: it is a
 // caller programming error, not a probe outcome.
-var ErrBadPurpose = errors.New("service: OIDC purpose must be login, link, reauth or claim")
+var ErrBadPurpose = errors.New("service: OIDC purpose must be login, link, reauth, establish or claim")
 
 // ErrAlreadyLinked refuses linking an identity that is already bound.
 var ErrAlreadyLinked = errors.New("service: that identity is already linked")
@@ -101,7 +101,7 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, 
 	defer release()
 
 	switch purpose {
-	case purposeLogin, purposeLink, purposeReauth, purposeClaim:
+	case purposeLogin, purposeLink, purposeReauth, purposeClaim, "establish":
 	default:
 		return OIDCStartResult{}, ErrBadPurpose
 	}
@@ -179,6 +179,15 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, 
 		if epoch, e = az.CredentialEpoch(ctx); e != nil {
 			return e
 		}
+		if purpose == "establish" {
+			local, err := hasLocalProof(ctx, az, account.ID)
+			if err != nil {
+				return err
+			}
+			if local {
+				return ErrBadPurpose
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -200,26 +209,12 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, 
 		}
 	}
 
-	// Link: verify the account-security proof (the pre-existing password, since
-	// the credential being added never authorizes its own addition).
+	var linkEvidence ReauthEvidence
 	if purpose == purposeLink {
-		var cred authz.PasswordCredential
-		perr := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			var e error
-			cred, e = az.PasswordCredentialFor(ctx, account.ID)
-			if errors.Is(e, domain.ErrNotFound) {
-				return ErrNoProofCredential
-			}
-			return e
-		})
-		if perr != nil {
-			return OIDCStartResult{}, perr
+		_, linkEvidence, err = s.verifySecurityProof(ctx, presented, proof, proof, true, true)
+		if err != nil {
+			return OIDCStartResult{}, err
 		}
-		if !s.verifyPassword(ctx, account.ID, cred, proof) {
-			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-			return OIDCStartResult{}, domain.ErrUnauthenticated
-		}
-		s.Admission.RecordSuccess(account.ID)
 	}
 
 	// Discovery reconstructs the provider (A20), then the authorization URL.
@@ -281,11 +276,23 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, 
 		if cerr != nil {
 			return OIDCStartResult{}, cerr
 		}
-		newTx.CeremonyID = ceremonyID
+		newTx.CeremonyID = linkEvidence.factorClass() + ":" + ceremonyID
 	}
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
+		if purpose == purposeLink {
+			live, err := az.Authenticate(ctx, presented, now)
+			if err != nil {
+				return err
+			}
+			if live.SessionID != sessionID || live.Principal != account.PrincipalID {
+				return domain.ErrUnauthenticated
+			}
+			if err := s.ConsumeReauthEvidence(ctx, az, linkEvidence, live.Principal); err != nil {
+				return err
+			}
+		}
 		newTx.CreatedAt = now
 		newTx.ExpiresAt = now.Add(oidcTxLifetime)
 		return az.CreateOIDCTransaction(ctx, newTx)
@@ -428,6 +435,17 @@ func (s *Auth) OIDCCallback(ctx context.Context, slug, code, stateValue, issPara
 		result, err = s.completeReauth(ctx, prov, txn, claims, presented)
 	case purposeClaim:
 		result, err = s.completeOIDCClaim(ctx, prov, txn, claims)
+	case "establish":
+		result, err = s.completeFederatedEstablish(ctx, presented, federatedEstablish{
+			kind: OIDCKind, providerID: prov.ID, issuer: txn.Issuer, subject: claims.Subject,
+			sessionID: txn.InitiatingSessionID, accountID: txn.AccountID, epoch: txn.CredentialEpoch,
+			revalidate: func(ctx context.Context, az *authz.TxAuthorizer) (string, error) {
+				return s.revalidateProvider(ctx, az, prov)
+			},
+			refuse: func(ctx context.Context, az *authz.TxAuthorizer, cause string) error {
+				return s.stageLoginRefuse(ctx, az, cause, prov.ID, txn)
+			},
+		})
 	default:
 		return metadata, ErrBadPurpose
 	}
@@ -719,13 +737,13 @@ func (s *Auth) completeLink(ctx context.Context, prov authz.OIDCProvider, txn au
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
-		attempt.result, e = s.reissueSession(ctx, az, account, "password", MethodLocalPassword, Artifact(live.Artifact), now)
+		attempt.result, e = s.reissueSession(ctx, az, account, linkProofClass(txn.CeremonyID), MethodLocalPassword, Artifact(live.Artifact), now)
 		if e != nil {
 			return e
 		}
 		ev, e := newAuditEvent(ctx, audit.EventIdentityLinked, account.PrincipalID,
 			audit.Object{Type: "external_identity", ID: identityID}, audit.OutcomeSuccess, "",
-			audit.Payload{"kind": OIDCKind, "account_id": account.ID, "identity_id": identityID, "provider_id": prov.ID, "authorizing_credential": "password"})
+			audit.Payload{"kind": OIDCKind, "account_id": account.ID, "identity_id": identityID, "provider_id": prov.ID, "authorizing_credential": linkProofClass(txn.CeremonyID)})
 		if e != nil {
 			return e
 		}
@@ -1104,13 +1122,15 @@ func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, err
 // ExternalIdentityView is the transport-facing shape of a linked identity, so
 // internal/server needs no authz import.
 type ExternalIdentityView struct {
-	Profile    string
-	ID         string
-	Kind       string
-	Issuer     string
-	Subject    string
-	ProviderID string
-	CreatedAt  time.Time
+	Slug        string
+	DisplayName string
+	Profile     string
+	ID          string
+	Kind        string
+	Issuer      string
+	Subject     string
+	ProviderID  string
+	CreatedAt   time.Time
 }
 
 // ListIdentities returns an account's linked external identities.
@@ -1130,15 +1150,27 @@ func (s *Auth) ListIdentities(ctx context.Context, presented string) ([]External
 			return e
 		}
 		for _, r := range rows {
-			profile := ""
+			profile, slug, displayName := "", "", ""
 			if r.Kind == OAuth2Kind {
 				p, err := az.OAuth2ProviderForCallback(ctx, r.ProviderID)
 				if err != nil && !errors.Is(err, domain.ErrNotFound) {
 					return err
 				}
-				profile = p.Profile
+				profile, slug, displayName = p.Profile, p.Slug, p.DisplayName
+			} else if r.Kind == OIDCKind {
+				p, err := az.ProviderForCallback(ctx, r.ProviderID)
+				if err != nil && !errors.Is(err, domain.ErrNotFound) {
+					return err
+				}
+				slug, displayName = p.Slug, p.DisplayName
+			} else if r.Kind == SAMLKind {
+				p, err := az.SAMLProviderForCallback(ctx, r.ProviderID)
+				if err != nil && !errors.Is(err, domain.ErrNotFound) {
+					return err
+				}
+				slug, displayName = p.Slug, p.DisplayName
 			}
-			out = append(out, ExternalIdentityView{Profile: profile,
+			out = append(out, ExternalIdentityView{Profile: profile, Slug: slug, DisplayName: displayName,
 				ID: r.ID, Kind: r.Kind, Issuer: r.Issuer, Subject: r.Subject, ProviderID: r.ProviderID, CreatedAt: r.CreatedAt,
 			})
 		}
@@ -1151,48 +1183,10 @@ func (s *Auth) ListIdentities(ctx context.Context, presented string) ([]External
 // refuses removing the last remaining credential (in the lockout-invariant
 // shape), verifies the pre-existing password, and reissues the acting session.
 func (s *Auth) UnlinkIdentity(ctx context.Context, presented, identityID, proof string) (LoginResult, error) {
-	var (
-		account      authz.Account
-		cred         authz.PasswordCredential
-		identityKind string
-	)
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		id, e := az.Authenticate(ctx, presented, s.now())
-		if e != nil {
-			return e
-		}
-		account, e = az.AccountByPrincipal(ctx, id.Principal)
-		if e != nil {
-			return e
-		}
-		identity, e := az.ExternalIdentityByID(ctx, identityID)
-		if errors.Is(e, domain.ErrNotFound) || (e == nil && identity.AccountID != account.ID) {
-			return ErrIdentityNotFound
-		}
-		if e != nil {
-			return e
-		}
-		identityKind = identity.Kind
-		cred, e = az.PasswordCredentialFor(ctx, account.ID)
-		if errors.Is(e, domain.ErrNotFound) {
-			return ErrNoProofCredential
-		}
-		return e
-	})
+	account, evidence, err := s.verifyIdentityProof(ctx, presented, proof)
 	if err != nil {
 		return LoginResult{}, err
 	}
-
-	release, err := s.enterFactorBudget(ctx, account.ID)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	defer release()
-	if !s.verifyPassword(ctx, account.ID, cred, proof) {
-		s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-		return LoginResult{}, domain.ErrUnauthenticated
-	}
-	s.Admission.RecordSuccess(account.ID)
 
 	result, err := writeCommittedLoginResult(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, result *LoginResult) error {
 		now := s.now()
@@ -1203,17 +1197,20 @@ func (s *Auth) UnlinkIdentity(ctx context.Context, presented, identityID, proof 
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
-		// Last-credential refusal: unlinking must not strand the account. A
-		// password stands here (the proof), so an identity unlink is always
-		// safe while a password exists; the check is kept for the passwordless
-		// future and stays in the lockout-invariant shape.
-		identities, e := az.ExternalIdentitiesForAccount(ctx, account.ID)
+		identity, e := az.ExternalIdentityByID(ctx, identityID)
+		if errors.Is(e, domain.ErrNotFound) || (e == nil && identity.AccountID != account.ID) {
+			return ErrIdentityNotFound
+		}
 		if e != nil {
 			return e
 		}
-		if _, e := az.PasswordCredentialFor(ctx, account.ID); errors.Is(e, domain.ErrNotFound) && len(identities) <= 1 {
-			return ErrLastCredential
-		} else if e != nil && !errors.Is(e, domain.ErrNotFound) {
+		if e := az.LockTargetPrincipal(ctx, live.Principal); e != nil {
+			return e
+		}
+		if e := s.ConsumeReauthEvidence(ctx, az, evidence, live.Principal); e != nil {
+			return e
+		}
+		if e := s.assertLoginCredential(ctx, az, account.ID, identityID); e != nil {
 			return e
 		}
 		if e := revokeDeveloperScope(ctx, az, account.PrincipalID, account.PrincipalID, domain.Scope{}, "identity-unlinked", now); e != nil {
@@ -1222,13 +1219,13 @@ func (s *Auth) UnlinkIdentity(ctx context.Context, presented, identityID, proof 
 		if e := az.RemoveExternalIdentity(ctx, identityID); e != nil {
 			return e
 		}
-		*result, e = s.reissueSession(ctx, az, account, "password", MethodLocalPassword, Artifact(live.Artifact), now)
+		*result, e = s.reissueSession(ctx, az, account, evidence.factorClass(), MethodLocalPassword, Artifact(live.Artifact), now)
 		if e != nil {
 			return e
 		}
 		ev, e := newAuditEvent(ctx, audit.EventIdentityUnlinked, account.PrincipalID,
 			audit.Object{Type: "external_identity", ID: identityID}, audit.OutcomeSuccess, "",
-			audit.Payload{"kind": identityKind, "account_id": account.ID, "identity_id": identityID, "authorizing_credential": "password"})
+			audit.Payload{"kind": identity.Kind, "account_id": account.ID, "identity_id": identityID, "authorizing_credential": evidence.factorClass()})
 		if e != nil {
 			return e
 		}

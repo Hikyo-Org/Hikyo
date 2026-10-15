@@ -33,7 +33,7 @@ var reviewedWireExtras = wireExtras{
 		"http:GET /api/v1/auth/cli-reauth/transactions/{state}":                                                 {Events: []string{"EventAuthCLIReauthHandoff"}},
 		// A sign-up-intent login (#607) adds the registration outcomes and, for
 		// a landing, the org creation and template grants its authority writes.
-		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
+		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/oauth2/{provider}/callback":     {Events: []string{"EventOAuth2Login", "EventOAuth2Refused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/workspace/transactions/{state}": {Events: []string{"EventRemoteWorkspaceHandoffRead"}},
 		// The audit trail read surface (#45). Query and export at each addressed
@@ -164,6 +164,7 @@ var reviewedWireExtras = wireExtras{
 		// Each factor ceremony validates a proof under the per-account backoff, so
 		// a crossed threshold is an event it can emit, declared here so the
 		// audit-completeness contract covers it.
+		"http:PUT /api/v1/auth/password":               {Events: []string{"EventAuthPasswordChanged", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/enrol/start":      {Events: []string{"EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/step-up":          {Events: []string{"EventAuthReauthenticated", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/webauthn/enrol/finish": {Events: []string{"EventAuthPasskeyAdded", "EventAuthSessionCreated"}},

@@ -177,26 +177,12 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 		}
 	}
 
-	// Link: verify the account-security proof (the pre-existing password, since
-	// the credential being added never authorizes its own addition).
+	var linkEvidence ReauthEvidence
 	if purpose == purposeLink {
-		var cred authz.PasswordCredential
-		perr := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			var e error
-			cred, e = az.PasswordCredentialFor(ctx, account.ID)
-			if errors.Is(e, domain.ErrNotFound) {
-				return ErrNoProofCredential
-			}
-			return e
-		})
-		if perr != nil {
-			return OIDCStartResult{}, perr
+		_, linkEvidence, err = s.verifySecurityProof(ctx, presented, proof, proof, true, true)
+		if err != nil {
+			return OIDCStartResult{}, err
 		}
-		if !s.verifyPassword(ctx, account.ID, cred, proof) {
-			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-			return OIDCStartResult{}, domain.ErrUnauthenticated
-		}
-		s.Admission.RecordSuccess(account.ID)
 	}
 
 	rp, err := s.oauth2RP(provider)
@@ -247,11 +233,23 @@ func (s *Auth) OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg
 		if cerr != nil {
 			return OIDCStartResult{}, cerr
 		}
-		newTx.CeremonyID = ceremonyID
+		newTx.CeremonyID = linkEvidence.factorClass() + ":" + ceremonyID
 	}
 
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
+		if purpose == purposeLink {
+			live, err := az.Authenticate(ctx, presented, now)
+			if err != nil {
+				return err
+			}
+			if live.SessionID != sessionID || live.Principal != account.PrincipalID {
+				return domain.ErrUnauthenticated
+			}
+			if err := s.ConsumeReauthEvidence(ctx, az, linkEvidence, live.Principal); err != nil {
+				return err
+			}
+		}
 		newTx.CreatedAt = now
 		newTx.ExpiresAt = now.Add(oidcTxLifetime)
 		return az.CreateOAuth2Transaction(ctx, newTx)
@@ -621,13 +619,13 @@ func (s *Auth) completeOAuth2Link(ctx context.Context, prov authz.OAuth2Provider
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
-		attempt.result, e = s.reissueSession(ctx, az, account, "password", MethodLocalPassword, Artifact(live.Artifact), now)
+		attempt.result, e = s.reissueSession(ctx, az, account, linkProofClass(txn.CeremonyID), MethodLocalPassword, Artifact(live.Artifact), now)
 		if e != nil {
 			return e
 		}
 		ev, e := newAuditEvent(ctx, audit.EventIdentityLinked, account.PrincipalID,
 			audit.Object{Type: "external_identity", ID: identityID}, audit.OutcomeSuccess, "",
-			audit.Payload{"kind": OAuth2Kind, "account_id": account.ID, "identity_id": identityID, "provider_id": prov.ID, "authorizing_credential": "password"})
+			audit.Payload{"kind": OAuth2Kind, "account_id": account.ID, "identity_id": identityID, "provider_id": prov.ID, "authorizing_credential": linkProofClass(txn.CeremonyID)})
 		if e != nil {
 			return e
 		}
@@ -700,100 +698,21 @@ func withOAuth2LoginIntent(payload audit.Payload, txn authz.OAuth2Transaction) a
 
 // hasLocalProof is live credential state, never GitHub account enrollment metadata.
 func hasLocalProof(ctx context.Context, az *authz.TxAuthorizer, accountID string) (bool, error) {
-	_, err := az.PasswordCredentialFor(ctx, accountID)
-	if err == nil {
-		return true, nil
-	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return false, err
-	}
-	_, err = az.ConfirmedTOTP(ctx, accountID)
-	if err == nil {
-		return true, nil
-	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return false, err
-	}
-	keys, err := az.WebAuthnCredentialsForAccount(ctx, accountID)
-	if err != nil {
-		return false, err
-	}
-	for _, key := range keys {
-		if !key.Disabled {
-			return true, nil
-		}
-	}
-	return false, nil
+	inventory, err := localProofInventory(ctx, az, accountID)
+	return inventory.password || inventory.totp || inventory.passkey, err
 }
+
 func (s *Auth) completeOAuth2Establish(ctx context.Context, prov authz.OAuth2Provider, txn authz.OAuth2Transaction, claims oauth2rp.User, presented string) (OIDCCallbackResult, error) {
-	var result OIDCCallbackResult
-	attempt, err := writeCommittedSessionAttempt(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, a *sessionCompletionAttempt) error {
-		refuse := func(cause string) error {
-			a.refused = sessionRefusedUnauthenticated
+	return s.completeFederatedEstablish(ctx, presented, federatedEstablish{
+		kind: OAuth2Kind, providerID: prov.ID, issuer: txn.Issuer, subject: claims.Subject,
+		sessionID: txn.InitiatingSessionID, accountID: txn.AccountID, epoch: txn.CredentialEpoch,
+		revalidate: func(ctx context.Context, az *authz.TxAuthorizer) (string, error) {
+			return s.revalidateOAuth2Provider(ctx, az, prov)
+		},
+		refuse: func(ctx context.Context, az *authz.TxAuthorizer, cause string) error {
 			return s.stageOAuth2LoginRefuse(ctx, az, cause, prov.ID, txn)
-		}
-		cause, err := s.revalidateOAuth2Provider(ctx, az, prov)
-		if err != nil {
-			return err
-		}
-		if cause != "" {
-			return refuse(cause)
-		}
-		live, err := az.Authenticate(ctx, presented, s.now())
-		if err != nil || live.SessionID != txn.InitiatingSessionID {
-			return refuse(causeBinding)
-		}
-		epoch, err := az.CredentialEpoch(ctx)
-		if err != nil {
-			return err
-		}
-		if epoch != txn.CredentialEpoch {
-			return refuse(causeEpoch)
-		}
-		identity, err := az.ExternalIdentityByKey(ctx, OAuth2Kind, txn.Issuer, claims.Subject)
-		if errors.Is(err, domain.ErrNotFound) {
-			return refuse(causeUnknownIdentity)
-		}
-		if err != nil {
-			return err
-		}
-		account, err := az.AccountByID(ctx, txn.AccountID)
-		if err != nil {
-			return err
-		}
-		if identity.AccountID != account.ID || account.PrincipalID != live.Principal {
-			return refuse(causeUnknownIdentity)
-		}
-		if identity.CredentialEpoch != epoch {
-			return refuse(causeEpoch)
-		}
-		if identity.ProviderID != prov.ID {
-			return refuse(causeReconciliation)
-		}
-		local, err := hasLocalProof(ctx, az, account.ID)
-		if err != nil {
-			return err
-		}
-		if local {
-			return refuse(causePurpose)
-		}
-		a.result, err = s.completeSession(ctx, az, RotateSession{session: live, account: account, factors: []string{"oauth2"}}, s.now())
-		if err != nil {
-			return err
-		}
-		if err := az.StampCredentialEstablish(ctx, live.SessionID, identity.ID, s.now().Add(5*time.Minute)); err != nil {
-			return err
-		}
-		ev, err := newAuditEvent(ctx, audit.EventCredentialEstablish, account.PrincipalID, audit.Object{Type: "session", ID: live.SessionID}, audit.OutcomeSuccess, "", audit.Payload{"account_id": account.ID, "identity_id": identity.ID, "provider_id": prov.ID, "kind": OAuth2Kind, "purpose": "account-security"})
-		if err != nil {
-			return err
-		}
-		return az.RecordAuthEvent(ctx, ev)
+		},
 	})
-	if err != nil {
-		return result, err
-	}
-	return OIDCCallbackResult{Login: attempt.result}, attempt.refusal()
 }
 
 // completeOAuth2Claim spends the transaction's authority on the shared claim

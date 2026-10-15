@@ -9,6 +9,7 @@ authentication:
 
 accounts:
   hikyo account establish-credential --instance <url|ref> [--as USER] [--socket PATH] [--trust-file PATH]
+  hikyo account password set|change
   hikyo account factor enrol-totp [--output-file PATH | --dangerously-print]
   hikyo account factor confirm-totp
   hikyo account factor step-up

@@ -423,6 +423,7 @@ async function configureAndLinkOIDC(instance: Instance, issuer: string): Promise
  */
 async function waitForHealthz(instance: Instance, deadlineMs = 30_000): Promise<void> {
   const until = Date.now() + deadlineMs;
+  let lastFailure = 'the operational listener has not answered';
   for (;;) {
     if (instance.proc.exitCode !== null || instance.proc.signalCode !== null) {
       throw new Error(
@@ -435,11 +436,14 @@ async function waitForHealthz(instance: Instance, deadlineMs = 30_000): Promise<
       if (resp.ok) {
         break;
       }
-    } catch {
-      // not listening yet
+      lastFailure = `healthz answered ${String(resp.status)}`;
+    } catch (error) {
+      lastFailure = error instanceof Error
+        ? `${error.message}${error.cause instanceof Error ? `: ${error.cause.message}` : ''}`
+        : String(error);
     }
     if (Date.now() > until) {
-      throw new Error(`the instance never became healthy at ${instance.operationalBase}`);
+      throw new Error(`the instance never became healthy at ${instance.operationalBase}: ${lastFailure}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
@@ -713,6 +717,7 @@ async function startInstanceAt(
   operationalPort: number,
   base: string,
   profile: InstanceProfile = 'flows',
+  preparedBinary = process.env.HIKYO_E2E_BINARY,
 ): Promise<Instance> {
   // Fail loud on a squatter. A previous run killed mid-flight (a timeout, a
   // ^C) leaves a server on this port with ANOTHER datastore behind it, and the
@@ -737,7 +742,7 @@ async function startInstanceAt(
   }
 
   const dir = mkdtempSync(join(tmpdir(), 'hikyo-e2e-'));
-  const prebuiltBinary = process.env.HIKYO_E2E_BINARY;
+  const prebuiltBinary = preparedBinary;
   const binary = prebuiltBinary ?? join(dir, 'hikyo');
   // `-tags ui` is what embeds the bundle. A binary built without it serves the
   // API and answers 404 for the document, which is the correct default and the
@@ -1149,10 +1154,10 @@ export async function startInstance(): Promise<void> {
     );
   }
 
-  const [viewing, serving] = await Promise.all([
-    startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL),
-    startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B),
-  ]);
+  // A synchronous sibling build must not consume a running health probe's
+  // deadline. Start the first instance, then reuse its exact binary for B.
+  const viewing = await startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL);
+  const serving = await startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B, 'flows', viewing.binary);
 
   // Only the VIEWING instance needs `instance-directory`: it is the one that
   // reads a foreign directory. The serving side's work, minting a connection
